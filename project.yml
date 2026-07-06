@@ -1,0 +1,53 @@
+name: Tailscode
+options:
+  bundleIdPrefix: com.guitaripod
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+packages:
+  CodingAgentKit:
+    url: https://github.com/guitaripod/CodingAgentKit.git
+    from: "0.3.0"
+targets:
+  Tailscode:
+    type: application
+    platform: iOS
+    sources:
+      - path: Tailscode
+    dependencies:
+      - package: CodingAgentKit
+        product: CodingAgentKit
+      - package: CodingAgentKit
+        product: CodingAgentKitApple
+      - package: CodingAgentKit
+        product: AgentTestSupport
+    info:
+      path: Tailscode/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: Automatic
+        NSPhotoLibraryUsageDescription: Attach images from your library to a prompt.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGNING_ALLOWED: NO

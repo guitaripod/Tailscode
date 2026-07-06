@@ -1,0 +1,8 @@
+.build/
+build/
+DerivedData/
+*.xcodeproj
+Tailscode/Info.plist
+.DS_Store
+*.xcuserstate
+xcuserdata/
