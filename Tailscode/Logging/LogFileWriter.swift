@@ -34,6 +34,17 @@ final class LogFileWriter: @unchecked Sendable {
         }
     }
 
+    var currentURL: URL { fileURL }
+
+    /// The recent log tail (previous + current files), for the in-app log viewer.
+    func snapshot() -> String {
+        queue.sync {
+            let previous = (try? String(contentsOf: previousURL, encoding: .utf8)) ?? ""
+            let current = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            return previous + current
+        }
+    }
+
     private func rotateIfNeeded() {
         guard
             let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),

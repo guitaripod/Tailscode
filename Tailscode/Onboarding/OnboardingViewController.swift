@@ -69,7 +69,7 @@ final class OnboardingViewController: UIViewController {
     @objc private func backendChanged() {
         let isOpenCode = backend == .openCode
         hostField.textField.placeholder =
-            isOpenCode ? "http://100.x.y.z:4096" : "http://100.x.y.z:3284"
+            isOpenCode ? "http://100.x.y.z:4096" : "http://100.x.y.z:4098"
     }
 
     @objc private func connectTapped() {
@@ -84,7 +84,8 @@ final class OnboardingViewController: UIViewController {
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
-        let credentials = password.map { BasicCredentials(password: $0) }
+        let username = backend == .openCode ? "opencode" : "claude"
+        let credentials = password.map { BasicCredentials(username: username, password: $0) }
 
         connectButton.setLoading(true)
         showStatus("Testing connection…", ok: true)

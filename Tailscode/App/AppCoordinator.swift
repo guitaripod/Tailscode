@@ -12,6 +12,7 @@ final class AppCoordinator {
 
     func start() {
         window.tintColor = Theme.Color.accent
+        window.overrideUserInterfaceStyle = AppPreferences.appearance.style
         #if DEBUG
             if CommandLine.arguments.contains("--demo") {
                 showDemo()

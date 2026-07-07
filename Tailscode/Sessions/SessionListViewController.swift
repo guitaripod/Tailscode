@@ -133,11 +133,17 @@ final class SessionListViewController: UIViewController {
     }
 
     private func applySnapshot() {
+        let entries = viewModel.entries
+        let existing = dataSource.snapshot().itemIdentifiers
+        let existingSet = Set(existing)
         var snapshot = NSDiffableDataSourceSnapshot<Section, SessionEntry>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(viewModel.entries, toSection: .main)
-        dataSource.apply(snapshot, animatingDifferences: true)
-        emptyState.isHidden = !viewModel.entries.isEmpty
+        snapshot.appendItems(entries, toSection: .main)
+
+        let retained = entries.filter(existingSet.contains)
+        if !retained.isEmpty { snapshot.reconfigureItems(retained) }
+        dataSource.apply(snapshot, animatingDifferences: !existing.isEmpty && existing != entries)
+        emptyState.isHidden = !entries.isEmpty
         refreshControl.endRefreshing()
         updateUnreachableFooter()
     }
@@ -187,7 +193,8 @@ final class SessionListViewController: UIViewController {
 
     private func openChat(for entry: SessionEntry) {
         guard let backend = viewModel.backend(for: entry) else { return }
-        let chatViewModel = ChatViewModel(backend: backend, session: entry.session)
+        let chatViewModel = ChatViewModel(
+            backend: backend, session: entry.session, contextID: entry.profileID)
         let chat = ChatViewController(viewModel: chatViewModel)
         navigationController?.pushViewController(chat, animated: true)
     }

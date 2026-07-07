@@ -68,8 +68,9 @@
                     delay: .milliseconds(800)))
 
             for chunk in [
-                " Found 2 call sites — converting both and adding `AuthClientTests.login()`.",
-                " Done.",
+                " Found 2 call sites — converting both and adding `AuthClientTests.login()`.\n\n",
+                "```swift\nfunc login() async throws -> Session {\n    let token = try await api.token()\n    return Session(token: token)\n}\n```\n\n",
+                "Done.",
             ] {
                 steps.append(
                     MockScriptStep(

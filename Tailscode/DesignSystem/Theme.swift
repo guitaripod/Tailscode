@@ -12,6 +12,7 @@ enum Theme {
         static let userBubble = UIColor(named: "AccentColor") ?? .systemBlue
         static let assistantBubble = UIColor.secondarySystemBackground
         static let reasoningBackground = UIColor.tertiarySystemFill
+        static let codeBackground = UIColor.secondarySystemBackground
         static let separator = UIColor.separator
         static let success = UIColor.systemGreen
         static let warning = UIColor.systemOrange
@@ -44,10 +45,38 @@ enum Theme {
 
     @MainActor
     enum Haptics {
-        static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-        static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
-        static func warning() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
-        static func error() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+        private static let selectionGenerator = UISelectionFeedbackGenerator()
+
+        private static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat = 1) {
+            guard AppPreferences.hapticsEnabled else { return }
+            UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
+        }
+
+        /// A light tap for general button presses.
+        static func tap() { impact(.light) }
+        /// A distinct medium thump when the user sends a message.
+        static func send() { impact(.medium) }
+        /// A soft cushion when the agent finishes responding.
+        static func received() { impact(.soft, 0.7) }
+        /// A crisp tick as an agent action (tool step) lands during a turn.
+        static func step() { impact(.rigid, 0.5) }
+        /// The system selection click for pickers and expand/collapse.
+        static func selection() {
+            guard AppPreferences.hapticsEnabled else { return }
+            selectionGenerator.selectionChanged()
+        }
+        static func success() {
+            guard AppPreferences.hapticsEnabled else { return }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+        static func warning() {
+            guard AppPreferences.hapticsEnabled else { return }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+        static func error() {
+            guard AppPreferences.hapticsEnabled else { return }
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 
     @MainActor
