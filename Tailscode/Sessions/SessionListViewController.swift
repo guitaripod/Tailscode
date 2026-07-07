@@ -118,7 +118,11 @@ final class SessionListViewController: UIViewController {
             content.imageProperties.tintColor = Self.color(forHost: entry.host)
             content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
             cell.contentConfiguration = content
-            cell.accessories = [.disclosureIndicator()]
+            if let pill = Self.statusPill(for: entry.session.id) {
+                cell.accessories = [pill, .disclosureIndicator()]
+            } else {
+                cell.accessories = [.disclosureIndicator()]
+            }
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, entry in
@@ -130,6 +134,15 @@ final class SessionListViewController: UIViewController {
     private func bind() {
         viewModel.onChange = { [weak self] in self?.applySnapshot() }
         viewModel.onError = { [weak self] message in self?.present(error: message) }
+        SessionActivity.shared.onChange = { [weak self] in self?.reconfigureActivity() }
+    }
+
+    private func reconfigureActivity() {
+        guard dataSource != nil else { return }
+        var snapshot = dataSource.snapshot()
+        guard !snapshot.itemIdentifiers.isEmpty else { return }
+        snapshot.reconfigureItems(snapshot.itemIdentifiers)
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     private func applySnapshot() {
@@ -173,6 +186,45 @@ final class SessionListViewController: UIViewController {
         var hash = 5381
         for byte in host.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
         return palette[abs(hash) % palette.count]
+    }
+
+    private static func statusPill(for sessionID: String) -> UICellAccessory? {
+        switch SessionActivity.shared.status(for: sessionID) {
+        case .idle:
+            return nil
+        case .running:
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.color = Theme.Color.accent
+            spinner.startAnimating()
+            spinner.sizeToFit()
+            return .customView(
+                configuration: .init(customView: spinner, placement: .trailing(displayed: .always)))
+        case .awaitingApproval:
+            let pill = pillView("Approval", color: Theme.Color.warning)
+            return .customView(
+                configuration: .init(customView: pill, placement: .trailing(displayed: .always)))
+        }
+    }
+
+    private static func pillView(_ text: String, color: UIColor) -> UIView {
+        let label = UILabel()
+        label.text = text.uppercased()
+        label.font = .systemFont(ofSize: 11, weight: .bold)
+        label.textColor = color
+        label.sizeToFit()
+        let padH: CGFloat = 9
+        let padV: CGFloat = 4
+        let container = UIView(
+            frame: CGRect(
+                x: 0, y: 0, width: label.bounds.width + padH * 2,
+                height: label.bounds.height + padV * 2))
+        label.frame = CGRect(
+            x: padH, y: padV, width: label.bounds.width, height: label.bounds.height)
+        container.addSubview(label)
+        container.backgroundColor = color.withAlphaComponent(0.16)
+        container.layer.cornerRadius = container.bounds.height / 2
+        container.layer.cornerCurve = .continuous
+        return container
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }

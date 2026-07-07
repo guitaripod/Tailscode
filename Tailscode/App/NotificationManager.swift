@@ -6,10 +6,10 @@ import UserNotifications
 @MainActor
 enum NotificationManager {
     static func requestAuthorizationIfNeeded() {
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
-            center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+            UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge]) { _, _ in }
         }
     }
 
