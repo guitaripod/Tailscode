@@ -3,7 +3,9 @@ import UIKit
 @MainActor
 protocol ComposerViewDelegate: AnyObject {
     func composerDidSend(_ text: String)
+    func composerTextDidChange(_ text: String)
     func composerDidRequestSendOptions(from view: UIView)
+    func composerDidPasteLargeText(_ text: String)
     func composerDidTapAttach()
     func composerDidTapStop()
     func composerDidBeginEditing()
@@ -161,6 +163,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
+        if text.count > 6000 {
+            delegate?.composerDidPasteLargeText(text)
+            return false
+        }
         if text == "\n", AppPreferences.sendOnReturn, !isBusy, !trimmed.isEmpty {
             sendTapped()
             return false
@@ -175,6 +181,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         heightConstraint.constant = min(max(22, size.height), 132)
         textView.isScrollEnabled = size.height > 132
         updateSendButton()
+        delegate?.composerTextDidChange(textView.text)
     }
 
     @objc private func sendTapped() {

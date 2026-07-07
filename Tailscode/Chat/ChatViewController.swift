@@ -11,6 +11,7 @@ final class ChatViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private let composer = ComposerView()
+    private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
     private let emptyState = EmptyStateView(
         symbol: "sparkles",
@@ -53,7 +54,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isMovingFromParent || isBeingDismissed {
+        if (isMovingFromParent || isBeingDismissed) && !viewModel.isBusy {
             viewModel.stop()
         }
     }
@@ -107,6 +108,17 @@ final class ChatViewController: UIViewController {
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
 
+        commandPalette.isHidden = true
+        view.addSubview(commandPalette)
+        NSLayoutConstraint.activate([
+            commandPalette.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            commandPalette.trailingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            commandPalette.bottomAnchor.constraint(
+                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
+        ])
+
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         emptyState.isHidden = true
         emptyState.isUserInteractionEnabled = false
@@ -127,6 +139,16 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
                 cell.configure(text: "…", role: .assistant, reasoning: true)
+                return cell
+            }
+            if id.hasPrefix("queued:"),
+                let index = Int(id.dropFirst("queued:".count)), index < self.viewModel.queued.count
+            {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+                cell.configure(
+                    text: "⏳ \(self.viewModel.queued[index])", role: .user, reasoning: false)
+                cell.contentView.alpha = 0.5
                 return cell
             }
             if id.hasPrefix("permission:"), let request = self.pendingPermission {
@@ -202,6 +224,7 @@ final class ChatViewController: UIViewController {
         var ids = orderedIDs
         if showTyping { ids.append(typingID) }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
+        for index in viewModel.queued.indices { ids.append("queued:\(index)") }
         emptyState.isHidden = !(orderedIDs.isEmpty && !showTyping)
 
         let nearBottom = isNearBottom()
@@ -221,12 +244,7 @@ final class ChatViewController: UIViewController {
         }
 
         composer.setBusy(state.status == .running)
-        if wasRunning && state.status != .running {
-            Theme.Haptics.received()
-            NotificationManager.notify(
-                title: viewModel.title, body: "Your agent finished.",
-                identifier: "done:\(viewModel.session.id)")
-        }
+        if wasRunning && state.status != .running { Theme.Haptics.received() }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastNotifiedPermissionID {
             lastNotifiedPermissionID = permission.id
@@ -322,7 +340,24 @@ final class ChatViewController: UIViewController {
                 completion([item])
             }
         }
-        var children: [UIMenuElement] = [jump, usage]
+        let regenerate = UIDeferredMenuElement.uncached { [weak self] completion in
+            guard let self, self.viewModel.canRegenerate else { return completion([]) }
+            completion([
+                UIAction(title: "Regenerate", image: UIImage(systemName: "arrow.clockwise")) {
+                    [weak self] _ in
+                    Theme.Haptics.tap()
+                    self?.viewModel.regenerate()
+                }
+            ])
+        }
+        var children: [UIMenuElement] = [jump, regenerate, usage]
+        if viewModel.canFork {
+            children.append(
+                UIAction(
+                    title: "Fork conversation",
+                    image: UIImage(systemName: "arrow.triangle.branch")
+                ) { [weak self] _ in self?.forkConversation() })
+        }
         if viewModel.canClear {
             children.append(
                 UIAction(
@@ -355,6 +390,221 @@ final class ChatViewController: UIViewController {
     }
 
     @objc private func dismissKeyboard() { view.endEditing(true) }
+
+    private func forkConversation() {
+        Task { @MainActor in
+            do {
+                let session = try await viewModel.fork()
+                let forked = ChatViewModel(
+                    backend: viewModel.backend, session: session, contextID: viewModel.contextID)
+                Theme.Haptics.success()
+                navigationController?.pushViewController(
+                    ChatViewController(viewModel: forked), animated: true)
+            } catch {
+                presentToast("Couldn't fork this conversation.")
+            }
+        }
+    }
+
+    private func updateCommandPalette(for text: String) {
+        guard text.hasPrefix("/"), !text.contains(" "), !text.contains("\n") else {
+            hideCommandPalette()
+            return
+        }
+        let query = String(text.dropFirst()).lowercased()
+        let matches = allCommands().filter { command in
+            query.isEmpty
+                || command.keywords.contains { $0.hasPrefix(query) }
+                || command.title.lowercased().contains(query)
+        }
+        guard !matches.isEmpty else {
+            hideCommandPalette()
+            return
+        }
+        commandPalette.update(with: matches)
+        showCommandPalette()
+    }
+
+    private func showCommandPalette() {
+        guard commandPalette.isHidden else { return }
+        commandPalette.alpha = 0
+        commandPalette.isHidden = false
+        UIView.animate(withDuration: 0.18) { self.commandPalette.alpha = 1 }
+    }
+
+    private func hideCommandPalette() {
+        guard !commandPalette.isHidden else { return }
+        UIView.animate(
+            withDuration: 0.15, animations: { self.commandPalette.alpha = 0 },
+            completion: { _ in self.commandPalette.isHidden = true })
+    }
+
+    private func makeCommand(
+        _ keywords: [String], _ title: String, _ subtitle: String, _ symbol: String,
+        _ action: @escaping () -> Void
+    ) -> SlashCommand {
+        SlashCommand(keywords: keywords, title: title, subtitle: subtitle, symbol: symbol) {
+            [weak self] in
+            self?.composer.clear()
+            self?.hideCommandPalette()
+            Theme.Haptics.selection()
+            action()
+        }
+    }
+
+    private func allCommands() -> [SlashCommand] {
+        var list: [SlashCommand] = []
+        if viewModel.supportsModelSelection {
+            list.append(
+                makeCommand(
+                    ["model", "m"], "Model", viewModel.selectedModel?.modelID ?? "Choose a model",
+                    "cpu"
+                ) { [weak self] in self?.presentModelPicker() })
+        }
+        if viewModel.supportsReasoningEffort {
+            list.append(
+                makeCommand(
+                    ["effort", "reasoning", "think"], "Reasoning effort",
+                    (viewModel.currentEffort ?? "default").capitalized,
+                    "gauge.with.dots.needle.50percent"
+                ) { [weak self] in self?.presentEffortSheet() })
+        }
+        if viewModel.canRegenerate {
+            list.append(
+                makeCommand(
+                    ["regenerate", "retry"], "Regenerate", "Re-run the last prompt",
+                    "arrow.clockwise"
+                ) { [weak self] in self?.viewModel.regenerate() })
+        }
+        list.append(
+            makeCommand(
+                ["usage", "cost", "tokens"], "Usage & cost", "Tokens and spend for this session",
+                "gauge.with.dots.needle.bottom.50percent"
+            ) { [weak self] in self?.presentUsage() })
+        if viewModel.canFork {
+            list.append(
+                makeCommand(
+                    ["fork", "branch"], "Fork conversation",
+                    "Branch to explore a different direction", "arrow.triangle.branch"
+                ) { [weak self] in self?.forkConversation() })
+        }
+        list.append(
+            makeCommand(
+                ["jump", "goto"], "Jump to message", "Scroll to an earlier prompt", "list.bullet"
+            ) { [weak self] in self?.presentJumpSheet() })
+        list.append(
+            makeCommand(
+                ["copy", "transcript"], "Copy transcript", "Copy the whole conversation",
+                "doc.on.doc"
+            ) { [weak self] in self?.copyTranscript() })
+        if viewModel.canClear {
+            list.append(
+                makeCommand(
+                    ["clear", "reset"], "Clear conversation", "Start fresh on the agent", "eraser"
+                ) { [weak self] in self?.confirmClear() })
+        }
+        return list
+    }
+
+    private func presentEffortSheet() {
+        let sheet = UIAlertController(
+            title: "Reasoning effort", message: nil, preferredStyle: .actionSheet)
+        for level in viewModel.reasoningEffortOptions {
+            let selected = viewModel.currentEffort == level
+            sheet.addAction(
+                UIAlertAction(
+                    title: selected ? "\(level.capitalized) ✓" : level.capitalized, style: .default
+                ) { [weak self] _ in
+                    self?.viewModel.setEffort(level)
+                    self?.updateNavControls()
+                })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = composer
+        present(sheet, animated: true)
+    }
+
+    private func presentUsage() {
+        Task { @MainActor in
+            guard let usage = await viewModel.usage(),
+                usage.tokens != nil || usage.costUSD != nil
+            else {
+                self.presentToast("No usage recorded for this session yet.")
+                return
+            }
+            var lines: [String] = []
+            if let tokens = usage.tokens {
+                lines.append("\(tokens.formatted()) tokens")
+            }
+            if let cost = usage.costUSD {
+                lines.append(String(format: "$%.4f spent", cost))
+            }
+            let alert = UIAlertController(
+                title: "Session usage", message: lines.joined(separator: "\n"),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(alert, animated: true)
+        }
+    }
+
+    private func presentJumpSheet() {
+        let prompts = orderedIDs.compactMap { id -> (String, String)? in
+            guard let row = rowsByID[id], row.role == .user, case .text(let text) = row.content
+            else { return nil }
+            return (id, String(text.prefix(50)))
+        }
+        guard !prompts.isEmpty else {
+            presentToast("No earlier messages to jump to.")
+            return
+        }
+        let sheet = UIAlertController(
+            title: "Jump to message", message: nil, preferredStyle: .actionSheet)
+        for (id, title) in prompts.suffix(15) {
+            sheet.addAction(
+                UIAlertAction(title: title, style: .default) { [weak self] _ in
+                    self?.scrollTo(id: id)
+                })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = composer
+        present(sheet, animated: true)
+    }
+
+    private func copyTranscript() {
+        var out: [String] = []
+        for id in orderedIDs {
+            guard let row = rowsByID[id] else { continue }
+            let who = row.role == .user ? "You" : "Agent"
+            let body: String
+            switch row.content {
+            case .text(let text):
+                body = text
+            case .code(let block):
+                let fence = block.language ?? ""
+                body = "```\(fence)\n\(block.source)\n```"
+            case .activity(let steps):
+                body = steps.map {
+                    switch $0 {
+                    case .reasoning(let text): return text
+                    case .tool(let call): return "[\(call.title ?? call.name)]"
+                    }
+                }.joined(separator: "\n")
+            case .file(let file):
+                body = "[file: \(file.path ?? file.filename ?? "attachment")]"
+            }
+            out.append("\(who): \(body)")
+        }
+        UIPasteboard.general.string = out.joined(separator: "\n\n")
+        Theme.Haptics.success()
+        presentToast("Transcript copied to clipboard.")
+    }
+
+    private func presentToast(_ message: String) {
+        let toast = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
+        toast.addAction(UIAlertAction(title: "OK", style: .default))
+        toast.popoverPresentationController?.sourceView = composer
+        present(toast, animated: true)
+    }
 
     private func modelBarButton() -> UIBarButtonItem {
         let icon = UIImage(systemName: "cpu")
@@ -515,10 +765,15 @@ final class ChatViewController: UIViewController {
 
 extension ChatViewController: ComposerViewDelegate {
     func composerDidSend(_ text: String) {
+        hideCommandPalette()
         let attachments = pendingAttachments
         pendingAttachments = []
         composer.showsAttach = viewModel.supportsAttachments
         viewModel.send(text, attachments: attachments)
+    }
+
+    func composerTextDidChange(_ text: String) {
+        updateCommandPalette(for: text)
     }
 
     func composerDidRequestSendOptions(from view: UIView) {
@@ -545,6 +800,21 @@ extension ChatViewController: ComposerViewDelegate {
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         sheet.popoverPresentationController?.sourceView = view
         present(sheet, animated: true)
+    }
+
+    func composerDidPasteLargeText(_ text: String) {
+        guard let data = text.data(using: .utf8) else { return }
+        pendingAttachments.append(
+            PromptAttachment(mime: "text/plain", filename: "pasted.txt", data: data))
+        composer.showsAttach = true
+        Theme.Haptics.success()
+        let toast = UIAlertController(
+            title: nil,
+            message: "Attached \(text.count.formatted()) characters — sent with your next message.",
+            preferredStyle: .actionSheet)
+        toast.addAction(UIAlertAction(title: "OK", style: .default))
+        toast.popoverPresentationController?.sourceView = composer
+        present(toast, animated: true)
     }
 
     func composerDidTapStop() {

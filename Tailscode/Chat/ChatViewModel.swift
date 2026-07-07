@@ -6,6 +6,7 @@ final class ChatViewModel {
     let backend: any CodingAgentBackend
     let session: AgentSession
 
+    let contextID: String
     private let conversation: AgentConversation
     private let persistKey: String
     private var streamTask: Task<Void, Never>?
@@ -21,6 +22,7 @@ final class ChatViewModel {
     init(backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default") {
         self.backend = backend
         self.session = session
+        self.contextID = contextID
         self.persistKey = "\(contextID)/\(session.id)"
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
@@ -32,7 +34,12 @@ final class ChatViewModel {
     var reasoningEffortOptions: [String] { backend.reasoningEffortOptions }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
     var canClear: Bool { backend.capabilities.supportsClearing }
+    var canFork: Bool { backend.capabilities.supportsForking }
     var isBusy: Bool { state.status == .running }
+
+    func fork() async throws -> AgentSession {
+        try await backend.forkSession(session.id)
+    }
 
     private var isClaude: Bool { backend.agentType == .claudeCode }
 
@@ -42,9 +49,26 @@ final class ChatViewModel {
             for await state in await self.conversation.states() {
                 self.state = state
                 self.onState?(state)
+                let activity: SessionActivity.Status =
+                    state.pendingPermissions.first != nil
+                    ? .awaitingApproval : (state.status == .running ? .running : .idle)
+                SessionActivity.shared.update(
+                    sessionID: self.session.id, title: self.session.title, status: activity,
+                    keepAlive: self)
+                if state.status != .running { self.flushQueue() }
             }
         }
         Task { await loadDefaultModelIfNeeded() }
+    }
+
+    private(set) var queued: [String] = []
+    private var lastSentText: String?
+
+    private func flushQueue() {
+        guard state.status != .running, !queued.isEmpty else { return }
+        let next = queued.removeFirst()
+        onState?(state)
+        deliver(next, model: nil, effort: nil, attachments: [])
     }
 
     func stop() {
@@ -56,7 +80,27 @@ final class ChatViewModel {
         _ text: String, model: ModelSelection? = nil, effort: String? = nil,
         attachments: [PromptAttachment] = []
     ) {
+        if isBusy {
+            queued.append(text)
+            onState?(state)
+            return
+        }
+        deliver(text, model: model, effort: effort, attachments: attachments)
+    }
+
+    /// Re-sends the most recent user prompt (regenerate).
+    func regenerate() {
+        guard let last = lastSentText, !isBusy else { return }
+        deliver(last, model: nil, effort: nil, attachments: [])
+    }
+
+    var canRegenerate: Bool { lastSentText != nil && !isBusy }
+
+    private func deliver(
+        _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment]
+    ) {
         AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
+        lastSentText = text
         Task {
             do {
                 try await conversation.send(

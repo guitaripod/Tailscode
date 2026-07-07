@@ -7,7 +7,7 @@ options:
 packages:
   CodingAgentKit:
     url: https://github.com/guitaripod/CodingAgentKit.git
-    from: "0.6.4"
+    from: "0.6.5"
 targets:
   Tailscode:
     type: application
