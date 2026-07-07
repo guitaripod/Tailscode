@@ -22,6 +22,7 @@ final class ChatViewController: UIViewController {
     private var pendingAttachments: [PromptAttachment] = []
     private var isPresentingPermission = false
     private var availableModels: [ModelInfo] = []
+    private var expandedReasoning: Set<String> = []
 
     init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -63,6 +64,7 @@ final class ChatViewController: UIViewController {
         collectionView.allowsSelection = false
         collectionView.register(TextBubbleCell.self, forCellWithReuseIdentifier: TextBubbleCell.reuseID)
         collectionView.register(ToolCallCell.self, forCellWithReuseIdentifier: ToolCallCell.reuseID)
+        collectionView.register(ReasoningCell.self, forCellWithReuseIdentifier: ReasoningCell.reuseID)
 
         [banner, collectionView, composer].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
@@ -114,7 +116,13 @@ final class ChatViewController: UIViewController {
             case .text(let text):
                 return self.bubble(collectionView, indexPath, text, row.role, reasoning: false)
             case .reasoning(let text):
-                return self.bubble(collectionView, indexPath, text, row.role, reasoning: true)
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ReasoningCell.reuseID, for: indexPath) as! ReasoningCell
+                let streaming = self.viewModel.isBusy && id == self.orderedIDs.last
+                cell.configure(
+                    text: text, expanded: self.expandedReasoning.contains(id), streaming: streaming
+                ) { [weak self] in self?.toggleReasoning(id) }
+                return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
@@ -205,6 +213,17 @@ final class ChatViewController: UIViewController {
             self?.isPresentingPermission = false
         })
         present(alert, animated: true)
+    }
+
+    private func toggleReasoning(_ id: String) {
+        if expandedReasoning.contains(id) {
+            expandedReasoning.remove(id)
+        } else {
+            expandedReasoning.insert(id)
+        }
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems([id])
+        dataSource.apply(snapshot, animatingDifferences: true)
     }
 
     private func loadModels() async {

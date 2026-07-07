@@ -76,6 +76,103 @@ final class TextBubbleCell: UICollectionViewCell {
     }
 }
 
+final class ReasoningCell: UICollectionViewCell {
+    static let reuseID = "ReasoningCell"
+
+    private let container = UIView()
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let chevron = UIImageView()
+    private let bodyLabel = UILabel()
+    private let toggle = UIButton(type: .system)
+    private var bodyCollapsedConstraint: NSLayoutConstraint!
+    private var onToggle: (() -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        container.backgroundColor = Theme.Color.reasoningBackground
+        container.layer.cornerRadius = Theme.Radius.card
+        container.layer.cornerCurve = .continuous
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        iconView.image = UIImage(
+            systemName: "brain", withConfiguration:
+                UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        iconView.tintColor = Theme.Color.accent
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.text = "Thinking"
+        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.textColor = Theme.Color.secondaryLabel
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        chevron.image = UIImage(
+            systemName: "chevron.down", withConfiguration:
+                UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        chevron.tintColor = Theme.Color.tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        bodyLabel.numberOfLines = 0
+        bodyLabel.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        bodyLabel.textColor = Theme.Color.secondaryLabel
+        bodyLabel.adjustsFontForContentSizeCategory = true
+        bodyLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
+
+        contentView.addSubview(container)
+        [iconView, titleLabel, chevron, bodyLabel, toggle].forEach(container.addSubview)
+
+        bodyCollapsedConstraint = bodyLabel.heightAnchor.constraint(equalToConstant: 0)
+
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+            container.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            container.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.9),
+
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            iconView.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.s),
+            titleLabel.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+            chevron.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: Theme.Spacing.s),
+            chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+            chevron.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+
+            bodyLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: Theme.Spacing.s),
+            bodyLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            bodyLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+            bodyLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.m),
+
+            toggle.topAnchor.constraint(equalTo: container.topAnchor),
+            toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            toggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            toggle.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(text: String, expanded: Bool, streaming: Bool, onToggle: @escaping () -> Void) {
+        self.onToggle = onToggle
+        bodyLabel.text = text
+        titleLabel.text = streaming ? "Thinking…" : "Thought"
+        bodyLabel.isHidden = !expanded
+        bodyCollapsedConstraint.isActive = !expanded
+        chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
+    }
+
+    @objc private func toggleTapped() {
+        Theme.Haptics.tap()
+        onToggle?()
+    }
+}
+
 final class ToolCallCell: UICollectionViewCell {
     static let reuseID = "ToolCallCell"
 
