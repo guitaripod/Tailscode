@@ -3,7 +3,7 @@ import UIKit
 final class PrimaryButton: UIButton {
     init(title: String) {
         super.init(frame: .zero)
-        var config = UIButton.Configuration.filled()
+        var config = Theme.Glass.buttonConfiguration(prominent: true)
         config.title = title
         config.baseBackgroundColor = Theme.Color.accent
         config.cornerStyle = .large

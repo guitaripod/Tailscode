@@ -48,4 +48,30 @@ enum Theme {
         static func warning() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
         static func error() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
     }
+
+    @MainActor
+    enum Glass {
+        /// A Liquid Glass visual-effect view (iOS 26+), falling back to an ultra-thin material
+        /// blur on earlier systems. Pass `interactive` for controls that react to touch.
+        static func view(interactive: Bool = false, tint: UIColor? = nil) -> UIVisualEffectView {
+            if #available(iOS 26.0, *) {
+                let effect = UIGlassEffect(style: .regular)
+                effect.isInteractive = interactive
+                if let tint { effect.tintColor = tint }
+                return UIVisualEffectView(effect: effect)
+            }
+            return UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        }
+
+        /// A capsule/rounded glass control button configuration on iOS 26, with a tinted
+        /// filled fallback for earlier systems.
+        static func buttonConfiguration(prominent: Bool = false) -> UIButton.Configuration {
+            if #available(iOS 26.0, *) {
+                return prominent ? .prominentGlass() : .glass()
+            }
+            var config: UIButton.Configuration = prominent ? .filled() : .gray()
+            config.cornerStyle = .capsule
+            return config
+        }
+    }
 }
