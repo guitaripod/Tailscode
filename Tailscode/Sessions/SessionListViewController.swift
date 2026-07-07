@@ -15,6 +15,7 @@ final class SessionListViewController: UIViewController {
         title: "No sessions yet",
         message: "Tap + to start a conversation with your agent.")
     private let refreshControl = UIRefreshControl()
+    private var hasAppeared = false
 
     init() {
         let backend =
@@ -35,6 +36,13 @@ final class SessionListViewController: UIViewController {
         configureDataSource()
         bind()
         Task { await viewModel.load() }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        title = ConnectionController.shared.activeProfile?.name ?? "Sessions"
+        if hasAppeared { Task { await viewModel.load() } }
+        hasAppeared = true
     }
 
     private func configureNavItems() {
@@ -81,7 +89,7 @@ final class SessionListViewController: UIViewController {
         let registration = UICollectionView.CellRegistration<UICollectionViewListCell, AgentSession> {
             cell, _, session in
             var content = cell.defaultContentConfiguration()
-            content.text = session.title
+            content.text = Self.displayTitle(session.title)
             content.textProperties.numberOfLines = 1
             content.secondaryText = session.updatedAt.formatted(.relative(presentation: .named))
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -109,6 +117,10 @@ final class SessionListViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: true)
         emptyState.isHidden = !viewModel.sessions.isEmpty
         refreshControl.endRefreshing()
+    }
+
+    private static func displayTitle(_ title: String) -> String {
+        title.hasPrefix("New session") ? "New session" : title
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }

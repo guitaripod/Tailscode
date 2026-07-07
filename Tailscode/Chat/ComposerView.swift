@@ -5,6 +5,7 @@ protocol ComposerViewDelegate: AnyObject {
     func composerDidSend(_ text: String)
     func composerDidTapAttach()
     func composerDidTapStop()
+    func composerDidBeginEditing()
 }
 
 @MainActor
@@ -110,6 +111,10 @@ final class ComposerView: UIView, UITextViewDelegate {
 
     private var trimmed: String {
         textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        delegate?.composerDidBeginEditing()
     }
 
     func textViewDidChange(_ textView: UITextView) {

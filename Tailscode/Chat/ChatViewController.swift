@@ -12,6 +12,10 @@ final class ChatViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private let composer = ComposerView()
     private let banner = BannerView()
+    private let emptyState = EmptyStateView(
+        symbol: "sparkles",
+        title: "Start the conversation",
+        message: "Ask your agent to build, fix, or explain something.")
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []
@@ -38,6 +42,13 @@ final class ChatViewController: UIViewController {
         bind()
         viewModel.start()
         if viewModel.supportsModelSelection { Task { await loadModels() } }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent || isBeingDismissed {
+            viewModel.stop()
+        }
     }
 
     private func configureLayout() {
@@ -70,6 +81,16 @@ final class ChatViewController: UIViewController {
             composer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+        ])
+
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        emptyState.isHidden = true
+        view.addSubview(emptyState)
+        NSLayoutConstraint.activate([
+            emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
+            emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
+            emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: collectionView.bottomAnchor),
         ])
     }
 
@@ -126,6 +147,7 @@ final class ChatViewController: UIViewController {
             state.status == .running && (rows.last?.role != .assistant)
         var ids = orderedIDs
         if showTyping { ids.append(typingID) }
+        emptyState.isHidden = !(orderedIDs.isEmpty && !showTyping)
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -264,6 +286,12 @@ extension ChatViewController: ComposerViewDelegate {
     func composerDidTapStop() {
         Theme.Haptics.tap()
         viewModel.abort()
+    }
+
+    func composerDidBeginEditing() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.scrollToBottom(animated: true)
+        }
     }
 
     func composerDidTapAttach() {
