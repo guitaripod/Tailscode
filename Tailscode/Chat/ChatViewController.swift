@@ -232,18 +232,40 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateModelButton() {
-        let current = viewModel.selectedModel?.modelID ?? "Model"
-        let actions = availableModels.prefix(40).map { model in
-            UIAction(
-                title: model.id,
-                state: viewModel.selectedModel?.modelID == model.id ? .on : .off
-            ) { [weak self] _ in
-                self?.viewModel.selectedModel = model.selection
-                self?.updateModelButton()
-            }
+        let title = viewModel.selectedModel?.modelID ?? "Model"
+        var config = UIButton.Configuration.plain()
+        config.title = title
+        config.image = UIImage(
+            systemName: "chevron.down", withConfiguration:
+                UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        config.imagePlacement = .trailing
+        config.imagePadding = 4
+        config.titleLineBreakMode = .byTruncatingTail
+        config.baseForegroundColor = Theme.Color.accent
+        var title2 = AttributedString(title)
+        title2.font = .preferredFont(forTextStyle: .subheadline)
+        config.attributedTitle = title2
+        let button = UIButton(configuration: config)
+        button.addTarget(self, action: #selector(presentModelPicker), for: .touchUpInside)
+        button.isEnabled = !availableModels.isEmpty
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: button)
+    }
+
+    @objc private func presentModelPicker() {
+        guard !availableModels.isEmpty else { return }
+        Theme.Haptics.tap()
+        let picker = ModelPickerViewController(
+            models: availableModels, selected: viewModel.selectedModel
+        ) { [weak self] selection in
+            self?.viewModel.selectedModel = selection
+            self?.updateModelButton()
         }
-        let menu = UIMenu(title: "Model", children: Array(actions))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: current, menu: menu)
+        let nav = UINavigationController(rootViewController: picker)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     private static func makeRows(from messages: [ChatMessage]) -> [ChatRow] {
