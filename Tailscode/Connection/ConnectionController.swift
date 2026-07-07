@@ -81,6 +81,23 @@ final class ConnectionController {
     func makeBackend(for profile: ConnectionProfile, policy: ConnectionPolicy = .default)
         -> (any CodingAgentBackend)?
     {
-        try? store?.makeBackend(profile, policy: policy)
+        if let backend = try? store?.makeBackend(profile, policy: policy) {
+            return backend
+        }
+        #if DEBUG
+            if let password = overridePasswords[profile.id] {
+                return profile.makeBackend(password: password, policy: policy)
+            }
+        #endif
+        return nil
+    }
+
+    /// A backend for every saved profile, for the unified cross-server session list.
+    func allBackends(policy: ConnectionPolicy = .default)
+        -> [(profile: ConnectionProfile, backend: any CodingAgentBackend)]
+    {
+        profiles.compactMap { profile in
+            makeBackend(for: profile, policy: policy).map { (profile, $0) }
+        }
     }
 }

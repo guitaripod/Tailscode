@@ -33,14 +33,23 @@ final class AppCoordinator {
                 return
             }
             let backend: AgentType = env["TAILSCODE_BACKEND"] == "claude" ? .claudeCode : .openCode
-            let profile = ConnectionProfile(
-                id: "debug", name: url.host ?? "Debug", backend: backend, baseURL: url)
-            ConnectionController.shared.setOverridePassword(env["TAILSCODE_PASSWORD"], for: profile.id)
+            seed(id: "debug", url: url, backend: backend, password: env["TAILSCODE_PASSWORD"])
+
+            if let extra = env["TAILSCODE_HOST2"], let url2 = URL(string: extra) {
+                let backend2: AgentType = env["TAILSCODE_BACKEND2"] == "claude" ? .claudeCode : .openCode
+                seed(id: "debug2", url: url2, backend: backend2, password: env["TAILSCODE_PASSWORD2"])
+            }
+        }
+
+        private func seed(id: String, url: URL, backend: AgentType, password: String?) {
+            let name = url.host ?? id
+            let profile = ConnectionProfile(id: id, name: name, backend: backend, baseURL: url)
+            ConnectionController.shared.setOverridePassword(password, for: id)
             do {
-                try ConnectionController.shared.save(profile, password: env["TAILSCODE_PASSWORD"])
-                AppLogger.connection.info("seed saved profile for \(url.host ?? "?")")
+                try ConnectionController.shared.save(profile, password: password, makeActive: id == "debug")
+                AppLogger.connection.info("seed saved profile for \(name)")
             } catch {
-                ConnectionController.shared.setActive(profile.id)
+                if id == "debug" { ConnectionController.shared.setActive(id) }
                 AppLogger.connection.error("seed keychain failed (\(error)); using override")
             }
         }

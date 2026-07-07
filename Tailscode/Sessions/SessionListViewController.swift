@@ -1,4 +1,5 @@
 import CodingAgentKit
+import CodingAgentKitApple
 import UIKit
 
 @MainActor
@@ -9,19 +10,19 @@ final class SessionListViewController: UIViewController {
 
     private let viewModel: SessionListViewModel
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, AgentSession>!
+    private var dataSource: UICollectionViewDiffableDataSource<Section, SessionEntry>!
     private let emptyState = EmptyStateView(
         symbol: "bubble.left.and.text.bubble.right",
         title: "No sessions yet",
-        message: "Tap + to start a conversation with your agent.")
+        message: "Tap + to start a conversation on one of your servers.")
     private let refreshControl = UIRefreshControl()
     private var hasAppeared = false
 
     init() {
-        let backend =
-            ConnectionController.shared.makeBackend()
-            ?? UnavailableBackend()
-        self.viewModel = SessionListViewModel(backend: backend)
+        let sources = ConnectionController.shared.allBackends().map {
+            SessionListViewModel.Source(profile: $0.profile, backend: $0.backend)
+        }
+        self.viewModel = SessionListViewModel(sources: sources)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -29,7 +30,7 @@ final class SessionListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = ConnectionController.shared.activeProfile?.name ?? "Sessions"
+        title = "Chats"
         view.backgroundColor = Theme.Color.groupedBackground
         configureNavItems()
         configureCollectionView()
@@ -40,7 +41,6 @@ final class SessionListViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        title = ConnectionController.shared.activeProfile?.name ?? "Sessions"
         if hasAppeared { Task { await viewModel.load() } }
         hasAppeared = true
     }
@@ -49,18 +49,36 @@ final class SessionListViewController: UIViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"), style: .plain, target: self,
             action: #selector(openSettings))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .add, target: self, action: #selector(newSession))
+        updateAddButton()
+    }
+
+    private func updateAddButton() {
+        let servers = viewModel.servers
+        if servers.count > 1 {
+            let actions = servers.map { profile in
+                UIAction(
+                    title: profile.name,
+                    subtitle: "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")",
+                    image: Self.icon(for: profile.backend)
+                ) { [weak self] _ in self?.startSession(on: profile) }
+            }
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                image: UIImage(systemName: "square.and.pencil"),
+                menu: UIMenu(title: "New chat on…", children: actions))
+        } else {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .add, target: self, action: #selector(newSessionDefault))
+        }
     }
 
     private func configureCollectionView() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, self.viewModel.supportsMultipleSessions,
-                let session = self.dataSource.itemIdentifier(for: indexPath)
+            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath),
+                self.viewModel.supportsMultipleSessions(entry)
             else { return nil }
             let delete = UIContextualAction(style: .destructive, title: "Delete") { _, _, done in
-                Task { await self.viewModel.delete(session); done(true) }
+                Task { await self.viewModel.delete(entry); done(true) }
             }
             delete.image = UIImage(systemName: "trash")
             return UISwipeActionsConfiguration(actions: [delete])
@@ -86,22 +104,26 @@ final class SessionListViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let registration = UICollectionView.CellRegistration<UICollectionViewListCell, AgentSession> {
-            cell, _, session in
+        let registration = UICollectionView.CellRegistration<UICollectionViewListCell, SessionEntry> {
+            cell, _, entry in
             var content = cell.defaultContentConfiguration()
-            content.text = Self.displayTitle(session.title)
+            content.text = Self.displayTitle(entry.session.title)
             content.textProperties.numberOfLines = 1
-            content.secondaryText = session.updatedAt.formatted(.relative(presentation: .named))
+            content.secondaryText =
+                "\(entry.profileName) · \(entry.backendType.displayName) · "
+                + entry.session.updatedAt.formatted(.relative(presentation: .named))
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: "text.bubble")
-            content.imageProperties.tintColor = Theme.Color.accent
+            content.secondaryTextProperties.numberOfLines = 1
+            content.image = Self.icon(for: entry.backendType)
+            content.imageProperties.tintColor = Self.color(forHost: entry.host)
+            content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
             cell.contentConfiguration = content
             cell.accessories = [.disclosureIndicator()]
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, session in
+            collectionView, indexPath, entry in
             collectionView.dequeueConfiguredReusableCell(
-                using: registration, for: indexPath, item: session)
+                using: registration, for: indexPath, item: entry)
         }
     }
 
@@ -111,31 +133,61 @@ final class SessionListViewController: UIViewController {
     }
 
     private func applySnapshot() {
-        var snapshot = NSDiffableDataSourceSnapshot<Section, AgentSession>()
+        var snapshot = NSDiffableDataSourceSnapshot<Section, SessionEntry>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(viewModel.sessions, toSection: .main)
+        snapshot.appendItems(viewModel.entries, toSection: .main)
         dataSource.apply(snapshot, animatingDifferences: true)
-        emptyState.isHidden = !viewModel.sessions.isEmpty
+        emptyState.isHidden = !viewModel.entries.isEmpty
         refreshControl.endRefreshing()
+        updateUnreachableFooter()
+    }
+
+    private func updateUnreachableFooter() {
+        guard !viewModel.unreachable.isEmpty else {
+            navigationItem.prompt = nil
+            return
+        }
+        navigationItem.prompt = "Unreachable: \(viewModel.unreachable.joined(separator: ", "))"
     }
 
     private static func displayTitle(_ title: String) -> String {
         title.hasPrefix("New session") ? "New session" : title
     }
 
+    private static func icon(for backend: AgentType) -> UIImage? {
+        let name = backend == .claudeCode ? "sparkles" : "chevron.left.forwardslash.chevron.right"
+        return UIImage(systemName: name)
+    }
+
+    private static func color(forHost host: String) -> UIColor {
+        let palette: [UIColor] = [
+            .systemBlue, .systemPurple, .systemTeal, .systemIndigo, .systemPink,
+            .systemOrange, .systemGreen,
+        ]
+        var hash = 5381
+        for byte in host.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
+        return palette[abs(hash) % palette.count]
+    }
+
     @objc private func refresh() { Task { await viewModel.load() } }
     @objc private func openSettings() { onOpenSettings?() }
 
-    @objc private func newSession() {
+    @objc private func newSessionDefault() {
+        guard let profile = viewModel.servers.first else { return }
+        startSession(on: profile)
+    }
+
+    private func startSession(on profile: ConnectionProfile) {
         Theme.Haptics.tap()
         Task {
-            guard let session = await viewModel.newSession() else { return }
-            openChat(for: session)
+            guard let entry = await viewModel.newSession(on: profile) else { return }
+            openChat(for: entry)
         }
     }
 
-    private func openChat(for session: AgentSession) {
-        let chatViewModel = ChatViewModel(backend: viewModel.backend, session: session)
+    private func openChat(for entry: SessionEntry) {
+        guard let backend = viewModel.backend(for: entry) else { return }
+        let chatViewModel = ChatViewModel(backend: backend, session: entry.session)
         let chat = ChatViewController(viewModel: chatViewModel)
         navigationController?.pushViewController(chat, animated: true)
     }
@@ -151,7 +203,7 @@ final class SessionListViewController: UIViewController {
 extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let session = dataSource.itemIdentifier(for: indexPath) else { return }
-        openChat(for: session)
+        guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
+        openChat(for: entry)
     }
 }

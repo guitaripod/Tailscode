@@ -13,7 +13,6 @@ final class SettingsViewController: UIViewController {
         case profile(ConnectionProfile)
         case addConnection
         case health(String)
-        case disconnect
         case version(String)
     }
 
@@ -35,6 +34,16 @@ final class SettingsViewController: UIViewController {
     private func configure() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = .supplementary
+        config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            guard let self, case .profile(let profile) = self.dataSource.itemIdentifier(for: indexPath)
+            else { return nil }
+            let delete = UIContextualAction(style: .destructive, title: "Remove") { _, _, done in
+                self.removeProfile(profile)
+                done(true)
+            }
+            delete.image = UIImage(systemName: "trash")
+            return UISwipeActionsConfiguration(actions: [delete])
+        }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -51,6 +60,10 @@ final class SettingsViewController: UIViewController {
             case .profile(let profile):
                 content.text = profile.name
                 content.secondaryText = "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")"
+                content.image = UIImage(
+                    systemName: profile.backend == .claudeCode
+                        ? "sparkles" : "chevron.left.forwardslash.chevron.right")
+                content.imageProperties.tintColor = Theme.Color.accent
                 if profile.id == ConnectionController.shared.activeProfile?.id {
                     cell.accessories = [.checkmark()]
                 }
@@ -60,11 +73,8 @@ final class SettingsViewController: UIViewController {
                 content.image = UIImage(systemName: "plus.circle")
                 content.imageProperties.tintColor = Theme.Color.accent
             case .health(let text):
-                content.text = "Server"
+                content.text = "Active server"
                 content.secondaryText = text
-            case .disconnect:
-                content.text = "Remove this connection"
-                content.textProperties.color = Theme.Color.danger
             case .version(let text):
                 content.text = "Tailscode"
                 content.secondaryText = text
@@ -95,7 +105,7 @@ final class SettingsViewController: UIViewController {
         snapshot.appendItems(
             ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection],
             toSection: .connections)
-        snapshot.appendItems([.health(healthText), .disconnect], toSection: .server)
+        snapshot.appendItems([.health(healthText)], toSection: .server)
         snapshot.appendItems([.version("Version 0.1.0")], toSection: .about)
         dataSource.apply(snapshot, animatingDifferences: false)
     }
@@ -131,22 +141,21 @@ extension SettingsViewController: UICollectionViewDelegate {
             let onboarding = OnboardingViewController()
             onboarding.onConnected = { [weak self] in self?.onConnectionChanged?() }
             navigationController?.pushViewController(onboarding, animated: true)
-        case .disconnect:
-            confirmDisconnect()
         case .health, .version:
             break
         }
     }
 
-    private func confirmDisconnect() {
+    private func removeProfile(_ profile: ConnectionProfile) {
         let alert = UIAlertController(
-            title: "Remove connection?",
+            title: "Remove \(profile.name)?",
             message: "This deletes the saved server and its password from the Keychain.",
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
-            guard let id = ConnectionController.shared.activeProfile?.id else { return }
-            try? ConnectionController.shared.delete(id)
+            try? ConnectionController.shared.delete(profile.id)
+            Theme.Haptics.warning()
+            self?.applySnapshot()
             self?.onConnectionChanged?()
         })
         present(alert, animated: true)
