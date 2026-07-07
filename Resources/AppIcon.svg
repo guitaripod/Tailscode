@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4C8DFF"/>
+      <stop offset="0.5" stop-color="#3355E6"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="22" stdDeviation="30" flood-color="#10163A" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- remote node link: your device connected to your server over the tailnet -->
+  <line x1="672" y1="672" x2="778" y2="778" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" opacity="0.38"/>
+  <circle cx="800" cy="800" r="46" fill="#FFFFFF" opacity="0.92"/>
+
+  <!-- chat bubble / terminal card -->
+  <g filter="url(#cardShadow)">
+    <path d="M 372 236 H 652 A 156 156 0 0 1 808 392 V 560 A 156 156 0 0 1 652 716 H 452 L 300 812 V 640 A 156 156 0 0 1 300 616 V 392 A 156 156 0 0 1 372 236 Z" fill="#FFFFFF"/>
+  </g>
+
+  <!-- prompt: chevron + caret -->
+  <polyline points="404,392 540,478 404,564" fill="none" stroke="#2563EB" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="576" y1="560" x2="700" y2="560" stroke="#2563EB" stroke-width="54" stroke-linecap="round"/>
+</svg>
