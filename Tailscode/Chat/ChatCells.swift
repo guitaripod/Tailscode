@@ -103,6 +103,11 @@ final class TextBubbleCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        contentView.alpha = 1
+    }
+
     func configure(text: String, role: MessageRole, reasoning: Bool) {
         let isUser = role == .user
         leadingPin.isActive = !isUser
@@ -561,20 +566,101 @@ final class ActivityGroupCell: UICollectionViewCell {
                 ]))
         header.attributedText = attributed
 
-        let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
         let column = UIStackView(arrangedSubviews: [header])
         column.axis = .vertical
         column.spacing = 2
-        if !body.isEmpty {
-            let output = UILabel()
-            output.font = Theme.Font.mono(11)
-            output.textColor = Theme.Color.secondaryLabel
-            output.numberOfLines = 8
-            output.lineBreakMode = .byTruncatingTail
-            output.text = body
-            column.addArrangedSubview(output)
+
+        if let todos = todoChecklist(for: call) {
+            column.addArrangedSubview(todos)
+        } else if let diff = editDiff(for: call) {
+            let diffLabel = UILabel()
+            diffLabel.numberOfLines = 0
+            diffLabel.lineBreakMode = .byCharWrapping
+            diffLabel.attributedText = diff
+            column.addArrangedSubview(diffLabel)
+        } else {
+            let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
+            if !body.isEmpty {
+                let output = UILabel()
+                output.font = Theme.Font.mono(11)
+                output.textColor = Theme.Color.secondaryLabel
+                output.numberOfLines = 10
+                output.lineBreakMode = .byTruncatingTail
+                output.text = body
+                column.addArrangedSubview(output)
+            }
         }
         return column
+    }
+
+    /// Renders the agent's task list from a TodoWrite tool call as a live checklist.
+    private static func todoChecklist(for call: ToolCall) -> UIView? {
+        guard call.name.localizedCaseInsensitiveContains("Todo"), let input = call.input,
+            case .array(let todos) = input["todos"]
+        else { return nil }
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 4
+        for todo in todos {
+            let content = (todo["content"] ?? todo["activeForm"])?.stringValue ?? ""
+            guard !content.isEmpty else { continue }
+            let status = todo["status"]?.stringValue ?? "pending"
+            let symbol: String
+            let color: UIColor
+            let done: Bool
+            switch status {
+            case "completed": symbol = "checkmark.circle.fill"; color = Theme.Color.success; done = true
+            case "in_progress": symbol = "circle.lefthalf.filled"; color = Theme.Color.warning; done = false
+            default: symbol = "circle"; color = Theme.Color.tertiaryLabel; done = false
+            }
+            let label = UILabel()
+            label.numberOfLines = 0
+            let attributed = NSMutableAttributedString()
+            if let image = UIImage(
+                systemName: symbol, withConfiguration:
+                    UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+                .withTintColor(color, renderingMode: .alwaysOriginal)
+            {
+                let attachment = NSTextAttachment(image: image)
+                attributed.append(NSAttributedString(attachment: attachment))
+            }
+            var textAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .foregroundColor: done ? Theme.Color.tertiaryLabel : Theme.Color.label,
+            ]
+            if done { textAttrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+            attributed.append(NSAttributedString(string: "  \(content)", attributes: textAttrs))
+            label.attributedText = attributed
+            stack.addArrangedSubview(label)
+        }
+        return stack.arrangedSubviews.isEmpty ? nil : stack
+    }
+
+    /// Renders a red/green unified diff for Edit/Write tool calls from their structured input.
+    private static func editDiff(for call: ToolCall) -> NSAttributedString? {
+        let editors = ["Edit", "Write", "MultiEdit", "str_replace", "str_replace_editor", "create"]
+        guard editors.contains(where: { call.name.localizedCaseInsensitiveContains($0) }),
+            let input = call.input
+        else { return nil }
+        let mono = Theme.Font.mono(11)
+        let result = NSMutableAttributedString()
+        func append(_ text: String, prefix: String, color: UIColor) {
+            for line in text.components(separatedBy: "\n") {
+                result.append(
+                    NSAttributedString(
+                        string: "\(prefix)\(line)\n",
+                        attributes: [
+                            .font: mono, .foregroundColor: color,
+                            .backgroundColor: color.withAlphaComponent(0.12),
+                        ]))
+            }
+        }
+        if let old = input["old_string"]?.stringValue { append(old, prefix: "- ", color: Theme.Color.danger) }
+        if let new = input["new_string"]?.stringValue { append(new, prefix: "+ ", color: Theme.Color.success) }
+        if let content = input["content"]?.stringValue, input["new_string"] == nil {
+            append(content, prefix: "+ ", color: Theme.Color.success)
+        }
+        return result.length > 0 ? result : nil
     }
 
     @objc private func toggleTapped() {
