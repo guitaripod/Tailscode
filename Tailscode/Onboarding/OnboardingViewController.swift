@@ -11,7 +11,7 @@ final class OnboardingViewController: UIViewController {
     private let nameField = FormField(title: "Name", placeholder: "My server")
     private let hostField = FormField(title: "Host URL", placeholder: "http://100.x.y.z:4096", keyboard: .URL)
     private let passwordField = FormField(
-        title: "Password", placeholder: "OPENCODE_SERVER_PASSWORD", secure: true)
+        title: "Password (optional)", placeholder: "Leave blank on a private tailnet", secure: true)
     private let connectButton = PrimaryButton(title: "Test & Connect")
     private let statusLabel = UILabel()
 
@@ -68,7 +68,6 @@ final class OnboardingViewController: UIViewController {
 
     @objc private func backendChanged() {
         let isOpenCode = backend == .openCode
-        passwordField.isHidden = !isOpenCode
         hostField.textField.placeholder =
             isOpenCode ? "http://100.x.y.z:4096" : "http://100.x.y.z:3284"
     }
@@ -85,7 +84,7 @@ final class OnboardingViewController: UIViewController {
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
-        let credentials = backend == .openCode ? password.map { BasicCredentials(password: $0) } : nil
+        let credentials = password.map { BasicCredentials(password: $0) }
 
         connectButton.setLoading(true)
         showStatus("Testing connection…", ok: true)
@@ -98,8 +97,7 @@ final class OnboardingViewController: UIViewController {
             let profile = ConnectionProfile(
                 id: UUID().uuidString, name: name, backend: detected, baseURL: url)
             do {
-                try ConnectionController.shared.save(
-                    profile, password: detected == .openCode ? password : nil)
+                try ConnectionController.shared.save(profile, password: password)
                 AppLogger.connection.info("connected to \(detected.displayName) \(version ?? "")")
                 Theme.Haptics.success()
                 onConnected?()
