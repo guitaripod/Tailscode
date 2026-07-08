@@ -6,7 +6,7 @@ import Foundation
 final class AppActivityController {
     static let shared = AppActivityController()
 
-    nonisolated(unsafe) private var activity: Activity<ChatActivityAttributes>?
+    private var activity: Activity<ChatActivityAttributes>?
 
     func start(sessionTitle: String, serverName: String) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -28,14 +28,24 @@ final class AppActivityController {
     }
 
     func end() {
-        guard let activity else { return }
+        guard let act = activity else { return }
         let final = ChatActivityAttributes.ContentState(
             status: "Done", lastTool: nil, textSummary: nil)
-        Task { @MainActor in
-            await activity.end(
+        self.activity = nil
+        Task {
+            await act.end(
                 ActivityContent(state: final, staleDate: .now), dismissalPolicy: .immediate)
         }
         AppLogger.chat.info("Live Activity ended")
-        self.activity = nil
+    }
+
+    func update(status: String, lastTool: String? = nil, textSummary: String? = nil) {
+        guard let act = activity else { return }
+        let newState = ChatActivityAttributes.ContentState(
+            status: status, lastTool: lastTool, textSummary: textSummary)
+        Task {
+            await act.update(
+                ActivityContent(state: newState, staleDate: Date().addingTimeInterval(600)))
+        }
     }
 }

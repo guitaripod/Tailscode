@@ -41,6 +41,9 @@ final class ChatViewModel {
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
     var canClear: Bool { backend.capabilities.supportsClearing }
     var canFork: Bool { backend.capabilities.supportsForking }
+    var canAbort: Bool { backend.capabilities.supportsAbort }
+    var supportsUsage: Bool { backend.capabilities.supportsSessionUsage }
+    var supportsFileBrowsing: Bool { backend.capabilities.supportsFileBrowsing }
     var isBusy: Bool { state.status == .running }
 
     func fork() async throws -> AgentSession {
@@ -69,6 +72,12 @@ final class ChatViewModel {
                 } else if (state.status == .idle || state.status == .stable) && activityStarted {
                     AppActivityController.shared.end()
                     activityStarted = false
+                }
+                if state.status == .running {
+                    let lastTool = state.messages.last?.parts.last(where: { if case .tool = $0.kind { return true } else { return false } }).flatMap { p in if case .tool(let t) = p.kind { return t.name ?? t.title } else { return nil } }
+                    let summary = state.messages.last?.text.prefix(80).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let st = state.pendingPermissions.first != nil ? "Awaiting approval" : "Thinking\u{2026}"
+                    AppActivityController.shared.update(status: st, lastTool: lastTool, textSummary: summary.map { String($0) })
                 }
                 if state.status != .running { self.flushQueue() }
             }
@@ -128,7 +137,12 @@ final class ChatViewModel {
     }
 
     func abort() {
+        guard canAbort else { return }
         Task { try? await conversation.cancelCurrentTurn() }
+    }
+
+    func refresh() {
+        Task { try? await conversation.refresh() }
     }
 
     func respond(to permission: PermissionRequest, decision: PermissionDecision) {
