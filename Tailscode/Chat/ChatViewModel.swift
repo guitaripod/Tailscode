@@ -1,5 +1,8 @@
 import CodingAgentKit
 import Foundation
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 
 @MainActor
 final class ChatViewModel {
@@ -19,14 +22,17 @@ final class ChatViewModel {
     var onModelChange: (() -> Void)?
     var onError: ((String) -> Void)?
 
-    init(backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default") {
+    init(backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default", serverName: String = "") {
         self.backend = backend
         self.session = session
         self.contextID = contextID
         self.persistKey = "\(contextID)/\(session.id)"
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
+        self.serverName = serverName
     }
+
+    let serverName: String
 
     var title: String { session.title }
     var supportsModelSelection: Bool { backend.capabilities.supportsModelSelection }
@@ -44,6 +50,7 @@ final class ChatViewModel {
     private var isClaude: Bool { backend.agentType == .claudeCode }
 
     func start() {
+        var activityStarted = false
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {
@@ -55,6 +62,14 @@ final class ChatViewModel {
                 SessionActivity.shared.update(
                     sessionID: self.session.id, title: self.session.title, status: activity,
                     keepAlive: self)
+                if state.status == .running && !activityStarted {
+                    AppActivityController.shared.start(
+                        sessionTitle: self.session.title, serverName: self.serverName)
+                    activityStarted = true
+                } else if (state.status == .idle || state.status == .stable) && activityStarted {
+                    AppActivityController.shared.end()
+                    activityStarted = false
+                }
                 if state.status != .running { self.flushQueue() }
             }
         }
@@ -132,6 +147,7 @@ final class ChatViewModel {
     func selectModel(_ model: ModelSelection) {
         selectedModel = model
         ModelPreferenceStore.setModel(model, forKey: persistKey)
+        ModelPreferenceStore.setGlobalModel(model, forContextID: contextID)
         onModelChange?()
     }
 
@@ -150,7 +166,9 @@ final class ChatViewModel {
 
     private func loadDefaultModelIfNeeded() async {
         guard supportsModelSelection, selectedModel == nil else { return }
-        if let saved = ModelPreferenceStore.model(forKey: persistKey) {
+        if let saved = ModelPreferenceStore.model(forKey: persistKey)
+            ?? ModelPreferenceStore.globalModel(forContextID: contextID)
+        {
             selectedModel = saved
         } else if !isClaude, let fallback = try? await backend.defaultModel() {
             selectedModel = fallback
