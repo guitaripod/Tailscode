@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import UIKit
 
 struct SessionEntry: Hashable {
     let profileID: String
@@ -16,6 +17,18 @@ struct SessionEntry: Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(profileID)
         hasher.combine(session.id)
+    }
+}
+
+/// Each section in the session list represents one backend server.
+struct ServerSection: Hashable {
+    let profileID: String
+    let profileName: String
+    let host: String
+    let backendType: AgentType
+
+    var headerTitle: String {
+        "\(profileName) · \(backendType.displayName)"
     }
 }
 
@@ -41,11 +54,27 @@ final class SessionListViewModel {
     var isEmptyOfServers: Bool { sources.isEmpty }
 
     func backend(for entry: SessionEntry) -> (any CodingAgentBackend)? {
-        sources.first { $0.profile.id == entry.profileID }?.backend
+        backend(forProfileID: entry.profileID)
+    }
+
+    func backend(forProfileID profileID: String) -> (any CodingAgentBackend)? {
+        sources.first { $0.profile.id == profileID }?.backend
     }
 
     func supportsMultipleSessions(_ entry: SessionEntry) -> Bool {
         backend(for: entry)?.capabilities.supportsMultipleSessions ?? false
+    }
+
+    func profileColor(for profileID: String) -> UIColor? {
+        guard let host = sources.first(where: { $0.profile.id == profileID })?.profile.baseURL.host
+        else { return nil }
+        let palette: [UIColor] = [
+            .systemBlue, .systemPurple, .systemTeal, .systemIndigo, .systemPink,
+            .systemOrange, .systemGreen,
+        ]
+        var hash = 5381
+        for byte in host.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
+        return palette[abs(hash) % palette.count]
     }
 
     func load() async {
@@ -85,10 +114,36 @@ final class SessionListViewModel {
         onChange?()
     }
 
-    func newSession(on profile: ConnectionProfile) async -> SessionEntry? {
+    func sections(filteredBy query: String = "") -> [(section: ServerSection, entries: [SessionEntry])] {
+        let filtered = query.isEmpty
+            ? entries
+            : entries.filter {
+                $0.session.title.localizedCaseInsensitiveContains(query)
+            }
+        var groups: [String: (section: ServerSection, entries: [SessionEntry])] = [:]
+        for entry in filtered {
+            if let existing = groups[entry.profileID] {
+                groups[entry.profileID] = (existing.section, existing.entries + [entry])
+            } else {
+                let section = ServerSection(
+                    profileID: entry.profileID,
+                    profileName: entry.profileName,
+                    host: entry.host,
+                    backendType: entry.backendType)
+                groups[entry.profileID] = (section, [entry])
+            }
+        }
+        let result = sources.compactMap { source -> (ServerSection, [SessionEntry])? in
+            guard let entryList = groups[source.profile.id] else { return nil }
+            return (entryList.section, entryList.entries)
+        }
+        return result
+    }
+
+    func newSession(on profile: ConnectionProfile, directory: String? = nil) async -> SessionEntry? {
         guard let source = sources.first(where: { $0.profile.id == profile.id }) else { return nil }
         do {
-            let session = try await source.backend.createSession(title: nil)
+            let session = try await source.backend.createSession(title: nil, directory: directory)
             let entry = SessionEntry(
                 profileID: source.profile.id, profileName: source.profile.name,
                 host: source.profile.baseURL.host ?? source.profile.name,
