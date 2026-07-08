@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import SafariServices
 import UIKit
 
 @MainActor
@@ -323,7 +324,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             Task { await checkAllHealth() }
         case .source:
             if let url = URL(string: "https://github.com/guitaripod/CodingAgentKit") {
-                UIApplication.shared.open(url)
+                present(SFSafariViewController(url: url), animated: true)
             }
         case .appearance, .toggle, .version:
             break
