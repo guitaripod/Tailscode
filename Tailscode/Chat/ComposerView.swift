@@ -56,7 +56,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.smartQuotesType = .no
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
-        textView.autocorrectionType = .no
+        textView.autocorrectionType = .yes
         textView.isScrollEnabled = false
         textView.delegate = self
         textView.translatesAutoresizingMaskIntoConstraints = false
