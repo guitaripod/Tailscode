@@ -1,11 +1,11 @@
 import CodingAgentKit
 import PhotosUI
+import SafariServices
 import UIKit
 
 @MainActor
 final class ChatViewController: UIViewController {
     private enum Section { case main }
-    private let typingID = "typing"
 
     private let viewModel: ChatViewModel
     private var collectionView: UICollectionView!
@@ -27,6 +27,12 @@ final class ChatViewController: UIViewController {
     private var seenReasoning: Set<String> = []
     private var wasRunning = false
     private var lastNotifiedPermissionID: String?
+    private let fab = UIButton(type: .system)
+    private let navTitleContainer = UIView()
+    private let navSpinner = UIActivityIndicatorView(style: .medium)
+    private let attachmentStrip = UIStackView()
+    private var suppressBannerUntil: Date = .distantPast
+    private var userScrolledUp = false
 
     init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -37,14 +43,20 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = viewModel.title
+        title = viewModel.backend.agentType.displayName
         navigationItem.largeTitleDisplayMode = .never
+        navigationItem.backButtonDisplayMode = .minimal
         view.backgroundColor = Theme.Color.background
         configureLayout()
+        configureFAB()
+        configureNavTitleView()
         configureDataSource()
         composer.delegate = self
         composer.showsAttach = viewModel.supportsAttachments
         NotificationManager.requestAuthorizationIfNeeded()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(sceneDidActivate),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
         bind()
         viewModel.start()
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
@@ -61,10 +73,17 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let inset = max(0, view.bounds.height - composer.frame.minY)
-        if abs(collectionView.contentInset.bottom - inset) > 0.5 {
-            collectionView.contentInset.bottom = inset
-            collectionView.verticalScrollIndicatorInsets.bottom = inset
+        let bottomInset = view.bounds.height - composer.frame.minY
+            + (attachmentStrip.isHidden ? 0 : 48)
+        if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
+            collectionView.contentInset.bottom = bottomInset
+            collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
+        }
+        if !banner.isHidden {
+            let bannerInset = banner.bounds.height
+            if abs(collectionView.contentInset.top - bannerInset) > 0.5 {
+                collectionView.contentInset.top = bannerInset
+            }
         }
     }
 
@@ -78,8 +97,9 @@ final class ChatViewController: UIViewController {
         collectionView.keyboardDismissMode = .interactive
         collectionView.alwaysBounceVertical = true
         collectionView.allowsSelection = false
-        collectionView.contentInsetAdjustmentBehavior = .never
+        collectionView.contentInsetAdjustmentBehavior = .automatic
         collectionView.delegate = self
+        collectionView.scrollsToTop = true
         let dismissTap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         dismissTap.cancelsTouchesInView = false
         collectionView.addGestureRecognizer(dismissTap)
@@ -89,19 +109,29 @@ final class ChatViewController: UIViewController {
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
 
-        [banner, collectionView, composer].forEach {
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(collectionView)
+
+        [banner, composer].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
         }
-        NSLayoutConstraint.activate([
-            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            collectionView.topAnchor.constraint(equalTo: banner.bottomAnchor),
+        attachmentStrip.axis = .horizontal
+        attachmentStrip.spacing = Theme.Spacing.s
+        attachmentStrip.translatesAutoresizingMaskIntoConstraints = false
+        attachmentStrip.isHidden = true
+        view.addSubview(attachmentStrip)
+
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
             composer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -119,6 +149,15 @@ final class ChatViewController: UIViewController {
                 equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
         ])
 
+        NSLayoutConstraint.activate([
+            attachmentStrip.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            attachmentStrip.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            attachmentStrip.bottomAnchor.constraint(
+                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
+        ])
+
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         emptyState.isHidden = true
         emptyState.isUserInteractionEnabled = false
@@ -131,16 +170,46 @@ final class ChatViewController: UIViewController {
         ])
     }
 
+    private func configureFAB() {
+        var config = UIButton.Configuration.filled()
+        config.cornerStyle = .capsule
+        config.image = UIImage(
+            systemName: "arrow.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
+        config.baseBackgroundColor = Theme.Color.accent
+        config.baseForegroundColor = .white
+        fab.configuration = config
+        fab.translatesAutoresizingMaskIntoConstraints = false
+        fab.isHidden = true
+        fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
+        view.addSubview(fab)
+        NSLayoutConstraint.activate([
+            fab.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+            fab.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -Theme.Spacing.m),
+            fab.widthAnchor.constraint(equalToConstant: 44),
+            fab.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    private func configureNavTitleView() {
+        navSpinner.hidesWhenStopped = true
+        navSpinner.color = Theme.Color.secondaryLabel
+        navSpinner.translatesAutoresizingMaskIntoConstraints = false
+        navTitleContainer.addSubview(navSpinner)
+        NSLayoutConstraint.activate([
+            navSpinner.centerXAnchor.constraint(equalTo: navTitleContainer.centerXAnchor),
+            navSpinner.centerYAnchor.constraint(equalTo: navTitleContainer.centerYAnchor),
+        ])
+    }
+
+    @objc private func sceneDidActivate() {
+        suppressBannerUntil = Date().addingTimeInterval(3)
+    }
+
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             [weak self] collectionView, indexPath, id in
             guard let self else { return UICollectionViewCell() }
-            if id == self.typingID {
-                let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-                cell.configure(text: "…", role: .assistant, reasoning: true)
-                return cell
-            }
             if id.hasPrefix("queued:"),
                 let index = Int(id.dropFirst("queued:".count)), index < self.viewModel.queued.count
             {
@@ -164,6 +233,8 @@ final class ChatViewController: UIViewController {
             }
             guard let row = self.rowsByID[id] else { return UICollectionViewCell() }
             switch row.content {
+            case .timestamp(let text):
+                return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
             case .text(let text):
                 return self.bubble(collectionView, indexPath, text, row.role, reasoning: false)
             case .code(let block):
@@ -185,17 +256,20 @@ final class ChatViewController: UIViewController {
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
+            case .error(let text):
+                return self.bubble(collectionView, indexPath, text, row.role, reasoning: true)
             }
         }
     }
 
     private func bubble(
         _ collectionView: UICollectionView, _ indexPath: IndexPath, _ text: String,
-        _ role: MessageRole, reasoning: Bool
+        _ role: MessageRole, reasoning: Bool, timestamp: Bool = false
     ) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-        cell.configure(text: text, role: role, reasoning: reasoning)
+        cell.configure(text: text, role: role, reasoning: reasoning, timestamp: timestamp)
+        cell.linkDelegate = self
         return cell
     }
 
@@ -216,16 +290,18 @@ final class ChatViewController: UIViewController {
                 seenReasoning.insert(row.id)
                 expandedReasoning.insert(row.id)
             }
+            if seenReasoning.count > 500 {
+                let oldest = seenReasoning.sorted().prefix(seenReasoning.count - 300)
+                seenReasoning.subtract(oldest)
+                expandedReasoning.subtract(oldest)
+            }
         }
 
         pendingPermission = state.pendingPermissions.first
-        let showTyping =
-            state.status == .running && (rows.last?.role != .assistant) && pendingPermission == nil
         var ids = orderedIDs
-        if showTyping { ids.append(typingID) }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for index in viewModel.queued.indices { ids.append("queued:\(index)") }
-        emptyState.isHidden = !(orderedIDs.isEmpty && !showTyping)
+        emptyState.isHidden = !orderedIDs.isEmpty
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -233,6 +309,21 @@ final class ChatViewController: UIViewController {
         snapshot.appendItems(ids, toSection: .main)
 
         let changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        let previousToolStatuses = Self.collectToolStatuses(from: previous.values.flatMap { row in
+            if case .activity(let steps) = row.content { return steps }
+            return []
+        })
+        let currentToolStatuses = Self.collectToolStatuses(from: rows.flatMap { row in
+            if case .activity(let steps) = row.content { return steps }
+            return []
+        })
+        for (id, previousStatus) in previousToolStatuses {
+            if let currentStatus = currentToolStatuses[id],
+                previousStatus != currentStatus, currentStatus == .completed
+            {
+                Theme.Haptics.step()
+            }
+        }
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
             if !changed.isEmpty {
@@ -240,10 +331,12 @@ final class ChatViewController: UIViewController {
                 reconfigure.reconfigureItems(changed)
                 self.dataSource.apply(reconfigure, animatingDifferences: false)
             }
-            if nearBottom { self.scrollToBottom(animated: false) }
+            if nearBottom && !userScrolledUp { self.scrollToBottom(animated: false) }
         }
 
         composer.setBusy(state.status == .running)
+        syncFAB()
+        updateNavTitle(streaming: state.status == .running)
         if wasRunning && state.status != .running { Theme.Haptics.received() }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastNotifiedPermissionID {
@@ -254,21 +347,61 @@ final class ChatViewController: UIViewController {
                 identifier: "perm:\(permission.id)")
         }
         updateBanner(for: state)
+        updateOverflowBadge(hasPermission: pendingPermission != nil)
     }
 
     private func updateBanner(for state: ConversationState) {
+        guard UIApplication.shared.applicationState == .active else {
+            banner.hide()
+            return
+        }
         switch state.connection {
         case .reconnecting:
-            banner.show("Reconnecting…", color: Theme.Color.warning)
+            if Date() > suppressBannerUntil { banner.show("Reconnecting…", color: Theme.Color.warning) }
         case .offline:
-            banner.show("Offline", color: Theme.Color.danger)
+            if Date() > suppressBannerUntil { banner.show("Offline", color: Theme.Color.danger) }
         case .connecting, .live:
-            if let failure = state.lastFailure, state.status != .running {
+            if let failure = state.lastFailure, state.status != .running, Date() > suppressBannerUntil {
                 banner.show(failure.message, color: Theme.Color.danger)
             } else {
                 banner.hide()
             }
         }
+    }
+
+
+
+    @objc private func fabTapped() {
+        userScrolledUp = false
+        scrollToBottom(animated: true)
+        Theme.Haptics.tap()
+    }
+
+    private func syncFAB() {
+        let show = !isNearBottom() && orderedIDs.count > 1
+        guard fab.isHidden == show else { return }
+        fab.isHidden = !show
+    }
+
+    private func updateNavTitle(streaming: Bool) {
+        if streaming {
+            if navigationItem.titleView == nil {
+                navTitleContainer.frame = CGRect(x: 0, y: 0, width: 100, height: 30)
+                navigationItem.titleView = navTitleContainer
+            }
+            navSpinner.startAnimating()
+        } else {
+            navSpinner.stopAnimating()
+            navigationItem.titleView = nil
+        }
+    }
+
+    private static func collectToolStatuses(from steps: [ActivityStep]) -> [String: ToolStatus] {
+        var map: [String: ToolStatus] = [:]
+        for step in steps {
+            if case .tool(let call) = step { map[call.id] = call.status }
+        }
+        return map
     }
 
     private func isActivity(_ row: ChatRow) -> Bool {
@@ -284,7 +417,7 @@ final class ChatViewController: UIViewController {
         }
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
-        dataSource.apply(snapshot, animatingDifferences: true)
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     private func loadModels() async {
@@ -293,14 +426,26 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateNavControls() {
-        var items: [UIBarButtonItem] = [overflowBarButton()]
+        var items: [UIBarButtonItem] = []
         if viewModel.supportsModelSelection {
             items.append(modelBarButton())
         }
         if viewModel.supportsReasoningEffort {
             items.append(effortBarButton())
         }
+        items.append(overflowBarButton())
         navigationItem.rightBarButtonItems = items
+    }
+
+    private func updateOverflowBadge(hasPermission: Bool) {
+        guard let barItem = navigationItem.rightBarButtonItems?.last else { return }
+        if hasPermission {
+            barItem.image = UIImage(
+                systemName: "ellipsis.circle.badge.exclamationmark",
+                withConfiguration: UIImage.SymbolConfiguration(paletteColors: [Theme.Color.label, Theme.Color.warning]))
+        } else {
+            barItem.image = UIImage(systemName: "ellipsis.circle")
+        }
     }
 
     private func overflowBarButton() -> UIBarButtonItem {
@@ -391,12 +536,29 @@ final class ChatViewController: UIViewController {
 
     @objc private func dismissKeyboard() { view.endEditing(true) }
 
+    @objc private func newConversationTapped() {
+        Theme.Haptics.tap()
+        Task { @MainActor in
+            do {
+                let session = try await viewModel.backend.createSession(title: nil, directory: nil)
+                let newVM = ChatViewModel(
+                    backend: viewModel.backend, session: session, contextID: viewModel.contextID,
+                    serverName: viewModel.serverName)
+                navigationController?.pushViewController(
+                    ChatViewController(viewModel: newVM), animated: true)
+            } catch {
+                presentToast("Couldn't start a new conversation.")
+            }
+        }
+    }
+
     private func forkConversation() {
         Task { @MainActor in
             do {
                 let session = try await viewModel.fork()
                 let forked = ChatViewModel(
-                    backend: viewModel.backend, session: session, contextID: viewModel.contextID)
+                    backend: viewModel.backend, session: session, contextID: viewModel.contextID,
+                    serverName: viewModel.serverName)
                 Theme.Haptics.success()
                 navigationController?.pushViewController(
                     ChatViewController(viewModel: forked), animated: true)
@@ -573,7 +735,7 @@ final class ChatViewController: UIViewController {
     private func copyTranscript() {
         var out: [String] = []
         for id in orderedIDs {
-            guard let row = rowsByID[id] else { continue }
+            guard let row = rowsByID[id], !id.hasPrefix("ts:") else { continue }
             let who = row.role == .user ? "You" : "Agent"
             let body: String
             switch row.content {
@@ -591,6 +753,8 @@ final class ChatViewController: UIViewController {
                 }.joined(separator: "\n")
             case .file(let file):
                 body = "[file: \(file.path ?? file.filename ?? "attachment")]"
+            case .timestamp, .error:
+                continue
             }
             out.append("\(who): \(body)")
         }
@@ -600,18 +764,24 @@ final class ChatViewController: UIViewController {
     }
 
     private func presentToast(_ message: String) {
-        let toast = UIAlertController(title: nil, message: message, preferredStyle: .actionSheet)
-        toast.addAction(UIAlertAction(title: "OK", style: .default))
-        toast.popoverPresentationController?.sourceView = composer
-        present(toast, animated: true)
+        let toast = ToastView(message: message)
+        toast.flash(in: view, above: composer.topAnchor)
     }
 
     private func modelBarButton() -> UIBarButtonItem {
-        let icon = UIImage(systemName: "cpu")
-        let item: UIBarButtonItem
-        if availableModels.count <= 12 {
-            let current = viewModel.selectedModel
-            let actions = availableModels.map { model in
+        let current = viewModel.selectedModel
+        let currentName = current?.modelID ?? "Model"
+        var providers: [String: [ModelInfo]] = [:]
+        for model in availableModels {
+            providers[model.providerID, default: []].append(model)
+        }
+        let sortedProviders = providers.keys.sorted()
+        let header = UIAction(
+            title: currentName, subtitle: "Model", attributes: .disabled, handler: { _ in })
+        var menuChildren: [UIMenuElement] = [header]
+        for providerID in sortedProviders {
+            guard let models = providers[providerID] else { continue }
+            let actions = models.map { model in
                 UIAction(
                     title: model.name,
                     state: current?.modelID == model.id && current?.providerID == model.providerID
@@ -622,13 +792,15 @@ final class ChatViewController: UIViewController {
                     self?.updateNavControls()
                 }
             }
-            item = UIBarButtonItem(image: icon, menu: UIMenu(title: "Model", children: actions))
-        } else {
-            item = UIBarButtonItem(
-                image: icon, style: .plain, target: self, action: #selector(presentModelPicker))
+            if sortedProviders.count > 1 {
+                menuChildren.append(UIMenu(title: providerID, children: actions))
+            } else {
+                menuChildren.append(contentsOf: actions)
+            }
         }
-        item.isEnabled = !availableModels.isEmpty
-        return item
+        return UIBarButtonItem(
+            image: UIImage(systemName: "cpu"),
+            menu: UIMenu(title: "Model", children: menuChildren))
     }
 
     private func effortBarButton() -> UIBarButtonItem {
@@ -643,9 +815,9 @@ final class ChatViewController: UIViewController {
                 self?.updateNavControls()
             }
         }
-        let menu = UIMenu(title: "Reasoning effort", children: actions)
         return UIBarButtonItem(
-            image: UIImage(systemName: "gauge.with.dots.needle.50percent"), menu: menu)
+            image: UIImage(systemName: "gauge.with.dots.needle.50percent"),
+            menu: UIMenu(title: "Reasoning effort", children: actions))
     }
 
     @objc private func presentModelPicker() {
@@ -669,7 +841,16 @@ final class ChatViewController: UIViewController {
     /// break the group and render on their own.
     private static func makeRows(from messages: [ChatMessage]) -> [ChatRow] {
         var rows: [ChatRow] = []
+        var lastDate: Date?
         for message in messages {
+            if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
+                rows.append(ChatRow(
+                    id: "ts:\(message.id)", messageID: message.id, role: .system,
+                    content: .timestamp(Self.relativeTimestamp(message.createdAt))))
+            }
+            if lastDate == nil || message.createdAt > (lastDate ?? .distantPast) {
+                lastDate = message.createdAt
+            }
             var steps: [ActivityStep] = []
             var groupID: String?
 
@@ -720,8 +901,25 @@ final class ChatViewController: UIViewController {
                 }
             }
             flushActivity()
+            if let error = message.error, !error.isEmpty, message.role == .assistant {
+                rows.append(ChatRow(
+                    id: "\(message.id):error", messageID: message.id, role: message.role,
+                    content: .error(error)))
+            }
         }
         return fuseActivity(rows)
+    }
+
+    private static func relativeTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        if Calendar.current.isDateInToday(date) {
+            formatter.dateFormat = "'Today' h:mm a"
+        } else if Calendar.current.isDateInYesterday(date) {
+            formatter.dateFormat = "'Yesterday' h:mm a"
+        } else {
+            formatter.dateFormat = "MMM d, h:mm a"
+        }
+        return formatter.string(from: date)
     }
 
     /// Merges any adjacent activity rows into one, so a run of thinking/tool steps (even across
@@ -769,6 +967,7 @@ extension ChatViewController: ComposerViewDelegate {
         let attachments = pendingAttachments
         pendingAttachments = []
         composer.showsAttach = viewModel.supportsAttachments
+        updateAttachmentStrip()
         viewModel.send(text, attachments: attachments)
     }
 
@@ -807,14 +1006,9 @@ extension ChatViewController: ComposerViewDelegate {
         pendingAttachments.append(
             PromptAttachment(mime: "text/plain", filename: "pasted.txt", data: data))
         composer.showsAttach = true
+        updateAttachmentStrip()
         Theme.Haptics.success()
-        let toast = UIAlertController(
-            title: nil,
-            message: "Attached \(text.count.formatted()) characters — sent with your next message.",
-            preferredStyle: .actionSheet)
-        toast.addAction(UIAlertAction(title: "OK", style: .default))
-        toast.popoverPresentationController?.sourceView = composer
-        present(toast, animated: true)
+        presentToast("Attached \(text.count.formatted()) characters — sent with your next message.")
     }
 
     func composerDidTapStop() {
@@ -856,12 +1050,28 @@ extension ChatViewController: PHPickerViewControllerDelegate {
 
     private func presentAttachmentToast() {
         Theme.Haptics.success()
-        let toast = UIAlertController(
-            title: nil, message: "Image attached — it'll be sent with your next message.",
-            preferredStyle: .actionSheet)
-        toast.addAction(UIAlertAction(title: "OK", style: .default))
-        toast.popoverPresentationController?.sourceView = composer
-        present(toast, animated: true)
+        updateAttachmentStrip()
+        presentToast("Image attached — it'll be sent with your next message.")
+    }
+
+    private func updateAttachmentStrip() {
+        attachmentStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for attachment in pendingAttachments {
+            let image = attachment.mime.hasPrefix("image/") && attachment.data != nil
+                ? UIImage(data: attachment.data!) : nil
+            let chip = AttachmentChip(
+                label: attachment.filename ?? attachment.mime, image: image
+            ) { [weak self] in
+                self?.pendingAttachments.removeAll { $0.filename == attachment.filename }
+                self?.updateAttachmentStrip()
+                if self?.pendingAttachments.isEmpty == true {
+                    self?.composer.showsAttach = self?.viewModel.supportsAttachments ?? true
+                }
+            }
+            attachmentStrip.addArrangedSubview(chip)
+        }
+        attachmentStrip.isHidden = pendingAttachments.isEmpty
+        view.setNeedsLayout()
     }
 }
 
@@ -871,7 +1081,7 @@ extension ChatViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard let indexPath = indexPaths.first,
-            let id = dataSource.itemIdentifier(for: indexPath), id != typingID,
+            let id = dataSource.itemIdentifier(for: indexPath), !id.hasPrefix("queued:"),
             let text = messageText(for: id), !text.isEmpty
         else { return nil }
 
@@ -902,6 +1112,22 @@ extension ChatViewController: UICollectionViewDelegate {
         }
     }
 
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        syncFAB()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        userScrolledUp = true
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        if isNearBottom() { userScrolledUp = false }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate && isNearBottom() { userScrolledUp = false }
+    }
+
     private func messageText(for id: String) -> String? {
         guard let row = rowsByID[id] else { return nil }
         switch row.content {
@@ -918,6 +1144,8 @@ extension ChatViewController: UICollectionViewDelegate {
             }.joined(separator: "\n\n")
         case .file(let file):
             return file.filename ?? file.mime
+        case .timestamp, .error:
+            return nil
         }
     }
 
@@ -936,5 +1164,11 @@ extension ChatViewController: UICollectionViewDelegate {
         }
         let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+extension ChatViewController: TextBubbleCellDelegate {
+    func textBubbleCell(_ cell: TextBubbleCell, didTapLink url: URL) {
+        present(SFSafariViewController(url: url), animated: true)
     }
 }
