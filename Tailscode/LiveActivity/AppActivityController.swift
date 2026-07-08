@@ -29,11 +29,10 @@ final class AppActivityController {
 
     func end() {
         guard let activity else { return }
-        nonisolated(unsafe) let act = activity
         let final = ChatActivityAttributes.ContentState(
             status: "Done", lastTool: nil, textSummary: nil)
         Task { @MainActor in
-            await act.end(
+            await activity.end(
                 ActivityContent(state: final, staleDate: .now), dismissalPolicy: .immediate)
         }
         AppLogger.chat.info("Live Activity ended")

@@ -20,6 +20,7 @@ targets:
         product: CodingAgentKitApple
       - package: CodingAgentKit
         product: AgentTestSupport
+        configurations: [Debug]
       - target: TailscodeWidget
         embed: true
     info:

@@ -163,7 +163,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
-        if text.count > 6000 {
+        if range.length == 0, text.count > 6000 {
             delegate?.composerDidPasteLargeText(text)
             return false
         }
