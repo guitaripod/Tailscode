@@ -32,20 +32,28 @@ final class AppActivityController {
         let final = ChatActivityAttributes.ContentState(
             status: "Done", lastTool: nil, textSummary: nil)
         self.activity = nil
-        Task {
+        endDetached(act, final: final)
+        AppLogger.chat.info("Live Activity ended")
+    }
+
+    private func endDetached(_ act: sending Activity<ChatActivityAttributes>, final: ChatActivityAttributes.ContentState) {
+        Task.detached {
             await act.end(
                 ActivityContent(state: final, staleDate: .now), dismissalPolicy: .immediate)
         }
-        AppLogger.chat.info("Live Activity ended")
     }
 
     func update(status: String, lastTool: String? = nil, textSummary: String? = nil) {
         guard let act = activity else { return }
         let newState = ChatActivityAttributes.ContentState(
             status: status, lastTool: lastTool, textSummary: textSummary)
-        Task {
+        updateDetached(act, state: newState)
+    }
+
+    private func updateDetached(_ act: sending Activity<ChatActivityAttributes>, state: ChatActivityAttributes.ContentState) {
+        Task.detached {
             await act.update(
-                ActivityContent(state: newState, staleDate: Date().addingTimeInterval(600)))
+                ActivityContent(state: state, staleDate: Date().addingTimeInterval(600)))
         }
     }
 }
