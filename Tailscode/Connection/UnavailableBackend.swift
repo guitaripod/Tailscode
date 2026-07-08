@@ -6,7 +6,8 @@ struct UnavailableBackend: CodingAgentBackend {
     let agentType: AgentType = .openCode
     let capabilities = BackendCapabilities(
         supportsFileBrowsing: false, supportsDiffs: false, supportsPermissions: false,
-        supportsMultipleSessions: false, supportsModelSelection: false, supportsAttachments: false)
+        supportsMultipleSessions: false, supportsModelSelection: false, supportsAttachments: false,
+        supportsAbort: false, supportsSessionUsage: false)
 
     func health() async throws -> ServerHealth { throw AgentError.connection("No active connection") }
     func listSessions() async throws -> [AgentSession] { [] }
