@@ -10,7 +10,8 @@ enum AppCache {
 }
 
 /// Persists the user's chosen model per session (keyed by connection + session id) so a
-/// per-message model choice survives reopening the chat.
+/// per-message model choice survives reopening the chat. Also stores a global default per
+/// context (without session id) so new chats default to the last-used model.
 enum ModelPreferenceStore {
     private static let prefix = "tailscode.selectedModel."
 
@@ -26,6 +27,14 @@ enum ModelPreferenceStore {
         } else {
             defaults.removeObject(forKey: prefix + key)
         }
+    }
+
+    static func globalModel(forContextID contextID: String) -> ModelSelection? {
+        model(forKey: contextID)
+    }
+
+    static func setGlobalModel(_ model: ModelSelection?, forContextID contextID: String) {
+        setModel(model, forKey: contextID)
     }
 }
 
