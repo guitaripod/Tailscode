@@ -6,8 +6,7 @@ options:
   createIntermediateGroups: true
 packages:
   CodingAgentKit:
-    url: https://github.com/guitaripod/CodingAgentKit.git
-    from: "0.6.5"
+    path: /Users/marcus/Dev/swift/CodingAgentKit
 targets:
   Tailscode:
     type: application
@@ -21,11 +20,15 @@ targets:
         product: CodingAgentKitApple
       - package: CodingAgentKit
         product: AgentTestSupport
+      - target: TailscodeWidget
+        embed: true
     info:
       path: Tailscode/Info.plist
       properties:
         CFBundleDisplayName: Tailscode
         UILaunchScreen: {}
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:
@@ -50,6 +53,34 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        DEVELOPMENT_TEAM: P4DQK6SRKR
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+
+  TailscodeWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TailscodeWidget
+      - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
+    info:
+      path: TailscodeWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
+      - sdk: ActivityKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
+        SKIP_INSTALL: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: 1
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Automatic
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
