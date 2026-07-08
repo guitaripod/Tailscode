@@ -40,6 +40,7 @@ final class SettingsViewController: UIViewController {
     private enum Item: Hashable {
         case profile(ConnectionProfile)
         case addConnection
+        case discover
         case appearance
         case toggle(Toggle)
         case viewLogs
@@ -127,6 +128,11 @@ final class SettingsViewController: UIViewController {
             content.text = "Add connection"
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "plus.circle.fill")
+            content.imageProperties.tintColor = Theme.Color.accent
+        case .discover:
+            content.text = "Discover on tailnet"
+            content.textProperties.color = Theme.Color.accent
+            content.image = UIImage(systemName: "magnifyingglass")
             content.imageProperties.tintColor = Theme.Color.accent
         case .appearance:
             content.text = "Theme"
@@ -236,7 +242,7 @@ final class SettingsViewController: UIViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections(Section.allCases)
         snapshot.appendItems(
-            ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection],
+            ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection, .discover],
             toSection: .connections)
         snapshot.appendItems([.appearance], toSection: .appearance)
         snapshot.appendItems(
@@ -248,17 +254,30 @@ final class SettingsViewController: UIViewController {
     }
 
     private func checkAllHealth() async {
+        let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
+        let profiles = ConnectionController.shared.profiles
+        AppLogger.connection.info("health check starting for \(profiles.count) profiles (8s timeout)")
         await withTaskGroup(of: (String, Bool).self) { group in
-            for profile in ConnectionController.shared.profiles {
+            for profile in profiles {
                 group.addTask {
-                    guard let backend = await ConnectionController.shared.makeBackend(for: profile)
-                    else { return (profile.id, false) }
-                    let ok = (try? await backend.health())?.healthy ?? false
-                    return (profile.id, ok)
+                    guard let backend = await ConnectionController.shared.makeBackend(for: profile, policy: policy)
+                    else {
+                        AppLogger.connection.info("health check \(profile.name): no backend")
+                        return (profile.id, false)
+                    }
+                    do {
+                        let healthy = try await backend.health()
+                        AppLogger.connection.info("health check \(profile.name): healthy=\(healthy.healthy)")
+                        return (profile.id, healthy.healthy)
+                    } catch {
+                        AppLogger.connection.info("health check \(profile.name): error \(error.localizedDescription)")
+                        return (profile.id, false)
+                    }
                 }
             }
             for await (id, ok) in group {
                 reachable[id] = ok
+                AppLogger.connection.info("health check result id=\(id.prefix(8)) ok=\(ok)")
                 reconfigureProfiles()
             }
         }
@@ -315,6 +334,13 @@ extension SettingsViewController: UICollectionViewDelegate {
             let onboarding = OnboardingViewController()
             onboarding.onConnected = { [weak self] in self?.onConnectionChanged?() }
             navigationController?.pushViewController(onboarding, animated: true)
+        case .discover:
+            let discovery = DiscoveryViewController()
+            discovery.onConnected = { [weak self] in
+                self?.applySnapshot()
+                // do not force root route here; user may be adding secondary server
+            }
+            navigationController?.present(UINavigationController(rootViewController: discovery), animated: true)
         case .viewLogs:
             navigationController?.pushViewController(LogViewerViewController(), animated: true)
         case .testAll:
