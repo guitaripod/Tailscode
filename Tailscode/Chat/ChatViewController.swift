@@ -116,6 +116,9 @@ final class ChatViewController: UIViewController {
             $0.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview($0)
         }
+        banner.isUserInteractionEnabled = true
+        let bannerTap = UITapGestureRecognizer(target: self, action: #selector(bannerTapped))
+        banner.addGestureRecognizer(bannerTap)
 
         attachmentStrip.axis = .horizontal
         attachmentStrip.spacing = Theme.Spacing.s
@@ -204,6 +207,11 @@ final class ChatViewController: UIViewController {
 
     @objc private func sceneDidActivate() {
         suppressBannerUntil = Date().addingTimeInterval(3)
+    }
+
+    @objc private func bannerTapped() {
+        Theme.Haptics.tap()
+        viewModel.refresh()
     }
 
     private func configureDataSource() {
@@ -468,7 +476,7 @@ final class ChatViewController: UIViewController {
         }
         let usage = UIDeferredMenuElement.uncached { [weak self] completion in
             Task { @MainActor in
-                guard let self, let usage = await self.viewModel.usage() else { return completion([]) }
+                guard let self, self.viewModel.supportsUsage, let usage = await self.viewModel.usage() else { return completion([]) }
                 var parts: [String] = []
                 if let tokens = usage.tokens {
                     parts.append("\(tokens.formatted(.number.notation(.compactName))) tokens")
@@ -638,11 +646,20 @@ final class ChatViewController: UIViewController {
                     "arrow.clockwise"
                 ) { [weak self] in self?.viewModel.regenerate() })
         }
-        list.append(
-            makeCommand(
-                ["usage", "cost", "tokens"], "Usage & cost", "Tokens and spend for this session",
-                "gauge.with.dots.needle.bottom.50percent"
-            ) { [weak self] in self?.presentUsage() })
+        if viewModel.supportsUsage {
+            list.append(
+                makeCommand(
+                    ["usage", "cost", "tokens"], "Usage & cost", "Tokens and spend for this session",
+                    "gauge.with.dots.needle.bottom.50percent"
+                ) { [weak self] in self?.presentUsage() })
+        }
+        if viewModel.supportsFileBrowsing {
+            list.append(
+                makeCommand(
+                    ["browse", "file", "path"], "Browse files", "Open file browser on server",
+                    "folder.fill"
+                ) { [weak self] in self?.presentFileBrowser() })
+        }
         if viewModel.canFork {
             list.append(
                 makeCommand(
@@ -688,7 +705,7 @@ final class ChatViewController: UIViewController {
 
     private func presentUsage() {
         Task { @MainActor in
-            guard let usage = await viewModel.usage(),
+            guard viewModel.supportsUsage, let usage = await viewModel.usage(),
                 usage.tokens != nil || usage.costUSD != nil
             else {
                 self.presentToast("No usage recorded for this session yet.")
@@ -707,6 +724,26 @@ final class ChatViewController: UIViewController {
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             self.present(alert, animated: true)
         }
+    }
+
+    private func presentFileBrowser() {
+        guard let fb = viewModel.backend as? any FileBrowsingBackend else { return }
+        Theme.Haptics.tap()
+        let browser = FileBrowserViewController(backend: fb, profileID: viewModel.contextID)
+        browser.onSelect = { [weak self] path in
+            guard let self else { return }
+            browser.dismiss(animated: true) {
+                UIPasteboard.general.string = path
+                self.presentToast("Path copied: \(path)")
+                if !self.composer.currentText.isEmpty {
+                    self.composer.appendPath(" " + path)
+                } else {
+                    self.composer.appendPath(path)
+                }
+            }
+        }
+        let nav = UINavigationController(rootViewController: browser)
+        present(nav, animated: true)
     }
 
     private func presentJumpSheet() {

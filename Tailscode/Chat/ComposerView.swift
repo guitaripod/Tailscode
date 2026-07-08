@@ -220,4 +220,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textViewDidChange(textView)
         textView.becomeFirstResponder()
     }
+
+    func appendPath(_ path: String) {
+        let existing = textView.text ?? ""
+        let sep = existing.isEmpty || existing.hasSuffix(" ") ? "" : " "
+        textView.text = existing + sep + path
+        textViewDidChange(textView)
+        textView.becomeFirstResponder()
+    }
 }
