@@ -7,6 +7,8 @@ import UIKit
 final class OnboardingViewController: UIViewController {
     var onConnected: (() -> Void)?
 
+    private let discoverButton = PrimaryButton(title: "Discover servers on tailnet")
+    private let orLabel = UILabel()
     private let backendControl = UISegmentedControl(items: ["opencode", "Claude Code"])
     private let nameField = FormField(title: "Name", placeholder: "My server")
     private let hostField = FormField(title: "Host URL", placeholder: "http://100.x.y.z:4096", keyboard: .URL)
@@ -25,12 +27,13 @@ final class OnboardingViewController: UIViewController {
         backendControl.selectedSegmentIndex = 0
         backendControl.addTarget(self, action: #selector(backendChanged), for: .valueChanged)
         connectButton.addTarget(self, action: #selector(connectTapped), for: .touchUpInside)
+        discoverButton.addTarget(self, action: #selector(discoverTapped), for: .touchUpInside)
         backendChanged()
     }
 
     private func buildUI() {
         let header = UILabel()
-        header.text = "Point Tailscode at your coding agent over Tailscale."
+        header.text = "Discover servers on your tailnet or enter the address manually."
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
@@ -39,12 +42,18 @@ final class OnboardingViewController: UIViewController {
         statusLabel.numberOfLines = 0
         statusLabel.textColor = Theme.Color.secondaryLabel
 
+        orLabel.text = "or"
+        orLabel.font = Theme.Font.caption()
+        orLabel.textColor = Theme.Color.secondaryLabel
+        orLabel.textAlignment = .center
+
         let stack = UIStackView(arrangedSubviews: [
-            header, backendControl, nameField, hostField, passwordField, connectButton, statusLabel,
+            header, discoverButton, orLabel, backendControl, nameField, hostField, passwordField, connectButton, statusLabel,
         ])
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.l
         stack.setCustomSpacing(Theme.Spacing.xl, after: header)
+        stack.setCustomSpacing(Theme.Spacing.s, after: discoverButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let scroll = UIScrollView()
@@ -75,6 +84,12 @@ final class OnboardingViewController: UIViewController {
     @objc private func connectTapped() {
         view.endEditing(true)
         Task { await attemptConnect() }
+    }
+
+    @objc private func discoverTapped() {
+        let discovery = DiscoveryViewController()
+        discovery.onConnected = onConnected
+        present(UINavigationController(rootViewController: discovery), animated: true)
     }
 
     private func attemptConnect() async {
