@@ -1,6 +1,11 @@
 import CodingAgentKit
 import UIKit
 
+@MainActor
+protocol TextBubbleCellDelegate: AnyObject {
+    func textBubbleCell(_ cell: TextBubbleCell, didTapLink url: URL)
+}
+
 struct ChatRow: Hashable {
     let id: String
     let messageID: String
@@ -12,6 +17,8 @@ struct ChatRow: Hashable {
         case code(CodeBlock)
         case activity([ActivityStep])
         case file(FileReference)
+        case timestamp(String)
+        case error(String)
     }
 }
 
@@ -66,22 +73,32 @@ enum MessageSegment {
 
 final class TextBubbleCell: UICollectionViewCell {
     static let reuseID = "TextBubbleCell"
+    weak var linkDelegate: TextBubbleCellDelegate?
 
     private let bubble = UIView()
-    private let label = UILabel()
+    private let textView = UITextView()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
+    private var timestampLeading: NSLayoutConstraint?
+    private var timestampTrailing: NSLayoutConstraint?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         bubble.layer.cornerRadius = Theme.Radius.bubble
         bubble.layer.cornerCurve = .continuous
         bubble.translatesAutoresizingMaskIntoConstraints = false
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.adjustsFontForContentSizeCategory = true
+        textView.isEditable = false
+        textView.isScrollEnabled = false
+        textView.isSelectable = true
+        textView.dataDetectorTypes = [.link]
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        textView.adjustsFontForContentSizeCategory = true
+        textView.delegate = self
         contentView.addSubview(bubble)
-        bubble.addSubview(label)
+        bubble.addSubview(textView)
 
         leadingPin = bubble.leadingAnchor.constraint(
             equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
@@ -94,10 +111,10 @@ final class TextBubbleCell: UICollectionViewCell {
             bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.82),
             bubble.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             bubble.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
-            label.topAnchor.constraint(equalTo: bubble.topAnchor, constant: Theme.Spacing.s),
-            label.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s),
-            label.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
-            label.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m),
+            textView.topAnchor.constraint(equalTo: bubble.topAnchor, constant: Theme.Spacing.s),
+            textView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s),
+            textView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
+            textView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m),
         ])
     }
 
@@ -106,28 +123,62 @@ final class TextBubbleCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         contentView.alpha = 1
+        textView.textAlignment = .natural
+        timestampLeading?.isActive = false
+        timestampTrailing?.isActive = false
     }
 
-    func configure(text: String, role: MessageRole, reasoning: Bool) {
+    func configure(text: String, role: MessageRole, reasoning: Bool, timestamp: Bool = false) {
         let isUser = role == .user
+
+        timestampLeading?.isActive = false
+        timestampTrailing?.isActive = false
+
+        if timestamp {
+            bubble.backgroundColor = .clear
+            textView.textColor = Theme.Color.tertiaryLabel
+            textView.font = .preferredFont(forTextStyle: .caption2)
+            textView.textAlignment = .center
+            textView.text = text
+            leadingPin.isActive = false
+            trailingPin.isActive = false
+            if timestampLeading == nil {
+                timestampLeading = bubble.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
+                timestampTrailing = bubble.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
+            }
+            timestampLeading?.isActive = true
+            timestampTrailing?.isActive = true
+            return
+        }
+
         leadingPin.isActive = !isUser
         trailingPin.isActive = isUser
+        textView.textAlignment = .natural
 
         if reasoning {
             bubble.backgroundColor = .clear
-            label.textColor = Theme.Color.secondaryLabel
-            label.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitItalic)
-            label.text = text
+            textView.textColor = Theme.Color.secondaryLabel
+            textView.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitItalic)
+            textView.text = text
+            textView.linkTextAttributes = [
+                .foregroundColor: Theme.Color.secondaryLabel,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+            ]
         } else if isUser {
             bubble.backgroundColor = Theme.Color.userBubble
-            label.textColor = .white
-            label.font = Theme.Font.body()
-            label.text = text
+            textView.textColor = .white
+            textView.font = Theme.Font.body()
+            textView.text = text
+            textView.linkTextAttributes = [.foregroundColor: UIColor.white]
         } else {
             bubble.backgroundColor = Theme.Color.assistantBubble
-            label.textColor = Theme.Color.label
-            label.font = Theme.Font.body()
-            label.attributedText = Self.rendered(text, color: Theme.Color.label)
+            textView.textColor = Theme.Color.label
+            textView.font = Theme.Font.body()
+            textView.attributedText = Self.rendered(text, color: Theme.Color.label)
+            textView.linkTextAttributes = [
+                .foregroundColor: Theme.Color.accent,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+            ]
         }
     }
 
@@ -140,7 +191,7 @@ final class TextBubbleCell: UICollectionViewCell {
     }()
 
     static func rendered(_ text: String, color: UIColor) -> NSAttributedString {
-        let key = text as NSString
+        let key = "\(text)#\(color.description)" as NSString
         if let cached = renderCache.object(forKey: key) { return cached }
         let base = Theme.Font.body()
         var options = AttributedString.MarkdownParsingOptions()
@@ -149,16 +200,46 @@ final class TextBubbleCell: UICollectionViewCell {
         if var attr = try? AttributedString(markdown: text, options: options) {
             attr.font = base
             attr.foregroundColor = color
-            for run in attr.runs where run.inlinePresentationIntent?.contains(.code) == true {
-                attr[run.range].font = Theme.Font.mono(base.pointSize - 1)
-                attr[run.range].backgroundColor = Theme.Color.reasoningBackground
+            let headingFont = UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
+            for run in attr.runs {
+                if run.inlinePresentationIntent?.contains(.code) == true {
+                    attr[run.range].font = Theme.Font.mono(base.pointSize - 1)
+                    attr[run.range].backgroundColor = Theme.Color.reasoningBackground
+                }
+                if run.inlinePresentationIntent?.contains(.emphasized) == true {
+                    attr[run.range].font = base.withTraits(.traitBold)
+                }
             }
-            result = NSAttributedString(attr)
+            let mutable = NSMutableAttributedString(attr)
+            mutable.mutableString.enumerateSubstrings(
+                in: NSRange(location: 0, length: mutable.length),
+                options: .byLines
+            ) { _, substringRange, _, _ in
+                let line = mutable.attributedSubstring(from: substringRange).string
+                if line.hasPrefix("# ") || line.hasPrefix("## ") || line.hasPrefix("### ")
+                    || line.hasPrefix("#### ") || line.hasPrefix("##### ") || line.hasPrefix("###### ")
+                {
+                    mutable.addAttribute(.font, value: headingFont, range: substringRange)
+                }
+            }
+            result = mutable
         } else {
             result = NSAttributedString(string: text, attributes: [.font: base, .foregroundColor: color])
         }
         renderCache.setObject(result, forKey: key)
         return result
+    }
+}
+
+extension TextBubbleCell: UITextViewDelegate {
+    func textView(
+        _ textView: UITextView,
+        shouldInteractWith URL: URL,
+        in characterRange: NSRange,
+        interaction: UITextItemInteraction
+    ) -> Bool {
+        linkDelegate?.textBubbleCell(self, didTapLink: URL)
+        return false
     }
 }
 
@@ -279,6 +360,7 @@ final class CodeBlockCell: UICollectionViewCell {
     private let langLabel = UILabel()
     private let copyButton = UIButton(type: .system)
     private let codeLabel = UILabel()
+    private let lineNumberLabel = UILabel()
     private let toggleButton = UIButton(type: .system)
     private var source = ""
     private var onToggle: (() -> Void)?
@@ -310,6 +392,12 @@ final class CodeBlockCell: UICollectionViewCell {
         codeLabel.lineBreakMode = .byCharWrapping
         codeLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        lineNumberLabel.numberOfLines = 0
+        lineNumberLabel.font = Theme.Font.mono(12)
+        lineNumberLabel.textColor = Theme.Color.tertiaryLabel
+        lineNumberLabel.textAlignment = .right
+        lineNumberLabel.translatesAutoresizingMaskIntoConstraints = false
+
         toggleButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         toggleButton.setTitleColor(Theme.Color.accent, for: .normal)
         toggleButton.contentHorizontalAlignment = .leading
@@ -317,7 +405,7 @@ final class CodeBlockCell: UICollectionViewCell {
         toggleButton.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [langLabel, copyButton, codeLabel, toggleButton].forEach(container.addSubview)
+        [langLabel, copyButton, lineNumberLabel, codeLabel, toggleButton].forEach(container.addSubview)
 
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
@@ -331,8 +419,12 @@ final class CodeBlockCell: UICollectionViewCell {
             copyButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
 
             codeLabel.topAnchor.constraint(equalTo: langLabel.bottomAnchor, constant: Theme.Spacing.xs),
-            codeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            codeLabel.leadingAnchor.constraint(equalTo: lineNumberLabel.trailingAnchor, constant: Theme.Spacing.s),
             codeLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+
+            lineNumberLabel.topAnchor.constraint(equalTo: langLabel.bottomAnchor, constant: Theme.Spacing.xs),
+            lineNumberLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            lineNumberLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
 
             toggleButton.topAnchor.constraint(equalTo: codeLabel.bottomAnchor, constant: Theme.Spacing.xs),
             toggleButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
@@ -347,17 +439,94 @@ final class CodeBlockCell: UICollectionViewCell {
         self.source = block.source
         self.onToggle = onToggle
         langLabel.text = (block.language ?? "code").lowercased()
+        var copyConfig = copyButton.configuration ?? .plain()
+        copyConfig.image = UIImage(
+            systemName: "doc.on.doc", withConfiguration:
+                UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        copyButton.configuration = copyConfig
         let lines = block.source.components(separatedBy: "\n")
         let isLong = lines.count > Self.collapsedLineLimit
         if isLong && !expanded {
-            codeLabel.text = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
+            let shortSource = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
+            codeLabel.attributedText = Self.highlightedCode(shortSource, language: block.language)
+            lineNumberLabel.text = Self.lineNumbers(count: Self.collapsedLineLimit)
             toggleButton.setTitle("Show all \(lines.count) lines", for: .normal)
             toggleButton.isHidden = false
         } else {
-            codeLabel.text = block.source
+            codeLabel.attributedText = Self.highlightedCode(block.source, language: block.language)
+            lineNumberLabel.text = Self.lineNumbers(count: lines.count)
             toggleButton.setTitle("Collapse", for: .normal)
             toggleButton.isHidden = !isLong
         }
+    }
+
+    private static func lineNumbers(count: Int) -> String {
+        (1...count).map { "\($0)" }.joined(separator: "\n")
+    }
+
+    private static let keywordPatterns: [String] = [
+        "\\b(func|var|let|class|struct|enum|protocol|extension|import|return|if|else|guard|switch|case|default|for|while|repeat|in|break|continue|throw|throws|try|catch|do|where|as|is|nil|true|false|self|super|init|deinit|public|private|internal|fileprivate|open|static|final|override|mutating|nonmutating|associatedtype|typealias|some|any|async|await|actor|nonisolated|Task)\\b",
+        "\\b(def|return|if|elif|else|for|while|import|from|class|try|except|raise|pass|with|as|in|is|not|and|or|True|False|None|yield|lambda|async|await)\\b",
+        "\\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|throw|try|catch|class|extends|import|export|default|new|this|typeof|instanceof|async|await|of|in|from|true|false|null|undefined)\\b",
+        "\\b(fn|let|mut|impl|trait|enum|struct|match|if|else|loop|while|for|in|return|use|mod|pub|self|super|where|as|move|async|await|unsafe|dyn|ref|type|true|false|None|Some|Ok|Err|Box|Vec|String|Option|Result)\\b",
+    ]
+
+    private static let commentPatterns: [String] = [
+        "//[^\n]*",
+        "/\\*[\\s\\S]*?\\*/",
+        "#[^\n]*",
+    ]
+
+    private static let stringPattern = "\"(?:[^\"\\\\]|\\\\.)*\""
+
+    private static let numberPattern = "\\b\\d+\\.?\\d*\\b"
+
+    private static let monoFont = Theme.Font.mono(12)
+
+    static func highlightedCode(_ source: String, language: String?) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: source, attributes: [
+            .font: monoFont, .foregroundColor: Theme.Color.label,
+        ])
+        let nsSource = source as NSString
+        let range = NSRange(location: 0, length: nsSource.length)
+
+        let lowerLang = (language ?? "").lowercased()
+        let kwSet: Set<String>
+        if lowerLang == "swift" { kwSet = [keywordPatterns[0]] }
+        else if lowerLang == "python" || lowerLang == "py" { kwSet = [keywordPatterns[1]] }
+        else if lowerLang == "javascript" || lowerLang == "js" || lowerLang == "typescript" || lowerLang == "ts" { kwSet = [keywordPatterns[2]] }
+        else if lowerLang == "rust" || lowerLang == "rs" { kwSet = [keywordPatterns[3]] }
+        else { kwSet = [] }
+
+        for pattern in commentPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            regex.enumerateMatches(in: source, range: range) { match, _, _ in
+                guard let match else { return }
+                result.addAttribute(.foregroundColor, value: Theme.Color.tertiaryLabel, range: match.range)
+            }
+        }
+
+        guard let stringRegex = try? NSRegularExpression(pattern: stringPattern) else { return result }
+        stringRegex.enumerateMatches(in: source, range: range) { match, _, _ in
+            guard let match else { return }
+            result.addAttribute(.foregroundColor, value: Theme.Color.warning, range: match.range)
+        }
+
+        guard let numRegex = try? NSRegularExpression(pattern: numberPattern) else { return result }
+        numRegex.enumerateMatches(in: source, range: range) { match, _, _ in
+            guard let match else { return }
+            result.addAttribute(.foregroundColor, value: UIColor.systemTeal, range: match.range)
+        }
+
+        for kwPattern in kwSet {
+            guard let regex = try? NSRegularExpression(pattern: kwPattern) else { continue }
+            regex.enumerateMatches(in: source, range: range) { match, _, _ in
+                guard let match else { return }
+                result.addAttribute(.foregroundColor, value: UIColor.systemPink, range: match.range)
+            }
+        }
+
+        return result
     }
 
     @objc private func copyTapped() {
@@ -476,7 +645,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             toggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            toggle.heightAnchor.constraint(equalToConstant: 44),
+            toggle.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
     }
 
@@ -508,15 +677,16 @@ final class ActivityGroupCell: UICollectionViewCell {
             }
         }
         var names: [String] = []
-        var hasThinking = false
+        var thinkingCount = 0
         for step in steps {
             switch step {
             case .tool(let call): if !names.contains(call.name) { names.append(call.name) }
-            case .reasoning: hasThinking = true
+            case .reasoning: thinkingCount += 1
             }
         }
         var parts: [String] = []
-        if hasThinking { parts.append("Thought") }
+        if thinkingCount == 1 { parts.append("Thought") }
+        else if thinkingCount > 1 { parts.append("\(thinkingCount) thoughts") }
         if !names.isEmpty {
             let shown = names.prefix(3).joined(separator: " · ")
             parts.append(names.count > 3 ? "\(shown) +\(names.count - 3)" : shown)
