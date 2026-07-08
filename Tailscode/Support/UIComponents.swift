@@ -138,3 +138,145 @@ final class BannerView: UIView {
 
     func hide() { isHidden = true }
 }
+
+final class ToastView: UIView {
+    private let glass = Theme.Glass.view()
+    private let label = UILabel()
+    private var autoHideTask: Task<Void, Never>?
+
+    init(message: String) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        isHidden = true
+
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.layer.cornerRadius = Theme.Radius.control
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        glass.isUserInteractionEnabled = false
+        addSubview(glass)
+
+        label.text = message
+        label.font = .preferredFont(forTextStyle: .subheadline)
+        label.textColor = Theme.Color.label
+        label.textAlignment = .center
+        label.numberOfLines = 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+
+        NSLayoutConstraint.activate([
+            glass.topAnchor.constraint(equalTo: topAnchor),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            label.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.m),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func flash(in parent: UIView, above anchor: NSLayoutYAxisAnchor, duration: TimeInterval = 2.0) {
+        autoHideTask?.cancel()
+        parent.addSubview(self)
+        NSLayoutConstraint.activate([
+            centerXAnchor.constraint(equalTo: parent.safeAreaLayoutGuide.centerXAnchor),
+            bottomAnchor.constraint(equalTo: anchor, constant: -Theme.Spacing.m),
+        ])
+        alpha = 0
+        transform = CGAffineTransform(translationX: 0, y: 10)
+        isHidden = false
+        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) {
+            self.alpha = 1
+            self.transform = .identity
+        }
+        autoHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            UIView.animate(withDuration: 0.2, animations: {
+                self.alpha = 0
+                self.transform = CGAffineTransform(translationX: 0, y: 10)
+            }, completion: { _ in
+                self.removeFromSuperview()
+            })
+        }
+    }
+}
+
+final class AttachmentChip: UIView {
+    let onRemove: () -> Void
+
+    init(label: String, image: UIImage? = nil, onRemove: @escaping () -> Void) {
+        self.onRemove = onRemove
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        backgroundColor = Theme.Color.secondaryBackground
+        layer.cornerRadius = Theme.Radius.control
+        layer.cornerCurve = .continuous
+
+        let iconView: UIView
+        if let image {
+            let iv = UIImageView(image: image)
+            iv.contentMode = .scaleAspectFill
+            iv.clipsToBounds = true
+            iv.layer.cornerRadius = 4
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                iv.widthAnchor.constraint(equalToConstant: 28),
+                iv.heightAnchor.constraint(equalToConstant: 28),
+            ])
+            iconView = iv
+        } else {
+            let iv = UIImageView(image: UIImage(
+                systemName: "doc",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)))
+            iv.tintColor = Theme.Color.secondaryLabel
+            iv.contentMode = .scaleAspectFit
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            iconView = iv
+        }
+
+        let titleLabel = UILabel()
+        titleLabel.text = label
+        titleLabel.font = .preferredFont(forTextStyle: .caption2)
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let removeButton = UIButton(type: .system)
+        var removeConfig = UIButton.Configuration.plain()
+        removeConfig.image = UIImage(
+            systemName: "xmark.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .medium))
+        removeConfig.baseForegroundColor = Theme.Color.tertiaryLabel
+        removeConfig.contentInsets = .zero
+        removeButton.configuration = removeConfig
+        removeButton.translatesAutoresizingMaskIntoConstraints = false
+        removeButton.addAction(UIAction { [weak self] _ in self?.onRemove() }, for: .touchUpInside)
+
+        addSubview(iconView)
+        addSubview(titleLabel)
+        addSubview(removeButton)
+
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.s),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.s),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -Theme.Spacing.xs),
+
+            removeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.s),
+            removeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            removeButton.widthAnchor.constraint(equalToConstant: 20),
+            removeButton.heightAnchor.constraint(equalToConstant: 20),
+
+            heightAnchor.constraint(equalToConstant: 36),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+}
