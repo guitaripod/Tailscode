@@ -10,7 +10,7 @@ struct UnavailableBackend: CodingAgentBackend {
 
     func health() async throws -> ServerHealth { throw AgentError.connection("No active connection") }
     func listSessions() async throws -> [AgentSession] { [] }
-    func createSession(title: String?) async throws -> AgentSession {
+    func createSession(title: String?, directory: String?) async throws -> AgentSession {
         throw AgentError.connection("No active connection")
     }
     func messages(for sessionID: String) async throws -> [ChatMessage] { [] }
