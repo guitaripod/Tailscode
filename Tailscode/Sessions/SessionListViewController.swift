@@ -155,6 +155,8 @@ final class SessionListViewController: UIViewController {
             var accessories: [UICellAccessory] = []
             if let pill = Self.statusPill(for: entry.session.id) {
                 accessories.append(pill)
+            } else if entry.session.isActive == true {
+                accessories.append(Self.livePill())
             }
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
@@ -342,6 +344,45 @@ final class SessionListViewController: UIViewController {
     private static func serverIcon(for backend: AgentType) -> UIImage? {
         UIImage(systemName: backend.symbolName)?
             .withTintColor(backend.brandColor, renderingMode: .alwaysOriginal)
+    }
+
+    /// Pulsing green pill marking a session whose transcript is being written
+    /// right now — an agent is working in it on the server machine.
+    private static func livePill() -> UICellAccessory {
+        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 7, height: 7))
+        dot.backgroundColor = Theme.Color.success
+        dot.layer.cornerRadius = 3.5
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1.0
+        pulse.toValue = 0.25
+        pulse.duration = 0.9
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        dot.layer.add(pulse, forKey: "pulse")
+
+        let label = UILabel()
+        label.text = "LIVE"
+        label.font = .systemFont(ofSize: 10, weight: .bold)
+        label.textColor = Theme.Color.success
+        label.sizeToFit()
+
+        let padH: CGFloat = 8
+        let padV: CGFloat = 3
+        let gap: CGFloat = 4
+        let container = UIView(
+            frame: CGRect(
+                x: 0, y: 0, width: padH + dot.bounds.width + gap + label.bounds.width + padH,
+                height: label.bounds.height + padV * 2))
+        dot.frame.origin = CGPoint(
+            x: padH, y: (container.bounds.height - dot.bounds.height) / 2)
+        label.frame.origin = CGPoint(x: padH + dot.bounds.width + gap, y: padV)
+        container.addSubview(dot)
+        container.addSubview(label)
+        container.backgroundColor = Theme.Color.success.withAlphaComponent(0.15)
+        container.layer.cornerRadius = 5
+        container.layer.cornerCurve = .continuous
+        return .customView(
+            configuration: .init(customView: container, placement: .trailing(displayed: .always)))
     }
 
     private static func statusPill(for sessionID: String) -> UICellAccessory? {

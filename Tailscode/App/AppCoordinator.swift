@@ -23,6 +23,11 @@ final class AppCoordinator {
         #endif
         route(animated: false)
         window.makeKeyAndVisible()
+        #if DEBUG
+            if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
+                handle(URL(string: "tailscode://session/\(sessionID)")!)
+            }
+        #endif
     }
 
     #if DEBUG
@@ -50,8 +55,9 @@ final class AppCoordinator {
                 try ConnectionController.shared.save(profile, password: password, makeActive: id == "debug")
                 AppLogger.connection.info("seed saved profile for \(name)")
             } catch {
+                ConnectionController.shared.addDebugProfile(profile)
                 if id == "debug" { ConnectionController.shared.setActive(id) }
-                AppLogger.connection.error("seed keychain failed (\(error)); using override")
+                AppLogger.connection.error("seed keychain failed (\(error)); using in-memory profile")
             }
         }
 

@@ -34,7 +34,13 @@ final class ConnectionController {
     }
 
     var profiles: [ConnectionProfile] {
-        (try? store?.profiles()) ?? []
+        var all = (try? store?.profiles()) ?? []
+        #if DEBUG
+            for profile in debugProfiles where !all.contains(where: { $0.id == profile.id }) {
+                all.append(profile)
+            }
+        #endif
+        return all
     }
 
     var activeProfile: ConnectionProfile? {
@@ -96,8 +102,18 @@ final class ConnectionController {
 
     #if DEBUG
         private var overridePasswords: [String: String] = [:]
+        private var debugProfiles: [ConnectionProfile] = []
+
         func setOverridePassword(_ password: String?, for id: String) {
             overridePasswords[id] = password
+        }
+
+        /// Keeps a seeded profile alive in memory when the simulator Keychain
+        /// rejects the save (errSecMissingEntitlement flake), so DEBUG
+        /// auto-connect works regardless.
+        func addDebugProfile(_ profile: ConnectionProfile) {
+            debugProfiles.removeAll { $0.id == profile.id }
+            debugProfiles.append(profile)
         }
     #endif
 
