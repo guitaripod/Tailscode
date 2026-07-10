@@ -39,7 +39,7 @@ final class SessionListViewModel {
         let backend: any CodingAgentBackend
     }
 
-    private let sources: [Source]
+    private var sources: [Source]
     private(set) var entries: [SessionEntry] = []
     private(set) var unreachable: [String] = []
 
@@ -77,7 +77,14 @@ final class SessionListViewModel {
         return palette[abs(hash) % palette.count]
     }
 
+    /// Re-reads the profile list on every load so servers added or removed
+    /// in Settings appear without recreating this screen.
     func load() async {
+        let current = ConnectionController.shared.profiles.map(\.id)
+        if current != sources.map(\.profile.id) {
+            sources = ConnectionController.shared.allBackends()
+                .map { Source(profile: $0.profile, backend: $0.backend) }
+        }
         var collected: [SessionEntry] = []
         var failed: [String] = []
 
@@ -119,6 +126,7 @@ final class SessionListViewModel {
             ? entries
             : entries.filter {
                 $0.session.title.localizedCaseInsensitiveContains(query)
+                    || ($0.session.directory?.localizedCaseInsensitiveContains(query) ?? false)
             }
         var groups: [String: (section: ServerSection, entries: [SessionEntry])] = [:]
         for entry in filtered {
@@ -148,7 +156,9 @@ final class SessionListViewModel {
                 profileID: source.profile.id, profileName: source.profile.name,
                 host: source.profile.baseURL.host ?? source.profile.name,
                 backendType: source.profile.backend, session: session)
-            await load()
+            entries.insert(entry, at: 0)
+            onChange?()
+            Task { await load() }
             return entry
         } catch {
             onError?(Self.readable(error))

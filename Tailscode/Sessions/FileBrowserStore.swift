@@ -22,6 +22,7 @@ enum FileBrowserFavorites {
         UserDefaults.standard.set(favorites, forKey: key(for: profileID))
     }
 
+    @discardableResult
     static func toggle(_ path: String, for profileID: String) -> Bool {
         let favorites = all(for: profileID)
         if favorites.contains(path) {
@@ -52,6 +53,12 @@ enum FileBrowserRecents {
         recents.removeAll { $0 == path }
         recents.insert(path, at: 0)
         if recents.count > 20 { recents = Array(recents.prefix(20)) }
+        UserDefaults.standard.set(recents, forKey: key(for: profileID))
+    }
+
+    static func remove(_ path: String, for profileID: String) {
+        var recents = all(for: profileID)
+        recents.removeAll { $0 == path }
         UserDefaults.standard.set(recents, forKey: key(for: profileID))
     }
 }

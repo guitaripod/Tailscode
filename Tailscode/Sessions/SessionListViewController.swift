@@ -102,11 +102,14 @@ final class SessionListViewController: UIViewController {
             guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath),
                 self.viewModel.supportsMultipleSessions(entry)
             else { return nil }
-            let delete = UIContextualAction(style: .destructive, title: "Delete") { _, _, done in
-                Task { await self.viewModel.delete(entry); done(true) }
+            let delete = UIContextualAction(style: .destructive, title: "Delete") {
+                [weak self] _, _, done in
+                self?.confirmDelete(entry, done: done)
             }
             delete.image = UIImage(systemName: "trash")
-            return UISwipeActionsConfiguration(actions: [delete])
+            let config = UISwipeActionsConfiguration(actions: [delete])
+            config.performsFirstActionWithFullSwipe = false
+            return config
         }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -161,12 +164,19 @@ final class SessionListViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
             guard let self else { return }
-            let section = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            let sections = self.dataSource.snapshot().sectionIdentifiers
+            guard sections.indices.contains(indexPath.section) else { return }
+            let section = sections[indexPath.section]
             var content = UIListContentConfiguration.prominentInsetGroupedHeader()
             let isCollapsed = self.collapsedSections.contains(section.profileID)
             content.text = section.headerTitle
+            if self.viewModel.unreachable.contains(section.profileName) {
+                content.secondaryText = "Unreachable — pull to retry"
+                content.secondaryTextProperties.color = Theme.Color.danger
+            } else {
+                content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
+            }
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             content.prefersSideBySideTextAndSecondaryText = false
             view.contentConfiguration = content
 
@@ -212,7 +222,7 @@ final class SessionListViewController: UIViewController {
         var snapshot = NSDiffableDataSourceSnapshot<ServerSection, SessionEntry>()
         for (section, entries) in sectionData {
             snapshot.appendSections([section])
-            if !collapsedSections.contains(section.profileID) {
+            if !searchQuery.isEmpty || !collapsedSections.contains(section.profileID) {
                 snapshot.appendItems(entries, toSection: section)
             }
         }
@@ -229,7 +239,56 @@ final class SessionListViewController: UIViewController {
         if !retained.isEmpty { snapshot.reconfigureItems(retained) }
         dataSource.apply(snapshot, animatingDifferences: true)
         refreshControl.endRefreshing()
-        updatePrompt()
+        updateEmptyState(itemCount: snapshot.numberOfItems)
+        consumePendingDeepLink()
+    }
+
+    private func updateEmptyState(itemCount: Int) {
+        if itemCount > 0 {
+            contentUnavailableConfiguration = nil
+        } else if !searchQuery.isEmpty {
+            contentUnavailableConfiguration = UIContentUnavailableConfiguration.search()
+        } else if viewModel.isEmptyOfServers {
+            var config = UIContentUnavailableConfiguration.empty()
+            config.image = UIImage(systemName: "server.rack")
+            config.text = "No servers connected"
+            config.secondaryText = "Add a connection in Settings to start chatting with your agents."
+            contentUnavailableConfiguration = config
+        } else if viewModel.entries.isEmpty {
+            var config = UIContentUnavailableConfiguration.empty()
+            config.image = UIImage(systemName: "bubble.left.and.bubble.right")
+            config.text = "No conversations yet"
+            config.secondaryText = "Tap + to start a chat on your server."
+            contentUnavailableConfiguration = config
+        } else {
+            contentUnavailableConfiguration = nil
+        }
+    }
+
+    private var pendingDeepLinkSessionID: String?
+
+    /// Opens the chat for a session id (Live Activity tap). If sessions
+    /// haven't loaded yet, the link is parked and consumed after the next
+    /// snapshot.
+    func openSession(withID id: String) {
+        if let top = navigationController?.topViewController as? ChatViewController,
+            top.sessionID == id
+        {
+            return
+        }
+        guard let entry = viewModel.entries.first(where: { $0.session.id == id }) else {
+            pendingDeepLinkSessionID = id
+            return
+        }
+        pendingDeepLinkSessionID = nil
+        presentedViewController?.dismiss(animated: false)
+        navigationController?.popToRootViewController(animated: false)
+        openChat(for: entry)
+    }
+
+    private func consumePendingDeepLink() {
+        guard let id = pendingDeepLinkSessionID else { return }
+        openSession(withID: id)
     }
 
     private func toggleSection(_ profileID: String) {
@@ -242,12 +301,20 @@ final class SessionListViewController: UIViewController {
         applySnapshot(reloadProfileID: profileID)
     }
 
-    private func updatePrompt() {
-        if !viewModel.unreachable.isEmpty {
-            navigationItem.prompt = "Unreachable: \(viewModel.unreachable.joined(separator: ", "))"
-        } else {
-            navigationItem.prompt = nil
-        }
+    private func confirmDelete(_ entry: SessionEntry, done: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(
+            title: "Delete conversation?",
+            message: "\"\(Self.displayTitle(entry.session.title))\" will be removed from the server.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(false) })
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            Theme.Haptics.warning()
+            Task {
+                await self?.viewModel.delete(entry)
+                done(true)
+            }
+        })
+        present(alert, animated: true)
     }
 
     private static func displayTitle(_ title: String) -> String {
@@ -263,19 +330,13 @@ final class SessionListViewController: UIViewController {
             let diff = now.timeIntervalSince(date)
             if diff < 60 { return "Just now" }
             if diff < 3600 { return "\(Int(diff / 60))m ago" }
-            let formatter = DateFormatter()
-            formatter.dateFormat = "h:mm a"
-            return formatter.string(from: date)
+            return date.formatted(.dateTime.hour().minute())
         }
         if calendar.isDateInYesterday(date) { return "Yesterday" }
         if calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "EEEE"
-            return formatter.string(from: date)
+            return date.formatted(.dateTime.weekday(.wide))
         }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: date)
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 
     private static func serverIcon(for backend: AgentType) -> UIImage? {
@@ -332,11 +393,11 @@ final class SessionListViewController: UIViewController {
         }
         let browser = FileBrowserViewController(backend: fileBackend, profileID: profile.id)
         browser.onSelect = { [weak self] path in
-            let presenting = browser.presentingViewController
-            browser.dismiss(animated: true) {
+            guard let self else { return }
+            self.presentedViewController?.dismiss(animated: true) {
                 Task {
-                    guard let self else { return }
-                    guard let entry = await self.viewModel.newSession(on: profile, directory: path) else { return }
+                    guard let entry = await self.viewModel.newSession(on: profile, directory: path)
+                    else { return }
                     self.openChat(for: entry)
                 }
             }
@@ -392,6 +453,53 @@ extension SessionListViewController: UICollectionViewDelegate {
         guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
         openChat(for: entry)
     }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let indexPath = indexPaths.first,
+            let entry = dataSource.itemIdentifier(for: indexPath)
+        else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in
+            guard let self else { return UIMenu() }
+            var actions: [UIMenuElement] = []
+            if let directory = entry.session.directory,
+                let profile = self.viewModel.servers.first(where: { $0.id == entry.profileID })
+            {
+                actions.append(
+                    UIAction(
+                        title: "New chat in same project",
+                        image: UIImage(systemName: "plus.bubble")
+                    ) { [weak self] _ in
+                        Task {
+                            guard let self,
+                                let new = await self.viewModel.newSession(
+                                    on: profile, directory: directory)
+                            else { return }
+                            Theme.Haptics.success()
+                            self.openChat(for: new)
+                        }
+                    })
+            }
+            actions.append(
+                UIAction(title: "Copy title", image: UIImage(systemName: "doc.on.doc")) { _ in
+                    UIPasteboard.general.string = entry.session.title
+                    Theme.Haptics.success()
+                })
+            if self.viewModel.supportsMultipleSessions(entry) {
+                actions.append(
+                    UIAction(
+                        title: "Delete", image: UIImage(systemName: "trash"),
+                        attributes: .destructive
+                    ) { [weak self] _ in
+                        self?.confirmDelete(entry) { _ in }
+                    })
+            }
+            return UIMenu(children: actions)
+        }
+    }
 }
 
 extension SessionListViewController: UISearchResultsUpdating {
@@ -412,7 +520,6 @@ final class FileBrowserViewController: UIViewController {
     private var nodes: [FileNode] = []
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, FileItem>!
-    private let spinner = UIActivityIndicatorView(style: .medium)
     private var isFavorite: Bool { FileBrowserFavorites.isFavorite(path, for: profileID) }
 
     private enum FileItem: Hashable {
@@ -465,6 +572,31 @@ final class FileBrowserViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.showsSeparators = false
         config.headerMode = .supplementary
+        config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            guard let self, let item = self.dataSource.itemIdentifier(for: indexPath) else {
+                return nil
+            }
+            let stalePath: String
+            switch item {
+            case .favorite(let path): stalePath = path
+            case .recent(let path): stalePath = path
+            case .node: return nil
+            }
+            let remove = UIContextualAction(style: .destructive, title: "Remove") {
+                [weak self] _, _, done in
+                guard let self else { return done(false) }
+                if case .favorite = item {
+                    FileBrowserFavorites.toggle(stalePath, for: self.profileID)
+                } else {
+                    FileBrowserRecents.remove(stalePath, for: self.profileID)
+                }
+                Task {
+                    await self.load()
+                    done(true)
+                }
+            }
+            return UISwipeActionsConfiguration(actions: [remove])
+        }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -511,6 +643,7 @@ final class FileBrowserViewController: UIViewController {
                 } else {
                     content.image = UIImage(systemName: "doc")
                     content.imageProperties.tintColor = Theme.Color.tertiaryLabel
+                    content.textProperties.color = Theme.Color.tertiaryLabel
                     cell.accessories = []
                 }
             }
@@ -520,8 +653,11 @@ final class FileBrowserViewController: UIViewController {
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
-        ) { view, _, indexPath in
-            let section = Section.allCases[indexPath.section]
+        ) { [weak self] view, _, indexPath in
+            guard let self else { return }
+            let sections = self.dataSource.snapshot().sectionIdentifiers
+            guard sections.indices.contains(indexPath.section) else { return }
+            let section = sections[indexPath.section]
             var content = UIListContentConfiguration.prominentInsetGroupedHeader()
             switch section {
             case .favorites: content.text = "Favorites"
@@ -541,12 +677,11 @@ final class FileBrowserViewController: UIViewController {
     }
 
     private func load() async {
-        spinner.startAnimating()
-        FileBrowserRecents.record(path, for: profileID)
-        defer {
-            spinner.stopAnimating()
-            collectionView.refreshControl?.endRefreshing()
+        if dataSource.snapshot().numberOfItems == 0 {
+            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
         }
+        if path != "." { FileBrowserRecents.record(path, for: profileID) }
+        defer { collectionView.refreshControl?.endRefreshing() }
         do {
             nodes = try await backend.listFiles(path: path)
                 .sorted { a, b in
@@ -554,8 +689,7 @@ final class FileBrowserViewController: UIViewController {
                     return a.name.localizedStandardCompare(b.name) == .orderedAscending
                 }
             var snapshot = NSDiffableDataSourceSnapshot<Section, FileItem>()
-            let isRoot = path == "."
-            if isRoot {
+            if path == "." {
                 let favs = FileBrowserFavorites.all(for: profileID)
                 if !favs.isEmpty {
                     snapshot.appendSections([.favorites])
@@ -568,13 +702,19 @@ final class FileBrowserViewController: UIViewController {
                 }
             }
             snapshot.appendSections([.files])
-            if !isRoot {
-                let up = FileNode(path: "..", name: "..", isDirectory: true)
-                snapshot.appendItems([.node(up)], toSection: .files)
-            }
             snapshot.appendItems(nodes.map { .node($0) }, toSection: .files)
+            let empty = snapshot.numberOfItems == 0
             await dataSource.apply(snapshot, animatingDifferences: false)
+            if empty {
+                var config = UIContentUnavailableConfiguration.empty()
+                config.image = UIImage(systemName: "folder")
+                config.text = "Empty folder"
+                contentUnavailableConfiguration = config
+            } else {
+                contentUnavailableConfiguration = nil
+            }
         } catch {
+            contentUnavailableConfiguration = nil
             let alert = UIAlertController(
                 title: "Error", message: error.localizedDescription, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -584,7 +724,6 @@ final class FileBrowserViewController: UIViewController {
 
     @objc private func selectTapped() {
         onSelect?(path)
-        dismiss(animated: true)
     }
 
     @objc private func toggleFavorite() {
@@ -612,18 +751,11 @@ extension FileBrowserViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(vc, animated: true)
         case .node(let node):
             if node.isDirectory {
-                let nextPath = node.path == ".." ? parentPath(of: path) : node.path
-                let vc = FileBrowserViewController(backend: backend, profileID: profileID, path: nextPath)
+                let vc = FileBrowserViewController(
+                    backend: backend, profileID: profileID, path: node.path)
                 vc.onSelect = onSelect
                 navigationController?.pushViewController(vc, animated: true)
             }
         }
-    }
-
-    private func parentPath(of path: String) -> String {
-        var parts = path.split(separator: "/")
-        if parts.isEmpty || parts.count == 1 { return "." }
-        parts.removeLast()
-        return "/" + parts.joined(separator: "/")
     }
 }
