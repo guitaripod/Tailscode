@@ -126,10 +126,8 @@ final class SettingsViewController: UIViewController {
             content.text = profile.name
             content.secondaryText = "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")"
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(
-                systemName: profile.backend == .claudeCode
-                    ? "sparkles" : "chevron.left.forwardslash.chevron.right")
-            content.imageProperties.tintColor = Theme.Color.accent
+            content.image = UIImage(systemName: profile.backend.symbolName)
+            content.imageProperties.tintColor = profile.backend.brandColor
             cell.accessories = [healthDot(for: profile.id), .disclosureIndicator()]
         case .addConnection:
             content.text = "Add connection"
@@ -144,14 +142,17 @@ final class SettingsViewController: UIViewController {
         case .appearance:
             content.text = "Theme"
             content.image = UIImage(systemName: "circle.lefthalf.filled")
+            content.imageProperties.tintColor = .systemIndigo
             cell.accessories = [.customView(configuration: appearanceAccessory())]
         case .toggle(let toggle):
             content.text = toggle.title
             content.image = UIImage(systemName: icon(for: toggle))
+            content.imageProperties.tintColor = tint(for: toggle)
             cell.accessories = [.customView(configuration: switchAccessory(toggle))]
         case .viewLogs:
             content.text = "View logs"
             content.image = UIImage(systemName: "doc.text.magnifyingglass")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .testAll:
             content.text = "Test all connections"
@@ -166,6 +167,7 @@ final class SettingsViewController: UIViewController {
         case .source:
             content.text = "Source code"
             content.image = UIImage(systemName: "chevron.left.forwardslash.chevron.right")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .pro:
             if ProStore.shared.isPro {
@@ -179,7 +181,7 @@ final class SettingsViewController: UIViewController {
                 content.secondaryText = "Unlimited servers, concurrent Live Activities, support development"
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
                 content.image = UIImage(systemName: "sparkles")
-                content.imageProperties.tintColor = Theme.Color.accent
+                content.imageProperties.tintColor = .systemPurple
             }
             cell.accessories = [.disclosureIndicator()]
         }
@@ -191,6 +193,14 @@ final class SettingsViewController: UIViewController {
         case .autoExpandThinking: return "brain"
         case .haptics: return "hand.tap"
         case .sendOnReturn: return "return"
+        }
+    }
+
+    private func tint(for toggle: Toggle) -> UIColor {
+        switch toggle {
+        case .autoExpandThinking: return .systemPurple
+        case .haptics: return .systemPink
+        case .sendOnReturn: return .systemTeal
         }
     }
 

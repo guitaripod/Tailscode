@@ -58,7 +58,7 @@ final class SessionListViewController: UIViewController {
             image: UIImage(systemName: "gearshape"), style: .plain, target: self,
             action: #selector(openSettings))
         let infoButton = UIBarButtonItem(
-            image: UIImage(systemName: "sparkles"), style: .plain, target: self,
+            image: UIImage(systemName: "info.circle"), style: .plain, target: self,
             action: #selector(showDevelopmentInfo))
         navigationItem.leftBarButtonItems = [settingsButton, infoButton]
         updateAddButton()
@@ -340,8 +340,8 @@ final class SessionListViewController: UIViewController {
     }
 
     private static func serverIcon(for backend: AgentType) -> UIImage? {
-        let name = backend == .claudeCode ? "sparkles" : "chevron.left.forwardslash.chevron.right"
-        return UIImage(systemName: name)
+        UIImage(systemName: backend.symbolName)?
+            .withTintColor(backend.brandColor, renderingMode: .alwaysOriginal)
     }
 
     private static func statusPill(for sessionID: String) -> UICellAccessory? {
@@ -559,6 +559,7 @@ final class FileBrowserViewController: UIViewController {
         let favButton = UIBarButtonItem(
             image: UIImage(systemName: favImage), style: .plain, target: self,
             action: #selector(toggleFavorite))
+        favButton.tintColor = isFavorite ? .systemYellow : nil
         if path != "." {
             navigationItem.rightBarButtonItems = [navigationItem.rightBarButtonItem!, favButton]
         }
@@ -624,7 +625,7 @@ final class FileBrowserViewController: UIViewController {
                 content.text = (favPath as NSString).lastPathComponent
                 content.secondaryText = favPath
                 content.image = UIImage(systemName: "star.fill")
-                content.imageProperties.tintColor = Theme.Color.warning
+                content.imageProperties.tintColor = .systemYellow
                 content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             case .recent(let recentPath):

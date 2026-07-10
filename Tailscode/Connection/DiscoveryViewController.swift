@@ -136,10 +136,20 @@ final class DiscoveryViewController: UIViewController {
             }
             content.secondaryText = secondary
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.image = UIImage(systemName: item.suggestion.backend == .claudeCode ? "sparkles" : "chevron.left.forwardslash.chevron.right")
-            content.imageProperties.tintColor = item.suggestion.requiresAuth ? Theme.Color.danger : Theme.Color.accent
+            content.image = UIImage(systemName: item.suggestion.backend.symbolName)
+            content.imageProperties.tintColor = item.suggestion.backend.brandColor
             cell.contentConfiguration = content
-            cell.accessories = [.disclosureIndicator()]
+            if item.suggestion.requiresAuth {
+                let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
+                lock.tintColor = Theme.Color.warning
+                lock.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+                cell.accessories = [
+                    .customView(configuration: .init(customView: lock, placement: .trailing())),
+                    .disclosureIndicator(),
+                ]
+            } else {
+                cell.accessories = [.disclosureIndicator()]
+            }
         }
 
         let deviceCell = UICollectionView.CellRegistration<UICollectionViewListCell, DeviceItem> { cell, _, item in

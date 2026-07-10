@@ -722,9 +722,15 @@ final class ActivityGroupCell: UICollectionViewCell {
         steps: [ActivityStep], expanded: Bool, streaming: Bool, onToggle: @escaping () -> Void
     ) {
         self.onToggle = onToggle
+        let failed = !streaming && steps.contains {
+            if case .tool(let call) = $0, call.status == .error { return true }
+            return false
+        }
         iconView.image = UIImage(
-            systemName: streaming ? "gearshape.2.fill" : "sparkles",
+            systemName: streaming
+                ? "gearshape.2.fill" : (failed ? "exclamationmark.triangle.fill" : "sparkles"),
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        iconView.tintColor = failed ? Theme.Color.warning : Theme.Color.accent
         summaryLabel.text = Self.summary(steps, streaming: streaming)
         chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         if streaming { spinner.startAnimating() } else { spinner.stopAnimating() }
@@ -776,20 +782,18 @@ final class ActivityGroupCell: UICollectionViewCell {
     }
 
     private static func toolView(_ call: ToolCall) -> UIView {
-        let color: UIColor
-        switch call.status {
-        case .pending, .running: color = Theme.Color.warning
-        case .completed: color = Theme.Color.success
-        case .error: color = Theme.Color.danger
-        }
+        let statusColor = ToolIconography.statusColor(call.status)
         let header = UILabel()
         header.numberOfLines = 1
-        let attributed = NSMutableAttributedString(
-            string: "● ",
-            attributes: [
-                .foregroundColor: color,
-                .font: UIFont.preferredFont(forTextStyle: .caption2),
-            ])
+        let attributed = NSMutableAttributedString()
+        if let icon = UIImage(
+            systemName: ToolIconography.symbol(for: call.name),
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+            .withTintColor(ToolIconography.tint(for: call.name), renderingMode: .alwaysOriginal)
+        {
+            attributed.append(NSAttributedString(attachment: NSTextAttachment(image: icon)))
+            attributed.append(NSAttributedString(string: " "))
+        }
         attributed.append(
             NSAttributedString(
                 string: "\(call.name)  ",
@@ -798,7 +802,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             NSAttributedString(
                 string: call.status.rawValue,
                 attributes: [
-                    .foregroundColor: color,
+                    .foregroundColor: statusColor,
                     .font: UIFont.preferredFont(forTextStyle: .caption1),
                 ]))
         header.attributedText = attributed
@@ -847,7 +851,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             let done: Bool
             switch status {
             case "completed": symbol = "checkmark.circle.fill"; color = Theme.Color.success; done = true
-            case "in_progress": symbol = "circle.lefthalf.filled"; color = Theme.Color.warning; done = false
+            case "in_progress": symbol = "circle.lefthalf.filled"; color = Theme.Color.accent; done = false
             default: symbol = "circle"; color = Theme.Color.tertiaryLabel; done = false
             }
             let label = UILabel()
