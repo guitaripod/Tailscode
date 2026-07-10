@@ -291,7 +291,13 @@ final class ChatViewModel {
             return
         }
         guard canAbort else { return }
-        Task { try? await conversation.cancelCurrentTurn() }
+        Task {
+            do {
+                try await conversation.cancelCurrentTurn()
+            } catch {
+                onError?(Self.readable(error))
+            }
+        }
     }
 
     func refresh() {

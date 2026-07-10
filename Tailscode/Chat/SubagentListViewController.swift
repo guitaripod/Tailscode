@@ -74,17 +74,31 @@ final class SubagentListViewController: UIViewController {
             content.textProperties.font = Theme.Font.body()
             content.textProperties.numberOfLines = 2
             var parts: [String] = []
+            if agent.isCompleted {
+                parts.append("finished \(agent.updatedAt.formatted(.relative(presentation: .named)))")
+            } else if agent.isActive {
+                parts.append("working")
+            } else {
+                parts.append("idle since \(agent.updatedAt.formatted(.relative(presentation: .named)))")
+            }
             if let type = agent.agentType { parts.append(type) }
-            parts.append(agent.updatedAt.formatted(.relative(presentation: .named)))
             content.secondaryText = parts.joined(separator: " · ")
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
+            content.secondaryTextProperties.color =
+                agent.isActive ? Theme.Color.success : Theme.Color.tertiaryLabel
             content.textToSecondaryTextVerticalPadding = 2
-            content.image = UIImage(systemName: "circle.fill")
-            content.imageProperties.tintColor =
-                agent.isActive ? Theme.Color.success : Theme.Color.separator
-            content.imageProperties.maximumSize = CGSize(width: 10, height: 10)
-            content.imageProperties.reservedLayoutSize = CGSize(width: 10, height: 10)
+            if agent.isCompleted {
+                content.image = UIImage(systemName: "checkmark.circle.fill")
+                content.imageProperties.tintColor = Theme.Color.success
+                content.imageProperties.maximumSize = CGSize(width: 16, height: 16)
+                content.imageProperties.reservedLayoutSize = CGSize(width: 16, height: 16)
+            } else {
+                content.image = UIImage(systemName: "circle.fill")
+                content.imageProperties.tintColor =
+                    agent.isActive ? Theme.Color.success : Theme.Color.separator
+                content.imageProperties.maximumSize = CGSize(width: 10, height: 10)
+                content.imageProperties.reservedLayoutSize = CGSize(width: 16, height: 16)
+            }
             content.imageToTextPadding = Theme.Spacing.m
             cell.contentConfiguration = content
             cell.accessories = [.disclosureIndicator()]
