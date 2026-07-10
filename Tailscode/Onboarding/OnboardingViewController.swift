@@ -123,11 +123,11 @@ final class OnboardingViewController: UIViewController {
         case .authFailed:
             showStatus("Authentication failed — check the password.", ok: false)
             Theme.Haptics.error()
-        case .unreachable:
-            showStatus("Unreachable. Is the server running and on your tailnet?", ok: false)
+        case .unreachable(let detail):
+            showStatus("Unreachable: \(detail)", ok: false)
             Theme.Haptics.error()
         case .notAnAgentServer:
-            showStatus("Reachable, but not an opencode or agentapi server.", ok: false)
+            showStatus("Reachable, but not an opencode or claude-bridge server.", ok: false)
             Theme.Haptics.error()
         }
     }

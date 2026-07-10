@@ -28,13 +28,14 @@ final class LogFileWriter: @unchecked Sendable {
                 defer { try? handle.close() }
                 _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
-            } else {
+            } else if !FileManager.default.fileExists(atPath: fileURL.path) {
                 try? data.write(to: fileURL)
             }
         }
     }
 
     var currentURL: URL { fileURL }
+    var previousFileURL: URL { previousURL }
 
     /// The recent log tail (previous + current files), for the in-app log viewer.
     func snapshot() -> String {
