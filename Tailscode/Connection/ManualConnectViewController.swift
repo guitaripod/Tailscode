@@ -18,6 +18,13 @@ final class ManualConnectViewController: UIViewController {
     private let statusLabel = UILabel()
 
     private var backend: AgentType { backendControl.selectedSegmentIndex == 0 ? .openCode : .claudeCode }
+    private var lastPrefilledHost = ""
+
+    /// Prefers the stable 100.x tailnet IP: the bare hostname only resolves
+    /// with MagicDNS search domains enabled, the IP always works.
+    private var preferredHost: String {
+        device.addresses.first { $0.contains(".") } ?? device.hostname
+    }
 
     init(device: TailscaleDevice, keychain: KeychainSecretStore, tokenKey: String) {
         self.device = device
@@ -42,7 +49,8 @@ final class ManualConnectViewController: UIViewController {
 
     private func prefill() {
         nameField.setText(device.hostname)
-        hostField.setText("http://\(device.hostname):4096")
+        lastPrefilledHost = "http://\(preferredHost):4096"
+        hostField.setText(lastPrefilledHost)
     }
 
     private func buildUI() {
@@ -86,9 +94,15 @@ final class ManualConnectViewController: UIViewController {
         ])
     }
 
+    /// Only rewrites the host field if the user hasn't edited it, so
+    /// switching backends can't discard a hand-typed URL.
     @objc private func backendChanged() {
         let port = backend == .openCode ? 4096 : 4098
-        hostField.setText("http://\(device.hostname):\(port)")
+        let next = "http://\(preferredHost):\(port)"
+        if hostField.text.isEmpty || hostField.text == lastPrefilledHost {
+            hostField.setText(next)
+        }
+        lastPrefilledHost = next
     }
 
     @objc private func connectTapped() {
@@ -120,18 +134,17 @@ final class ManualConnectViewController: UIViewController {
                 AppLogger.connection.info("connected to \(detected.displayName) \(version ?? "")")
                 Theme.Haptics.success()
                 onConnected?()
-                dismiss(animated: true)
             } catch {
                 showStatus("Couldn't save profile: \(error.localizedDescription)", ok: false)
             }
         case .authFailed:
             showStatus("Authentication failed — check the password.", ok: false)
             Theme.Haptics.error()
-        case .unreachable:
-            showStatus("Unreachable. Is the server running and on your tailnet?", ok: false)
+        case .unreachable(let detail):
+            showStatus("Unreachable: \(detail)", ok: false)
             Theme.Haptics.error()
         case .notAnAgentServer:
-            showStatus("Reachable, but not an opencode or agentapi server.", ok: false)
+            showStatus("Reachable, but not an opencode or claude-bridge server.", ok: false)
             Theme.Haptics.error()
         }
     }

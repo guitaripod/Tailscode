@@ -193,7 +193,9 @@ final class DiscoveryViewController: UIViewController {
 
     private func refreshState() {
         if hasCreds {
-            statusLabel.text = suggestions.isEmpty && devices.isEmpty ? "Tap Scan to discover servers on your tailnet." : ""
+            if suggestions.isEmpty && devices.isEmpty {
+                statusLabel.text = "Tap Scan to discover servers on your tailnet."
+            }
             configureButton.configuration?.title = "Update token"
             scanButton.isHidden = false
         } else {
@@ -247,7 +249,17 @@ final class DiscoveryViewController: UIViewController {
             guard let self else { return }
             let token = tokenField.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !token.isEmpty {
-                try? self.keychain.setValue(token, for: self.tokenKey)
+                do {
+                    try self.keychain.setValue(token, for: self.tokenKey)
+                } catch {
+                    Theme.Haptics.error()
+                    let alert = UIAlertController(
+                        title: "Couldn't save token",
+                        message: error.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    formVC?.present(alert, animated: true)
+                    return
+                }
                 AppLogger.connection.info("tailscale token saved")
                 self.refreshState()
                 if self.suggestions.isEmpty {
@@ -295,8 +307,10 @@ final class DiscoveryViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    private var scanTask: Task<Void, Never>?
+
     @objc private func scanTapped() {
-        guard hasCreds else { return }
+        guard hasCreds, scanTask == nil else { return }
         scanButton.setLoading(true)
         scanActivity.startAnimating()
         statusLabel.text = "Fetching devices and probing servers…"
@@ -307,10 +321,12 @@ final class DiscoveryViewController: UIViewController {
         applyResultsSnapshot()
         resultsContainer.isHidden = false
 
-        Task {
+        scanTask = Task {
+            defer { scanTask = nil }
             do {
                 let client = TailscaleClient()
                 let fetched = try await client.fetchDevices(with: apiToken)
+                guard !Task.isCancelled else { return }
                 AppLogger.connection.info("fetched \(fetched.count) tailscale devices")
                 lastDeviceCount = fetched.count
                 devices = fetched
@@ -318,6 +334,7 @@ final class DiscoveryViewController: UIViewController {
                 statusLabel.text = "Checking \(fetched.count) devices…"
                 let scanner = TailnetScanner()
                 let found = await scanner.scan(devices: fetched)
+                guard !Task.isCancelled else { return }
                 suggestions = found.sorted { $0.recommendedProfileName < $1.recommendedProfileName }
                 AppLogger.connection.info("scanner returned \(found.count) unique suggestions after dedup")
                 let countText = found.isEmpty ? "No supported servers found" : "Found \(found.count) server(s)"
@@ -400,18 +417,43 @@ final class DiscoveryViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// Verifies the credentials with a live probe before saving — a mistyped
+    /// password must fail here, not as a wall of generic errors later.
     private func connect(with suggestion: TailnetScanner.Suggestion, password: String?) {
         view.endEditing(true)
+        statusLabel.text = "Verifying \(suggestion.baseURL.host ?? "server")…"
+        Task {
+            let username = suggestion.backend == .openCode ? "opencode" : "claude"
+            let credentials = password.map { BasicCredentials(username: username, password: $0) }
+            let outcome = await ConnectionProbe().probe(
+                baseURL: suggestion.baseURL, credentials: credentials,
+                policy: ConnectionPolicy(requestTimeout: .seconds(10), resourceTimeout: .seconds(15)))
+            switch outcome {
+            case .ok, .notAnAgentServer:
+                saveVerified(suggestion, password: password)
+            case .authFailed:
+                Theme.Haptics.error()
+                statusLabel.text = "Wrong password for \(suggestion.baseURL.host ?? "server")."
+                promptForPassword(for: suggestion)
+            case .unreachable(let detail):
+                Theme.Haptics.error()
+                statusLabel.text = "Unreachable: \(detail)"
+            }
+        }
+    }
+
+    private func saveVerified(_ suggestion: TailnetScanner.Suggestion, password: String?) {
         let profName = suggestion.recommendedProfileName.isEmpty
             ? (suggestion.baseURL.host ?? "Server")
             : suggestion.recommendedProfileName
-        let profile = ConnectionProfile(id: UUID().uuidString, name: profName, backend: suggestion.backend, baseURL: suggestion.baseURL)
+        let profile = ConnectionProfile(
+            id: UUID().uuidString, name: profName, backend: suggestion.backend,
+            baseURL: suggestion.baseURL)
         do {
             try ConnectionController.shared.save(profile, password: password)
             AppLogger.connection.info("connected via discovery to \(suggestion.backend.displayName)")
             Theme.Haptics.success()
-            onConnected?()
-            dismiss(animated: true)
+            dismiss(animated: true) { [onConnected] in onConnected?() }
         } catch {
             statusLabel.text = "Save failed: \(error.localizedDescription)"
             Theme.Haptics.error()
@@ -419,6 +461,7 @@ final class DiscoveryViewController: UIViewController {
     }
 
     @objc private func done() {
+        scanTask?.cancel()
         dismiss(animated: true)
     }
 
@@ -441,7 +484,11 @@ extension DiscoveryViewController: UICollectionViewDelegate {
 
     private func presentManualConnect(for device: TailscaleDevice) {
         let formVC = ManualConnectViewController(device: device, keychain: keychain, tokenKey: tokenKey)
-        formVC.onConnected = onConnected
+        formVC.onConnected = { [weak self] in
+            guard let self else { return }
+            let root = self.presentingViewController
+            root?.dismiss(animated: true) { self.onConnected?() }
+        }
         let nav = UINavigationController(rootViewController: formVC)
         formVC.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(dismissForm))
         present(nav, animated: true)
