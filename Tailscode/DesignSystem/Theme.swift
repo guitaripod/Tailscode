@@ -111,3 +111,20 @@ enum Theme {
         }
     }
 }
+
+extension UIColor {
+    /// Alpha-composites this color over an opaque base for the given traits,
+    /// producing an opaque result (translucent chips over cell backgrounds
+    /// would otherwise let truncated text bleed through).
+    func blended(over base: UIColor, traits: UITraitCollection) -> UIColor {
+        var tr: CGFloat = 0, tg: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        resolvedColor(with: traits).getRed(&tr, green: &tg, blue: &tb, alpha: &ta)
+        base.resolvedColor(with: traits).getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        return UIColor(
+            red: tr * ta + br * (1 - ta),
+            green: tg * ta + bg * (1 - ta),
+            blue: tb * ta + bb * (1 - ta),
+            alpha: 1)
+    }
+}

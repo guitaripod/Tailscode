@@ -6,3 +6,4 @@ Tailscode/Info.plist
 .DS_Store
 *.xcuserstate
 xcuserdata/
+build-ios/
