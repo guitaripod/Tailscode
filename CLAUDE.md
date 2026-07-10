@@ -1,6 +1,6 @@
 # Tailscode — Agent Instructions
 
-Native UIKit iOS client for remote coding agents (opencode + Claude Code via agentapi) over Tailscale. Thin shell over **CodingAgentKit** (`~/Dev/swift/CodingAgentKit`).
+Native UIKit iOS client for remote coding agents (opencode + Claude Code via claude-bridge) over Tailscale. Thin shell over **CodingAgentKit** (`~/Dev/swift/CodingAgentKit`).
 
 ## Stack
 

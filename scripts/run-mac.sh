@@ -26,8 +26,8 @@ sleep 3
 xcrun simctl io "$DEV" screenshot ~/tailscode-onboarding.png >/dev/null 2>&1 && echo ONBOARD_OK
 
 xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
-SIMCTL_CHILD_TAILSCODE_HOST=http://100.91.211.44:4096 \
-  SIMCTL_CHILD_TAILSCODE_PASSWORD=tailscode \
+SIMCTL_CHILD_TAILSCODE_HOST="${TAILSCODE_HOST:?set TAILSCODE_HOST, e.g. http://100.x.y.z:4096}" \
+  SIMCTL_CHILD_TAILSCODE_PASSWORD="${TAILSCODE_PASSWORD:-}" \
   xcrun simctl launch "$DEV" "$BUNDLE" >/dev/null
 sleep 5
 xcrun simctl io "$DEV" screenshot ~/tailscode-live.png >/dev/null 2>&1 && echo LIVE_OK
