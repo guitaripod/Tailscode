@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// Tracks the live status of sessions across the app so the list can show pills and completion
 /// notifications fire even after you leave the chat. Keeps an in-flight conversation's view model
@@ -15,6 +15,18 @@ final class SessionActivity {
     private var retained: [String: ChatViewModel] = [:]
     var onChange: (() -> Void)?
 
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                for viewModel in SessionActivity.shared.retained.values {
+                    viewModel.resync()
+                }
+            }
+        }
+    }
+
     func status(for sessionID: String) -> Status {
         statuses[sessionID] ?? .idle
     }
@@ -29,9 +41,10 @@ final class SessionActivity {
         let previous = statuses[sessionID] ?? .idle
         guard previous != status else { return }
         statuses[sessionID] = status
-        if status == .idle, previous == .running {
+        if status == .idle, previous != .idle {
             NotificationManager.notify(
-                title: title, body: "Your agent finished.", identifier: "done:\(sessionID)")
+                title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
+                sessionID: sessionID)
         }
         onChange?()
     }

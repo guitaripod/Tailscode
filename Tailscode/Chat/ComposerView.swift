@@ -132,24 +132,30 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         !(touch.view is UIControl)
     }
 
+    /// While a turn runs the button is Stop, unless the user has typed —
+    /// then it becomes a queue-send (steering) button; Stop returns on clear.
     private func updateSendButton() {
-        let symbol = isBusy ? "stop.fill" : "arrow.up"
         let hasText = !trimmed.isEmpty
-        let enabled = isBusy || hasText
+        let showStop = isBusy && !hasText
+        let symbol = showStop ? "stop.fill" : "arrow.up"
         var config = sendButton.configuration ?? .filled()
         config.image = UIImage(
             systemName: symbol,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
         config.baseBackgroundColor =
-            isBusy ? Theme.Color.danger : (hasText ? Theme.Color.accent : Theme.Color.separator)
+            showStop ? Theme.Color.danger : (hasText ? Theme.Color.accent : Theme.Color.separator)
         config.baseForegroundColor = .white
         sendButton.configuration = config
-        sendButton.isEnabled = enabled
+        sendButton.isEnabled = isBusy || hasText
     }
 
     func setBusy(_ busy: Bool) {
+        guard isBusy != busy else { return }
         isBusy = busy
-        updateSendButton()
+        placeholder.text = busy ? "Queue a message…" : "Message your agent…"
+        UIView.transition(with: sendButton, duration: 0.2, options: .transitionCrossDissolve) {
+            self.updateSendButton()
+        }
     }
 
     private var trimmed: String {
@@ -167,7 +173,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             delegate?.composerDidPasteLargeText(text)
             return false
         }
-        if text == "\n", AppPreferences.sendOnReturn, !isBusy, !trimmed.isEmpty {
+        if text == "\n", AppPreferences.sendOnReturn, !trimmed.isEmpty {
             sendTapped()
             return false
         }
@@ -185,12 +191,11 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     }
 
     @objc private func sendTapped() {
-        if isBusy {
-            delegate?.composerDidTapStop()
+        let text = trimmed
+        if text.isEmpty {
+            if isBusy { delegate?.composerDidTapStop() }
             return
         }
-        let text = trimmed
-        guard !text.isEmpty else { return }
         Theme.Haptics.send()
         delegate?.composerDidSend(text)
         textView.text = ""
@@ -209,7 +214,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func clear() {
         textView.text = ""
-        textViewDidChange(textView)
+        UIView.animate(
+            withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.3
+        ) {
+            self.textViewDidChange(self.textView)
+            self.superview?.layoutIfNeeded()
+        }
     }
 
     func insertQuote(_ text: String) {
@@ -219,6 +229,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.text = existing.isEmpty ? "\(quoted)\n\n" : "\(existing)\n\(quoted)\n\n"
         textViewDidChange(textView)
         textView.becomeFirstResponder()
+    }
+
+    func setDraft(_ text: String, focus: Bool = true) {
+        textView.text = text
+        textViewDidChange(textView)
+        if focus { textView.becomeFirstResponder() }
     }
 
     func appendPath(_ path: String) {

@@ -128,6 +128,30 @@ final class TextBubbleCell: UICollectionViewCell {
         timestampTrailing?.isActive = false
     }
 
+    func configureError(_ text: String) {
+        timestampLeading?.isActive = false
+        timestampTrailing?.isActive = false
+        leadingPin.isActive = true
+        trailingPin.isActive = false
+        textView.textAlignment = .natural
+        bubble.backgroundColor = Theme.Color.danger.withAlphaComponent(0.08)
+        textView.font = .preferredFont(forTextStyle: .footnote)
+        textView.textColor = Theme.Color.danger
+        let attachment = NSTextAttachment(
+            image: UIImage(
+                systemName: "exclamationmark.triangle.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))!
+                .withTintColor(Theme.Color.danger))
+        let string = NSMutableAttributedString(attachment: attachment)
+        string.append(NSAttributedString(
+            string: "  \(text)",
+            attributes: [
+                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .foregroundColor: Theme.Color.danger,
+            ]))
+        textView.attributedText = string
+    }
+
     func configure(text: String, role: MessageRole, reasoning: Bool, timestamp: Bool = false) {
         let isUser = role == .user
 
@@ -211,6 +235,8 @@ final class TextBubbleCell: UICollectionViewCell {
                 }
             }
             let mutable = NSMutableAttributedString(attr)
+            var bulletEdits: [NSRange] = []
+            var quoteEdits: [NSRange] = []
             mutable.mutableString.enumerateSubstrings(
                 in: NSRange(location: 0, length: mutable.length),
                 options: .byLines
@@ -220,7 +246,32 @@ final class TextBubbleCell: UICollectionViewCell {
                     || line.hasPrefix("#### ") || line.hasPrefix("##### ") || line.hasPrefix("###### ")
                 {
                     mutable.addAttribute(.font, value: headingFont, range: substringRange)
+                    return
                 }
+                let trimmedStart = line.drop { $0 == " " }
+                let indentDepth = line.count - trimmedStart.count
+                if trimmedStart.hasPrefix("- ") || trimmedStart.hasPrefix("* ") {
+                    let paragraph = NSMutableParagraphStyle()
+                    paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
+                    paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
+                    mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
+                    bulletEdits.append(
+                        NSRange(location: substringRange.location + indentDepth, length: 2))
+                } else if trimmedStart.hasPrefix("> ") {
+                    let paragraph = NSMutableParagraphStyle()
+                    paragraph.firstLineHeadIndent = 12
+                    paragraph.headIndent = 12
+                    mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
+                    mutable.addAttribute(
+                        .foregroundColor, value: Theme.Color.secondaryLabel, range: substringRange)
+                    quoteEdits.append(
+                        NSRange(location: substringRange.location + indentDepth, length: 2))
+                }
+            }
+            for range in (bulletEdits + quoteEdits).sorted(by: { $0.location > $1.location }) {
+                let replacement = bulletEdits.contains(where: { $0.location == range.location })
+                    ? "•  " : ""
+                mutable.replaceCharacters(in: range, with: replacement)
             }
             result = mutable
         } else {
@@ -359,6 +410,7 @@ final class CodeBlockCell: UICollectionViewCell {
     private let container = UIView()
     private let langLabel = UILabel()
     private let copyButton = UIButton(type: .system)
+    private let codeScroll = UIScrollView()
     private let codeLabel = UILabel()
     private let lineNumberLabel = UILabel()
     private let toggleButton = UIButton(type: .system)
@@ -386,10 +438,15 @@ final class CodeBlockCell: UICollectionViewCell {
         copyButton.translatesAutoresizingMaskIntoConstraints = false
         copyButton.addTarget(self, action: #selector(copyTapped), for: .touchUpInside)
 
+        codeScroll.showsVerticalScrollIndicator = false
+        codeScroll.showsHorizontalScrollIndicator = true
+        codeScroll.alwaysBounceVertical = false
+        codeScroll.translatesAutoresizingMaskIntoConstraints = false
+
         codeLabel.numberOfLines = 0
         codeLabel.font = Theme.Font.mono(12)
         codeLabel.textColor = Theme.Color.label
-        codeLabel.lineBreakMode = .byCharWrapping
+        codeLabel.lineBreakMode = .byClipping
         codeLabel.translatesAutoresizingMaskIntoConstraints = false
 
         lineNumberLabel.numberOfLines = 0
@@ -405,8 +462,11 @@ final class CodeBlockCell: UICollectionViewCell {
         toggleButton.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [langLabel, copyButton, lineNumberLabel, codeLabel, toggleButton].forEach(container.addSubview)
+        [langLabel, copyButton, codeScroll, toggleButton].forEach(container.addSubview)
+        [lineNumberLabel, codeLabel].forEach(codeScroll.addSubview)
 
+        let content = codeScroll.contentLayoutGuide
+        let frame = codeScroll.frameLayoutGuide
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
@@ -418,15 +478,21 @@ final class CodeBlockCell: UICollectionViewCell {
             copyButton.centerYAnchor.constraint(equalTo: langLabel.centerYAnchor),
             copyButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
 
-            codeLabel.topAnchor.constraint(equalTo: langLabel.bottomAnchor, constant: Theme.Spacing.xs),
-            codeLabel.leadingAnchor.constraint(equalTo: lineNumberLabel.trailingAnchor, constant: Theme.Spacing.s),
-            codeLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+            codeScroll.topAnchor.constraint(equalTo: langLabel.bottomAnchor, constant: Theme.Spacing.xs),
+            codeScroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            codeScroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
+            frame.heightAnchor.constraint(equalTo: content.heightAnchor),
 
-            lineNumberLabel.topAnchor.constraint(equalTo: langLabel.bottomAnchor, constant: Theme.Spacing.xs),
-            lineNumberLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            lineNumberLabel.topAnchor.constraint(equalTo: content.topAnchor),
+            lineNumberLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             lineNumberLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
 
-            toggleButton.topAnchor.constraint(equalTo: codeLabel.bottomAnchor, constant: Theme.Spacing.xs),
+            codeLabel.topAnchor.constraint(equalTo: content.topAnchor),
+            codeLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            codeLabel.leadingAnchor.constraint(equalTo: lineNumberLabel.trailingAnchor, constant: Theme.Spacing.s),
+            codeLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Theme.Spacing.s),
+
+            toggleButton.topAnchor.constraint(equalTo: codeScroll.bottomAnchor, constant: Theme.Spacing.xs),
             toggleButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             toggleButton.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -Theme.Spacing.m),
             toggleButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.s),
@@ -438,6 +504,7 @@ final class CodeBlockCell: UICollectionViewCell {
     func configure(_ block: CodeBlock, expanded: Bool, onToggle: @escaping () -> Void) {
         self.source = block.source
         self.onToggle = onToggle
+        codeScroll.setContentOffset(.zero, animated: false)
         langLabel.text = (block.language ?? "code").lowercased()
         var copyConfig = copyButton.configuration ?? .plain()
         copyConfig.image = UIImage(
@@ -844,5 +911,312 @@ extension UIFont {
         guard let descriptor = fontDescriptor.withSymbolicTraits(fontDescriptor.symbolicTraits.union(traits))
         else { return self }
         return UIFont(descriptor: descriptor, size: 0)
+    }
+}
+
+/// The "agent is working" placeholder shown before any assistant content
+/// arrives for the current turn: three softly pulsing dots in a bubble.
+final class ThinkingCell: UICollectionViewCell {
+    static let reuseID = "ThinkingCell"
+
+    private let bubble = UIView()
+    private let dots = (0..<3).map { _ in UIView() }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        bubble.backgroundColor = Theme.Color.assistantBubble
+        bubble.layer.cornerRadius = Theme.Radius.bubble
+        bubble.layer.cornerCurve = .continuous
+        bubble.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(bubble)
+
+        let stack = UIStackView(arrangedSubviews: dots)
+        stack.axis = .horizontal
+        stack.spacing = 5
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        bubble.addSubview(stack)
+
+        for dot in dots {
+            dot.backgroundColor = Theme.Color.secondaryLabel
+            dot.layer.cornerRadius = 4
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                dot.widthAnchor.constraint(equalToConstant: 8),
+                dot.heightAnchor.constraint(equalToConstant: 8),
+            ])
+        }
+
+        NSLayoutConstraint.activate([
+            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            bubble.bottomAnchor.constraint(
+                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            bubble.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+            bubble.heightAnchor.constraint(equalToConstant: 38),
+
+            stack.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.l),
+            stack.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { startPulsing() }
+    }
+
+    private func startPulsing() {
+        for (index, dot) in dots.enumerated() {
+            dot.layer.removeAnimation(forKey: "pulse")
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 0.25
+            pulse.toValue = 1.0
+            pulse.duration = 0.55
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timeOffset = Double(index) * 0.18
+            dot.layer.add(pulse, forKey: "pulse")
+        }
+    }
+}
+
+/// A native answer card for a structured agent question (opencode's question
+/// tool): header chip, question text, tappable options with descriptions,
+/// multi-select and free-form support. Selection state lives in the view
+/// controller so cell reconfiguration can't drop an in-progress choice.
+final class QuestionCell: UICollectionViewCell {
+    static let reuseID = "QuestionCell"
+
+    struct Selection {
+        var picked: [Int: Set<Int>] = [:]
+        var custom: [Int: String] = [:]
+
+        func answers(for request: QuestionRequest) -> [[String]]? {
+            var result: [[String]] = []
+            for (index, item) in request.questions.enumerated() {
+                var labels = (picked[index] ?? []).sorted().compactMap { optionIndex in
+                    item.options.indices.contains(optionIndex)
+                        ? item.options[optionIndex].label : nil
+                }
+                if let custom = custom[index], !custom.isEmpty { labels.append(custom) }
+                guard !labels.isEmpty else { return nil }
+                result.append(labels)
+            }
+            return result
+        }
+    }
+
+    private let glass = Theme.Glass.view()
+    private let stack = UIStackView()
+    private var request: QuestionRequest?
+    private var selection = Selection()
+    private var onSubmit: (([[String]]) -> Void)?
+    private var onSkip: (() -> Void)?
+    private var onCustom: ((Int) -> Void)?
+    private var onSelectionChanged: ((Selection) -> Void)?
+    private let submitButton = PrimaryButton(title: "Answer")
+    private let skipButton = UIButton(type: .system)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.layer.cornerRadius = Theme.Radius.card
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        glass.isUserInteractionEnabled = false
+        contentView.addSubview(glass)
+
+        stack.axis = .vertical
+        stack.spacing = Theme.Spacing.m
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            glass.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            glass.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            glass.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+            glass.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+
+            stack.topAnchor.constraint(equalTo: glass.topAnchor, constant: Theme.Spacing.l),
+            stack.bottomAnchor.constraint(equalTo: glass.bottomAnchor, constant: -Theme.Spacing.l),
+            stack.leadingAnchor.constraint(equalTo: glass.leadingAnchor, constant: Theme.Spacing.l),
+            stack.trailingAnchor.constraint(equalTo: glass.trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(
+        request: QuestionRequest,
+        selection: Selection,
+        onSelectionChanged: @escaping (Selection) -> Void,
+        onSubmit: @escaping ([[String]]) -> Void,
+        onCustom: @escaping (Int) -> Void,
+        onSkip: @escaping () -> Void
+    ) {
+        self.request = request
+        self.selection = selection
+        self.onSelectionChanged = onSelectionChanged
+        self.onSubmit = onSubmit
+        self.onCustom = onCustom
+        self.onSkip = onSkip
+        rebuild()
+    }
+
+    private var isSingleTapFastPath: Bool {
+        guard let request else { return false }
+        return request.questions.count == 1
+            && !(request.questions.first?.multiple ?? false)
+    }
+
+    private func rebuild() {
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard let request else { return }
+
+        let title = UILabel()
+        title.text = "The agent has a question"
+        title.font = .preferredFont(forTextStyle: .caption1)
+        title.textColor = Theme.Color.secondaryLabel
+        stack.addArrangedSubview(title)
+
+        for (questionIndex, item) in request.questions.enumerated() {
+            if !item.header.isEmpty {
+                let header = UILabel()
+                header.text = item.header.uppercased()
+                header.font = .systemFont(ofSize: 11, weight: .bold)
+                header.textColor = Theme.Color.accent
+                stack.addArrangedSubview(header)
+                stack.setCustomSpacing(Theme.Spacing.xs, after: header)
+            }
+            let question = UILabel()
+            question.text = item.question
+            question.font = Theme.Font.headline()
+            question.numberOfLines = 0
+            stack.addArrangedSubview(question)
+
+            for (optionIndex, option) in item.options.enumerated() {
+                let selected = selection.picked[questionIndex]?.contains(optionIndex) ?? false
+                stack.addArrangedSubview(
+                    optionRow(
+                        option: option, selected: selected,
+                        questionIndex: questionIndex, optionIndex: optionIndex,
+                        multiple: item.multiple))
+            }
+            if item.custom {
+                stack.addArrangedSubview(customRow(questionIndex: questionIndex))
+            }
+            if questionIndex < request.questions.count - 1 {
+                stack.setCustomSpacing(Theme.Spacing.xl, after: stack.arrangedSubviews.last!)
+            }
+        }
+
+        let footer = UIStackView()
+        footer.axis = .horizontal
+        footer.spacing = Theme.Spacing.m
+        skipButton.setTitle("Skip", for: .normal)
+        skipButton.titleLabel?.font = Theme.Font.caption()
+        skipButton.setTitleColor(Theme.Color.secondaryLabel, for: .normal)
+        skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
+        footer.addArrangedSubview(skipButton)
+        if !isSingleTapFastPath {
+            submitButton.setTitle("Answer")
+            submitButton.isEnabled = selection.answers(for: request) != nil
+            submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
+            footer.addArrangedSubview(submitButton)
+        }
+        stack.setCustomSpacing(Theme.Spacing.l, after: stack.arrangedSubviews.last!)
+        stack.addArrangedSubview(footer)
+    }
+
+    private func optionRow(
+        option: QuestionRequest.Option, selected: Bool,
+        questionIndex: Int, optionIndex: Int, multiple: Bool
+    ) -> UIView {
+        var config = UIButton.Configuration.plain()
+        config.baseForegroundColor = Theme.Color.label
+        config.background.backgroundColor =
+            selected
+            ? Theme.Color.accent.withAlphaComponent(0.18)
+            : Theme.Color.secondaryBackground
+        config.background.cornerRadius = Theme.Radius.control
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+        var titleAttr = AttributedString(option.label)
+        titleAttr.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        config.attributedTitle = titleAttr
+        if !option.description.isEmpty {
+            var subAttr = AttributedString(option.description)
+            subAttr.font = UIFont.preferredFont(forTextStyle: .caption1)
+            subAttr.foregroundColor = Theme.Color.secondaryLabel
+            config.attributedSubtitle = subAttr
+            config.titlePadding = 2
+        }
+        config.image = UIImage(
+            systemName: selected
+                ? (multiple ? "checkmark.square.fill" : "largecircle.fill.circle")
+                : (multiple ? "square" : "circle"),
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
+        config.imagePadding = Theme.Spacing.m
+        config.baseForegroundColor = Theme.Color.label
+        let button = UIButton(configuration: config)
+        button.contentHorizontalAlignment = .leading
+        button.tintColor = selected ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        button.addAction(
+            UIAction { [weak self] _ in
+                self?.optionTapped(questionIndex: questionIndex, optionIndex: optionIndex, multiple: multiple)
+            }, for: .touchUpInside)
+        return button
+    }
+
+    private func customRow(questionIndex: Int) -> UIView {
+        var config = UIButton.Configuration.plain()
+        config.background.backgroundColor = Theme.Color.secondaryBackground
+        config.background.cornerRadius = Theme.Radius.control
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+        let custom = selection.custom[questionIndex]
+        var titleAttr = AttributedString(custom?.isEmpty == false ? custom! : "Other…")
+        titleAttr.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        config.attributedTitle = titleAttr
+        config.image = UIImage(
+            systemName: custom?.isEmpty == false ? "pencil.circle.fill" : "pencil.circle",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium))
+        config.imagePadding = Theme.Spacing.m
+        config.baseForegroundColor =
+            custom?.isEmpty == false ? Theme.Color.label : Theme.Color.secondaryLabel
+        let button = UIButton(configuration: config)
+        button.contentHorizontalAlignment = .leading
+        button.addAction(
+            UIAction { [weak self] _ in self?.onCustom?(questionIndex) }, for: .touchUpInside)
+        return button
+    }
+
+    private func optionTapped(questionIndex: Int, optionIndex: Int, multiple: Bool) {
+        Theme.Haptics.selection()
+        guard let request else { return }
+        var picked = selection.picked[questionIndex] ?? []
+        if multiple {
+            if picked.contains(optionIndex) { picked.remove(optionIndex) } else { picked.insert(optionIndex) }
+        } else {
+            picked = [optionIndex]
+        }
+        selection.picked[questionIndex] = picked
+        onSelectionChanged?(selection)
+        if isSingleTapFastPath, let answers = selection.answers(for: request) {
+            onSubmit?(answers)
+            return
+        }
+        rebuild()
+    }
+
+    @objc private func submitTapped() {
+        guard let request, let answers = selection.answers(for: request) else { return }
+        Theme.Haptics.send()
+        onSubmit?(answers)
+    }
+
+    @objc private func skipTapped() {
+        Theme.Haptics.warning()
+        onSkip?()
     }
 }

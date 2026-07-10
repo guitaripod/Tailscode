@@ -12,8 +12,13 @@ final class ModelPickerViewController: UIViewController {
     private let selected: ModelSelection?
     private let onSelect: (ModelSelection) -> Void
 
+    private struct Row: Hashable {
+        let model: ModelInfo
+        let recent: Bool
+    }
+
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<ProviderGroup, ModelInfo>!
+    private var dataSource: UICollectionViewDiffableDataSource<ProviderGroup, Row>!
     private let search = UISearchController(searchResultsController: nil)
     private var query = ""
 
@@ -55,8 +60,9 @@ final class ModelPickerViewController: UIViewController {
         collectionView.delegate = self
         view.addSubview(collectionView)
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, ModelInfo> {
-            [weak self] cell, _, model in
+        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Row> {
+            [weak self] cell, _, row in
+            let model = row.model
             var content = cell.defaultContentConfiguration()
             content.text = model.name
             content.secondaryText = model.id
@@ -80,8 +86,8 @@ final class ModelPickerViewController: UIViewController {
         }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, model in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: model)
+            collectionView, indexPath, row in
+            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: row)
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
@@ -96,7 +102,19 @@ final class ModelPickerViewController: UIViewController {
                     || $0.id.localizedCaseInsensitiveContains(query)
                     || $0.providerID.localizedCaseInsensitiveContains(query)
             }
-        var snapshot = NSDiffableDataSourceSnapshot<ProviderGroup, ModelInfo>()
+        var snapshot = NSDiffableDataSourceSnapshot<ProviderGroup, Row>()
+        if query.isEmpty {
+            let recents = RecentModelsStore.all().compactMap { selection in
+                allModels.first {
+                    $0.id == selection.modelID && $0.providerID == selection.providerID
+                }
+            }
+            if !recents.isEmpty {
+                let group = ProviderGroup(id: "·recent", name: "Recent")
+                snapshot.appendSections([group])
+                snapshot.appendItems(recents.map { Row(model: $0, recent: true) }, toSection: group)
+            }
+        }
         var seen: [String: ProviderGroup] = [:]
         for model in filtered {
             let group = seen[model.providerID]
@@ -105,7 +123,7 @@ final class ModelPickerViewController: UIViewController {
                 seen[model.providerID] = group
                 snapshot.appendSections([group])
             }
-            snapshot.appendItems([model], toSection: group)
+            snapshot.appendItems([Row(model: model, recent: false)], toSection: group)
         }
         dataSource.apply(snapshot, animatingDifferences: false)
     }
@@ -116,9 +134,9 @@ final class ModelPickerViewController: UIViewController {
 extension ModelPickerViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let model = dataSource.itemIdentifier(for: indexPath) else { return }
+        guard let row = dataSource.itemIdentifier(for: indexPath) else { return }
         Theme.Haptics.success()
-        onSelect(model.selection)
+        onSelect(row.model.selection)
         dismiss(animated: true)
     }
 }

@@ -38,6 +38,24 @@ enum ModelPreferenceStore {
     }
 }
 
+/// The last few models picked anywhere, surfaced as a "Recent" section at the
+/// top of the model picker (opencode catalogs run to hundreds of models).
+enum RecentModelsStore {
+    private static let key = "tailscode.recentModels"
+
+    static func all() -> [ModelSelection] {
+        (UserDefaults.standard.stringArray(forKey: key) ?? [])
+            .compactMap(ModelSelection.init(string:))
+    }
+
+    static func record(_ selection: ModelSelection) {
+        var raw = UserDefaults.standard.stringArray(forKey: key) ?? []
+        raw.removeAll { $0 == selection.rawValue }
+        raw.insert(selection.rawValue, at: 0)
+        UserDefaults.standard.set(Array(raw.prefix(5)), forKey: key)
+    }
+}
+
 /// Persists the chosen reasoning-effort level per session (Claude Code).
 enum EffortPreferenceStore {
     private static let prefix = "tailscode.effort."

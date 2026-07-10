@@ -13,19 +13,27 @@ final class ChatViewController: UIViewController {
     private let composer = ComposerView()
     private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
-    private let emptyState = EmptyStateView(
-        symbol: "sparkles",
-        title: "Start the conversation",
-        message: "Ask your agent to build, fix, or explain something.")
+    private let emptyState = ChatEmptyStateView()
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []
     private var pendingAttachments: [PromptAttachment] = []
     private var pendingPermission: PermissionRequest?
+    private var pendingQuestion: QuestionRequest?
+    private var questionSelection = QuestionCell.Selection()
+    private var lastNotifiedQuestionID: String?
     private var availableModels: [ModelInfo] = []
     private var expandedReasoning: Set<String> = []
     private var seenReasoning: Set<String> = []
     private var wasRunning = false
+    private var lastStreamingID: String?
+    private var hasRevealed = false
+    private var revealFallback: Task<Void, Never>?
+    private var animateNextRender = false
+    private var lastHapticPermissionID: String?
+    private var lastHapticFailure: String?
+    private var unreadCount = 0
+    private let navStatusLabel = UILabel()
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
     private let navTitleContainer = UIView()
@@ -33,6 +41,8 @@ final class ChatViewController: UIViewController {
     private let attachmentStrip = UIStackView()
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
+
+    var sessionID: String { viewModel.session.id }
 
     init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -57,17 +67,44 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        collectionView.alpha = 0
+        revealFallback = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            self?.revealTranscript()
+        }
         bind()
         viewModel.start()
+        if let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
+            composer.setDraft(draft, focus: false)
+        }
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
             Task { await loadModels() }
         }
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        viewModel.isBound = true
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if (isMovingFromParent || isBeingDismissed) && !viewModel.isBusy {
-            viewModel.stop()
+        saveDraft()
+        if isMovingFromParent || isBeingDismissed {
+            viewModel.isBound = false
+            if !viewModel.isBusy { viewModel.stop() }
+        }
+    }
+
+    private var draftKey: String { "tailscode.draft.\(viewModel.contextID)/\(viewModel.session.id)" }
+
+    private func saveDraft() {
+        let text = composer.currentText
+        if text.isEmpty {
+            UserDefaults.standard.removeObject(forKey: draftKey)
+        } else {
+            UserDefaults.standard.set(text, forKey: draftKey)
         }
     }
 
@@ -79,11 +116,9 @@ final class ChatViewController: UIViewController {
             collectionView.contentInset.bottom = bottomInset
             collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
         }
-        if !banner.isHidden {
-            let bannerInset = banner.bounds.height
-            if abs(collectionView.contentInset.top - bannerInset) > 0.5 {
-                collectionView.contentInset.top = bannerInset
-            }
+        let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
+        if abs(collectionView.contentInset.top - bannerInset) > 0.5 {
+            collectionView.contentInset.top = bannerInset
         }
     }
 
@@ -108,6 +143,10 @@ final class ChatViewController: UIViewController {
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
+        collectionView.register(
+            ThinkingCell.self, forCellWithReuseIdentifier: ThinkingCell.reuseID)
+        collectionView.register(
+            QuestionCell.self, forCellWithReuseIdentifier: QuestionCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -163,7 +202,7 @@ final class ChatViewController: UIViewController {
 
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         emptyState.isHidden = true
-        emptyState.isUserInteractionEnabled = false
+        emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
         view.insertSubview(emptyState, belowSubview: composer)
         NSLayoutConstraint.activate([
             emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
@@ -174,14 +213,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func configureFAB() {
-        var config = UIButton.Configuration.filled()
-        config.cornerStyle = .capsule
-        config.image = UIImage(
-            systemName: "arrow.down",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
-        config.baseBackgroundColor = Theme.Color.accent
-        config.baseForegroundColor = .white
-        fab.configuration = config
+        fab.configuration = fabConfiguration()
         fab.translatesAutoresizingMaskIntoConstraints = false
         fab.isHidden = true
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
@@ -189,24 +221,50 @@ final class ChatViewController: UIViewController {
         NSLayoutConstraint.activate([
             fab.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
             fab.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -Theme.Spacing.m),
-            fab.widthAnchor.constraint(equalToConstant: 44),
+            fab.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             fab.heightAnchor.constraint(equalToConstant: 44),
         ])
+    }
+
+    private func fabConfiguration() -> UIButton.Configuration {
+        var config = Theme.Glass.buttonConfiguration()
+        config.cornerStyle = .capsule
+        config.image = UIImage(
+            systemName: "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
+        config.baseForegroundColor = Theme.Color.label
+        if unreadCount > 0 {
+            config.title = "\(unreadCount)"
+            config.imagePadding = Theme.Spacing.xs
+            config.baseForegroundColor = Theme.Color.accent
+        }
+        return config
     }
 
     private func configureNavTitleView() {
         navSpinner.hidesWhenStopped = true
         navSpinner.color = Theme.Color.secondaryLabel
-        navSpinner.translatesAutoresizingMaskIntoConstraints = false
-        navTitleContainer.addSubview(navSpinner)
+        navStatusLabel.font = .preferredFont(forTextStyle: .footnote)
+        navStatusLabel.textColor = Theme.Color.secondaryLabel
+        navStatusLabel.adjustsFontSizeToFitWidth = true
+        navStatusLabel.minimumScaleFactor = 0.8
+        let stack = UIStackView(arrangedSubviews: [navSpinner, navStatusLabel])
+        stack.axis = .horizontal
+        stack.spacing = Theme.Spacing.s
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        navTitleContainer.addSubview(stack)
         NSLayoutConstraint.activate([
-            navSpinner.centerXAnchor.constraint(equalTo: navTitleContainer.centerXAnchor),
-            navSpinner.centerYAnchor.constraint(equalTo: navTitleContainer.centerYAnchor),
+            stack.centerXAnchor.constraint(equalTo: navTitleContainer.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: navTitleContainer.centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: navTitleContainer.leadingAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: navTitleContainer.trailingAnchor),
         ])
     }
 
     @objc private func sceneDidActivate() {
         suppressBannerUntil = Date().addingTimeInterval(3)
+        viewModel.resync()
     }
 
     @objc private func bannerTapped() {
@@ -217,15 +275,47 @@ final class ChatViewController: UIViewController {
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             [weak self] collectionView, indexPath, id in
-            guard let self else { return UICollectionViewCell() }
+            guard let self else { return Self.blankCell(collectionView, indexPath) }
             if id.hasPrefix("queued:"),
-                let index = Int(id.dropFirst("queued:".count)), index < self.viewModel.queued.count
+                let message = self.viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
             {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
                 cell.configure(
-                    text: "⏳ \(self.viewModel.queued[index])", role: .user, reasoning: false)
+                    text: "⏳ \(message.text)", role: .user, reasoning: false)
                 cell.contentView.alpha = 0.5
+                return cell
+            }
+            if id == "thinking" {
+                return collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ThinkingCell.reuseID, for: indexPath)
+            }
+            if id.hasPrefix("local:"),
+                let echo = self.viewModel.localEchoes.first(where: { "local:\($0.id.uuidString)" == id })
+            {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+                cell.configure(text: echo.text, role: .user, reasoning: false)
+                return cell
+            }
+            if id.hasPrefix("question:"), let request = self.pendingQuestion {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: QuestionCell.reuseID, for: indexPath) as! QuestionCell
+                cell.configure(
+                    request: request,
+                    selection: self.questionSelection,
+                    onSelectionChanged: { [weak self] selection in
+                        self?.questionSelection = selection
+                    },
+                    onSubmit: { [weak self] answers in
+                        self?.viewModel.answerQuestion(request, answers: answers)
+                    },
+                    onCustom: { [weak self] questionIndex in
+                        self?.promptCustomAnswer(for: request, questionIndex: questionIndex)
+                    },
+                    onSkip: { [weak self] in
+                        self?.viewModel.rejectQuestion(request)
+                    })
                 return cell
             }
             if id.hasPrefix("permission:"), let request = self.pendingPermission {
@@ -239,7 +329,7 @@ final class ChatViewController: UIViewController {
                 }
                 return cell
             }
-            guard let row = self.rowsByID[id] else { return UICollectionViewCell() }
+            guard let row = self.rowsByID[id] else { return Self.blankCell(collectionView, indexPath) }
             switch row.content {
             case .timestamp(let text):
                 return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
@@ -265,9 +355,24 @@ final class ChatViewController: UIViewController {
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
             case .error(let text):
-                return self.bubble(collectionView, indexPath, text, row.role, reasoning: true)
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+                cell.configureError(text)
+                return cell
             }
         }
+    }
+
+    /// Diffable providers must return dequeued cells; a raw
+    /// `UICollectionViewCell()` throws NSInternalInconsistencyException when
+    /// a row's backing state vanished between snapshot applies.
+    private static func blankCell(
+        _ collectionView: UICollectionView, _ indexPath: IndexPath
+    ) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(
+            withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+        cell.configure(text: "", role: .system, reasoning: false)
+        return cell
     }
 
     private func bubble(
@@ -285,6 +390,17 @@ final class ChatViewController: UIViewController {
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
+        viewModel.onSendFailed = { [weak self] text in
+            guard let self else { return }
+            Theme.Haptics.error()
+            if self.composer.currentText.isEmpty {
+                self.composer.setDraft(text)
+                self.presentToast("Not sent — your message is back in the composer.")
+            } else {
+                UIPasteboard.general.string = text
+                self.presentToast("Not sent — message copied to clipboard.")
+            }
+        }
     }
 
     private func render(_ state: ConversationState) {
@@ -306,17 +422,39 @@ final class ChatViewController: UIViewController {
         }
 
         pendingPermission = state.pendingPermissions.first
+        if pendingQuestion?.id != state.pendingQuestions.first?.id {
+            questionSelection = QuestionCell.Selection()
+        }
+        pendingQuestion = state.pendingQuestions.first
         var ids = orderedIDs
+        for echo in viewModel.localEchoes { ids.append("local:\(echo.id.uuidString)") }
+        let lastContentRole: MessageRole? =
+            viewModel.localEchoes.isEmpty
+            ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
+        if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
+            lastContentRole != .assistant
+        {
+            ids.append("thinking")
+        }
+        if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
-        for index in viewModel.queued.indices { ids.append("queued:\(index)") }
-        emptyState.isHidden = !orderedIDs.isEmpty
+        for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
+        emptyState.isHidden = !(hasRevealed && orderedIDs.isEmpty)
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
         snapshot.appendSections([.main])
         snapshot.appendItems(ids, toSection: .main)
 
-        let changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        let streamingID = viewModel.isBusy ? orderedIDs.last : nil
+        if streamingID != lastStreamingID {
+            for id in [streamingID, lastStreamingID].compactMap({ $0 })
+            where rowsByID[id] != nil && !changed.contains(id) {
+                changed.append(id)
+            }
+            lastStreamingID = streamingID
+        }
         let previousToolStatuses = Self.collectToolStatuses(from: previous.values.flatMap { row in
             if case .activity(let steps) = row.content { return steps }
             return []
@@ -332,27 +470,47 @@ final class ChatViewController: UIViewController {
                 Theme.Haptics.step()
             }
         }
-        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+        let animated = animateNextRender && hasRevealed
+        animateNextRender = false
+        dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
             guard let self else { return }
             if !changed.isEmpty {
                 var reconfigure = self.dataSource.snapshot()
-                reconfigure.reconfigureItems(changed)
-                self.dataSource.apply(reconfigure, animatingDifferences: false)
+                let present = Set(reconfigure.itemIdentifiers)
+                let stillPresent = changed.filter { present.contains($0) }
+                if !stillPresent.isEmpty {
+                    reconfigure.reconfigureItems(stillPresent)
+                    self.dataSource.apply(reconfigure, animatingDifferences: false)
+                }
             }
-            if nearBottom && !userScrolledUp { self.scrollToBottom(animated: false) }
+            if nearBottom && !userScrolledUp { self.scrollToBottom(animated: animated) }
+            if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
         }
 
-        composer.setBusy(state.status == .running)
+        composer.setBusy(viewModel.isBusy)
         syncFAB()
-        updateNavTitle(streaming: state.status == .running)
+        noteUnread(orderedIDs.filter { previous[$0] == nil }.count)
+        updateNavStatus(for: state)
         if wasRunning && state.status != .running { Theme.Haptics.received() }
         wasRunning = state.status == .running
+        if let permission = pendingPermission, permission.id != lastHapticPermissionID {
+            lastHapticPermissionID = permission.id
+            Theme.Haptics.warning()
+        }
         if let permission = pendingPermission, permission.id != lastNotifiedPermissionID {
             lastNotifiedPermissionID = permission.id
             NotificationManager.notify(
                 title: viewModel.title,
                 body: permission.toolName.map { "Approval needed: \($0)" } ?? "Approval needed.",
-                identifier: "perm:\(permission.id)")
+                identifier: "perm:\(permission.id)", sessionID: viewModel.session.id)
+        }
+        if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
+            lastNotifiedQuestionID = question.id
+            Theme.Haptics.warning()
+            NotificationManager.notify(
+                title: viewModel.title,
+                body: question.questions.first?.question ?? "The agent has a question.",
+                identifier: "question:\(question.id)", sessionID: viewModel.session.id)
         }
         updateBanner(for: state)
         updateOverflowBadge(hasPermission: pendingPermission != nil)
@@ -365,12 +523,23 @@ final class ChatViewController: UIViewController {
         }
         switch state.connection {
         case .reconnecting:
-            if Date() > suppressBannerUntil { banner.show("Reconnecting…", color: Theme.Color.warning) }
+            if Date() > suppressBannerUntil {
+                banner.show("Reconnecting…", color: Theme.Color.warning, symbol: "wifi.exclamationmark")
+            }
         case .offline:
-            if Date() > suppressBannerUntil { banner.show("Offline", color: Theme.Color.danger) }
+            if Date() > suppressBannerUntil {
+                banner.show(
+                    "Offline — tap to retry", color: Theme.Color.danger, symbol: "wifi.slash")
+            }
         case .connecting, .live:
             if let failure = state.lastFailure, state.status != .running, Date() > suppressBannerUntil {
-                banner.show(failure.message, color: Theme.Color.danger)
+                banner.show(
+                    failure.message, color: Theme.Color.danger,
+                    symbol: "exclamationmark.triangle.fill")
+                if lastHapticFailure != failure.message {
+                    lastHapticFailure = failure.message
+                    Theme.Haptics.error()
+                }
             } else {
                 banner.hide()
             }
@@ -381,27 +550,103 @@ final class ChatViewController: UIViewController {
 
     @objc private func fabTapped() {
         userScrolledUp = false
+        clearUnread()
         scrollToBottom(animated: true)
         Theme.Haptics.tap()
     }
 
     private func syncFAB() {
         let show = !isNearBottom() && orderedIDs.count > 1
+        if !show { clearUnread() }
         guard fab.isHidden == show else { return }
-        fab.isHidden = !show
+        if show {
+            fab.isHidden = false
+            fab.alpha = 0
+            fab.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
+            UIView.animate(
+                withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5
+            ) {
+                self.fab.alpha = 1
+                self.fab.transform = .identity
+            }
+        } else {
+            UIView.animate(
+                withDuration: 0.15,
+                animations: {
+                    self.fab.alpha = 0
+                    self.fab.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
+                },
+                completion: { _ in
+                    self.fab.isHidden = true
+                    self.fab.transform = .identity
+                    self.fab.alpha = 1
+                })
+        }
     }
 
-    private func updateNavTitle(streaming: Bool) {
-        if streaming {
-            if navigationItem.titleView == nil {
-                navTitleContainer.frame = CGRect(x: 0, y: 0, width: 100, height: 30)
-                navigationItem.titleView = navTitleContainer
-            }
-            navSpinner.startAnimating()
-        } else {
+    private func noteUnread(_ count: Int) {
+        guard count > 0, userScrolledUp, !fab.isHidden else { return }
+        unreadCount += count
+        fab.configuration = fabConfiguration()
+    }
+
+    private func clearUnread() {
+        guard unreadCount != 0 else { return }
+        unreadCount = 0
+        fab.configuration = fabConfiguration()
+    }
+
+    private var turnStartedAt: Date?
+    private var elapsedTicker: Task<Void, Never>?
+    private var lastStatusPhaseText = ""
+
+    private func updateNavStatus(for state: ConversationState) {
+        guard viewModel.isBusy else {
             navSpinner.stopAnimating()
             navigationItem.titleView = nil
+            turnStartedAt = nil
+            elapsedTicker?.cancel()
+            elapsedTicker = nil
+            lastStatusPhaseText = ""
+            return
         }
+        if turnStartedAt == nil {
+            turnStartedAt = Date()
+            elapsedTicker = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    self?.renderNavStatus()
+                }
+            }
+        }
+        let live = ChatViewModel.liveStatus(for: state)
+        if navigationItem.titleView == nil {
+            navTitleContainer.frame = CGRect(x: 0, y: 0, width: 190, height: 30)
+            navigationItem.titleView = navTitleContainer
+        }
+        navSpinner.startAnimating()
+        let color = live.phase == .approval ? Theme.Color.warning : Theme.Color.secondaryLabel
+        if lastStatusPhaseText != live.text {
+            lastStatusPhaseText = live.text
+            UIView.transition(
+                with: navStatusLabel, duration: 0.2, options: .transitionCrossDissolve
+            ) {
+                self.navStatusLabel.textColor = color
+                self.renderNavStatus()
+            }
+        } else {
+            navStatusLabel.textColor = color
+            renderNavStatus()
+        }
+    }
+
+    private func renderNavStatus() {
+        guard let started = turnStartedAt, !lastStatusPhaseText.isEmpty else { return }
+        let seconds = Int(Date().timeIntervalSince(started))
+        let elapsed = seconds >= 60
+            ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)s"
+        navStatusLabel.text = seconds >= 3
+            ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText
     }
 
     private static func collectToolStatuses(from steps: [ActivityStep]) -> [String: ToolStatus] {
@@ -410,6 +655,21 @@ final class ChatViewController: UIViewController {
             if case .tool(let call) = step { map[call.id] = call.status }
         }
         return map
+    }
+
+    /// The transcript stays invisible through the initial empty → cached →
+    /// refreshed snapshot churn, then fades in once, already scrolled to the
+    /// bottom. The fallback timer reveals genuinely empty chats.
+    private func revealTranscript() {
+        guard !hasRevealed else { return }
+        hasRevealed = true
+        revealFallback?.cancel()
+        collectionView.layoutIfNeeded()
+        scrollToBottom(animated: false)
+        emptyState.isHidden = !orderedIDs.isEmpty
+        UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
+            self.collectionView.alpha = 1
+        }
     }
 
     private func isActivity(_ row: ChatRow) -> Bool {
@@ -538,6 +798,32 @@ final class ChatViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
             Theme.Haptics.warning()
             self?.viewModel.clearConversation()
+        })
+        present(alert, animated: true)
+    }
+
+    private func promptCustomAnswer(for request: QuestionRequest, questionIndex: Int) {
+        let item = request.questions[questionIndex]
+        let alert = UIAlertController(title: item.header.isEmpty ? "Your answer" : item.header,
+            message: item.question, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Type your answer"
+            field.text = self.questionSelection.custom[questionIndex]
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Use answer", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let text = alert.textFields?.first?.text?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            questionSelection.custom[questionIndex] = text.isEmpty ? nil : text
+            let fastPath = request.questions.count == 1 && !item.multiple
+            if fastPath, let answers = questionSelection.answers(for: request) {
+                viewModel.answerQuestion(request, answers: answers)
+            } else if let id = pendingQuestion?.id {
+                var snapshot = dataSource.snapshot()
+                snapshot.reconfigureItems(["question:\(id)"])
+                dataSource.apply(snapshot, animatingDifferences: false)
+            }
         })
         present(alert, animated: true)
     }
@@ -1005,6 +1291,9 @@ extension ChatViewController: ComposerViewDelegate {
         pendingAttachments = []
         composer.showsAttach = viewModel.supportsAttachments
         updateAttachmentStrip()
+        userScrolledUp = false
+        animateNextRender = true
+        UserDefaults.standard.removeObject(forKey: draftKey)
         viewModel.send(text, attachments: attachments)
     }
 
@@ -1041,7 +1330,9 @@ extension ChatViewController: ComposerViewDelegate {
     func composerDidPasteLargeText(_ text: String) {
         guard let data = text.data(using: .utf8) else { return }
         pendingAttachments.append(
-            PromptAttachment(mime: "text/plain", filename: "pasted.txt", data: data))
+            PromptAttachment(
+                mime: "text/plain", filename: "pasted-\(UUID().uuidString.prefix(8)).txt",
+                data: data))
         composer.showsAttach = true
         updateAttachmentStrip()
         Theme.Haptics.success()
@@ -1077,12 +1368,25 @@ extension ChatViewController: PHPickerViewControllerDelegate {
         else { return }
         provider.loadDataRepresentation(forTypeIdentifier: "public.image") { [weak self] data, _ in
             guard let data else { return }
+            let (mime, ext) = Self.imageType(of: data)
             Task { @MainActor in
                 self?.pendingAttachments.append(
-                    PromptAttachment(mime: "image/jpeg", filename: "image.jpg", data: data))
+                    PromptAttachment(
+                        mime: mime, filename: "image-\(UUID().uuidString.prefix(8)).\(ext)",
+                        data: data))
                 self?.presentAttachmentToast()
             }
         }
+    }
+
+    /// Sniffs the container format from magic bytes so the declared mime
+    /// matches the actual data (PHPicker returns HEIC/PNG originals, not JPEG).
+    private nonisolated static func imageType(of data: Data) -> (mime: String, ext: String) {
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return ("image/jpeg", "jpg") }
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return ("image/png", "png") }
+        if data.count >= 12, data[4...7].elementsEqual("ftyp".utf8) { return ("image/heic", "heic") }
+        if data.starts(with: [0x47, 0x49, 0x46]) { return ("image/gif", "gif") }
+        return ("image/jpeg", "jpg")
     }
 
     private func presentAttachmentToast() {
@@ -1093,16 +1397,17 @@ extension ChatViewController: PHPickerViewControllerDelegate {
 
     private func updateAttachmentStrip() {
         attachmentStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for attachment in pendingAttachments {
+        for (index, attachment) in pendingAttachments.enumerated() {
             let image = attachment.mime.hasPrefix("image/") && attachment.data != nil
                 ? UIImage(data: attachment.data!) : nil
             let chip = AttachmentChip(
                 label: attachment.filename ?? attachment.mime, image: image
             ) { [weak self] in
-                self?.pendingAttachments.removeAll { $0.filename == attachment.filename }
-                self?.updateAttachmentStrip()
-                if self?.pendingAttachments.isEmpty == true {
-                    self?.composer.showsAttach = self?.viewModel.supportsAttachments ?? true
+                guard let self, self.pendingAttachments.indices.contains(index) else { return }
+                self.pendingAttachments.remove(at: index)
+                self.updateAttachmentStrip()
+                if self.pendingAttachments.isEmpty {
+                    self.composer.showsAttach = self.viewModel.supportsAttachments
                 }
             }
             attachmentStrip.addArrangedSubview(chip)
@@ -1118,9 +1423,30 @@ extension ChatViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard let indexPath = indexPaths.first,
-            let id = dataSource.itemIdentifier(for: indexPath), !id.hasPrefix("queued:"),
-            let text = messageText(for: id), !text.isEmpty
+            let id = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
+        if id.hasPrefix("queued:"),
+            let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
+        {
+            return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
+                [weak self] _ in
+                UIMenu(children: [
+                    UIAction(title: "Edit", image: UIImage(systemName: "pencil")) { _ in
+                        guard let self, let removed = self.viewModel.removeQueued(id: message.id)
+                        else { return }
+                        self.composer.setDraft(removed.text)
+                    },
+                    UIAction(
+                        title: "Remove from queue", image: UIImage(systemName: "trash"),
+                        attributes: .destructive
+                    ) { _ in
+                        Theme.Haptics.warning()
+                        _ = self?.viewModel.removeQueued(id: message.id)
+                    },
+                ])
+            }
+        }
+        guard let text = messageText(for: id), !text.isEmpty else { return nil }
 
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in

@@ -108,35 +108,153 @@ final class EmptyStateView: UIView {
 }
 
 final class BannerView: UIView {
+    private let glass = Theme.Glass.view()
+    private let icon = UIImageView()
     private let label = UILabel()
+    private var visible = false
 
     init() {
         super.init(frame: .zero)
         isHidden = true
+
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.layer.cornerRadius = Theme.Radius.card
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        glass.isUserInteractionEnabled = false
+        addSubview(glass)
+
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(icon)
+
         label.font = .preferredFont(forTextStyle: .footnote)
         label.adjustsFontForContentSizeCategory = true
-        label.textColor = .white
-        label.textAlignment = .center
-        label.numberOfLines = 0
+        label.textAlignment = .left
+        label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
+
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.s),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.s),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+            glass.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.xs),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.xs),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+
+            icon.leadingAnchor.constraint(equalTo: glass.leadingAnchor, constant: Theme.Spacing.m),
+            icon.centerYAnchor.constraint(equalTo: glass.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 20),
+            icon.heightAnchor.constraint(equalToConstant: 20),
+
+            label.topAnchor.constraint(equalTo: glass.topAnchor, constant: Theme.Spacing.s),
+            label.bottomAnchor.constraint(equalTo: glass.bottomAnchor, constant: -Theme.Spacing.s),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: Theme.Spacing.s),
+            label.trailingAnchor.constraint(equalTo: glass.trailingAnchor, constant: -Theme.Spacing.m),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ text: String, color: UIColor) {
+    func show(_ text: String, color: UIColor, symbol: String = "wifi.exclamationmark") {
         label.text = text
-        backgroundColor = color
+        label.textColor = color
+        icon.image = UIImage(
+            systemName: symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        icon.tintColor = color
+        guard !visible else { return }
+        visible = true
         isHidden = false
+        alpha = 0
+        transform = CGAffineTransform(translationX: 0, y: -12)
+        UIView.animate(
+            withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.4
+        ) {
+            self.alpha = 1
+            self.transform = .identity
+        }
     }
 
-    func hide() { isHidden = true }
+    func hide() {
+        guard visible else { return }
+        visible = false
+        UIView.animate(
+            withDuration: 0.2,
+            animations: {
+                self.alpha = 0
+                self.transform = CGAffineTransform(translationX: 0, y: -12)
+            },
+            completion: { _ in
+                guard !self.visible else { return }
+                self.isHidden = true
+                self.transform = .identity
+            })
+    }
+}
+
+/// Empty-chat hero with tappable glass prompt-starter chips.
+final class ChatEmptyStateView: UIView {
+    var onSuggestion: ((String) -> Void)?
+
+    private static let suggestions: [(symbol: String, title: String, prompt: String)] = [
+        ("checkmark.diamond", "Fix the failing tests", "Run the test suite, find the failures, and fix them."),
+        ("sparkle.magnifyingglass", "Review recent changes", "Review the latest commits and point out anything risky."),
+        ("ladybug", "Hunt a bug", "Look through the codebase for likely bugs and fix the most severe one."),
+        ("text.badge.plus", "Add test coverage", "Find the least-tested important module and write tests for it."),
+    ]
+
+    init() {
+        super.init(frame: .zero)
+        let image = UIImageView(
+            image: UIImage(
+                systemName: "sparkles",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 40, weight: .regular)))
+        image.tintColor = Theme.Color.accent
+        image.contentMode = .scaleAspectFit
+
+        let titleLabel = UILabel()
+        titleLabel.text = "What should your agent do?"
+        titleLabel.font = Theme.Font.headline()
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [image, titleLabel])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = Theme.Spacing.m
+        stack.setCustomSpacing(Theme.Spacing.xl, after: titleLabel)
+
+        for suggestion in Self.suggestions {
+            var config = Theme.Glass.buttonConfiguration()
+            config.image = UIImage(
+                systemName: suggestion.symbol,
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+            config.title = suggestion.title
+            config.imagePadding = Theme.Spacing.s
+            config.baseForegroundColor = Theme.Color.label
+            config.contentInsets = NSDirectionalEdgeInsets(
+                top: 10, leading: 14, bottom: 10, trailing: 14)
+            let button = UIButton(configuration: config)
+            button.addAction(
+                UIAction { [weak self] _ in
+                    Theme.Haptics.selection()
+                    self?.onSuggestion?(suggestion.prompt)
+                }, for: .touchUpInside)
+            stack.addArrangedSubview(button)
+            stack.setCustomSpacing(Theme.Spacing.s, after: button)
+        }
+
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -Theme.Spacing.xl),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: Theme.Spacing.xl),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Theme.Spacing.xl),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
 final class ToastView: UIView {

@@ -18,7 +18,9 @@ final class ChatViewModel {
     private(set) var selectedModel: ModelSelection?
     private(set) var currentEffort: String?
 
+    var isBound = true
     var onState: ((ConversationState) -> Void)?
+    var onSendFailed: ((String) -> Void)?
     var onModelChange: (() -> Void)?
     var onError: ((String) -> Void)?
 
@@ -44,7 +46,7 @@ final class ChatViewModel {
     var canAbort: Bool { backend.capabilities.supportsAbort }
     var supportsUsage: Bool { backend.capabilities.supportsSessionUsage }
     var supportsFileBrowsing: Bool { backend.capabilities.supportsFileBrowsing }
-    var isBusy: Bool { state.status == .running }
+    var isBusy: Bool { state.status == .running || optimisticThinking }
 
     func fork() async throws -> AgentSession {
         try await backend.forkSession(session.id)
@@ -53,46 +55,99 @@ final class ChatViewModel {
     private var isClaude: Bool { backend.agentType == .claudeCode }
 
     func start() {
-        var activityStarted = false
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {
+                self.reconcileOptimisticState(with: state)
                 self.state = state
                 self.onState?(state)
                 let activity: SessionActivity.Status =
-                    state.pendingPermissions.first != nil
-                    ? .awaitingApproval : (state.status == .running ? .running : .idle)
+                    state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
+                    ? .awaitingApproval : (self.isBusy ? .running : .idle)
                 SessionActivity.shared.update(
                     sessionID: self.session.id, title: self.session.title, status: activity,
                     keepAlive: self)
-                if state.status == .running && !activityStarted {
-                    AppActivityController.shared.start(
-                        sessionTitle: self.session.title, serverName: self.serverName)
-                    activityStarted = true
-                } else if (state.status == .idle || state.status == .stable) && activityStarted {
-                    AppActivityController.shared.end()
-                    activityStarted = false
-                }
-                if state.status == .running {
-                    let lastTool = state.messages.last?.parts.last(where: { if case .tool = $0.kind { return true } else { return false } }).flatMap { p in if case .tool(let t) = p.kind { return t.name ?? t.title } else { return nil } }
-                    let summary = state.messages.last?.text.prefix(80).trimmingCharacters(in: .whitespacesAndNewlines)
-                    let st = state.pendingPermissions.first != nil ? "Awaiting approval" : "Thinking\u{2026}"
-                    AppActivityController.shared.update(status: st, lastTool: lastTool, textSummary: summary.map { String($0) })
-                }
+                self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
+                if activity == .idle && !self.isBound && self.queued.isEmpty {
+                    self.stop()
+                }
             }
         }
         Task { await loadDefaultModelIfNeeded() }
     }
 
-    private(set) var queued: [String] = []
-    private var lastSentText: String?
+    /// A locally-echoed prompt, shown instantly while the server round-trip
+    /// is in flight; dropped once the server transcript grows a new user
+    /// message (count-based, so re-sending "ok" can't match an old message,
+    /// and server-side prompt rewrites can't strand a duplicate).
+    struct LocalEcho {
+        let id = UUID()
+        let text: String
+        let baselineUserCount: Int
+    }
+
+    private(set) var localEchoes: [LocalEcho] = []
+    private(set) var optimisticThinking = false
+    private var activityLive = false
+    private var turnSawRunning = false
+
+    private func reconcileOptimisticState(with state: ConversationState) {
+        if state.status == .running { optimisticThinking = false }
+        if !localEchoes.isEmpty {
+            let userCount = state.messages.count { $0.role == .user }
+            localEchoes.removeAll { userCount > $0.baselineUserCount }
+        }
+        if optimisticThinking, localEchoes.isEmpty,
+            let last = state.messages.last, last.role == .assistant, !last.text.isEmpty
+        {
+            optimisticThinking = false
+        }
+    }
+
+    private func syncLiveActivity(with state: ConversationState) {
+        if state.status == .running {
+            turnSawRunning = true
+            if !activityLive {
+                AppActivityController.shared.start(
+                    sessionID: session.id, sessionTitle: session.title, serverName: serverName)
+                activityLive = true
+            }
+            let live = Self.liveStatus(for: state)
+            AppActivityController.shared.update(
+                sessionID: session.id, phase: live.phase, statusText: live.text,
+                lastTool: live.tool, toolCount: live.toolCount)
+        } else if (state.status == .idle || state.status == .stable), activityLive, turnSawRunning {
+            AppActivityController.shared.end(
+                sessionID: session.id, outcome: state.lastFailure == nil ? .done : .error)
+            activityLive = false
+            turnSawRunning = false
+        }
+    }
+
+    struct QueuedMessage {
+        let id = UUID()
+        let text: String
+        let model: ModelSelection?
+        let effort: String?
+        let attachments: [PromptAttachment]
+    }
+
+    private(set) var queued: [QueuedMessage] = []
+    private var lastSent: QueuedMessage?
+
+    func removeQueued(id: UUID) -> QueuedMessage? {
+        guard let index = queued.firstIndex(where: { $0.id == id }) else { return nil }
+        let removed = queued.remove(at: index)
+        onState?(state)
+        return removed
+    }
 
     private func flushQueue() {
-        guard state.status != .running, !queued.isEmpty else { return }
+        guard !isBusy, !queued.isEmpty else { return }
         let next = queued.removeFirst()
         onState?(state)
-        deliver(next, model: nil, effort: nil, attachments: [])
+        deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
 
     func stop() {
@@ -100,12 +155,25 @@ final class ChatViewModel {
         streamTask = nil
     }
 
+    /// Tears down and re-establishes the event stream, then re-fetches the
+    /// transcript. Called on foregrounding: the socket may be half-open after
+    /// suspension (reads hang, no error), so waiting for it to fail isn't
+    /// enough — the reconnect has to be forced.
+    private var lastResync: Date = .distantPast
+
+    func resync() {
+        guard streamTask != nil, Date().timeIntervalSince(lastResync) > 1 else { return }
+        lastResync = Date()
+        stop()
+        start()
+    }
+
     func send(
         _ text: String, model: ModelSelection? = nil, effort: String? = nil,
         attachments: [PromptAttachment] = []
     ) {
         if isBusy {
-            queued.append(text)
+            queued.append(QueuedMessage(text: text, model: model, effort: effort, attachments: attachments))
             onState?(state)
             return
         }
@@ -114,29 +182,100 @@ final class ChatViewModel {
 
     /// Re-sends the most recent user prompt (regenerate).
     func regenerate() {
-        guard let last = lastSentText, !isBusy else { return }
-        deliver(last, model: nil, effort: nil, attachments: [])
+        guard let last = lastSent, !isBusy else { return }
+        deliver(last.text, model: last.model, effort: last.effort, attachments: last.attachments)
     }
 
-    var canRegenerate: Bool { lastSentText != nil && !isBusy }
+    var canRegenerate: Bool { lastSent != nil && !isBusy }
 
+    private var sendTask: Task<Void, Never>?
+
+    private struct SendTimeout: LocalizedError {
+        var errorDescription: String? { "The server didn't respond — check your connection." }
+    }
+
+    /// Sends optimistically: the prompt echoes into the transcript, the
+    /// thinking state engages, and the Live Activity starts immediately —
+    /// ActivityKit only allows starting one while foregrounded, so waiting
+    /// for the server's `.running` event breaks the send-and-background flow.
+    /// The delivery itself is bounded to 15s (`prompt_async` returns
+    /// immediately when reachable), so a dead tunnel fails fast instead of
+    /// hanging in the thinking state for minutes.
     private func deliver(
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment]
     ) {
         AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
-        lastSentText = text
-        Task {
+        lastSent = QueuedMessage(text: text, model: model, effort: effort, attachments: attachments)
+        let echo = LocalEcho(
+            text: text, baselineUserCount: state.messages.count { $0.role == .user })
+        localEchoes.append(echo)
+        optimisticThinking = true
+        onState?(state)
+        if !activityLive {
+            activityLive = AppActivityController.shared.start(
+                sessionID: session.id, sessionTitle: session.title, serverName: serverName)
+            turnSawRunning = false
+        }
+        let resolvedModel = model ?? selectedModel
+        let resolvedEffort = effort ?? currentEffort
+        sendTask = Task {
             do {
-                try await conversation.send(
-                    text, model: model ?? selectedModel, reasoningEffort: effort ?? currentEffort,
-                    attachments: attachments)
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { [conversation] in
+                        try await conversation.send(
+                            text, model: resolvedModel, reasoningEffort: resolvedEffort,
+                            attachments: attachments)
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(15))
+                        throw SendTimeout()
+                    }
+                    try await group.next()
+                    group.cancelAll()
+                }
+                try? await Task.sleep(for: .seconds(30))
+                if optimisticThinking, !turnSawRunning {
+                    optimisticThinking = false
+                    localEchoes.removeAll { $0.id == echo.id }
+                    if activityLive {
+                        AppActivityController.shared.end(
+                            sessionID: session.id, outcome: .error, statusText: "No response")
+                        activityLive = false
+                    }
+                    onState?(state)
+                    onSendFailed?(text)
+                    flushQueue()
+                }
             } catch {
-                onError?(Self.readable(error))
+                let cancelled = error is CancellationError
+                localEchoes.removeAll { $0.id == echo.id }
+                optimisticThinking = false
+                if activityLive, !turnSawRunning {
+                    AppActivityController.shared.end(
+                        sessionID: session.id, outcome: cancelled ? .done : .error,
+                        statusText: cancelled ? "Cancelled" : "Couldn't send")
+                    activityLive = false
+                }
+                onState?(state)
+                if !cancelled {
+                    AppLogger.chat.error("send failed: \(error)")
+                    onSendFailed?(text)
+                    onError?(Self.readable(error))
+                }
+                flushQueue()
             }
         }
     }
 
+    /// Stop always does something: a send still in flight is cancelled
+    /// locally, AND the server is asked to abort in case the prompt already
+    /// landed; a running turn is aborted server-side.
     func abort() {
+        if optimisticThinking, !turnSawRunning {
+            sendTask?.cancel()
+            if canAbort { Task { try? await conversation.cancelCurrentTurn() } }
+            return
+        }
         guard canAbort else { return }
         Task { try? await conversation.cancelCurrentTurn() }
     }
@@ -150,6 +289,22 @@ final class ChatViewModel {
         Task { try? await conversation.respond(to: permission, decision: decision) }
     }
 
+    func answerQuestion(_ question: QuestionRequest, answers: [[String]]) {
+        AppLogger.chat.info("question \(question.id) answered")
+        Task {
+            do {
+                try await conversation.answer(question, answers: answers)
+            } catch {
+                onError?(Self.readable(error))
+            }
+        }
+    }
+
+    func rejectQuestion(_ question: QuestionRequest) {
+        AppLogger.chat.info("question \(question.id) skipped")
+        Task { try? await conversation.reject(question) }
+    }
+
     func availableModels() async -> [ModelInfo] {
         (try? await backend.availableModels()) ?? []
     }
@@ -160,6 +315,7 @@ final class ChatViewModel {
 
     func selectModel(_ model: ModelSelection) {
         selectedModel = model
+        RecentModelsStore.record(model)
         ModelPreferenceStore.setModel(model, forKey: persistKey)
         ModelPreferenceStore.setGlobalModel(model, forContextID: contextID)
         onModelChange?()
@@ -191,6 +347,33 @@ final class ChatViewModel {
             currentEffort = EffortPreferenceStore.effort(forKey: persistKey)
         }
         onModelChange?()
+    }
+
+    static func liveStatus(for state: ConversationState) -> (
+        phase: AppActivityController.Phase, text: String, tool: String?, toolCount: Int
+    ) {
+        let last = state.messages.last
+        let tools = (last?.parts ?? []).compactMap { part -> ToolCall? in
+            if case .tool(let call) = part.kind { return call }
+            return nil
+        }
+        let runningTool = tools.last { $0.status == .running }
+        let lastTool = (runningTool ?? tools.last).map { $0.name ?? $0.title ?? "tool" }
+        if state.pendingQuestions.first != nil {
+            return (.approval, "Waiting for your answer", lastTool, tools.count)
+        }
+        if state.pendingPermissions.first != nil {
+            return (.approval, "Awaiting your approval", lastTool, tools.count)
+        }
+        if let runningTool {
+            return (.tool, "Running \(runningTool.name ?? runningTool.title ?? "a tool")", lastTool, tools.count)
+        }
+        if let last, last.role == .assistant, last.completedAt == nil,
+            case .text(let text)? = last.parts.last?.kind, !text.isEmpty
+        {
+            return (.responding, "Writing\u{2026}", lastTool, tools.count)
+        }
+        return (.thinking, "Thinking\u{2026}", lastTool, tools.count)
     }
 
     static func readable(_ error: Error) -> String {
