@@ -60,6 +60,12 @@ final class ChatViewModel {
         try await backend.forkSession(session.id)
     }
 
+    var supportsSubagents: Bool { backend.capabilities.supportsSubagents }
+
+    func subagents() async -> [SubagentSummary] {
+        (try? await backend.subagents(for: session.id)) ?? []
+    }
+
     private var isClaude: Bool { backend.agentType == .claudeCode }
 
     func start() {

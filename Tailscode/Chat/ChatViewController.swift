@@ -43,9 +43,11 @@ final class ChatViewController: UIViewController {
     private var userScrolledUp = false
 
     var sessionID: String { viewModel.session.id }
+    private let isReadOnly: Bool
 
-    init(viewModel: ChatViewModel) {
+    init(viewModel: ChatViewModel, readOnly: Bool = false) {
         self.viewModel = viewModel
+        self.isReadOnly = readOnly
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -53,7 +55,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = viewModel.backend.agentType.displayName
+        title = isReadOnly ? viewModel.title : viewModel.backend.agentType.displayName
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.backButtonDisplayMode = .minimal
         view.backgroundColor = Theme.Color.background
@@ -75,7 +77,17 @@ final class ChatViewController: UIViewController {
         }
         bind()
         viewModel.start()
-        if let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] != nil, !isReadOnly {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard let self else { return }
+                    let agents = await self.viewModel.subagents()
+                    if !agents.isEmpty { self.presentSubagents(agents) }
+                }
+            }
+        #endif
+        if !isReadOnly, let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
             composer.setDraft(draft, focus: false)
         }
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
@@ -177,8 +189,11 @@ final class ChatViewController: UIViewController {
 
             composer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            isReadOnly
+                ? composer.topAnchor.constraint(equalTo: view.bottomAnchor)
+                : composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
+        composer.isHidden = isReadOnly
 
         commandPalette.isHidden = true
         view.addSubview(commandPalette)
@@ -763,7 +778,24 @@ final class ChatViewController: UIViewController {
                 }
             ])
         }
-        var children: [UIMenuElement] = [jump, regenerate, usage]
+        let subagents = UIDeferredMenuElement.uncached { [weak self] completion in
+            Task { @MainActor in
+                guard let self, self.viewModel.supportsSubagents, !self.isReadOnly else {
+                    return completion([])
+                }
+                let agents = await self.viewModel.subagents()
+                guard !agents.isEmpty else { return completion([]) }
+                let live = agents.count(where: \.isActive)
+                let title = live > 0 ? "Agents (\(agents.count) · \(live) live)" : "Agents (\(agents.count))"
+                completion([
+                    UIAction(
+                        title: title,
+                        image: UIImage(systemName: "point.3.connected.trianglepath.dotted")
+                    ) { [weak self] _ in self?.presentSubagents(agents) }
+                ])
+            }
+        }
+        var children: [UIMenuElement] = [jump, subagents, regenerate, usage]
         if viewModel.canRename {
             children.append(
                 UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
@@ -794,6 +826,16 @@ final class ChatViewController: UIViewController {
         collectionView.scrollToItem(
             at: IndexPath(item: index, section: 0), at: .top, animated: true)
         Theme.Haptics.selection()
+    }
+
+    private func presentSubagents(_ agents: [SubagentSummary]) {
+        let list = SubagentListViewController(
+            backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents)
+        let nav = UINavigationController(rootViewController: list)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        present(nav, animated: true)
     }
 
     private func promptRename() {
