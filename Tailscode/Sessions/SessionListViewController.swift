@@ -144,19 +144,18 @@ final class SessionListViewController: UIViewController {
             content.textToSecondaryTextVerticalPadding = 2
             content.prefersSideBySideTextAndSecondaryText = false
 
-            let serverColor = self.viewModel.profileColor(for: entry.profileID)
-                ?? Theme.Color.accent
-            content.image = Self.serverIcon(for: entry.backendType)
-            content.imageProperties.tintColor = serverColor
-            content.imageProperties.maximumSize = CGSize(width: 28, height: 28)
+            let isLive = entry.session.isActive == true
+            content.image = UIImage(systemName: "circle.fill")
+            content.imageProperties.tintColor =
+                isLive ? Theme.Color.success : Theme.Color.separator
+            content.imageProperties.maximumSize = CGSize(width: 10, height: 10)
+            content.imageProperties.reservedLayoutSize = CGSize(width: 10, height: 10)
             content.imageToTextPadding = Theme.Spacing.m
             cell.contentConfiguration = content
 
             var accessories: [UICellAccessory] = []
             if let pill = Self.statusPill(for: entry.session.id) {
                 accessories.append(pill)
-            } else if entry.session.isActive == true {
-                accessories.append(Self.livePill())
             }
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
@@ -172,6 +171,9 @@ final class SessionListViewController: UIViewController {
             var content = UIListContentConfiguration.prominentInsetGroupedHeader()
             let isCollapsed = self.collapsedSections.contains(section.profileID)
             content.text = section.headerTitle
+            content.image = Self.serverIcon(for: section.backendType)
+            content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
+            content.imageToTextPadding = Theme.Spacing.s
             if self.viewModel.unreachable.contains(section.profileName) {
                 content.secondaryText = "Unreachable — pull to retry"
                 content.secondaryTextProperties.color = Theme.Color.danger
@@ -363,58 +365,6 @@ final class SessionListViewController: UIViewController {
     private static func serverIcon(for backend: AgentType) -> UIImage? {
         UIImage(systemName: backend.symbolName)?
             .withTintColor(backend.brandColor, renderingMode: .alwaysOriginal)
-    }
-
-    /// Pulsing green pill marking a session whose transcript is being written
-    /// right now — an agent is working in it on the server machine. The pill
-    /// sits in a clear wrapper that guarantees a gap from the cell text, and
-    /// its background is opaque so truncated text can never bleed through.
-    private static func livePill() -> UICellAccessory {
-        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 6, height: 6))
-        dot.backgroundColor = Theme.Color.success
-        dot.layer.cornerRadius = 3
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.fromValue = 1.0
-        pulse.toValue = 0.25
-        pulse.duration = 0.9
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        dot.layer.add(pulse, forKey: "pulse")
-
-        let label = UILabel()
-        label.text = "LIVE"
-        label.font = .systemFont(ofSize: 10, weight: .bold)
-        label.textColor = Theme.Color.success
-        label.sizeToFit()
-
-        let padH: CGFloat = 7
-        let padV: CGFloat = 3
-        let gap: CGFloat = 4
-        let margin: CGFloat = 8
-        let pill = UIView(
-            frame: CGRect(
-                x: margin, y: 0,
-                width: padH + dot.bounds.width + gap + label.bounds.width + padH,
-                height: label.bounds.height + padV * 2))
-        dot.frame.origin = CGPoint(x: padH, y: (pill.bounds.height - dot.bounds.height) / 2)
-        label.frame.origin = CGPoint(x: padH + dot.bounds.width + gap, y: padV)
-        pill.addSubview(dot)
-        pill.addSubview(label)
-        pill.backgroundColor = UIColor { traits in
-            Theme.Color.success.withAlphaComponent(0.15)
-                .blended(over: Theme.Color.secondaryBackground, traits: traits)
-        }
-        pill.layer.cornerRadius = pill.bounds.height / 2
-        pill.layer.cornerCurve = .continuous
-
-        let wrapper = UIView(
-            frame: CGRect(
-                x: 0, y: 0, width: pill.bounds.width + margin + 6, height: pill.bounds.height))
-        wrapper.addSubview(pill)
-        return .customView(
-            configuration: .init(
-                customView: wrapper, placement: .trailing(displayed: .always),
-                maintainsFixedSize: true))
     }
 
     private static func statusPill(for sessionID: String) -> UICellAccessory? {
