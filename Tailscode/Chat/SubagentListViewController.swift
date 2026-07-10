@@ -13,6 +13,7 @@ final class SubagentListViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, SubagentSummary>!
     private var refreshTask: Task<Void, Never>?
+    var onDismiss: (() -> Void)?
 
     init(backend: any CodingAgentBackend, parentSessionID: String, agents: [SubagentSummary]) {
         self.backend = backend
@@ -50,6 +51,13 @@ final class SubagentListViewController: UIViewController {
     }
 
     deinit { refreshTask?.cancel() }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || navigationController?.isBeingDismissed == true {
+            onDismiss?()
+        }
+    }
 
     private func reload() async {
         guard let fresh = try? await backend.subagents(for: parentSessionID) else { return }

@@ -887,6 +887,9 @@ final class ChatViewController: UIViewController {
     private func presentSubagents(_ agents: [SubagentSummary]) {
         let list = SubagentListViewController(
             backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents)
+        list.onDismiss = { [weak self] in
+            Task { await self?.refreshAgentsChip() }
+        }
         let nav = UINavigationController(rootViewController: list)
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
