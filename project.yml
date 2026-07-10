@@ -58,7 +58,9 @@ targets:
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: P4DQK6SRKR
-        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
 
   TailscodeWidget:
@@ -86,7 +88,9 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: P4DQK6SRKR
-        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
 
 schemes:
