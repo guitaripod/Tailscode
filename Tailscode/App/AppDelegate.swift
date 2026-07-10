@@ -7,6 +7,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         AppLogger.lifecycle.info("didFinishLaunching")
+        ProStore.shared.start()
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        AppActivityController.shared.endOrphanedActivities()
         return true
     }
 

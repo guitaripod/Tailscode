@@ -6,6 +6,7 @@ import UserNotifications
 @MainActor
 enum NotificationManager {
     static func requestAuthorizationIfNeeded() {
+        guard !CommandLine.arguments.contains("--demo") else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
             UNUserNotificationCenter.current().requestAuthorization(
@@ -13,14 +14,36 @@ enum NotificationManager {
         }
     }
 
-    static func notify(title: String, body: String, identifier: String) {
+    static func notify(title: String, body: String, identifier: String, sessionID: String? = nil) {
         guard UIApplication.shared.applicationState != .active else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
+        if let sessionID { content.userInfo = ["sessionID": sessionID] }
         let request = UNNotificationRequest(
             identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+}
+
+/// Routes notification taps to the session they concern.
+final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Sendable {
+    static let shared = NotificationRouter()
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let sessionID = response.notification.request.content.userInfo["sessionID"] as? String
+        if let sessionID, let url = URL(string: "tailscode://session/\(sessionID)") {
+            Task { @MainActor in
+                let scene = UIApplication.shared.connectedScenes
+                    .compactMap { $0.delegate as? SceneDelegate }.first
+                scene?.routeDeepLink(url)
+            }
+        }
+        completionHandler()
     }
 }

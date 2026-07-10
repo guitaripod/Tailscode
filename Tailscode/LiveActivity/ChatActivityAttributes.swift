@@ -1,11 +1,20 @@
 import ActivityKit
+import Foundation
 
 struct ChatActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable, Sendable {
-        var status: String
+        enum Phase: String, Codable, Hashable, Sendable {
+            case thinking, tool, responding, approval, done, error
+        }
+
+        var phase: Phase
+        var statusText: String
         var lastTool: String?
-        var textSummary: String?
+        var toolCount: Int
+        var startedAt: Date
     }
+
+    let sessionID: String
     let sessionTitle: String
     let serverName: String
 }

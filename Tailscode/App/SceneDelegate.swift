@@ -15,5 +15,17 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.coordinator = coordinator
         coordinator.start()
+        if let url = connectionOptions.urlContexts.first?.url {
+            coordinator.handle(url)
+        }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        guard let url = URLContexts.first?.url else { return }
+        coordinator?.handle(url)
+    }
+
+    func routeDeepLink(_ url: URL) {
+        coordinator?.handle(url)
     }
 }

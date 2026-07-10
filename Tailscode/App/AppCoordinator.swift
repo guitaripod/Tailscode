@@ -63,6 +63,17 @@ final class AppCoordinator {
         }
     #endif
 
+    /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat.
+    func handle(_ url: URL) {
+        guard url.scheme == "tailscode", url.host() == "session" else { return }
+        let sessionID = url.lastPathComponent
+        guard !sessionID.isEmpty,
+            let nav = window.rootViewController as? UINavigationController,
+            let list = nav.viewControllers.first as? SessionListViewController
+        else { return }
+        list.openSession(withID: sessionID)
+    }
+
     private func route(animated: Bool) {
         let root = ConnectionController.shared.hasConnection ? makeMain() : makeOnboarding()
         if animated {
