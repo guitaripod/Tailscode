@@ -36,6 +36,9 @@ final class ChatViewController: UIViewController {
     private let navStatusLabel = UILabel()
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
+    private let agentsChip = UIButton(type: .system)
+    private var agentsPollTask: Task<Void, Never>?
+    private var lastAgents: [SubagentSummary] = []
     private let navTitleContainer = UIView()
     private let navSpinner = UIActivityIndicatorView(style: .medium)
     private let attachmentStrip = UIStackView()
@@ -53,6 +56,10 @@ final class ChatViewController: UIViewController {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    deinit {
+        agentsPollTask?.cancel()
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = isReadOnly ? viewModel.title : viewModel.backend.agentType.displayName
@@ -61,6 +68,7 @@ final class ChatViewController: UIViewController {
         view.backgroundColor = Theme.Color.background
         configureLayout()
         configureFAB()
+        configureAgentsChip()
         configureNavTitleView()
         configureDataSource()
         composer.delegate = self
@@ -225,6 +233,54 @@ final class ChatViewController: UIViewController {
             emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
             emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
         ])
+    }
+
+    /// A quiet chip above the composer while subagents are working — a session
+    /// deep in fan-out work can leave the main transcript still for minutes,
+    /// which otherwise reads as "nothing is happening".
+    private func configureAgentsChip() {
+        guard viewModel.supportsSubagents, !isReadOnly else { return }
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.image = UIImage(
+            systemName: "circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 8))
+        config.imagePadding = 6
+        config.baseForegroundColor = Theme.Color.success
+        agentsChip.configuration = config
+        agentsChip.isHidden = true
+        agentsChip.translatesAutoresizingMaskIntoConstraints = false
+        agentsChip.addAction(
+            UIAction { [weak self] _ in
+                guard let self, !self.lastAgents.isEmpty else { return }
+                self.presentSubagents(self.lastAgents)
+            }, for: .touchUpInside)
+        view.addSubview(agentsChip)
+        NSLayoutConstraint.activate([
+            agentsChip.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            agentsChip.bottomAnchor.constraint(
+                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
+        ])
+        agentsPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshAgentsChip()
+                try? await Task.sleep(for: .seconds(8))
+            }
+        }
+    }
+
+    private func refreshAgentsChip() async {
+        let agents = await viewModel.subagents()
+        lastAgents = agents
+        let live = agents.count(where: \.isActive)
+        guard live > 0 else {
+            agentsChip.isHidden = true
+            return
+        }
+        agentsChip.configuration?.title = "\(live) agent\(live == 1 ? "" : "s") working"
+        agentsChip.isHidden = false
     }
 
     private func configureFAB() {
