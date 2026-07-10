@@ -12,6 +12,7 @@ final class AppActivityController {
         let activity: Activity<ChatActivityAttributes>
         let startedAt: Date
         var lastPhase: Phase
+        var lastToolCount = 0
     }
 
     private var entries: [String: Entry] = [:]
@@ -45,7 +46,7 @@ final class AppActivityController {
         let startedAt = Date()
         let state = ChatActivityAttributes.ContentState(
             phase: .thinking, statusText: "Thinking\u{2026}", lastTool: nil, toolCount: 0,
-            startedAt: startedAt)
+            startedAt: startedAt, endedAt: nil)
         do {
             let activity = try Activity.request(
                 attributes: attr,
@@ -65,10 +66,11 @@ final class AppActivityController {
         guard var entry = entries[sessionID] else { return }
         let becameApproval = phase == .approval && entry.lastPhase != .approval
         entry.lastPhase = phase
+        entry.lastToolCount = max(entry.lastToolCount, toolCount)
         entries[sessionID] = entry
         let newState = ChatActivityAttributes.ContentState(
             phase: phase, statusText: statusText, lastTool: lastTool, toolCount: toolCount,
-            startedAt: entry.startedAt)
+            startedAt: entry.startedAt, endedAt: nil)
         let alert: AlertConfiguration? =
             becameApproval
             ? AlertConfiguration(
@@ -87,16 +89,35 @@ final class AppActivityController {
     /// the Lock Screen right after a turn finishes still shows the outcome.
     func end(sessionID: String, outcome: Phase = .done, statusText: String? = nil) {
         guard let entry = entries.removeValue(forKey: sessionID) else { return }
+        let endedAt = Date()
         let final = ChatActivityAttributes.ContentState(
             phase: outcome,
-            statusText: statusText ?? (outcome == .error ? "Something went wrong" : "Finished"),
-            lastTool: nil, toolCount: 0, startedAt: entry.startedAt)
+            statusText: statusText
+                ?? Self.summary(
+                    outcome: outcome, toolCount: entry.lastToolCount,
+                    duration: endedAt.timeIntervalSince(entry.startedAt)),
+            lastTool: nil, toolCount: entry.lastToolCount, startedAt: entry.startedAt,
+            endedAt: endedAt)
         enqueue(sessionID, entry.activity) { act in
             await act.end(
                 ActivityContent(state: final, staleDate: .now),
-                dismissalPolicy: .after(.now.addingTimeInterval(8)))
+                dismissalPolicy: .after(.now.addingTimeInterval(30)))
         }
         AppLogger.chat.info("Live Activity ended for \(sessionID) (\(outcome.rawValue))")
+    }
+
+    private static func summary(outcome: Phase, toolCount: Int, duration: TimeInterval) -> String {
+        guard outcome != .error else { return "Something went wrong" }
+        var parts = ["Done in \(Self.compactDuration(duration))"]
+        if toolCount > 0 { parts.append("\(toolCount) tool\(toolCount == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func compactDuration(_ interval: TimeInterval) -> String {
+        let seconds = Int(interval.rounded())
+        if seconds < 60 { return "\(max(seconds, 1))s" }
+        if seconds < 3600 { return "\(seconds / 60)m \(seconds % 60)s" }
+        return "\(seconds / 3600)h \((seconds % 3600) / 60)m"
     }
 
     /// Serializes ActivityKit calls per session so a slow earlier update can

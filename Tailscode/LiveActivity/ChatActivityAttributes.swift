@@ -12,6 +12,7 @@ struct ChatActivityAttributes: ActivityAttributes {
         var lastTool: String?
         var toolCount: Int
         var startedAt: Date
+        var endedAt: Date?
     }
 
     let sessionID: String

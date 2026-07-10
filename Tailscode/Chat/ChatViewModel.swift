@@ -36,7 +36,15 @@ final class ChatViewModel {
 
     let serverName: String
 
-    var title: String { session.title }
+    private(set) lazy var displayTitle: String = session.title
+    var title: String { displayTitle }
+    var canRename: Bool { backend.capabilities.supportsRenaming }
+
+    func rename(to title: String) async throws {
+        try await backend.renameSession(session.id, title: title)
+        displayTitle = title
+    }
+
     var supportsModelSelection: Bool { backend.capabilities.supportsModelSelection }
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
     var reasoningEffortOptions: [String] { backend.reasoningEffortOptions }
@@ -65,7 +73,7 @@ final class ChatViewModel {
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
                     ? .awaitingApproval : (self.isBusy ? .running : .idle)
                 SessionActivity.shared.update(
-                    sessionID: self.session.id, title: self.session.title, status: activity,
+                    sessionID: self.session.id, title: self.displayTitle, status: activity,
                     keepAlive: self)
                 self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
@@ -105,14 +113,14 @@ final class ChatViewModel {
         }
     }
 
+    /// Drives the Live Activity for turns this device initiated (`deliver`
+    /// starts it). Merely observing a session that is live on the server must
+    /// not start one: such sessions can run for hours, leaving an activity
+    /// that never reaches its done state.
     private func syncLiveActivity(with state: ConversationState) {
         if state.status == .running {
             turnSawRunning = true
-            if !activityLive {
-                AppActivityController.shared.start(
-                    sessionID: session.id, sessionTitle: session.title, serverName: serverName)
-                activityLive = true
-            }
+            guard activityLive else { return }
             let live = Self.liveStatus(for: state)
             AppActivityController.shared.update(
                 sessionID: session.id, phase: live.phase, statusText: live.text,
@@ -213,7 +221,7 @@ final class ChatViewModel {
         onState?(state)
         if !activityLive {
             activityLive = AppActivityController.shared.start(
-                sessionID: session.id, sessionTitle: session.title, serverName: serverName)
+                sessionID: session.id, sessionTitle: displayTitle, serverName: serverName)
             turnSawRunning = false
         }
         let resolvedModel = model ?? selectedModel

@@ -764,6 +764,12 @@ final class ChatViewController: UIViewController {
             ])
         }
         var children: [UIMenuElement] = [jump, regenerate, usage]
+        if viewModel.canRename {
+            children.append(
+                UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                    [weak self] _ in self?.promptRename()
+                })
+        }
         if viewModel.canFork {
             children.append(
                 UIAction(
@@ -788,6 +794,31 @@ final class ChatViewController: UIViewController {
         collectionView.scrollToItem(
             at: IndexPath(item: index, section: 0), at: .top, animated: true)
         Theme.Haptics.selection()
+    }
+
+    private func promptRename() {
+        let alert = UIAlertController(
+            title: "Rename conversation", message: nil, preferredStyle: .alert)
+        alert.addTextField { [weak self] field in
+            field.text = self?.viewModel.title
+            field.clearButtonMode = .whileEditing
+            field.autocapitalizationType = .sentences
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+            let title = alert?.textFields?.first?.text?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let self, !title.isEmpty, title != self.viewModel.title else { return }
+            Task {
+                do {
+                    try await self.viewModel.rename(to: title)
+                    Theme.Haptics.success()
+                } catch {
+                    self.presentToast("Couldn't rename this conversation.")
+                }
+            }
+        })
+        present(alert, animated: true)
     }
 
     private func confirmClear() {

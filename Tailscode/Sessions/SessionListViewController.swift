@@ -303,6 +303,25 @@ final class SessionListViewController: UIViewController {
         applySnapshot(reloadProfileID: profileID)
     }
 
+    private func promptRename(_ entry: SessionEntry) {
+        let alert = UIAlertController(
+            title: "Rename conversation", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = entry.session.title
+            field.clearButtonMode = .whileEditing
+            field.autocapitalizationType = .sentences
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+            let title = alert?.textFields?.first?.text?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !title.isEmpty, title != entry.session.title else { return }
+            Theme.Haptics.success()
+            Task { await self?.viewModel.rename(entry, to: title) }
+        })
+        present(alert, animated: true)
+    }
+
     private func confirmDelete(_ entry: SessionEntry, done: @escaping (Bool) -> Void) {
         let alert = UIAlertController(
             title: "Delete conversation?",
@@ -545,6 +564,13 @@ extension SessionListViewController: UICollectionViewDelegate {
                             Theme.Haptics.success()
                             self.openChat(for: new)
                         }
+                    })
+            }
+            if self.viewModel.supportsRenaming(entry) {
+                actions.append(
+                    UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                        [weak self] _ in
+                        self?.promptRename(entry)
                     })
             }
             actions.append(

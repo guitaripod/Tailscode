@@ -65,6 +65,20 @@ final class SessionListViewModel {
         backend(for: entry)?.capabilities.supportsMultipleSessions ?? false
     }
 
+    func supportsRenaming(_ entry: SessionEntry) -> Bool {
+        backend(for: entry)?.capabilities.supportsRenaming ?? false
+    }
+
+    func rename(_ entry: SessionEntry, to title: String) async {
+        guard let backend = backend(for: entry) else { return }
+        do {
+            try await backend.renameSession(entry.session.id, title: title)
+            await load()
+        } catch {
+            onError?(Self.readable(error))
+        }
+    }
+
     func profileColor(for profileID: String) -> UIColor? {
         guard let host = sources.first(where: { $0.profile.id == profileID })?.profile.baseURL.host
         else { return nil }

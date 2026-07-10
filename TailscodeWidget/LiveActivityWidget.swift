@@ -63,7 +63,7 @@ struct LiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 6) {
-                        if let tool = state.lastTool {
+                        if let tool = state.lastTool, !state.phase.isTerminal {
                             Label(tool, systemImage: "terminal")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -75,6 +75,10 @@ struct LiveActivityWidget: Widget {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
+                        Label(context.attributes.serverName, systemImage: "server.rack")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                     .padding(.horizontal, 4)
                 }
@@ -160,9 +164,15 @@ private struct ElapsedView: View {
 
     var body: some View {
         if state.phase.isTerminal {
-            Image(systemName: state.phase.symbol)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(state.phase.tint)
+            Text(
+                timerInterval: state.startedAt...(state.endedAt ?? state.startedAt),
+                pauseTime: state.endedAt ?? state.startedAt
+            )
+            .font(.subheadline.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(state.phase.tint)
+            .frame(maxWidth: 56)
+            .multilineTextAlignment(.trailing)
         } else {
             Text(state.startedAt, style: .timer)
                 .font(.subheadline.weight(.medium))
