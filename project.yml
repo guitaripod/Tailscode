@@ -6,7 +6,7 @@ options:
   createIntermediateGroups: true
 packages:
   CodingAgentKit:
-    path: /Users/marcus/Dev/swift/CodingAgentKit
+    path: ../../swift/CodingAgentKit
 targets:
   Tailscode:
     type: application
@@ -29,6 +29,9 @@ targets:
         CFBundleDisplayName: Tailscode
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.guitaripod.tailscode
+            CFBundleURLSchemes: [tailscode]
         NSSupportsLiveActivitiesFrequentUpdates: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -85,3 +88,14 @@ targets:
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Automatic
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+
+schemes:
+  Tailscode:
+    build:
+      targets:
+        Tailscode: all
+    run:
+      config: Debug
+      storeKitConfiguration: Tailscode.storekit
+    archive:
+      config: Release

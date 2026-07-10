@@ -10,6 +10,16 @@ final class ConnectionController {
     private let activeKey = "tailscode.activeProfileID"
     private(set) var activeProfileID: String?
 
+    private struct StoreUnavailable: LocalizedError {
+        var errorDescription: String? { "Profile storage is unavailable on this device." }
+    }
+
+    struct ProRequired: LocalizedError {
+        var errorDescription: String? {
+            "Connecting more than one server requires Tailscode Pro."
+        }
+    }
+
     init() {
         store = try? ConnectionProfileStore()
         activeProfileID = UserDefaults.standard.string(forKey: activeKey)
@@ -17,6 +27,9 @@ final class ConnectionController {
             AppLogger.connection.info("profile store ready at \(store.directory.lastPathComponent)")
         } else {
             AppLogger.connection.error("profile store unavailable")
+        }
+        if activeProfileID == nil, let first = profiles.first {
+            setActive(first.id)
         }
     }
 
@@ -31,14 +44,24 @@ final class ConnectionController {
 
     var hasConnection: Bool { activeProfile != nil }
 
+    /// Backstop for the Pro gate: the UI gates the entry points, this catches
+    /// any path that slips through. First profile and re-saves are always free.
     func save(_ profile: ConnectionProfile, password: String?, makeActive: Bool = true) throws {
-        try store?.save(profile, password: password)
+        guard let store else { throw StoreUnavailable() }
+        let existing = profiles
+        let isNew = !existing.contains { $0.id == profile.id }
+        let isDebugSeed = profile.id.hasPrefix("debug")
+        if isNew, !existing.isEmpty, !isDebugSeed, !ProStore.shared.isPro {
+            throw ProRequired()
+        }
+        try store.save(profile, password: password)
         if makeActive { setActive(profile.id) }
         AppLogger.connection.info("saved profile \(profile.name) [\(profile.backend.rawValue)]")
     }
 
     func delete(_ id: String) throws {
-        try store?.delete(id: id)
+        guard let store else { throw StoreUnavailable() }
+        try store.delete(id: id)
         if activeProfileID == id {
             setActive(profiles.first { $0.id != id }?.id)
         }

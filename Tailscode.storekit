@@ -1,0 +1,72 @@
+{
+  "identifier" : "D2F8A1E0-0000-4000-8000-TAILSCODE001",
+  "nonRenewingSubscriptions" : [ ],
+  "products" : [
+    {
+      "displayPrice" : "14.99",
+      "familyShareable" : true,
+      "internalID" : "pro-nonconsumable",
+      "localizations" : [
+        {
+          "description" : "Unlimited servers, concurrent Live Activities, supporter badge.",
+          "displayName" : "Tailscode Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.guitaripod.tailscode.pro",
+      "referenceName" : "Tailscode Pro",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "tip-small",
+      "localizations" : [
+        {
+          "description" : "A small thank-you.",
+          "displayName" : "Small Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.guitaripod.tailscode.tip.small",
+      "referenceName" : "Small Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "tip-medium",
+      "localizations" : [
+        {
+          "description" : "A generous thank-you.",
+          "displayName" : "Medium Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.guitaripod.tailscode.tip.medium",
+      "referenceName" : "Medium Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "tip-large",
+      "localizations" : [
+        {
+          "description" : "An outrageous thank-you.",
+          "displayName" : "Large Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.guitaripod.tailscode.tip.large",
+      "referenceName" : "Large Tip",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : { },
+  "subscriptionGroups" : [ ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

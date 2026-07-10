@@ -8,7 +8,7 @@ final class SettingsViewController: UIViewController {
     var onConnectionChanged: (() -> Void)?
 
     private enum Section: Int, CaseIterable {
-        case connections, appearance, chat, diagnostics, about
+        case connections, appearance, chat, pro, diagnostics, about
     }
 
     private enum Toggle: Hashable {
@@ -47,6 +47,7 @@ final class SettingsViewController: UIViewController {
         case testAll
         case version
         case source
+        case pro
     }
 
     private var collectionView: UICollectionView!
@@ -67,6 +68,10 @@ final class SettingsViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applySnapshot()
+        let unknown = ConnectionController.shared.profiles.filter { reachable[$0.id] == nil }
+        if !unknown.isEmpty {
+            Task { await checkAllHealth() }
+        }
     }
 
     private func configure() {
@@ -77,10 +82,12 @@ final class SettingsViewController: UIViewController {
             else { return nil }
             let delete = UIContextualAction(style: .destructive, title: "Remove") { _, _, done in
                 self.removeProfile(profile)
-                done(true)
+                done(false)
             }
             delete.image = UIImage(systemName: "trash")
-            return UISwipeActionsConfiguration(actions: [delete])
+            let config = UISwipeActionsConfiguration(actions: [delete])
+            config.performsFirstActionWithFullSwipe = false
+            return config
         }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -97,7 +104,7 @@ final class SettingsViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionHeader
         ) { view, _, indexPath in
             var content = UIListContentConfiguration.groupedHeader()
-            content.text = ["Connections", "Appearance", "Chat", "Diagnostics", "About"][
+            content.text = ["Connections", "Appearance", "Chat", "Support", "Diagnostics", "About"][
                 indexPath.section]
             view.contentConfiguration = content
         }
@@ -160,6 +167,21 @@ final class SettingsViewController: UIViewController {
             content.text = "Source code"
             content.image = UIImage(systemName: "chevron.left.forwardslash.chevron.right")
             cell.accessories = [.disclosureIndicator()]
+        case .pro:
+            if ProStore.shared.isPro {
+                content.text = "Tailscode Pro"
+                content.secondaryText = "Supporter — thank you ♥"
+                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+                content.image = UIImage(systemName: "heart.fill")
+                content.imageProperties.tintColor = Theme.Color.danger
+            } else {
+                content.text = "Tailscode Pro"
+                content.secondaryText = "Unlimited servers, concurrent Live Activities, support development"
+                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+                content.image = UIImage(systemName: "sparkles")
+                content.imageProperties.tintColor = Theme.Color.accent
+            }
+            cell.accessories = [.disclosureIndicator()]
         }
         cell.contentConfiguration = content
     }
@@ -198,42 +220,34 @@ final class SettingsViewController: UIViewController {
         let button = UIButton(configuration: .plain())
         button.showsMenuAsPrimaryAction = true
         button.changesSelectionAsPrimaryAction = false
-        func rebuild() {
-            var config = UIButton.Configuration.plain()
-            config.title = AppPreferences.appearance.title
-            config.image = UIImage(
-                systemName: "chevron.up.chevron.down",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-            config.imagePlacement = .trailing
-            config.imagePadding = 4
-            config.baseForegroundColor = Theme.Color.secondaryLabel
-            button.configuration = config
-        }
-        button.menu = UIMenu(
-            children: AppPreferences.Appearance.allCases.map { option in
-                UIAction(
-                    title: option.title, state: AppPreferences.appearance == option ? .on : .off
-                ) { _ in
-                    AppPreferences.appearance = option
-                    AppPreferences.applyAppearance()
-                    rebuild()
-                    button.menu = self.appearanceMenu(button: button, rebuild: rebuild)
-                }
-            })
-        rebuild()
+        Self.rebuildAppearanceButton(button)
+        button.menu = Self.appearanceMenu(button: button)
         return .init(customView: button, placement: .trailing())
     }
 
-    private func appearanceMenu(button: UIButton, rebuild: @escaping () -> Void) -> UIMenu {
+    private static func rebuildAppearanceButton(_ button: UIButton) {
+        var config = UIButton.Configuration.plain()
+        config.title = AppPreferences.appearance.title
+        config.image = UIImage(
+            systemName: "chevron.up.chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        config.imagePlacement = .trailing
+        config.imagePadding = 4
+        config.baseForegroundColor = Theme.Color.secondaryLabel
+        button.configuration = config
+    }
+
+    private static func appearanceMenu(button: UIButton) -> UIMenu {
         UIMenu(
             children: AppPreferences.Appearance.allCases.map { option in
                 UIAction(
                     title: option.title, state: AppPreferences.appearance == option ? .on : .off
-                ) { _ in
+                ) { [weak button] _ in
                     AppPreferences.appearance = option
                     AppPreferences.applyAppearance()
-                    rebuild()
-                    button.menu = self.appearanceMenu(button: button, rebuild: rebuild)
+                    guard let button else { return }
+                    rebuildAppearanceButton(button)
+                    button.menu = appearanceMenu(button: button)
                 }
             })
     }
@@ -248,6 +262,7 @@ final class SettingsViewController: UIViewController {
         snapshot.appendItems(
             [.toggle(.autoExpandThinking), .toggle(.haptics), .toggle(.sendOnReturn)],
             toSection: .chat)
+        snapshot.appendItems([.pro], toSection: .pro)
         snapshot.appendItems([.viewLogs, .testAll], toSection: .diagnostics)
         snapshot.appendItems([.version, .source], toSection: .about)
         dataSource.apply(snapshot, animatingDifferences: false)
@@ -309,10 +324,21 @@ final class SettingsViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
             try? ConnectionController.shared.delete(profile.id)
             Theme.Haptics.warning()
+            self?.reachable[profile.id] = nil
             self?.applySnapshot()
             self?.onConnectionChanged?()
         })
         present(alert, animated: true)
+    }
+
+    /// The first server is free forever; additional saved servers are the
+    /// Pro gate. Returns false (and shows the paywall) when gated.
+    private func allowAnotherConnection() -> Bool {
+        guard !ProStore.shared.isPro, !ConnectionController.shared.profiles.isEmpty else {
+            return true
+        }
+        ProUpgradeViewController.present(from: self)
+        return false
     }
 
     @objc private func done() { dismiss(animated: true) }
@@ -331,16 +357,18 @@ extension SettingsViewController: UICollectionViewDelegate {
             }
             navigationController?.pushViewController(detail, animated: true)
         case .addConnection:
+            guard allowAnotherConnection() else { return }
             let onboarding = OnboardingViewController()
             onboarding.onConnected = { [weak self] in self?.onConnectionChanged?() }
             navigationController?.pushViewController(onboarding, animated: true)
         case .discover:
+            guard allowAnotherConnection() else { return }
             let discovery = DiscoveryViewController()
-            discovery.onConnected = { [weak self] in
-                self?.applySnapshot()
-                // do not force root route here; user may be adding secondary server
-            }
+            discovery.onConnected = { [weak self] in self?.applySnapshot() }
             navigationController?.present(UINavigationController(rootViewController: discovery), animated: true)
+        case .pro:
+            Theme.Haptics.tap()
+            ProUpgradeViewController.present(from: self)
         case .viewLogs:
             navigationController?.pushViewController(LogViewerViewController(), animated: true)
         case .testAll:
