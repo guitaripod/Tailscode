@@ -43,6 +43,7 @@ final class SettingsViewController: UIViewController {
         case discover
         case appearance
         case toggle(Toggle)
+        case usage
         case viewLogs
         case testAll
         case version
@@ -149,6 +150,11 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: icon(for: toggle))
             content.imageProperties.tintColor = tint(for: toggle)
             cell.accessories = [.customView(configuration: switchAccessory(toggle))]
+        case .usage:
+            content.text = "Usage"
+            content.image = UIImage(systemName: "gauge.with.dots.needle.67percent")
+            content.imageProperties.tintColor = Theme.Color.opencode
+            cell.accessories = [.disclosureIndicator()]
         case .viewLogs:
             content.text = "View logs"
             content.image = UIImage(systemName: "doc.text.magnifyingglass")
@@ -273,7 +279,7 @@ final class SettingsViewController: UIViewController {
             [.toggle(.autoExpandThinking), .toggle(.haptics), .toggle(.sendOnReturn)],
             toSection: .chat)
         snapshot.appendItems([.pro], toSection: .pro)
-        snapshot.appendItems([.viewLogs, .testAll], toSection: .diagnostics)
+        snapshot.appendItems([.usage, .viewLogs, .testAll], toSection: .diagnostics)
         snapshot.appendItems([.version, .source], toSection: .about)
         dataSource.apply(snapshot, animatingDifferences: false)
     }
@@ -379,6 +385,8 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .pro:
             Theme.Haptics.tap()
             ProUpgradeViewController.present(from: self)
+        case .usage:
+            navigationController?.pushViewController(UsageViewController(), animated: true)
         case .viewLogs:
             navigationController?.pushViewController(LogViewerViewController(), animated: true)
         case .testAll:

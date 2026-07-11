@@ -57,23 +57,15 @@ final class SessionListViewController: UIViewController {
         let settingsButton = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"), style: .plain, target: self,
             action: #selector(openSettings))
-        let infoButton = UIBarButtonItem(
-            image: UIImage(systemName: "info.circle"), style: .plain, target: self,
-            action: #selector(showDevelopmentInfo))
-        navigationItem.leftBarButtonItems = [settingsButton, infoButton]
+        let usageButton = UIBarButtonItem(
+            image: UIImage(systemName: "gauge.with.dots.needle.67percent"), style: .plain, target: self,
+            action: #selector(openUsage))
+        navigationItem.leftBarButtonItems = [settingsButton, usageButton]
         updateAddButton()
     }
 
-    @objc private func showDevelopmentInfo() {
-        let alert = UIAlertController(
-            title: "Develop iOS Apps on iOS",
-            message: "You can now develop iOS apps directly on your iPhone!\n\n" +
-                     "This app connects to an opencode server running on your Mac. " +
-                     "Start a chat on either device and continue on the other — sessions sync automatically.\n\n" +
-                     "Your coding agent runs on your Mac, but you can interact with it from anywhere on your Tailnet.",
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Got it", style: .default))
-        present(alert, animated: true)
+    @objc private func openUsage() {
+        navigationController?.pushViewController(UsageViewController(), animated: true)
     }
 
     private func updateAddButton() {

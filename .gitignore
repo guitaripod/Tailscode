@@ -7,3 +7,6 @@ Tailscode/Info.plist
 *.xcuserstate
 xcuserdata/
 build-ios/
+
+# Device build output (on-Mac device builds)
+build-device/

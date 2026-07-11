@@ -6,7 +6,9 @@ import UserNotifications
 @MainActor
 enum NotificationManager {
     static func requestAuthorizationIfNeeded() {
-        guard !CommandLine.arguments.contains("--demo") else { return }
+        guard !CommandLine.arguments.contains("--demo"),
+            !CommandLine.arguments.contains("--usage")
+        else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
             UNUserNotificationCenter.current().requestAuthorization(

@@ -27,10 +27,20 @@ final class AppCoordinator {
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 handle(URL(string: "tailscode://session/\(sessionID)")!)
             }
+            if CommandLine.arguments.contains("--usage") {
+                openUsageForDebug()
+            }
         #endif
     }
 
     #if DEBUG
+        private func openUsageForDebug() {
+            guard let nav = window.rootViewController as? UINavigationController else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                nav.pushViewController(UsageViewController(), animated: false)
+            }
+        }
+
         private func seedDebugConnectionIfNeeded() {
             let env = ProcessInfo.processInfo.environment
             guard let host = env["TAILSCODE_HOST"], let url = URL(string: host) else { return }
