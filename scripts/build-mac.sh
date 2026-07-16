@@ -7,4 +7,4 @@ RSYNC_EXCLUDES=(--exclude '.git' --exclude '.build' --exclude 'build' --exclude 
 rsync -az --delete "${RSYNC_EXCLUDES[@]}" ~/Dev/swift/CodingAgentKit/ macbook:Dev/swift/CodingAgentKit/
 rsync -az --delete "${RSYNC_EXCLUDES[@]}" ~/Dev/ios/Tailscode/ macbook:Dev/ios/Tailscode/
 
-ssh macbook 'bash -l -c "cd ~/Dev/ios/Tailscode && xcodegen generate >/dev/null && xcodebuild -project Tailscode.xcodeproj -scheme Tailscode -destination \"generic/platform=iOS Simulator\" -configuration Debug build 2>&1 | (grep -E \"error:|BUILD (SUCCEEDED|FAILED)\" || true) | tail -60"'
+ssh macbook 'bash -l -c "cd ~/Dev/ios/Tailscode && xcodegen generate >/dev/null && xcodebuild -project Tailscode.xcodeproj -scheme Tailscode -destination \"generic/platform=iOS Simulator\" -configuration Debug build > /tmp/tailscode-build.log 2>&1; st=\$?; grep -E \"error:|BUILD (SUCCEEDED|FAILED)\" /tmp/tailscode-build.log | tail -60; exit \$st"'

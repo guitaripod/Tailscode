@@ -10,8 +10,9 @@ final class SubagentListViewController: UIViewController {
     private let backend: any CodingAgentBackend
     private let parentSessionID: String
     private var agents: [SubagentSummary]
+    private var rendered: [String: SubagentSummary] = [:]
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, SubagentSummary>!
+    private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private var refreshTask: Task<Void, Never>?
     var onDismiss: (() -> Void)?
 
@@ -75,8 +76,9 @@ final class SubagentListViewController: UIViewController {
     }
 
     private func configureDataSource() {
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, SubagentSummary> {
-            cell, _, agent in
+        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> {
+            [weak self] cell, _, agentID in
+            guard let agent = self?.agents.first(where: { $0.id == agentID }) else { return }
             var content = UIListContentConfiguration.subtitleCell()
             content.text = agent.title
             content.textProperties.font = Theme.Font.body()
@@ -112,36 +114,70 @@ final class SubagentListViewController: UIViewController {
             cell.accessories = [.disclosureIndicator()]
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, agent in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: agent)
+            collectionView, indexPath, agentID in
+            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: agentID)
         }
     }
 
+    /// Items are keyed by agent id so a poll that only advances updatedAt or
+    /// flips isActive reconfigures the row in place instead of animating a
+    /// delete+insert every 5 seconds.
     private func applySnapshot() {
-        var snapshot = NSDiffableDataSourceSnapshot<Section, SubagentSummary>()
+        agents.sort {
+            if $0.isActive != $1.isActive { return $0.isActive }
+            return $0.updatedAt > $1.updatedAt
+        }
+        var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(agents, toSection: .main)
+        snapshot.appendItems(agents.map(\.id), toSection: .main)
+        snapshot.reconfigureItems(
+            agents.filter { rendered[$0.id] != nil && rendered[$0.id] != $0 }.map(\.id))
+        rendered = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0) })
         dataSource.apply(snapshot, animatingDifferences: true)
+        updateEmptyState()
+    }
+
+    private func updateEmptyState() {
+        if agents.isEmpty {
+            var config = UIContentUnavailableConfiguration.empty()
+            config.image = UIImage(systemName: "point.3.connected.trianglepath.dotted")
+            config.text = "No Agents"
+            config.secondaryText = "Subagents spawned by this session will appear here."
+            contentUnavailableConfiguration = config
+        } else {
+            contentUnavailableConfiguration = nil
+        }
     }
 }
 
 extension SubagentListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let agent = dataSource.itemIdentifier(for: indexPath) else { return }
+        guard let agentID = dataSource.itemIdentifier(for: indexPath),
+            let agent = agents.first(where: { $0.id == agentID })
+        else { return }
         open(agent)
     }
 }
 
 extension SubagentListViewController {
-    fileprivate func open(_ agent: SubagentSummary) {
+    static func transcriptViewController(
+        backend: any CodingAgentBackend, parentSessionID: String, agent: SubagentSummary
+    ) -> ChatViewController {
         let transcriptBackend = SubagentTranscriptBackend(
             base: backend, parentSessionID: parentSessionID, agentID: agent.id)
         let session = AgentSession(
             id: "subagent:\(parentSessionID):\(agent.id)", agentType: backend.agentType,
             title: agent.title, createdAt: agent.updatedAt, updatedAt: agent.updatedAt)
-        let viewModel = ChatViewModel(backend: transcriptBackend, session: session)
+        let viewModel = ChatViewModel(
+            backend: transcriptBackend, session: session, reportsActivity: false)
+        return ChatViewController(viewModel: viewModel, readOnly: true)
+    }
+
+    fileprivate func open(_ agent: SubagentSummary) {
         navigationController?.pushViewController(
-            ChatViewController(viewModel: viewModel, readOnly: true), animated: true)
+            Self.transcriptViewController(
+                backend: backend, parentSessionID: parentSessionID, agent: agent),
+            animated: true)
     }
 }

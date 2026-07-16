@@ -15,7 +15,9 @@ struct SlashCommand {
 @MainActor
 final class SlashCommandPalette: UIView {
     private let glass = Theme.Glass.view(interactive: false)
+    private let scroll = UIScrollView()
     private let stack = UIStackView()
+    private var heightCap: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -34,10 +36,21 @@ final class SlashCommandPalette: UIView {
         glass.isUserInteractionEnabled = false
         addSubview(glass)
 
+        scroll.showsVerticalScrollIndicator = false
+        scroll.alwaysBounceVertical = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+
         stack.axis = .vertical
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        scroll.addSubview(stack)
+
+        let content = scroll.contentLayoutGuide
+        let frame = scroll.frameLayoutGuide
+        let hugContent = scroll.heightAnchor.constraint(equalTo: stack.heightAnchor)
+        hugContent.priority = UILayoutPriority(999)
+        heightCap = heightAnchor.constraint(lessThanOrEqualToConstant: 320)
 
         NSLayoutConstraint.activate([
             glass.topAnchor.constraint(equalTo: topAnchor),
@@ -45,10 +58,19 @@ final class SlashCommandPalette: UIView {
             glass.trailingAnchor.constraint(equalTo: trailingAnchor),
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            scroll.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            stack.widthAnchor.constraint(equalTo: frame.widthAnchor),
+
+            hugContent,
+            heightCap,
         ])
 
         layer.shadowColor = UIColor.black.cgColor
@@ -57,9 +79,21 @@ final class SlashCommandPalette: UIView {
         layer.shadowOffset = CGSize(width: 0, height: 6)
     }
 
+    /// Caps the palette to half the window so a long command list scrolls
+    /// instead of extending past the top of the screen in landscape or with
+    /// large Dynamic Type.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let window {
+            let cap = window.bounds.height * 0.5
+            if heightCap.constant != cap { heightCap.constant = cap }
+        }
+    }
+
     func update(with commands: [SlashCommand]) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for command in commands { stack.addArrangedSubview(makeRow(command)) }
+        scroll.setContentOffset(.zero, animated: false)
     }
 
     private func makeRow(_ command: SlashCommand) -> UIView {

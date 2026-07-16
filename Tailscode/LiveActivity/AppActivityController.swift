@@ -13,6 +13,8 @@ final class AppActivityController {
         let startedAt: Date
         var lastPhase: Phase
         var lastToolCount = 0
+        var lastState: ChatActivityAttributes.ContentState?
+        var lastPushedAt = Date()
     }
 
     private var entries: [String: Entry] = [:]
@@ -51,7 +53,8 @@ final class AppActivityController {
             let activity = try Activity.request(
                 attributes: attr,
                 content: .init(state: state, staleDate: Date().addingTimeInterval(1800)))
-            entries[sessionID] = Entry(activity: activity, startedAt: startedAt, lastPhase: .thinking)
+            entries[sessionID] = Entry(
+                activity: activity, startedAt: startedAt, lastPhase: .thinking, lastState: state)
             AppLogger.chat.info("Live Activity started for \(sessionID)")
             return true
         } catch {
@@ -67,10 +70,17 @@ final class AppActivityController {
         let becameApproval = phase == .approval && entry.lastPhase != .approval
         entry.lastPhase = phase
         entry.lastToolCount = max(entry.lastToolCount, toolCount)
-        entries[sessionID] = entry
         let newState = ChatActivityAttributes.ContentState(
-            phase: phase, statusText: statusText, lastTool: lastTool, toolCount: toolCount,
-            startedAt: entry.startedAt, endedAt: nil)
+            phase: phase, statusText: statusText, lastTool: lastTool,
+            toolCount: entry.lastToolCount, startedAt: entry.startedAt, endedAt: nil)
+        let staleSoon = Date().timeIntervalSince(entry.lastPushedAt) > 600
+        guard becameApproval || staleSoon || newState != entry.lastState else {
+            entries[sessionID] = entry
+            return
+        }
+        entry.lastState = newState
+        entry.lastPushedAt = Date()
+        entries[sessionID] = entry
         let alert: AlertConfiguration? =
             becameApproval
             ? AlertConfiguration(

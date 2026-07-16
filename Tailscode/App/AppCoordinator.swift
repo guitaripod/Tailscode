@@ -79,15 +79,27 @@ final class AppCoordinator {
         }
     #endif
 
+    private var pendingSessionLink: (url: URL, parkedAt: Date)?
+
     /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat.
+    /// Links that arrive before the session list exists are parked and
+    /// delivered on the next route to the main UI; a link older than 30s is
+    /// dropped rather than hijacking navigation long after the tap.
     func handle(_ url: URL) {
         guard url.scheme == "tailscode", url.host() == "session" else { return }
         let sessionID = url.lastPathComponent
-        guard !sessionID.isEmpty,
-            let nav = window.rootViewController as? UINavigationController,
-            let list = nav.viewControllers.first as? SessionListViewController
-        else { return }
+        guard !sessionID.isEmpty else { return }
+        guard let list = sessionList else {
+            pendingSessionLink = (url, Date())
+            return
+        }
+        pendingSessionLink = nil
         list.openSession(withID: sessionID)
+    }
+
+    private var sessionList: SessionListViewController? {
+        (window.rootViewController as? UINavigationController)?
+            .viewControllers.first as? SessionListViewController
     }
 
     private func route(animated: Bool) {
@@ -98,6 +110,10 @@ final class AppCoordinator {
             }
         } else {
             window.rootViewController = root
+        }
+        if let pending = pendingSessionLink {
+            pendingSessionLink = nil
+            if Date().timeIntervalSince(pending.parkedAt) < 30 { handle(pending.url) }
         }
     }
 

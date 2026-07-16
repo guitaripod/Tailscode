@@ -1,7 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
-import UIKit
 
 struct SessionEntry: Hashable {
     let profileID: String
@@ -79,18 +78,6 @@ final class SessionListViewModel {
         }
     }
 
-    func profileColor(for profileID: String) -> UIColor? {
-        guard let host = sources.first(where: { $0.profile.id == profileID })?.profile.baseURL.host
-        else { return nil }
-        let palette: [UIColor] = [
-            .systemBlue, .systemPurple, .systemTeal, .systemIndigo, .systemPink,
-            .systemOrange, .systemGreen,
-        ]
-        var hash = 5381
-        for byte in host.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
-        return palette[abs(hash) % palette.count]
-    }
-
     /// Re-reads the profile list on every load so servers added or removed
     /// in Settings appear without recreating this screen.
     func load() async {
@@ -122,7 +109,8 @@ final class SessionListViewModel {
                                 session: session))
                     }
                 case .failure(let error):
-                    failed.append(source.profile.name)
+                    failed.append(source.profile.id)
+                    collected.append(contentsOf: entries.filter { $0.profileID == source.profile.id })
                     AppLogger.session.error(
                         "load failed for \(source.profile.name): \(Self.readable(error))")
                 }
@@ -156,8 +144,16 @@ final class SessionListViewModel {
             }
         }
         let result = sources.compactMap { source -> (ServerSection, [SessionEntry])? in
-            guard let entryList = groups[source.profile.id] else { return nil }
-            return (entryList.section, entryList.entries)
+            if let entryList = groups[source.profile.id] {
+                return (entryList.section, entryList.entries)
+            }
+            guard query.isEmpty, unreachable.contains(source.profile.id) else { return nil }
+            let section = ServerSection(
+                profileID: source.profile.id,
+                profileName: source.profile.name,
+                host: source.profile.baseURL.host ?? source.profile.name,
+                backendType: source.profile.backend)
+            return (section, [])
         }
         return result
     }

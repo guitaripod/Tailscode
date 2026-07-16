@@ -29,7 +29,16 @@ final class ProUpgradeViewController: UIViewController {
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close, target: self, action: #selector(close))
         build()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(proStateChanged), name: ProStore.didChange, object: nil)
         Task { await load() }
+    }
+
+    @objc private func proStateChanged() {
+        guard ProStore.shared.isPro else { return }
+        purchaseButton.setTitle("You're a supporter — thank you ♥")
+        purchaseButton.isEnabled = false
+        statusLabel.text = nil
     }
 
     private func build() {
@@ -193,9 +202,17 @@ final class ProUpgradeViewController: UIViewController {
         Task {
             defer { purchaseButton.setLoading(false) }
             do {
-                if try await ProStore.shared.purchase(proProduct) {
+                switch try await ProStore.shared.purchase(proProduct) {
+                case .success:
                     Theme.Haptics.success()
                     dismiss(animated: true)
+                case .pending:
+                    statusLabel.text = "Waiting for approval — Pro unlocks automatically once approved."
+                case .unverified:
+                    statusLabel.text = "Purchase couldn't be verified — try Restore purchases later."
+                    Theme.Haptics.error()
+                case .cancelled:
+                    break
                 }
             } catch {
                 statusLabel.text = "Purchase failed: \(error.localizedDescription)"
@@ -208,9 +225,16 @@ final class ProUpgradeViewController: UIViewController {
         Theme.Haptics.tap()
         Task {
             do {
-                if try await ProStore.shared.purchase(product) {
+                switch try await ProStore.shared.purchase(product) {
+                case .success:
                     Theme.Haptics.success()
                     statusLabel.text = "Thank you! 🙏"
+                case .pending:
+                    statusLabel.text = "Waiting for approval — thank you!"
+                case .unverified:
+                    statusLabel.text = "Purchase couldn't be verified — please try again later."
+                case .cancelled:
+                    break
                 }
             } catch {
                 statusLabel.text = "Purchase failed: \(error.localizedDescription)"
@@ -221,12 +245,17 @@ final class ProUpgradeViewController: UIViewController {
     @objc private func restoreTapped() {
         Theme.Haptics.tap()
         Task {
-            await ProStore.shared.restore()
-            if ProStore.shared.isPro {
-                Theme.Haptics.success()
-                dismiss(animated: true)
-            } else {
-                statusLabel.text = "No previous purchase found for this Apple ID."
+            do {
+                try await ProStore.shared.restore()
+                if ProStore.shared.isPro {
+                    Theme.Haptics.success()
+                    dismiss(animated: true)
+                } else {
+                    statusLabel.text = "No previous purchase found for this Apple ID."
+                }
+            } catch StoreKitError.userCancelled {
+            } catch {
+                statusLabel.text = "Restore failed: \(error.localizedDescription)"
             }
         }
     }

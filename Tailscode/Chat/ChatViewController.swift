@@ -21,6 +21,7 @@ final class ChatViewController: UIViewController {
     private var pendingPermission: PermissionRequest?
     private var pendingQuestion: QuestionRequest?
     private var questionSelection = QuestionCell.Selection()
+    private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
     private var availableModels: [ModelInfo] = []
     private var expandedReasoning: Set<String> = []
@@ -37,6 +38,7 @@ final class ChatViewController: UIViewController {
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
     private let agentsChip = UIButton(type: .system)
+    private let composerAccessories = UIStackView()
     private var agentsPollTask: Task<Void, Never>?
     private var lastAgents: [SubagentSummary] = []
     private let navTitleContainer = UIView()
@@ -58,11 +60,13 @@ final class ChatViewController: UIViewController {
 
     deinit {
         agentsPollTask?.cancel()
+        elapsedTicker?.cancel()
+        revealFallback?.cancel()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = isReadOnly ? viewModel.title : viewModel.backend.agentType.displayName
+        title = navDisplayTitle
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.backButtonDisplayMode = .minimal
         view.backgroundColor = Theme.Color.background
@@ -77,6 +81,9 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(sceneWillResign),
+            name: UIApplication.willResignActiveNotification, object: nil)
         collectionView.alpha = 0
         revealFallback = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
@@ -111,15 +118,26 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         saveDraft()
-        if isMovingFromParent || isBeingDismissed {
+        if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
             viewModel.isBound = false
-            if !viewModel.isBusy { viewModel.stop() }
+            if isReadOnly || !viewModel.isBusy { viewModel.stop() }
         }
+    }
+
+    /// The chat title is the conversation's own name; auto-generated
+    /// placeholder titles fall back to the agent's name.
+    private var navDisplayTitle: String {
+        let trimmed = viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.hasPrefix("New session") {
+            return viewModel.backend.agentType.displayName
+        }
+        return trimmed
     }
 
     private var draftKey: String { "tailscode.draft.\(viewModel.contextID)/\(viewModel.session.id)" }
 
-    private func saveDraft() {
+    @objc private func saveDraft() {
+        guard !isReadOnly else { return }
         let text = composer.currentText
         if text.isEmpty {
             UserDefaults.standard.removeObject(forKey: draftKey)
@@ -128,10 +146,13 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    @objc private func sceneWillResign() { saveDraft() }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let bottomInset = view.bounds.height - composer.frame.minY
-            + (attachmentStrip.isHidden ? 0 : 48)
+        let accessoryTop = composerAccessories.bounds.height > 0
+            ? composerAccessories.frame.minY : composer.frame.minY
+        let bottomInset = view.bounds.height - min(composer.frame.minY, accessoryTop)
         if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
             collectionView.contentInset.bottom = bottomInset
             collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
@@ -181,9 +202,16 @@ final class ChatViewController: UIViewController {
 
         attachmentStrip.axis = .horizontal
         attachmentStrip.spacing = Theme.Spacing.s
-        attachmentStrip.translatesAutoresizingMaskIntoConstraints = false
         attachmentStrip.isHidden = true
-        view.addSubview(attachmentStrip)
+        agentsChip.isHidden = true
+        agentsChip.translatesAutoresizingMaskIntoConstraints = false
+        composerAccessories.axis = .vertical
+        composerAccessories.spacing = Theme.Spacing.xs
+        composerAccessories.alignment = .leading
+        composerAccessories.translatesAutoresizingMaskIntoConstraints = false
+        composerAccessories.addArrangedSubview(attachmentStrip)
+        composerAccessories.addArrangedSubview(agentsChip)
+        view.addSubview(composerAccessories)
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -211,28 +239,30 @@ final class ChatViewController: UIViewController {
             commandPalette.trailingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             commandPalette.bottomAnchor.constraint(
-                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
+                equalTo: composerAccessories.topAnchor, constant: -Theme.Spacing.xs),
         ])
 
         NSLayoutConstraint.activate([
-            attachmentStrip.leadingAnchor.constraint(
+            composerAccessories.leadingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            attachmentStrip.trailingAnchor.constraint(
+            composerAccessories.trailingAnchor.constraint(
                 lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
-            attachmentStrip.bottomAnchor.constraint(
+            composerAccessories.bottomAnchor.constraint(
                 equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
         ])
 
-        emptyState.translatesAutoresizingMaskIntoConstraints = false
-        emptyState.isHidden = true
-        emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
-        view.insertSubview(emptyState, belowSubview: composer)
-        NSLayoutConstraint.activate([
-            emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
-            emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
-            emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
-            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
-        ])
+        if !isReadOnly {
+            emptyState.translatesAutoresizingMaskIntoConstraints = false
+            emptyState.isHidden = true
+            emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
+            view.insertSubview(emptyState, belowSubview: composer)
+            NSLayoutConstraint.activate([
+                emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
+                emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
+                emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
+                emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
+            ])
+        }
     }
 
     /// A quiet chip above the composer while subagents are working — a session
@@ -249,20 +279,11 @@ final class ChatViewController: UIViewController {
         config.imagePadding = 6
         config.baseForegroundColor = Theme.Color.success
         agentsChip.configuration = config
-        agentsChip.isHidden = true
-        agentsChip.translatesAutoresizingMaskIntoConstraints = false
         agentsChip.addAction(
             UIAction { [weak self] _ in
                 guard let self, !self.lastAgents.isEmpty else { return }
                 self.presentSubagents(self.lastAgents)
             }, for: .touchUpInside)
-        view.addSubview(agentsChip)
-        NSLayoutConstraint.activate([
-            agentsChip.leadingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            agentsChip.bottomAnchor.constraint(
-                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
-        ])
         agentsPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshAgentsChip()
@@ -285,6 +306,7 @@ final class ChatViewController: UIViewController {
 
     private func configureFAB() {
         fab.configuration = fabConfiguration()
+        fab.accessibilityLabel = "Scroll to bottom"
         fab.translatesAutoresizingMaskIntoConstraints = false
         fab.isHidden = true
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
@@ -340,6 +362,8 @@ final class ChatViewController: UIViewController {
 
     @objc private func bannerTapped() {
         Theme.Haptics.tap()
+        viewModel.acknowledgeFailure()
+        banner.hide()
         viewModel.refresh()
     }
 
@@ -375,17 +399,22 @@ final class ChatViewController: UIViewController {
                 cell.configure(
                     request: request,
                     selection: self.questionSelection,
+                    submitted: self.answeredQuestionIDs.contains(request.id),
                     onSelectionChanged: { [weak self] selection in
                         self?.questionSelection = selection
                     },
                     onSubmit: { [weak self] answers in
-                        self?.viewModel.answerQuestion(request, answers: answers)
+                        guard let self, self.answeredQuestionIDs.insert(request.id).inserted
+                        else { return }
+                        self.viewModel.answerQuestion(request, answers: answers)
                     },
                     onCustom: { [weak self] questionIndex in
                         self?.promptCustomAnswer(for: request, questionIndex: questionIndex)
                     },
                     onSkip: { [weak self] in
-                        self?.viewModel.rejectQuestion(request)
+                        guard let self, self.answeredQuestionIDs.insert(request.id).inserted
+                        else { return }
+                        self.viewModel.rejectQuestion(request)
                     })
                 return cell
             }
@@ -418,9 +447,14 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: ActivityGroupCell.reuseID, for: indexPath)
                     as! ActivityGroupCell
                 let streaming = self.viewModel.isBusy && id == self.orderedIDs.last
+                let toolTap: ((ToolCall) -> Void)? =
+                    self.viewModel.supportsSubagents
+                    ? { [weak self] call in self?.openSubagentTranscript(for: call) } : nil
                 cell.configure(
-                    steps: steps, expanded: self.expandedReasoning.contains(id), streaming: streaming
-                ) { [weak self] in self?.toggleReasoning(id) }
+                    steps: steps, expanded: self.expandedReasoning.contains(id),
+                    streaming: streaming,
+                    onToggle: { [weak self] in self?.toggleReasoning(id) },
+                    onToolTap: toolTap)
                 return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
@@ -461,11 +495,22 @@ final class ChatViewController: UIViewController {
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
+        viewModel.onQuestionFailed = { [weak self] questionID in
+            guard let self else { return }
+            self.answeredQuestionIDs.remove(questionID)
+            var snapshot = self.dataSource.snapshot()
+            let id = "question:\(questionID)"
+            if snapshot.itemIdentifiers.contains(id) {
+                snapshot.reconfigureItems([id])
+                self.dataSource.apply(snapshot, animatingDifferences: false)
+            }
+        }
         viewModel.onSendFailed = { [weak self] text in
             guard let self else { return }
             Theme.Haptics.error()
             if self.composer.currentText.isEmpty {
-                self.composer.setDraft(text)
+                self.composer.setDraft(text, focus: false)
+                self.saveDraft()
                 self.presentToast("Not sent — your message is back in the composer.")
             } else {
                 UIPasteboard.general.string = text
@@ -510,7 +555,7 @@ final class ChatViewController: UIViewController {
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
-        emptyState.isHidden = !(hasRevealed && orderedIDs.isEmpty)
+        emptyState.isHidden = !(hasRevealed && ids.isEmpty && !isReadOnly)
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -543,18 +588,12 @@ final class ChatViewController: UIViewController {
         }
         let animated = animateNextRender && hasRevealed
         animateNextRender = false
+        let idSet = Set(ids)
+        let reconfigurable = changed.filter { idSet.contains($0) }
+        if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
         dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
             guard let self else { return }
-            if !changed.isEmpty {
-                var reconfigure = self.dataSource.snapshot()
-                let present = Set(reconfigure.itemIdentifiers)
-                let stillPresent = changed.filter { present.contains($0) }
-                if !stillPresent.isEmpty {
-                    reconfigure.reconfigureItems(stillPresent)
-                    self.dataSource.apply(reconfigure, animatingDifferences: false)
-                }
-            }
-            if nearBottom && !userScrolledUp { self.scrollToBottom(animated: animated) }
+            if nearBottom && !self.userScrolledUp { self.scrollToBottom(animated: animated) }
             if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
         }
 
@@ -603,7 +642,8 @@ final class ChatViewController: UIViewController {
                     "Offline — tap to retry", color: Theme.Color.danger, symbol: "wifi.slash")
             }
         case .connecting, .live:
-            if let failure = state.lastFailure, state.status != .running, Date() > suppressBannerUntil {
+            if let failure = state.lastFailure, failure != viewModel.dismissedFailure,
+                state.status != .running, Date() > suppressBannerUntil {
                 banner.show(
                     failure.message, color: Theme.Color.danger,
                     symbol: "exclamationmark.triangle.fill")
@@ -659,12 +699,14 @@ final class ChatViewController: UIViewController {
         guard count > 0, userScrolledUp, !fab.isHidden else { return }
         unreadCount += count
         fab.configuration = fabConfiguration()
+        fab.accessibilityLabel = "Scroll to bottom, \(unreadCount) new"
     }
 
     private func clearUnread() {
         guard unreadCount != 0 else { return }
         unreadCount = 0
         fab.configuration = fabConfiguration()
+        fab.accessibilityLabel = "Scroll to bottom"
     }
 
     private var turnStartedAt: Date?
@@ -737,7 +779,8 @@ final class ChatViewController: UIViewController {
         revealFallback?.cancel()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
-        emptyState.isHidden = !orderedIDs.isEmpty
+        emptyState.isHidden = isReadOnly || !orderedIDs.isEmpty
+            || !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty
         UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
         }
@@ -817,7 +860,7 @@ final class ChatViewController: UIViewController {
                 }
                 guard !parts.isEmpty else { return completion([]) }
                 let item = UIAction(
-                    title: parts.joined(separator: " · "),
+                    title: "Last turn · \(parts.joined(separator: " · "))",
                     image: UIImage(systemName: "gauge.with.dots.needle.bottom.50percent"),
                     attributes: .disabled
                 ) { _ in }
@@ -852,6 +895,10 @@ final class ChatViewController: UIViewController {
             }
         }
         var children: [UIMenuElement] = [jump, subagents, regenerate, usage]
+        children.append(
+            UIAction(
+                title: "Share transcript", image: UIImage(systemName: "square.and.arrow.up")
+            ) { [weak self] _ in self?.shareTranscript() })
         if viewModel.canRename {
             children.append(
                 UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
@@ -884,6 +931,23 @@ final class ChatViewController: UIViewController {
         Theme.Haptics.selection()
     }
 
+    /// Opens the transcript of the subagent a Task/Agent tool call spawned,
+    /// matched by tool-use id.
+    private func openSubagentTranscript(for call: ToolCall) {
+        Task { @MainActor in
+            let agents = await viewModel.subagents()
+            guard let match = agents.first(where: { $0.toolUseID == call.id }) else {
+                presentToast("No transcript for this agent yet.")
+                return
+            }
+            navigationController?.pushViewController(
+                SubagentListViewController.transcriptViewController(
+                    backend: viewModel.backend, parentSessionID: viewModel.session.id,
+                    agent: match),
+                animated: true)
+        }
+    }
+
     private func presentSubagents(_ agents: [SubagentSummary]) {
         let list = SubagentListViewController(
             backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents)
@@ -894,6 +958,7 @@ final class ChatViewController: UIViewController {
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
         nav.sheetPresentationController?.prefersGrabberVisible = true
+        nav.presentationController?.delegate = self
         present(nav, animated: true)
     }
 
@@ -913,6 +978,7 @@ final class ChatViewController: UIViewController {
             Task {
                 do {
                     try await self.viewModel.rename(to: title)
+                    self.title = self.navDisplayTitle
                     Theme.Haptics.success()
                 } catch {
                     self.presentToast("Couldn't rename this conversation.")
@@ -961,22 +1027,6 @@ final class ChatViewController: UIViewController {
     }
 
     @objc private func dismissKeyboard() { view.endEditing(true) }
-
-    @objc private func newConversationTapped() {
-        Theme.Haptics.tap()
-        Task { @MainActor in
-            do {
-                let session = try await viewModel.backend.createSession(title: nil, directory: nil)
-                let newVM = ChatViewModel(
-                    backend: viewModel.backend, session: session, contextID: viewModel.contextID,
-                    serverName: viewModel.serverName)
-                navigationController?.pushViewController(
-                    ChatViewController(viewModel: newVM), animated: true)
-            } catch {
-                presentToast("Couldn't start a new conversation.")
-            }
-        }
-    }
 
     private func forkConversation() {
         Task { @MainActor in
@@ -1134,10 +1184,10 @@ final class ChatViewController: UIViewController {
                 lines.append("\(tokens.formatted()) tokens")
             }
             if let cost = usage.costUSD {
-                lines.append(String(format: "$%.4f spent", cost))
+                lines.append(String(format: "$%.4f", cost))
             }
             let alert = UIAlertController(
-                title: "Session usage", message: lines.joined(separator: "\n"),
+                title: "Last turn usage", message: lines.joined(separator: "\n"),
                 preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             self.present(alert, animated: true)
@@ -1153,11 +1203,7 @@ final class ChatViewController: UIViewController {
             browser.dismiss(animated: true) {
                 UIPasteboard.general.string = path
                 self.presentToast("Path copied: \(path)")
-                if !self.composer.currentText.isEmpty {
-                    self.composer.appendPath(" " + path)
-                } else {
-                    self.composer.appendPath(path)
-                }
+                self.composer.appendPath(path)
             }
         }
         let nav = UINavigationController(rootViewController: browser)
@@ -1187,7 +1233,7 @@ final class ChatViewController: UIViewController {
         present(sheet, animated: true)
     }
 
-    private func copyTranscript() {
+    private func transcriptMarkdown() -> String {
         var out: [String] = []
         for id in orderedIDs {
             guard let row = rowsByID[id], !id.hasPrefix("ts:") else { continue }
@@ -1211,11 +1257,30 @@ final class ChatViewController: UIViewController {
             case .timestamp, .error:
                 continue
             }
-            out.append("\(who): \(body)")
+            out.append("**\(who):** \(body)")
         }
-        UIPasteboard.general.string = out.joined(separator: "\n\n")
+        return out.joined(separator: "\n\n")
+    }
+
+    private func copyTranscript() {
+        UIPasteboard.general.string = transcriptMarkdown()
         Theme.Haptics.success()
         presentToast("Transcript copied to clipboard.")
+    }
+
+    private func shareTranscript() {
+        let name = navDisplayTitle.replacingOccurrences(of: "/", with: "-")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name.isEmpty ? "transcript" : name).md")
+        do {
+            try transcriptMarkdown().write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            presentToast("Couldn't export the transcript.")
+            return
+        }
+        let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = view
+        present(sheet, animated: true)
     }
 
     private func presentToast(_ message: String) {
@@ -1366,15 +1431,10 @@ final class ChatViewController: UIViewController {
     }
 
     private static func relativeTimestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        if Calendar.current.isDateInToday(date) {
-            formatter.dateFormat = "'Today' h:mm a"
-        } else if Calendar.current.isDateInYesterday(date) {
-            formatter.dateFormat = "'Yesterday' h:mm a"
-        } else {
-            formatter.dateFormat = "MMM d, h:mm a"
-        }
-        return formatter.string(from: date)
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if Calendar.current.isDateInToday(date) { return "Today \(time)" }
+        if Calendar.current.isDateInYesterday(date) { return "Yesterday \(time)" }
+        return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
     }
 
     /// Merges any adjacent activity rows into one, so a run of thinking/tool steps (even across
@@ -1419,6 +1479,10 @@ final class ChatViewController: UIViewController {
 extension ChatViewController: ComposerViewDelegate {
     func composerDidSend(_ text: String) {
         hideCommandPalette()
+        sendDraft(text)
+    }
+
+    private func sendDraft(_ text: String, model: ModelSelection? = nil, effort: String? = nil) {
         let attachments = pendingAttachments
         pendingAttachments = []
         composer.showsAttach = viewModel.supportsAttachments
@@ -1426,7 +1490,7 @@ extension ChatViewController: ComposerViewDelegate {
         userScrolledUp = false
         animateNextRender = true
         UserDefaults.standard.removeObject(forKey: draftKey)
-        viewModel.send(text, attachments: attachments)
+        viewModel.send(text, model: model, effort: effort, attachments: attachments)
     }
 
     func composerTextDidChange(_ text: String) {
@@ -1442,7 +1506,7 @@ extension ChatViewController: ComposerViewDelegate {
             sheet.addAction(
                 UIAlertAction(title: model.name, style: .default) { [weak self] _ in
                     Theme.Haptics.send()
-                    self?.viewModel.send(text, model: model.selection)
+                    self?.sendDraft(text, model: model.selection)
                     self?.composer.clear()
                 })
         }
@@ -1450,7 +1514,7 @@ extension ChatViewController: ComposerViewDelegate {
             sheet.addAction(
                 UIAlertAction(title: "\(level.capitalized) effort", style: .default) { [weak self] _ in
                     Theme.Haptics.send()
-                    self?.viewModel.send(text, effort: level)
+                    self?.sendDraft(text, effort: level)
                     self?.composer.clear()
                 })
         }
@@ -1460,6 +1524,11 @@ extension ChatViewController: ComposerViewDelegate {
     }
 
     func composerDidPasteLargeText(_ text: String) {
+        guard viewModel.supportsAttachments else {
+            composer.insertText(text)
+            return
+        }
+        composer.deleteSelection()
         guard let data = text.data(using: .utf8) else { return }
         pendingAttachments.append(
             PromptAttachment(
@@ -1567,6 +1636,11 @@ extension ChatViewController: UICollectionViewDelegate {
                         guard let self, let removed = self.viewModel.removeQueued(id: message.id)
                         else { return }
                         self.composer.setDraft(removed.text)
+                        if !removed.attachments.isEmpty {
+                            self.pendingAttachments.append(contentsOf: removed.attachments)
+                            self.composer.showsAttach = true
+                            self.updateAttachmentStrip()
+                        }
                     },
                     UIAction(
                         title: "Remove from queue", image: UIImage(systemName: "trash"),
@@ -1662,8 +1736,41 @@ extension ChatViewController: UICollectionViewDelegate {
     }
 }
 
+extension ChatViewController: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        Task { await refreshAgentsChip() }
+    }
+}
+
 extension ChatViewController: TextBubbleCellDelegate {
     func textBubbleCell(_ cell: TextBubbleCell, didTapLink url: URL) {
-        present(SFSafariViewController(url: url), animated: true)
+        if let path = TextBubbleCell.path(fromActionURL: url) {
+            presentPathActions(path)
+            return
+        }
+        switch url.scheme?.lowercased() {
+        case "http", "https":
+            present(SFSafariViewController(url: url), animated: true)
+        default:
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func presentPathActions(_ path: String) {
+        Theme.Haptics.tap()
+        let sheet = UIAlertController(title: path, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Copy path", style: .default) { [weak self] _ in
+            UIPasteboard.general.string = path
+            Theme.Haptics.success()
+            self?.presentToast("Path copied.")
+        })
+        if !isReadOnly {
+            sheet.addAction(UIAlertAction(title: "Add to message", style: .default) { [weak self] _ in
+                self?.composer.appendPath(path)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = composer
+        present(sheet, animated: true)
     }
 }

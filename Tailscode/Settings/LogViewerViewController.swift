@@ -2,8 +2,11 @@ import UIKit
 
 @MainActor
 final class LogViewerViewController: UIViewController {
+    private nonisolated static let tailLimit = 200_000
+
     private let textView = UITextView()
     private var errorsOnly = false
+    private var reloadGeneration = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -58,18 +61,48 @@ final class LogViewerViewController: UIViewController {
     }
 
     @objc private func reload() {
-        let text = LogFileWriter.shared.snapshot()
-        guard !text.isEmpty else {
-            textView.text = "No log entries yet."
-            textView.font = Theme.Font.mono(11)
-            textView.textColor = Theme.Color.secondaryLabel
-            return
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        let errorsOnly = errorsOnly
+        Task { [weak self] in
+            let rendered = await Self.render(errorsOnly: errorsOnly)
+            guard let self, generation == self.reloadGeneration else { return }
+            if let rendered {
+                textView.attributedText = rendered
+                DispatchQueue.main.async { [weak self] in self?.scrollToBottom() }
+            } else {
+                textView.attributedText = nil
+                textView.text = "No log entries yet."
+                textView.font = Theme.Font.mono(11)
+                textView.textColor = Theme.Color.secondaryLabel
+            }
         }
-        textView.attributedText = Self.colorized(text, errorsOnly: errorsOnly)
-        DispatchQueue.main.async { [weak self] in self?.scrollToBottom() }
     }
 
-    private static func colorized(_ text: String, errorsOnly: Bool) -> NSAttributedString {
+    private nonisolated static func render(errorsOnly: Bool) async -> NSAttributedString? {
+        let text = LogFileWriter.shared.snapshot()
+        guard !text.isEmpty else { return nil }
+        let clipped = tail(of: text)
+        let rendered = colorized(String(clipped), errorsOnly: errorsOnly)
+        guard clipped.startIndex != text.startIndex else { return rendered }
+        let result = NSMutableAttributedString(
+            string: "… earlier entries omitted — Share exports the full log\n",
+            attributes: [
+                .font: Theme.Font.mono(11),
+                .foregroundColor: Theme.Color.secondaryLabel,
+            ])
+        result.append(rendered)
+        return result
+    }
+
+    private nonisolated static func tail(of text: String) -> Substring {
+        guard text.count > tailLimit else { return text[...] }
+        let clipped = text.suffix(tailLimit)
+        guard let newline = clipped.firstIndex(of: "\n") else { return clipped }
+        return clipped[clipped.index(after: newline)...]
+    }
+
+    private nonisolated static func colorized(_ text: String, errorsOnly: Bool) -> NSAttributedString {
         let mono = Theme.Font.mono(11)
         let result = NSMutableAttributedString()
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -83,7 +116,7 @@ final class LogViewerViewController: UIViewController {
                     .foregroundColor: isError ? Theme.Color.danger : Theme.Color.secondaryLabel,
                 ])
             if !isError, let open = string.firstIndex(of: "["),
-                let close = string.firstIndex(of: "]")
+                let close = string[open...].firstIndex(of: "]")
             {
                 let range = NSRange(open...close, in: string)
                 attributed.addAttribute(.foregroundColor, value: Theme.Color.accent, range: range)

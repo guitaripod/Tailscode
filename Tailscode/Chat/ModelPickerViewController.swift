@@ -21,6 +21,7 @@ final class ModelPickerViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<ProviderGroup, Row>!
     private let search = UISearchController(searchResultsController: nil)
     private var query = ""
+    private var didScrollToSelected = false
 
     init(models: [ModelInfo], selected: ModelSelection?, onSelect: @escaping (ModelSelection) -> Void) {
         self.allModels = models
@@ -40,6 +41,21 @@ final class ModelPickerViewController: UIViewController {
         configureSearch()
         configureCollectionView()
         applySnapshot()
+    }
+
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        scrollToSelected()
+    }
+
+    private func scrollToSelected() {
+        guard !didScrollToSelected, let selected else { return }
+        didScrollToSelected = true
+        let row = dataSource.snapshot().itemIdentifiers.first {
+            $0.model.id == selected.modelID && $0.model.providerID == selected.providerID
+        }
+        guard let row, let indexPath = dataSource.indexPath(for: row) else { return }
+        collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
     }
 
     private func configureSearch() {
@@ -77,9 +93,10 @@ final class ModelPickerViewController: UIViewController {
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
-            guard let self else { return }
-            var content = UIListContentConfiguration.groupedHeader()
-            let group = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
+            guard let self,
+                let group = self.dataSource.sectionIdentifier(for: indexPath.section)
+            else { return }
+            var content = UIListContentConfiguration.header()
             let count = self.dataSource.snapshot().numberOfItems(inSection: group)
             content.text = "\(group.name.uppercased())  ·  \(count)"
             view.contentConfiguration = content

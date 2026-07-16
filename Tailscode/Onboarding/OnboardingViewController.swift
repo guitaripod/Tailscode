@@ -99,12 +99,10 @@ final class OnboardingViewController: UIViewController {
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
-        let username = backend == .openCode ? "opencode" : "claude"
-        let credentials = password.map { BasicCredentials(username: username, password: $0) }
 
         connectButton.setLoading(true)
         showStatus("Testing connection…", ok: true)
-        let outcome = await ConnectionProbe().probe(baseURL: url, credentials: credentials)
+        let outcome = await AgentProbe.probe(baseURL: url, password: password, preferring: backend)
         connectButton.setLoading(false)
 
         switch outcome {

@@ -26,10 +26,27 @@ extension ChatActivityAttributes.ContentState.Phase {
     }
 
     var isTerminal: Bool { self == .done || self == .error }
+
+    var label: String {
+        switch self {
+        case .thinking: return "Thinking"
+        case .tool: return "Running tool"
+        case .responding: return "Writing"
+        case .approval: return "Needs approval"
+        case .done: return "Done"
+        case .error: return "Failed"
+        }
+    }
 }
 
 private func sessionURL(_ context: ActivityViewContext<ChatActivityAttributes>) -> URL? {
     URL(string: "tailscode://session/\(context.attributes.sessionID)")
+}
+
+/// Terminal states arrive with staleDate == now on purpose, so a stale look
+/// only applies while a turn is still (supposedly) running.
+private func staleDim(_ context: ActivityViewContext<ChatActivityAttributes>) -> Bool {
+    context.isStale && !context.state.phase.isTerminal
 }
 
 struct LiveActivityWidget: Widget {
@@ -51,14 +68,13 @@ struct LiveActivityWidget: Widget {
                         Text(context.attributes.sessionTitle)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                        Text(state.statusText)
+                        StatusText(state: state, isStale: context.isStale)
                             .font(.caption)
-                            .foregroundStyle(state.phase.tint)
                             .lineLimit(1)
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ElapsedView(state: state)
+                    ElapsedView(state: state, isStale: context.isStale)
                         .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
@@ -85,16 +101,25 @@ struct LiveActivityWidget: Widget {
             } compactLeading: {
                 Image(systemName: state.phase.symbol)
                     .font(.caption2)
-                    .foregroundStyle(state.phase.tint)
+                    .foregroundStyle(state.phase.tint.opacity(staleDim(context) ? 0.4 : 1))
+                    .accessibilityLabel(state.phase.label)
             } compactTrailing: {
                 if state.phase.isTerminal || state.phase == .approval {
                     Image(systemName: state.phase == .approval ? "exclamationmark" : state.phase.symbol)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(state.phase.tint)
+                        .accessibilityLabel(state.phase.label)
+                } else if context.isStale {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Waiting for updates")
                 } else {
                     Text(state.startedAt, style: .timer)
                         .font(.caption2.weight(.medium))
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                         .frame(maxWidth: 44)
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)
@@ -102,7 +127,8 @@ struct LiveActivityWidget: Widget {
             } minimal: {
                 Image(systemName: state.phase.symbol)
                     .font(.caption2)
-                    .foregroundStyle(state.phase.tint)
+                    .foregroundStyle(state.phase.tint.opacity(staleDim(context) ? 0.4 : 1))
+                    .accessibilityLabel(state.phase.label)
             }
         }
     }
@@ -119,9 +145,8 @@ private struct LockScreenView: View {
                 Text(context.attributes.sessionTitle)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                Text(state.statusText)
+                StatusText(state: state, isStale: context.isStale)
                     .font(.caption)
-                    .foregroundStyle(state.phase.tint)
                     .lineLimit(1)
                 if let tool = state.lastTool, !state.phase.isTerminal {
                     Label(tool, systemImage: "terminal")
@@ -132,7 +157,7 @@ private struct LockScreenView: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 3) {
-                ElapsedView(state: state)
+                ElapsedView(state: state, isStale: context.isStale)
                 Text(context.attributes.serverName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -156,28 +181,55 @@ private struct PhaseIcon: View {
                 .foregroundStyle(phase.tint)
         }
         .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct StatusText: View {
+    let state: ChatActivityAttributes.ContentState
+    let isStale: Bool
+
+    var body: some View {
+        if isStale && !state.phase.isTerminal {
+            Text("Waiting for updates\u{2026}")
+                .foregroundStyle(.secondary)
+        } else {
+            Text(state.statusText)
+                .foregroundStyle(state.phase.tint)
+        }
     }
 }
 
 private struct ElapsedView: View {
     let state: ChatActivityAttributes.ContentState
+    let isStale: Bool
 
     var body: some View {
         if state.phase.isTerminal {
             Text(
                 timerInterval: state.startedAt...(state.endedAt ?? state.startedAt),
-                pauseTime: state.endedAt ?? state.startedAt
+                pauseTime: state.endedAt ?? state.startedAt,
+                countsDown: false
             )
             .font(.subheadline.weight(.semibold))
             .monospacedDigit()
             .foregroundStyle(state.phase.tint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .frame(maxWidth: 56)
             .multilineTextAlignment(.trailing)
+        } else if isStale {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Waiting for updates")
         } else {
             Text(state.startedAt, style: .timer)
                 .font(.subheadline.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .frame(maxWidth: 56)
                 .multilineTextAlignment(.trailing)
         }

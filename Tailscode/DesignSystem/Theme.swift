@@ -17,6 +17,8 @@ enum Theme {
         static let success = UIColor.systemGreen
         static let warning = UIColor.systemOrange
         static let danger = UIColor.systemRed
+        static let codeNumber = UIColor.systemTeal
+        static let codeKeyword = UIColor.systemPink
         static let claude = UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.90, green: 0.55, blue: 0.42, alpha: 1)

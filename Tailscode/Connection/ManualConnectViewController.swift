@@ -7,8 +7,6 @@ final class ManualConnectViewController: UIViewController {
     var onConnected: (() -> Void)?
 
     private let device: TailscaleDevice
-    private let keychain: KeychainSecretStore
-    private let tokenKey: String
 
     private let backendControl = UISegmentedControl(items: ["opencode", "Claude Code"])
     private let nameField = FormField(title: "Name", placeholder: "My server")
@@ -26,10 +24,8 @@ final class ManualConnectViewController: UIViewController {
         device.addresses.first { $0.contains(".") } ?? device.hostname
     }
 
-    init(device: TailscaleDevice, keychain: KeychainSecretStore, tokenKey: String) {
+    init(device: TailscaleDevice) {
         self.device = device
-        self.keychain = keychain
-        self.tokenKey = tokenKey
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -117,12 +113,10 @@ final class ManualConnectViewController: UIViewController {
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
-        let username = backend == .openCode ? "opencode" : "claude"
-        let credentials = password.map { BasicCredentials(username: username, password: $0) }
 
         connectButton.setLoading(true)
         showStatus("Testing connection…", ok: true)
-        let outcome = await ConnectionProbe().probe(baseURL: url, credentials: credentials)
+        let outcome = await AgentProbe.probe(baseURL: url, password: password, preferring: backend)
         connectButton.setLoading(false)
 
         switch outcome {

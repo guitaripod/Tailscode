@@ -17,6 +17,20 @@ private struct UsageSample: Sendable {
 private struct ScanResult {
     var samples: [UsageSample]
     var timedOut: Int
+    var failed: Int
+
+    var unavailable: Int { timedOut + failed }
+}
+
+private enum SessionOutcome: Sendable {
+    case samples([UsageSample])
+    case timedOut
+    case failed
+}
+
+private struct CredentialsUnavailableError: LocalizedError, Sendable {
+    let profileName: String
+    var errorDescription: String? { "Couldn't read stored credentials for \(profileName)." }
 }
 
 private struct GaugeVM {
@@ -42,12 +56,15 @@ final class UsageViewController: UIViewController {
     private static let perRequestTimeout: TimeInterval = 12
     private static let opencodeProviderID = "opencode-go"
     private static let claudePlanUSD: Double = 100
+    private static let staleInterval: TimeInterval = 5 * 60
 
     private let scrollView = UIScrollView()
     private let contentStack = UIStackView()
-    private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let refresher = UIRefreshControl()
     private let errorLabel = UILabel()
+    private let updatedLabel = UILabel()
+    private var loadTask: Task<Void, Never>?
+    private var lastRefreshed: Date?
 
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
     private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
@@ -63,9 +80,34 @@ final class UsageViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         setupScroll()
         setupEmptyState()
-        setupActivityIndicator()
         buildContent()
-        Task { await load() }
+        startLoad()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshUpdatedLabel()
+        if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) > Self.staleInterval,
+            loadTask == nil
+        {
+            startLoad()
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent {
+            loadTask?.cancel()
+            loadTask = nil
+        }
+    }
+
+    private func startLoad() {
+        loadTask?.cancel()
+        loadTask = Task {
+            await load()
+            if !Task.isCancelled { loadTask = nil }
+        }
     }
 
     private func setupScroll() {
@@ -110,22 +152,18 @@ final class UsageViewController: UIViewController {
         ])
     }
 
-    private func setupActivityIndicator() {
-        activityIndicator.hidesWhenStopped = true
-        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(activityIndicator)
-        NSLayoutConstraint.activate([
-            activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-        ])
-    }
-
     private func buildContent() {
+        updatedLabel.font = Theme.Font.caption()
+        updatedLabel.textColor = Theme.Color.secondaryLabel
+        updatedLabel.textAlignment = .center
+        updatedLabel.isHidden = true
+
         errorLabel.font = Theme.Font.subheadline()
         errorLabel.textColor = Theme.Color.danger
         errorLabel.numberOfLines = 0
         errorLabel.isHidden = true
 
+        contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
         contentStack.addArrangedSubview(claudeCard)
         contentStack.addArrangedSubview(opencodeCard)
@@ -133,7 +171,19 @@ final class UsageViewController: UIViewController {
     }
 
     @objc private func pulledToRefresh() {
-        Task { await load() }
+        startLoad()
+    }
+
+    private func refreshUpdatedLabel() {
+        guard let lastRefreshed else {
+            updatedLabel.isHidden = true
+            return
+        }
+        let age = Date().timeIntervalSince(lastRefreshed)
+        updatedLabel.text = age < 60
+            ? "Updated just now"
+            : "Updated \(lastRefreshed.formatted(.relative(presentation: .named)))"
+        updatedLabel.isHidden = false
     }
 
     private func load() async {
@@ -155,15 +205,17 @@ final class UsageViewController: UIViewController {
         opencodeCard.setLoading(opencodeProfile != nil)
         claudeCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
-        activityIndicator.stopAnimating()
         contentStack.isHidden = false
 
         let claudeProfiles = orderedProfiles(.claudeCode, profiles: profiles, controller: controller)
         async let claudeFailure: Error? = fillClaude(profiles: claudeProfiles, controller: controller)
         async let opencodeFailure: Error? = fillOpencode(profile: opencodeProfile, controller: controller)
         let failures = await (claudeFailure, opencodeFailure)
+        guard !Task.isCancelled else { return }
         if let failure = failures.0 ?? failures.1 { showError(failure) }
 
+        lastRefreshed = Date()
+        refreshUpdatedLabel()
         refresher.endRefreshing()
     }
 
@@ -181,13 +233,16 @@ final class UsageViewController: UIViewController {
     }
 
     private func fillClaude(profiles: [ConnectionProfile], controller: ConnectionController) async -> Error? {
-        guard let primary = profiles.first, let backend = controller.makeBackend(for: primary) else {
-            return nil
+        guard let primary = profiles.first else { return nil }
+        guard let backend = controller.makeBackend(for: primary) else {
+            claudeCard.renderError()
+            return CredentialsUnavailableError(profileName: primary.name)
         }
         for profile in profiles {
             guard let candidate = controller.makeBackend(for: profile),
                 let quota = try? await candidate.usageQuota()
             else { continue }
+            guard !Task.isCancelled else { return nil }
             AppLogger.session.info(
                 "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
             claudeCard.apply(Self.liveModel(quota))
@@ -196,21 +251,29 @@ final class UsageViewController: UIViewController {
         AppLogger.session.info("usage: no Claude usage API reachable, estimating from sessions")
         do {
             let result = try await collect(profile: primary, backend: backend, samples: Self.claudeSamples)
-            claudeCard.apply(Self.claudeEstimateModel(result.samples))
+            guard !Task.isCancelled else { return nil }
+            claudeCard.apply(Self.claudeEstimateModel(result))
             return nil
         } catch {
+            guard !Task.isCancelled else { return nil }
             claudeCard.renderError()
             return error
         }
     }
 
     private func fillOpencode(profile: ConnectionProfile?, controller: ConnectionController) async -> Error? {
-        guard let profile, let backend = controller.makeBackend(for: profile) else { return nil }
+        guard let profile else { return nil }
+        guard let backend = controller.makeBackend(for: profile) else {
+            opencodeCard.renderError()
+            return CredentialsUnavailableError(profileName: profile.name)
+        }
         do {
             let result = try await collect(profile: profile, backend: backend, samples: Self.opencodeSamples)
-            opencodeCard.apply(Self.opencodeModel(result.samples))
+            guard !Task.isCancelled else { return nil }
+            opencodeCard.apply(Self.opencodeModel(result))
             return nil
         } catch {
+            guard !Task.isCancelled else { return nil }
             opencodeCard.renderError()
             return error
         }
@@ -227,7 +290,8 @@ final class UsageViewController: UIViewController {
             "usage: scanning \(scanned.count)/\(sessions.count) \(profile.backend.rawValue) sessions from \(profile.name)")
         let result = await scan(backend: backend, sessions: scanned, samples: samples)
         AppLogger.session.info(
-            "usage: \(profile.backend.rawValue) → \(result.samples.count) priced entries, \(result.timedOut) timed out")
+            "usage: \(profile.backend.rawValue) → \(result.samples.count) priced entries, "
+                + "\(result.timedOut) timed out, \(result.failed) failed")
         return result
     }
 
@@ -237,25 +301,26 @@ final class UsageViewController: UIViewController {
         samples: @escaping @Sendable (any CodingAgentBackend, AgentSession) async throws -> [UsageSample]
     ) async -> ScanResult {
         let timeout = Self.perRequestTimeout
-        return await withTaskGroup(of: [UsageSample]?.self) { group in
+        return await withTaskGroup(of: SessionOutcome.self) { group in
             var pending = sessions.makeIterator()
 
             func schedule() {
                 guard let session = pending.next() else { return }
                 group.addTask {
-                    await Self.withTimeout(timeout) {
-                        (try? await samples(backend, session)) ?? []
+                    let outcome = await Self.withTimeout(timeout) { () async -> SessionOutcome? in
+                        do { return .samples(try await samples(backend, session)) } catch { return .failed }
                     }
+                    return outcome ?? .timedOut
                 }
             }
 
             for _ in 0..<Self.concurrency { schedule() }
-            var result = ScanResult(samples: [], timedOut: 0)
-            for await batch in group {
-                if let batch {
-                    result.samples.append(contentsOf: batch)
-                } else {
-                    result.timedOut += 1
+            var result = ScanResult(samples: [], timedOut: 0, failed: 0)
+            for await outcome in group {
+                switch outcome {
+                case .samples(let batch): result.samples.append(contentsOf: batch)
+                case .timedOut: result.timedOut += 1
+                case .failed: result.failed += 1
                 }
                 schedule()
             }
@@ -282,34 +347,39 @@ final class UsageViewController: UIViewController {
                 + "actual plan consumption, not an estimate.")
     }
 
-    private static func claudeEstimateModel(_ samples: [UsageSample]) -> CardModel {
+    private static func claudeEstimateModel(_ result: ScanResult) -> CardModel {
         let windows = [
             UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: claudePlanUSD * 5 / (30 * 24)),
             UsageWindow(name: "Weekly", seconds: 7 * 24 * 3600, cap: claudePlanUSD * 7 / 30),
             UsageWindow(name: "Monthly", seconds: 30 * 24 * 3600, cap: claudePlanUSD),
         ]
+        let samples = result.samples
         let totalSpend = samples.reduce(0) { $0 + $1.cost }
         let totalTokens = samples.reduce(0) { $0 + $1.tokens }
         return CardModel(
-            subtitle: "$100/mo plan · API-equivalent estimate",
+            subtitle: "$100/mo plan · last-turn costs only",
             pill: "EST",
             accent: Theme.Color.claude,
             gauges: gaugeVMs(samples: samples, windows: windows),
             details: [
-                ("All-time spend", currency(totalSpend)),
+                ("Recent turn costs", currency(totalSpend)),
                 ("Sessions", "\(samples.count)"),
-                ("Tokens (in + out)", tokenCount(totalTokens)),
+                ("Tokens (last turns)", tokenCount(totalTokens)),
             ],
-            note: "Live usage API unavailable on this server — estimated from per-session cost against "
-                + "your plan price, pro-rated per window. Update the bridge for real rate-limit gauges.")
+            note: unavailableSuffix(
+                "Live usage API unavailable on this server — the bridge reports only each session's "
+                    + "most recent turn, so these are last-turn sums per window, not total spend. "
+                    + "Update the bridge for real rate-limit gauges.",
+                result: result))
     }
 
-    private static func opencodeModel(_ samples: [UsageSample]) -> CardModel {
+    private static func opencodeModel(_ result: ScanResult) -> CardModel {
         let windows = [
             UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: 12),
             UsageWindow(name: "Weekly", seconds: 7 * 24 * 3600, cap: 30),
             UsageWindow(name: "Monthly", seconds: 30 * 24 * 3600, cap: 60),
         ]
+        let samples = result.samples
         let totalSpend = samples.reduce(0) { $0 + $1.cost }
         let totalTokens = samples.reduce(0) { $0 + $1.tokens }
         return CardModel(
@@ -322,8 +392,16 @@ final class UsageViewController: UIViewController {
                 ("Requests", "\(samples.count)"),
                 ("Tokens (in + out)", tokenCount(totalTokens)),
             ],
-            note: "No usage API — estimated from this server's opencode.db against Go's rolling dollar "
-                + "caps. May miss usage on other machines and server-side accounting.")
+            note: unavailableSuffix(
+                "No usage API — estimated from this server's opencode.db against Go's rolling dollar "
+                    + "caps. May miss usage on other machines and server-side accounting.",
+                result: result))
+    }
+
+    private static func unavailableSuffix(_ note: String, result: ScanResult) -> String {
+        guard result.unavailable > 0 else { return note }
+        let plural = result.unavailable == 1 ? "session" : "sessions"
+        return note + " \(result.unavailable) \(plural) unavailable — totals are incomplete."
     }
 
     private static func gaugeVMs(samples: [UsageSample], windows: [UsageWindow]) -> [GaugeVM] {
@@ -401,7 +479,6 @@ final class UsageViewController: UIViewController {
     }
 
     private func showEmptyState() {
-        activityIndicator.stopAnimating()
         refresher.endRefreshing()
         scrollView.isHidden = true
         emptyStateView.isHidden = false

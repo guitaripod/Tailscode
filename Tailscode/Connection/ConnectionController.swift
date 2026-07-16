@@ -54,7 +54,19 @@ final class ConnectionController {
     /// any path that slips through. First profile and re-saves are always free.
     func save(_ profile: ConnectionProfile, password: String?, makeActive: Bool = true) throws {
         guard let store else { throw StoreUnavailable() }
+        var profile = profile
         let existing = profiles
+        if !existing.contains(where: { $0.id == profile.id }),
+            let duplicate = existing.first(where: {
+                $0.backend == profile.backend
+                    && $0.baseURL.scheme == profile.baseURL.scheme
+                    && $0.baseURL.host == profile.baseURL.host
+                    && $0.baseURL.port == profile.baseURL.port
+            })
+        {
+            profile.id = duplicate.id
+            AppLogger.connection.info("save matched existing server \(duplicate.name); updating instead of duplicating")
+        }
         let isNew = !existing.contains { $0.id == profile.id }
         let isDebugSeed = profile.id.hasPrefix("debug")
         if isNew, !existing.isEmpty, !isDebugSeed, !ProStore.shared.isPro {
@@ -76,28 +88,6 @@ final class ConnectionController {
     func setActive(_ id: String?) {
         activeProfileID = id
         UserDefaults.standard.set(id, forKey: activeKey)
-    }
-
-    func password(for profile: ConnectionProfile) -> String? {
-        try? store?.password(for: profile.id)
-    }
-
-    func makeBackend(policy: ConnectionPolicy = .default) -> (any CodingAgentBackend)? {
-        guard let profile = activeProfile else {
-            AppLogger.connection.error("makeBackend: no active profile")
-            return nil
-        }
-        if let store, let backend = try? store.makeBackend(profile, policy: policy) {
-            return backend
-        }
-        #if DEBUG
-            if let password = overridePasswords[profile.id] {
-                AppLogger.connection.info("makeBackend: using debug override password")
-                return profile.makeBackend(password: password, policy: policy)
-            }
-        #endif
-        AppLogger.connection.error("makeBackend: unable to build backend (Keychain unavailable?)")
-        return nil
     }
 
     #if DEBUG
@@ -138,5 +128,32 @@ final class ConnectionController {
         profiles.compactMap { profile in
             makeBackend(for: profile, policy: policy).map { (profile, $0) }
         }
+    }
+}
+
+enum AgentProbe {
+    static let policy = ConnectionPolicy(requestTimeout: .seconds(10), resourceTimeout: .seconds(15))
+
+    static func username(for backend: AgentType) -> String {
+        backend == .openCode ? "opencode" : "claude"
+    }
+
+    /// Retries with the other backend's Basic-auth username on .authFailed:
+    /// the caller's backend may be a port guess, and claude-bridge rejects a
+    /// correct password sent under the wrong username.
+    static func probe(baseURL: URL, password: String?, preferring backend: AgentType) async -> ConnectionProbe.Outcome {
+        guard let password else {
+            return await ConnectionProbe().probe(baseURL: baseURL, credentials: nil, policy: policy)
+        }
+        let outcome = await ConnectionProbe().probe(
+            baseURL: baseURL,
+            credentials: BasicCredentials(username: username(for: backend), password: password),
+            policy: policy)
+        guard case .authFailed = outcome else { return outcome }
+        let other: AgentType = backend == .openCode ? .claudeCode : .openCode
+        return await ConnectionProbe().probe(
+            baseURL: baseURL,
+            credentials: BasicCredentials(username: username(for: other), password: password),
+            policy: policy)
     }
 }

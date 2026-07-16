@@ -304,7 +304,7 @@ final class DiscoveryViewController: UIViewController {
             scroll.topAnchor.constraint(equalTo: formVC.view.safeAreaLayoutGuide.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: formVC.view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: formVC.view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: formVC.view.keyboardLayoutGuide.bottomAnchor),
+            scroll.bottomAnchor.constraint(equalTo: formVC.view.keyboardLayoutGuide.topAnchor),
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: Theme.Spacing.xl),
             stack.leadingAnchor.constraint(equalTo: formVC.view.leadingAnchor, constant: Theme.Spacing.l),
             stack.trailingAnchor.constraint(equalTo: formVC.view.trailingAnchor, constant: -Theme.Spacing.l),
@@ -427,20 +427,25 @@ final class DiscoveryViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    private var connectTask: Task<Void, Never>?
+
     /// Verifies the credentials with a live probe before saving — a mistyped
     /// password must fail here, not as a wall of generic errors later.
     private func connect(with suggestion: TailnetScanner.Suggestion, password: String?) {
+        guard connectTask == nil else { return }
         view.endEditing(true)
         statusLabel.text = "Verifying \(suggestion.baseURL.host ?? "server")…"
-        Task {
-            let username = suggestion.backend == .openCode ? "opencode" : "claude"
-            let credentials = password.map { BasicCredentials(username: username, password: $0) }
-            let outcome = await ConnectionProbe().probe(
-                baseURL: suggestion.baseURL, credentials: credentials,
-                policy: ConnectionPolicy(requestTimeout: .seconds(10), resourceTimeout: .seconds(15)))
+        connectTask = Task {
+            defer { connectTask = nil }
+            let outcome = await AgentProbe.probe(
+                baseURL: suggestion.baseURL, password: password, preferring: suggestion.backend)
+            guard !Task.isCancelled else { return }
             switch outcome {
-            case .ok, .notAnAgentServer:
-                saveVerified(suggestion, password: password)
+            case .ok(let detected, _):
+                saveVerified(suggestion, backend: detected, password: password)
+            case .notAnAgentServer:
+                Theme.Haptics.error()
+                statusLabel.text = "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode or claude-bridge server."
             case .authFailed:
                 Theme.Haptics.error()
                 statusLabel.text = "Wrong password for \(suggestion.baseURL.host ?? "server")."
@@ -452,16 +457,16 @@ final class DiscoveryViewController: UIViewController {
         }
     }
 
-    private func saveVerified(_ suggestion: TailnetScanner.Suggestion, password: String?) {
+    private func saveVerified(_ suggestion: TailnetScanner.Suggestion, backend: AgentType, password: String?) {
         let profName = suggestion.recommendedProfileName.isEmpty
             ? (suggestion.baseURL.host ?? "Server")
             : suggestion.recommendedProfileName
         let profile = ConnectionProfile(
-            id: UUID().uuidString, name: profName, backend: suggestion.backend,
+            id: UUID().uuidString, name: profName, backend: backend,
             baseURL: suggestion.baseURL)
         do {
             try ConnectionController.shared.save(profile, password: password)
-            AppLogger.connection.info("connected via discovery to \(suggestion.backend.displayName)")
+            AppLogger.connection.info("connected via discovery to \(backend.displayName)")
             Theme.Haptics.success()
             dismiss(animated: true) { [onConnected] in onConnected?() }
         } catch {
@@ -472,6 +477,7 @@ final class DiscoveryViewController: UIViewController {
 
     @objc private func done() {
         scanTask?.cancel()
+        connectTask?.cancel()
         dismiss(animated: true)
     }
 
@@ -493,7 +499,7 @@ extension DiscoveryViewController: UICollectionViewDelegate {
     }
 
     private func presentManualConnect(for device: TailscaleDevice) {
-        let formVC = ManualConnectViewController(device: device, keychain: keychain, tokenKey: tokenKey)
+        let formVC = ManualConnectViewController(device: device)
         formVC.onConnected = { [weak self] in
             guard let self else { return }
             let root = self.presentingViewController

@@ -43,6 +43,28 @@ final class SessionListViewController: UIViewController {
         super.viewWillAppear(animated)
         if hasAppeared { Task { await viewModel.load() } }
         hasAppeared = true
+        startClockRefresh()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        clockRefreshTask?.cancel()
+        clockRefreshTask = nil
+    }
+
+    private var clockRefreshTask: Task<Void, Never>?
+
+    /// Relative timestamps ("Just now", "5m ago") are computed at cell
+    /// configure time; this keeps them honest while the screen stays visible.
+    private func startClockRefresh() {
+        clockRefreshTask?.cancel()
+        clockRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if Task.isCancelled { return }
+                self?.reconfigureActivity()
+            }
+        }
     }
 
     private func configureSearch() {
@@ -116,7 +138,7 @@ final class SessionListViewController: UIViewController {
     private func configureDataSource() {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, SessionEntry> {
             [weak self] cell, _, entry in
-            guard let self else { return }
+            guard self != nil else { return }
             var content = UIListContentConfiguration.subtitleCell()
             content.text = Self.displayTitle(entry.session.title)
             content.textProperties.font = Theme.Font.body()
@@ -151,6 +173,15 @@ final class SessionListViewController: UIViewController {
             }
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
+
+            switch SessionActivity.shared.status(for: entry.session.id) {
+            case .running:
+                cell.accessibilityValue = "Agent running"
+            case .awaitingApproval:
+                cell.accessibilityValue = "Awaiting approval"
+            case .idle:
+                cell.accessibilityValue = isLive ? "Live" : nil
+            }
         }
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -166,7 +197,7 @@ final class SessionListViewController: UIViewController {
             content.image = Self.serverIcon(for: section.backendType)
             content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
             content.imageToTextPadding = Theme.Spacing.s
-            if self.viewModel.unreachable.contains(section.profileName) {
+            if self.viewModel.unreachable.contains(section.profileID) {
                 content.secondaryText = "Unreachable — pull to retry"
                 content.secondaryTextProperties.color = Theme.Color.danger
             } else {
@@ -182,6 +213,8 @@ final class SessionListViewController: UIViewController {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
             buttonConfig.baseForegroundColor = Theme.Color.tertiaryLabel
             let button = UIButton(configuration: buttonConfig)
+            button.accessibilityLabel =
+                isCollapsed ? "Expand \(section.profileName)" : "Collapse \(section.profileName)"
             let id = section.profileID
             button.addAction(UIAction { [weak self] _ in
                 self?.toggleSection(id)
@@ -200,7 +233,10 @@ final class SessionListViewController: UIViewController {
     }
 
     private func bind() {
-        viewModel.onChange = { [weak self] in self?.applySnapshot() }
+        viewModel.onChange = { [weak self] in
+            self?.updateAddButton()
+            self?.applySnapshot()
+        }
         viewModel.onError = { [weak self] message in self?.present(error: message) }
         SessionActivity.shared.onChange = { [weak self] in self?.reconfigureActivity() }
     }
@@ -250,6 +286,12 @@ final class SessionListViewController: UIViewController {
             config.text = "No servers connected"
             config.secondaryText = "Add a connection in Settings to start chatting with your agents."
             contentUnavailableConfiguration = config
+        } else if viewModel.entries.isEmpty, !viewModel.unreachable.isEmpty {
+            var config = UIContentUnavailableConfiguration.empty()
+            config.image = UIImage(systemName: "wifi.exclamationmark")
+            config.text = "Server unreachable"
+            config.secondaryText = "Pull down to retry the connection."
+            contentUnavailableConfiguration = config
         } else if viewModel.entries.isEmpty {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "bubble.left.and.bubble.right")
@@ -261,30 +303,37 @@ final class SessionListViewController: UIViewController {
         }
     }
 
-    private var pendingDeepLinkSessionID: String?
+    private var pendingDeepLink: (sessionID: String, parkedAt: Date)?
+    private static let deepLinkLifetime: TimeInterval = 30
 
     /// Opens the chat for a session id (Live Activity tap). If sessions
     /// haven't loaded yet, the link is parked and consumed after the next
-    /// snapshot.
+    /// snapshot, but only within a short window so a stale link can't
+    /// hijack navigation minutes later.
     func openSession(withID id: String) {
         if let top = navigationController?.topViewController as? ChatViewController,
             top.sessionID == id
         {
+            pendingDeepLink = nil
             return
         }
         guard let entry = viewModel.entries.first(where: { $0.session.id == id }) else {
-            pendingDeepLinkSessionID = id
+            pendingDeepLink = (id, Date())
             return
         }
-        pendingDeepLinkSessionID = nil
+        pendingDeepLink = nil
         presentedViewController?.dismiss(animated: false)
         navigationController?.popToRootViewController(animated: false)
         openChat(for: entry)
     }
 
     private func consumePendingDeepLink() {
-        guard let id = pendingDeepLinkSessionID else { return }
-        openSession(withID: id)
+        guard let pending = pendingDeepLink else { return }
+        guard Date().timeIntervalSince(pending.parkedAt) < Self.deepLinkLifetime else {
+            pendingDeepLink = nil
+            return
+        }
+        openSession(withID: pending.sessionID)
     }
 
     private func toggleSection(_ profileID: String) {
@@ -373,7 +422,9 @@ final class SessionListViewController: UIViewController {
         case .awaitingApproval:
             let label = UILabel()
             label.text = "APPROVAL"
-            label.font = .systemFont(ofSize: 10, weight: .bold)
+            label.font = UIFontMetrics(forTextStyle: .caption2)
+                .scaledFont(for: .systemFont(ofSize: 10, weight: .bold))
+            label.adjustsFontForContentSizeCategory = true
             label.textColor = Theme.Color.warning
             label.sizeToFit()
             let padH: CGFloat = 7
@@ -410,6 +461,7 @@ final class SessionListViewController: UIViewController {
     }
 
     private func presentDirectoryPicker(for profile: ConnectionProfile) {
+        pendingDeepLink = nil
         guard let backend = viewModel.backend(forProfileID: profile.id),
               let fileBackend = backend as? (any FileBrowsingBackend)
         else {
@@ -442,8 +494,8 @@ final class SessionListViewController: UIViewController {
             textField.autocapitalizationType = .none
             textField.keyboardType = .URL
         }
-        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self] _ in
-            let directory = alert.textFields?.first?.text
+        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self, weak alert] _ in
+            let directory = alert?.textFields?.first?.text
             let trimmed = directory?.trimmingCharacters(in: .whitespacesAndNewlines)
             let finalDirectory = trimmed?.isEmpty == false ? trimmed : nil
             Task {
@@ -476,6 +528,7 @@ extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
+        pendingDeepLink = nil
         openChat(for: entry)
     }
 
@@ -549,7 +602,7 @@ final class FileBrowserViewController: UIViewController {
     private let backend: any FileBrowsingBackend
     private let profileID: String
     private let path: String
-    private var nodes: [FileNode] = []
+    private var hasAppeared = false
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, FileItem>!
     private var isFavorite: Bool { FileBrowserFavorites.isFavorite(path, for: profileID) }
@@ -558,11 +611,6 @@ final class FileBrowserViewController: UIViewController {
         case favorite(String)
         case recent(String)
         case node(FileNode)
-
-        var node: FileNode? {
-            if case .node(let n) = self { return n }
-            return nil
-        }
     }
 
     init(backend: any FileBrowsingBackend, profileID: String, path: String = ".") {
@@ -582,6 +630,12 @@ final class FileBrowserViewController: UIViewController {
         configureCollectionView()
         configureDataSource()
         Task { await load() }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if hasAppeared { Task { await load() } }
+        hasAppeared = true
     }
 
     private func configureNavBar() {
@@ -619,7 +673,7 @@ final class FileBrowserViewController: UIViewController {
                 [weak self] _, _, done in
                 guard let self else { return done(false) }
                 if case .favorite = item {
-                    FileBrowserFavorites.toggle(stalePath, for: self.profileID)
+                    FileBrowserFavorites.remove(stalePath, for: self.profileID)
                 } else {
                     FileBrowserRecents.remove(stalePath, for: self.profileID)
                 }
@@ -650,7 +704,7 @@ final class FileBrowserViewController: UIViewController {
     private func configureDataSource() {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, FileItem> {
             [weak self] cell, _, item in
-            guard let self else { return }
+            guard self != nil else { return }
             var content = UIListContentConfiguration.subtitleCell()
             switch item {
             case .favorite(let favPath):
@@ -713,14 +767,14 @@ final class FileBrowserViewController: UIViewController {
         if dataSource.snapshot().numberOfItems == 0 {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
         }
-        if path != "." { FileBrowserRecents.record(path, for: profileID) }
         defer { collectionView.refreshControl?.endRefreshing() }
         do {
-            nodes = try await backend.listFiles(path: path)
+            let nodes = try await backend.listFiles(path: path)
                 .sorted { a, b in
                     if a.isDirectory != b.isDirectory { return a.isDirectory }
                     return a.name.localizedStandardCompare(b.name) == .orderedAscending
                 }
+            if path != "." { FileBrowserRecents.record(path, for: profileID) }
             var snapshot = NSDiffableDataSourceSnapshot<Section, FileItem>()
             if path == "." {
                 let favs = FileBrowserFavorites.all(for: profileID)
@@ -747,11 +801,27 @@ final class FileBrowserViewController: UIViewController {
                 contentUnavailableConfiguration = nil
             }
         } catch {
-            contentUnavailableConfiguration = nil
-            let alert = UIAlertController(
-                title: "Error", message: error.localizedDescription, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            AppLogger.ui.error(
+                "file browser load failed for \(path): \(SessionListViewModel.readable(error))")
+            if dataSource.snapshot().numberOfItems == 0 {
+                var config = UIContentUnavailableConfiguration.empty()
+                config.image = UIImage(systemName: "exclamationmark.triangle")
+                config.text = "Couldn't load files"
+                config.secondaryText = SessionListViewModel.readable(error)
+                var buttonConfig = UIButton.Configuration.borderedProminent()
+                buttonConfig.title = "Retry"
+                config.button = buttonConfig
+                config.buttonProperties.primaryAction = UIAction { [weak self] _ in
+                    Task { await self?.load() }
+                }
+                contentUnavailableConfiguration = config
+            } else {
+                contentUnavailableConfiguration = nil
+                let alert = UIAlertController(
+                    title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+            }
         }
     }
 

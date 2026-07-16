@@ -33,6 +33,16 @@ enum NotificationManager {
 final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = NotificationRouter()
 
+    /// Without this, notifications posted while the app is foreground-inactive
+    /// (app switcher, banner pull-down) get no presentation and vanish.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,

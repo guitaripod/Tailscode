@@ -26,10 +26,18 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     var showsAttach = true {
         didSet {
             attachButton.isHidden = !showsAttach
-            textViewLeading?.constant = showsAttach ? Theme.Spacing.xs : Theme.Spacing.m
+            if showsAttach {
+                textViewLeadingToBar?.isActive = false
+                textViewLeadingToAttach?.isActive = true
+            } else {
+                textViewLeadingToAttach?.isActive = false
+                textViewLeadingToBar?.isActive = true
+            }
         }
     }
-    private var textViewLeading: NSLayoutConstraint?
+    private var textViewLeadingToAttach: NSLayoutConstraint?
+    private var textViewLeadingToBar: NSLayoutConstraint?
+    private var lastMeasuredWidth: CGFloat = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -72,6 +80,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         attachButton.tintColor = Theme.Color.secondaryLabel
         attachButton.translatesAutoresizingMaskIntoConstraints = false
         attachButton.addTarget(self, action: #selector(attachTapped), for: .touchUpInside)
+        attachButton.accessibilityLabel = "Attach image"
 
         var send = UIButton.Configuration.filled()
         send.cornerStyle = .capsule
@@ -88,7 +97,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         let leading = textView.leadingAnchor.constraint(
             equalTo: attachButton.trailingAnchor, constant: Theme.Spacing.xs)
-        textViewLeading = leading
+        textViewLeadingToAttach = leading
+        textViewLeadingToBar = textView.leadingAnchor.constraint(
+            equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
 
         NSLayoutConstraint.activate([
             bar.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.xs),
@@ -147,6 +158,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         config.baseForegroundColor = .white
         sendButton.configuration = config
         sendButton.isEnabled = isBusy || hasText
+        sendButton.accessibilityLabel = showStop ? "Stop" : (isBusy ? "Queue message" : "Send")
     }
 
     func setBusy(_ busy: Bool) {
@@ -155,6 +167,14 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         placeholder.text = busy ? "Queue a message…" : "Message your agent…"
         UIView.transition(with: sendButton, duration: 0.2, options: .transitionCrossDissolve) {
             self.updateSendButton()
+        }
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if textView.bounds.width != lastMeasuredWidth {
+            updateHeight()
         }
     }
 
@@ -169,7 +189,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
-        if range.length == 0, text.count > 6000 {
+        if text.count > 6000 {
             delegate?.composerDidPasteLargeText(text)
             return false
         }
@@ -182,12 +202,17 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func textViewDidChange(_ textView: UITextView) {
         placeholder.isHidden = !textView.text.isEmpty
+        updateHeight()
+        updateSendButton()
+        delegate?.composerTextDidChange(textView.text)
+    }
+
+    private func updateHeight() {
+        lastMeasuredWidth = textView.bounds.width
         let size = textView.sizeThatFits(
             CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude))
         heightConstraint.constant = min(max(22, size.height), 132)
         textView.isScrollEnabled = size.height > 132
-        updateSendButton()
-        delegate?.composerTextDidChange(textView.text)
     }
 
     @objc private func sendTapped() {
@@ -235,6 +260,22 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.text = text
         textViewDidChange(textView)
         if focus { textView.becomeFirstResponder() }
+    }
+
+    func deleteSelection() {
+        if let selection = textView.selectedTextRange, !selection.isEmpty {
+            textView.replace(selection, withText: "")
+            textViewDidChange(textView)
+        }
+    }
+
+    func insertText(_ text: String) {
+        if let selection = textView.selectedTextRange {
+            textView.replace(selection, withText: text)
+        } else {
+            textView.text = (textView.text ?? "") + text
+        }
+        textViewDidChange(textView)
     }
 
     func appendPath(_ path: String) {

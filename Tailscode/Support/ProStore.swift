@@ -15,10 +15,15 @@ final class ProStore {
         "com.guitaripod.tailscode.tip.large",
     ]
 
+    static let didChange = Notification.Name("ProStore.didChange")
+
+    enum PurchaseOutcome {
+        case success, pending, cancelled, unverified
+    }
+
     private static let cacheKey = "tailscode.isPro"
 
     private(set) var isPro: Bool
-    var onChange: (() -> Void)?
     private var updatesTask: Task<Void, Never>?
 
     private init() {
@@ -60,7 +65,7 @@ final class ProStore {
         isPro = value
         UserDefaults.standard.set(value, forKey: Self.cacheKey)
         AppLogger.lifecycle.info("pro entitlement -> \(value)")
-        onChange?()
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 
     func products() async -> (pro: Product?, tips: [Product]) {
@@ -70,24 +75,29 @@ final class ProStore {
         return (pro, tips)
     }
 
-    /// Returns true when the purchase completed (verified and finished).
-    func purchase(_ product: Product) async throws -> Bool {
+    func purchase(_ product: Product) async throws -> PurchaseOutcome {
         let result = try await product.purchase()
         switch result {
         case .success(let verification):
-            guard case .verified(let transaction) = verification else { return false }
+            guard case .verified(let transaction) = verification else {
+                AppLogger.lifecycle.error("purchase of \(product.id) failed verification")
+                return .unverified
+            }
             await transaction.finish()
             if transaction.productID == Self.proID { setPro(true) }
-            return true
-        case .userCancelled, .pending:
-            return false
+            return .success
+        case .pending:
+            AppLogger.lifecycle.info("purchase of \(product.id) pending approval")
+            return .pending
+        case .userCancelled:
+            return .cancelled
         @unknown default:
-            return false
+            return .cancelled
         }
     }
 
-    func restore() async {
-        try? await AppStore.sync()
+    func restore() async throws {
+        try await AppStore.sync()
         await refreshEntitlements()
     }
 }

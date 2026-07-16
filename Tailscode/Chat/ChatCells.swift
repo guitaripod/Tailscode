@@ -79,6 +79,7 @@ final class TextBubbleCell: UICollectionViewCell {
     private let textView = UITextView()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
+    private var maxWidth: NSLayoutConstraint!
     private var timestampLeading: NSLayoutConstraint?
     private var timestampTrailing: NSLayoutConstraint?
 
@@ -104,11 +105,13 @@ final class TextBubbleCell: UICollectionViewCell {
             equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
         trailingPin = bubble.trailingAnchor.constraint(
             equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
+        maxWidth = bubble.widthAnchor.constraint(
+            lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.82)
 
         NSLayoutConstraint.activate([
             bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
             bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
-            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.82),
+            maxWidth,
             bubble.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             bubble.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
             textView.topAnchor.constraint(equalTo: bubble.topAnchor, constant: Theme.Spacing.s),
@@ -131,6 +134,7 @@ final class TextBubbleCell: UICollectionViewCell {
     func configureError(_ text: String) {
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
+        maxWidth.isActive = true
         leadingPin.isActive = true
         trailingPin.isActive = false
         textView.textAlignment = .natural
@@ -166,6 +170,7 @@ final class TextBubbleCell: UICollectionViewCell {
             textView.text = text
             leadingPin.isActive = false
             trailingPin.isActive = false
+            maxWidth.isActive = false
             if timestampLeading == nil {
                 timestampLeading = bubble.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
                 timestampTrailing = bubble.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
@@ -175,6 +180,7 @@ final class TextBubbleCell: UICollectionViewCell {
             return
         }
 
+        maxWidth.isActive = true
         leadingPin.isActive = !isUser
         trailingPin.isActive = isUser
         textView.textAlignment = .natural
@@ -273,24 +279,73 @@ final class TextBubbleCell: UICollectionViewCell {
                     ? "•  " : ""
                 mutable.replaceCharacters(in: range, with: replacement)
             }
+            linkFilePaths(in: mutable)
             result = mutable
         } else {
-            result = NSAttributedString(string: text, attributes: [.font: base, .foregroundColor: color])
+            let mutable = NSMutableAttributedString(
+                string: text, attributes: [.font: base, .foregroundColor: color])
+            linkFilePaths(in: mutable)
+            result = mutable
         }
         renderCache.setObject(result, forKey: key)
         return result
+    }
+
+    private static let filePathRegex = try? NSRegularExpression(
+        pattern: "(?<![\\w/~.-])(~?/(?:[\\w.@%+-]+/)+[\\w.@%+-]+(:\\d+)?)")
+
+    /// Absolute and home-relative paths in assistant prose become tappable
+    /// links (`tailscode-path` scheme) so a mentioned file can be copied or
+    /// dropped into the composer without hand-selecting text.
+    static func pathActionURL(for path: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "tailscode-path"
+        components.host = "path"
+        components.queryItems = [URLQueryItem(name: "p", value: path)]
+        return components.url
+    }
+
+    static func path(fromActionURL url: URL) -> String? {
+        guard url.scheme == "tailscode-path" else { return nil }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "p" })?.value
+    }
+
+    private static func linkFilePaths(in text: NSMutableAttributedString) {
+        guard let regex = filePathRegex, text.length <= 12_000, text.string.contains("/")
+        else { return }
+        let matches = regex.matches(
+            in: text.string, range: NSRange(location: 0, length: text.length))
+        for match in matches.reversed() {
+            var range = match.range(at: 1)
+            var hasLink = false
+            text.enumerateAttribute(.link, in: range, options: []) { value, _, stop in
+                if value != nil {
+                    hasLink = true
+                    stop.pointee = true
+                }
+            }
+            guard !hasLink else { continue }
+            var token = (text.string as NSString).substring(with: range)
+            while let last = token.last, ".,;:)".contains(last) {
+                token.removeLast()
+                range.length -= 1
+            }
+            guard token.dropFirst().contains("/"), let url = pathActionURL(for: token) else { continue }
+            text.addAttribute(.link, value: url, range: range)
+        }
     }
 }
 
 extension TextBubbleCell: UITextViewDelegate {
     func textView(
-        _ textView: UITextView,
-        shouldInteractWith URL: URL,
-        in characterRange: NSRange,
-        interaction: UITextItemInteraction
-    ) -> Bool {
-        linkDelegate?.textBubbleCell(self, didTapLink: URL)
-        return false
+        _ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction
+    ) -> UIAction? {
+        guard case .link(let url) = textItem.content else { return defaultAction }
+        return UIAction { [weak self] _ in
+            guard let self else { return }
+            self.linkDelegate?.textBubbleCell(self, didTapLink: url)
+        }
     }
 }
 
@@ -435,6 +490,7 @@ final class CodeBlockCell: UICollectionViewCell {
         copyConfig.baseForegroundColor = Theme.Color.secondaryLabel
         copyConfig.contentInsets = .zero
         copyButton.configuration = copyConfig
+        copyButton.accessibilityLabel = "Copy code"
         copyButton.translatesAutoresizingMaskIntoConstraints = false
         copyButton.addTarget(self, action: #selector(copyTapped), for: .touchUpInside)
 
@@ -453,6 +509,7 @@ final class CodeBlockCell: UICollectionViewCell {
         lineNumberLabel.font = Theme.Font.mono(12)
         lineNumberLabel.textColor = Theme.Color.tertiaryLabel
         lineNumberLabel.textAlignment = .right
+        lineNumberLabel.isAccessibilityElement = false
         lineNumberLabel.translatesAutoresizingMaskIntoConstraints = false
 
         toggleButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
@@ -531,68 +588,98 @@ final class CodeBlockCell: UICollectionViewCell {
         (1...count).map { "\($0)" }.joined(separator: "\n")
     }
 
-    private static let keywordPatterns: [String] = [
-        "\\b(func|var|let|class|struct|enum|protocol|extension|import|return|if|else|guard|switch|case|default|for|while|repeat|in|break|continue|throw|throws|try|catch|do|where|as|is|nil|true|false|self|super|init|deinit|public|private|internal|fileprivate|open|static|final|override|mutating|nonmutating|associatedtype|typealias|some|any|async|await|actor|nonisolated|Task)\\b",
-        "\\b(def|return|if|elif|else|for|while|import|from|class|try|except|raise|pass|with|as|in|is|not|and|or|True|False|None|yield|lambda|async|await)\\b",
-        "\\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|throw|try|catch|class|extends|import|export|default|new|this|typeof|instanceof|async|await|of|in|from|true|false|null|undefined)\\b",
-        "\\b(fn|let|mut|impl|trait|enum|struct|match|if|else|loop|while|for|in|return|use|mod|pub|self|super|where|as|move|async|await|unsafe|dyn|ref|type|true|false|None|Some|Ok|Err|Box|Vec|String|Option|Result)\\b",
+    private static let languageKeywordRegexes: [String: NSRegularExpression] = {
+        let patterns: [([String], String)] = [
+            (["swift"],
+                "\\b(func|var|let|class|struct|enum|protocol|extension|import|return|if|else|guard|switch|case|default|for|while|repeat|in|break|continue|throw|throws|try|catch|do|where|as|is|nil|true|false|self|super|init|deinit|public|private|internal|fileprivate|open|static|final|override|mutating|nonmutating|associatedtype|typealias|some|any|async|await|actor|nonisolated|Task)\\b"),
+            (["python", "py"],
+                "\\b(def|return|if|elif|else|for|while|import|from|class|try|except|raise|pass|with|as|in|is|not|and|or|True|False|None|yield|lambda|async|await)\\b"),
+            (["javascript", "js", "typescript", "ts"],
+                "\\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|throw|try|catch|class|extends|import|export|default|new|this|typeof|instanceof|async|await|of|in|from|true|false|null|undefined)\\b"),
+            (["rust", "rs"],
+                "\\b(fn|let|mut|impl|trait|enum|struct|match|if|else|loop|while|for|in|return|use|mod|pub|self|super|where|as|move|async|await|unsafe|dyn|ref|type|true|false|None|Some|Ok|Err|Box|Vec|String|Option|Result)\\b"),
+        ]
+        var result: [String: NSRegularExpression] = [:]
+        for (aliases, pattern) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for alias in aliases { result[alias] = regex }
+        }
+        return result
+    }()
+
+    private static let hashCommentLanguages: Set<String> = [
+        "python", "py", "sh", "bash", "shell", "zsh", "ruby", "rb", "yaml", "yml", "toml",
     ]
 
-    private static let commentPatterns: [String] = [
-        "//[^\n]*",
-        "/\\*[\\s\\S]*?\\*/",
-        "#[^\n]*",
-    ]
+    private static let slashStringOrCommentRegex = try? NSRegularExpression(
+        pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")|//[^\\n]*|/\\*[\\s\\S]*?\\*/")
 
-    private static let stringPattern = "\"(?:[^\"\\\\]|\\\\.)*\""
+    private static let hashStringOrCommentRegex = try? NSRegularExpression(
+        pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")|#[^\\n]*")
 
-    private static let numberPattern = "\\b\\d+\\.?\\d*\\b"
+    private static let numberRegex = try? NSRegularExpression(pattern: "\\b\\d+\\.?\\d*\\b")
 
     private static let monoFont = Theme.Font.mono(12)
 
+    private static let highlightCache: NSCache<NSString, NSAttributedString> = {
+        let cache = NSCache<NSString, NSAttributedString>()
+        cache.countLimit = 60
+        return cache
+    }()
+
+    /// Strings and comments are lexed in a single alternation pass so the
+    /// earliest match wins — a `//` inside a string literal is not a comment
+    /// and quotes inside a comment do not open a string. Keyword and number
+    /// passes then skip those claimed ranges so nothing recolors inside them.
     static func highlightedCode(_ source: String, language: String?) -> NSAttributedString {
+        let lowerLang = (language ?? "").lowercased()
+        let length = (source as NSString).length
+        guard length <= 30_000 else {
+            return NSAttributedString(string: source, attributes: [
+                .font: monoFont, .foregroundColor: Theme.Color.label,
+            ])
+        }
+        let key = "\(lowerLang)#\(source)" as NSString
+        if let cached = highlightCache.object(forKey: key) { return cached }
         let result = NSMutableAttributedString(string: source, attributes: [
             .font: monoFont, .foregroundColor: Theme.Color.label,
         ])
-        let nsSource = source as NSString
-        let range = NSRange(location: 0, length: nsSource.length)
+        let range = NSRange(location: 0, length: length)
 
-        let lowerLang = (language ?? "").lowercased()
-        let kwSet: Set<String>
-        if lowerLang == "swift" { kwSet = [keywordPatterns[0]] }
-        else if lowerLang == "python" || lowerLang == "py" { kwSet = [keywordPatterns[1]] }
-        else if lowerLang == "javascript" || lowerLang == "js" || lowerLang == "typescript" || lowerLang == "ts" { kwSet = [keywordPatterns[2]] }
-        else if lowerLang == "rust" || lowerLang == "rs" { kwSet = [keywordPatterns[3]] }
-        else { kwSet = [] }
+        var claimed: [NSRange] = []
+        let literalRegex = hashCommentLanguages.contains(lowerLang)
+            ? hashStringOrCommentRegex : slashStringOrCommentRegex
+        literalRegex?.enumerateMatches(in: source, range: range) { match, _, _ in
+            guard let match else { return }
+            let isString = match.range(at: 1).location != NSNotFound
+            result.addAttribute(
+                .foregroundColor,
+                value: isString ? Theme.Color.warning : Theme.Color.tertiaryLabel,
+                range: match.range)
+            claimed.append(match.range)
+        }
 
-        for pattern in commentPatterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-            regex.enumerateMatches(in: source, range: range) { match, _, _ in
+        func apply(_ regex: NSRegularExpression?, color: UIColor) {
+            var claimedIndex = 0
+            regex?.enumerateMatches(in: source, range: range) { match, _, _ in
                 guard let match else { return }
-                result.addAttribute(.foregroundColor, value: Theme.Color.tertiaryLabel, range: match.range)
+                while claimedIndex < claimed.count,
+                    claimed[claimedIndex].location + claimed[claimedIndex].length
+                        <= match.range.location
+                {
+                    claimedIndex += 1
+                }
+                if claimedIndex < claimed.count,
+                    NSIntersectionRange(claimed[claimedIndex], match.range).length > 0
+                {
+                    return
+                }
+                result.addAttribute(.foregroundColor, value: color, range: match.range)
             }
         }
-
-        guard let stringRegex = try? NSRegularExpression(pattern: stringPattern) else { return result }
-        stringRegex.enumerateMatches(in: source, range: range) { match, _, _ in
-            guard let match else { return }
-            result.addAttribute(.foregroundColor, value: Theme.Color.warning, range: match.range)
-        }
-
-        guard let numRegex = try? NSRegularExpression(pattern: numberPattern) else { return result }
-        numRegex.enumerateMatches(in: source, range: range) { match, _, _ in
-            guard let match else { return }
-            result.addAttribute(.foregroundColor, value: UIColor.systemTeal, range: match.range)
-        }
-
-        for kwPattern in kwSet {
-            guard let regex = try? NSRegularExpression(pattern: kwPattern) else { continue }
-            regex.enumerateMatches(in: source, range: range) { match, _, _ in
-                guard let match else { return }
-                result.addAttribute(.foregroundColor, value: UIColor.systemPink, range: match.range)
-            }
-        }
-
+        apply(numberRegex, color: Theme.Color.codeNumber)
+        apply(languageKeywordRegexes[lowerLang], color: Theme.Color.codeKeyword)
+        highlightCache.setObject(result, forKey: key)
         return result
     }
 
@@ -632,7 +719,9 @@ final class ActivityGroupCell: UICollectionViewCell {
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let stack = UIStackView()
     private let toggle = UIButton(type: .system)
+    private let stackCollapseTap = UITapGestureRecognizer()
     private var onToggle: (() -> Void)?
+    private var onToolTap: ((ToolCall) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -662,6 +751,7 @@ final class ActivityGroupCell: UICollectionViewCell {
         summaryLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
         summaryLabel.textColor = Theme.Color.secondaryLabel
         summaryLabel.adjustsFontForContentSizeCategory = true
+        summaryLabel.isAccessibilityElement = false
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         chevron.image = UIImage(
@@ -678,6 +768,8 @@ final class ActivityGroupCell: UICollectionViewCell {
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stackCollapseTap.addTarget(self, action: #selector(stackTapped(_:)))
+        stack.addGestureRecognizer(stackCollapseTap)
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
         toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
@@ -712,16 +804,18 @@ final class ActivityGroupCell: UICollectionViewCell {
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             toggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            toggle.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            toggle.bottomAnchor.constraint(equalTo: stack.topAnchor),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(
-        steps: [ActivityStep], expanded: Bool, streaming: Bool, onToggle: @escaping () -> Void
+        steps: [ActivityStep], expanded: Bool, streaming: Bool,
+        onToggle: @escaping () -> Void, onToolTap: ((ToolCall) -> Void)? = nil
     ) {
         self.onToggle = onToggle
+        self.onToolTap = onToolTap
         let failed = !streaming && steps.contains {
             if case .tool(let call) = $0, call.status == .error { return true }
             return false
@@ -732,14 +826,31 @@ final class ActivityGroupCell: UICollectionViewCell {
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
         iconView.tintColor = failed ? Theme.Color.warning : Theme.Color.accent
         summaryLabel.text = Self.summary(steps, streaming: streaming)
+        toggle.accessibilityLabel = summaryLabel.text
+        toggle.accessibilityValue = expanded ? "Expanded" : "Collapsed"
+        toggle.accessibilityHint = expanded
+            ? "Double tap to hide agent steps" : "Double tap to show agent steps"
         chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         if streaming { spinner.startAnimating() } else { spinner.stopAnimating() }
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         stack.isHidden = !expanded
         if expanded {
-            for step in steps { stack.addArrangedSubview(Self.stepView(step)) }
+            for step in steps { stack.addArrangedSubview(stepView(step)) }
         }
+    }
+
+    /// One recognizer covers the expanded steps: a tap on a subagent-spawn
+    /// row opens its transcript, anywhere else collapses the group.
+    @objc private func stackTapped(_ gesture: UITapGestureRecognizer) {
+        for (view, call) in linkableRows where view.superview != nil {
+            if view.bounds.contains(gesture.location(in: view)) {
+                Theme.Haptics.tap()
+                onToolTap?(call)
+                return
+            }
+        }
+        toggleTapped()
     }
 
     private static func summary(_ steps: [ActivityStep], streaming: Bool) -> String {
@@ -767,7 +878,7 @@ final class ActivityGroupCell: UICollectionViewCell {
         return parts.isEmpty ? "\(steps.count) steps" : parts.joined(separator: "  ·  ")
     }
 
-    private static func stepView(_ step: ActivityStep) -> UIView {
+    private func stepView(_ step: ActivityStep) -> UIView {
         switch step {
         case .reasoning(let text):
             let label = UILabel()
@@ -781,8 +892,9 @@ final class ActivityGroupCell: UICollectionViewCell {
         }
     }
 
-    private static func toolView(_ call: ToolCall) -> UIView {
+    private func toolView(_ call: ToolCall) -> UIView {
         let statusColor = ToolIconography.statusColor(call.status)
+        let linkable = onToolTap != nil && Self.isSubagentSpawn(call)
         let header = UILabel()
         header.numberOfLines = 1
         let attributed = NSMutableAttributedString()
@@ -805,22 +917,36 @@ final class ActivityGroupCell: UICollectionViewCell {
                     .foregroundColor: statusColor,
                     .font: UIFont.preferredFont(forTextStyle: .caption1),
                 ]))
+        if linkable, let chevron = UIImage(
+            systemName: "chevron.right.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+            .withTintColor(Theme.Color.accent, renderingMode: .alwaysOriginal)
+        {
+            attributed.append(NSAttributedString(string: "  "))
+            attributed.append(NSAttributedString(attachment: NSTextAttachment(image: chevron)))
+        }
         header.attributedText = attributed
 
         let column = UIStackView(arrangedSubviews: [header])
         column.axis = .vertical
         column.spacing = 2
 
-        if let todos = todoChecklist(for: call) {
+        if let todos = Self.todoChecklist(for: call) {
             column.addArrangedSubview(todos)
-        } else if let diff = editDiff(for: call) {
+        } else if let diff = Self.editDiff(for: call) {
             let diffLabel = UILabel()
             diffLabel.numberOfLines = 0
             diffLabel.lineBreakMode = .byCharWrapping
             diffLabel.attributedText = diff
             column.addArrangedSubview(diffLabel)
         } else {
-            let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
+            if let summary = Self.orchestrationSummary(for: call) {
+                let label = UILabel()
+                label.numberOfLines = 3
+                label.attributedText = summary
+                column.addArrangedSubview(label)
+            }
+            let body = Self.condensedBody(for: call)
             if !body.isEmpty {
                 let output = UILabel()
                 output.font = Theme.Font.mono(11)
@@ -831,7 +957,122 @@ final class ActivityGroupCell: UICollectionViewCell {
                 column.addArrangedSubview(output)
             }
         }
+        if linkable {
+            linkableRows.append((column, call))
+        }
         return column
+    }
+
+    private var linkableRows: [(view: UIView, call: ToolCall)] = []
+
+    private static func isSubagentSpawn(_ call: ToolCall) -> Bool {
+        let name = call.name.lowercased()
+        return name == "task" || name == "agent"
+    }
+
+    /// Orchestration tools (task tracking, subagent spawns, workflows, skills)
+    /// carry their meaning in the structured input; their raw output is
+    /// harness plumbing, so render a readable line instead.
+    private static func orchestrationSummary(for call: ToolCall) -> NSAttributedString? {
+        func field(_ key: String) -> String? { call.input?[key]?.stringValue }
+        switch call.name.lowercased() {
+        case "taskcreate":
+            guard let subject = field("subject") else { return nil }
+            return summaryLine("plus.circle.fill", Theme.Color.accent, subject)
+        case "taskupdate":
+            let status = field("status")
+            let glyph: (String, UIColor)
+            switch status {
+            case "completed": glyph = ("checkmark.circle.fill", Theme.Color.success)
+            case "in_progress": glyph = ("circle.lefthalf.filled", Theme.Color.accent)
+            case "deleted": glyph = ("trash.circle", Theme.Color.danger)
+            default: glyph = ("circle", Theme.Color.tertiaryLabel)
+            }
+            var text = "Task \(field("taskId").map { "#\($0)" } ?? "")"
+            if let status { text += " → \(status.replacingOccurrences(of: "_", with: " "))" }
+            if let subject = field("subject") { text += " · \(subject)" }
+            return summaryLine(glyph.0, glyph.1, text)
+        case "task", "agent":
+            let title = field("description")
+                ?? field("prompt").map { String($0.prefix(120)) }
+            guard var text = title else { return nil }
+            if let type = field("subagent_type"), type != "general-purpose" {
+                text += " · \(type)"
+            }
+            return summaryLine("point.3.connected.trianglepath.dotted", Theme.Color.accent, text)
+        case "workflow":
+            let name = field("name") ?? field("script").flatMap(workflowName)
+            return summaryLine(
+                "point.3.connected.trianglepath.dotted", Theme.Color.accent,
+                name.map { "Workflow · \($0)" } ?? "Workflow")
+        case "skill":
+            guard let skill = field("skill") else { return nil }
+            var text = "Skill · \(skill)"
+            if let args = field("args"), !args.isEmpty { text += " \(String(args.prefix(60)))" }
+            return summaryLine("wand.and.stars", Theme.Color.accent, text)
+        default:
+            return nil
+        }
+    }
+
+    private static func summaryLine(
+        _ symbol: String, _ color: UIColor, _ text: String
+    ) -> NSAttributedString {
+        let attributed = NSMutableAttributedString()
+        if let image = UIImage(
+            systemName: symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+            .withTintColor(color, renderingMode: .alwaysOriginal)
+        {
+            attributed.append(NSAttributedString(attachment: NSTextAttachment(image: image)))
+            attributed.append(NSAttributedString(string: "  "))
+        }
+        attributed.append(NSAttributedString(
+            string: text,
+            attributes: [
+                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .foregroundColor: Theme.Color.label,
+            ]))
+        return attributed
+    }
+
+    private static let workflowNameRegex = try? NSRegularExpression(
+        pattern: "name:\\s*['\"]([^'\"]+)['\"]")
+
+    private static func workflowName(_ script: String) -> String? {
+        let head = String(script.prefix(500))
+        guard let match = workflowNameRegex?.firstMatch(
+                in: head, range: NSRange(head.startIndex..., in: head)),
+            let range = Range(match.range(at: 1), in: head)
+        else { return nil }
+        return String(head[range])
+    }
+
+    private static let outputSuppressed: Set<String> = [
+        "taskcreate", "taskupdate", "tasklist", "workflow", "skill",
+    ]
+
+    private static func condensedBody(for call: ToolCall) -> String {
+        guard !outputSuppressed.contains(call.name.lowercased()) else { return "" }
+        let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
+        return stripInternalMarkup(body)
+    }
+
+    private static let internalMarkupRegex = try? NSRegularExpression(
+        pattern: "<(system-reminder|task-notification)>[\\s\\S]*?</\\1>")
+    private static let blankRunRegex = try? NSRegularExpression(pattern: "\\n{3,}")
+
+    /// Tool results can embed harness-internal `<system-reminder>` blocks that
+    /// mean nothing to the reader; strip them and collapse the leftover gaps.
+    private static func stripInternalMarkup(_ text: String) -> String {
+        guard text.contains("<system-reminder>") || text.contains("<task-notification>"),
+            let markup = internalMarkupRegex, let blanks = blankRunRegex
+        else { return text }
+        var cleaned = markup.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
+        cleaned = blanks.stringByReplacingMatches(
+            in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "\n\n")
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Renders the agent's task list from a TodoWrite tool call as a live checklist.
@@ -962,12 +1203,22 @@ final class ThinkingCell: UICollectionViewCell {
             stack.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.l),
             stack.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.l),
         ])
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(restartPulsing),
+            name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window != nil { startPulsing() }
+    }
+
+    /// Backgrounding strips repeating CAAnimations while the cell stays in the
+    /// window, so didMoveToWindow never refires; restart on foreground instead.
+    @objc private func restartPulsing() {
         if window != nil { startPulsing() }
     }
 
@@ -1016,6 +1267,7 @@ final class QuestionCell: UICollectionViewCell {
     private let stack = UIStackView()
     private var request: QuestionRequest?
     private var selection = Selection()
+    private var submitted = false
     private var onSubmit: (([[String]]) -> Void)?
     private var onSkip: (() -> Void)?
     private var onCustom: ((Int) -> Void)?
@@ -1055,11 +1307,14 @@ final class QuestionCell: UICollectionViewCell {
     func configure(
         request: QuestionRequest,
         selection: Selection,
+        submitted: Bool = false,
         onSelectionChanged: @escaping (Selection) -> Void,
         onSubmit: @escaping ([[String]]) -> Void,
         onCustom: @escaping (Int) -> Void,
         onSkip: @escaping () -> Void
     ) {
+        self.submitted = submitted
+        stack.isUserInteractionEnabled = !submitted
         self.request = request
         self.selection = selection
         self.onSelectionChanged = onSelectionChanged
@@ -1195,9 +1450,16 @@ final class QuestionCell: UICollectionViewCell {
         return button
     }
 
+    /// Answering resolves the pending question server-side exactly once, so
+    /// the card stops accepting taps until it is configured with a new request.
+    private func markSubmitted() {
+        submitted = true
+        stack.isUserInteractionEnabled = false
+    }
+
     private func optionTapped(questionIndex: Int, optionIndex: Int, multiple: Bool) {
         Theme.Haptics.selection()
-        guard let request else { return }
+        guard let request, !submitted else { return }
         var picked = selection.picked[questionIndex] ?? []
         if multiple {
             if picked.contains(optionIndex) { picked.remove(optionIndex) } else { picked.insert(optionIndex) }
@@ -1207,6 +1469,8 @@ final class QuestionCell: UICollectionViewCell {
         selection.picked[questionIndex] = picked
         onSelectionChanged?(selection)
         if isSingleTapFastPath, let answers = selection.answers(for: request) {
+            markSubmitted()
+            rebuild()
             onSubmit?(answers)
             return
         }
@@ -1214,13 +1478,16 @@ final class QuestionCell: UICollectionViewCell {
     }
 
     @objc private func submitTapped() {
-        guard let request, let answers = selection.answers(for: request) else { return }
+        guard let request, !submitted, let answers = selection.answers(for: request) else { return }
         Theme.Haptics.send()
+        markSubmitted()
         onSubmit?(answers)
     }
 
     @objc private func skipTapped() {
+        guard !submitted else { return }
         Theme.Haptics.warning()
+        markSubmitted()
         onSkip?()
     }
 }

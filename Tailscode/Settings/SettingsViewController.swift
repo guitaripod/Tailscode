@@ -54,6 +54,7 @@ final class SettingsViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private var reachable: [String: Bool] = [:]
+    private var isCheckingHealth = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -63,6 +64,8 @@ final class SettingsViewController: UIViewController {
             barButtonSystemItem: .done, target: self, action: #selector(done))
         configure()
         applySnapshot()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(proStateChanged), name: ProStore.didChange, object: nil)
         Task { await checkAllHealth() }
     }
 
@@ -104,7 +107,7 @@ final class SettingsViewController: UIViewController {
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { view, _, indexPath in
-            var content = UIListContentConfiguration.groupedHeader()
+            var content = UIListContentConfiguration.header()
             content.text = ["Connections", "Appearance", "Chat", "Support", "Diagnostics", "About"][
                 indexPath.section]
             view.contentConfiguration = content
@@ -211,22 +214,33 @@ final class SettingsViewController: UIViewController {
     }
 
     private func healthDot(for id: String) -> UICellAccessory {
-        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
-        dot.layer.cornerRadius = 5
+        let symbol: String
+        let color: UIColor
+        let label: String
         switch reachable[id] {
-        case .some(true): dot.backgroundColor = Theme.Color.success
-        case .some(false): dot.backgroundColor = Theme.Color.danger
-        case .none: dot.backgroundColor = Theme.Color.separator
+        case .some(true): (symbol, color, label) = ("circle.fill", Theme.Color.success, "Reachable")
+        case .some(false):
+            (symbol, color, label) = ("exclamationmark.circle.fill", Theme.Color.danger, "Unreachable")
+        case .none: (symbol, color, label) = ("circle.dotted", Theme.Color.separator, "Checking")
         }
+        let dot = UIImageView(
+            image: UIImage(
+                systemName: symbol,
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)))
+        dot.tintColor = color
+        dot.isAccessibilityElement = true
+        dot.accessibilityLabel = label
         return .customView(configuration: .init(customView: dot, placement: .trailing()))
     }
 
     private func switchAccessory(_ toggle: Toggle) -> UICellAccessory.CustomViewConfiguration {
         let toggleView = UISwitch()
         toggleView.isOn = toggle.isOn
+        toggleView.accessibilityLabel = toggle.title
         toggleView.addAction(
-            UIAction { _ in
-                toggle.set(toggleView.isOn)
+            UIAction { action in
+                guard let sender = action.sender as? UISwitch else { return }
+                toggle.set(sender.isOn)
                 Theme.Haptics.tap()
             }, for: .valueChanged)
         return .init(customView: toggleView, placement: .trailing())
@@ -284,7 +298,16 @@ final class SettingsViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
+    @objc private func proStateChanged() {
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems([.pro])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
     private func checkAllHealth() async {
+        guard !isCheckingHealth else { return }
+        isCheckingHealth = true
+        defer { isCheckingHealth = false }
         let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
         let profiles = ConnectionController.shared.profiles
         AppLogger.connection.info("health check starting for \(profiles.count) profiles (8s timeout)")
@@ -380,7 +403,10 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .discover:
             guard allowAnotherConnection() else { return }
             let discovery = DiscoveryViewController()
-            discovery.onConnected = { [weak self] in self?.applySnapshot() }
+            discovery.onConnected = { [weak self] in
+                self?.applySnapshot()
+                self?.onConnectionChanged?()
+            }
             navigationController?.present(UINavigationController(rootViewController: discovery), animated: true)
         case .pro:
             Theme.Haptics.tap()
@@ -395,7 +421,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             applySnapshot()
             Task { await checkAllHealth() }
         case .source:
-            if let url = URL(string: "https://github.com/guitaripod/CodingAgentKit") {
+            if let url = URL(string: "https://github.com/guitaripod/Tailscode") {
                 present(SFSafariViewController(url: url), animated: true)
             }
         case .appearance, .toggle, .version:

@@ -76,7 +76,7 @@ final class ServerDetailViewController: UIViewController {
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { view, _, indexPath in
-            var content = UIListContentConfiguration.groupedHeader()
+            var content = UIListContentConfiguration.header()
             content.text = ["Server", "Health", ""][indexPath.section]
             view.contentConfiguration = content
         }
@@ -109,8 +109,10 @@ final class ServerDetailViewController: UIViewController {
 
     private func refresh() async {
         statusText = "Checking…"
+        sessionCount = nil
         applySnapshot()
-        guard let backend = ConnectionController.shared.makeBackend(for: profile) else {
+        let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
+        guard let backend = ConnectionController.shared.makeBackend(for: profile, policy: policy) else {
             statusText = "No credentials"
             applySnapshot()
             return

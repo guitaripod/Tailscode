@@ -23,8 +23,12 @@ final class ChatViewModel {
     var onSendFailed: ((String) -> Void)?
     var onModelChange: (() -> Void)?
     var onError: ((String) -> Void)?
+    var onQuestionFailed: ((String) -> Void)?
 
-    init(backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default", serverName: String = "") {
+    init(
+        backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default",
+        serverName: String = "", reportsActivity: Bool = true
+    ) {
         self.backend = backend
         self.session = session
         self.contextID = contextID
@@ -32,7 +36,13 @@ final class ChatViewModel {
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
         self.serverName = serverName
+        self.reportsActivity = reportsActivity
     }
+
+    /// Read-only transcript observers (subagent views) must not feed
+    /// SessionActivity — they would fire phantom "finished" notifications
+    /// with deep links that resolve to no session.
+    let reportsActivity: Bool
 
     let serverName: String
 
@@ -73,17 +83,22 @@ final class ChatViewModel {
             guard let self else { return }
             for await state in await self.conversation.states() {
                 self.reconcileOptimisticState(with: state)
+                if self.state.status == .running, state.status != .running {
+                    self.cachedUsage = nil
+                }
                 self.state = state
                 self.onState?(state)
-                let activity: SessionActivity.Status =
+                let awaiting =
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
-                    ? .awaitingApproval : (self.isBusy ? .running : .idle)
-                SessionActivity.shared.update(
-                    sessionID: self.session.id, title: self.displayTitle, status: activity,
-                    keepAlive: self)
+                if self.reportsActivity {
+                    SessionActivity.shared.update(
+                        sessionID: self.session.id, title: self.displayTitle,
+                        status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
+                        keepAlive: self)
+                }
                 self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
-                if activity == .idle && !self.isBound && self.queued.isEmpty {
+                if !self.isBusy, !awaiting, !self.isBound, self.queued.isEmpty {
                     self.stop()
                 }
             }
@@ -215,10 +230,16 @@ final class ChatViewModel {
     /// The delivery itself is bounded to 15s (`prompt_async` returns
     /// immediately when reachable), so a dead tunnel fails fast instead of
     /// hanging in the thinking state for minutes.
+    private var sendGeneration = 0
+
     private func deliver(
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment]
     ) {
         AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
+        sendTask?.cancel()
+        sendGeneration += 1
+        let generation = sendGeneration
+        dismissedFailure = nil
         lastSent = QueuedMessage(text: text, model: model, effort: effort, attachments: attachments)
         let echo = LocalEcho(
             text: text, baselineUserCount: state.messages.count { $0.role == .user })
@@ -232,6 +253,8 @@ final class ChatViewModel {
         }
         let resolvedModel = model ?? selectedModel
         let resolvedEffort = effort ?? currentEffort
+        let payloadBytes = attachments.reduce(0) { $0 + ($1.data?.count ?? 0) }
+        let sendBound = 15 + payloadBytes / 50_000
         sendTask = Task {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
@@ -241,13 +264,14 @@ final class ChatViewModel {
                             attachments: attachments)
                     }
                     group.addTask {
-                        try await Task.sleep(for: .seconds(15))
+                        try await Task.sleep(for: .seconds(sendBound))
                         throw SendTimeout()
                     }
                     try await group.next()
                     group.cancelAll()
                 }
                 try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, generation == sendGeneration else { return }
                 if optimisticThinking, !turnSawRunning {
                     optimisticThinking = false
                     localEchoes.removeAll { $0.id == echo.id }
@@ -263,6 +287,10 @@ final class ChatViewModel {
             } catch {
                 let cancelled = error is CancellationError
                 localEchoes.removeAll { $0.id == echo.id }
+                guard generation == sendGeneration else {
+                    onState?(state)
+                    return
+                }
                 optimisticThinking = false
                 if activityLive, !turnSawRunning {
                     AppActivityController.shared.end(
@@ -275,8 +303,8 @@ final class ChatViewModel {
                     AppLogger.chat.error("send failed: \(error)")
                     onSendFailed?(text)
                     onError?(Self.readable(error))
+                    flushQueue()
                 }
-                flushQueue()
             }
         }
     }
@@ -287,6 +315,14 @@ final class ChatViewModel {
     func abort() {
         if optimisticThinking, !turnSawRunning {
             sendTask?.cancel()
+            optimisticThinking = false
+            localEchoes.removeAll()
+            if activityLive {
+                AppActivityController.shared.end(
+                    sessionID: session.id, outcome: .done, statusText: "Cancelled")
+                activityLive = false
+            }
+            onState?(state)
             if canAbort { Task { try? await conversation.cancelCurrentTurn() } }
             return
         }
@@ -306,7 +342,13 @@ final class ChatViewModel {
 
     func respond(to permission: PermissionRequest, decision: PermissionDecision) {
         AppLogger.chat.info("permission \(permission.toolName ?? "?") -> \(decision.rawValue)")
-        Task { try? await conversation.respond(to: permission, decision: decision) }
+        Task {
+            do {
+                try await conversation.respond(to: permission, decision: decision)
+            } catch {
+                onError?(Self.readable(error))
+            }
+        }
     }
 
     func answerQuestion(_ question: QuestionRequest, answers: [[String]]) {
@@ -315,6 +357,7 @@ final class ChatViewModel {
             do {
                 try await conversation.answer(question, answers: answers)
             } catch {
+                onQuestionFailed?(question.id)
                 onError?(Self.readable(error))
             }
         }
@@ -322,15 +365,39 @@ final class ChatViewModel {
 
     func rejectQuestion(_ question: QuestionRequest) {
         AppLogger.chat.info("question \(question.id) skipped")
-        Task { try? await conversation.reject(question) }
+        Task {
+            do {
+                try await conversation.reject(question)
+            } catch {
+                onQuestionFailed?(question.id)
+                onError?(Self.readable(error))
+            }
+        }
     }
 
     func availableModels() async -> [ModelInfo] {
         (try? await backend.availableModels()) ?? []
     }
 
+    private var cachedUsage: (value: AgentUsage?, at: Date)?
+
     func usage() async -> AgentUsage? {
-        try? await backend.sessionUsage(session.id)
+        if let cached = cachedUsage, Date().timeIntervalSince(cached.at) < 30 {
+            return cached.value
+        }
+        let value = try? await backend.sessionUsage(session.id)
+        cachedUsage = (value, Date())
+        return value
+    }
+
+    /// One failed turn otherwise poisons the session: the Kit keeps
+    /// `lastFailure` until reconnect, so the banner would resurface the old
+    /// error after every later successful turn. A new send or an explicit
+    /// banner tap acknowledges the current failure.
+    private(set) var dismissedFailure: BackendFailure?
+
+    func acknowledgeFailure() {
+        dismissedFailure = state.lastFailure
     }
 
     func selectModel(_ model: ModelSelection) {
@@ -378,7 +445,7 @@ final class ChatViewModel {
             return nil
         }
         let runningTool = tools.last { $0.status == .running }
-        let lastTool = (runningTool ?? tools.last).map { $0.name ?? $0.title ?? "tool" }
+        let lastTool = (runningTool ?? tools.last).map(\.name)
         if state.pendingQuestions.first != nil {
             return (.approval, "Waiting for your answer", lastTool, tools.count)
         }
@@ -386,7 +453,7 @@ final class ChatViewModel {
             return (.approval, "Awaiting your approval", lastTool, tools.count)
         }
         if let runningTool {
-            return (.tool, "Running \(runningTool.name ?? runningTool.title ?? "a tool")", lastTool, tools.count)
+            return (.tool, "Running \(runningTool.name)", lastTool, tools.count)
         }
         if let last, last.role == .assistant, last.completedAt == nil,
             case .text(let text)? = last.parts.last?.kind, !text.isEmpty
