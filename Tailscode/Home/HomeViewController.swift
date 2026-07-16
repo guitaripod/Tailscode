@@ -36,14 +36,19 @@ final class HomeViewController: UIViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"), style: .plain, target: self,
             action: #selector(openSettings))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "square.and.pencil"), style: .plain, target: self,
-            action: #selector(newChatDefault))
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
+        updateComposeButton()
         configureCollectionView()
         configureDataSource()
         bind()
         Task { await load() }
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_CHATS"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.pushChats()
+                }
+            }
+        #endif
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -53,7 +58,10 @@ final class HomeViewController: UIViewController {
     }
 
     private func bind() {
-        viewModel.onChange = { [weak self] in self?.applySnapshot() }
+        viewModel.onChange = { [weak self] in
+            self?.updateComposeButton()
+            self?.applySnapshot()
+        }
         viewModel.onError = { [weak self] message in
             self?.refreshControl.endRefreshing()
             AppLogger.session.error("home load: \(message)")
@@ -71,9 +79,30 @@ final class HomeViewController: UIViewController {
     @objc private func openSettings() { onOpenSettings?() }
     @objc private func refresh() { Task { await load() } }
 
-    @objc private func newChatDefault() {
-        guard let profile = viewModel.servers.first else { return }
-        startChat(on: profile)
+    /// One server: compose starts a chat there. Several: compose offers the
+    /// pick, the same menu the Chats screen uses.
+    private func updateComposeButton() {
+        let servers = viewModel.servers
+        let compose = UIImage(systemName: "square.and.pencil")
+        if servers.count > 1 {
+            let actions = servers.map { profile in
+                UIAction(
+                    title: profile.name,
+                    subtitle: profile.backend.displayName,
+                    image: UIImage(systemName: profile.backend.symbolName)?
+                        .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
+                ) { [weak self] _ in self?.startChat(on: profile) }
+            }
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                image: compose, menu: UIMenu(title: "New chat on…", children: actions))
+        } else {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                image: compose, primaryAction: UIAction { [weak self] _ in
+                    guard let self, let profile = self.viewModel.servers.first else { return }
+                    self.startChat(on: profile)
+                })
+        }
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
     }
 
     private func load() async {
@@ -205,10 +234,9 @@ final class HomeViewController: UIViewController {
         }
     }
 
-    private func pushAllChats() {
-        let list = SessionListViewController()
-        list.onOpenSettings = onOpenSettings
-        navigationController?.pushViewController(list, animated: true)
+    private func pushChats(filterProfileID: String? = nil) {
+        navigationController?.pushViewController(
+            SessionListViewController(filterProfileID: filterProfileID), animated: true)
     }
 
     private func pushUsage() {
@@ -322,11 +350,11 @@ final class HomeViewController: UIViewController {
             case .servers:
                 view.configure(title: "Servers")
             case .recent:
-                view.configure(title: "Recent", actionTitle: "All chats") { [weak self] in
-                    self?.pushAllChats()
+                view.configure(title: "Recent", actionTitle: "See all") { [weak self] in
+                    self?.pushChats()
                 }
             case .usage:
-                view.configure(title: "Usage", actionTitle: "Dashboard") { [weak self] in
+                view.configure(title: "Usage", actionTitle: "Details") { [weak self] in
                     self?.pushUsage()
                 }
             }
@@ -347,9 +375,7 @@ extension HomeViewController: UICollectionViewDelegate {
         case .recent(let card):
             openChat(for: card.entry)
         case .server(let card):
-            guard let profile = viewModel.servers.first(where: { $0.id == card.profileID })
-            else { return }
-            startChat(on: profile)
+            pushChats(filterProfileID: card.profileID)
         case .usage:
             pushUsage()
         }
@@ -360,21 +386,108 @@ extension HomeViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard let indexPath = indexPaths.first,
-            case .server(let card) = dataSource.itemIdentifier(for: indexPath)
+            let item = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            UIMenu(children: [
-                UIAction(
-                    title: "View chats", image: UIImage(systemName: "bubble.left.and.bubble.right")
-                ) { _ in self?.pushAllChats() },
-                UIAction(title: "New chat", image: UIImage(systemName: "plus.bubble")) { _ in
-                    guard let self,
-                        let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
-                    else { return }
-                    self.startChat(on: profile)
-                },
-            ])
+        switch item {
+        case .server(let card):
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+                UIMenu(children: [
+                    UIAction(
+                        title: "View chats", image: UIImage(systemName: "bubble.left.and.bubble.right")
+                    ) { _ in self?.pushChats(filterProfileID: card.profileID) },
+                    UIAction(title: "New chat", image: UIImage(systemName: "plus.bubble")) { _ in
+                        guard let self,
+                            let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
+                        else { return }
+                        self.startChat(on: profile)
+                    },
+                ])
+            }
+        case .recent(let card):
+            return sessionMenu(for: card.entry, allowDelete: true)
+        case .live(let card):
+            return sessionMenu(for: card.entry, allowDelete: false)
+        case .usage:
+            return nil
         }
+    }
+
+    /// Long-press on a session card mirrors the Chats screen's row menu, so
+    /// managing a conversation never requires leaving Home.
+    private func sessionMenu(
+        for entry: SessionEntry, allowDelete: Bool
+    ) -> UIContextMenuConfiguration {
+        UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            guard let self else { return UIMenu() }
+            var actions: [UIMenuElement] = [
+                UIAction(title: "Open", image: UIImage(systemName: "bubble.left")) {
+                    [weak self] _ in self?.openChat(for: entry)
+                }
+            ]
+            if let directory = entry.session.directory,
+                let profile = self.viewModel.servers.first(where: { $0.id == entry.profileID })
+            {
+                actions.append(
+                    UIAction(
+                        title: "New chat in same project", image: UIImage(systemName: "plus.bubble")
+                    ) { [weak self] _ in
+                        Task {
+                            guard let self,
+                                let new = await self.viewModel.newSession(
+                                    on: profile, directory: directory)
+                            else { return }
+                            Theme.Haptics.success()
+                            self.openChat(for: new)
+                        }
+                    })
+            }
+            if self.viewModel.supportsRenaming(entry) {
+                actions.append(
+                    UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                        [weak self] _ in self?.promptRename(entry)
+                    })
+            }
+            if allowDelete, self.viewModel.supportsMultipleSessions(entry) {
+                actions.append(
+                    UIAction(
+                        title: "Delete", image: UIImage(systemName: "trash"),
+                        attributes: .destructive
+                    ) { [weak self] _ in self?.confirmDelete(entry) })
+            }
+            return UIMenu(children: actions)
+        }
+    }
+
+    private func promptRename(_ entry: SessionEntry) {
+        let alert = UIAlertController(
+            title: "Rename conversation", message: nil, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = entry.session.title
+            field.clearButtonMode = .whileEditing
+            field.autocapitalizationType = .sentences
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+            let title = alert?.textFields?.first?.text?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !title.isEmpty, title != entry.session.title else { return }
+            Theme.Haptics.success()
+            Task { await self?.viewModel.rename(entry, to: title) }
+        })
+        present(alert, animated: true)
+    }
+
+    private func confirmDelete(_ entry: SessionEntry) {
+        let alert = UIAlertController(
+            title: "Delete conversation?",
+            message: "\"\(SessionListViewController.displayTitle(entry.session.title))\" will be removed from the server.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            Theme.Haptics.warning()
+            Task { await self?.viewModel.delete(entry) }
+        })
+        present(alert, animated: true)
     }
 }
 

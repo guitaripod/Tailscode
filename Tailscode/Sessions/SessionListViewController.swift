@@ -2,26 +2,35 @@ import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
 
+/// Every conversation across every server in one flat, recency-sorted list —
+/// filter chips stand in for the old collapsible per-server sections, so
+/// finding a chat is scroll-or-search instead of expand-and-hunt.
 @MainActor
 final class SessionListViewController: UIViewController {
-    var onOpenSettings: (() -> Void)?
+    private enum Section { case main }
+
+    private enum ChatFilter: Equatable {
+        case all, live, profile(String)
+    }
 
     private let viewModel: SessionListViewModel
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<ServerSection, SessionEntry>!
+    private var dataSource: UICollectionViewDiffableDataSource<Section, SessionEntry>!
     private let refreshControl = UIRefreshControl()
     private let searchController = UISearchController(searchResultsController: nil)
+    private let chipBar = UIScrollView()
+    private let chipStack = UIStackView()
+    private let unreachableLabel = UILabel()
+    private var filter: ChatFilter
     private var hasAppeared = false
     private var searchQuery = ""
-    private var collapsedSections: Set<String> = {
-        Set(UserDefaults.standard.stringArray(forKey: "tailscode.collapsedSections") ?? [])
-    }()
 
-    init() {
+    init(filterProfileID: String? = nil) {
         let sources = ConnectionController.shared.allBackends().map {
             SessionListViewModel.Source(profile: $0.profile, backend: $0.backend)
         }
         self.viewModel = SessionListViewModel(sources: sources)
+        self.filter = filterProfileID.map { .profile($0) } ?? .all
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -30,9 +39,10 @@ final class SessionListViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Chats"
+        navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
         configureSearch()
-        configureNavItems()
+        configureChipBar()
         configureCollectionView()
         configureDataSource()
         bind()
@@ -70,48 +80,131 @@ final class SessionListViewController: UIViewController {
     private func configureSearch() {
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search conversations"
+        searchController.searchBar.placeholder = "Search chats, projects, servers"
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
     }
 
-    private func configureNavItems() {
-        let settingsButton = UIBarButtonItem(
-            image: UIImage(systemName: "gearshape"), style: .plain, target: self,
-            action: #selector(openSettings))
-        let usageButton = UIBarButtonItem(
-            image: UIImage(systemName: "gauge.with.dots.needle.67percent"), style: .plain, target: self,
-            action: #selector(openUsage))
-        navigationItem.leftBarButtonItems = [settingsButton, usageButton]
-        updateAddButton()
-    }
-
-    @objc private func openUsage() {
-        navigationController?.pushViewController(UsageViewController(), animated: true)
-    }
-
-    private func updateAddButton() {
+    private func updateComposeButton() {
         let servers = viewModel.servers
+        let compose = UIImage(systemName: "square.and.pencil")
         if servers.count > 1 {
             let actions = servers.map { profile in
                 UIAction(
                     title: profile.name,
-                    subtitle: "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")",
+                    subtitle: profile.backend.displayName,
                     image: Self.serverIcon(for: profile.backend)
-                ) { [weak self] _ in self?.presentDirectoryPicker(for: profile) }
+                ) { [weak self] _ in self?.startChat(on: profile) }
             }
             navigationItem.rightBarButtonItem = UIBarButtonItem(
-                image: UIImage(systemName: "square.and.pencil"),
-                menu: UIMenu(title: "New chat on…", children: actions))
+                image: compose, menu: UIMenu(title: "New chat on…", children: actions))
         } else {
             navigationItem.rightBarButtonItem = UIBarButtonItem(
-                barButtonSystemItem: .add, target: self, action: #selector(newSessionDefault))
+                image: compose, primaryAction: UIAction { [weak self] _ in
+                    guard let self, let profile = self.viewModel.servers.first else { return }
+                    self.startChat(on: profile)
+                })
         }
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
+    }
+
+    private func configureChipBar() {
+        chipBar.showsHorizontalScrollIndicator = false
+        chipBar.translatesAutoresizingMaskIntoConstraints = false
+        chipStack.axis = .horizontal
+        chipStack.spacing = Theme.Spacing.s
+        chipStack.translatesAutoresizingMaskIntoConstraints = false
+        chipBar.addSubview(chipStack)
+        view.addSubview(chipBar)
+
+        unreachableLabel.font = .preferredFont(forTextStyle: .caption2)
+        unreachableLabel.textColor = Theme.Color.danger
+        unreachableLabel.numberOfLines = 1
+        unreachableLabel.isHidden = true
+        unreachableLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(unreachableLabel)
+
+        NSLayoutConstraint.activate([
+            chipBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
+            chipBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            chipBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            chipBar.heightAnchor.constraint(equalToConstant: 36),
+            chipStack.topAnchor.constraint(equalTo: chipBar.contentLayoutGuide.topAnchor),
+            chipStack.bottomAnchor.constraint(equalTo: chipBar.contentLayoutGuide.bottomAnchor),
+            chipStack.leadingAnchor.constraint(equalTo: chipBar.contentLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            chipStack.trailingAnchor.constraint(equalTo: chipBar.contentLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            chipStack.heightAnchor.constraint(equalTo: chipBar.frameLayoutGuide.heightAnchor),
+
+            unreachableLabel.topAnchor.constraint(equalTo: chipBar.bottomAnchor, constant: Theme.Spacing.xs),
+            unreachableLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            unreachableLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+
+    private func rebuildChips() {
+        chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        chipStack.addArrangedSubview(chip(title: "All", isSelected: filter == .all) { [weak self] in
+            self?.setFilter(.all)
+        })
+        let liveCount = viewModel.entries.count(where: isLive)
+        if liveCount > 0 || filter == .live {
+            chipStack.addArrangedSubview(
+                chip(title: "Live · \(liveCount)", isSelected: filter == .live, tint: Theme.Color.success) {
+                    [weak self] in self?.setFilter(.live)
+                })
+        }
+        for profile in viewModel.servers {
+            chipStack.addArrangedSubview(
+                chip(
+                    title: profile.name,
+                    isSelected: filter == .profile(profile.id),
+                    icon: Self.serverIcon(for: profile.backend)
+                ) { [weak self] in self?.setFilter(.profile(profile.id)) })
+        }
+    }
+
+    private func chip(
+        title: String, isSelected: Bool, tint: UIColor? = nil, icon: UIImage? = nil,
+        action: @escaping () -> Void
+    ) -> UIButton {
+        var config = isSelected
+            ? UIButton.Configuration.filled() : Theme.Glass.buttonConfiguration()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        var attributed = AttributedString(title)
+        attributed.font = UIFont.preferredFont(forTextStyle: .footnote)
+            .withTraits(isSelected ? .traitBold : [])
+        config.attributedTitle = attributed
+        if isSelected {
+            config.baseBackgroundColor = tint ?? Theme.Color.accent
+            config.baseForegroundColor = .white
+        } else if let tint {
+            config.baseForegroundColor = tint
+        }
+        if let icon, !isSelected {
+            config.image = icon
+            config.imagePadding = Theme.Spacing.xs
+            config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 11)
+        }
+        let button = UIButton(configuration: config)
+        button.accessibilityTraits = isSelected ? [.button, .selected] : .button
+        button.addAction(
+            UIAction { _ in
+                Theme.Haptics.selection()
+                action()
+            }, for: .touchUpInside)
+        return button
+    }
+
+    private func setFilter(_ newFilter: ChatFilter) {
+        filter = filter == newFilter ? .all : newFilter
+        rebuildChips()
+        applySnapshot()
     }
 
     private func configureCollectionView() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-        config.headerMode = .supplementary
+        config.headerMode = .none
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath),
                 self.viewModel.supportsMultipleSessions(entry)
@@ -126,13 +219,19 @@ final class SessionListViewController: UIViewController {
             return config
         }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
-        collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
         collectionView.refreshControl = refreshControl
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: unreachableLabel.bottomAnchor, constant: Theme.Spacing.xs),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     private func configureDataSource() {
@@ -144,32 +243,39 @@ final class SessionListViewController: UIViewController {
             content.textProperties.font = Theme.Font.body()
             content.textProperties.numberOfLines = 1
 
-            var parts: [String] = []
+            var parts: [String] = [entry.profileName]
             if let dir = entry.session.directory {
-                parts.append(dir)
+                parts.append((dir as NSString).lastPathComponent)
             }
-            parts.append(entry.backendType.displayName)
             parts.append(Self.relativeDate(entry.session.updatedAt))
             content.secondaryText = parts.joined(separator: " · ")
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-            content.secondaryTextProperties.numberOfLines = 2
+            content.secondaryTextProperties.numberOfLines = 1
 
             content.textToSecondaryTextVerticalPadding = 2
             content.prefersSideBySideTextAndSecondaryText = false
 
             let isLive = entry.session.isActive == true
-            content.image = UIImage(systemName: "circle.fill")
-            content.imageProperties.tintColor =
-                isLive ? Theme.Color.success : Theme.Color.separator
-            content.imageProperties.maximumSize = CGSize(width: 10, height: 10)
-            content.imageProperties.reservedLayoutSize = CGSize(width: 10, height: 10)
+                || SessionActivity.shared.status(for: entry.session.id) != .idle
+            content.image = UIImage(systemName: entry.backendType.symbolName)?
+                .withTintColor(
+                    isLive ? Theme.Color.success : entry.backendType.brandColor,
+                    renderingMode: .alwaysOriginal)
+            content.imageProperties.maximumSize = CGSize(width: 20, height: 20)
+            content.imageProperties.reservedLayoutSize = CGSize(width: 20, height: 20)
             content.imageToTextPadding = Theme.Spacing.m
             cell.contentConfiguration = content
 
             var accessories: [UICellAccessory] = []
             if let pill = Self.statusPill(for: entry.session.id) {
                 accessories.append(pill)
+            } else if isLive {
+                let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
+                dot.backgroundColor = Theme.Color.success
+                dot.layer.cornerRadius = 4
+                accessories.append(.customView(
+                    configuration: .init(customView: dot, placement: .trailing(displayed: .always))))
             }
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
@@ -184,66 +290,17 @@ final class SessionListViewController: UIViewController {
             }
         }
 
-        let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-            elementKind: UICollectionView.elementKindSectionHeader
-        ) { [weak self] view, _, indexPath in
-            guard let self else { return }
-            let sections = self.dataSource.snapshot().sectionIdentifiers
-            guard sections.indices.contains(indexPath.section) else { return }
-            let section = sections[indexPath.section]
-            var content = UIListContentConfiguration.prominentInsetGroupedHeader()
-            let isCollapsed = self.collapsedSections.contains(section.profileID)
-            content.text = section.headerTitle
-            content.image = Self.serverIcon(for: section.backendType)
-            content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
-            content.imageToTextPadding = Theme.Spacing.s
-            let liveCount = self.viewModel.entries.count {
-                $0.profileID == section.profileID
-                    && ($0.session.isActive == true
-                        || SessionActivity.shared.status(for: $0.session.id) != .idle)
-            }
-            if self.viewModel.unreachable.contains(section.profileID) {
-                content.secondaryText = "Unreachable — pull to retry"
-                content.secondaryTextProperties.color = Theme.Color.danger
-            } else if liveCount > 0 {
-                content.secondaryText = "● \(liveCount) live"
-                content.secondaryTextProperties.color = Theme.Color.success
-                view.accessibilityValue = "\(liveCount) live session\(liveCount == 1 ? "" : "s")"
-            } else {
-                content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-            }
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-            content.prefersSideBySideTextAndSecondaryText = false
-            view.contentConfiguration = content
-
-            var buttonConfig = UIButton.Configuration.plain()
-            buttonConfig.image = UIImage(
-                systemName: isCollapsed ? "chevron.right" : "chevron.down",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-            buttonConfig.baseForegroundColor = Theme.Color.tertiaryLabel
-            let button = UIButton(configuration: buttonConfig)
-            button.accessibilityLabel =
-                isCollapsed ? "Expand \(section.profileName)" : "Collapse \(section.profileName)"
-            let id = section.profileID
-            button.addAction(UIAction { [weak self] _ in
-                self?.toggleSection(id)
-            }, for: .touchUpInside)
-            view.accessories = [.customView(configuration: .init(
-                customView: button, placement: .trailing(displayed: .always)))]
-        }
-
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, entry in
             collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: entry)
-        }
-        dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
-            collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
         }
     }
 
     private func bind() {
         viewModel.onChange = { [weak self] in
-            self?.updateAddButton()
+            self?.updateComposeButton()
+            self?.rebuildChips()
+            self?.updateUnreachableNotice()
             self?.applySnapshot()
         }
         viewModel.onError = { [weak self] message in self?.present(error: message) }
@@ -254,11 +311,9 @@ final class SessionListViewController: UIViewController {
 
     @objc private func activityDidChange() {
         reconfigureActivity()
+        rebuildChips()
     }
 
-    /// Section headers carry the live count, and supplementary views only
-    /// refresh on a section reload — reloading sections refreshes their rows
-    /// too, so this covers pills, timestamps, and headers in one pass.
     private func reconfigureActivity() {
         guard dataSource != nil else { return }
         var snapshot = dataSource.snapshot()
@@ -267,30 +322,54 @@ final class SessionListViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
-    private func applySnapshot(reloadProfileID: String? = nil) {
-        let sectionData = viewModel.sections(filteredBy: searchQuery)
-        var snapshot = NSDiffableDataSourceSnapshot<ServerSection, SessionEntry>()
-        for (section, entries) in sectionData {
-            snapshot.appendSections([section])
-            if !searchQuery.isEmpty || !collapsedSections.contains(section.profileID) {
-                snapshot.appendItems(entries, toSection: section)
-            }
+    private func updateUnreachableNotice() {
+        let names = viewModel.unreachable.compactMap { id in
+            viewModel.servers.first(where: { $0.id == id })?.name
         }
-        if let reloadID = reloadProfileID,
-           let reloadSection = sectionData.first(where: { $0.section.profileID == reloadID })?.section
-        {
-            snapshot.reloadSections([reloadSection])
+        if names.isEmpty {
+            unreachableLabel.isHidden = true
+            unreachableLabel.text = nil
+        } else {
+            unreachableLabel.text =
+                "\(names.joined(separator: ", ")) unreachable — pull to retry"
+            unreachableLabel.isHidden = false
         }
-        let existing = dataSource.snapshot().itemIdentifiers
-        let existingSet = Set(existing)
-        let newSet = Set(snapshot.itemIdentifiers)
-        let allEntries = sectionData.flatMap(\.entries)
-        let retained = allEntries.filter { existingSet.contains($0) && newSet.contains($0) }
+    }
+
+    private func isLive(_ entry: SessionEntry) -> Bool {
+        entry.session.isActive == true
+            || SessionActivity.shared.status(for: entry.session.id) != .idle
+    }
+
+    private func filteredEntries() -> [SessionEntry] {
+        var list = viewModel.entries
+        switch filter {
+        case .all:
+            break
+        case .live:
+            list = list.filter(isLive)
+        case .profile(let id):
+            list = list.filter { $0.profileID == id }
+        }
+        guard !searchQuery.isEmpty else { return list }
+        return list.filter {
+            $0.session.title.localizedCaseInsensitiveContains(searchQuery)
+                || ($0.session.directory?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+                || $0.profileName.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+
+    private func applySnapshot() {
+        let entries = filteredEntries()
+        var snapshot = NSDiffableDataSourceSnapshot<Section, SessionEntry>()
+        snapshot.appendSections([.main])
+        snapshot.appendItems(entries, toSection: .main)
+        let existing = Set(dataSource.snapshot().itemIdentifiers)
+        let retained = entries.filter { existing.contains($0) }
         if !retained.isEmpty { snapshot.reconfigureItems(retained) }
-        dataSource.apply(snapshot, animatingDifferences: true)
+        dataSource.apply(snapshot, animatingDifferences: hasAppeared)
         refreshControl.endRefreshing()
         updateEmptyState(itemCount: snapshot.numberOfItems)
-        consumePendingDeepLink()
     }
 
     private func updateEmptyState(itemCount: Int) {
@@ -298,6 +377,12 @@ final class SessionListViewController: UIViewController {
             contentUnavailableConfiguration = nil
         } else if !searchQuery.isEmpty {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.search()
+        } else if case .live = filter {
+            var config = UIContentUnavailableConfiguration.empty()
+            config.image = UIImage(systemName: "moon.zzz")
+            config.text = "Nothing running"
+            config.secondaryText = "Live sessions show up here the moment an agent starts working."
+            contentUnavailableConfiguration = config
         } else if viewModel.isEmptyOfServers {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "server.rack")
@@ -310,58 +395,13 @@ final class SessionListViewController: UIViewController {
             config.text = "Server unreachable"
             config.secondaryText = "Pull down to retry the connection."
             contentUnavailableConfiguration = config
-        } else if viewModel.entries.isEmpty {
+        } else {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "bubble.left.and.bubble.right")
-            config.text = "No conversations yet"
-            config.secondaryText = "Tap + to start a chat on your server."
+            config.text = "No conversations here yet"
+            config.secondaryText = "Start one with the compose button."
             contentUnavailableConfiguration = config
-        } else {
-            contentUnavailableConfiguration = nil
         }
-    }
-
-    private var pendingDeepLink: (sessionID: String, parkedAt: Date)?
-    private static let deepLinkLifetime: TimeInterval = 30
-
-    /// Opens the chat for a session id (Live Activity tap). If sessions
-    /// haven't loaded yet, the link is parked and consumed after the next
-    /// snapshot, but only within a short window so a stale link can't
-    /// hijack navigation minutes later.
-    func openSession(withID id: String) {
-        if let top = navigationController?.topViewController as? ChatViewController,
-            top.sessionID == id
-        {
-            pendingDeepLink = nil
-            return
-        }
-        guard let entry = viewModel.entries.first(where: { $0.session.id == id }) else {
-            pendingDeepLink = (id, Date())
-            return
-        }
-        pendingDeepLink = nil
-        presentedViewController?.dismiss(animated: false)
-        navigationController?.popToRootViewController(animated: false)
-        openChat(for: entry)
-    }
-
-    private func consumePendingDeepLink() {
-        guard let pending = pendingDeepLink else { return }
-        guard Date().timeIntervalSince(pending.parkedAt) < Self.deepLinkLifetime else {
-            pendingDeepLink = nil
-            return
-        }
-        openSession(withID: pending.sessionID)
-    }
-
-    private func toggleSection(_ profileID: String) {
-        if collapsedSections.contains(profileID) {
-            collapsedSections.remove(profileID)
-        } else {
-            collapsedSections.insert(profileID)
-        }
-        UserDefaults.standard.set(Array(collapsedSections), forKey: "tailscode.collapsedSections")
-        applySnapshot(reloadProfileID: profileID)
     }
 
     private func promptRename(_ entry: SessionEntry) {
@@ -399,7 +439,7 @@ final class SessionListViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private static func displayTitle(_ title: String) -> String {
+    static func displayTitle(_ title: String) -> String {
         guard AgentSession.isPlaceholderTitle(title) else {
             return title.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -473,15 +513,9 @@ final class SessionListViewController: UIViewController {
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }
-    @objc private func openSettings() { onOpenSettings?() }
 
-    @objc private func newSessionDefault() {
-        guard let profile = viewModel.servers.first else { return }
-        presentDirectoryPicker(for: profile)
-    }
-
-    private func presentDirectoryPicker(for profile: ConnectionProfile) {
-        pendingDeepLink = nil
+    private func startChat(on profile: ConnectionProfile) {
+        Theme.Haptics.tap()
         NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { [weak self] entry in
             self?.openChat(for: entry)
         }
@@ -508,7 +542,6 @@ extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
-        pendingDeepLink = nil
         openChat(for: entry)
     }
 

@@ -20,17 +20,6 @@ struct SessionEntry: Hashable {
 }
 
 /// Each section in the session list represents one backend server.
-struct ServerSection: Hashable {
-    let profileID: String
-    let profileName: String
-    let host: String
-    let backendType: AgentType
-
-    var headerTitle: String {
-        "\(profileName) · \(backendType.displayName)"
-    }
-}
-
 @MainActor
 final class SessionListViewModel {
     struct Source {
@@ -121,41 +110,6 @@ final class SessionListViewModel {
         unreachable = failed
         AppLogger.session.info("loaded \(entries.count) sessions across \(sources.count) servers")
         onChange?()
-    }
-
-    func sections(filteredBy query: String = "") -> [(section: ServerSection, entries: [SessionEntry])] {
-        let filtered = query.isEmpty
-            ? entries
-            : entries.filter {
-                $0.session.title.localizedCaseInsensitiveContains(query)
-                    || ($0.session.directory?.localizedCaseInsensitiveContains(query) ?? false)
-            }
-        var groups: [String: (section: ServerSection, entries: [SessionEntry])] = [:]
-        for entry in filtered {
-            if let existing = groups[entry.profileID] {
-                groups[entry.profileID] = (existing.section, existing.entries + [entry])
-            } else {
-                let section = ServerSection(
-                    profileID: entry.profileID,
-                    profileName: entry.profileName,
-                    host: entry.host,
-                    backendType: entry.backendType)
-                groups[entry.profileID] = (section, [entry])
-            }
-        }
-        let result = sources.compactMap { source -> (ServerSection, [SessionEntry])? in
-            if let entryList = groups[source.profile.id] {
-                return (entryList.section, entryList.entries)
-            }
-            guard query.isEmpty, unreachable.contains(source.profile.id) else { return nil }
-            let section = ServerSection(
-                profileID: source.profile.id,
-                profileName: source.profile.name,
-                host: source.profile.baseURL.host ?? source.profile.name,
-                backendType: source.profile.backend)
-            return (section, [])
-        }
-        return result
     }
 
     func newSession(on profile: ConnectionProfile, directory: String? = nil) async -> SessionEntry? {
