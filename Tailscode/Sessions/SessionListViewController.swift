@@ -197,9 +197,18 @@ final class SessionListViewController: UIViewController {
             content.image = Self.serverIcon(for: section.backendType)
             content.imageProperties.maximumSize = CGSize(width: 22, height: 22)
             content.imageToTextPadding = Theme.Spacing.s
+            let liveCount = self.viewModel.entries.count {
+                $0.profileID == section.profileID
+                    && ($0.session.isActive == true
+                        || SessionActivity.shared.status(for: $0.session.id) != .idle)
+            }
             if self.viewModel.unreachable.contains(section.profileID) {
                 content.secondaryText = "Unreachable — pull to retry"
                 content.secondaryTextProperties.color = Theme.Color.danger
+            } else if liveCount > 0 {
+                content.secondaryText = "● \(liveCount) live"
+                content.secondaryTextProperties.color = Theme.Color.success
+                view.accessibilityValue = "\(liveCount) live session\(liveCount == 1 ? "" : "s")"
             } else {
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             }
@@ -238,14 +247,23 @@ final class SessionListViewController: UIViewController {
             self?.applySnapshot()
         }
         viewModel.onError = { [weak self] message in self?.present(error: message) }
-        SessionActivity.shared.onChange = { [weak self] in self?.reconfigureActivity() }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(activityDidChange),
+            name: SessionActivity.didChange, object: nil)
     }
 
+    @objc private func activityDidChange() {
+        reconfigureActivity()
+    }
+
+    /// Section headers carry the live count, and supplementary views only
+    /// refresh on a section reload — reloading sections refreshes their rows
+    /// too, so this covers pills, timestamps, and headers in one pass.
     private func reconfigureActivity() {
         guard dataSource != nil else { return }
         var snapshot = dataSource.snapshot()
-        guard !snapshot.itemIdentifiers.isEmpty else { return }
-        snapshot.reconfigureItems(snapshot.itemIdentifiers)
+        guard !snapshot.sectionIdentifiers.isEmpty else { return }
+        snapshot.reloadSections(snapshot.sectionIdentifiers)
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
@@ -464,49 +482,9 @@ final class SessionListViewController: UIViewController {
 
     private func presentDirectoryPicker(for profile: ConnectionProfile) {
         pendingDeepLink = nil
-        guard let backend = viewModel.backend(forProfileID: profile.id),
-              let fileBackend = backend as? (any FileBrowsingBackend)
-        else {
-            showTextDirectoryPicker(for: profile)
-            return
+        NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { [weak self] entry in
+            self?.openChat(for: entry)
         }
-        let browser = FileBrowserViewController(backend: fileBackend, profileID: profile.id)
-        browser.onSelect = { [weak self] path in
-            guard let self else { return }
-            self.presentedViewController?.dismiss(animated: true) {
-                Task {
-                    guard let entry = await self.viewModel.newSession(on: profile, directory: path)
-                    else { return }
-                    self.openChat(for: entry)
-                }
-            }
-        }
-        let nav = UINavigationController(rootViewController: browser)
-        present(nav, animated: true)
-    }
-
-    private func showTextDirectoryPicker(for profile: ConnectionProfile) {
-        let alert = UIAlertController(
-            title: "New Chat",
-            message: "Enter a directory path on the server",
-            preferredStyle: .alert)
-        alert.addTextField { textField in
-            textField.placeholder = "/path/to/project"
-            textField.autocorrectionType = .no
-            textField.autocapitalizationType = .none
-            textField.keyboardType = .URL
-        }
-        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self, weak alert] _ in
-            let directory = alert?.textFields?.first?.text
-            let trimmed = directory?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let finalDirectory = trimmed?.isEmpty == false ? trimmed : nil
-            Task {
-                guard let entry = await self?.viewModel.newSession(on: profile, directory: finalDirectory) else { return }
-                self?.openChat(for: entry)
-            }
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
     }
 
     private func openChat(for entry: SessionEntry) {

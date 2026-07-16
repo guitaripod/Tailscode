@@ -89,17 +89,17 @@ final class AppCoordinator {
         guard url.scheme == "tailscode", url.host() == "session" else { return }
         let sessionID = url.lastPathComponent
         guard !sessionID.isEmpty else { return }
-        guard let list = sessionList else {
+        guard let home else {
             pendingSessionLink = (url, Date())
             return
         }
         pendingSessionLink = nil
-        list.openSession(withID: sessionID)
+        home.openSession(withID: sessionID)
     }
 
-    private var sessionList: SessionListViewController? {
+    private var home: HomeViewController? {
         (window.rootViewController as? UINavigationController)?
-            .viewControllers.first as? SessionListViewController
+            .viewControllers.first as? HomeViewController
     }
 
     private func route(animated: Bool) {
@@ -124,12 +124,12 @@ final class AppCoordinator {
     }
 
     private func makeMain() -> UIViewController {
-        let list = SessionListViewController()
-        list.onOpenSettings = { [weak self, weak list] in
-            guard let self, let list else { return }
-            self.presentSettings(from: list)
+        let home = HomeViewController()
+        home.onOpenSettings = { [weak self, weak home] in
+            guard let self, let home else { return }
+            self.presentSettings(from: home.navigationController ?? home)
         }
-        let nav = UINavigationController(rootViewController: list)
+        let nav = UINavigationController(rootViewController: home)
         nav.navigationBar.prefersLargeTitles = true
         return nav
     }

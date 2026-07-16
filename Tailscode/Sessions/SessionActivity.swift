@@ -11,9 +11,10 @@ final class SessionActivity {
         case idle, running, awaitingApproval
     }
 
+    static let didChange = Notification.Name("SessionActivity.didChange")
+
     private(set) var statuses: [String: Status] = [:]
     private var retained: [String: ChatViewModel] = [:]
-    var onChange: (() -> Void)?
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -46,6 +47,6 @@ final class SessionActivity {
                 title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
                 sessionID: sessionID)
         }
-        onChange?()
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 }
