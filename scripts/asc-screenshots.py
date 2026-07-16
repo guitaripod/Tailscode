@@ -23,9 +23,8 @@ import asc  # noqa: E402
 APP = "6791660932"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDER = [
-    "01-live.png", "02-work.png", "03-approval.png", "04-question.png",
-    "05-subagents.png", "06-render.png", "07-home.png", "08-usage.png",
-    "09-chats.png", "10-models.png",
+    "01-live.png", "setup.png", "02-work.png", "03-approval.png", "04-question.png",
+    "05-subagents.png", "06-render.png", "07-home.png", "08-usage.png", "10-models.png",
 ]
 IPHONE_SET = ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/iphone"))
 STALE_SETS = ["APP_IPAD_PRO_3GEN_129"]
