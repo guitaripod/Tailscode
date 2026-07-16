@@ -721,7 +721,6 @@ final class ActivityGroupCell: UICollectionViewCell {
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let stack = UIStackView()
     private let toggle = UIButton(type: .system)
-    private let stackCollapseTap = UITapGestureRecognizer()
     private var onToggle: (() -> Void)?
     private var onToolTap: ((ToolCall) -> Void)?
 
@@ -769,12 +768,11 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
+        stack.isUserInteractionEnabled = false
         stack.translatesAutoresizingMaskIntoConstraints = false
-        stackCollapseTap.addTarget(self, action: #selector(stackTapped(_:)))
-        stack.addGestureRecognizer(stackCollapseTap)
 
         toggle.translatesAutoresizingMaskIntoConstraints = false
-        toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
+        toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
 
         contentView.addSubview(container)
         [iconView, summaryLabel, spinner, chevron, stack, toggle].forEach(container.addSubview)
@@ -806,7 +804,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             toggle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            toggle.bottomAnchor.constraint(equalTo: stack.topAnchor),
+            toggle.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
     }
 
@@ -837,22 +835,28 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         stack.isHidden = !expanded
+        linkableRows = []
         if expanded {
             for step in steps { stack.addArrangedSubview(stepView(step)) }
         }
     }
 
-    /// One recognizer covers the expanded steps: a tap on a subagent-spawn
-    /// row opens its transcript, anywhere else collapses the group.
-    @objc private func stackTapped(_ gesture: UITapGestureRecognizer) {
-        for (view, call) in linkableRows where view.superview != nil {
-            if view.bounds.contains(gesture.location(in: view)) {
-                Theme.Haptics.tap()
-                onToolTap?(call)
-                return
+    /// The whole card is one button — a gesture recognizer here would lose
+    /// the recognition race against the chat's keyboard-dismiss tap, so the
+    /// step rows stay non-interactive and taps dispatch by touch location:
+    /// a subagent-spawn row opens its transcript, anywhere else toggles.
+    @objc private func toggleTapped(_ sender: UIButton, event: UIEvent) {
+        if let touch = event.allTouches?.first {
+            for (view, call) in linkableRows where view.superview != nil {
+                if view.bounds.contains(touch.location(in: view)) {
+                    Theme.Haptics.tap()
+                    onToolTap?(call)
+                    return
+                }
             }
         }
-        toggleTapped()
+        Theme.Haptics.selection()
+        onToggle?()
     }
 
     private static func summary(_ steps: [ActivityStep], streaming: Bool) -> String {
@@ -1123,11 +1127,6 @@ final class ActivityGroupCell: UICollectionViewCell {
             append(content, prefix: "+ ", color: Theme.Color.success)
         }
         return result.length > 0 ? result : nil
-    }
-
-    @objc private func toggleTapped() {
-        Theme.Haptics.selection()
-        onToggle?()
     }
 }
 
