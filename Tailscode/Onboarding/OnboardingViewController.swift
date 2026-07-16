@@ -31,6 +31,11 @@ final class OnboardingViewController: UIViewController {
         discoverButton.addTarget(self, action: #selector(discoverTapped), for: .touchUpInside)
         demoButton.addTarget(self, action: #selector(demoTapped), for: .touchUpInside)
         backendChanged()
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_GUIDE"] != nil {
+                DispatchQueue.main.async { [weak self] in self?.guideTapped() }
+            }
+        #endif
     }
 
     private func buildUI() {
@@ -39,6 +44,27 @@ final class OnboardingViewController: UIViewController {
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
+
+        let guideButton = UIButton(type: .system)
+        var guideConfig = UIButton.Configuration.tinted()
+        guideConfig.title = "Set up a server"
+        guideConfig.subtitle = "New here? Three steps, about five minutes"
+        guideConfig.image = UIImage(
+            systemName: "sparkles",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold))
+        guideConfig.imagePadding = Theme.Spacing.m
+        guideConfig.baseBackgroundColor = Theme.Color.accent
+        guideConfig.baseForegroundColor = Theme.Color.accent
+        guideConfig.cornerStyle = .large
+        guideConfig.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+        guideConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var out = $0
+            out.font = Theme.Font.headline()
+            return out
+        }
+        guideButton.configuration = guideConfig
+        guideButton.contentHorizontalAlignment = .leading
+        guideButton.addTarget(self, action: #selector(guideTapped), for: .touchUpInside)
 
         statusLabel.font = Theme.Font.caption()
         statusLabel.numberOfLines = 0
@@ -57,11 +83,12 @@ final class OnboardingViewController: UIViewController {
         orLabel.textAlignment = .center
 
         let stack = UIStackView(arrangedSubviews: [
-            header, discoverButton, orLabel, backendControl, nameField, hostField, passwordField, connectButton, demoButton, statusLabel,
+            header, guideButton, discoverButton, orLabel, backendControl, nameField, hostField, passwordField, connectButton, demoButton, statusLabel,
         ])
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.l
-        stack.setCustomSpacing(Theme.Spacing.xl, after: header)
+        stack.setCustomSpacing(Theme.Spacing.m, after: header)
+        stack.setCustomSpacing(Theme.Spacing.xl, after: guideButton)
         stack.setCustomSpacing(Theme.Spacing.s, after: discoverButton)
         stack.setCustomSpacing(Theme.Spacing.s, after: connectButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -94,6 +121,21 @@ final class OnboardingViewController: UIViewController {
     @objc private func connectTapped() {
         view.endEditing(true)
         Task { await attemptConnect() }
+    }
+
+    @objc private func guideTapped() {
+        Theme.Haptics.tap()
+        let guide = SetupGuideViewController()
+        guide.onReadyToConnect = { [weak self] in
+            self?.navigationController?.popViewController(animated: true)
+            self?.hostField.textField.becomeFirstResponder()
+        }
+        guide.onTryDemo = { [weak self] in
+            ConnectionController.shared.enterDemoMode()
+            Theme.Haptics.success()
+            self?.onConnected?()
+        }
+        navigationController?.pushViewController(guide, animated: true)
     }
 
     @objc private func discoverTapped() {
