@@ -112,7 +112,35 @@ def ensure_iap(product_id, iap_type, family, ref, display, description, price):
     else:
         print("    ! no USA price point found")
     try_("screenshot", lambda: upload_review_screenshot(iap_id))
+    try_("availability", lambda: ensure_availability(iap_id))
     return iap_id
+
+
+def all_territories_minus_china():
+    """Every App Store territory except China mainland — matches the app's own
+    availability, and is REQUIRED: an IAP with zero territories stays
+    MISSING_METADATA and can't ride a submission."""
+    terrs, page = [], asc.get("/v1/territories?limit=200")
+    terrs += [t["id"] for t in page["data"]]
+    nxt = page.get("links", {}).get("next")
+    while nxt:
+        page = asc.req("GET", "", raw_url=nxt)
+        terrs += [t["id"] for t in page["data"]]
+        nxt = page.get("links", {}).get("next")
+    return [t for t in terrs if t != "CHN"]
+
+
+def ensure_availability(iap_id):
+    existing = asc.get(f"/v2/inAppPurchases/{iap_id}/inAppPurchaseAvailability").get("data")
+    if existing:
+        return
+    data = [{"type": "territories", "id": t} for t in all_territories_minus_china()]
+    asc.post("/v1/inAppPurchaseAvailabilities", {"data": {
+        "type": "inAppPurchaseAvailabilities",
+        "attributes": {"availableInNewTerritories": True},
+        "relationships": {
+            "inAppPurchase": {"data": {"type": "inAppPurchases", "id": iap_id}},
+            "availableTerritories": {"data": data}}}})
 
 
 def main():
