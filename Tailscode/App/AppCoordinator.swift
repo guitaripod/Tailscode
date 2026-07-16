@@ -13,12 +13,10 @@ final class AppCoordinator {
     func start() {
         window.tintColor = Theme.Color.accent
         window.overrideUserInterfaceStyle = AppPreferences.appearance.style
+        if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
+            ConnectionController.shared.enterDemoMode()
+        }
         #if DEBUG
-            if CommandLine.arguments.contains("--demo") {
-                showDemo()
-                window.makeKeyAndVisible()
-                return
-            }
             seedDebugConnectionIfNeeded()
         #endif
         route(animated: false)
@@ -71,12 +69,6 @@ final class AppCoordinator {
             }
         }
 
-        private func showDemo() {
-            let viewModel = ChatViewModel(backend: DemoBackend.make(), session: DemoBackend.session)
-            let chat = ChatViewController(viewModel: viewModel)
-            let nav = UINavigationController(rootViewController: chat)
-            window.rootViewController = nav
-        }
     #endif
 
     private var pendingSessionLink: (url: URL, parkedAt: Date)?

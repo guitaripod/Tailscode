@@ -108,6 +108,12 @@ final class ChatViewController: UIViewController {
                     if !agents.isEmpty { self.presentSubagents(agents) }
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] != nil, !isReadOnly {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    self?.presentModelPicker()
+                }
+            }
         #endif
         if !isReadOnly, let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
             composer.setDraft(draft, focus: false)

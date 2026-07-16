@@ -16,6 +16,7 @@ final class OnboardingViewController: UIViewController {
         title: "Password (optional)", placeholder: "Leave blank on a private tailnet", secure: true)
     private let connectButton = PrimaryButton(title: "Test & Connect")
     private let statusLabel = UILabel()
+    private let demoButton = UIButton(type: .system)
 
     private var backend: AgentType { backendControl.selectedSegmentIndex == 0 ? .openCode : .claudeCode }
 
@@ -28,6 +29,7 @@ final class OnboardingViewController: UIViewController {
         backendControl.addTarget(self, action: #selector(backendChanged), for: .valueChanged)
         connectButton.addTarget(self, action: #selector(connectTapped), for: .touchUpInside)
         discoverButton.addTarget(self, action: #selector(discoverTapped), for: .touchUpInside)
+        demoButton.addTarget(self, action: #selector(demoTapped), for: .touchUpInside)
         backendChanged()
     }
 
@@ -42,18 +44,26 @@ final class OnboardingViewController: UIViewController {
         statusLabel.numberOfLines = 0
         statusLabel.textColor = Theme.Color.secondaryLabel
 
+        var demoConfig = UIButton.Configuration.plain()
+        demoConfig.title = "No server yet? Try the demo"
+        demoConfig.image = UIImage(systemName: "play.circle")
+        demoConfig.imagePadding = 6
+        demoConfig.baseForegroundColor = Theme.Color.accent
+        demoButton.configuration = demoConfig
+
         orLabel.text = "or"
         orLabel.font = Theme.Font.caption()
         orLabel.textColor = Theme.Color.secondaryLabel
         orLabel.textAlignment = .center
 
         let stack = UIStackView(arrangedSubviews: [
-            header, discoverButton, orLabel, backendControl, nameField, hostField, passwordField, connectButton, statusLabel,
+            header, discoverButton, orLabel, backendControl, nameField, hostField, passwordField, connectButton, demoButton, statusLabel,
         ])
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.l
         stack.setCustomSpacing(Theme.Spacing.xl, after: header)
         stack.setCustomSpacing(Theme.Spacing.s, after: discoverButton)
+        stack.setCustomSpacing(Theme.Spacing.s, after: connectButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let scroll = UIScrollView()
@@ -90,6 +100,12 @@ final class OnboardingViewController: UIViewController {
         let discovery = DiscoveryViewController()
         discovery.onConnected = onConnected
         present(UINavigationController(rootViewController: discovery), animated: true)
+    }
+
+    @objc private func demoTapped() {
+        ConnectionController.shared.enterDemoMode()
+        Theme.Haptics.success()
+        onConnected?()
     }
 
     private func attemptConnect() async {

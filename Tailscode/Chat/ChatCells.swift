@@ -651,8 +651,7 @@ final class CodeBlockCell: UICollectionViewCell {
         var claimed: [NSRange] = []
         let literalRegex = hashCommentLanguages.contains(lowerLang)
             ? hashStringOrCommentRegex : slashStringOrCommentRegex
-        literalRegex?.enumerateMatches(in: source, range: range) { match, _, _ in
-            guard let match else { return }
+        for match in literalRegex?.matches(in: source, range: range) ?? [] {
             let isString = match.range(at: 1).location != NSNotFound
             result.addAttribute(
                 .foregroundColor,
@@ -663,8 +662,7 @@ final class CodeBlockCell: UICollectionViewCell {
 
         func apply(_ regex: NSRegularExpression?, color: UIColor) {
             var claimedIndex = 0
-            regex?.enumerateMatches(in: source, range: range) { match, _, _ in
-                guard let match else { return }
+            for match in regex?.matches(in: source, range: range) ?? [] {
                 while claimedIndex < claimed.count,
                     claimed[claimedIndex].location + claimed[claimedIndex].length
                         <= match.range.location
@@ -674,7 +672,7 @@ final class CodeBlockCell: UICollectionViewCell {
                 if claimedIndex < claimed.count,
                     NSIntersectionRange(claimed[claimedIndex], match.range).length > 0
                 {
-                    return
+                    continue
                 }
                 result.addAttribute(.foregroundColor, value: color, range: match.range)
             }

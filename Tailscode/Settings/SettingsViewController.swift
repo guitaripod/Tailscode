@@ -41,6 +41,7 @@ final class SettingsViewController: UIViewController {
         case profile(ConnectionProfile)
         case addConnection
         case discover
+        case leaveDemo
         case appearance
         case toggle(Toggle)
         case usage
@@ -143,6 +144,12 @@ final class SettingsViewController: UIViewController {
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "magnifyingglass")
             content.imageProperties.tintColor = Theme.Color.accent
+        case .leaveDemo:
+            content.text = "Leave the demo"
+            content.secondaryText = "Remove the sample servers and connect your own"
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "play.slash")
+            content.imageProperties.tintColor = .systemOrange
         case .appearance:
             content.text = "Theme"
             content.image = UIImage(systemName: "circle.lefthalf.filled")
@@ -285,9 +292,10 @@ final class SettingsViewController: UIViewController {
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections(Section.allCases)
-        snapshot.appendItems(
-            ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection, .discover],
-            toSection: .connections)
+        var connectionItems =
+            ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection, .discover]
+        if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
+        snapshot.appendItems(connectionItems, toSection: .connections)
         snapshot.appendItems([.appearance], toSection: .appearance)
         snapshot.appendItems(
             [.toggle(.autoExpandThinking), .toggle(.haptics), .toggle(.sendOnReturn)],
@@ -355,9 +363,12 @@ final class SettingsViewController: UIViewController {
     }
 
     private func removeProfile(_ profile: ConnectionProfile) {
+        let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let alert = UIAlertController(
-            title: "Remove \(profile.name)?",
-            message: "This deletes the saved server and its password from the Keychain.",
+            title: isDemo ? "Leave the demo?" : "Remove \(profile.name)?",
+            message: isDemo
+                ? "This removes both sample servers."
+                : "This deletes the saved server and its password from the Keychain.",
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
@@ -373,7 +384,10 @@ final class SettingsViewController: UIViewController {
     /// The first server is free forever; additional saved servers are the
     /// Pro gate. Returns false (and shows the paywall) when gated.
     private func allowAnotherConnection() -> Bool {
-        guard !ProStore.shared.isPro, !ConnectionController.shared.profiles.isEmpty else {
+        let realProfiles = ConnectionController.shared.profiles.filter {
+            !$0.id.hasPrefix(DemoWorld.profilePrefix)
+        }
+        guard !ProStore.shared.isPro, !realProfiles.isEmpty else {
             return true
         }
         ProUpgradeViewController.present(from: self)
@@ -415,6 +429,11 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(UsageViewController(), animated: true)
         case .viewLogs:
             navigationController?.pushViewController(LogViewerViewController(), animated: true)
+        case .leaveDemo:
+            ConnectionController.shared.leaveDemoMode()
+            Theme.Haptics.warning()
+            applySnapshot()
+            onConnectionChanged?()
         case .testAll:
             Theme.Haptics.tap()
             reachable = [:]

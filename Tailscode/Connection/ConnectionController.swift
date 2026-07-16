@@ -8,7 +8,9 @@ final class ConnectionController {
 
     private let store: ConnectionProfileStore?
     private let activeKey = "tailscode.activeProfileID"
+    private let demoKey = "tailscode.demoMode"
     private(set) var activeProfileID: String?
+    private(set) var isDemoMode: Bool
 
     private struct StoreUnavailable: LocalizedError {
         var errorDescription: String? { "Profile storage is unavailable on this device." }
@@ -23,6 +25,7 @@ final class ConnectionController {
     init() {
         store = try? ConnectionProfileStore()
         activeProfileID = UserDefaults.standard.string(forKey: activeKey)
+        isDemoMode = UserDefaults.standard.bool(forKey: demoKey)
         if let store {
             AppLogger.connection.info("profile store ready at \(store.directory.lastPathComponent)")
         } else {
@@ -40,7 +43,25 @@ final class ConnectionController {
                 all.append(profile)
             }
         #endif
+        if isDemoMode { all.append(contentsOf: DemoWorld.profiles) }
         return all
+    }
+
+    /// Puts the app into the scripted no-server demo world. Exits automatically
+    /// the moment a real server is saved.
+    func enterDemoMode() {
+        UserDefaults.standard.set(true, forKey: demoKey)
+        isDemoMode = true
+        setActive(DemoWorld.claudeProfile.id)
+        AppLogger.connection.info("entered demo mode")
+    }
+
+    func leaveDemoMode() {
+        UserDefaults.standard.set(false, forKey: demoKey)
+        isDemoMode = false
+        let remaining = profiles.first?.id
+        setActive(activeProfileID.flatMap { id in profiles.contains { $0.id == id } ? id : nil } ?? remaining)
+        AppLogger.connection.info("left demo mode")
     }
 
     var activeProfile: ConnectionProfile? {
@@ -55,7 +76,7 @@ final class ConnectionController {
     func save(_ profile: ConnectionProfile, password: String?, makeActive: Bool = true) throws {
         guard let store else { throw StoreUnavailable() }
         var profile = profile
-        let existing = profiles
+        let existing = profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
         if !existing.contains(where: { $0.id == profile.id }),
             let duplicate = existing.first(where: {
                 $0.backend == profile.backend
@@ -73,11 +94,16 @@ final class ConnectionController {
             throw ProRequired()
         }
         try store.save(profile, password: password)
+        if isDemoMode { leaveDemoMode() }
         if makeActive { setActive(profile.id) }
         AppLogger.connection.info("saved profile \(profile.name) [\(profile.backend.rawValue)]")
     }
 
     func delete(_ id: String) throws {
+        if id.hasPrefix(DemoWorld.profilePrefix) {
+            leaveDemoMode()
+            return
+        }
         guard let store else { throw StoreUnavailable() }
         try store.delete(id: id)
         if activeProfileID == id {
@@ -110,6 +136,9 @@ final class ConnectionController {
     func makeBackend(for profile: ConnectionProfile, policy: ConnectionPolicy = .default)
         -> (any CodingAgentBackend)?
     {
+        if profile.id.hasPrefix(DemoWorld.profilePrefix) {
+            return DemoWorld.backend(for: profile.id)
+        }
         if let backend = try? store?.makeBackend(profile, policy: policy) {
             return backend
         }

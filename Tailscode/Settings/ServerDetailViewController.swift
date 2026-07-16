@@ -128,9 +128,12 @@ final class ServerDetailViewController: UIViewController {
     }
 
     private func confirmRemove() {
+        let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let alert = UIAlertController(
-            title: "Remove \(profile.name)?",
-            message: "This deletes the saved server and its password from the Keychain.",
+            title: isDemo ? "Leave the demo?" : "Remove \(profile.name)?",
+            message: isDemo
+                ? "This removes both sample servers."
+                : "This deletes the saved server and its password from the Keychain.",
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
