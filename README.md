@@ -57,7 +57,7 @@ xcodegen generate
 open Tailscode.xcodeproj
 ```
 
-Set your own `DEVELOPMENT_TEAM` in `project.yml`. A `--demo` launch argument runs a scripted conversation with no server (used for screenshots), and DEBUG builds auto-connect from `TAILSCODE_HOST` / `TAILSCODE_PASSWORD` environment variables.
+Set your own `DEVELOPMENT_TEAM` in `project.yml`. A built-in demo mode ("No server yet? Try the demo" on the connect screen, or the `--demo` launch argument) populates the whole app with two sample servers and scripted sessions — no tailnet needed. DEBUG builds auto-connect from `TAILSCODE_HOST` / `TAILSCODE_PASSWORD` environment variables.
 
 `scripts/build-mac.sh` and `scripts/run-mac.sh` drive a remote Mac over SSH for author-on-Linux workflows.
 

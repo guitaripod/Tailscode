@@ -35,8 +35,14 @@ Not shipped to the App Store repo description — this file is the operator's ch
 4. `gh repo edit guitaripod/claude-bridge --visibility public` after setting the
    repo description. Investigate the recurring claude-bridge crash reports on the
    mac (`~/Library/Logs/DiagnosticReports/Retired/claude-bridge-*.ips`) first.
-5. ASC: create the Tailscode app record + 4 IAPs (ids above); TestFlight via
-   buildvm while this Mac is on beta macOS (ITMS-90111 rule).
+5. ~~ASC: create the Tailscode app record + 4 IAPs (ids above); TestFlight via
+   buildvm while this Mac is on beta macOS (ITMS-90111 rule).~~ **DONE
+   2026-07-16** — app 6791660932, full listing + screenshots + review notes
+   pushed via `scripts/asc-{setup,products,screenshots}.py`, build 1 uploaded
+   via buildvm (vendored-Kit staging recipe in OPERATIONS.md). Submission
+   still needs two web-UI clicks: App Privacy = "Data Not Collected", and
+   ticking the 4 IAPs on the 1.0 version page so they ride the review
+   (first-product rule) — then submit.
 
 ## Launch sequence
 
