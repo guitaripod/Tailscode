@@ -26,10 +26,12 @@ final class ProStore {
     private(set) var isPro: Bool
     private var updatesTask: Task<Void, Never>?
 
+    /// Debug builds are Pro by default so the developer's own device is never
+    /// gated; pass `--simulate-free` to exercise the paywall and gates.
     private init() {
         isPro = UserDefaults.standard.bool(forKey: Self.cacheKey)
         #if DEBUG
-            if CommandLine.arguments.contains("--pro") { isPro = true }
+            if !CommandLine.arguments.contains("--simulate-free") { isPro = true }
         #endif
     }
 
@@ -59,7 +61,7 @@ final class ProStore {
 
     private func setPro(_ value: Bool) {
         #if DEBUG
-            if CommandLine.arguments.contains("--pro") { return }
+            if !CommandLine.arguments.contains("--simulate-free") { return }
         #endif
         guard isPro != value else { return }
         isPro = value
