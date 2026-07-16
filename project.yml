@@ -44,11 +44,6 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        UISupportedInterfaceOrientations~ipad:
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationPortraitUpsideDown
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Automatic
         NSPhotoLibraryUsageDescription: Attach images from your library to a prompt.
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
@@ -63,7 +58,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: P4DQK6SRKR
@@ -101,7 +96,7 @@ targets:
         SKIP_INSTALL: YES
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: P4DQK6SRKR

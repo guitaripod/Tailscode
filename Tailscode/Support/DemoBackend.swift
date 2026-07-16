@@ -423,17 +423,23 @@ enum DemoWorld {
                 id: "q-o2", sessionID: "demo-o2",
                 questions: [
                     QuestionRequest.Item(
-                        question: "Which variant should be the default while the experiment ramps?",
-                        header: "Default variant",
+                        question: "Which surfaces should the experiment run on? Pick every one that applies.",
+                        header: "Target surfaces",
                         options: [
                             QuestionRequest.Option(
-                                label: "Monthly-first",
-                                description: "Matches the current live page — safest baseline"),
+                                label: "Web checkout",
+                                description: "Highest traffic — fastest read on significance"),
                             QuestionRequest.Option(
-                                label: "Annual-first",
-                                description: "Higher LTV if it converts, riskier during ramp"),
+                                label: "iOS paywall",
+                                description: "Native sheet; needs an app release to change copy"),
+                            QuestionRequest.Option(
+                                label: "Android paywall",
+                                description: "Play billing; mirrors the iOS variant"),
+                            QuestionRequest.Option(
+                                label: "Email upgrade nudge",
+                                description: "Lower volume, but attributes cleanly"),
                         ],
-                        multiple: false, custom: true)
+                        multiple: true, custom: true)
                 ]))),
             step(.status(.running)),
         ]

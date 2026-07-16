@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Upload Tailscode's App Store screenshots (en-US): 6.9" iPhone + 13" iPad.
+"""Upload Tailscode's App Store screenshots (en-US): 6.9" iPhone only.
+
+Tailscode is iPhone-only (UIDeviceFamily 1), so the listing carries a single
+APP_IPHONE_67 set and NO iPad set. This script mirrors the local iphone folder
+to ASC exactly: it deletes any stale iPad set, and replaces the iPhone set when
+its contents differ from ORDER (so re-running after a screenshot refresh is safe).
 
 ASC asset flow per screenshot: reserve (POST /v1/appScreenshots →
 uploadOperations) → PUT the bytes → commit (PATCH uploaded=true + MD5).
-Idempotent: skips a display set that already has screenshots.
 
 Usage: python3 scripts/asc-screenshots.py
 """
@@ -18,11 +22,13 @@ import asc  # noqa: E402
 
 APP = "6791660932"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ORDER = ["01-chat.png", "02-approval.png", "03-home.png", "04-usage.png", "05-chats.png", "06-models.png"]
-SETS = [
-    ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/iphone")),
-    ("APP_IPAD_PRO_3GEN_129", os.path.join(ROOT, "marketing/appstore/ipad")),
+ORDER = [
+    "01-live.png", "02-work.png", "03-approval.png", "04-question.png",
+    "05-subagents.png", "06-render.png", "07-home.png", "08-usage.png",
+    "09-chats.png", "10-models.png",
 ]
+IPHONE_SET = ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/iphone"))
+STALE_SETS = ["APP_IPAD_PRO_3GEN_129"]
 
 
 def version_localization():
@@ -61,17 +67,33 @@ def upload_one(set_id, path):
     print(f"  + {name}")
 
 
+def all_sets(loc_id):
+    return asc.get(f"/v1/appStoreVersionLocalizations/{loc_id}/appScreenshotSets").get("data", [])
+
+
 def main():
     loc = version_localization()
-    for display_type, folder in SETS:
-        set_id = screenshot_set(loc, display_type)
-        existing = asc.get(f"/v1/appScreenshotSets/{set_id}/appScreenshots").get("data", [])
-        if existing:
-            print(f"{display_type} already has {len(existing)} screenshots — skipping")
-            continue
-        print(f"{display_type}:")
-        for name in ORDER:
-            upload_one(set_id, os.path.join(folder, name))
+
+    for s in all_sets(loc):
+        if s["attributes"]["screenshotDisplayType"] in STALE_SETS:
+            asc.delete(f"/v1/appScreenshotSets/{s['id']}")
+            print(f"deleted stale set {s['attributes']['screenshotDisplayType']}")
+
+    display_type, folder = IPHONE_SET
+    set_id = screenshot_set(loc, display_type)
+    existing = asc.get(f"/v1/appScreenshotSets/{set_id}/appScreenshots").get("data", [])
+    have = [x["attributes"]["fileName"] for x in existing]
+    if have == ORDER:
+        print(f"{display_type} already matches {len(ORDER)} screenshots — skipping")
+        print("DONE")
+        return
+    for x in existing:
+        asc.delete(f"/v1/appScreenshots/{x['id']}")
+    if existing:
+        print(f"cleared {len(existing)} stale {display_type} screenshots")
+    print(f"{display_type}:")
+    for name in ORDER:
+        upload_one(set_id, os.path.join(folder, name))
     print("DONE")
 
 
