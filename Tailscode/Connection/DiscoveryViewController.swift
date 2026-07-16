@@ -339,11 +339,25 @@ final class DiscoveryViewController: UIViewController {
                 guard !Task.isCancelled else { return }
                 AppLogger.connection.info("fetched \(fetched.count) tailscale devices")
                 lastDeviceCount = fetched.count
-                devices = fetched
-                AppLogger.connection.info("stored \(devices.count) devices for fallback; first hostname=\(devices.first?.hostname ?? "nil") name=\(devices.first?.name ?? "nil")")
-                statusLabel.text = "Checking \(fetched.count) devices…"
+                devices = fetched.sorted {
+                    ($0.lastSeenDate ?? .distantPast) > ($1.lastSeenDate ?? .distantPast)
+                }
+                let online = TailnetScanner.scannableDevices(fetched).count
+                skippedDeviceCount = fetched.count - online
+                statusLabel.text = Self.probingStatus(
+                    online: online, skipped: skippedDeviceCount)
                 let scanner = TailnetScanner()
-                let found = await scanner.scan(devices: fetched)
+                let found = await scanner.scan(
+                    devices: fetched,
+                    onProgress: { [weak self] checked, total in
+                        Task { @MainActor in
+                            guard let self, self.scanTask != nil else { return }
+                            self.statusLabel.text = "Probing \(checked)/\(total) candidates…"
+                        }
+                    },
+                    onFound: { [weak self] suggestion in
+                        Task { @MainActor in self?.integrate(suggestion) }
+                    })
                 guard !Task.isCancelled else { return }
                 suggestions = found.sorted { $0.recommendedProfileName < $1.recommendedProfileName }
                 AppLogger.connection.info("scanner returned \(found.count) unique suggestions after dedup")
@@ -368,6 +382,30 @@ final class DiscoveryViewController: UIViewController {
             applyResultsSnapshot()
             refreshState()
         }
+    }
+
+    private var skippedDeviceCount = 0
+
+    private static func probingStatus(online: Int, skipped: Int) -> String {
+        var text = "Probing \(online) online device\(online == 1 ? "" : "s")…"
+        if skipped > 0 { text += " (\(skipped) offline skipped)" }
+        return text
+    }
+
+    /// Streams a discovered server straight into the list mid-scan; the
+    /// final deduplicated result from the scanner replaces all of this.
+    private func integrate(_ suggestion: TailnetScanner.Suggestion) {
+        guard scanTask != nil else { return }
+        if let index = suggestions.firstIndex(where: { $0.dedupeKey == suggestion.dedupeKey }) {
+            guard TailnetScanner.preferred(suggestion, over: suggestions[index]) else { return }
+            suggestions[index] = suggestion
+        } else {
+            suggestions.append(suggestion)
+            suggestions.sort { $0.recommendedProfileName < $1.recommendedProfileName }
+            Theme.Haptics.step()
+        }
+        applyResultsSnapshot()
+        refreshState()
     }
 
     private func applyResultsSnapshot() {
@@ -397,7 +435,11 @@ final class DiscoveryViewController: UIViewController {
             emptyLabel.isHidden = true
         } else if let count = lastDeviceCount {
             resultsHeader.isHidden = true
-            emptyLabel.text = "Scanned \(count) devices.\nNo opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+            var text = "Scanned \(count) devices.\nNo opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+            if skippedDeviceCount > 0 {
+                text += "\nOffline devices (\(skippedDeviceCount)) were skipped."
+            }
+            emptyLabel.text = text
             emptyLabel.isHidden = false
         } else {
             resultsHeader.isHidden = true
