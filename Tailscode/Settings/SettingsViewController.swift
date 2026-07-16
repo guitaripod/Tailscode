@@ -82,6 +82,7 @@ final class SettingsViewController: UIViewController {
     private func configure() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = .supplementary
+        config.footerMode = .supplementary
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, case .profile(let profile) = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
@@ -113,13 +114,28 @@ final class SettingsViewController: UIViewController {
                 indexPath.section]
             view.contentConfiguration = content
         }
+        let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
+            elementKind: UICollectionView.elementKindSectionFooter
+        ) { view, _, indexPath in
+            guard indexPath.section == Section.about.rawValue else {
+                view.contentConfiguration = nil
+                return
+            }
+            var content = UIListContentConfiguration.groupedFooter()
+            content.text = "\(Self.copyright)\nCoding agents over Tailscale."
+            content.textProperties.alignment = .center
+            view.contentConfiguration = content
+        }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
             collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
         }
-        dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
-            collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
+        dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
+            let registration =
+                kind == UICollectionView.elementKindSectionFooter ? footer : header
+            return collectionView.dequeueConfiguredReusableSupplementary(
+                using: registration, for: indexPath)
         }
     }
 
@@ -357,10 +373,13 @@ final class SettingsViewController: UIViewController {
     }
 
     private static var versionString: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let info = { (key: String) in Bundle.main.object(forInfoDictionaryKey: key) as? String }
+        let version = info("CFBundleShortVersionString") ?? "?"
+        let build = info("CFBundleVersion") ?? "?"
         return "\(version) (\(build))"
     }
+
+    private static var copyright: String { "© 2026 Midgar Oy" }
 
     private func removeProfile(_ profile: ConnectionProfile) {
         let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
@@ -445,6 +464,21 @@ extension SettingsViewController: UICollectionViewDelegate {
             }
         case .appearance, .toggle, .version:
             break
+        }
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard indexPaths.count == 1, case .version = dataSource.itemIdentifier(for: indexPaths[0])
+        else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            let copy = UIAction(title: "Copy version", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIPasteboard.general.string = "Tailscode \(Self.versionString)"
+                Theme.Haptics.tap()
+            }
+            return UIMenu(children: [copy])
         }
     }
 }
