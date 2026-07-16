@@ -116,6 +116,8 @@ final class HomeViewController: UIViewController {
     /// but not every bridge host has live quota data — take the first Claude
     /// profile whose bridge does.
     private func loadQuotas() async {
+        var byProvider: [String: UsageQuota] = [:]
+        var order: [String] = []
         for profile in viewModel.servers where profile.backend == .claudeCode {
             guard let backend = viewModel.backend(forProfileID: profile.id) else { continue }
             var fetched: [UsageQuota] = []
@@ -123,12 +125,12 @@ final class HomeViewController: UIViewController {
             if let extra = try? await backend.additionalUsageQuotas() {
                 fetched.append(contentsOf: extra)
             }
-            if !fetched.isEmpty {
-                quotas = fetched
-                return
+            for quota in fetched where byProvider[quota.providerName] == nil {
+                byProvider[quota.providerName] = quota
+                order.append(quota.providerName)
             }
         }
-        quotas = []
+        quotas = order.compactMap { byProvider[$0] }
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {
