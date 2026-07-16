@@ -24,6 +24,11 @@ enum Theme {
                 ? UIColor(red: 0.90, green: 0.55, blue: 0.42, alpha: 1)
                 : UIColor(red: 0.80, green: 0.42, blue: 0.29, alpha: 1)
         }
+        static let grok = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.91, green: 0.91, blue: 0.92, alpha: 1)
+                : UIColor(red: 0.12, green: 0.12, blue: 0.12, alpha: 1)
+        }
         static let opencode = UIColor.systemTeal
     }
 

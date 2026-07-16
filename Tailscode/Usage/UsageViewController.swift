@@ -67,6 +67,7 @@ final class UsageViewController: UIViewController {
     private var lastRefreshed: Date?
 
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
+    private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
     private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
 
     private lazy var emptyStateView = EmptyStateView(
@@ -166,6 +167,7 @@ final class UsageViewController: UIViewController {
         contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
         contentStack.addArrangedSubview(claudeCard)
+        contentStack.addArrangedSubview(grokCard)
         contentStack.addArrangedSubview(opencodeCard)
         contentStack.isHidden = true
     }
@@ -202,15 +204,18 @@ final class UsageViewController: UIViewController {
         scrollView.isHidden = false
         errorLabel.isHidden = true
         claudeCard.setLoading(claudeProfile != nil)
+        grokCard.setLoading(claudeProfile != nil)
         opencodeCard.setLoading(opencodeProfile != nil)
         claudeCard.isHidden = claudeProfile == nil
+        grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
         contentStack.isHidden = false
 
         let claudeProfiles = orderedProfiles(.claudeCode, profiles: profiles, controller: controller)
         async let claudeFailure: Error? = fillClaude(profiles: claudeProfiles, controller: controller)
+        async let grokDone: Void = fillGrok(profiles: claudeProfiles, controller: controller)
         async let opencodeFailure: Error? = fillOpencode(profile: opencodeProfile, controller: controller)
-        let failures = await (claudeFailure, opencodeFailure)
+        let failures = await (claudeFailure, opencodeFailure, grokDone)
         guard !Task.isCancelled else { return }
         if let failure = failures.0 ?? failures.1 { showError(failure) }
 
@@ -245,7 +250,7 @@ final class UsageViewController: UIViewController {
             guard !Task.isCancelled else { return nil }
             AppLogger.session.info(
                 "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            claudeCard.apply(Self.liveModel(quota))
+            claudeCard.apply(Self.liveModel(quota, accent: Theme.Color.claude))
             return nil
         }
         AppLogger.session.info("usage: no Claude usage API reachable, estimating from sessions")
@@ -259,6 +264,25 @@ final class UsageViewController: UIViewController {
             claudeCard.renderError()
             return error
         }
+    }
+
+    /// Grok quota rides on the Claude Code bridge, which reads the server machine's grok
+    /// login; older bridges (or hosts without one) return nothing and the card hides itself.
+    private func fillGrok(profiles: [ConnectionProfile], controller: ConnectionController) async {
+        for profile in profiles {
+            guard let backend = controller.makeBackend(for: profile),
+                let quota = (try? await backend.additionalUsageQuotas())?
+                    .first(where: { $0.providerName == "Grok" })
+            else { continue }
+            guard !Task.isCancelled else { return }
+            AppLogger.session.info(
+                "usage: Grok live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
+            grokCard.apply(Self.liveModel(quota, accent: Theme.Color.grok))
+            return
+        }
+        guard !Task.isCancelled else { return }
+        AppLogger.session.info("usage: no Grok quota from any Claude Code bridge")
+        grokCard.isHidden = true
     }
 
     private func fillOpencode(profile: ConnectionProfile?, controller: ConnectionController) async -> Error? {
@@ -328,7 +352,7 @@ final class UsageViewController: UIViewController {
         }
     }
 
-    private static func liveModel(_ quota: UsageQuota) -> CardModel {
+    private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
         let gauges = quota.gauges.prefix(3).map { gauge -> GaugeVM in
             let percent = Int((gauge.fraction * 100).rounded())
             return GaugeVM(
@@ -340,7 +364,7 @@ final class UsageViewController: UIViewController {
         return CardModel(
             subtitle: quota.subtitle,
             pill: "LIVE",
-            accent: Theme.Color.claude,
+            accent: accent,
             gauges: Array(gauges),
             details: quota.details.map { ($0.key, $0.value) },
             note: "Live rolling rate limits straight from \(quota.source). Percentages are your "
@@ -528,6 +552,7 @@ private final class ProviderCard: UIView {
         subtitleLabel.text = model.subtitle
         pillLabel.text = model.pill
         pillBackground.backgroundColor = model.accent
+        pillLabel.textColor = Self.contrastingText(on: model.accent)
 
         for (index, ring) in ringViews.enumerated() {
             if index < model.gauges.count {
@@ -697,6 +722,18 @@ private final class ProviderCard: UIView {
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.l),
         ])
         return container
+    }
+
+    private static func contrastingText(on accent: UIColor) -> UIColor {
+        UIColor { traits in
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+            accent.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            let luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+            return luminance > 0.5 ? .black : .white
+        }
     }
 
     private func color(for fraction: Double, accent: UIColor) -> UIColor {
