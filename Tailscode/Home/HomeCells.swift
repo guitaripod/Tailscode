@@ -66,7 +66,7 @@ struct RecentCard: Hashable {
         self.entry = entry
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
-        var parts: [String] = []
+        var parts: [String] = [entry.profileName]
         if let directory = entry.session.directory {
             parts.append((directory as NSString).lastPathComponent)
         }
@@ -382,7 +382,15 @@ final class QuotaCardCell: GlassCardCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ card: QuotaCard) {
-        providerLabel.text = card.quota.providerName
+        var header = card.quota.providerName
+        if let session = card.quota.gauges.first(where: { $0.trustedReset }),
+            let resetsAt = session.resetsAt, resetsAt > Date()
+        {
+            let minutes = max(1, Int(resetsAt.timeIntervalSinceNow / 60))
+            let countdown = minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h \(minutes % 60)m"
+            header += "  ·  resets in \(countdown)"
+        }
+        providerLabel.text = header
         gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for gauge in card.quota.gauges.prefix(3) {
             gaugeStack.addArrangedSubview(Self.gaugeRow(gauge))

@@ -28,6 +28,12 @@ private enum SessionOutcome: Sendable {
     case failed
 }
 
+private struct QuotaUnavailableError: LocalizedError, Sendable {
+    var errorDescription: String? {
+        "Claude quota is unavailable right now — the bridge couldn't reach api.anthropic.com."
+    }
+}
+
 private struct CredentialsUnavailableError: LocalizedError, Sendable {
     let profileName: String
     var errorDescription: String? { "Couldn't read stored credentials for \(profileName)." }
@@ -55,7 +61,6 @@ final class UsageViewController: UIViewController {
     private static let concurrency = 6
     private static let perRequestTimeout: TimeInterval = 12
     private static let opencodeProviderID = "opencode-go"
-    private static let claudePlanUSD: Double = 100
     private static let staleInterval: TimeInterval = 5 * 60
 
     private let scrollView = UIScrollView()
@@ -239,7 +244,7 @@ final class UsageViewController: UIViewController {
 
     private func fillClaude(profiles: [ConnectionProfile], controller: ConnectionController) async -> Error? {
         guard let primary = profiles.first else { return nil }
-        guard let backend = controller.makeBackend(for: primary) else {
+        guard controller.makeBackend(for: primary) != nil else {
             claudeCard.renderError()
             return CredentialsUnavailableError(profileName: primary.name)
         }
@@ -253,17 +258,10 @@ final class UsageViewController: UIViewController {
             claudeCard.apply(Self.liveModel(quota, accent: Theme.Color.claude))
             return nil
         }
-        AppLogger.session.info("usage: no Claude usage API reachable, estimating from sessions")
-        do {
-            let result = try await collect(profile: primary, backend: backend, samples: Self.claudeSamples)
-            guard !Task.isCancelled else { return nil }
-            claudeCard.apply(Self.claudeEstimateModel(result))
-            return nil
-        } catch {
-            guard !Task.isCancelled else { return nil }
-            claudeCard.renderError()
-            return error
-        }
+        guard !Task.isCancelled else { return nil }
+        AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
+        claudeCard.renderError()
+        return QuotaUnavailableError()
     }
 
     /// Grok quota rides on the Claude Code bridge, which reads the server machine's grok
@@ -371,32 +369,6 @@ final class UsageViewController: UIViewController {
                 + "actual plan consumption, not an estimate.")
     }
 
-    private static func claudeEstimateModel(_ result: ScanResult) -> CardModel {
-        let windows = [
-            UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: claudePlanUSD * 5 / (30 * 24)),
-            UsageWindow(name: "Weekly", seconds: 7 * 24 * 3600, cap: claudePlanUSD * 7 / 30),
-            UsageWindow(name: "Monthly", seconds: 30 * 24 * 3600, cap: claudePlanUSD),
-        ]
-        let samples = result.samples
-        let totalSpend = samples.reduce(0) { $0 + $1.cost }
-        let totalTokens = samples.reduce(0) { $0 + $1.tokens }
-        return CardModel(
-            subtitle: "$100/mo plan · last-turn costs only",
-            pill: "EST",
-            accent: Theme.Color.claude,
-            gauges: gaugeVMs(samples: samples, windows: windows),
-            details: [
-                ("Recent turn costs", currency(totalSpend)),
-                ("Sessions", "\(samples.count)"),
-                ("Tokens (last turns)", tokenCount(totalTokens)),
-            ],
-            note: unavailableSuffix(
-                "Live usage API unavailable on this server — the bridge reports only each session's "
-                    + "most recent turn, so these are last-turn sums per window, not total spend. "
-                    + "Update the bridge for real rate-limit gauges.",
-                result: result))
-    }
-
     private static func opencodeModel(_ result: ScanResult) -> CardModel {
         let windows = [
             UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: 12),
@@ -466,15 +438,6 @@ final class UsageViewController: UIViewController {
             guard message.providerID == opencodeProviderID, let cost = message.costUSD else { return nil }
             return UsageSample(cost: cost, createdAt: message.createdAt, tokens: message.totalTokens ?? 0)
         }
-    }
-
-    private static func claudeSamples(
-        backend: any CodingAgentBackend, session: AgentSession
-    ) async throws -> [UsageSample] {
-        guard let usage = try await backend.sessionUsage(session.id), let cost = usage.costUSD else {
-            return []
-        }
-        return [UsageSample(cost: cost, createdAt: session.updatedAt, tokens: usage.tokens ?? 0)]
     }
 
     private static func withTimeout<T: Sendable>(
