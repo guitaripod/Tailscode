@@ -148,7 +148,7 @@ final class SetupGuideViewController: UIViewController {
                 detail:
                     "claude-bridge fronts your logged-in Claude Code CLI. Build it once, then run it with a password.",
                 command:
-                    "git clone https://github.com/guitaripod/claude-bridge\ncd claude-bridge && swift build -c release\nBRIDGE_PASSWORD=your-password .build/release/claude-bridge",
+                    "git clone https://github.com/guitaripod/claude-bridge\ncd claude-bridge && swift build -c release\nBRIDGE_BIND=0.0.0.0 BRIDGE_PASSWORD=your-password .build/release/claude-bridge",
                 link: ("claude-bridge on GitHub", "https://github.com/guitaripod/claude-bridge"))
         }
         return [
