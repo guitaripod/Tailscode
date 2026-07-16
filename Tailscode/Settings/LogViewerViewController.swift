@@ -68,15 +68,30 @@ final class LogViewerViewController: UIViewController {
             let rendered = await Self.render(errorsOnly: errorsOnly)
             guard let self, generation == self.reloadGeneration else { return }
             if let rendered {
+                textView.isHidden = false
+                contentUnavailableConfiguration = nil
                 textView.attributedText = rendered
                 DispatchQueue.main.async { [weak self] in self?.scrollToBottom() }
             } else {
+                textView.isHidden = true
                 textView.attributedText = nil
-                textView.text = "No log entries yet."
-                textView.font = Theme.Font.mono(11)
-                textView.textColor = Theme.Color.secondaryLabel
+                contentUnavailableConfiguration = emptyConfiguration(errorsOnly: errorsOnly)
             }
         }
+    }
+
+    private func emptyConfiguration(errorsOnly: Bool) -> UIContentUnavailableConfiguration {
+        var config = UIContentUnavailableConfiguration.empty()
+        if errorsOnly {
+            config.image = UIImage(systemName: "checkmark.seal")
+            config.text = "No errors logged"
+            config.secondaryText = "Nothing has gone wrong — diagnostics are clean."
+        } else {
+            config.image = UIImage(systemName: "doc.text.magnifyingglass")
+            config.text = "No logs yet"
+            config.secondaryText = "Diagnostics from connections, chats, and syncs show up here."
+        }
+        return config
     }
 
     private nonisolated static func render(errorsOnly: Bool) async -> NSAttributedString? {
@@ -84,6 +99,7 @@ final class LogViewerViewController: UIViewController {
         guard !text.isEmpty else { return nil }
         let clipped = tail(of: text)
         let rendered = colorized(String(clipped), errorsOnly: errorsOnly)
+        guard rendered.length > 0 else { return nil }
         guard clipped.startIndex != text.startIndex else { return rendered }
         let result = NSMutableAttributedString(
             string: "… earlier entries omitted — Share exports the full log\n",
@@ -122,11 +138,6 @@ final class LogViewerViewController: UIViewController {
                 attributed.addAttribute(.foregroundColor, value: Theme.Color.accent, range: range)
             }
             result.append(attributed)
-        }
-        if result.length == 0 {
-            return NSAttributedString(
-                string: errorsOnly ? "No errors logged. 🎉" : "No log entries yet.",
-                attributes: [.font: mono, .foregroundColor: Theme.Color.secondaryLabel])
         }
         return result
     }

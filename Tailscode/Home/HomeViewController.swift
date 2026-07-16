@@ -16,6 +16,7 @@ final class HomeViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     private var quotas: [UsageQuota] = []
     private var hasAppeared = false
+    private var hasLoadedOnce = false
     private var pendingDeepLink: (sessionID: String, parkedAt: Date)?
 
     init() {
@@ -40,6 +41,7 @@ final class HomeViewController: UIViewController {
         configureCollectionView()
         configureDataSource()
         bind()
+        applySnapshot()
         Task { await load() }
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_CHATS"] != nil {
@@ -115,6 +117,7 @@ final class HomeViewController: UIViewController {
         await viewModel.load()
         await loadQuotas()
         refreshControl.endRefreshing()
+        hasLoadedOnce = true
         applySnapshot()
     }
 
@@ -195,6 +198,8 @@ final class HomeViewController: UIViewController {
             config.text = "No servers connected"
             config.secondaryText = "Add a connection in Settings to start chatting with your agents."
             contentUnavailableConfiguration = config
+        } else if !hasLoadedOnce {
+            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
         } else {
             contentUnavailableConfiguration = nil
         }

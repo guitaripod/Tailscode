@@ -143,6 +143,11 @@ final class ModelPickerViewController: UIViewController {
             snapshot.appendItems([Row(model: model, recent: false)], toSection: group)
         }
         dataSource.apply(snapshot, animatingDifferences: false)
+        if snapshot.numberOfItems == 0, !query.isEmpty {
+            contentUnavailableConfiguration = UIContentUnavailableConfiguration.search()
+        } else {
+            contentUnavailableConfiguration = nil
+        }
     }
 
     @objc private func close() { dismiss(animated: true) }

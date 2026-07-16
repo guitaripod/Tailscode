@@ -23,6 +23,7 @@ final class SessionListViewController: UIViewController {
     private let unreachableLabel = UILabel()
     private var filter: ChatFilter
     private var hasAppeared = false
+    private var hasLoadedOnce = false
     private var searchQuery = ""
 
     init(filterProfileID: String? = nil) {
@@ -46,7 +47,12 @@ final class SessionListViewController: UIViewController {
         configureCollectionView()
         configureDataSource()
         bind()
-        Task { await viewModel.load() }
+        contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        Task {
+            await viewModel.load()
+            hasLoadedOnce = true
+            applySnapshot()
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -375,6 +381,8 @@ final class SessionListViewController: UIViewController {
     private func updateEmptyState(itemCount: Int) {
         if itemCount > 0 {
             contentUnavailableConfiguration = nil
+        } else if !hasLoadedOnce, searchQuery.isEmpty {
+            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
         } else if !searchQuery.isEmpty {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.search()
         } else if case .live = filter {

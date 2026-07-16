@@ -10,6 +10,7 @@ final class ProUpgradeViewController: UIViewController {
     private let purchaseButton = PrimaryButton(title: "Unlock Pro")
     private let restoreButton = UIButton(type: .system)
     private let tipStack = UIStackView()
+    private let tipHeader = UILabel()
     private let statusLabel = UILabel()
     private var proProduct: Product?
 
@@ -112,11 +113,11 @@ final class ProUpgradeViewController: UIViewController {
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
         stack.addArrangedSubview(restoreButton)
 
-        let tipHeader = UILabel()
         tipHeader.text = "Or leave a tip — no unlock, just thanks"
         tipHeader.font = Theme.Font.caption()
         tipHeader.textColor = Theme.Color.secondaryLabel
         tipHeader.textAlignment = .center
+        tipHeader.isHidden = true
         stack.setCustomSpacing(Theme.Spacing.xl, after: restoreButton)
         stack.addArrangedSubview(tipHeader)
 
@@ -174,15 +175,25 @@ final class ProUpgradeViewController: UIViewController {
         if ProStore.shared.isPro {
             purchaseButton.setTitle("You're a supporter — thank you ♥")
             purchaseButton.isEnabled = false
+        } else {
+            purchaseButton.isEnabled = false
+            purchaseButton.setLoading(true)
         }
         let (pro, tips) = await ProStore.shared.products()
         proProduct = pro
-        if let pro, !ProStore.shared.isPro {
-            purchaseButton.setTitle("Unlock Pro · \(pro.displayPrice)")
-        } else if pro == nil, !ProStore.shared.isPro {
-            purchaseButton.setTitle("Unlock Pro")
-            statusLabel.text = "Store unavailable right now — try again later."
+        if !ProStore.shared.isPro {
+            purchaseButton.setLoading(false)
+            if let pro {
+                purchaseButton.isEnabled = true
+                purchaseButton.setTitle("Unlock Pro · \(pro.displayPrice)")
+                statusLabel.text = nil
+            } else {
+                purchaseButton.isEnabled = true
+                purchaseButton.setTitle("Store unavailable — tap to retry")
+                statusLabel.text = "Couldn't reach the App Store. Check your connection and try again."
+            }
         }
+        tipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for tip in tips {
             var config = Theme.Glass.buttonConfiguration()
             config.title = tip.displayPrice
@@ -193,10 +204,16 @@ final class ProUpgradeViewController: UIViewController {
             tipStack.addArrangedSubview(button)
         }
         tipStack.isHidden = tips.isEmpty
+        tipHeader.isHidden = tips.isEmpty
     }
 
     @objc private func purchaseTapped() {
-        guard let proProduct else { return }
+        guard let proProduct else {
+            Theme.Haptics.tap()
+            statusLabel.text = nil
+            Task { await load() }
+            return
+        }
         Theme.Haptics.tap()
         purchaseButton.setLoading(true)
         Task {
@@ -223,7 +240,9 @@ final class ProUpgradeViewController: UIViewController {
 
     private func tip(_ product: Product) {
         Theme.Haptics.tap()
+        tipStack.isUserInteractionEnabled = false
         Task {
+            defer { tipStack.isUserInteractionEnabled = true }
             do {
                 switch try await ProStore.shared.purchase(product) {
                 case .success:
@@ -244,7 +263,10 @@ final class ProUpgradeViewController: UIViewController {
 
     @objc private func restoreTapped() {
         Theme.Haptics.tap()
+        restoreButton.isEnabled = false
+        statusLabel.text = "Restoring…"
         Task {
+            defer { restoreButton.isEnabled = true }
             do {
                 try await ProStore.shared.restore()
                 if ProStore.shared.isPro {
@@ -254,6 +276,7 @@ final class ProUpgradeViewController: UIViewController {
                     statusLabel.text = "No previous purchase found for this Apple ID."
                 }
             } catch StoreKitError.userCancelled {
+                statusLabel.text = nil
             } catch {
                 statusLabel.text = "Restore failed: \(error.localizedDescription)"
             }
