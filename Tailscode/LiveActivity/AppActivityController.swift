@@ -15,6 +15,7 @@ final class AppActivityController {
         var lastToolCount = 0
         var lastState: ChatActivityAttributes.ContentState?
         var lastPushedAt = Date()
+        var latestTitle: String?
     }
 
     private var entries: [String: Entry] = [:]
@@ -48,7 +49,7 @@ final class AppActivityController {
         let startedAt = Date()
         let state = ChatActivityAttributes.ContentState(
             phase: .thinking, statusText: "Thinking\u{2026}", lastTool: nil, toolCount: 0,
-            startedAt: startedAt, endedAt: nil)
+            startedAt: startedAt, endedAt: nil, title: nil)
         do {
             let activity = try Activity.request(
                 attributes: attr,
@@ -64,15 +65,18 @@ final class AppActivityController {
     }
 
     func update(
-        sessionID: String, phase: Phase, statusText: String, lastTool: String?, toolCount: Int
+        sessionID: String, phase: Phase, statusText: String, lastTool: String?, toolCount: Int,
+        title: String? = nil
     ) {
         guard var entry = entries[sessionID] else { return }
         let becameApproval = phase == .approval && entry.lastPhase != .approval
         entry.lastPhase = phase
         entry.lastToolCount = max(entry.lastToolCount, toolCount)
+        if let title, !title.isEmpty { entry.latestTitle = title }
         let newState = ChatActivityAttributes.ContentState(
             phase: phase, statusText: statusText, lastTool: lastTool,
-            toolCount: entry.lastToolCount, startedAt: entry.startedAt, endedAt: nil)
+            toolCount: entry.lastToolCount, startedAt: entry.startedAt, endedAt: nil,
+            title: entry.latestTitle)
         let staleSoon = Date().timeIntervalSince(entry.lastPushedAt) > 600
         guard becameApproval || staleSoon || newState != entry.lastState else {
             entries[sessionID] = entry
@@ -85,7 +89,7 @@ final class AppActivityController {
             becameApproval
             ? AlertConfiguration(
                 title: "Approval needed",
-                body: "\(entry.activity.attributes.sessionTitle) is waiting for you.",
+                body: "\(entry.latestTitle ?? entry.activity.attributes.sessionTitle) is waiting for you.",
                 sound: .default)
             : nil
         enqueue(sessionID, entry.activity) { act in
@@ -107,7 +111,7 @@ final class AppActivityController {
                     outcome: outcome, toolCount: entry.lastToolCount,
                     duration: endedAt.timeIntervalSince(entry.startedAt)),
             lastTool: nil, toolCount: entry.lastToolCount, startedAt: entry.startedAt,
-            endedAt: endedAt)
+            endedAt: endedAt, title: entry.latestTitle)
         enqueue(sessionID, entry.activity) { act in
             await act.end(
                 ActivityContent(state: final, staleDate: .now),

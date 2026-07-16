@@ -13,6 +13,9 @@ struct ChatActivityAttributes: ActivityAttributes {
         var toolCount: Int
         var startedAt: Date
         var endedAt: Date?
+        /// Sessions get auto-titled after their first turn; attributes are
+        /// immutable, so the freshest title travels in the state.
+        var title: String?
     }
 
     let sessionID: String

@@ -65,7 +65,7 @@ struct LiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.attributes.sessionTitle)
+                        Text(context.state.title ?? context.attributes.sessionTitle)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                         StatusText(state: state, isStale: context.isStale)
@@ -142,7 +142,7 @@ private struct LockScreenView: View {
         HStack(spacing: 12) {
             PhaseIcon(phase: state.phase, size: 40)
             VStack(alignment: .leading, spacing: 3) {
-                Text(context.attributes.sessionTitle)
+                Text(context.state.title ?? context.attributes.sessionTitle)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 StatusText(state: state, isStale: context.isStale)

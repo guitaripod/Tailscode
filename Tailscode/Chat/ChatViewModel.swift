@@ -50,23 +50,35 @@ final class ChatViewModel {
     var title: String { displayTitle }
     var canRename: Bool { backend.capabilities.supportsRenaming }
 
+    private var manuallyRenamed = false
+
     func rename(to title: String) async throws {
         try await backend.renameSession(session.id, title: title)
         displayTitle = title
+        manuallyRenamed = true
     }
 
     var onTitleChange: (() -> Void)?
 
-    /// Servers auto-title a conversation after its first turn; pick the new
-    /// name up when the turn settles so the nav bar stops showing a fallback.
-    private func refreshTitleIfPlaceholder() {
-        guard reportsActivity, AgentSession.isPlaceholderTitle(displayTitle) else { return }
+    /// Servers auto-title a conversation after its first turn (the bridge
+    /// writes an LLM title shortly after); pick the new name up when the turn
+    /// settles so the list, nav bar, and Live Activity all read well.
+    private func refreshTitleFromServer(delay: Duration = .zero) {
+        guard reportsActivity, !manuallyRenamed else { return }
         Task {
-            guard let fresh = try? await backend.listSessions()
-                .first(where: { $0.id == session.id }),
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            guard !manuallyRenamed,
+                let fresh = try? await backend.listSessions()
+                    .first(where: { $0.id == session.id }),
                 !fresh.hasPlaceholderTitle, fresh.title != displayTitle
             else { return }
             displayTitle = fresh.title
+            if activityLive {
+                let live = Self.liveStatus(for: state)
+                AppActivityController.shared.update(
+                    sessionID: session.id, phase: live.phase, statusText: live.text,
+                    lastTool: live.tool, toolCount: live.toolCount, title: fresh.title)
+            }
             onTitleChange?()
         }
     }
@@ -101,7 +113,8 @@ final class ChatViewModel {
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
                     self.cachedUsage = nil
-                    self.refreshTitleIfPlaceholder()
+                    self.refreshTitleFromServer()
+                    self.refreshTitleFromServer(delay: .seconds(12))
                 }
                 self.state = state
                 self.onState?(state)
@@ -162,7 +175,8 @@ final class ChatViewModel {
             let live = Self.liveStatus(for: state)
             AppActivityController.shared.update(
                 sessionID: session.id, phase: live.phase, statusText: live.text,
-                lastTool: live.tool, toolCount: live.toolCount)
+                lastTool: live.tool, toolCount: live.toolCount,
+                title: AgentSession.isPlaceholderTitle(displayTitle) ? nil : displayTitle)
         } else if (state.status == .idle || state.status == .stable), activityLive, turnSawRunning {
             AppActivityController.shared.end(
                 sessionID: session.id, outcome: state.lastFailure == nil ? .done : .error)
@@ -264,8 +278,10 @@ final class ChatViewModel {
         optimisticThinking = true
         onState?(state)
         if !activityLive {
+            let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
+                ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
             activityLive = AppActivityController.shared.start(
-                sessionID: session.id, sessionTitle: displayTitle, serverName: serverName)
+                sessionID: session.id, sessionTitle: activityTitle, serverName: serverName)
             turnSawRunning = false
         }
         let resolvedModel = model ?? selectedModel
