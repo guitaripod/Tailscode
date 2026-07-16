@@ -55,6 +55,22 @@ final class ChatViewModel {
         displayTitle = title
     }
 
+    var onTitleChange: (() -> Void)?
+
+    /// Servers auto-title a conversation after its first turn; pick the new
+    /// name up when the turn settles so the nav bar stops showing a fallback.
+    private func refreshTitleIfPlaceholder() {
+        guard reportsActivity, AgentSession.isPlaceholderTitle(displayTitle) else { return }
+        Task {
+            guard let fresh = try? await backend.listSessions()
+                .first(where: { $0.id == session.id }),
+                !fresh.hasPlaceholderTitle, fresh.title != displayTitle
+            else { return }
+            displayTitle = fresh.title
+            onTitleChange?()
+        }
+    }
+
     var supportsModelSelection: Bool { backend.capabilities.supportsModelSelection }
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
     var reasoningEffortOptions: [String] { backend.reasoningEffortOptions }
@@ -85,6 +101,7 @@ final class ChatViewModel {
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
                     self.cachedUsage = nil
+                    self.refreshTitleIfPlaceholder()
                 }
                 self.state = state
                 self.onState?(state)

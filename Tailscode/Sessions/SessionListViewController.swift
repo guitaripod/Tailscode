@@ -382,9 +382,11 @@ final class SessionListViewController: UIViewController {
     }
 
     private static func displayTitle(_ title: String) -> String {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("New session") { return "New conversation" }
-        return trimmed.isEmpty ? "Empty conversation" : trimmed
+        guard AgentSession.isPlaceholderTitle(title) else {
+            return title.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Empty conversation" : "New conversation"
     }
 
     private static func relativeDate(_ date: Date) -> String {

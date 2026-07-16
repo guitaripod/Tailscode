@@ -125,7 +125,9 @@ final class TextBubbleCell: UICollectionViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        contentView.layer.removeAllAnimations()
         contentView.alpha = 1
+        contentView.transform = .identity
         textView.textAlignment = .natural
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
@@ -894,7 +896,7 @@ final class ActivityGroupCell: UICollectionViewCell {
 
     private func toolView(_ call: ToolCall) -> UIView {
         let statusColor = ToolIconography.statusColor(call.status)
-        let linkable = onToolTap != nil && Self.isSubagentSpawn(call)
+        let linkable = onToolTap != nil && call.spawnsSubagent
         let header = UILabel()
         header.numberOfLines = 1
         let attributed = NSMutableAttributedString()
@@ -964,11 +966,6 @@ final class ActivityGroupCell: UICollectionViewCell {
     }
 
     private var linkableRows: [(view: UIView, call: ToolCall)] = []
-
-    private static func isSubagentSpawn(_ call: ToolCall) -> Bool {
-        let name = call.name.lowercased()
-        return name == "task" || name == "agent"
-    }
 
     /// Orchestration tools (task tracking, subagent spawns, workflows, skills)
     /// carry their meaning in the structured input; their raw output is
@@ -1055,24 +1052,7 @@ final class ActivityGroupCell: UICollectionViewCell {
     private static func condensedBody(for call: ToolCall) -> String {
         guard !outputSuppressed.contains(call.name.lowercased()) else { return "" }
         let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
-        return stripInternalMarkup(body)
-    }
-
-    private static let internalMarkupRegex = try? NSRegularExpression(
-        pattern: "<(system-reminder|task-notification)>[\\s\\S]*?</\\1>")
-    private static let blankRunRegex = try? NSRegularExpression(pattern: "\\n{3,}")
-
-    /// Tool results can embed harness-internal `<system-reminder>` blocks that
-    /// mean nothing to the reader; strip them and collapse the leftover gaps.
-    private static func stripInternalMarkup(_ text: String) -> String {
-        guard text.contains("<system-reminder>") || text.contains("<task-notification>"),
-            let markup = internalMarkupRegex, let blanks = blankRunRegex
-        else { return text }
-        var cleaned = markup.stringByReplacingMatches(
-            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
-        cleaned = blanks.stringByReplacingMatches(
-            in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "\n\n")
-        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AgentMarkup.strip(body)
     }
 
     /// Renders the agent's task list from a TodoWrite tool call as a live checklist.
@@ -1210,6 +1190,13 @@ final class ThinkingCell: UICollectionViewCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        contentView.layer.removeAllAnimations()
+        contentView.alpha = 1
+        contentView.transform = .identity
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()

@@ -9,6 +9,9 @@ enum NotificationManager {
         guard !CommandLine.arguments.contains("--demo"),
             !CommandLine.arguments.contains("--usage")
         else { return }
+        #if DEBUG
+            guard ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"] == nil else { return }
+        #endif
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
             UNUserNotificationCenter.current().requestAuthorization(

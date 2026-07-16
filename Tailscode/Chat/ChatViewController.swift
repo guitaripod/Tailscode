@@ -46,6 +46,7 @@ final class ChatViewController: UIViewController {
     private let attachmentStrip = UIStackView()
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
+    private var lastRenderedIDs: Set<String> = []
 
     var sessionID: String { viewModel.session.id }
     private let isReadOnly: Bool
@@ -93,6 +94,12 @@ final class ChatViewController: UIViewController {
         bind()
         viewModel.start()
         #if DEBUG
+            if let auto = ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"], !isReadOnly {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    self?.composerDidSend(auto)
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] != nil, !isReadOnly {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
@@ -127,11 +134,9 @@ final class ChatViewController: UIViewController {
     /// The chat title is the conversation's own name; auto-generated
     /// placeholder titles fall back to the agent's name.
     private var navDisplayTitle: String {
-        let trimmed = viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed.hasPrefix("New session") {
-            return viewModel.backend.agentType.displayName
-        }
-        return trimmed
+        AgentSession.isPlaceholderTitle(viewModel.title)
+            ? viewModel.backend.agentType.displayName
+            : viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var draftKey: String { "tailscode.draft.\(viewModel.contextID)/\(viewModel.session.id)" }
@@ -495,6 +500,10 @@ final class ChatViewController: UIViewController {
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
+        viewModel.onTitleChange = { [weak self] in
+            guard let self else { return }
+            self.title = self.navDisplayTitle
+        }
         viewModel.onQuestionFailed = { [weak self] questionID in
             guard let self else { return }
             self.answeredQuestionIDs.remove(questionID)
@@ -555,7 +564,7 @@ final class ChatViewController: UIViewController {
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
-        emptyState.isHidden = !(hasRevealed && ids.isEmpty && !isReadOnly)
+        setEmptyStateVisible(hasRevealed && ids.isEmpty)
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -591,10 +600,30 @@ final class ChatViewController: UIViewController {
         let idSet = Set(ids)
         let reconfigurable = changed.filter { idSet.contains($0) }
         if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
-        dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
-            guard let self else { return }
-            if nearBottom && !self.userScrolledUp { self.scrollToBottom(animated: animated) }
-            if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
+        let entranceEligible = hasRevealed && !userScrolledUp
+        let entranceBubbles =
+            entranceEligible
+            ? ids.filter {
+                !lastRenderedIDs.contains($0)
+                    && ($0.hasPrefix("local:") || $0.hasPrefix("queued:"))
+            } : []
+        let entranceThinking =
+            entranceEligible && ids.contains("thinking") && !lastRenderedIDs.contains("thinking")
+        lastRenderedIDs = idSet
+        if !entranceBubbles.isEmpty || entranceThinking {
+            dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+                guard let self else { return }
+                self.scrollToBottom(animated: false)
+                self.collectionView.layoutIfNeeded()
+                self.animateSendEntrance(
+                    bubbleIDs: entranceBubbles, includeThinking: entranceThinking)
+            }
+        } else {
+            dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
+                guard let self else { return }
+                if nearBottom && !self.userScrolledUp { self.scrollToBottom(animated: animated) }
+                if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
+            }
         }
 
         composer.setBusy(viewModel.isBusy)
@@ -624,6 +653,60 @@ final class ChatViewController: UIViewController {
         }
         updateBanner(for: state)
         updateOverflowBadge(hasPermission: pendingPermission != nil)
+    }
+
+    /// The suggestion chips fade rather than hard-cut, so a first send reads
+    /// as the empty state yielding to the conversation.
+    private func setEmptyStateVisible(_ visible: Bool) {
+        guard !isReadOnly else { return }
+        if visible {
+            if emptyState.isHidden {
+                emptyState.alpha = 0
+                emptyState.isHidden = false
+            }
+            UIView.animate(withDuration: 0.2) { self.emptyState.alpha = 1 }
+        } else {
+            guard !emptyState.isHidden else { return }
+            UIView.animate(
+                withDuration: 0.18,
+                animations: { self.emptyState.alpha = 0 },
+                completion: { _ in self.emptyState.isHidden = true })
+        }
+    }
+
+    /// A sent message springs up from the composer into place, then the
+    /// thinking indicator rises in just behind it — the bubble should feel
+    /// like it physically leaves the input field.
+    private func animateSendEntrance(bubbleIDs: [String], includeThinking: Bool) {
+        let snapshot = dataSource.snapshot()
+        var targets: [(cell: UICollectionViewCell, delay: TimeInterval, rise: CGFloat)] = []
+        for id in bubbleIDs {
+            guard let index = snapshot.indexOfItem(id),
+                let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+            else { continue }
+            targets.append((cell, 0, 44))
+        }
+        if includeThinking, let index = snapshot.indexOfItem("thinking"),
+            let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+        {
+            targets.append((cell, targets.isEmpty ? 0 : 0.12, 18))
+        }
+        for target in targets {
+            let content = target.cell.contentView
+            let finalAlpha = content.alpha
+            let isBubble = target.rise > 20
+            content.alpha = 0
+            content.transform = isBubble
+                ? CGAffineTransform(translationX: 0, y: target.rise).scaledBy(x: 0.96, y: 0.96)
+                : CGAffineTransform(translationX: 0, y: target.rise)
+            UIView.animate(
+                withDuration: 0.55, delay: target.delay, usingSpringWithDamping: 0.8,
+                initialSpringVelocity: 0.4, options: [.allowUserInteraction]
+            ) {
+                content.alpha = finalAlpha
+                content.transform = .identity
+            }
+        }
     }
 
     private func updateBanner(for state: ConversationState) {
@@ -779,8 +862,8 @@ final class ChatViewController: UIViewController {
         revealFallback?.cancel()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
-        emptyState.isHidden = isReadOnly || !orderedIDs.isEmpty
-            || !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty
+        setEmptyStateVisible(
+            orderedIDs.isEmpty && viewModel.localEchoes.isEmpty && viewModel.queued.isEmpty)
         UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
         }
