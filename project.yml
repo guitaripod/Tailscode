@@ -23,6 +23,10 @@ targets:
         configurations: [Debug]
       - target: TailscodeWidget
         embed: true
+    entitlements:
+      path: Tailscode/Tailscode.entitlements
+      properties:
+        aps-environment: development
     info:
       path: Tailscode/Info.plist
       properties:

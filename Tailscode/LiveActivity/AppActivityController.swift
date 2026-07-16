@@ -32,7 +32,10 @@ final class AppActivityController {
     }
 
     @discardableResult
-    func start(sessionID: String, sessionTitle: String, serverName: String) -> Bool {
+    func start(
+        sessionID: String, sessionTitle: String, serverName: String,
+        onPushToken: (@Sendable (String, Date) async -> Void)? = nil
+    ) -> Bool {
         guard entries[sessionID] == nil else { return true }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             AppLogger.chat.info("Live Activity not authorized")
@@ -53,14 +56,32 @@ final class AppActivityController {
         do {
             let activity = try Activity.request(
                 attributes: attr,
-                content: .init(state: state, staleDate: Date().addingTimeInterval(1800)))
+                content: .init(state: state, staleDate: Date().addingTimeInterval(1800)),
+                pushType: onPushToken == nil ? nil : .token)
             entries[sessionID] = Entry(
                 activity: activity, startedAt: startedAt, lastPhase: .thinking, lastState: state)
+            if let onPushToken {
+                observePushToken(activity, startedAt: startedAt, onPushToken: onPushToken)
+            }
             AppLogger.chat.info("Live Activity started for \(sessionID)")
             return true
         } catch {
             AppLogger.chat.error("Live Activity failed to start: \(error)")
             return false
+        }
+    }
+
+    /// Streams the per-activity APNs token to the backend so the server can
+    /// keep the activity fresh after the app is suspended.
+    private func observePushToken(
+        _ activity: Activity<ChatActivityAttributes>, startedAt: Date,
+        onPushToken: @escaping @Sendable (String, Date) async -> Void
+    ) {
+        Task {
+            for await token in activity.pushTokenUpdates {
+                let hex = token.map { String(format: "%02x", $0) }.joined()
+                await onPushToken(hex, startedAt)
+            }
         }
     }
 

@@ -280,8 +280,22 @@ final class ChatViewModel {
         if !activityLive {
             let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
                 ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
+            let backend = self.backend
+            let sessionID = session.id
             activityLive = AppActivityController.shared.start(
-                sessionID: session.id, sessionTitle: activityTitle, serverName: serverName)
+                sessionID: sessionID, sessionTitle: activityTitle, serverName: serverName,
+                onPushToken: { token, startedAt in
+                    #if DEBUG
+                        let environment = "development"
+                    #else
+                        let environment = "production"
+                    #endif
+                    try? await backend.registerLiveActivity(
+                        LiveActivityRegistration(
+                            token: token, environment: environment,
+                            startedAt: startedAt, title: activityTitle),
+                        for: sessionID)
+                })
             turnSawRunning = false
         }
         let resolvedModel = model ?? selectedModel
