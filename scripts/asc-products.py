@@ -7,14 +7,6 @@ localization, a USD base price, and a review screenshot. Products stay
 MISSING_METADATA until they ride the first version submission — normal.
 
 Usage: python3 scripts/asc-products.py
-
-DEPRECATION (Apple, 2026-07-15): the `inAppPurchaseLocalizations` and
-`inAppPurchaseAppStoreReviewScreenshots` (IAP images) resources used below are
-deprecated in favor of v2 resources under the new `InAppPurchaseVersion` parent,
-with submission via v2 endpoints on `InAppPurchaseV2`. They still work today but
-will be removed "in an upcoming release" — migrate before then. `/v2/inAppPurchases`
-(creation) is unaffected. TODO: move localization + review-screenshot writes to the
-InAppPurchaseVersion endpoints.
 """
 import hashlib
 import os
