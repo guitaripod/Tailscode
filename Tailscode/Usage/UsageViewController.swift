@@ -8,26 +8,6 @@ private struct UsageWindow {
     let cap: Double
 }
 
-private struct UsageSample: Sendable {
-    let cost: Double
-    let createdAt: Date
-    let tokens: Int
-}
-
-private struct ScanResult {
-    var samples: [UsageSample]
-    var timedOut: Int
-    var failed: Int
-
-    var unavailable: Int { timedOut + failed }
-}
-
-private enum SessionOutcome: Sendable {
-    case samples([UsageSample])
-    case timedOut
-    case failed
-}
-
 private struct QuotaUnavailableError: LocalizedError, Sendable {
     var errorDescription: String? {
         "Claude quota is unavailable right now — the bridge couldn't reach api.anthropic.com."
@@ -57,10 +37,6 @@ private struct CardModel {
 
 @MainActor
 final class UsageViewController: UIViewController {
-    private static let sessionLimit = 40
-    private static let concurrency = 6
-    private static let perRequestTimeout: TimeInterval = 12
-    private static let opencodeProviderID = "opencode-go"
     private static let staleInterval: TimeInterval = 5 * 60
 
     private let scrollView = UIScrollView()
@@ -289,65 +265,14 @@ final class UsageViewController: UIViewController {
             opencodeCard.renderError()
             return CredentialsUnavailableError(profileName: profile.name)
         }
-        do {
-            let result = try await collect(profile: profile, backend: backend, samples: Self.opencodeSamples)
-            guard !Task.isCancelled else { return nil }
-            opencodeCard.apply(Self.opencodeModel(result))
-            return nil
-        } catch {
+        guard let result = await UsageScanner.scanOpencode(backend: backend) else {
             guard !Task.isCancelled else { return nil }
             opencodeCard.renderError()
-            return error
+            return nil
         }
-    }
-
-    private func collect(
-        profile: ConnectionProfile,
-        backend: any CodingAgentBackend,
-        samples: @escaping @Sendable (any CodingAgentBackend, AgentSession) async throws -> [UsageSample]
-    ) async throws -> ScanResult {
-        let sessions = try await backend.listSessions()
-        let scanned = Array(sessions.prefix(Self.sessionLimit))
-        AppLogger.session.info(
-            "usage: scanning \(scanned.count)/\(sessions.count) \(profile.backend.rawValue) sessions from \(profile.name)")
-        let result = await scan(backend: backend, sessions: scanned, samples: samples)
-        AppLogger.session.info(
-            "usage: \(profile.backend.rawValue) → \(result.samples.count) priced entries, "
-                + "\(result.timedOut) timed out, \(result.failed) failed")
-        return result
-    }
-
-    private func scan(
-        backend: any CodingAgentBackend,
-        sessions: [AgentSession],
-        samples: @escaping @Sendable (any CodingAgentBackend, AgentSession) async throws -> [UsageSample]
-    ) async -> ScanResult {
-        let timeout = Self.perRequestTimeout
-        return await withTaskGroup(of: SessionOutcome.self) { group in
-            var pending = sessions.makeIterator()
-
-            func schedule() {
-                guard let session = pending.next() else { return }
-                group.addTask {
-                    let outcome = await Self.withTimeout(timeout) { () async -> SessionOutcome? in
-                        do { return .samples(try await samples(backend, session)) } catch { return .failed }
-                    }
-                    return outcome ?? .timedOut
-                }
-            }
-
-            for _ in 0..<Self.concurrency { schedule() }
-            var result = ScanResult(samples: [], timedOut: 0, failed: 0)
-            for await outcome in group {
-                switch outcome {
-                case .samples(let batch): result.samples.append(contentsOf: batch)
-                case .timedOut: result.timedOut += 1
-                case .failed: result.failed += 1
-                }
-                schedule()
-            }
-            return result
-        }
+        guard !Task.isCancelled else { return nil }
+        opencodeCard.apply(Self.opencodeModel(result))
+        return nil
     }
 
     private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
@@ -369,7 +294,7 @@ final class UsageViewController: UIViewController {
                 + "actual plan consumption, not an estimate.")
     }
 
-    private static func opencodeModel(_ result: ScanResult) -> CardModel {
+    private static func opencodeModel(_ result: UsageScanResult) -> CardModel {
         let windows = [
             UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: 12),
             UsageWindow(name: "Weekly", seconds: 7 * 24 * 3600, cap: 30),
@@ -394,7 +319,7 @@ final class UsageViewController: UIViewController {
                 result: result))
     }
 
-    private static func unavailableSuffix(_ note: String, result: ScanResult) -> String {
+    private static func unavailableSuffix(_ note: String, result: UsageScanResult) -> String {
         guard result.unavailable > 0 else { return note }
         let plural = result.unavailable == 1 ? "session" : "sessions"
         return note + " \(result.unavailable) \(plural) unavailable — totals are incomplete."
@@ -428,31 +353,6 @@ final class UsageViewController: UIViewController {
         let hours = minutes / 60
         if hours < 24 { return "\(hours)h \(minutes % 60)m" }
         return "\(hours / 24)d \(hours % 24)h"
-    }
-
-    private static func opencodeSamples(
-        backend: any CodingAgentBackend, session: AgentSession
-    ) async throws -> [UsageSample] {
-        let messages = try await backend.messages(for: session.id)
-        return messages.compactMap { message in
-            guard message.providerID == opencodeProviderID, let cost = message.costUSD else { return nil }
-            return UsageSample(cost: cost, createdAt: message.createdAt, tokens: message.totalTokens ?? 0)
-        }
-    }
-
-    private static func withTimeout<T: Sendable>(
-        _ seconds: TimeInterval, _ operation: @escaping @Sendable () async -> T?
-    ) async -> T? {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask { await operation() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
     }
 
     private static func currency(_ value: Double) -> String {

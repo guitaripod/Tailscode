@@ -113,12 +113,23 @@ final class HomeViewController: UIViewController {
         navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
     }
 
+    private var lastOpencodeScan: Date?
+
     private func load() async {
         await viewModel.load()
         await loadQuotas()
+        await scanOpencodeIfNeeded()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
         applySnapshot()
+    }
+
+    private func scanOpencodeIfNeeded() async {
+        if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
+        guard let (_, backend) = ConnectionController.shared.allBackends()
+            .first(where: { $0.profile.backend == .openCode }) else { return }
+        lastOpencodeScan = Date()
+        await UsageScanner.scanOpencode(backend: backend)
     }
 
     /// A bridge answers for every provider its host machine is signed into,
@@ -140,6 +151,7 @@ final class HomeViewController: UIViewController {
             }
         }
         quotas = order.compactMap { byProvider[$0] }
+        if !quotas.isEmpty { UsageWidgetStore.writeLive(quotas) }
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {
@@ -258,7 +270,7 @@ final class HomeViewController: UIViewController {
             SessionListViewController(filterProfileID: filterProfileID), animated: true)
     }
 
-    private func pushUsage() {
+    func pushUsage() {
         navigationController?.pushViewController(UsageViewController(), animated: true)
     }
 
