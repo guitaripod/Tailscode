@@ -78,7 +78,17 @@ final class AppCoordinator {
     /// delivered on the next route to the main UI; a link older than 30s is
     /// dropped rather than hijacking navigation long after the tap.
     func handle(_ url: URL) {
-        guard url.scheme == "tailscode", url.host() == "session" else { return }
+        guard url.scheme == "tailscode" else { return }
+        if url.host() == "usage" {
+            guard let home else {
+                pendingSessionLink = (url, Date())
+                return
+            }
+            pendingSessionLink = nil
+            home.pushUsage()
+            return
+        }
+        guard url.host() == "session" else { return }
         let sessionID = url.lastPathComponent
         guard !sessionID.isEmpty else { return }
         guard let home else {

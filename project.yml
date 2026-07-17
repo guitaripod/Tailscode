@@ -22,6 +22,8 @@ targets:
         product: AgentTestSupport
       - target: TailscodeWidget
         embed: true
+      - sdk: WidgetKit.framework
+        weak: true
     info:
       path: Tailscode/Info.plist
       properties:
@@ -77,6 +79,7 @@ targets:
     sources:
       - path: TailscodeWidget
       - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
+      - path: Tailscode/Usage/UsageWidgetStore.swift
     info:
       path: TailscodeWidget/Info.plist
       properties:
@@ -103,6 +106,7 @@ targets:
         CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
         PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+        CODE_SIGN_ENTITLEMENTS: TailscodeWidget/TailscodeWidget.entitlements
 
 schemes:
   Tailscode:
