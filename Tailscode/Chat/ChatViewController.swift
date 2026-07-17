@@ -14,6 +14,7 @@ final class ChatViewController: UIViewController {
     private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
     private let emptyState = ChatEmptyStateView()
+    private let loadingState = UIContentUnavailableView(configuration: .loading())
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []
@@ -274,6 +275,17 @@ final class ChatViewController: UIViewController {
                 emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
             ])
         }
+
+        loadingState.translatesAutoresizingMaskIntoConstraints = false
+        loadingState.isHidden = true
+        loadingState.isUserInteractionEnabled = false
+        view.insertSubview(loadingState, belowSubview: composer)
+        NSLayoutConstraint.activate([
+            loadingState.topAnchor.constraint(equalTo: collectionView.topAnchor),
+            loadingState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
+            loadingState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
+            loadingState.bottomAnchor.constraint(equalTo: composer.topAnchor),
+        ])
     }
 
     /// A quiet chip above the composer while subagents are working — a session
@@ -570,7 +582,7 @@ final class ChatViewController: UIViewController {
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
-        setEmptyStateVisible(hasRevealed && ids.isEmpty)
+        updatePlaceholders(hasRows: !ids.isEmpty, for: state)
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -659,6 +671,19 @@ final class ChatViewController: UIViewController {
         }
         updateBanner(for: state)
         updateOverflowBadge(hasPermission: pendingPermission != nil)
+    }
+
+    /// Distinguishes "history is still on its way" from "genuinely empty":
+    /// until the transcript has actually loaded (or failed to), an empty
+    /// conversation shows a spinner, not the suggestion chips — a session
+    /// started on another machine must never flash the empty state while its
+    /// history is in flight.
+    private func updatePlaceholders(hasRows: Bool, for state: ConversationState) {
+        let settled =
+            state.hasLoadedTranscript || state.lastFailure != nil
+            || state.connection == .offline
+        loadingState.isHidden = !(hasRevealed && !hasRows && !settled)
+        setEmptyStateVisible(hasRevealed && !hasRows && settled)
     }
 
     /// The suggestion chips fade rather than hard-cut, so a first send reads
@@ -861,15 +886,17 @@ final class ChatViewController: UIViewController {
 
     /// The transcript stays invisible through the initial empty → cached →
     /// refreshed snapshot churn, then fades in once, already scrolled to the
-    /// bottom. The fallback timer reveals genuinely empty chats.
+    /// bottom. The fallback timer reveals chats with nothing to show yet —
+    /// a spinner while history is still loading, the empty state otherwise.
     private func revealTranscript() {
         guard !hasRevealed else { return }
         hasRevealed = true
         revealFallback?.cancel()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
-        setEmptyStateVisible(
-            orderedIDs.isEmpty && viewModel.localEchoes.isEmpty && viewModel.queued.isEmpty)
+        let hasRows =
+            !orderedIDs.isEmpty || !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty
+        updatePlaceholders(hasRows: hasRows, for: viewModel.state)
         UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
         }

@@ -222,13 +222,19 @@ final class HomeViewController: UIViewController {
         openChat(for: entry)
     }
 
+    /// Stays parked until the session actually appears: the cold-launch
+    /// snapshot applies before the list loads, and consuming (and dropping)
+    /// the link on that early pass loses notification taps.
     private func consumePendingDeepLink() {
         guard let pending = pendingDeepLink else { return }
-        pendingDeepLink = nil
-        guard Date().timeIntervalSince(pending.parkedAt) < 30 else { return }
-        if let entry = viewModel.entries.first(where: { $0.session.id == pending.sessionID }) {
-            openChat(for: entry)
+        guard Date().timeIntervalSince(pending.parkedAt) < 30 else {
+            pendingDeepLink = nil
+            return
         }
+        guard let entry = viewModel.entries.first(where: { $0.session.id == pending.sessionID })
+        else { return }
+        pendingDeepLink = nil
+        openChat(for: entry)
     }
 
     private func openChat(for entry: SessionEntry) {

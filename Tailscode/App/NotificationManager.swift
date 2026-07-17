@@ -10,7 +10,9 @@ enum NotificationManager {
             !CommandLine.arguments.contains("--usage")
         else { return }
         #if DEBUG
-            guard ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"] == nil else { return }
+            let env = ProcessInfo.processInfo.environment
+            guard env["TAILSCODE_AUTOSEND"] == nil, env["TAILSCODE_OPEN_SESSION"] == nil
+            else { return }
         #endif
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
