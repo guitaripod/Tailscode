@@ -5,6 +5,7 @@ import WidgetKit
 struct TailscodeWidgetBundle: WidgetBundle {
     var body: some Widget {
         UsageWidget()
+        TopUsageControl()
         LiveActivityWidget()
     }
 }

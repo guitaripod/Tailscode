@@ -99,6 +99,13 @@ final class AppCoordinator {
         home.openSession(withID: sessionID)
     }
 
+    /// The Top Usage control opens the app and leaves a route flag in the shared App Group
+    /// (a custom URL scheme is unreliable from a Control). Consume it on foreground.
+    func handleControlRouteIfNeeded() {
+        guard let route = UsageWidgetStore.takePendingControlRoute() else { return }
+        if route == "usage" { handle(URL(string: "tailscode://usage")!) }
+    }
+
     private var home: HomeViewController? {
         (window.rootViewController as? UINavigationController)?
             .viewControllers.first as? HomeViewController

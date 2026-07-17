@@ -31,7 +31,20 @@ struct UsageWidgetEntry: Codable, TimelineEntry {
 enum UsageWidgetStore {
     static let suiteName = "group.com.guitaripod.tailscode"
     private static let providersKey = "usage_providers"
+    private static let pendingRouteKey = "pending_control_route"
     static let kind = "UsageWidget"
+
+    /// Written by the Top Usage control's App Intent; read+cleared by the app on foreground.
+    static func setPendingControlRoute(_ route: String) {
+        UserDefaults(suiteName: suiteName)?.set(route, forKey: pendingRouteKey)
+    }
+
+    static func takePendingControlRoute() -> String? {
+        let defaults = UserDefaults(suiteName: suiteName)
+        guard let route = defaults?.string(forKey: pendingRouteKey) else { return nil }
+        defaults?.removeObject(forKey: pendingRouteKey)
+        return route
+    }
 
     static func read() -> UsageWidgetEntry? {
         guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),

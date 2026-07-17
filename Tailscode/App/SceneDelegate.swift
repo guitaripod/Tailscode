@@ -25,6 +25,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         coordinator?.handle(url)
     }
 
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        coordinator?.handleControlRouteIfNeeded()
+    }
+
     func routeDeepLink(_ url: URL) {
         coordinator?.handle(url)
     }

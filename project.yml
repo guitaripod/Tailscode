@@ -80,6 +80,7 @@ targets:
       - path: TailscodeWidget
       - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
       - path: Tailscode/Usage/UsageWidgetStore.swift
+      - path: Tailscode/Usage/UsageControlIntents.swift
     info:
       path: TailscodeWidget/Info.plist
       properties:
