@@ -13,6 +13,7 @@ targets:
     platform: iOS
     sources:
       - path: Tailscode
+      - path: TailscodeWidget/UsageWidget.swift
     dependencies:
       - package: CodingAgentKit
         product: CodingAgentKit

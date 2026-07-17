@@ -13,6 +13,15 @@ final class AppCoordinator {
     func start() {
         window.tintColor = Theme.Color.accent
         window.overrideUserInterfaceStyle = AppPreferences.appearance.style
+        #if DEBUG
+            if CommandLine.arguments.contains(where: { $0.hasPrefix("--widget-preview") }) {
+                window.rootViewController = UINavigationController(
+                    rootViewController: WidgetPreviewViewController(
+                        alt: CommandLine.arguments.contains("--widget-preview-alt")))
+                window.makeKeyAndVisible()
+                return
+            }
+        #endif
         if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
             ConnectionController.shared.enterDemoMode()
         }
