@@ -253,6 +253,9 @@ final class SessionListViewController: UIViewController {
             if let dir = entry.session.directory {
                 parts.append((dir as NSString).lastPathComponent)
             }
+            if let badge = ModelBadge.text(for: entry.session) {
+                parts.append(badge)
+            }
             parts.append(Self.relativeDate(entry.session.updatedAt))
             content.secondaryText = parts.joined(separator: " · ")
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)

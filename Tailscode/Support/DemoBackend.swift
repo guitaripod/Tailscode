@@ -47,16 +47,19 @@ enum DemoWorld {
             AgentSession(
                 id: "demo-c1", agentType: .claudeCode, title: "Fix the flaky WebSocket reconnect test",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(400), updatedAt: ago(120),
-                isActive: true),
+                isActive: true, model: "claude-fable-5", reasoningEffort: "max"),
             AgentSession(
                 id: "demo-c3", agentType: .claudeCode, title: "Dark mode for the settings screen",
-                directory: "/Users/demo/dev/pulse-ios", createdAt: ago(1800), updatedAt: ago(1560)),
+                directory: "/Users/demo/dev/pulse-ios", createdAt: ago(1800), updatedAt: ago(1560),
+                model: "claude-sonnet-5", reasoningEffort: "high"),
             AgentSession(
                 id: "demo-c2", agentType: .claudeCode, title: "Migrate CI to self-hosted runners",
-                directory: "/Users/demo/dev/pulse-infra", createdAt: ago(11_000), updatedAt: ago(3300)),
+                directory: "/Users/demo/dev/pulse-infra", createdAt: ago(11_000), updatedAt: ago(3300),
+                model: "claude-opus-4-8", reasoningEffort: "medium"),
             AgentSession(
                 id: "demo-c4", agentType: .claudeCode, title: "Explain the auth token refresh flow",
-                directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000)),
+                directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000),
+                model: "claude-haiku-4-5", reasoningEffort: "low"),
         ],
         models: [
             ModelInfo(id: "claude-fable-5", name: "Fable 5", providerID: "anthropic"),

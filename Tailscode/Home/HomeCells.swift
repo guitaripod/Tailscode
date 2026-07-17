@@ -25,6 +25,9 @@ struct LiveCard: Hashable {
         if let directory = entry.session.directory {
             parts.append((directory as NSString).lastPathComponent)
         }
+        if let badge = ModelBadge.text(for: entry.session) {
+            parts.append(badge)
+        }
         self.detail = parts.joined(separator: " · ")
     }
 
@@ -69,6 +72,9 @@ struct RecentCard: Hashable {
         var parts: [String] = [entry.profileName]
         if let directory = entry.session.directory {
             parts.append((directory as NSString).lastPathComponent)
+        }
+        if let badge = ModelBadge.text(for: entry.session) {
+            parts.append(badge)
         }
         parts.append(entry.session.updatedAt.formatted(.relative(presentation: .named)))
         self.detail = parts.joined(separator: " · ")
