@@ -39,7 +39,14 @@ enum UsageScanner {
             merged.failed += result.failed
             merged.scannedHosts.append(name)
         }
-        guard !merged.scannedHosts.isEmpty else { return nil }
+        guard !merged.scannedHosts.isEmpty else {
+            AppLogger.session.error(
+                "usage: opencode scan failed on every host (\(merged.failedHosts.joined(separator: ", ")))")
+            return nil
+        }
+        AppLogger.session.info(
+            "usage: opencode scan merged \(merged.samples.count) samples from \(merged.scannedHosts.joined(separator: " + "))"
+                + (merged.failedHosts.isEmpty ? "" : " — unreachable: \(merged.failedHosts.joined(separator: ", "))"))
         writeOpencodeGauges(result: merged)
         return merged
     }
