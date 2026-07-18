@@ -23,6 +23,8 @@ targets:
         product: AgentTestSupport
       - target: TailscodeWidget
         embed: true
+      - target: TailscodeNSE
+        embed: true
       - sdk: WidgetKit.framework
         weak: true
     info:
@@ -53,6 +55,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        UIBackgroundModes: [fetch, remote-notification]
+        BGTaskSchedulerPermittedIdentifiers: [com.guitaripod.tailscode.usage-refresh]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
@@ -82,6 +86,12 @@ targets:
       - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageControlIntents.swift
+      - path: Tailscode/Usage/UsageWidgetWriter.swift
+      - path: Tailscode/Usage/UsagePushPayload.swift
+      - path: Tailscode/Usage/LiveQuotaFetcher.swift
+      - path: Tailscode/Connection/SharedConnectionStore.swift
+      - path: Tailscode/Logging/AppLogger.swift
+      - path: Tailscode/Logging/LogFileWriter.swift
     info:
       path: TailscodeWidget/Info.plist
       properties:
@@ -90,7 +100,14 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Tailscode's widgets read live usage from coding-agent servers you run, including ones on your local network.
     dependencies:
+      - package: CodingAgentKit
+        product: CodingAgentKit
+      - package: CodingAgentKit
+        product: CodingAgentKitApple
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework
       - sdk: ActivityKit.framework
@@ -109,6 +126,42 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
         CODE_SIGN_ENTITLEMENTS: TailscodeWidget/TailscodeWidget.entitlements
+
+  TailscodeNSE:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TailscodeNSE
+      - path: Tailscode/Usage/UsageWidgetStore.swift
+      - path: Tailscode/Usage/UsagePushPayload.swift
+      - path: Tailscode/Logging/AppLogger.swift
+      - path: Tailscode/Logging/LogFileWriter.swift
+    info:
+      path: TailscodeNSE/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    dependencies:
+      - sdk: UserNotifications.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
+        SKIP_INSTALL: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "7"
+        DEVELOPMENT_TEAM: P4DQK6SRKR
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE Dev iPhone Air 2026
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
+        CODE_SIGN_ENTITLEMENTS: TailscodeNSE/TailscodeNSE.entitlements
 
 schemes:
   Tailscode:

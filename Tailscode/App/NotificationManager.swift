@@ -39,13 +39,18 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
     static let shared = NotificationRouter()
 
     /// Without this, notifications posted while the app is foreground-inactive
-    /// (app switcher, banner pull-down) get no presentation and vanish.
+    /// (app switcher, banner pull-down) get no presentation and vanish. Remote
+    /// pushes arriving while the app is actively foregrounded (the chat already
+    /// on screen) go to the list silently instead of bannering over it.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .list, .sound])
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        guard notification.request.trigger is UNPushNotificationTrigger else {
+            return [.banner, .list, .sound]
+        }
+        let isActive = await MainActor.run { UIApplication.shared.applicationState == .active }
+        return isActive ? [.list] : [.banner, .list, .sound]
     }
 
     func userNotificationCenter(

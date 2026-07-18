@@ -96,17 +96,60 @@ enum UsageWidgetStore {
         var updatedAt: Date
     }
 
-    static func upsertProvider(_ provider: UsageWidgetEntry.ProviderSnapshot) {
-        var providers: [UsageWidgetEntry.ProviderSnapshot] = []
-        if let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
-            let stored = try? JSONDecoder().decode(Storage.self, from: data)
-        {
-            providers = stored.providers.filter { $0.providerName != provider.providerName }
+    /// `reload: false` is for writes made from inside the widget's own timeline
+    /// provider, where a `reloadTimelines` call would loop.
+    static func upsertProvider(_ provider: UsageWidgetEntry.ProviderSnapshot, reload: Bool = true) {
+        withProvidersLock {
+            var providers: [UsageWidgetEntry.ProviderSnapshot] = []
+            if let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+                let stored = try? JSONDecoder().decode(Storage.self, from: data)
+            {
+                providers = stored.providers.filter { $0.providerName != provider.providerName }
+            }
+            providers.append(provider)
+            let storage = Storage(providers: providers, updatedAt: Date())
+            guard let data = try? JSONEncoder().encode(storage) else { return }
+            UserDefaults(suiteName: suiteName)?.set(data, forKey: providersKey)
         }
-        providers.append(provider)
-        let storage = Storage(providers: providers, updatedAt: Date())
-        guard let data = try? JSONEncoder().encode(storage) else { return }
-        UserDefaults(suiteName: suiteName)?.set(data, forKey: providersKey)
+        if reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
+    }
+
+    /// The app, the widget, and the notification service extension all
+    /// read-modify-write the provider list from separate processes; an exclusive
+    /// flock on a file in the shared container keeps a concurrent writer from
+    /// dropping another's provider. Runs unlocked if the container is unavailable.
+    private static func withProvidersLock(_ body: () -> Void) {
+        guard
+            let container = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: suiteName)
+        else {
+            body()
+            return
+        }
+        let lockPath = container.appendingPathComponent("usage_providers.lock").path
+        let descriptor = open(lockPath, O_CREAT | O_WRONLY, 0o644)
+        guard descriptor >= 0 else {
+            body()
+            return
+        }
+        let locked = flock(descriptor, LOCK_EX) == 0
+        body()
+        if locked { flock(descriptor, LOCK_UN) }
+        close(descriptor)
+    }
+
+    private static let lastThrottledReloadKey = "usage_push_last_reload"
+    private static let throttledReloadInterval: TimeInterval = 1800
+
+    /// Budget-friendly reload for background paths (pushes, `BGAppRefreshTask`):
+    /// the system grants widgets only a few dozen reloads a day, so unattended
+    /// refreshes coalesce through a shared app-group timestamp.
+    static func reloadTimelinesThrottled() {
+        let defaults = UserDefaults(suiteName: suiteName)
+        let last = defaults?.double(forKey: lastThrottledReloadKey) ?? 0
+        let now = Date().timeIntervalSince1970
+        guard now - last >= throttledReloadInterval else { return }
+        defaults?.set(now, forKey: lastThrottledReloadKey)
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 }

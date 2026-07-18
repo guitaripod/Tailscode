@@ -84,11 +84,31 @@ struct UsageTimelineProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: UsageWidgetIntent, in context: Context) async -> Timeline<UsageWidgetEntry> {
+        if !context.isPreview { await Self.refreshLiveQuotas() }
         guard let stored = UsageWidgetStore.read() else {
             return Timeline(entries: [emptyEntry()], policy: .after(Date().addingTimeInterval(900)))
         }
         let entry = filtered(stored, for: configuration.providerFilter)
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(900)))
+    }
+
+    /// Widget-side self-refresh: pulls live quotas straight from the bridges inside the
+    /// extension's own budget, so the widget keeps moving without the app foregrounding.
+    /// The heavy opencode scan stays on the app/background-refresh side; its last stored
+    /// gauges keep rendering. A fetch failure (tailnet down, phone offline) just serves
+    /// the stored snapshot, which flips to STALE on its own. The throttle collapses the
+    /// burst of per-family timeline calls a single reload fans out into one fetch.
+    private static func refreshLiveQuotas() async {
+        if let stored = UsageWidgetStore.read(), Date().timeIntervalSince(stored.date) < 120 {
+            return
+        }
+        let quotas = await LiveQuotaFetcher.fetch(deadline: 15)
+        guard !quotas.isEmpty else {
+            AppLogger.session.info("widget: live quota refresh got nothing; serving stored snapshot")
+            return
+        }
+        UsageWidgetStore.writeLive(quotas, reload: false)
+        AppLogger.session.info("widget: timeline reload refreshed \(quotas.count) live quota(s)")
     }
 
     private func emptyEntry() -> UsageWidgetEntry {

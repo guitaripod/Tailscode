@@ -1,3 +1,4 @@
+import CodingAgentKit
 import UIKit
 
 /// Tracks the live status of sessions across the app so the list can show pills and completion
@@ -32,7 +33,10 @@ final class SessionActivity {
         statuses[sessionID] ?? .idle
     }
 
-    func update(sessionID: String, title: String, status: Status, keepAlive: ChatViewModel) {
+    func update(
+        sessionID: String, profileID: String, title: String, status: Status,
+        keepAlive: ChatViewModel
+    ) {
         switch status {
         case .running, .awaitingApproval:
             retained[sessionID] = keepAlive
@@ -42,11 +46,22 @@ final class SessionActivity {
         let previous = statuses[sessionID] ?? .idle
         guard previous != status else { return }
         statuses[sessionID] = status
-        if status == .idle, previous != .idle {
+        if status == .idle, previous != .idle, !remotePushCovers(profileID: profileID) {
             NotificationManager.notify(
                 title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
                 sessionID: sessionID)
         }
         NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    /// A bridge that acked this launch's device token pushes its own turn-end
+    /// alert, so the local one would duplicate it; opencode servers and bridges
+    /// that never acked still rely on the local notification.
+    private func remotePushCovers(profileID: String) -> Bool {
+        guard
+            let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID }),
+            profile.backend == .claudeCode
+        else { return false }
+        return PushRegistrar.ackedBridgeURLs.contains(profile.baseURL)
     }
 }

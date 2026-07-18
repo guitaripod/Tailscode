@@ -122,7 +122,8 @@ final class ChatViewModel {
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
                 if self.reportsActivity {
                     SessionActivity.shared.update(
-                        sessionID: self.session.id, title: self.displayTitle,
+                        sessionID: self.session.id, profileID: self.contextID,
+                        title: self.displayTitle,
                         status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
                         keepAlive: self)
                 }

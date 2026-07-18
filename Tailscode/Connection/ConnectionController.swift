@@ -23,7 +23,7 @@ final class ConnectionController {
     }
 
     init() {
-        store = try? ConnectionProfileStore()
+        store = Self.makeStore()
         activeProfileID = UserDefaults.standard.string(forKey: activeKey)
         isDemoMode = UserDefaults.standard.bool(forKey: demoKey)
         if let store {
@@ -33,6 +33,61 @@ final class ConnectionController {
         }
         if activeProfileID == nil, let first = profiles.first {
             setActive(first.id)
+        }
+    }
+
+    private static func makeStore() -> ConnectionProfileStore? {
+        guard let shared = try? SharedConnectionStore.make() else {
+            AppLogger.connection.error("shared profile store unavailable; falling back to sandbox store")
+            return try? ConnectionProfileStore()
+        }
+        migrateLegacyProfilesIfNeeded(into: shared)
+        return shared
+    }
+
+    /// One-time move of the pre-widget store (app-sandbox `profiles.json` + app-only
+    /// Keychain items) into the App Group container and access group, where the widget
+    /// extension can reach it. Legacy artifacts are left in place as an inert backup;
+    /// the completion flag is only set once every profile made it across, so a failed
+    /// migration retries on the next launch.
+    private static func migrateLegacyProfilesIfNeeded(into shared: ConnectionProfileStore) {
+        let migratedKey = "tailscode.sharedStoreMigrated"
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: migratedKey) else { return }
+        guard
+            let legacy = try? ConnectionProfileStore(),
+            legacy.directory != shared.directory,
+            let legacyProfiles = try? legacy.profiles(),
+            !legacyProfiles.isEmpty
+        else {
+            defaults.set(true, forKey: migratedKey)
+            return
+        }
+        let existingIDs = Set(((try? shared.profiles()) ?? []).map(\.id))
+        var migrated = 0
+        var failed = 0
+        for profile in legacyProfiles {
+            guard !existingIDs.contains(profile.id) else {
+                migrated += 1
+                continue
+            }
+            do {
+                let password = try legacy.password(for: profile.id)
+                try shared.save(profile, password: password)
+                migrated += 1
+            } catch {
+                failed += 1
+                AppLogger.connection.error(
+                    "failed to migrate profile \(profile.name) to shared store: \(error.localizedDescription)")
+            }
+        }
+        if failed == 0 {
+            defaults.set(true, forKey: migratedKey)
+            AppLogger.connection.info(
+                "migrated \(migrated)/\(legacyProfiles.count) profile(s) to the shared app-group store")
+        } else {
+            AppLogger.connection.error(
+                "profile migration incomplete (\(failed) of \(legacyProfiles.count) failed); retrying next launch")
         }
     }
 
@@ -97,6 +152,7 @@ final class ConnectionController {
         if isDemoMode { leaveDemoMode() }
         if makeActive { setActive(profile.id) }
         AppLogger.connection.info("saved profile \(profile.name) [\(profile.backend.rawValue)]")
+        if profile.backend == .claudeCode { PushRegistrar.reregisterIfNeeded() }
     }
 
     func delete(_ id: String) throws {
@@ -105,9 +161,21 @@ final class ConnectionController {
             return
         }
         guard let store else { throw StoreUnavailable() }
+        let deleted = profiles.first { $0.id == id }
+        let pushBackend = deleted.flatMap { profile in
+            profile.backend == .claudeCode ? makeBackend(for: profile) : nil
+        }
         try store.delete(id: id)
         if activeProfileID == id {
             setActive(profiles.first { $0.id != id }?.id)
+        }
+        if let deleted, let pushBackend,
+            !profiles.contains(where: {
+                $0.backend == .claudeCode && $0.baseURL == deleted.baseURL
+            })
+        {
+            PushRegistrar.unregister(
+                from: pushBackend, baseURL: deleted.baseURL, name: deleted.name)
         }
     }
 

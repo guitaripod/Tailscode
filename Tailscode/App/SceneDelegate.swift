@@ -27,6 +27,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         coordinator?.handleControlRouteIfNeeded()
+        PushRegistrar.reregisterIfNeeded()
+    }
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        UsageBackgroundRefresh.schedule()
     }
 
     func routeDeepLink(_ url: URL) {
