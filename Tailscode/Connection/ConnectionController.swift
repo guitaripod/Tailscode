@@ -158,6 +158,18 @@ final class ConnectionController {
             makeBackend(for: profile, policy: policy).map { (profile, $0) }
         }
     }
+
+    /// One backend per distinct opencode host, so account-wide spend estimates
+    /// sum every server instead of just the first; duplicate profiles pointing
+    /// at the same base URL would double-count and are dropped.
+    func opencodeBackends(policy: ConnectionPolicy = .default)
+        -> [(profile: ConnectionProfile, backend: any CodingAgentBackend)]
+    {
+        var seen = Set<URL>()
+        return allBackends(policy: policy).filter { entry in
+            entry.profile.backend == .openCode && seen.insert(entry.profile.baseURL).inserted
+        }
+    }
 }
 
 enum AgentProbe {

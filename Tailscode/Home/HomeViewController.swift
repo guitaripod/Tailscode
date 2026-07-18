@@ -126,10 +126,10 @@ final class HomeViewController: UIViewController {
 
     private func scanOpencodeIfNeeded() async {
         if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
-        guard let (_, backend) = ConnectionController.shared.allBackends()
-            .first(where: { $0.profile.backend == .openCode }) else { return }
+        let entries = ConnectionController.shared.opencodeBackends()
+        guard !entries.isEmpty else { return }
         lastOpencodeScan = Date()
-        await UsageScanner.scanOpencode(backend: backend)
+        await UsageScanner.scanOpencode(backends: entries.map { ($0.profile.name, $0.backend) })
     }
 
     /// A bridge answers for every provider its host machine is signed into,

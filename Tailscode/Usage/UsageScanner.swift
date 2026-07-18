@@ -11,6 +11,8 @@ struct UsageScanResult {
     var samples: [UsageSample]
     var timedOut: Int
     var failed: Int
+    var scannedHosts: [String] = []
+    var failedHosts: [String] = []
 
     var unavailable: Int { timedOut + failed }
 }
@@ -21,11 +23,25 @@ enum UsageScanner {
     private static let perRequestTimeout: TimeInterval = 12
     private static let opencodeProviderID = "opencode-go"
 
+    /// Scans every opencode host and merges the samples before the gauges are
+    /// written: the caps are account-wide, so a single host's spend understates
+    /// them whenever more than one machine runs opencode.
     @discardableResult
-    static func scanOpencode(backend: any CodingAgentBackend) async -> UsageScanResult? {
-        guard let result = try? await collect(backend: backend) else { return nil }
-        writeOpencodeGauges(result: result)
-        return result
+    static func scanOpencode(backends: [(name: String, backend: any CodingAgentBackend)]) async -> UsageScanResult? {
+        var merged = UsageScanResult(samples: [], timedOut: 0, failed: 0)
+        for (name, backend) in backends {
+            guard let result = try? await collect(backend: backend) else {
+                merged.failedHosts.append(name)
+                continue
+            }
+            merged.samples.append(contentsOf: result.samples)
+            merged.timedOut += result.timedOut
+            merged.failed += result.failed
+            merged.scannedHosts.append(name)
+        }
+        guard !merged.scannedHosts.isEmpty else { return nil }
+        writeOpencodeGauges(result: merged)
+        return merged
     }
 
     private static func collect(backend: any CodingAgentBackend) async throws -> UsageScanResult {

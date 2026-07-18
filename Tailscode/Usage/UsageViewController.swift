@@ -261,11 +261,15 @@ final class UsageViewController: UIViewController {
 
     private func fillOpencode(profile: ConnectionProfile?, controller: ConnectionController) async -> Error? {
         guard let profile else { return nil }
-        guard let backend = controller.makeBackend(for: profile) else {
+        let entries = controller.opencodeBackends()
+        guard !entries.isEmpty else {
             opencodeCard.renderError()
             return CredentialsUnavailableError(profileName: profile.name)
         }
-        guard let result = await UsageScanner.scanOpencode(backend: backend) else {
+        guard
+            let result = await UsageScanner.scanOpencode(
+                backends: entries.map { ($0.profile.name, $0.backend) })
+        else {
             guard !Task.isCancelled else { return nil }
             opencodeCard.renderError()
             return nil
@@ -303,20 +307,45 @@ final class UsageViewController: UIViewController {
         let samples = result.samples
         let totalSpend = samples.reduce(0) { $0 + $1.cost }
         let totalTokens = samples.reduce(0) { $0 + $1.tokens }
+        let hosts = result.scannedHosts.count
+        var details: [(String, String)] = []
+        if hosts > 1 || !result.failedHosts.isEmpty {
+            details.append(("Servers", serverCoverage(result)))
+        }
+        details += [
+            ("All-time spend", currency(totalSpend)),
+            ("Requests", "\(samples.count)"),
+            ("Tokens (in + out)", tokenCount(totalTokens)),
+        ]
         return CardModel(
-            subtitle: "$10/mo · estimated from this server",
+            subtitle: hosts > 1
+                ? "$10/mo · estimated from \(hosts) servers"
+                : "$10/mo · estimated from this server",
             pill: "EST",
             accent: Theme.Color.opencode,
             gauges: gaugeVMs(samples: samples, windows: windows),
-            details: [
-                ("All-time spend", currency(totalSpend)),
-                ("Requests", "\(samples.count)"),
-                ("Tokens (in + out)", tokenCount(totalTokens)),
-            ],
-            note: unavailableSuffix(
-                "No usage API — estimated from this server's opencode.db against Go's rolling dollar "
-                    + "caps. May miss usage on other machines and server-side accounting.",
-                result: result))
+            details: details,
+            note: unavailableSuffix(opencodeNote(result), result: result))
+    }
+
+    private static func serverCoverage(_ result: UsageScanResult) -> String {
+        var text = result.scannedHosts.joined(separator: " + ")
+        if !result.failedHosts.isEmpty {
+            text += " · \(result.failedHosts.joined(separator: ", ")) unreachable"
+        }
+        return text
+    }
+
+    private static func opencodeNote(_ result: UsageScanResult) -> String {
+        let scope = result.scannedHosts.count > 1
+            ? "estimated from the opencode.db on \(result.scannedHosts.joined(separator: " and "))"
+            : "estimated from this server's opencode.db"
+        var note = "No usage API — \(scope) against Go's rolling dollar caps. "
+            + "May miss usage on machines without a profile here and server-side accounting."
+        for host in result.failedHosts {
+            note += " \(host) unreachable — its spend is not included."
+        }
+        return note
     }
 
     private static func unavailableSuffix(_ note: String, result: UsageScanResult) -> String {
