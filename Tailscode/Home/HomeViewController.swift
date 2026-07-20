@@ -251,9 +251,12 @@ final class HomeViewController: UIViewController {
 
     private func openChat(for entry: SessionEntry) {
         guard let backend = viewModel.backend(for: entry) else { return }
-        let chatViewModel = ChatViewModel(
-            backend: backend, session: entry.session, contextID: entry.profileID,
-            serverName: entry.profileName)
+        let chatViewModel =
+            SessionActivity.shared.retainedViewModel(
+                for: entry.session.id, contextID: entry.profileID)
+            ?? ChatViewModel(
+                backend: backend, session: entry.session, contextID: entry.profileID,
+                serverName: entry.profileName)
         navigationController?.pushViewController(
             ChatViewController(viewModel: chatViewModel), animated: true)
     }

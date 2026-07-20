@@ -106,7 +106,15 @@ final class ChatViewModel {
 
     private var isClaude: Bool { backend.agentType == .claudeCode }
 
+    /// Reusing a still-running view model (reopened while a turn is in flight)
+    /// must not spawn a second `states()` loop — it would double every render
+    /// and leak the old task. Re-emit the current state so the freshly bound
+    /// view controller paints immediately, including any queued messages.
     func start() {
+        guard streamTask == nil else {
+            onState?(state)
+            return
+        }
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {

@@ -33,6 +33,16 @@ final class SessionActivity {
         statuses[sessionID] ?? .idle
     }
 
+    /// The view model kept alive for an in-flight turn, so reopening the chat
+    /// reuses it instead of building a fresh one — otherwise queued messages
+    /// and optimistic echoes, which live only on the view model, are lost.
+    func retainedViewModel(for sessionID: String, contextID: String) -> ChatViewModel? {
+        guard let viewModel = retained[sessionID], viewModel.contextID == contextID else {
+            return nil
+        }
+        return viewModel
+    }
+
     func update(
         sessionID: String, profileID: String, title: String, status: Status,
         keepAlive: ChatViewModel
