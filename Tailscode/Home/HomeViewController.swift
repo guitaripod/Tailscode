@@ -196,7 +196,7 @@ final class HomeViewController: UIViewController {
         let existing = Set(dataSource.snapshot().itemIdentifiers)
         let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }
         if !carried.isEmpty { snapshot.reconfigureItems(carried) }
-        dataSource.apply(snapshot, animatingDifferences: hasAppeared)
+        dataSource.apply(snapshot, animatingDifferences: false)
         updateEmptyState(itemCount: snapshot.numberOfItems)
         consumePendingDeepLink()
     }
