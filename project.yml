@@ -27,6 +27,8 @@ targets:
         embed: true
       - sdk: WidgetKit.framework
         weak: true
+      - sdk: FoundationModels.framework
+        weak: true
     info:
       path: Tailscode/Info.plist
       properties:

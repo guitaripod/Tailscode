@@ -21,6 +21,11 @@ final class AppCoordinator {
                 window.makeKeyAndVisible()
                 return
             }
+            if CommandLine.arguments.contains(where: { $0.hasPrefix("--enhance-preview") }) {
+                window.rootViewController = EnhancePreviewViewController()
+                window.makeKeyAndVisible()
+                return
+            }
         #endif
         if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
             ConnectionController.shared.enterDemoMode()

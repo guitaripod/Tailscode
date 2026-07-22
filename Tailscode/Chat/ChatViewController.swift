@@ -32,6 +32,8 @@ final class ChatViewController: UIViewController {
     private var hasRevealed = false
     private var revealFallback: Task<Void, Never>?
     private var animateNextRender = false
+    private var isHandingOffEmptyState = false
+    private var deferEmptyStateHide = false
     private var lastHapticPermissionID: String?
     private var lastHapticFailure: String?
     private var unreadCount = 0
@@ -48,6 +50,9 @@ final class ChatViewController: UIViewController {
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
     private var lastRenderedIDs: Set<String> = []
+    private let enhancement = PromptEnhancementController()
+    private var enhanceOverlay: PromptEnhanceOverlay?
+    private var isApplyingEnhancedPrompt = false
 
     var sessionID: String { viewModel.session.id }
     private let isReadOnly: Bool
@@ -79,6 +84,11 @@ final class ChatViewController: UIViewController {
         configureDataSource()
         composer.delegate = self
         composer.showsAttach = viewModel.supportsAttachments
+        if !isReadOnly {
+            enhancement.onStatusChange = { [weak self] status in
+                self?.handleEnhancementStatus(status)
+            }
+        }
         NotificationManager.requestAuthorizationIfNeeded()
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
@@ -135,6 +145,9 @@ final class ChatViewController: UIViewController {
         if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
             viewModel.isBound = false
             if isReadOnly || !viewModel.isBusy { viewModel.stop() }
+            enhancement.cancel()
+            enhanceOverlay?.removeFromSuperview()
+            enhanceOverlay = nil
         }
     }
 
@@ -162,16 +175,31 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let accessoryTop = composerAccessories.bounds.height > 0
-            ? composerAccessories.frame.minY : composer.frame.minY
-        let bottomInset = view.bounds.height - min(composer.frame.minY, accessoryTop)
+        updateTranscriptInsets()
+    }
+
+    /// The transcript fills the screen behind the composer, so it reserves the
+    /// composer's on-screen height at the bottom (the automatic inset adjustment
+    /// already accounts for the home indicator) and — because a `.plain` list is
+    /// top-aligned — pads the top so a short transcript rests just above the
+    /// composer instead of stranding it under the navigation bar.
+    private func updateTranscriptInsets() {
+        let composerTop = composerAccessories.bounds.height > 0
+            ? min(composer.frame.minY, composerAccessories.frame.minY)
+            : composer.frame.minY
+        let bottomInset = max(
+            0, view.bounds.height - composerTop - collectionView.safeAreaInsets.bottom)
         if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
             collectionView.contentInset.bottom = bottomInset
             collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
         }
+
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
-        if abs(collectionView.contentInset.top - bannerInset) > 0.5 {
-            collectionView.contentInset.top = bannerInset
+        let available = composerTop - collectionView.safeAreaInsets.top - bannerInset
+        let contentHeight = collectionView.collectionViewLayout.collectionViewContentSize.height
+        let topInset = bannerInset + max(0, available - contentHeight)
+        if abs(collectionView.contentInset.top - topInset) > 0.5 {
+            collectionView.contentInset.top = topInset
         }
     }
 
@@ -582,7 +610,25 @@ final class ChatViewController: UIViewController {
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
+        Self.logPendingPhantom(state: state, viewModel: viewModel)
+        let idSet = Set(ids)
+        let entranceEligible = hasRevealed && !userScrolledUp
+        let entranceBubbles =
+            entranceEligible
+            ? ids.filter {
+                !lastRenderedIDs.contains($0)
+                    && ($0.hasPrefix("local:") || $0.hasPrefix("queued:"))
+            } : []
+        let entranceThinking =
+            entranceEligible && ids.contains("thinking") && !lastRenderedIDs.contains("thinking")
+        lastRenderedIDs = idSet
+
+        let handOffEmptyState =
+            isHandingOffEmptyState && !emptyState.isHidden && !entranceBubbles.isEmpty
+        isHandingOffEmptyState = false
+        deferEmptyStateHide = handOffEmptyState
         updatePlaceholders(hasRows: !ids.isEmpty, for: state)
+        deferEmptyStateHide = false
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
@@ -615,30 +661,22 @@ final class ChatViewController: UIViewController {
         }
         let animated = animateNextRender && hasRevealed
         animateNextRender = false
-        let idSet = Set(ids)
         let reconfigurable = changed.filter { idSet.contains($0) }
         if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
-        let entranceEligible = hasRevealed && !userScrolledUp
-        let entranceBubbles =
-            entranceEligible
-            ? ids.filter {
-                !lastRenderedIDs.contains($0)
-                    && ($0.hasPrefix("local:") || $0.hasPrefix("queued:"))
-            } : []
-        let entranceThinking =
-            entranceEligible && ids.contains("thinking") && !lastRenderedIDs.contains("thinking")
-        lastRenderedIDs = idSet
         if !entranceBubbles.isEmpty || entranceThinking {
             dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
                 guard let self else { return }
+                self.updateTranscriptInsets()
                 self.scrollToBottom(animated: false)
                 self.collectionView.layoutIfNeeded()
+                if handOffEmptyState { self.animateEmptyStateHandoff() }
                 self.animateSendEntrance(
                     bubbleIDs: entranceBubbles, includeThinking: entranceThinking)
             }
         } else {
             dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
                 guard let self else { return }
+                self.updateTranscriptInsets()
                 if nearBottom && !self.userScrolledUp { self.scrollToBottom(animated: animated) }
                 if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
             }
@@ -698,10 +736,30 @@ final class ChatViewController: UIViewController {
             UIView.animate(withDuration: 0.2) { self.emptyState.alpha = 1 }
         } else {
             guard !emptyState.isHidden else { return }
+            if deferEmptyStateHide { return }
             UIView.animate(
                 withDuration: 0.18,
                 animations: { self.emptyState.alpha = 0 },
                 completion: { _ in self.emptyState.isHidden = true })
+        }
+    }
+
+    /// Lifts the suggestion chips out in the same beat the first message springs
+    /// up from the composer, so the empty state yielding to the conversation
+    /// reads as one motion instead of a fade racing the entrance and a scroll snap.
+    private func animateEmptyStateHandoff() {
+        guard !emptyState.isHidden else { return }
+        UIView.animate(
+            withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.85,
+            initialSpringVelocity: 0.4, options: [.curveEaseIn, .allowUserInteraction]
+        ) {
+            self.emptyState.alpha = 0
+            self.emptyState.transform =
+                CGAffineTransform(translationX: 0, y: -16).scaledBy(x: 0.98, y: 0.98)
+        } completion: { _ in
+            self.emptyState.isHidden = true
+            self.emptyState.alpha = 1
+            self.emptyState.transform = .identity
         }
     }
 
@@ -1473,6 +1531,23 @@ final class ChatViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    /// Diagnostic: fires when a still-pending bubble (queued item or local echo)
+    /// carries the same text as a message already in the server transcript — the
+    /// exact condition that renders a duplicate. Logs the shape so the trigger
+    /// (reuse path, resync, stale echo) can be pinned from a device log.
+    private static func logPendingPhantom(state: ConversationState, viewModel: ChatViewModel) {
+        let pendingTexts = viewModel.queued.map(\.text) + viewModel.localEchoes.map(\.text)
+        guard !pendingTexts.isEmpty else { return }
+        let serverUserTexts = Set(
+            state.messages.filter { $0.role == .user }.map { $0.text })
+        let phantoms = pendingTexts.filter { serverUserTexts.contains($0) }
+        guard !phantoms.isEmpty else { return }
+        AppLogger.chat.error(
+            "pending phantom: \(phantoms.count) pending bubble(s) duplicate a server message — "
+                + "queued=\(viewModel.queued.count) echoes=\(viewModel.localEchoes.count) "
+                + "serverUsers=\(serverUserTexts.count) first=\"\(phantoms[0].prefix(30))\"")
+    }
+
     /// Folds consecutive agent actions (thinking + tools) into one `.activity` row; text and files
     /// break the group and render on their own.
     private static func makeRows(from messages: [ChatMessage]) -> [ChatRow] {
@@ -1605,38 +1680,29 @@ extension ChatViewController: ComposerViewDelegate {
         updateAttachmentStrip()
         userScrolledUp = false
         animateNextRender = true
+        isHandingOffEmptyState = !isReadOnly && !emptyState.isHidden && emptyState.alpha > 0
         UserDefaults.standard.removeObject(forKey: draftKey)
         viewModel.send(text, model: model, effort: effort, attachments: attachments)
     }
 
     func composerTextDidChange(_ text: String) {
         updateCommandPalette(for: text)
+        guard !isReadOnly, !isApplyingEnhancedPrompt else { return }
+        enhancement.updateInput(text)
+        enhanceOverlay?.requestDismiss()
     }
 
-    func composerDidRequestSendOptions(from view: UIView) {
+    /// Holding Send always raises the on-device enhancement deck for a non-empty
+    /// draft; `requestNow` decides whether to generate, ask for a little more
+    /// detail, or explain that Apple Intelligence is unavailable. Model/effort
+    /// selection lives on the nav bar, never here.
+    func composerDidLongPressSend(from view: UIView) {
         let text = composer.currentText
         guard !text.isEmpty else { return }
-        let sheet = UIAlertController(
-            title: "Send this message with…", message: nil, preferredStyle: .actionSheet)
-        for model in availableModels.prefix(8) {
-            sheet.addAction(
-                UIAlertAction(title: model.name, style: .default) { [weak self] _ in
-                    Theme.Haptics.send()
-                    self?.sendDraft(text, model: model.selection)
-                    self?.composer.clear()
-                })
-        }
-        for level in viewModel.reasoningEffortOptions {
-            sheet.addAction(
-                UIAlertAction(title: "\(level.capitalized) effort", style: .default) { [weak self] _ in
-                    Theme.Haptics.send()
-                    self?.sendDraft(text, effort: level)
-                    self?.composer.clear()
-                })
-        }
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        sheet.popoverPresentationController?.sourceView = view
-        present(sheet, animated: true)
+        AppLogger.ui.info(
+            "enhance: long-press chars=\(text.count) available=\(enhancement.isAvailable) enhanceable=\(PromptEnhancementController.isEnhanceable(text))")
+        enhancement.requestNow(for: text)
+        presentEnhanceOverlay(original: text)
     }
 
     func composerDidPasteLargeText(_ text: String) {
@@ -1662,9 +1728,39 @@ extension ChatViewController: ComposerViewDelegate {
     }
 
     func composerDidBeginEditing() {
+        enhancement.prewarm()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.scrollToBottom(animated: true)
         }
+    }
+
+    private func presentEnhanceOverlay(original: String) {
+        hideCommandPalette()
+        enhanceOverlay?.removeFromSuperview()
+        let overlay = PromptEnhanceOverlay()
+        overlay.delegate = self
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: composer.topAnchor),
+        ])
+        enhanceOverlay = overlay
+        enhancement.isShowing = true
+        overlay.render(enhancement.status, original: original)
+        view.layoutIfNeeded()
+        let anchor = composer.sendControlAnchor
+        let origin = anchor.convert(
+            CGPoint(x: anchor.bounds.midX, y: anchor.bounds.midY), to: overlay)
+        overlay.animateIn(fromButtonCenter: origin)
+        AppLogger.ui.info("enhance: overlay presented")
+    }
+
+    private func handleEnhancementStatus(_ status: PromptEnhancementController.Status) {
+        composer.setEnhanceHint(enhancement.hasFreshSuggestions)
+        enhanceOverlay?.render(status, original: enhancement.latestInput)
     }
 
     func composerDidTapAttach() {
@@ -1674,6 +1770,35 @@ extension ChatViewController: ComposerViewDelegate {
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         present(picker, animated: true)
+    }
+}
+
+extension ChatViewController: PromptEnhanceOverlayDelegate {
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
+        AppLogger.ui.info("enhance: chose card \"\(prompt.label)\" (\(prompt.text.count) chars)")
+        Theme.Haptics.success()
+        isApplyingEnhancedPrompt = true
+        composer.setDraft(prompt.text, focus: true)
+        isApplyingEnhancedPrompt = false
+        saveDraft()
+        overlay.requestDismiss()
+    }
+
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {
+        UIPasteboard.general.string = prompt.text
+        Theme.Haptics.success()
+        presentToast("Enhanced prompt copied.")
+    }
+
+    func enhanceOverlayDidRequestRetry(_ overlay: PromptEnhanceOverlay) {
+        Theme.Haptics.tap()
+        enhancement.retry()
+    }
+
+    func enhanceOverlayDidDismiss(_ overlay: PromptEnhanceOverlay) {
+        enhancement.isShowing = false
+        if enhanceOverlay === overlay { enhanceOverlay = nil }
+        composer.setEnhanceHint(enhancement.hasFreshSuggestions)
     }
 }
 

@@ -42,6 +42,14 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.sendOnReturn") }
     }
 
+    static var promptEnhancement: Bool {
+        get {
+            defaults.object(forKey: "pref.promptEnhancement") == nil
+                ? true : defaults.bool(forKey: "pref.promptEnhancement")
+        }
+        set { defaults.set(newValue, forKey: "pref.promptEnhancement") }
+    }
+
     @MainActor
     static func applyAppearance() {
         let style = appearance.style

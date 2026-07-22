@@ -12,13 +12,21 @@ final class SettingsViewController: UIViewController {
     }
 
     private enum Toggle: Hashable {
-        case autoExpandThinking, haptics, sendOnReturn
+        case autoExpandThinking, haptics, sendOnReturn, promptEnhancement
 
         var title: String {
             switch self {
             case .autoExpandThinking: return "Auto-expand thinking"
             case .haptics: return "Haptic feedback"
             case .sendOnReturn: return "Send on return key"
+            case .promptEnhancement: return "Enhance prompts"
+            }
+        }
+        var subtitle: String? {
+            switch self {
+            case .promptEnhancement:
+                return "Hold Send to refine your draft with the on-device model"
+            default: return nil
             }
         }
         var isOn: Bool {
@@ -26,6 +34,7 @@ final class SettingsViewController: UIViewController {
             case .autoExpandThinking: return AppPreferences.autoExpandThinking
             case .haptics: return AppPreferences.hapticsEnabled
             case .sendOnReturn: return AppPreferences.sendOnReturn
+            case .promptEnhancement: return AppPreferences.promptEnhancement
             }
         }
         func set(_ value: Bool) {
@@ -33,6 +42,7 @@ final class SettingsViewController: UIViewController {
             case .autoExpandThinking: AppPreferences.autoExpandThinking = value
             case .haptics: AppPreferences.hapticsEnabled = value
             case .sendOnReturn: AppPreferences.sendOnReturn = value
+            case .promptEnhancement: AppPreferences.promptEnhancement = value
             }
         }
     }
@@ -173,6 +183,10 @@ final class SettingsViewController: UIViewController {
             cell.accessories = [.customView(configuration: appearanceAccessory())]
         case .toggle(let toggle):
             content.text = toggle.title
+            if let subtitle = toggle.subtitle {
+                content.secondaryText = subtitle
+                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            }
             content.image = UIImage(systemName: icon(for: toggle))
             content.imageProperties.tintColor = tint(for: toggle)
             cell.accessories = [.customView(configuration: switchAccessory(toggle))]
@@ -225,6 +239,7 @@ final class SettingsViewController: UIViewController {
         case .autoExpandThinking: return "brain"
         case .haptics: return "hand.tap"
         case .sendOnReturn: return "return"
+        case .promptEnhancement: return "sparkles"
         }
     }
 
@@ -233,6 +248,7 @@ final class SettingsViewController: UIViewController {
         case .autoExpandThinking: return .systemPurple
         case .haptics: return .systemPink
         case .sendOnReturn: return .systemTeal
+        case .promptEnhancement: return Theme.Color.accent
         }
     }
 
@@ -314,7 +330,10 @@ final class SettingsViewController: UIViewController {
         snapshot.appendItems(connectionItems, toSection: .connections)
         snapshot.appendItems([.appearance], toSection: .appearance)
         snapshot.appendItems(
-            [.toggle(.autoExpandThinking), .toggle(.haptics), .toggle(.sendOnReturn)],
+            [
+                .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .toggle(.haptics),
+                .toggle(.sendOnReturn),
+            ],
             toSection: .chat)
         snapshot.appendItems([.pro], toSection: .pro)
         snapshot.appendItems([.usage, .viewLogs, .testAll], toSection: .diagnostics)

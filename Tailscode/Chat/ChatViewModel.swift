@@ -111,10 +111,15 @@ final class ChatViewModel {
     /// and leak the old task. Re-emit the current state so the freshly bound
     /// view controller paints immediately, including any queued messages.
     func start() {
+        let vmTag = String(UInt(bitPattern: ObjectIdentifier(self).hashValue) & 0xffff, radix: 16)
         guard streamTask == nil else {
+            AppLogger.chat.info(
+                "start reuse vm=\(vmTag) queued=\(queued.count) echoes=\(localEchoes.count)")
             onState?(state)
             return
         }
+        AppLogger.chat.info(
+            "start fresh vm=\(vmTag) queued=\(queued.count) echoes=\(localEchoes.count)")
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {

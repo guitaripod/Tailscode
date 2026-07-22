@@ -4,7 +4,7 @@ import UIKit
 protocol ComposerViewDelegate: AnyObject {
     func composerDidSend(_ text: String)
     func composerTextDidChange(_ text: String)
-    func composerDidRequestSendOptions(from view: UIView)
+    func composerDidLongPressSend(from view: UIView)
     func composerDidPasteLargeText(_ text: String)
     func composerDidTapAttach()
     func composerDidTapStop()
@@ -20,6 +20,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private let placeholder = UILabel()
     private let sendButton = UIButton(type: .system)
     private let attachButton = UIButton(type: .system)
+    private let enhanceBadge = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
     private var isBusy = false
 
@@ -92,7 +93,20 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             target: self, action: #selector(sendLongPressed))
         sendButton.addGestureRecognizer(longPress)
 
-        [attachButton, textView, placeholder, sendButton].forEach(addSubview)
+        enhanceBadge.image = UIImage(
+            systemName: "sparkles",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+        enhanceBadge.tintColor = .white
+        enhanceBadge.backgroundColor = Theme.Color.accent
+        enhanceBadge.contentMode = .center
+        enhanceBadge.layer.cornerRadius = 8
+        enhanceBadge.layer.borderWidth = 1.5
+        enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
+        enhanceBadge.alpha = 0
+        enhanceBadge.isUserInteractionEnabled = false
+        enhanceBadge.translatesAutoresizingMaskIntoConstraints = false
+
+        [attachButton, textView, placeholder, sendButton, enhanceBadge].forEach(addSubview)
 
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         let leading = textView.leadingAnchor.constraint(
@@ -125,12 +139,21 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
             placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 2),
             placeholder.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor),
+
+            enhanceBadge.widthAnchor.constraint(equalToConstant: 16),
+            enhanceBadge.heightAnchor.constraint(equalToConstant: 16),
+            enhanceBadge.centerXAnchor.constraint(equalTo: sendButton.trailingAnchor, constant: -1),
+            enhanceBadge.centerYAnchor.constraint(equalTo: sendButton.topAnchor, constant: 1),
         ])
 
         let focusTap = UITapGestureRecognizer(target: self, action: #selector(focusInput))
         focusTap.cancelsTouchesInView = false
         focusTap.delegate = self
         addGestureRecognizer(focusTap)
+
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: ComposerView, _) in
+            view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
+        }
 
         updateSendButton()
     }
@@ -230,12 +253,34 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     @objc private func attachTapped() { delegate?.composerDidTapAttach() }
 
     @objc private func sendLongPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began, !isBusy, !trimmed.isEmpty else { return }
+        guard gesture.state == .began, !trimmed.isEmpty else { return }
         Theme.Haptics.tap()
-        delegate?.composerDidRequestSendOptions(from: sendButton)
+        delegate?.composerDidLongPressSend(from: sendButton)
+    }
+
+    /// Fades in a small sparkle on the send button when refined prompts are
+    /// waiting, so the hold-to-enhance gesture is discoverable.
+    func setEnhanceHint(_ visible: Bool) {
+        let target: CGFloat = visible ? 1 : 0
+        guard enhanceBadge.alpha != target else { return }
+        sendButton.accessibilityHint = visible ? "Hold to enhance your prompt" : nil
+        if visible {
+            enhanceBadge.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
+            UIView.animate(
+                withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.5
+            ) {
+                self.enhanceBadge.alpha = 1
+                self.enhanceBadge.transform = .identity
+            }
+        } else {
+            UIView.animate(withDuration: 0.2) { self.enhanceBadge.alpha = 0 }
+        }
     }
 
     var currentText: String { trimmed }
+
+    /// The Send button, so the enhance bubble can grow out of and retract into it.
+    var sendControlAnchor: UIView { sendButton }
 
     func clear() {
         textView.text = ""
