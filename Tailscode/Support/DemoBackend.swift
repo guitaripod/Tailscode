@@ -217,6 +217,7 @@ enum DemoWorld {
                 "The test asserts a reconnect within 500 ms, but the scheduler adds jitter to the backoff. Reading the scheduler before touching the test — if the worst case exceeds the assertion, the test is wrong, not the code.")))),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t1", kind: .tool(ToolCall(
                 id: "c1t1", name: "Read", status: .completed,
+                input: .object(["file_path": .string("/Users/dev/pulse/Sources/Pulse/ReconnectScheduler.swift")]),
                 output: "final class ReconnectScheduler {\n    var baseDelay: Duration = .milliseconds(400)\n    var jitter: ClosedRange<Double> = 0.6...1.4\n    …\n}",
                 title: "Read Sources/Pulse/ReconnectScheduler.swift"))))),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2", kind: .text("")))),
@@ -224,6 +225,10 @@ enum DemoWorld {
             step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Injecting a deterministic jitter source in tests is the honest fix — the scheduler keeps its production behavior. Running the suite now.")),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t3", kind: .tool(ToolCall(
                 id: "c1t2", name: "Bash", status: .running,
+                input: .object([
+                    "command": .string("swift test --filter ReconnectTests 2>&1 | tail -20"),
+                    "description": .string("Run the reconnect suite with deterministic jitter"),
+                ]),
                 title: "swift test --filter ReconnectTests"))))),
             step(.status(.running)),
         ]
@@ -246,6 +251,10 @@ enum DemoWorld {
                     title: "Update todos"))),
                 MessagePart(id: "t1", kind: .tool(ToolCall(
                     id: "c2t1", name: "Bash", status: .completed,
+                    input: .object([
+                        "command": .string("grep -rn 'runs-on' .github/workflows/"),
+                        "description": .string("Inventory which workflows target hosted runners"),
+                    ]),
                     output: "ci.yml: macos-14\nrelease.yml: macos-14\nnightly.yml: ubuntu-22.04\ndocs.yml: ubuntu-22.04",
                     title: "grep -l 'runs-on' .github/workflows"))),
                 MessagePart(id: "t2", kind: .tool(ToolCall(
@@ -256,12 +265,19 @@ enum DemoWorld {
                         "new_string": .string("runs-on: [self-hosted, macOS, arm64]"),
                     ]),
                     title: "Edit .github/workflows/ci.yml"))),
+                MessagePart(id: "t2w", kind: .tool(ToolCall(
+                    id: "c2t2w", name: "WebSearch", status: .completed,
+                    input: .object(["query": .string("self-hosted GitHub runner cache eviction best practices")]),
+                    output: "Web search results for query: \"self-hosted GitHub runner cache eviction best practices\"\n\nLinks: [{\"title\":\"Caching dependencies to speed up workflows\",\"url\":\"https://docs.github.com/actions/using-workflows/caching-dependencies\"},{\"title\":\"actions/cache: self-hosted runner notes\",\"url\":\"https://github.com/actions/cache#readme\"}]\n\nSelf-hosted runners keep caches on local disk, so eviction is the fleet's job — pin a per-runner budget and fold the runner name into restore keys.",
+                    title: "WebSearch"))),
                 MessagePart(id: "t3", kind: .tool(ToolCall(
                     id: "task-1", name: "Task", status: .completed,
+                    input: .object(["description": .string("Audit cache keys across workflows")]),
                     output: "2 workflows share a cache key that collides across runners; keyed restore paths proposed.",
                     title: "Audit cache keys across workflows"))),
                 MessagePart(id: "t4", kind: .tool(ToolCall(
                     id: "task-2", name: "Task", status: .completed,
+                    input: .object(["description": .string("Shard the UI test suite")]),
                     output: "UI tests split into 3 shards; worst shard 11 min.",
                     title: "Shard the UI test suite"))),
                 MessagePart(id: "t5", kind: .text(

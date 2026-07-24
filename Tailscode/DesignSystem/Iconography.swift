@@ -13,46 +13,32 @@ extension AgentType {
 
 /// Maps agent tool calls to a stable visual identity (symbol + tint by what the
 /// tool *does*: read, mutate, execute, network, orchestrate) and tool statuses
-/// to semantic colors, so a glance at an activity card tells the story.
+/// to semantic colors, so a glance at an activity card tells the story. The
+/// classification itself comes from the Kit's `ToolCallSummary`.
 enum ToolIconography {
-    static func symbol(for toolName: String) -> String {
-        let name = toolName.lowercased()
-        if name.contains("todo") { return "checklist" }
-        if name.contains("bash") || name.contains("shell") || name.contains("terminal")
-            || name.contains("command") || name.contains("exec")
-        { return "terminal" }
-        if name.contains("edit") || name.contains("write") || name.contains("patch")
-            || name.contains("str_replace") || name.contains("create") || name.contains("apply")
-        { return "pencil.line" }
-        if name.contains("websearch") || name.contains("webfetch") || name.contains("web")
-            || name.contains("fetch") || name.contains("http") || name.contains("url")
-        { return "globe" }
-        if name.contains("grep") || name.contains("glob") || name.contains("search")
-            || name.contains("find") || name == "ls" || name.contains("list")
-        { return "magnifyingglass" }
-        if name.contains("read") || name.contains("cat") || name.contains("view")
-            || name.contains("open") || name.contains("notebook")
-        { return "doc.text" }
-        if name.contains("task") || name.contains("agent") || name.contains("skill")
-            || name.contains("workflow")
-        { return "person.2" }
-        if name.contains("question") || name.contains("ask") || name.contains("permission")
-        { return "questionmark.circle" }
-        if name.contains("mcp") { return "puzzlepiece.extension" }
-        if name.contains("plan") { return "map" }
-        return "wrench.and.screwdriver"
+    static func symbol(for kind: ToolCallSummary.Kind) -> String {
+        switch kind {
+        case .shell: return "terminal"
+        case .fileEdit, .fileWrite: return "pencil.line"
+        case .fileRead: return "doc.text"
+        case .fileSearch: return "magnifyingglass"
+        case .webSearch, .webFetch: return "globe"
+        case .taskTracking: return "checklist"
+        case .subagent, .workflow: return "person.2"
+        case .skill: return "wand.and.stars"
+        case .other: return "wrench.and.screwdriver"
+        }
     }
 
-    static func tint(for toolName: String) -> UIColor {
-        switch symbol(for: toolName) {
-        case "terminal": return .systemOrange
-        case "pencil.line": return .systemPurple
-        case "globe": return .systemIndigo
-        case "magnifyingglass", "doc.text": return .systemTeal
-        case "person.2", "map": return .systemPink
-        case "checklist": return Theme.Color.accent
-        case "questionmark.circle": return Theme.Color.warning
-        default: return Theme.Color.secondaryLabel
+    static func tint(for kind: ToolCallSummary.Kind) -> UIColor {
+        switch kind {
+        case .shell: return .systemOrange
+        case .fileEdit, .fileWrite: return .systemPurple
+        case .webSearch, .webFetch: return .systemIndigo
+        case .fileRead, .fileSearch: return .systemTeal
+        case .subagent, .workflow: return .systemPink
+        case .taskTracking, .skill: return Theme.Color.accent
+        case .other: return Theme.Color.secondaryLabel
         }
     }
 

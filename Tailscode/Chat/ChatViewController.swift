@@ -506,7 +506,8 @@ final class ChatViewController: UIViewController {
                     steps: steps, expanded: self.expandedReasoning.contains(id),
                     streaming: streaming,
                     onToggle: { [weak self] in self?.toggleReasoning(id) },
-                    onToolTap: toolTap)
+                    onToolTap: toolTap,
+                    onLinkTap: { [weak self] url in self?.openWebLink(url) })
                 return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
@@ -1567,7 +1568,9 @@ final class ChatViewController: UIViewController {
     private static func makeRows(from messages: [ChatMessage]) -> [ChatRow] {
         var rows: [ChatRow] = []
         var lastDate: Date?
+        var seenMessageIDs = Set<String>()
         for message in messages {
+            guard seenMessageIDs.insert(message.id).inserted else { continue }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
                 rows.append(ChatRow(
                     id: "ts:\(message.id)", messageID: message.id, role: .system,
@@ -2001,6 +2004,10 @@ extension ChatViewController: TextBubbleCellDelegate {
             presentPathActions(path)
             return
         }
+        openWebLink(url)
+    }
+
+    func openWebLink(_ url: URL) {
         switch url.scheme?.lowercased() {
         case "http", "https":
             present(SFSafariViewController(url: url), animated: true)

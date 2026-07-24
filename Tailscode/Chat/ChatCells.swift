@@ -243,17 +243,20 @@ final class TextBubbleCell: UICollectionViewCell {
                 }
             }
             let mutable = NSMutableAttributedString(attr)
-            var bulletEdits: [NSRange] = []
-            var quoteEdits: [NSRange] = []
+            var edits: [(range: NSRange, replacement: String)] = []
             mutable.mutableString.enumerateSubstrings(
                 in: NSRange(location: 0, length: mutable.length),
                 options: .byLines
             ) { _, substringRange, _, _ in
                 let line = mutable.attributedSubstring(from: substringRange).string
-                if line.hasPrefix("# ") || line.hasPrefix("## ") || line.hasPrefix("### ")
-                    || line.hasPrefix("#### ") || line.hasPrefix("##### ") || line.hasPrefix("###### ")
-                {
-                    mutable.addAttribute(.font, value: headingFont, range: substringRange)
+                let marks = line.prefix(while: { $0 == "#" }).count
+                if marks >= 1, marks <= 6, line.dropFirst(marks).hasPrefix(" ") {
+                    let font = marks <= 2
+                        ? UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
+                        : headingFont
+                    mutable.addAttribute(.font, value: font, range: substringRange)
+                    edits.append(
+                        (NSRange(location: substringRange.location, length: marks + 1), ""))
                     return
                 }
                 let trimmedStart = line.drop { $0 == " " }
@@ -263,8 +266,15 @@ final class TextBubbleCell: UICollectionViewCell {
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
-                    bulletEdits.append(
-                        NSRange(location: substringRange.location + indentDepth, length: 2))
+                    edits.append((
+                        NSRange(location: substringRange.location + indentDepth, length: 2),
+                        indentDepth >= 2 ? "◦  " : "•  "
+                    ))
+                } else if let digits = Self.orderedListPrefixLength(trimmedStart) {
+                    let paragraph = NSMutableParagraphStyle()
+                    paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
+                    paragraph.headIndent = CGFloat(indentDepth) * 6 + CGFloat(digits + 1) * 8
+                    mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
                 } else if trimmedStart.hasPrefix("> ") {
                     let paragraph = NSMutableParagraphStyle()
                     paragraph.firstLineHeadIndent = 12
@@ -272,14 +282,13 @@ final class TextBubbleCell: UICollectionViewCell {
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
                     mutable.addAttribute(
                         .foregroundColor, value: Theme.Color.secondaryLabel, range: substringRange)
-                    quoteEdits.append(
-                        NSRange(location: substringRange.location + indentDepth, length: 2))
+                    edits.append((
+                        NSRange(location: substringRange.location + indentDepth, length: 2), ""
+                    ))
                 }
             }
-            for range in (bulletEdits + quoteEdits).sorted(by: { $0.location > $1.location }) {
-                let replacement = bulletEdits.contains(where: { $0.location == range.location })
-                    ? "•  " : ""
-                mutable.replaceCharacters(in: range, with: replacement)
+            for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
+                mutable.replaceCharacters(in: edit.range, with: edit.replacement)
             }
             linkFilePaths(in: mutable)
             result = mutable
@@ -291,6 +300,16 @@ final class TextBubbleCell: UICollectionViewCell {
         }
         renderCache.setObject(result, forKey: key)
         return result
+    }
+
+    /// The digit count of a `1. ` / `12) ` ordered-list marker, or nil when
+    /// the line is not a list item — used to hang wrapped lines past the number.
+    private static func orderedListPrefixLength(_ line: Substring) -> Int? {
+        let digits = line.prefix(while: \.isNumber)
+        guard !digits.isEmpty, digits.count <= 3 else { return nil }
+        let rest = line.dropFirst(digits.count)
+        guard rest.hasPrefix(". ") || rest.hasPrefix(") ") else { return nil }
+        return digits.count
     }
 
     private static let filePathRegex = try? NSRegularExpression(
@@ -810,10 +829,12 @@ final class ActivityGroupCell: UICollectionViewCell {
 
     func configure(
         steps: [ActivityStep], expanded: Bool, streaming: Bool,
-        onToggle: @escaping () -> Void, onToolTap: ((ToolCall) -> Void)? = nil
+        onToggle: @escaping () -> Void, onToolTap: ((ToolCall) -> Void)? = nil,
+        onLinkTap: ((URL) -> Void)? = nil
     ) {
         self.onToggle = onToggle
         self.onToolTap = onToolTap
+        self.onLinkTap = onLinkTap
         let failed = !streaming && steps.contains {
             if case .tool(let call) = $0, call.status == .error { return true }
             return false
@@ -833,7 +854,7 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         stack.isHidden = !expanded
-        linkableRows = []
+        tappableRows = []
         if expanded {
             for step in steps { stack.addArrangedSubview(stepView(step)) }
         }
@@ -842,13 +863,13 @@ final class ActivityGroupCell: UICollectionViewCell {
     /// The whole card is one button — a gesture recognizer here would lose
     /// the recognition race against the chat's keyboard-dismiss tap, so the
     /// step rows stay non-interactive and taps dispatch by touch location:
-    /// a subagent-spawn row opens its transcript, anywhere else toggles.
+    /// a subagent-spawn or link row runs its action, anywhere else toggles.
     @objc private func toggleTapped(_ sender: UIButton, event: UIEvent) {
         if let touch = event.allTouches?.first {
-            for (view, call) in linkableRows where view.superview != nil {
+            for (view, action) in tappableRows where view.superview != nil {
                 if view.bounds.contains(touch.location(in: view)) {
                     Theme.Haptics.tap()
-                    onToolTap?(call)
+                    action()
                     return
                 }
             }
@@ -860,7 +881,11 @@ final class ActivityGroupCell: UICollectionViewCell {
     private static func summary(_ steps: [ActivityStep], streaming: Bool) -> String {
         if streaming, let last = steps.last {
             switch last {
-            case .tool(let call): return "\(call.name)…"
+            case .tool(let call):
+                if let title = call.summary.title {
+                    return "\(call.name) · \(title)"
+                }
+                return "\(call.name)…"
             case .reasoning: return "Thinking…"
             }
         }
@@ -897,15 +922,16 @@ final class ActivityGroupCell: UICollectionViewCell {
     }
 
     private func toolView(_ call: ToolCall) -> UIView {
+        let summary = call.summary
         let statusColor = ToolIconography.statusColor(call.status)
-        let linkable = onToolTap != nil && call.spawnsSubagent
+        let linkable = onToolTap != nil && summary.kind == .subagent
         let header = UILabel()
         header.numberOfLines = 1
         let attributed = NSMutableAttributedString()
         if let icon = UIImage(
-            systemName: ToolIconography.symbol(for: call.name),
+            systemName: ToolIconography.symbol(for: summary.kind),
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
-            .withTintColor(ToolIconography.tint(for: call.name), renderingMode: .alwaysOriginal)
+            .withTintColor(ToolIconography.tint(for: summary.kind), renderingMode: .alwaysOriginal)
         {
             attributed.append(NSAttributedString(attachment: NSTextAttachment(image: icon)))
             attributed.append(NSAttributedString(string: " "))
@@ -937,81 +963,264 @@ final class ActivityGroupCell: UICollectionViewCell {
 
         if let todos = Self.todoChecklist(for: call) {
             column.addArrangedSubview(todos)
-        } else if let diff = Self.editDiff(for: call) {
-            let diffLabel = UILabel()
-            diffLabel.numberOfLines = 0
-            diffLabel.lineBreakMode = .byCharWrapping
-            diffLabel.attributedText = diff
-            column.addArrangedSubview(diffLabel)
         } else {
-            if let summary = Self.orchestrationSummary(for: call) {
-                let label = UILabel()
-                label.numberOfLines = 3
-                label.attributedText = summary
-                column.addArrangedSubview(label)
-            }
-            let body = Self.condensedBody(for: call)
-            if !body.isEmpty {
-                let output = UILabel()
-                output.font = Theme.Font.mono(11)
-                output.textColor = Theme.Color.secondaryLabel
-                output.numberOfLines = 10
-                output.lineBreakMode = .byTruncatingTail
-                output.text = body
-                column.addArrangedSubview(output)
-            }
+            addBody(of: call, summary: summary, to: column)
         }
         if linkable {
-            linkableRows.append((column, call))
+            tappableRows.append((column, { [weak self] in self?.onToolTap?(call) }))
         }
         return column
     }
 
-    private var linkableRows: [(view: UIView, call: ToolCall)] = []
+    private var tappableRows: [(view: UIView, action: () -> Void)] = []
+    private var onLinkTap: ((URL) -> Void)?
 
-    /// Orchestration tools (task tracking, subagent spawns, workflows, skills)
-    /// carry their meaning in the structured input; their raw output is
-    /// harness plumbing, so render a readable line instead.
-    private static func orchestrationSummary(for call: ToolCall) -> NSAttributedString? {
-        func field(_ key: String) -> String? { call.input?[key]?.stringValue }
-        switch call.name.lowercased() {
-        case "taskcreate":
-            guard let subject = field("subject") else { return nil }
-            return summaryLine("plus.circle.fill", Theme.Color.accent, subject)
-        case "taskupdate":
-            let status = field("status")
-            let glyph: (String, UIColor)
-            switch status {
-            case "completed": glyph = ("checkmark.circle.fill", Theme.Color.success)
-            case "in_progress": glyph = ("circle.lefthalf.filled", Theme.Color.accent)
-            case "deleted": glyph = ("trash.circle", Theme.Color.danger)
-            default: glyph = ("circle", Theme.Color.tertiaryLabel)
+    /// Lays out a tool's expanded body from its semantic summary: the human
+    /// title, the exact command or file, and only output worth reading.
+    private func addBody(of call: ToolCall, summary: ToolCallSummary, to column: UIStackView) {
+        switch summary.kind {
+        case .taskTracking:
+            if let line = Self.taskGlyphLine(call, summary) {
+                column.addArrangedSubview(Self.bodyLabel(attributed: line, lines: 3))
             }
-            var text = "Task \(field("taskId").map { "#\($0)" } ?? "")"
-            if let status { text += " → \(status.replacingOccurrences(of: "_", with: " "))" }
-            if let subject = field("subject") { text += " · \(subject)" }
-            return summaryLine(glyph.0, glyph.1, text)
-        case "task", "agent":
-            let title = field("description")
-                ?? field("prompt").map { String($0.prefix(120)) }
-            guard var text = title else { return nil }
-            if let type = field("subagent_type"), type != "general-purpose" {
-                text += " · \(type)"
+        case .subagent:
+            if let title = summary.title ?? Self.fallbackTitle(call) {
+                let text = summary.detail.map { "\(title) · \($0)" } ?? title
+                column.addArrangedSubview(
+                    Self.bodyLabel(
+                        attributed: Self.summaryLine(
+                            "point.3.connected.trianglepath.dotted", Theme.Color.accent, text),
+                        lines: 3))
             }
-            return summaryLine("point.3.connected.trianglepath.dotted", Theme.Color.accent, text)
-        case "workflow":
-            let name = field("name") ?? field("script").flatMap(workflowName)
-            return summaryLine(
-                "point.3.connected.trianglepath.dotted", Theme.Color.accent,
-                name.map { "Workflow · \($0)" } ?? "Workflow")
-        case "skill":
-            guard let skill = field("skill") else { return nil }
-            var text = "Skill · \(skill)"
-            if let args = field("args"), !args.isEmpty { text += " \(String(args.prefix(60)))" }
-            return summaryLine("wand.and.stars", Theme.Color.accent, text)
-        default:
-            return nil
+            if let output = summary.displayOutput {
+                column.addArrangedSubview(Self.outputLabel(output))
+            }
+        case .workflow:
+            column.addArrangedSubview(
+                Self.bodyLabel(
+                    attributed: Self.summaryLine(
+                        "point.3.connected.trianglepath.dotted", Theme.Color.accent,
+                        summary.title.map { "Workflow · \($0)" } ?? "Workflow"),
+                    lines: 2))
+        case .skill:
+            let name = summary.title ?? "Skill"
+            let text = "Skill · \(name)" + (summary.detail.map { " \($0)" } ?? "")
+            column.addArrangedSubview(
+                Self.bodyLabel(
+                    attributed: Self.summaryLine("wand.and.stars", Theme.Color.accent, text),
+                    lines: 2))
+        case .shell:
+            if let title = summary.title ?? Self.fallbackTitle(call),
+                title != summary.command.map(Self.firstLine)
+            {
+                column.addArrangedSubview(Self.titleLabel(title))
+            }
+            if let command = summary.command {
+                column.addArrangedSubview(Self.commandLabel(command))
+            }
+            if let output = summary.displayOutput {
+                column.addArrangedSubview(Self.outputLabel(output))
+            }
+        case .fileRead, .fileEdit, .fileWrite:
+            if let line = Self.fileLine(summary) {
+                column.addArrangedSubview(Self.bodyLabel(attributed: line, lines: 1))
+            } else if let title = Self.fallbackTitle(call) {
+                column.addArrangedSubview(Self.titleLabel(title))
+            }
+            if let directory = summary.detail, !directory.isEmpty {
+                column.addArrangedSubview(Self.pathLabel(directory))
+            }
+            if let output = summary.displayOutput {
+                column.addArrangedSubview(Self.outputLabel(output))
+            }
+            if let diff = Self.editDiff(for: call) {
+                let diffLabel = UILabel()
+                diffLabel.numberOfLines = 0
+                diffLabel.lineBreakMode = .byCharWrapping
+                diffLabel.attributedText = diff
+                column.addArrangedSubview(diffLabel)
+            }
+        case .webSearch:
+            if let query = summary.title {
+                column.addArrangedSubview(Self.titleLabel(query))
+            }
+            for link in summary.links.prefix(4) {
+                column.addArrangedSubview(linkRow(link))
+            }
+            if summary.links.count > 4 {
+                column.addArrangedSubview(
+                    Self.pathLabel("+\(summary.links.count - 4) more results"))
+            }
+        case .webFetch, .fileSearch, .other:
+            if let title = summary.title ?? Self.fallbackTitle(call) {
+                column.addArrangedSubview(Self.titleLabel(title))
+            }
+            if let detail = summary.detail {
+                column.addArrangedSubview(Self.pathLabel(detail))
+            }
+            if let output = summary.displayOutput {
+                column.addArrangedSubview(Self.outputLabel(output))
+            }
         }
+    }
+
+    /// opencode tools annotate calls with a server-written `title` instead of
+    /// structured input; surface it when the summary extracted nothing.
+    private static func fallbackTitle(_ call: ToolCall) -> String? {
+        guard let title = call.title, title != call.name, !title.isEmpty else { return nil }
+        return title
+    }
+
+    private static func taskGlyphLine(
+        _ call: ToolCall, _ summary: ToolCallSummary
+    ) -> NSAttributedString? {
+        guard let title = summary.title else { return nil }
+        let isCreate = call.name.lowercased().contains("create")
+        let glyph: (String, UIColor)
+        switch summary.detail {
+        case "completed": glyph = ("checkmark.circle.fill", Theme.Color.success)
+        case "in progress": glyph = ("circle.lefthalf.filled", Theme.Color.accent)
+        case "deleted": glyph = ("trash.circle", Theme.Color.danger)
+        default:
+            glyph = isCreate
+                ? ("plus.circle.fill", Theme.Color.accent) : ("circle", Theme.Color.tertiaryLabel)
+        }
+        var text = title
+        if let status = summary.detail, !isCreate { text += " → \(status)" }
+        return summaryLine(glyph.0, glyph.1, text)
+    }
+
+    private static func fileLine(_ summary: ToolCallSummary) -> NSAttributedString? {
+        guard let name = summary.title else { return nil }
+        let line = NSMutableAttributedString(
+            string: name,
+            attributes: [
+                .font: UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold),
+                .foregroundColor: Theme.Color.label,
+            ])
+        if let metric = summary.metric {
+            line.append(NSAttributedString(
+                string: "  ·  \(metric)",
+                attributes: [
+                    .font: UIFont.preferredFont(forTextStyle: .caption1),
+                    .foregroundColor: Theme.Color.secondaryLabel,
+                ]))
+        }
+        if let stats = summary.diffStats {
+            if stats.added > 0 {
+                line.append(NSAttributedString(
+                    string: "  +\(stats.added)",
+                    attributes: [
+                        .font: Theme.Font.mono(11),
+                        .foregroundColor: Theme.Color.success,
+                    ]))
+            }
+            if stats.removed > 0 {
+                line.append(NSAttributedString(
+                    string: "  −\(stats.removed)",
+                    attributes: [
+                        .font: Theme.Font.mono(11),
+                        .foregroundColor: Theme.Color.danger,
+                    ]))
+            }
+        }
+        return line
+    }
+
+    private func linkRow(_ link: ToolCallSummary.Link) -> UIView {
+        let label = UILabel()
+        label.numberOfLines = 2
+        let attributed = NSMutableAttributedString()
+        if let icon = UIImage(
+            systemName: "link",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))?
+            .withTintColor(Theme.Color.accent, renderingMode: .alwaysOriginal)
+        {
+            attributed.append(NSAttributedString(attachment: NSTextAttachment(image: icon)))
+            attributed.append(NSAttributedString(string: " "))
+        }
+        attributed.append(NSAttributedString(
+            string: link.title,
+            attributes: [
+                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .foregroundColor: Theme.Color.accent,
+            ]))
+        if let host = link.url.host {
+            attributed.append(NSAttributedString(
+                string: "  \(host)",
+                attributes: [
+                    .font: UIFont.preferredFont(forTextStyle: .caption2),
+                    .foregroundColor: Theme.Color.tertiaryLabel,
+                ]))
+        }
+        label.attributedText = attributed
+        if onLinkTap != nil {
+            tappableRows.append((label, { [weak self] in self?.onLinkTap?(link.url) }))
+        }
+        return label
+    }
+
+    private static func bodyLabel(attributed: NSAttributedString, lines: Int) -> UILabel {
+        let label = UILabel()
+        label.numberOfLines = lines
+        label.attributedText = attributed
+        return label
+    }
+
+    private static func titleLabel(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.numberOfLines = 2
+        label.font = .preferredFont(forTextStyle: .footnote)
+        label.textColor = Theme.Color.label
+        label.text = text
+        return label
+    }
+
+    private static func pathLabel(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingHead
+        label.font = .preferredFont(forTextStyle: .caption2)
+        label.textColor = Theme.Color.tertiaryLabel
+        label.text = text
+        return label
+    }
+
+    private static func commandLabel(_ command: String) -> UILabel {
+        let label = UILabel()
+        label.numberOfLines = 4
+        label.lineBreakMode = .byTruncatingTail
+        label.font = Theme.Font.mono(11)
+        label.textColor = Theme.Color.label
+        let attributed = NSMutableAttributedString(
+            string: "$ ",
+            attributes: [
+                .font: Theme.Font.mono(11),
+                .foregroundColor: Theme.Color.tertiaryLabel,
+            ])
+        attributed.append(NSAttributedString(
+            string: command,
+            attributes: [
+                .font: Theme.Font.mono(11),
+                .foregroundColor: Theme.Color.label,
+            ]))
+        label.attributedText = attributed
+        return label
+    }
+
+    private static func outputLabel(_ text: String) -> UILabel {
+        let label = UILabel()
+        label.font = Theme.Font.mono(11)
+        label.textColor = Theme.Color.secondaryLabel
+        label.numberOfLines = 10
+        label.lineBreakMode = .byTruncatingTail
+        label.text = text
+        return label
+    }
+
+    private static func firstLine(_ text: String) -> String {
+        text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            .first.map(String.init) ?? text
     }
 
     private static func summaryLine(
@@ -1033,28 +1242,6 @@ final class ActivityGroupCell: UICollectionViewCell {
                 .foregroundColor: Theme.Color.label,
             ]))
         return attributed
-    }
-
-    private static let workflowNameRegex = try? NSRegularExpression(
-        pattern: "name:\\s*['\"]([^'\"]+)['\"]")
-
-    private static func workflowName(_ script: String) -> String? {
-        let head = String(script.prefix(500))
-        guard let match = workflowNameRegex?.firstMatch(
-                in: head, range: NSRange(head.startIndex..., in: head)),
-            let range = Range(match.range(at: 1), in: head)
-        else { return nil }
-        return String(head[range])
-    }
-
-    private static let outputSuppressed: Set<String> = [
-        "taskcreate", "taskupdate", "tasklist", "workflow", "skill",
-    ]
-
-    private static func condensedBody(for call: ToolCall) -> String {
-        guard !outputSuppressed.contains(call.name.lowercased()) else { return "" }
-        let body = call.output ?? (call.title == call.name ? "" : (call.title ?? ""))
-        return AgentMarkup.strip(body)
     }
 
     /// Renders the agent's task list from a TodoWrite tool call as a live checklist.
