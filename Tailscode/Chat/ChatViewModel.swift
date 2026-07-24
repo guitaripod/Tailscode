@@ -92,7 +92,9 @@ final class ChatViewModel {
     var canAbort: Bool { backend.capabilities.supportsAbort }
     var supportsUsage: Bool { backend.capabilities.supportsSessionUsage }
     var supportsFileBrowsing: Bool { backend.capabilities.supportsFileBrowsing }
-    var isBusy: Bool { state.status == .running || optimisticThinking }
+    /// A dead stream can't clear a stale `.running`, so busy requires a live
+    /// subscription — once the stream terminates, the spinner never outlives it.
+    var isBusy: Bool { (streamTask != nil && state.status == .running) || optimisticThinking }
 
     func fork() async throws -> AgentSession {
         try await backend.forkSession(session.id)
@@ -120,6 +122,8 @@ final class ChatViewModel {
         }
         AppLogger.chat.info(
             "start fresh vm=\(vmTag) queued=\(queued.count) echoes=\(localEchoes.count)")
+        streamGeneration += 1
+        let generation = streamGeneration
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {
@@ -146,8 +150,27 @@ final class ChatViewModel {
                     self.stop()
                 }
             }
+            self.handleStreamTermination(generation: generation)
         }
         Task { await loadDefaultModelIfNeeded() }
+    }
+
+    private var streamGeneration = 0
+
+    /// Runs when the states() stream ends on its own — a terminal failure or
+    /// reconnect exhaustion, not a `stop()`/`resync()` (those bump the
+    /// generation first). The dead task must not masquerade as a live
+    /// subscription: clearing it lets `resync`/reopen build a fresh stream,
+    /// and releasing the activity entry stops Home showing a phantom live
+    /// session for a turn nothing on this device can observe anymore.
+    private func handleStreamTermination(generation: Int) {
+        guard generation == streamGeneration, streamTask != nil else { return }
+        AppLogger.chat.info("stream terminated for \(session.id); releasing busy state")
+        streamTask = nil
+        if reportsActivity {
+            SessionActivity.shared.markUnobserved(sessionID: session.id)
+        }
+        onState?(state)
     }
 
     /// A locally-echoed prompt, shown instantly while the server round-trip
@@ -225,6 +248,7 @@ final class ChatViewModel {
     }
 
     func stop() {
+        streamGeneration += 1
         streamTask?.cancel()
         streamTask = nil
     }
@@ -236,7 +260,7 @@ final class ChatViewModel {
     private var lastResync: Date = .distantPast
 
     func resync() {
-        guard streamTask != nil, Date().timeIntervalSince(lastResync) > 1 else { return }
+        guard streamTask != nil || isBound, Date().timeIntervalSince(lastResync) > 1 else { return }
         lastResync = Date()
         stop()
         start()

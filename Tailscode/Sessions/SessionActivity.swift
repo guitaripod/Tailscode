@@ -64,6 +64,18 @@ final class SessionActivity {
         NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 
+    /// Drops a session whose observing stream died without reaching idle — the
+    /// turn may still be running server-side, but nothing on this device can
+    /// see it finish, so keeping the pill and the retained view model would
+    /// show "working" forever. No completion notification: the agent didn't
+    /// finish, we just lost sight of it.
+    func markUnobserved(sessionID: String) {
+        retained[sessionID] = nil
+        guard let current = statuses[sessionID], current != .idle else { return }
+        statuses[sessionID] = .idle
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
     /// A bridge that acked this launch's device token pushes its own turn-end
     /// alert, so the local one would duplicate it; opencode servers and bridges
     /// that never acked still rely on the local notification.
