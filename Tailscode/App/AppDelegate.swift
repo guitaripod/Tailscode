@@ -9,11 +9,21 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         AppLogger.lifecycle.info("didFinishLaunching")
         ProStore.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
-        AppActivityController.shared.endOrphanedActivities()
+        endOrphanedActivitiesIfForeground(application)
         UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()
         application.registerForRemoteNotifications()
         return true
+    }
+
+    /// Reaping only makes sense when the user actually launched the app: this
+    /// same delegate registers a background refresh task and remote
+    /// notifications, so the system relaunches us headless — and a background
+    /// launch that reaps would end the Lock Screen activity of a turn that is
+    /// still running, which is precisely the activity the user is relying on.
+    private func endOrphanedActivitiesIfForeground(_ application: UIApplication) {
+        guard application.applicationState != .background else { return }
+        AppActivityController.shared.endOrphanedActivities()
     }
 
     func application(
