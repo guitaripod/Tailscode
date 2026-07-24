@@ -2022,13 +2022,33 @@ extension ChatViewController: TextBubbleCellDelegate {
         openWebLink(url)
     }
 
+    /// Every link here originates in model or tool output, and the markdown
+    /// renderer preserves both an arbitrary label and an arbitrary scheme — so
+    /// a transcript can present "docs" over `sms:`, `facetime:` or another
+    /// app's deep link. Web links open in-app; anything else has to be
+    /// confirmed against its real destination before it leaves the app.
     func openWebLink(_ url: URL) {
         switch url.scheme?.lowercased() {
         case "http", "https":
             present(SFSafariViewController(url: url), animated: true)
         default:
-            UIApplication.shared.open(url)
+            confirmExternalOpen(url)
         }
+    }
+
+    private func confirmExternalOpen(_ url: URL) {
+        let sheet = UIAlertController(
+            title: "Open outside Tailscode?",
+            message: url.absoluteString, preferredStyle: .alert)
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.addAction(UIAlertAction(title: "Open", style: .default) { _ in
+            UIApplication.shared.open(url)
+        })
+        sheet.addAction(UIAlertAction(title: "Copy link", style: .default) { [weak self] _ in
+            UIPasteboard.general.string = url.absoluteString
+            self?.presentToast("Link copied.")
+        })
+        present(sheet, animated: true)
     }
 
     private func presentPathActions(_ path: String) {
