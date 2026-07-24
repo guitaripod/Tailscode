@@ -87,7 +87,18 @@ final class ModelPickerViewController: UIViewController {
             cell.contentConfiguration = content
             let isSelected =
                 self?.selected?.modelID == model.id && self?.selected?.providerID == model.providerID
-            cell.accessories = isSelected ? [.checkmark()] : []
+            var accessories: [UICellAccessory] = []
+            if model.capabilities?.imageInput == true {
+                let badge = UIImageView(
+                    image: UIImage(
+                        systemName: "photo",
+                        withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)))
+                badge.tintColor = Theme.Color.tertiaryLabel
+                badge.accessibilityLabel = "Supports images"
+                accessories.append(.customView(configuration: .init(customView: badge, placement: .trailing())))
+            }
+            if isSelected { accessories.append(.checkmark()) }
+            cell.accessories = accessories
         }
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(

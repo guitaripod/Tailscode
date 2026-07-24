@@ -83,7 +83,7 @@ final class ChatViewController: UIViewController {
         configureNavTitleView()
         configureDataSource()
         composer.delegate = self
-        composer.showsAttach = viewModel.supportsAttachments
+        composer.showsAttach = viewModel.canAttachImages
         if !isReadOnly {
             enhancement.onStatusChange = { [weak self] status in
                 self?.handleEnhancementStatus(status)
@@ -991,6 +991,19 @@ final class ChatViewController: UIViewController {
         }
         items.append(overflowBarButton())
         navigationItem.rightBarButtonItems = items
+        refreshAttachmentGating()
+    }
+
+    /// Keeps the attach affordance in sync with what the selected model can
+    /// actually see: hides the picker for text-only models and drops pending
+    /// image attachments that a model switch made unsendable.
+    private func refreshAttachmentGating() {
+        if !viewModel.canAttachImages, pendingAttachments.contains(where: { $0.mime.hasPrefix("image/") }) {
+            pendingAttachments.removeAll { $0.mime.hasPrefix("image/") }
+            updateAttachmentStrip()
+            presentToast("Image removed — this model can't see images.")
+        }
+        composer.showsAttach = viewModel.canAttachImages
     }
 
     private func updateOverflowBadge(hasPermission: Bool) {
@@ -1676,7 +1689,7 @@ extension ChatViewController: ComposerViewDelegate {
     private func sendDraft(_ text: String, model: ModelSelection? = nil, effort: String? = nil) {
         let attachments = pendingAttachments
         pendingAttachments = []
-        composer.showsAttach = viewModel.supportsAttachments
+        composer.showsAttach = viewModel.canAttachImages
         updateAttachmentStrip()
         userScrolledUp = false
         animateNextRender = true
@@ -1706,7 +1719,7 @@ extension ChatViewController: ComposerViewDelegate {
     }
 
     func composerDidPasteLargeText(_ text: String) {
-        guard viewModel.supportsAttachments else {
+        guard viewModel.canAttachFiles else {
             composer.insertText(text)
             return
         }
@@ -1849,7 +1862,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
                 self.pendingAttachments.remove(at: index)
                 self.updateAttachmentStrip()
                 if self.pendingAttachments.isEmpty {
-                    self.composer.showsAttach = self.viewModel.supportsAttachments
+                    self.composer.showsAttach = self.viewModel.canAttachImages
                 }
             }
             attachmentStrip.addArrangedSubview(chip)

@@ -87,6 +87,30 @@ final class ChatViewModel {
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
     var reasoningEffortOptions: [String] { backend.reasoningEffortOptions }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
+
+    /// Whether the current model can receive an image attachment. Falls back
+    /// to the backend-level capability when the server didn't advertise
+    /// per-model capabilities (or no model is selected yet).
+    var canAttachImages: Bool {
+        guard supportsAttachments else { return false }
+        guard let caps = selectedModelCapabilities else { return true }
+        return caps.attachment && caps.imageInput
+    }
+
+    /// Whether the current model can receive non-image file attachments
+    /// (e.g. a large paste converted to a text file).
+    var canAttachFiles: Bool {
+        guard supportsAttachments else { return false }
+        guard let caps = selectedModelCapabilities else { return true }
+        return caps.attachment
+    }
+
+    private var selectedModelCapabilities: ModelCapabilities? {
+        guard let selected = selectedModel else { return nil }
+        return knownModels.first {
+            $0.providerID == selected.providerID && $0.id == selected.modelID
+        }?.capabilities
+    }
     var canClear: Bool { backend.capabilities.supportsClearing }
     var canFork: Bool { backend.capabilities.supportsForking }
     var canAbort: Bool { backend.capabilities.supportsAbort }
@@ -460,8 +484,12 @@ final class ChatViewModel {
         }
     }
 
+    private var knownModels: [ModelInfo] = []
+
     func availableModels() async -> [ModelInfo] {
-        (try? await backend.availableModels()) ?? []
+        let models = (try? await backend.availableModels()) ?? []
+        if !models.isEmpty { knownModels = models }
+        return models
     }
 
     private var cachedUsage: (value: AgentUsage?, at: Date)?
