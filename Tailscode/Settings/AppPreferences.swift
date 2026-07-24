@@ -42,6 +42,21 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.sendOnReturn") }
     }
 
+    /// Where the Home composer's next message goes: the last server and
+    /// project the user explicitly aimed at or sent to.
+    static var lastComposeTarget: (profileID: String, directory: String?)? {
+        get {
+            guard let profileID = defaults.string(forKey: "pref.composeTarget.profile") else {
+                return nil
+            }
+            return (profileID, defaults.string(forKey: "pref.composeTarget.directory"))
+        }
+        set {
+            defaults.set(newValue?.profileID, forKey: "pref.composeTarget.profile")
+            defaults.set(newValue?.directory, forKey: "pref.composeTarget.directory")
+        }
+    }
+
     static var promptEnhancement: Bool {
         get {
             defaults.object(forKey: "pref.promptEnhancement") == nil

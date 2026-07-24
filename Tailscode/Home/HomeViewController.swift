@@ -2,10 +2,10 @@ import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
 
-/// The app's front door: what's running right now, one-tap new chats per
-/// server, the freshest conversations, and the subscription gauges — each
-/// section a Liquid Glass card, each answering "what would I reach for
-/// from my pocket?"
+/// The app's front door, organized around three jobs: triage (what needs you
+/// right now — blocked or live agents, unreachable servers), continue (recent
+/// conversations, badged when they changed since you last looked), and start
+/// (the docked composer plus one-tap project launch pads).
 @MainActor
 final class HomeViewController: UIViewController {
     var onOpenSettings: (() -> Void)?
@@ -14,9 +14,11 @@ final class HomeViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     private let refreshControl = UIRefreshControl()
+    private let composerBar = HomeComposerBar()
     private var quotas: [UsageQuota] = []
     private var hasAppeared = false
     private var hasLoadedOnce = false
+    private var wantsComposerFocus = false
     private var pendingDeepLink: (sessionID: String, parkedAt: Date)?
 
     init() {
@@ -40,8 +42,10 @@ final class HomeViewController: UIViewController {
         updateComposeButton()
         configureCollectionView()
         configureDataSource()
+        configureComposer()
         bind()
         applySnapshot()
+        updateComposer()
         Task { await load() }
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_CHATS"] != nil {
@@ -56,6 +60,18 @@ final class HomeViewController: UIViewController {
                     self?.onOpenSettings?()
                 }
             }
+            if let text = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSE_SEND"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.composerSend(text)
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_FOCUS_COMPOSER"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    self?.focusComposer()
+                }
+            }
         #endif
     }
 
@@ -65,9 +81,37 @@ final class HomeViewController: UIViewController {
         hasAppeared = true
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if wantsComposerFocus {
+            wantsComposerFocus = false
+            composerBar.focus()
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let overlap = max(
+            0, view.bounds.height - composerBar.frame.minY - view.safeAreaInsets.bottom)
+        let inset = composerBar.isHidden ? 0 : overlap + Theme.Spacing.s
+        if collectionView.contentInset.bottom != inset {
+            collectionView.contentInset.bottom = inset
+            collectionView.verticalScrollIndicatorInsets.bottom = inset
+        }
+    }
+
+    func focusComposer() {
+        guard viewIfLoaded?.window != nil else {
+            wantsComposerFocus = true
+            return
+        }
+        composerBar.focus()
+    }
+
     private func bind() {
         viewModel.onChange = { [weak self] in
             self?.updateComposeButton()
+            self?.updateComposer()
             self?.applySnapshot()
         }
         viewModel.onError = { [weak self] message in
@@ -84,7 +128,11 @@ final class HomeViewController: UIViewController {
 
     @objc private func activityDidChange() { applySnapshot() }
     @objc private func sceneDidActivate() { Task { await load() } }
-    @objc private func openSettings() { onOpenSettings?() }
+
+    @objc private func openSettings() {
+        view.endEditing(true)
+        onOpenSettings?()
+    }
     @objc private func refresh() { Task { await load() } }
 
     /// One server: compose starts a chat there. Several: compose offers the
@@ -121,6 +169,7 @@ final class HomeViewController: UIViewController {
         await scanOpencodeIfNeeded()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
+        updateComposer()
         applySnapshot()
     }
 
@@ -159,34 +208,56 @@ final class HomeViewController: UIViewController {
             || SessionActivity.shared.status(for: entry.session.id) != .idle
     }
 
+    /// A cached `isActive` from the cold-launch snapshot can describe an agent
+    /// that died while the app was closed, so unconfirmed liveness renders as
+    /// syncing rather than a confident LIVE.
+    private func presence(for entry: SessionEntry) -> LiveCard.Presence {
+        switch SessionActivity.shared.status(for: entry.session.id) {
+        case .awaitingApproval: return .needsInput
+        case .running: return .working
+        case .idle: return hasLoadedOnce ? .working : .syncing
+        }
+    }
+
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
-        let live = viewModel.entries.filter(isLive).prefix(10)
+        if hasLoadedOnce {
+            let down = viewModel.servers.filter { viewModel.unreachable.contains($0.id) }
+            if !down.isEmpty {
+                snapshot.appendSections([.alerts])
+                snapshot.appendItems(
+                    down.map { .alert(ServerAlertCard(profileID: $0.id, name: $0.name)) },
+                    toSection: .alerts)
+            }
+        }
+        let live = viewModel.entries.filter(isLive)
+            .sorted { lhs, rhs in
+                let lhsBlocked = presence(for: lhs) == .needsInput
+                let rhsBlocked = presence(for: rhs) == .needsInput
+                if lhsBlocked != rhsBlocked { return lhsBlocked }
+                return lhs.session.updatedAt > rhs.session.updatedAt
+            }
+            .prefix(10)
         if !live.isEmpty {
             snapshot.appendSections([.live])
-            snapshot.appendItems(live.map { .live(LiveCard(entry: $0)) }, toSection: .live)
-        }
-        if !viewModel.servers.isEmpty {
-            snapshot.appendSections([.servers])
             snapshot.appendItems(
-                viewModel.servers.map { profile in
-                    let entries = viewModel.entries.filter { $0.profileID == profile.id }
-                    return .server(
-                        ServerCard(
-                            profileID: profile.id,
-                            name: profile.name,
-                            backend: profile.backend,
-                            host: profile.baseURL.host ?? "",
-                            reachable: !viewModel.unreachable.contains(profile.id),
-                            sessionCount: entries.count,
-                            liveCount: entries.count(where: isLive)))
-                }, toSection: .servers)
+                live.map { .live(LiveCard(entry: $0, presence: presence(for: $0))) },
+                toSection: .live)
+        }
+        let projects = projectCards()
+        if !projects.isEmpty {
+            snapshot.appendSections([.projects])
+            snapshot.appendItems(projects.map(HomeItem.project), toSection: .projects)
         }
         let liveIDs = Set(live.map(\.session.id))
+        let isUnread = SessionSeenStore.unreadEvaluator()
         let recent = viewModel.entries.filter { !liveIDs.contains($0.session.id) }.prefix(6)
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
-            snapshot.appendItems(recent.map { .recent(RecentCard(entry: $0)) }, toSection: .recent)
+            snapshot.appendItems(
+                recent.map {
+                    .recent(RecentCard(entry: $0, unread: isUnread($0.session.id, $0.session.updatedAt)))
+                }, toSection: .recent)
         } else if !hasLoadedOnce, !viewModel.servers.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
@@ -204,7 +275,33 @@ final class HomeViewController: UIViewController {
         consumePendingDeepLink()
     }
 
+    private func projectCards() -> [ProjectCard] {
+        struct Key: Hashable {
+            let profileID: String
+            let directory: String
+        }
+        var counts: [Key: Int] = [:]
+        var latest: [Key: Date] = [:]
+        var meta: [Key: (name: String, backend: AgentType)] = [:]
+        for entry in viewModel.entries {
+            guard let directory = entry.session.directory else { continue }
+            let key = Key(profileID: entry.profileID, directory: directory)
+            counts[key, default: 0] += 1
+            if entry.session.updatedAt > (latest[key] ?? .distantPast) {
+                latest[key] = entry.session.updatedAt
+            }
+            meta[key] = (entry.profileName, entry.backendType)
+        }
+        return latest.sorted { $0.value > $1.value }.prefix(6).compactMap { key, _ in
+            guard let info = meta[key], let count = counts[key] else { return nil }
+            return ProjectCard(
+                profileID: key.profileID, profileName: info.name, backend: info.backend,
+                directory: key.directory, chatCount: count)
+        }
+    }
+
     private func updateEmptyState(itemCount: Int) {
+        collectionView.backgroundView = nil
         if itemCount > 0 {
             contentUnavailableConfiguration = nil
         } else if viewModel.isEmptyOfServers {
@@ -217,7 +314,45 @@ final class HomeViewController: UIViewController {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
         } else {
             contentUnavailableConfiguration = nil
+            collectionView.backgroundView = Self.emptyHintView()
         }
+    }
+
+    /// A plain background hint rather than `contentUnavailableConfiguration`,
+    /// which would overlay (and block) the docked composer it points at.
+    private static func emptyHintView() -> UIView {
+        let icon = UIImageView(
+            image: UIImage(
+                systemName: "bubble.left.and.bubble.right",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 34, weight: .regular)))
+        icon.tintColor = Theme.Color.tertiaryLabel
+        icon.contentMode = .scaleAspectFit
+
+        let title = UILabel()
+        title.text = "No conversations yet"
+        title.font = .preferredFont(forTextStyle: .headline)
+        title.textColor = Theme.Color.secondaryLabel
+        title.textAlignment = .center
+
+        let subtitle = UILabel()
+        subtitle.text = "Start one below."
+        subtitle.font = .preferredFont(forTextStyle: .subheadline)
+        subtitle.textColor = Theme.Color.tertiaryLabel
+        subtitle.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [icon, title, subtitle])
+        stack.axis = .vertical
+        stack.spacing = Theme.Spacing.s
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = UIView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -40),
+        ])
+        return container
     }
 
     func openSession(withID id: String) {
@@ -232,6 +367,7 @@ final class HomeViewController: UIViewController {
             return
         }
         pendingDeepLink = nil
+        view.endEditing(true)
         presentedViewController?.dismiss(animated: false)
         navigationController?.popToRootViewController(animated: false)
         openChat(for: entry)
@@ -252,8 +388,10 @@ final class HomeViewController: UIViewController {
         openChat(for: entry)
     }
 
-    private func openChat(for entry: SessionEntry) {
-        guard let backend = viewModel.backend(for: entry) else { return }
+    @discardableResult
+    private func openChat(for entry: SessionEntry) -> ChatViewModel? {
+        guard let backend = viewModel.backend(for: entry) else { return nil }
+        SessionSeenStore.markSeen(entry.session.id)
         let chatViewModel =
             SessionActivity.shared.retainedViewModel(
                 for: entry.session.id, contextID: entry.profileID)
@@ -262,6 +400,7 @@ final class HomeViewController: UIViewController {
                 serverName: entry.profileName)
         navigationController?.pushViewController(
             ChatViewController(viewModel: chatViewModel), animated: true)
+        return chatViewModel
     }
 
     private func startChat(on profile: ConnectionProfile) {
@@ -287,7 +426,9 @@ final class HomeViewController: UIViewController {
             else { return Self.listSection() }
             switch section {
             case .live: return Self.liveSection()
-            case .servers, .recent, .usage: return Self.listSection()
+            case .projects: return Self.projectsSection()
+            case .alerts: return Self.listSection(withHeader: false)
+            case .recent, .usage: return Self.listSection()
             }
         }
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -295,8 +436,36 @@ final class HomeViewController: UIViewController {
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
         collectionView.refreshControl = refreshControl
+        collectionView.keyboardDismissMode = .interactive
+        let dismissTap = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
+        dismissTap.cancelsTouchesInView = false
+        collectionView.addGestureRecognizer(dismissTap)
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
         view.addSubview(collectionView)
+    }
+
+    /// Tapping anywhere outside the composer puts the keyboard away; the tap
+    /// still reaches whatever it landed on. Project cards are exempt — their
+    /// whole point is to re-aim the composer, so the keyboard stays up.
+    @objc private func backgroundTapped(_ gesture: UITapGestureRecognizer) {
+        guard composerBar.isEditingText else { return }
+        if let indexPath = collectionView.indexPathForItem(at: gesture.location(in: collectionView)),
+            case .project = dataSource.itemIdentifier(for: indexPath)
+        {
+            return
+        }
+        view.endEditing(true)
+    }
+
+    private func configureComposer() {
+        composerBar.delegate = self
+        composerBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(composerBar)
+        NSLayoutConstraint.activate([
+            composerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            composerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            composerBar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+        ])
     }
 
     private static func liveSection() -> NSCollectionLayoutSection {
@@ -315,7 +484,23 @@ final class HomeViewController: UIViewController {
         return section
     }
 
-    private static func listSection() -> NSCollectionLayoutSection {
+    private static func projectsSection() -> NSCollectionLayoutSection {
+        let item = NSCollectionLayoutItem(
+            layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1)))
+        let group = NSCollectionLayoutGroup.horizontal(
+            layoutSize: .init(widthDimension: .absolute(150), heightDimension: .absolute(88)),
+            subitems: [item])
+        let section = NSCollectionLayoutSection(group: group)
+        section.orthogonalScrollingBehavior = .continuous
+        section.interGroupSpacing = Theme.Spacing.m
+        section.contentInsets = .init(
+            top: Theme.Spacing.s, leading: Theme.Spacing.l,
+            bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
+        section.boundarySupplementaryItems = [header()]
+        return section
+    }
+
+    private static func listSection(withHeader: Bool = true) -> NSCollectionLayoutSection {
         let item = NSCollectionLayoutItem(
             layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(72)))
         let group = NSCollectionLayoutGroup.vertical(
@@ -326,7 +511,7 @@ final class HomeViewController: UIViewController {
         section.contentInsets = .init(
             top: Theme.Spacing.s, leading: Theme.Spacing.l,
             bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
-        section.boundarySupplementaryItems = [header()]
+        if withHeader { section.boundarySupplementaryItems = [header()] }
         return section
     }
 
@@ -337,18 +522,14 @@ final class HomeViewController: UIViewController {
     }
 
     private func configureDataSource() {
+        let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
+            cell, _, card in cell.configure(card)
+        }
         let liveCell = UICollectionView.CellRegistration<LiveSessionCell, LiveCard> {
             cell, _, card in cell.configure(card)
         }
-        let serverCell = UICollectionView.CellRegistration<ServerCardCell, ServerCard> {
-            [weak self] cell, _, card in
-            cell.configure(card)
-            cell.onNewChat = { [weak self] in
-                guard let self,
-                    let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
-                else { return }
-                self.startChat(on: profile)
-            }
+        let projectCell = UICollectionView.CellRegistration<ProjectCell, ProjectCard> {
+            cell, _, card in cell.configure(card)
         }
         let recentCell = UICollectionView.CellRegistration<RecentSessionCell, RecentCard> {
             cell, _, card in cell.configure(card)
@@ -363,12 +544,15 @@ final class HomeViewController: UIViewController {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
             switch item {
+            case .alert(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: alertCell, for: indexPath, item: card)
             case .live(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: liveCell, for: indexPath, item: card)
-            case .server(let card):
+            case .project(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: serverCell, for: indexPath, item: card)
+                    using: projectCell, for: indexPath, item: card)
             case .recent(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: recentCell, for: indexPath, item: card)
@@ -388,10 +572,12 @@ final class HomeViewController: UIViewController {
                 let section = self.dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
             else { return }
             switch section {
+            case .alerts:
+                break
             case .live:
                 view.configure(title: "Live now")
-            case .servers:
-                view.configure(title: "Servers")
+            case .projects:
+                view.configure(title: "Projects")
             case .recent:
                 view.configure(title: "Recent", actionTitle: "See all") { [weak self] in
                     self?.pushChats()
@@ -408,17 +594,189 @@ final class HomeViewController: UIViewController {
     }
 }
 
+extension HomeViewController: HomeComposerBarDelegate {
+    func homeComposer(_ bar: HomeComposerBar, didSend text: String) {
+        composerSend(text)
+    }
+
+    func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {}
+
+    private var composeTarget: (profileID: String, directory: String?)? {
+        if let stored = AppPreferences.lastComposeTarget,
+            viewModel.servers.contains(where: { $0.id == stored.profileID })
+        {
+            return stored
+        }
+        if let recent = viewModel.entries.first(where: { $0.session.directory != nil }) {
+            return (recent.profileID, recent.session.directory)
+        }
+        guard let first = viewModel.servers.first else { return nil }
+        return (first.id, FileBrowserRecents.all(for: first.id).first)
+    }
+
+    private func updateComposer() {
+        composerBar.isHidden = viewModel.servers.isEmpty
+        guard let target = composeTarget,
+            let profile = viewModel.servers.first(where: { $0.id == target.profileID })
+        else { return }
+        let project = target.directory.map { ($0 as NSString).lastPathComponent }
+        let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
+        let icon = UIImage(
+            systemName: profile.backend.symbolName,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+            .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
+        composerBar.setContext(icon: icon, title: title, menu: composeTargetMenu())
+        view.setNeedsLayout()
+    }
+
+    private func composeTargetMenu() -> UIMenu {
+        let current = composeTarget
+        let serverMenus: [UIMenuElement] = viewModel.servers.map { profile in
+            var children: [UIMenuElement] = []
+            children.append(contentsOf: recentDirectories(for: profile).map { directory in
+                UIAction(
+                    title: (directory as NSString).lastPathComponent,
+                    subtitle: directory,
+                    image: UIImage(systemName: "folder"),
+                    state: current?.profileID == profile.id && current?.directory == directory
+                        ? .on : .off
+                ) { [weak self] _ in
+                    self?.setComposeTarget(profile: profile, directory: directory)
+                }
+            })
+            let backend = viewModel.backend(forProfileID: profile.id)
+            if backend is any FileBrowsingBackend,
+                backend?.capabilities.supportsFileBrowsing == true
+            {
+                children.append(
+                    UIAction(title: "Browse…", image: UIImage(systemName: "folder.badge.plus")) {
+                        [weak self] _ in self?.browseComposeTarget(profile: profile)
+                    })
+            } else {
+                children.append(
+                    UIAction(title: "Enter path…", image: UIImage(systemName: "character.cursor.ibeam")) {
+                        [weak self] _ in self?.promptComposePath(profile: profile)
+                    })
+            }
+            if viewModel.servers.count == 1 {
+                return UIMenu(options: .displayInline, children: children)
+            }
+            return UIMenu(
+                title: profile.name,
+                image: UIImage(systemName: profile.backend.symbolName),
+                children: children)
+        }
+        return UIMenu(title: "Start the chat in…", children: serverMenus)
+    }
+
+    /// Explicitly chosen recents first, then directories of past sessions.
+    private func recentDirectories(for profile: ConnectionProfile) -> [String] {
+        let sessionDirs = viewModel.entries
+            .filter { $0.profileID == profile.id }
+            .compactMap(\.session.directory)
+        var seen = Set<String>()
+        var result: [String] = []
+        for directory in FileBrowserRecents.all(for: profile.id) + sessionDirs
+        where seen.insert(directory).inserted {
+            result.append(directory)
+            if result.count == 6 { break }
+        }
+        return result
+    }
+
+    private func setComposeTarget(profile: ConnectionProfile, directory: String?) {
+        AppPreferences.lastComposeTarget = (profile.id, directory)
+        if let directory { FileBrowserRecents.record(directory, for: profile.id) }
+        Theme.Haptics.selection()
+        updateComposer()
+    }
+
+    private func browseComposeTarget(profile: ConnectionProfile) {
+        guard
+            let backend = viewModel.backend(forProfileID: profile.id) as? (any FileBrowsingBackend)
+        else { return }
+        let browser = FileBrowserViewController(backend: backend, profileID: profile.id)
+        browser.onSelect = { [weak self] path in
+            guard let self else { return }
+            self.presentedViewController?.dismiss(animated: true) {
+                self.setComposeTarget(profile: profile, directory: path)
+                self.composerBar.focus()
+            }
+        }
+        present(UINavigationController(rootViewController: browser), animated: true)
+    }
+
+    private func promptComposePath(profile: ConnectionProfile) {
+        let alert = UIAlertController(
+            title: "Project directory",
+            message: "Enter a directory path on \(profile.name)",
+            preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.placeholder = "/path/to/project"
+            textField.autocorrectionType = .no
+            textField.autocapitalizationType = .none
+            textField.keyboardType = .URL
+        }
+        alert.addAction(UIAlertAction(title: "Use", style: .default) { [weak self, weak alert] _ in
+            let trimmed = alert?.textFields?.first?.text?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let trimmed, !trimmed.isEmpty else { return }
+            self?.setComposeTarget(profile: profile, directory: trimmed)
+            self?.composerBar.focus()
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    /// The session is created only now, on commit; the composer keeps the
+    /// text until the create succeeds so a dead server loses nothing.
+    private func composerSend(_ text: String) {
+        guard let target = composeTarget,
+            let profile = viewModel.servers.first(where: { $0.id == target.profileID })
+        else { return }
+        composerBar.setSending(true)
+        Task {
+            guard let entry = await viewModel.newSession(on: profile, directory: target.directory)
+            else {
+                composerBar.setSending(false)
+                Theme.Haptics.error()
+                let alert = UIAlertController(
+                    title: "Couldn't start the chat",
+                    message: "\(profile.name) didn't respond. Check the connection and try again.",
+                    preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+                return
+            }
+            if let directory = target.directory {
+                FileBrowserRecents.record(directory, for: profile.id)
+            }
+            AppPreferences.lastComposeTarget = target
+            composerBar.setSending(false)
+            composerBar.clearText()
+            view.endEditing(true)
+            Theme.Haptics.success()
+            openChat(for: entry)?.send(text)
+        }
+    }
+}
+
 extension HomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
+        case .alert:
+            onOpenSettings?()
         case .live(let card):
             openChat(for: card.entry)
+        case .project(let card):
+            guard let profile = viewModel.servers.first(where: { $0.id == card.profileID })
+            else { return }
+            setComposeTarget(profile: profile, directory: card.directory)
+            composerBar.focus()
         case .recent(let card):
             openChat(for: card.entry)
-        case .server(let card):
-            pushChats(filterProfileID: card.profileID)
         case .usage:
             pushUsage()
         case .placeholder:
@@ -434,25 +792,32 @@ extension HomeViewController: UICollectionViewDelegate {
             let item = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
         switch item {
-        case .server(let card):
+        case .project(let card):
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
                 UIMenu(children: [
-                    UIAction(
-                        title: "View chats", image: UIImage(systemName: "bubble.left.and.bubble.right")
-                    ) { _ in self?.pushChats(filterProfileID: card.profileID) },
-                    UIAction(title: "New chat", image: UIImage(systemName: "plus.bubble")) { _ in
+                    UIAction(title: "New chat here", image: UIImage(systemName: "plus.bubble")) { _ in
                         guard let self,
                             let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
                         else { return }
-                        self.startChat(on: profile)
+                        Task {
+                            guard let entry = await self.viewModel.newSession(
+                                on: profile, directory: card.directory)
+                            else { return }
+                            Theme.Haptics.success()
+                            self.openChat(for: entry)
+                        }
                     },
+                    UIAction(
+                        title: "View chats on \(card.profileName)",
+                        image: UIImage(systemName: "bubble.left.and.bubble.right")
+                    ) { _ in self?.pushChats(filterProfileID: card.profileID) },
                 ])
             }
         case .recent(let card):
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .usage, .placeholder:
+        case .alert, .usage, .placeholder:
             return nil
         }
     }

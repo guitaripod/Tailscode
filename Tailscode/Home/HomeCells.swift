@@ -2,24 +2,31 @@ import CodingAgentKit
 import UIKit
 
 enum HomeSection: Hashable {
-    case live, servers, recent, usage
+    case alerts, live, projects, recent, usage
 }
 
 enum HomeItem: Hashable {
+    case alert(ServerAlertCard)
     case live(LiveCard)
-    case server(ServerCard)
+    case project(ProjectCard)
     case recent(RecentCard)
     case usage(QuotaCard)
     case placeholder(Int)
 }
 
 struct LiveCard: Hashable {
+    enum Presence {
+        case working, needsInput, syncing
+    }
+
     let entry: SessionEntry
     let title: String
     let detail: String
+    let presence: Presence
 
-    init(entry: SessionEntry) {
+    init(entry: SessionEntry, presence: Presence) {
         self.entry = entry
+        self.presence = presence
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
         var parts = [entry.profileName]
@@ -43,16 +50,11 @@ struct LiveCard: Hashable {
 
 /// Card identity is the stable key; the volatile fields are cell content,
 /// refreshed via reconfigure so a data refresh never animates delete+insert.
-struct ServerCard: Hashable {
+struct ServerAlertCard: Hashable {
     let profileID: String
     let name: String
-    let backend: AgentType
-    let host: String
-    let reachable: Bool
-    let sessionCount: Int
-    let liveCount: Int
 
-    static func == (lhs: ServerCard, rhs: ServerCard) -> Bool {
+    static func == (lhs: ServerAlertCard, rhs: ServerAlertCard) -> Bool {
         lhs.profileID == rhs.profileID
     }
 
@@ -61,13 +63,34 @@ struct ServerCard: Hashable {
     }
 }
 
+struct ProjectCard: Hashable {
+    let profileID: String
+    let profileName: String
+    let backend: AgentType
+    let directory: String
+    let chatCount: Int
+
+    var name: String { (directory as NSString).lastPathComponent }
+
+    static func == (lhs: ProjectCard, rhs: ProjectCard) -> Bool {
+        lhs.profileID == rhs.profileID && lhs.directory == rhs.directory
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(profileID)
+        hasher.combine(directory)
+    }
+}
+
 struct RecentCard: Hashable {
     let entry: SessionEntry
     let title: String
     let detail: String
+    let unread: Bool
 
-    init(entry: SessionEntry) {
+    init(entry: SessionEntry, unread: Bool) {
         self.entry = entry
+        self.unread = unread
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
         var parts: [String] = [entry.profileName]
@@ -138,20 +161,17 @@ class GlassCardCell: UICollectionViewCell {
 
 final class LiveSessionCell: GlassCardCell {
     private let dot = UIView()
-    private let liveLabel = UILabel()
+    private let stateLabel = UILabel()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        dot.backgroundColor = Theme.Color.success
         dot.layer.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
 
-        liveLabel.text = "LIVE"
-        liveLabel.font = .systemFont(ofSize: 10, weight: .heavy)
-        liveLabel.textColor = Theme.Color.success
-        liveLabel.translatesAutoresizingMaskIntoConstraints = false
+        stateLabel.font = .systemFont(ofSize: 10, weight: .heavy)
+        stateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
         titleLabel.textColor = Theme.Color.label
@@ -163,14 +183,14 @@ final class LiveSessionCell: GlassCardCell {
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        [dot, liveLabel, titleLabel, detailLabel].forEach(contentView.addSubview)
+        [dot, stateLabel, titleLabel, detailLabel].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
             dot.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             dot.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m + 2),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
-            liveLabel.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: Theme.Spacing.xs),
-            liveLabel.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
+            stateLabel.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: Theme.Spacing.xs),
+            stateLabel.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
 
             titleLabel.topAnchor.constraint(equalTo: dot.bottomAnchor, constant: Theme.Spacing.s),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
@@ -187,7 +207,16 @@ final class LiveSessionCell: GlassCardCell {
     func configure(_ card: LiveCard) {
         titleLabel.text = card.title
         detailLabel.text = card.detail
-        accessibilityLabel = "Live: \(card.title), \(card.detail)"
+        let (color, state): (UIColor, String) =
+            switch card.presence {
+            case .needsInput: (Theme.Color.warning, "NEEDS YOU")
+            case .working: (Theme.Color.success, "LIVE")
+            case .syncing: (Theme.Color.tertiaryLabel, "SYNCING")
+            }
+        dot.backgroundColor = color
+        stateLabel.textColor = color
+        stateLabel.text = state
+        accessibilityLabel = "\(state): \(card.title), \(card.detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -206,100 +235,137 @@ final class LiveSessionCell: GlassCardCell {
     }
 }
 
-final class ServerCardCell: GlassCardCell {
-    var onNewChat: (() -> Void)?
-
+/// A project is a directory you've chatted in; tapping one aims the docked
+/// composer at it, so the rail is a set of zero-cost launch pads rather than
+/// a row of server mutations.
+final class ProjectCell: GlassCardCell {
     private let iconBackground = UIView()
     private let iconView = UIImageView()
     private let nameLabel = UILabel()
     private let detailLabel = UILabel()
-    private let newChatButton = UIButton(type: .system)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        iconBackground.layer.cornerRadius = 20
+        iconBackground.layer.cornerRadius = 8
         iconBackground.layer.cornerCurve = .continuous
         iconBackground.translatesAutoresizingMaskIntoConstraints = false
 
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        nameLabel.font = .preferredFont(forTextStyle: .headline)
+        nameLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
         nameLabel.textColor = Theme.Color.label
+        nameLabel.numberOfLines = 1
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption1)
-        detailLabel.textColor = Theme.Color.secondaryLabel
+        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.textColor = Theme.Color.tertiaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        var config = Theme.Glass.buttonConfiguration(prominent: true)
-        config.image = UIImage(
-            systemName: "plus",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
-        config.cornerStyle = .capsule
-        newChatButton.configuration = config
-        newChatButton.accessibilityLabel = "New chat"
-        newChatButton.translatesAutoresizingMaskIntoConstraints = false
-        newChatButton.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.tap()
-                self?.onNewChat?()
-            }, for: .touchUpInside)
-
         iconBackground.addSubview(iconView)
-        [iconBackground, nameLabel, detailLabel, newChatButton].forEach(contentView.addSubview)
+        [iconBackground, nameLabel, detailLabel].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
+            iconBackground.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
             iconBackground.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
-            iconBackground.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            iconBackground.widthAnchor.constraint(equalToConstant: 40),
-            iconBackground.heightAnchor.constraint(equalToConstant: 40),
+            iconBackground.widthAnchor.constraint(equalToConstant: 28),
+            iconBackground.heightAnchor.constraint(equalToConstant: 28),
             iconView.centerXAnchor.constraint(equalTo: iconBackground.centerXAnchor),
             iconView.centerYAnchor.constraint(equalTo: iconBackground.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 22),
-            iconView.heightAnchor.constraint(equalToConstant: 22),
+            iconView.widthAnchor.constraint(equalToConstant: 15),
+            iconView.heightAnchor.constraint(equalToConstant: 15),
 
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
-            nameLabel.leadingAnchor.constraint(equalTo: iconBackground.trailingAnchor, constant: Theme.Spacing.m),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: newChatButton.leadingAnchor, constant: -Theme.Spacing.s),
+            nameLabel.topAnchor.constraint(equalTo: iconBackground.bottomAnchor, constant: Theme.Spacing.s),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
 
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 1),
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: newChatButton.leadingAnchor, constant: -Theme.Spacing.s),
-            detailLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
-
-            newChatButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
-            newChatButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            newChatButton.widthAnchor.constraint(equalToConstant: 44),
-            newChatButton.heightAnchor.constraint(equalToConstant: 44),
+            detailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ card: ServerCard) {
+    func configure(_ card: ProjectCard) {
         iconBackground.backgroundColor = card.backend.brandColor.withAlphaComponent(0.15)
-        iconView.image = UIImage(systemName: card.backend.symbolName)?
+        iconView.image = UIImage(systemName: "folder.fill")?
             .withTintColor(card.backend.brandColor, renderingMode: .alwaysOriginal)
         nameLabel.text = card.name
-        var parts = [card.backend.displayName]
-        if !card.reachable {
-            parts.append("unreachable")
-        } else {
-            parts.append("\(card.sessionCount) chat\(card.sessionCount == 1 ? "" : "s")")
-            if card.liveCount > 0 { parts.append("\(card.liveCount) live") }
-        }
-        let detail = parts.joined(separator: " · ")
+        let detail = "\(card.chatCount) chat\(card.chatCount == 1 ? "" : "s") · \(card.profileName)"
         detailLabel.text = detail
-        detailLabel.textColor = card.reachable ? Theme.Color.secondaryLabel : Theme.Color.danger
-        accessibilityLabel = "\(card.name), \(detail)"
-        isAccessibilityElement = false
-        accessibilityElements = [newChatButton]
+        accessibilityLabel = "Project \(card.name), \(detail)"
+        accessibilityHint = "Aims the composer at this project"
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+    }
+}
+
+final class ServerAlertCell: GlassCardCell {
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
+    private let chevron = UIImageView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        iconView.image = UIImage(
+            systemName: "exclamationmark.triangle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
+        iconView.tintColor = Theme.Color.danger
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.numberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.textColor = Theme.Color.secondaryLabel
+        detailLabel.numberOfLines = 1
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        chevron.image = UIImage(
+            systemName: "chevron.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        chevron.tintColor = Theme.Color.tertiaryLabel
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        [iconView, titleLabel, detailLabel, chevron].forEach(contentView.addSubview)
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 22),
+
+            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.s + 2),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.m),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -Theme.Spacing.s),
+
+            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -Theme.Spacing.s),
+            detailLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -(Theme.Spacing.s + 2)),
+
+            chevron.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            chevron.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ card: ServerAlertCard) {
+        titleLabel.text = "\(card.name) is unreachable"
+        detailLabel.text = "Check the server or Tailscale, then pull to refresh."
+        accessibilityLabel = "\(card.name) is unreachable"
+        isAccessibilityElement = true
+        accessibilityTraits = .button
     }
 }
 
 final class RecentSessionCell: GlassCardCell {
     private let iconView = UIImageView()
+    private let unreadBadge = UIView()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
     private let chevron = UIImageView()
@@ -309,7 +375,12 @@ final class RecentSessionCell: GlassCardCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline)
+        unreadBadge.backgroundColor = Theme.Color.accent
+        unreadBadge.layer.cornerRadius = 4.5
+        unreadBadge.layer.borderWidth = 1.5
+        unreadBadge.layer.borderColor = Theme.Color.groupedBackground.cgColor
+        unreadBadge.translatesAutoresizingMaskIntoConstraints = false
+
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -325,12 +396,17 @@ final class RecentSessionCell: GlassCardCell {
         chevron.tintColor = Theme.Color.tertiaryLabel
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
-        [iconView, titleLabel, detailLabel, chevron].forEach(contentView.addSubview)
+        [iconView, unreadBadge, titleLabel, detailLabel, chevron].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 20),
             iconView.heightAnchor.constraint(equalToConstant: 20),
+
+            unreadBadge.centerXAnchor.constraint(equalTo: iconView.trailingAnchor, constant: -1),
+            unreadBadge.centerYAnchor.constraint(equalTo: iconView.topAnchor, constant: 1),
+            unreadBadge.widthAnchor.constraint(equalToConstant: 9),
+            unreadBadge.heightAnchor.constraint(equalToConstant: 9),
 
             titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.s + 2),
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.m),
@@ -351,9 +427,14 @@ final class RecentSessionCell: GlassCardCell {
     func configure(_ card: RecentCard) {
         iconView.image = UIImage(systemName: card.entry.backendType.symbolName)?
             .withTintColor(card.entry.backendType.brandColor, renderingMode: .alwaysOriginal)
+        unreadBadge.isHidden = !card.unread
+        titleLabel.font = card.unread
+            ? .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+            : .preferredFont(forTextStyle: .subheadline)
         titleLabel.text = card.title
         detailLabel.text = card.detail
-        accessibilityLabel = "\(card.title), \(card.detail)"
+        accessibilityLabel = card.unread
+            ? "Unread: \(card.title), \(card.detail)" : "\(card.title), \(card.detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
