@@ -1761,7 +1761,6 @@ extension ChatViewController: ComposerViewDelegate {
             overlay.bottomAnchor.constraint(equalTo: composer.topAnchor),
         ])
         enhanceOverlay = overlay
-        enhancement.isShowing = true
         overlay.render(enhancement.status, original: original)
         view.layoutIfNeeded()
         let anchor = composer.sendControlAnchor
@@ -1809,7 +1808,6 @@ extension ChatViewController: PromptEnhanceOverlayDelegate {
     }
 
     func enhanceOverlayDidDismiss(_ overlay: PromptEnhanceOverlay) {
-        enhancement.isShowing = false
         if enhanceOverlay === overlay { enhanceOverlay = nil }
         composer.setEnhanceHint(enhancement.hasFreshSuggestions)
     }

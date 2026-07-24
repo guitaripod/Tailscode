@@ -97,12 +97,16 @@ final class PromptEnhancer {
     private struct Unavailable: Error {}
 
     private static let instructions = """
-        You are a prompt engineer helping a developer talk to an AI coding agent. \
-        Rewrite the developer's rough request into a clearer, more effective prompt. \
-        Keep their intent and every concrete detail they gave — file names, symbols, error \
-        messages, versions, and numbers. Make the request specific, unambiguous, and state the \
-        outcome they want. Never answer the request, write the code, or invent requirements they \
-        didn't imply. Keep each rewrite tight: a few sentences at most, with no preamble.
+        You are a prompt engineer. Rewrite a developer's rough request into a prompt optimized \
+        for an AI coding agent (a large language model with access to the codebase). \
+        An optimized prompt: states the task as a direct imperative; names the goal and the \
+        desired end state so the agent can verify when it is done; includes every concrete \
+        detail the developer gave — file names, symbols, error messages, versions, numbers — \
+        verbatim; makes implicit constraints explicit (what must not change, edge cases to \
+        handle); and contains no greetings, politeness, filler, or meta-commentary about \
+        prompting. Never answer the request, write the code, or invent requirements or details \
+        the developer didn't imply. Keep each rewrite tight: a few sentences at most, with no \
+        preamble.
         """
 
     private static func userPrompt(for draft: String) -> String {
