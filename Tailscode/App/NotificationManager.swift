@@ -21,6 +21,18 @@ enum NotificationManager {
         }
     }
 
+    /// An approval or question notification describes a request that stops
+    /// existing the moment it is answered — on the phone, on another device, or
+    /// by the agent timing out. Left in Notification Center it becomes a lie
+    /// the user taps into and finds nothing, so every request notification is
+    /// withdrawn once its request is no longer pending.
+    static func withdraw(identifiers: [String]) {
+        guard !identifiers.isEmpty else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
     static func notify(title: String, body: String, identifier: String, sessionID: String? = nil) {
         guard UIApplication.shared.applicationState != .active else { return }
         let content = UNMutableNotificationContent()

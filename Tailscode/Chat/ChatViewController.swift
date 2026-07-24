@@ -594,11 +594,15 @@ final class ChatViewController: UIViewController {
             }
         }
 
+        let previousPermissionID = pendingPermission?.id
+        let previousQuestionID = pendingQuestion?.id
         pendingPermission = state.pendingPermissions.first
         if pendingQuestion?.id != state.pendingQuestions.first?.id {
             questionSelection = QuestionCell.Selection()
         }
         pendingQuestion = state.pendingQuestions.first
+        withdrawResolvedRequests(
+            previousPermission: previousPermissionID, previousQuestion: previousQuestionID)
         var ids = orderedIDs
         for echo in viewModel.localEchoes { ids.append("local:\(echo.id.uuidString)") }
         let lastContentRole: MessageRole? =
@@ -960,6 +964,17 @@ final class ChatViewController: UIViewController {
         UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
         }
+    }
+
+    private func withdrawResolvedRequests(previousPermission: String?, previousQuestion: String?) {
+        var stale: [String] = []
+        if let previousPermission, previousPermission != pendingPermission?.id {
+            stale.append("perm:\(previousPermission)")
+        }
+        if let previousQuestion, previousQuestion != pendingQuestion?.id {
+            stale.append("question:\(previousQuestion)")
+        }
+        NotificationManager.withdraw(identifiers: stale)
     }
 
     private func isActivity(_ row: ChatRow) -> Bool {
