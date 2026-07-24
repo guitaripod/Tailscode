@@ -66,6 +66,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
         textView.autocorrectionType = .yes
+        textView.spellCheckingType = .yes
+        textView.inlinePredictionType = .yes
         textView.isScrollEnabled = false
         textView.delegate = self
         textView.translatesAutoresizingMaskIntoConstraints = false
@@ -248,6 +250,16 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         delegate?.composerDidSend(text)
         textView.text = ""
         textViewDidChange(textView)
+        resyncKeyboard()
+    }
+
+    /// Programmatic `text` mutations while the keyboard is up leave its
+    /// autocorrect/prediction context pointing at stale content, which shows up
+    /// as auto-correction silently stopping. Reloading the input views makes
+    /// the keyboard re-read the traits and current text.
+    private func resyncKeyboard() {
+        guard textView.isFirstResponder else { return }
+        textView.reloadInputViews()
     }
 
     @objc private func attachTapped() { delegate?.composerDidTapAttach() }
@@ -290,6 +302,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             self.textViewDidChange(self.textView)
             self.superview?.layoutIfNeeded()
         }
+        resyncKeyboard()
     }
 
     func insertQuote(_ text: String) {
@@ -298,12 +311,14 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         let existing = textView.text ?? ""
         textView.text = existing.isEmpty ? "\(quoted)\n\n" : "\(existing)\n\(quoted)\n\n"
         textViewDidChange(textView)
+        resyncKeyboard()
         textView.becomeFirstResponder()
     }
 
     func setDraft(_ text: String, focus: Bool = true) {
         textView.text = text
         textViewDidChange(textView)
+        resyncKeyboard()
         if focus { textView.becomeFirstResponder() }
     }
 
@@ -311,6 +326,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         if let selection = textView.selectedTextRange, !selection.isEmpty {
             textView.replace(selection, withText: "")
             textViewDidChange(textView)
+            resyncKeyboard()
         }
     }
 
@@ -321,6 +337,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             textView.text = (textView.text ?? "") + text
         }
         textViewDidChange(textView)
+        resyncKeyboard()
     }
 
     func appendPath(_ path: String) {
@@ -328,6 +345,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         let sep = existing.isEmpty || existing.hasSuffix(" ") ? "" : " "
         textView.text = existing + sep + path
         textViewDidChange(textView)
+        resyncKeyboard()
         textView.becomeFirstResponder()
     }
 }
