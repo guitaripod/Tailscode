@@ -162,14 +162,60 @@ final class HomeViewController: UIViewController {
     }
 
     private var lastOpencodeScan: Date?
+    private var loadTask: Task<Void, Never>?
+    private var enrichmentTask: Task<Void, Never>?
 
+    /// The session fan-out alone decides when the pull-to-refresh spinner stops:
+    /// quota and scan work is best-effort enrichment, and an unreachable server
+    /// makes each of those calls sit on the 30s request timeout. Blocking the
+    /// spinner behind them made a single dead tailnet peer look like a broken
+    /// refresh for two minutes.
+    /// `viewWillAppear`, scene activation, pull-to-refresh and post-action
+    /// reloads can all fire within the same second; against an unreachable
+    /// server every one of them parks on the request timeout, so they share a
+    /// single in-flight load rather than queueing up behind each other.
     private func load() async {
+        if let inFlight = loadTask {
+            await inFlight.value
+            refreshControl.endRefreshing()
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performLoad()
+        }
+        loadTask = task
+        await task.value
+        if loadTask == task { loadTask = nil }
+    }
+
+    private func performLoad() async {
         await viewModel.load()
-        await loadQuotas()
-        await scanOpencodeIfNeeded()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
         updateComposer()
+        applySnapshot()
+        startEnrichment()
+    }
+
+    /// Deliberately not awaited by `performLoad`: quota and scan work is
+    /// enrichment layered onto an already-painted list, so it must never hold
+    /// the refresh spinner — nor a caller that coalesced onto this load, which
+    /// is how pull-to-refresh ended up waiting on an unreachable server twice
+    /// over.
+    private func startEnrichment() {
+        enrichmentTask?.cancel()
+        enrichmentTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadEnrichment()
+        }
+    }
+
+    private func loadEnrichment() async {
+        async let quotas: Void = loadQuotas()
+        async let scan: Void = scanOpencodeIfNeeded()
+        _ = await (quotas, scan)
+        guard !Task.isCancelled else { return }
         applySnapshot()
     }
 
@@ -184,23 +230,17 @@ final class HomeViewController: UIViewController {
     /// A bridge answers for every provider its host machine is signed into,
     /// but not every bridge host has live quota data — take the first Claude
     /// profile whose bridge does.
+    /// Delegates to the same deadline-bounded fetcher the widget and the
+    /// background refresh use — it already queries every bridge concurrently,
+    /// keeps the partial haul when the deadline fires, and resolves the
+    /// first-bridge-wins-per-provider ordering. Home previously carried a
+    /// third, unbounded copy of that logic. An empty result means nothing
+    /// answered in time, which must not blank a good card.
     private func loadQuotas() async {
-        var byProvider: [String: UsageQuota] = [:]
-        var order: [String] = []
-        for profile in viewModel.servers where profile.backend == .claudeCode {
-            guard let backend = viewModel.backend(forProfileID: profile.id) else { continue }
-            var fetched: [UsageQuota] = []
-            if let primary = try? await backend.usageQuota() { fetched.append(primary) }
-            if let extra = try? await backend.additionalUsageQuotas() {
-                fetched.append(contentsOf: extra)
-            }
-            for quota in fetched where byProvider[quota.providerName] == nil {
-                byProvider[quota.providerName] = quota
-                order.append(quota.providerName)
-            }
-        }
-        quotas = order.compactMap { byProvider[$0] }
-        if !quotas.isEmpty { UsageWidgetStore.writeLive(quotas) }
+        let fetched = await LiveQuotaFetcher.fetch(deadline: 10)
+        guard !fetched.isEmpty else { return }
+        quotas = fetched
+        UsageWidgetStore.writeLive(fetched)
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {

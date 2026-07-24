@@ -83,7 +83,7 @@ final class SessionListViewModel {
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
             for source in sources {
                 group.addTask {
-                    do { return (source, .success(try await source.backend.listSessions())) }
+                    do { return (source, .success(try await Self.listWithDeadline(source))) }
                     catch { return (source, .failure(error)) }
                 }
             }
@@ -142,6 +142,31 @@ final class SessionListViewModel {
         } catch {
             onError?(Self.readable(error))
             await load()
+        }
+    }
+
+    private struct SourceTimeout: LocalizedError {
+        var errorDescription: String? { "The server did not answer in time." }
+    }
+
+    /// A session list is a refresh, not a long-running turn, so it must not
+    /// inherit the transport's 30s request timeout: one peer that has dropped
+    /// off the tailnet would otherwise hold the whole fan-out — and the
+    /// pull-to-refresh spinner — for half a minute per attempt. A source that
+    /// misses this deadline is treated exactly like any other failure, so its
+    /// cached entries survive and the reachable servers paint immediately.
+    private static let sourceDeadline: Duration = .seconds(8)
+
+    private static func listWithDeadline(_ source: Source) async throws -> [AgentSession] {
+        try await withThrowingTaskGroup(of: [AgentSession].self) { group in
+            group.addTask { try await source.backend.listSessions() }
+            group.addTask {
+                try await Task.sleep(for: sourceDeadline)
+                throw SourceTimeout()
+            }
+            guard let first = try await group.next() else { throw SourceTimeout() }
+            group.cancelAll()
+            return first
         }
     }
 
