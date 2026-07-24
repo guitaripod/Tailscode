@@ -158,6 +158,7 @@ final class ChatViewModel {
                     self.refreshTitleFromServer(delay: .seconds(12))
                 }
                 self.state = state
+                if state.status == .running { self.queueHeldAfterFailure = false }
                 self.onState?(state)
                 let awaiting =
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
@@ -265,11 +266,38 @@ final class ChatViewModel {
     }
 
     private func flushQueue() {
-        guard !isBusy, !queued.isEmpty else { return }
+        guard !isBusy, !queued.isEmpty, !queueHeldAfterFailure else { return }
         let next = queued.removeFirst()
         onState?(state)
         deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
+
+    /// A failed send must never drain the queue into the same dead connection.
+    /// Flushing on failure sent the next message straight back into the fault,
+    /// and each successive failure overwrote the previous one's recovery slot —
+    /// message 1 to the composer, message 2 to the pasteboard, message 3 over
+    /// that — so one tailnet blip silently destroyed everything the user had
+    /// queued. The queue is preserved and drains from the state loop once the
+    /// server answers again. With messages already waiting behind it, the
+    /// failure returns to the head of the queue instead of the composer, so
+    /// the user's intended order survives.
+    private func recoverFailedSend(_ pending: QueuedMessage) {
+        if queued.isEmpty {
+            onSendFailed?(pending.text)
+        } else {
+            queued.insert(pending, at: 0)
+            queueHeldAfterFailure = true
+            onState?(state)
+        }
+    }
+
+    /// Gates auto-flush after a failure without depending on
+    /// `ConversationState.lastFailure`, which the Kit only clears on a new
+    /// send, a `.live` transition, or a successful refresh — a failure while
+    /// the connection never left `.live` would leave it set and wedge the
+    /// queue forever. This clears the moment a turn is genuinely running
+    /// again, and any explicit user send clears it outright.
+    private var queueHeldAfterFailure = false
 
     func stop() {
         streamGeneration += 1
@@ -329,11 +357,14 @@ final class ChatViewModel {
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment]
     ) {
         AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
+        queueHeldAfterFailure = false
         sendTask?.cancel()
         sendGeneration += 1
         let generation = sendGeneration
         dismissedFailure = nil
-        lastSent = QueuedMessage(text: text, model: model, effort: effort, attachments: attachments)
+        let pending = QueuedMessage(
+            text: text, model: model, effort: effort, attachments: attachments)
+        lastSent = pending
         let echo = LocalEcho(
             text: text, baselineUserCount: state.messages.count { $0.role == .user })
         localEchoes.append(echo)
@@ -390,8 +421,7 @@ final class ChatViewModel {
                         activityLive = false
                     }
                     onState?(state)
-                    onSendFailed?(text)
-                    flushQueue()
+                    recoverFailedSend(pending)
                 }
             } catch {
                 let cancelled = error is CancellationError
@@ -409,10 +439,9 @@ final class ChatViewModel {
                 }
                 onState?(state)
                 if !cancelled {
-                    AppLogger.chat.error("send failed: \(error)")
-                    onSendFailed?(text)
+                    AppLogger.chat.error("send failed: \(Self.readable(error))")
                     onError?(Self.readable(error))
-                    flushQueue()
+                    recoverFailedSend(pending)
                 }
             }
         }
