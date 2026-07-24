@@ -36,6 +36,8 @@ final class SessionListViewModel {
 
     init(sources: [Source]) {
         self.sources = sources
+        let profileIDs = Set(sources.map(\.profile.id))
+        entries = SessionListCache.load().filter { profileIDs.contains($0.profileID) }
     }
 
     var servers: [ConnectionProfile] { sources.map(\.profile) }
@@ -108,6 +110,7 @@ final class SessionListViewModel {
 
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = failed
+        SessionListCache.save(entries)
         AppLogger.session.info("loaded \(entries.count) sessions across \(sources.count) servers")
         onChange?()
     }

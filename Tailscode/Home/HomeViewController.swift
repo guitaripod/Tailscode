@@ -187,6 +187,9 @@ final class HomeViewController: UIViewController {
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(recent.map { .recent(RecentCard(entry: $0)) }, toSection: .recent)
+        } else if !hasLoadedOnce, !viewModel.servers.isEmpty {
+            snapshot.appendSections([.recent])
+            snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
         if !quotas.isEmpty {
             snapshot.appendSections([.usage])
@@ -353,6 +356,9 @@ final class HomeViewController: UIViewController {
         let quotaCell = UICollectionView.CellRegistration<QuotaCardCell, QuotaCard> {
             cell, _, card in cell.configure(card)
         }
+        let placeholderCell = UICollectionView.CellRegistration<RecentPlaceholderCell, Int> {
+            _, _, _ in
+        }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
@@ -369,6 +375,9 @@ final class HomeViewController: UIViewController {
             case .usage(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: quotaCell, for: indexPath, item: card)
+            case .placeholder(let index):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: placeholderCell, for: indexPath, item: index)
             }
         }
 
@@ -412,6 +421,8 @@ extension HomeViewController: UICollectionViewDelegate {
             pushChats(filterProfileID: card.profileID)
         case .usage:
             pushUsage()
+        case .placeholder:
+            break
         }
     }
 
@@ -441,7 +452,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .usage:
+        case .usage, .placeholder:
             return nil
         }
     }

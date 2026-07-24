@@ -10,6 +10,7 @@ enum HomeItem: Hashable {
     case server(ServerCard)
     case recent(RecentCard)
     case usage(QuotaCard)
+    case placeholder(Int)
 }
 
 struct LiveCard: Hashable {
@@ -355,6 +356,65 @@ final class RecentSessionCell: GlassCardCell {
         accessibilityLabel = "\(card.title), \(card.detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
+    }
+}
+
+/// Skeleton stand-in for a `RecentSessionCell` while the first-ever session
+/// fetch is in flight (no cached list yet). Mirrors that cell's geometry so
+/// the swap to real rows doesn't shift the layout.
+final class RecentPlaceholderCell: GlassCardCell {
+    private let iconBlock = UIView()
+    private let titleBar = UIView()
+    private let detailBar = UIView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        for block in [iconBlock, titleBar, detailBar] {
+            block.backgroundColor = Theme.Color.separator
+            block.layer.cornerCurve = .continuous
+            block.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(block)
+        }
+        iconBlock.layer.cornerRadius = 10
+        titleBar.layer.cornerRadius = 7
+        detailBar.layer.cornerRadius = 5
+
+        NSLayoutConstraint.activate([
+            iconBlock.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            iconBlock.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconBlock.widthAnchor.constraint(equalToConstant: 20),
+            iconBlock.heightAnchor.constraint(equalToConstant: 20),
+
+            titleBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.s + 4),
+            titleBar.leadingAnchor.constraint(equalTo: iconBlock.trailingAnchor, constant: Theme.Spacing.m),
+            titleBar.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.5),
+            titleBar.heightAnchor.constraint(equalToConstant: 14),
+
+            detailBar.topAnchor.constraint(equalTo: titleBar.bottomAnchor, constant: 5),
+            detailBar.leadingAnchor.constraint(equalTo: titleBar.leadingAnchor),
+            detailBar.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.3),
+            detailBar.heightAnchor.constraint(equalToConstant: 10),
+            detailBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -(Theme.Spacing.s + 4)),
+        ])
+
+        isAccessibilityElement = true
+        accessibilityLabel = "Loading recent chats"
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        contentView.layer.removeAnimation(forKey: "shimmer")
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1.0
+        pulse.toValue = 0.45
+        pulse.duration = 0.8
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        contentView.layer.add(pulse, forKey: "shimmer")
     }
 }
 
