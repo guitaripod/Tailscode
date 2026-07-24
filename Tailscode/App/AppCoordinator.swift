@@ -87,6 +87,20 @@ final class AppCoordinator {
     #endif
 
     private var pendingSessionLink: (url: URL, parkedAt: Date)?
+    private var pendingComposeFocus = false
+
+    /// The New Chat icon quick action: focus the Home composer, or park the
+    /// intent when it arrives before the main UI exists (cold launch).
+    @discardableResult
+    func handleShortcut(_ type: String) -> Bool {
+        guard type == "com.guitaripod.tailscode.compose" else { return false }
+        if let home {
+            home.focusComposer()
+        } else {
+            pendingComposeFocus = true
+        }
+        return true
+    }
 
     /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat.
     /// Links that arrive before the session list exists are parked and
@@ -138,6 +152,10 @@ final class AppCoordinator {
         if let pending = pendingSessionLink {
             pendingSessionLink = nil
             if Date().timeIntervalSince(pending.parkedAt) < 30 { handle(pending.url) }
+        }
+        if pendingComposeFocus {
+            pendingComposeFocus = false
+            home?.focusComposer()
         }
     }
 

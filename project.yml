@@ -41,6 +41,10 @@ targets:
           - CFBundleURLName: com.guitaripod.tailscode
             CFBundleURLSchemes: [tailscode]
         NSSupportsLiveActivitiesFrequentUpdates: true
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.guitaripod.tailscode.compose
+            UIApplicationShortcutItemTitle: New Chat
+            UIApplicationShortcutItemIconSymbolName: square.and.pencil
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:

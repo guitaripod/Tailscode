@@ -18,6 +18,17 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let url = connectionOptions.urlContexts.first?.url {
             coordinator.handle(url)
         }
+        if let shortcut = connectionOptions.shortcutItem {
+            coordinator.handleShortcut(shortcut.type)
+        }
+    }
+
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(coordinator?.handleShortcut(shortcutItem.type) ?? false)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
