@@ -11,6 +11,7 @@ final class AppCoordinator {
     }
 
     func start() {
+        SessionSeenStore.bootstrapIfNeeded()
         window.tintColor = Theme.Color.accent
         window.overrideUserInterfaceStyle = AppPreferences.appearance.style
         #if DEBUG

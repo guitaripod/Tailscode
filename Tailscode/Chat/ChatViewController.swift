@@ -142,6 +142,7 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         saveDraft()
+        SessionSeenStore.markSeen(viewModel.session.id)
         if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
             viewModel.isBound = false
             if isReadOnly || !viewModel.isBusy { viewModel.stop() }
