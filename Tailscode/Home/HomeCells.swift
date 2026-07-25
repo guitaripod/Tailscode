@@ -12,6 +12,7 @@ enum HomeItem: Hashable {
     case recent(RecentCard)
     case usage(QuotaCard)
     case placeholder(Int)
+    case usagePlaceholder(Int)
 }
 
 struct LiveCard: Hashable {
@@ -164,6 +165,7 @@ final class LiveSessionCell: GlassCardCell {
     private let stateLabel = UILabel()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
+    private var presence: LiveCard.Presence?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -213,12 +215,33 @@ final class LiveSessionCell: GlassCardCell {
             case .working: (Theme.Color.success, "LIVE")
             case .syncing: (Theme.Color.tertiaryLabel, "SYNCING")
             }
-        dot.backgroundColor = color
-        stateLabel.textColor = color
-        stateLabel.text = state
+        applyPresence(color: color, state: state, animated: presence != nil && presence != card.presence)
+        presence = card.presence
         accessibilityLabel = "\(state): \(card.title), \(card.detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        presence = nil
+    }
+
+    /// A card that settles from SYNCING to LIVE, or lights up as NEEDS YOU,
+    /// dissolves between the two rather than swapping mid-glance.
+    private func applyPresence(color: UIColor, state: String, animated: Bool) {
+        let apply = { [dot, stateLabel] in
+            dot.backgroundColor = color
+            stateLabel.textColor = color
+            stateLabel.text = state
+        }
+        guard animated else {
+            apply()
+            return
+        }
+        UIView.transition(
+            with: contentView, duration: 0.25, options: [.transitionCrossDissolve, .allowUserInteraction],
+            animations: apply)
     }
 
     override func didMoveToWindow() {
@@ -443,23 +466,43 @@ final class RecentSessionCell: GlassCardCell {
 /// Skeleton stand-in for a `RecentSessionCell` while the first-ever session
 /// fetch is in flight (no cached list yet). Mirrors that cell's geometry so
 /// the swap to real rows doesn't shift the layout.
-final class RecentPlaceholderCell: GlassCardCell {
-    private let iconBlock = UIView()
-    private let titleBar = UIView()
-    private let detailBar = UIView()
+/// A card standing in for one that is still loading: the real card's shape,
+/// blocked out and pulsing. Reserving the space up front is what keeps arriving
+/// data from shoving the list around.
+class ShimmerCardCell: GlassCardCell {
+    /// A blocked-out stand-in for one piece of the real card's content.
+    func block(cornerRadius: CGFloat) -> UIView {
+        let view = UIView()
+        view.backgroundColor = Theme.Color.separator
+        view.layer.cornerRadius = cornerRadius
+        view.layer.cornerCurve = .continuous
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        contentView.layer.removeAnimation(forKey: "shimmer")
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1.0
+        pulse.toValue = 0.45
+        pulse.duration = 0.8
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        contentView.layer.add(pulse, forKey: "shimmer")
+    }
+}
+
+final class RecentPlaceholderCell: ShimmerCardCell {
+    private lazy var iconBlock = block(cornerRadius: 10)
+    private lazy var titleBar = block(cornerRadius: 7)
+    private lazy var detailBar = block(cornerRadius: 5)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        for block in [iconBlock, titleBar, detailBar] {
-            block.backgroundColor = Theme.Color.separator
-            block.layer.cornerCurve = .continuous
-            block.translatesAutoresizingMaskIntoConstraints = false
-            contentView.addSubview(block)
-        }
-        iconBlock.layer.cornerRadius = 10
-        titleBar.layer.cornerRadius = 7
-        detailBar.layer.cornerRadius = 5
-
+        [iconBlock, titleBar, detailBar].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
             iconBlock.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             iconBlock.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
@@ -483,19 +526,56 @@ final class RecentPlaceholderCell: GlassCardCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+}
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        guard window != nil else { return }
-        contentView.layer.removeAnimation(forKey: "shimmer")
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.fromValue = 1.0
-        pulse.toValue = 0.45
-        pulse.duration = 0.8
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        contentView.layer.add(pulse, forKey: "shimmer")
+/// Mirrors ``QuotaCardCell``'s title and three gauge rows so the usage section
+/// holds its final height from the first frame — the live quota fetch and the
+/// opencode scan land seconds apart, and each used to shove the list.
+final class QuotaPlaceholderCell: ShimmerCardCell {
+    private lazy var titleBar = block(cornerRadius: 7)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let rows = UIStackView(arrangedSubviews: (0..<3).map { _ in gaugeRow() })
+        rows.axis = .vertical
+        rows.spacing = Theme.Spacing.s
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(titleBar)
+        contentView.addSubview(rows)
+
+        NSLayoutConstraint.activate([
+            titleBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m + 2),
+            titleBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            titleBar.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.35),
+            titleBar.heightAnchor.constraint(equalToConstant: 14),
+
+            rows.topAnchor.constraint(equalTo: titleBar.bottomAnchor, constant: Theme.Spacing.m),
+            rows.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            rows.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            rows.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
+        ])
+
+        isAccessibilityElement = true
+        accessibilityLabel = "Loading usage"
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private func gaugeRow() -> UIView {
+        let label = block(cornerRadius: 4)
+        label.heightAnchor.constraint(equalToConstant: 9).isActive = true
+        label.widthAnchor.constraint(equalToConstant: 64).isActive = true
+
+        let labelRow = UIStackView(arrangedSubviews: [label, UIView()])
+        labelRow.axis = .horizontal
+
+        let track = block(cornerRadius: 3)
+        track.heightAnchor.constraint(equalToConstant: 6).isActive = true
+
+        let column = UIStackView(arrangedSubviews: [labelRow, track])
+        column.axis = .vertical
+        column.spacing = 4
+        return column
     }
 }
 

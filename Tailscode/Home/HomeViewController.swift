@@ -165,6 +165,9 @@ final class HomeViewController: UIViewController {
     private var lastOpencodeScan: Date?
     private var loadTask: Task<Void, Never>?
     private var enrichmentTask: Task<Void, Never>?
+    /// True from launch so the usage section reserves its height on the first
+    /// frame instead of shoving the list when the quotas land.
+    private var isEnrichingUsage = true
 
     /// The session fan-out alone decides when the pull-to-refresh spinner stops:
     /// quota and scan work is best-effort enrichment, and an unreachable server
@@ -206,6 +209,7 @@ final class HomeViewController: UIViewController {
     /// over.
     private func startEnrichment() {
         enrichmentTask?.cancel()
+        isEnrichingUsage = true
         enrichmentTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.loadEnrichment()
@@ -217,6 +221,7 @@ final class HomeViewController: UIViewController {
         async let scan: Void = scanOpencodeIfNeeded()
         _ = await (quotas, scan)
         guard !Task.isCancelled else { return }
+        isEnrichingUsage = false
         applySnapshot()
     }
 
@@ -230,6 +235,7 @@ final class HomeViewController: UIViewController {
                 backends: entries.map { ($0.profile.name, $0.backend) })
         else { return }
         opencodeQuota = UsageScanner.quota(from: result)
+        applySnapshot()
     }
 
     /// A bridge answers for every provider its host machine is signed into,
@@ -246,6 +252,7 @@ final class HomeViewController: UIViewController {
         guard !fetched.isEmpty else { return }
         quotas = fetched
         UsageWidgetStore.writeLive(fetched)
+        applySnapshot()
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {
@@ -312,13 +319,41 @@ final class HomeViewController: UIViewController {
         if !usageCards.isEmpty {
             snapshot.appendSections([.usage])
             snapshot.appendItems(usageCards.map(HomeItem.usage), toSection: .usage)
+            let missing = expectedUsageCards - usageCards.count
+            if isEnrichingUsage, missing > 0 {
+                snapshot.appendItems((0..<missing).map(HomeItem.usagePlaceholder), toSection: .usage)
+            }
+        } else if isEnrichingUsage, expectedUsageCards > 0 {
+            snapshot.appendSections([.usage])
+            snapshot.appendItems(
+                (0..<expectedUsageCards).map(HomeItem.usagePlaceholder), toSection: .usage)
         }
-        let existing = Set(dataSource.snapshot().itemIdentifiers)
+        let previous = dataSource.snapshot()
+        let existing = Set(previous.itemIdentifiers)
         let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }
         if !carried.isEmpty { snapshot.reconfigureItems(carried) }
-        dataSource.apply(snapshot, animatingDifferences: false)
+        dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
         updateEmptyState(itemCount: snapshot.numberOfItems)
         consumePendingDeepLink()
+    }
+
+    /// Only structural changes animate, and only once something is on screen to
+    /// animate from: a card arriving should slide the list open rather than snap
+    /// it, but the per-second content churn of a running agent must not.
+    private func shouldAnimate(
+        from previous: NSDiffableDataSourceSnapshot<HomeSection, HomeItem>,
+        to next: NSDiffableDataSourceSnapshot<HomeSection, HomeItem>
+    ) -> Bool {
+        guard view.window != nil, !previous.itemIdentifiers.isEmpty else { return false }
+        return previous.sectionIdentifiers != next.sectionIdentifiers
+            || previous.itemIdentifiers != next.itemIdentifiers
+    }
+
+    /// How many usage cards the connected servers can eventually produce — the
+    /// count the section reserves space for while the fetch and scan are out.
+    private var expectedUsageCards: Int {
+        let backends = Set(viewModel.servers.map(\.backend))
+        return (backends.contains(.claudeCode) ? 1 : 0) + (backends.contains(.openCode) ? 1 : 0)
     }
 
     private func projectCards() -> [ProjectCard] {
@@ -586,6 +621,9 @@ final class HomeViewController: UIViewController {
         let placeholderCell = UICollectionView.CellRegistration<RecentPlaceholderCell, Int> {
             _, _, _ in
         }
+        let usagePlaceholderCell = UICollectionView.CellRegistration<QuotaPlaceholderCell, Int> {
+            _, _, _ in
+        }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
@@ -608,6 +646,9 @@ final class HomeViewController: UIViewController {
             case .placeholder(let index):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: placeholderCell, for: indexPath, item: index)
+            case .usagePlaceholder(let index):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: usagePlaceholderCell, for: indexPath, item: index)
             }
         }
 
@@ -825,7 +866,7 @@ extension HomeViewController: UICollectionViewDelegate {
             openChat(for: card.entry)
         case .usage:
             pushUsage()
-        case .placeholder:
+        case .placeholder, .usagePlaceholder:
             break
         }
     }
@@ -863,7 +904,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .alert, .usage, .placeholder:
+        case .alert, .usage, .placeholder, .usagePlaceholder:
             return nil
         }
     }
