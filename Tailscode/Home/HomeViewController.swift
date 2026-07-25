@@ -48,6 +48,7 @@ final class HomeViewController: UIViewController {
         configureDataSource()
         configureComposer()
         bind()
+        seedCachedQuotas()
         applySnapshot()
         updateComposer()
         Task { await load() }
@@ -187,6 +188,17 @@ final class HomeViewController: UIViewController {
     private var isEnriching = false
     private var loadTask: Task<Void, Never>?
     private var liveRefreshTask: Task<Void, Never>?
+
+    /// The last numbers the app landed anywhere — background refresh, silent
+    /// push, widget — shared on disk. Painting them first means the usage
+    /// section carries real figures from the first frame instead of waiting on a
+    /// live fetch and a multi-server scan that between them can take a minute.
+    private func seedCachedQuotas() {
+        let cached = UsageWidgetStore.cachedQuotas()
+        guard !cached.isEmpty else { return }
+        quotas = cached.filter { $0.providerName != UsageWidgetStore.opencodeProviderName }
+        opencodeQuota = cached.first { $0.providerName == UsageWidgetStore.opencodeProviderName }
+    }
 
     /// Home is a status board, so it keeps itself current while it is on screen:
     /// a chat started from a terminal, a turn that finishes, an agent that stops

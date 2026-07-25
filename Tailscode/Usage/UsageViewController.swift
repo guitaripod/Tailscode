@@ -40,6 +40,10 @@ final class UsageViewController: UIViewController {
     private let updatedLabel = UILabel()
     private var loadTask: Task<Void, Never>?
     private var lastRefreshed: Date?
+    /// Cards currently showing real numbers, whether from the saved snapshot or
+    /// a live answer. A refresh that fails must leave these alone.
+    private var filledCards: Set<CardKind> = []
+    private var hasSeeded = false
 
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
     private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
@@ -178,9 +182,10 @@ final class UsageViewController: UIViewController {
         emptyStateView.isHidden = true
         scrollView.isHidden = false
         errorLabel.isHidden = true
-        claudeCard.setLoading(claudeProfile != nil)
-        grokCard.setLoading(claudeProfile != nil)
-        opencodeCard.setLoading(opencodeProfile != nil)
+        seedFromSnapshot()
+        claudeCard.setLoading(claudeProfile != nil && !filledCards.contains(.claude))
+        grokCard.setLoading(claudeProfile != nil && !filledCards.contains(.grok))
+        opencodeCard.setLoading(opencodeProfile != nil && !filledCards.contains(.opencode))
         claudeCard.isHidden = claudeProfile == nil
         grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
@@ -199,6 +204,69 @@ final class UsageViewController: UIViewController {
         refresher.endRefreshing()
     }
 
+    private enum CardKind {
+        case claude, grok, opencode
+    }
+
+    /// Opens every card on the last numbers the app landed anywhere — the shared
+    /// snapshot the widget, the background refresh, and silent pushes all write
+    /// — instead of three spinners re-derived from scratch on every visit. Runs
+    /// once per screen: a later pull-to-refresh must not roll live cards back to
+    /// the older saved figures on its way to fetching new ones.
+    private func seedFromSnapshot() {
+        guard !hasSeeded else { return }
+        hasSeeded = true
+        guard let entry = UsageWidgetStore.read() else { return }
+        for provider in entry.providers where !provider.gauges.isEmpty {
+            let kind = Self.kind(for: provider.providerName)
+            card(for: kind).apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)))
+            filledCards.insert(kind)
+        }
+        guard lastRefreshed == nil, !filledCards.isEmpty else { return }
+        lastRefreshed = entry.date
+        refreshUpdatedLabel()
+    }
+
+    private static func kind(for providerName: String) -> CardKind {
+        switch providerName {
+        case "Grok": return .grok
+        case UsageWidgetStore.opencodeProviderName: return .opencode
+        default: return .claude
+        }
+    }
+
+    private static func accent(for kind: CardKind) -> UIColor {
+        switch kind {
+        case .claude: return Theme.Color.claude
+        case .grok: return Theme.Color.grok
+        case .opencode: return Theme.Color.opencode
+        }
+    }
+
+    private func card(for kind: CardKind) -> ProviderCard {
+        switch kind {
+        case .claude: return claudeCard
+        case .grok: return grokCard
+        case .opencode: return opencodeCard
+        }
+    }
+
+    private static func snapshotModel(
+        _ provider: UsageWidgetEntry.ProviderSnapshot, accent: UIColor
+    ) -> CardModel {
+        CardModel(
+            subtitle: provider.subtitle,
+            pill: provider.isLive ? "LIVE" : "EST",
+            accent: accent,
+            gauges: provider.gauges.prefix(3).map {
+                GaugeVM(
+                    name: $0.label, fraction: $0.fraction, percentText: $0.percentText,
+                    caption: $0.caption)
+            },
+            details: [],
+            note: "Last saved figures — refreshing from the server now.")
+    }
+
     private func preferredProfile(
         _ backend: AgentType, profiles: [ConnectionProfile], controller: ConnectionController
     ) -> ConnectionProfile? {
@@ -215,7 +283,7 @@ final class UsageViewController: UIViewController {
     private func fillClaude(profiles: [ConnectionProfile], controller: ConnectionController) async -> Error? {
         guard let primary = profiles.first else { return nil }
         guard controller.makeBackend(for: primary) != nil else {
-            claudeCard.renderError()
+            renderFailure(.claude, on: claudeCard)
             return CredentialsUnavailableError(profileName: primary.name)
         }
         for profile in profiles {
@@ -226,12 +294,22 @@ final class UsageViewController: UIViewController {
             AppLogger.session.info(
                 "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
             claudeCard.apply(Self.liveModel(quota, accent: Theme.Color.claude))
+            filledCards.insert(.claude)
             return nil
         }
         guard !Task.isCancelled else { return nil }
         AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
-        claudeCard.renderError()
+        renderFailure(.claude, on: claudeCard)
         return QuotaUnavailableError()
+    }
+
+    /// A card that is already showing saved numbers keeps them: wiping it to
+    /// dashes because one refresh missed is strictly less information than
+    /// leaving the last known reading up.
+    private func renderFailure(_ kind: CardKind, on card: ProviderCard) {
+        card.setLoading(false)
+        guard !filledCards.contains(kind) else { return }
+        card.renderError()
     }
 
     /// Grok quota rides on the Claude Code bridge, which reads the server machine's grok
@@ -246,18 +324,21 @@ final class UsageViewController: UIViewController {
             AppLogger.session.info(
                 "usage: Grok live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
             grokCard.apply(Self.liveModel(quota, accent: Theme.Color.grok))
+            filledCards.insert(.grok)
+            grokCard.isHidden = false
             return
         }
         guard !Task.isCancelled else { return }
         AppLogger.session.info("usage: no Grok quota from any Claude Code bridge")
-        grokCard.isHidden = true
+        grokCard.setLoading(false)
+        grokCard.isHidden = !filledCards.contains(.grok)
     }
 
     private func fillOpencode(profile: ConnectionProfile?, controller: ConnectionController) async -> Error? {
         guard let profile else { return nil }
         let entries = controller.opencodeBackends()
         guard !entries.isEmpty else {
-            opencodeCard.renderError()
+            renderFailure(.opencode, on: opencodeCard)
             return CredentialsUnavailableError(profileName: profile.name)
         }
         guard
@@ -265,11 +346,12 @@ final class UsageViewController: UIViewController {
                 backends: entries.map { ($0.profile.name, $0.backend) })
         else {
             guard !Task.isCancelled else { return nil }
-            opencodeCard.renderError()
+            renderFailure(.opencode, on: opencodeCard)
             return nil
         }
         guard !Task.isCancelled else { return nil }
         opencodeCard.apply(Self.opencodeModel(result))
+        filledCards.insert(.opencode)
         return nil
     }
 
