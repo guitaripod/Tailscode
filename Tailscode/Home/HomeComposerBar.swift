@@ -6,10 +6,11 @@ protocol HomeComposerBarDelegate: AnyObject {
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar)
 }
 
-/// Home's docked "start a chat" bar: a glass surface carrying a retargetable
-/// context chip — which server and project the first message goes to — above
-/// a growing text view. No session exists until the user commits a message,
-/// so aiming and typing cost the server nothing.
+/// Home's docked "start a chat" bar: a glass surface carrying two retargetable
+/// chips — where the first message goes (server and project) and what will
+/// answer it (model and reasoning effort) — above a growing text view. No
+/// session exists until the user commits a message, so aiming and typing cost
+/// the server nothing.
 @MainActor
 final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     weak var delegate: HomeComposerBarDelegate?
@@ -17,6 +18,11 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private let bar = Theme.Glass.view(interactive: false)
     private let chipButton = UIButton(type: .system)
     private let chevron = UIImageView()
+    private let modelButton = UIButton(type: .system)
+    private let modelChevron = UIImageView()
+    private let destinationRow = UIStackView()
+    private let modelRow = UIStackView()
+    private let topRow = UIStackView()
     private let textView = UITextView()
     private let placeholder = UILabel()
     private let sendButton = UIButton(type: .system)
@@ -44,17 +50,40 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         var chip = UIButton.Configuration.plain()
         chip.contentInsets = .zero
         chip.imagePadding = 5
+        chip.titleLineBreakMode = .byTruncatingTail
         chip.baseForegroundColor = Theme.Color.secondaryLabel
         chipButton.configuration = chip
         chipButton.showsMenuAsPrimaryAction = true
         chipButton.contentHorizontalAlignment = .leading
-        chipButton.translatesAutoresizingMaskIntoConstraints = false
+        chipButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        chevron.image = UIImage(
-            systemName: "chevron.up.chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
-        chevron.tintColor = Theme.Color.tertiaryLabel
-        chevron.translatesAutoresizingMaskIntoConstraints = false
+        var model = UIButton.Configuration.plain()
+        model.contentInsets = .zero
+        model.imagePadding = 4
+        model.titleLineBreakMode = .byTruncatingTail
+        model.baseForegroundColor = Theme.Color.secondaryLabel
+        model.image = UIImage(
+            systemName: "cpu",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
+        modelButton.configuration = model
+        modelButton.showsMenuAsPrimaryAction = true
+        modelButton.contentHorizontalAlignment = .trailing
+        modelButton.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+
+        configureChevron(chevron)
+        configureChevron(modelChevron)
+        configureChipRow(destinationRow, button: chipButton, chevron: chevron)
+        configureChipRow(modelRow, button: modelButton, chevron: modelChevron)
+        modelRow.isHidden = true
+
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+        topRow.axis = .horizontal
+        topRow.alignment = .center
+        topRow.spacing = Theme.Spacing.s
+        [destinationRow, spacer, modelRow].forEach(topRow.addArrangedSubview)
+        topRow.translatesAutoresizingMaskIntoConstraints = false
 
         textView.font = Theme.Font.body()
         textView.adjustsFontForContentSizeCategory = true
@@ -83,7 +112,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
 
-        [chipButton, chevron, textView, placeholder, sendButton].forEach(addSubview)
+        [topRow, textView, placeholder, sendButton].forEach(addSubview)
 
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         NSLayoutConstraint.activate([
@@ -92,15 +121,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
             bar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.s),
 
-            chipButton.topAnchor.constraint(equalTo: bar.topAnchor, constant: Theme.Spacing.s + 2),
-            chipButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
-            chipButton.heightAnchor.constraint(equalToConstant: 20),
-            chevron.leadingAnchor.constraint(equalTo: chipButton.trailingAnchor, constant: 3),
-            chevron.centerYAnchor.constraint(equalTo: chipButton.centerYAnchor),
-            chevron.trailingAnchor.constraint(
-                lessThanOrEqualTo: bar.trailingAnchor, constant: -Theme.Spacing.m),
+            topRow.topAnchor.constraint(equalTo: bar.topAnchor, constant: Theme.Spacing.s + 2),
+            topRow.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
+            topRow.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.m),
+            topRow.heightAnchor.constraint(equalToConstant: 20),
 
-            textView.topAnchor.constraint(equalTo: chipButton.bottomAnchor, constant: 8),
+            textView.topAnchor.constraint(equalTo: topRow.bottomAnchor, constant: 8),
             textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11),
             textView.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
             textView.trailingAnchor.constraint(
@@ -124,15 +150,50 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         updateSendButton()
     }
 
+    private func configureChevron(_ view: UIImageView) {
+        view.image = UIImage(
+            systemName: "chevron.up.chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
+        view.tintColor = Theme.Color.tertiaryLabel
+        view.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    private func configureChipRow(_ row: UIStackView, button: UIButton, chevron: UIImageView) {
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 3
+        row.addArrangedSubview(button)
+        row.addArrangedSubview(chevron)
+    }
+
     func setContext(icon: UIImage?, title: String, menu: UIMenu) {
         var config = chipButton.configuration ?? .plain()
         config.image = icon
-        var attributed = AttributedString(title)
-        attributed.font = UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
-        config.attributedTitle = attributed
+        config.attributedTitle = Self.chipTitle(title)
         chipButton.configuration = config
         chipButton.menu = menu
         chipButton.accessibilityLabel = "Chat destination: \(title)"
+    }
+
+    /// Passing no title hides the chip entirely — a backend without model
+    /// selection must not show an affordance that does nothing.
+    func setModel(title: String?, menu: UIMenu?) {
+        guard let title, let menu else {
+            modelRow.isHidden = true
+            return
+        }
+        modelRow.isHidden = false
+        var config = modelButton.configuration ?? .plain()
+        config.attributedTitle = Self.chipTitle(title)
+        modelButton.configuration = config
+        modelButton.menu = menu
+        modelButton.accessibilityLabel = "Model: \(title)"
+    }
+
+    private static func chipTitle(_ text: String) -> AttributedString {
+        var attributed = AttributedString(text)
+        attributed.font = UIFont.preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
+        return attributed
     }
 
     /// Locks input while the session is being created; the text stays put so
@@ -142,6 +203,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         isSending = sending
         textView.isEditable = !sending
         chipButton.isEnabled = !sending
+        modelButton.isEnabled = !sending
         updateSendButton()
     }
 

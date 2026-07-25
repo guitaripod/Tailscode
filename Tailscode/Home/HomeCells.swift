@@ -23,21 +23,29 @@ struct LiveCard: Hashable {
     let entry: SessionEntry
     let title: String
     let detail: String
+    let age: String
     let presence: Presence
 
-    init(entry: SessionEntry, presence: Presence) {
+    /// `activity` is what the agent is doing this second, known only for turns
+    /// this device is streaming; it displaces the static model/server line
+    /// because "Running Edit" is the more useful thing to see on a live card.
+    init(entry: SessionEntry, presence: Presence, activity: String?) {
         self.entry = entry
         self.presence = presence
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
-        var parts = [entry.profileName]
-        if let directory = entry.session.directory {
-            parts.append((directory as NSString).lastPathComponent)
+        self.age = compactAge(entry.session.updatedAt)
+        let project = entry.session.directory.map { ($0 as NSString).lastPathComponent }
+        if let activity {
+            self.detail = [project ?? entry.profileName, activity].joined(separator: " · ")
+        } else {
+            var parts = [entry.profileName]
+            if let project { parts.append(project) }
+            if let badge = ModelBadge.text(for: entry.session) {
+                parts.append(badge)
+            }
+            self.detail = parts.joined(separator: " · ")
         }
-        if let badge = ModelBadge.text(for: entry.session) {
-            parts.append(badge)
-        }
-        self.detail = parts.joined(separator: " · ")
     }
 
     static func == (lhs: LiveCard, rhs: LiveCard) -> Bool {
@@ -47,6 +55,16 @@ struct LiveCard: Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(entry)
     }
+}
+
+/// A live card's heartbeat: how long ago the session last moved, short enough
+/// to sit beside the state pill.
+private func compactAge(_ date: Date) -> String {
+    let seconds = max(0, Int(Date().timeIntervalSince(date)))
+    if seconds < 60 { return "\(seconds)s" }
+    if seconds < 3600 { return "\(seconds / 60)m" }
+    if seconds < 86400 { return "\(seconds / 3600)h" }
+    return "\(seconds / 86400)d"
 }
 
 /// Card identity is the stable key; the volatile fields are cell content,
@@ -163,6 +181,7 @@ class GlassCardCell: UICollectionViewCell {
 final class LiveSessionCell: GlassCardCell {
     private let dot = UIView()
     private let stateLabel = UILabel()
+    private let ageLabel = UILabel()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
     private var presence: LiveCard.Presence?
@@ -175,6 +194,11 @@ final class LiveSessionCell: GlassCardCell {
         stateLabel.font = .systemFont(ofSize: 10, weight: .heavy)
         stateLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        ageLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+        ageLabel.textColor = Theme.Color.tertiaryLabel
+        ageLabel.textAlignment = .right
+        ageLabel.translatesAutoresizingMaskIntoConstraints = false
+
         titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 2
@@ -185,7 +209,7 @@ final class LiveSessionCell: GlassCardCell {
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        [dot, stateLabel, titleLabel, detailLabel].forEach(contentView.addSubview)
+        [dot, stateLabel, ageLabel, titleLabel, detailLabel].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
             dot.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             dot.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m + 2),
@@ -193,6 +217,11 @@ final class LiveSessionCell: GlassCardCell {
             dot.heightAnchor.constraint(equalToConstant: 8),
             stateLabel.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: Theme.Spacing.xs),
             stateLabel.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
+            stateLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: ageLabel.leadingAnchor, constant: -Theme.Spacing.xs),
+            ageLabel.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            ageLabel.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
 
             titleLabel.topAnchor.constraint(equalTo: dot.bottomAnchor, constant: Theme.Spacing.s),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
@@ -209,6 +238,7 @@ final class LiveSessionCell: GlassCardCell {
     func configure(_ card: LiveCard) {
         titleLabel.text = card.title
         detailLabel.text = card.detail
+        ageLabel.text = card.age
         let (color, state): (UIColor, String) =
             switch card.presence {
             case .needsInput: (Theme.Color.warning, "NEEDS YOU")
@@ -217,7 +247,7 @@ final class LiveSessionCell: GlassCardCell {
             }
         applyPresence(color: color, state: state, animated: presence != nil && presence != card.presence)
         presence = card.presence
-        accessibilityLabel = "\(state): \(card.title), \(card.detail)"
+        accessibilityLabel = "\(state): \(card.title), \(card.detail), \(card.age) ago"
         isAccessibilityElement = true
         accessibilityTraits = .button
     }

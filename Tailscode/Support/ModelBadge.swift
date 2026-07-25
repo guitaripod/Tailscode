@@ -11,6 +11,14 @@ enum ModelBadge {
         return "\(name) \(effort)"
     }
 
+    /// Chip text for a pending choice: "Opus · max", or "Auto" while the server
+    /// is the one deciding.
+    static func label(model: ModelSelection?, effort: String?) -> String {
+        let name = model.flatMap { familyName($0.modelID) } ?? "Auto"
+        guard let effort, !effort.isEmpty else { return name }
+        return "\(name) · \(effort)"
+    }
+
     private static func familyName(_ raw: String) -> String? {
         let id = raw.lowercased()
         let families = [

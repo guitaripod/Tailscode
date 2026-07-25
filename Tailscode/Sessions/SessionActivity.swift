@@ -43,6 +43,14 @@ final class SessionActivity {
         return viewModel
     }
 
+    /// What a session this device is driving is doing right now ("Running
+    /// Edit"), for Home's live cards. Nil for sessions running elsewhere — their
+    /// transcripts aren't streaming here, so nothing beyond liveness is known.
+    func liveDetail(for sessionID: String) -> String? {
+        guard let viewModel = retained[sessionID] else { return nil }
+        return ChatViewModel.liveStatus(for: viewModel.state).text
+    }
+
     func update(
         sessionID: String, profileID: String, title: String, status: Status,
         keepAlive: ChatViewModel
@@ -54,13 +62,27 @@ final class SessionActivity {
             retained[sessionID] = nil
         }
         let previous = statuses[sessionID] ?? .idle
-        guard previous != status else { return }
+        guard previous != status else {
+            if status != .idle { postLiveTick() }
+            return
+        }
         statuses[sessionID] = status
         if status == .idle, previous != .idle, !remotePushCovers(profileID: profileID) {
             NotificationManager.notify(
                 title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
                 sessionID: sessionID)
         }
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    private var lastLiveTick: Date = .distantPast
+
+    /// A running turn changes its detail line ("Thinking", "Running Edit") many
+    /// times a second. Home shows that at a glance, so ticks are rate limited to
+    /// one every two seconds — enough to look alive, cheap enough to ignore.
+    private func postLiveTick() {
+        guard Date().timeIntervalSince(lastLiveTick) > 2 else { return }
+        lastLiveTick = Date()
         NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 

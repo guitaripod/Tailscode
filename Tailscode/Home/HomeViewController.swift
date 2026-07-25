@@ -21,6 +21,9 @@ final class HomeViewController: UIViewController {
     private var hasLoadedOnce = false
     private var wantsComposerFocus = false
     private var pendingDeepLink: (sessionID: String, parkedAt: Date)?
+    private var modelChoices: [String: ModelChoice] = [:]
+    private var resolvingModels: Set<String> = []
+    private var appliedComposerState: String?
 
     init() {
         let sources = ConnectionController.shared.allBackends().map {
@@ -84,10 +87,16 @@ final class HomeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        startLiveRefresh()
         if wantsComposerFocus {
             wantsComposerFocus = false
             composerBar.focus()
         }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopLiveRefresh()
     }
 
     override func viewDidLayoutSubviews() {
@@ -125,19 +134,30 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(sceneWillResign),
+            name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     @objc private func activityDidChange() { applySnapshot() }
-    @objc private func sceneDidActivate() { Task { await load() } }
+
+    @objc private func sceneDidActivate() {
+        Task { await load(.user) }
+        startLiveRefresh()
+    }
+
+    @objc private func sceneWillResign() { stopLiveRefresh() }
 
     @objc private func openSettings() {
         view.endEditing(true)
         onOpenSettings?()
     }
-    @objc private func refresh() { Task { await load() } }
+    @objc private func refresh() { Task { await load(.user) } }
 
-    /// One server: compose starts a chat there. Several: compose offers the
-    /// pick, the same menu the Chats screen uses.
+    /// Compose aims the docked composer instead of creating a session: server,
+    /// project, and model are all chosen there, and nothing exists on the server
+    /// until a message is actually sent. One server aims straight at it; several
+    /// offer the pick first.
     private func updateComposeButton() {
         let servers = viewModel.servers
         let compose = UIImage(systemName: "square.and.pencil")
@@ -163,14 +183,58 @@ final class HomeViewController: UIViewController {
     }
 
     private var lastOpencodeScan: Date?
+    private var lastEnrichment: Date?
     private var loadTask: Task<Void, Never>?
     private var enrichmentTask: Task<Void, Never>?
+    private var liveRefreshTask: Task<Void, Never>?
+
+    /// Home is a status board, so it keeps itself current while it is on screen:
+    /// a chat started from a terminal, a turn that finishes, an agent that stops
+    /// to ask something — all of it lands without a pull. Quick cadence while
+    /// anything is live, slow when the board is quiet, and stopped outright when
+    /// the screen is off or the app is inactive so nothing polls in the
+    /// background.
+    private func startLiveRefresh() {
+        guard liveRefreshTask == nil, viewIfLoaded?.window != nil,
+            UIApplication.shared.applicationState == .active
+        else { return }
+        liveRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let interval = self?.liveRefreshInterval else { return }
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled, let self, self.viewIfLoaded?.window != nil else { return }
+                await self.load(.poll)
+            }
+        }
+    }
+
+    private func stopLiveRefresh() {
+        liveRefreshTask?.cancel()
+        liveRefreshTask = nil
+    }
+
+    /// Paced against what a listing actually costs: a bridge with hundreds of
+    /// sessions spends seconds folding transcripts for one, so a tighter loop
+    /// would keep every server permanently busy for a board the user only
+    /// glances at. Turns this device drives repaint from their own stream in
+    /// between, not from this.
+    private var liveRefreshInterval: Double {
+        viewModel.entries.contains(where: isLive) ? 10 : 30
+    }
     /// True from launch so the usage section reserves its height on the first
     /// frame instead of shoving the list when the quotas land. Tracked per source
     /// because the opencode scan finishes long after the live fetch, and a card
     /// with no seat reserved is exactly the shove this avoids.
     private var isFetchingLiveQuotas = true
     private var isScanningOpencode = true
+
+    /// Why the list is being refreshed, which decides how eagerly the expensive
+    /// parts run: a load the user asked for re-runs everything and treats a
+    /// silent server as down immediately, while the background cadence rides on
+    /// throttled enrichment and gives a slow server a second chance.
+    private enum LoadReason {
+        case user, appear, poll
+    }
 
     /// The session fan-out alone decides when the pull-to-refresh spinner stops:
     /// quota and scan work is best-effort enrichment, and an unreachable server
@@ -181,28 +245,29 @@ final class HomeViewController: UIViewController {
     /// reloads can all fire within the same second; against an unreachable
     /// server every one of them parks on the request timeout, so they share a
     /// single in-flight load rather than queueing up behind each other.
-    private func load() async {
+    private func load(_ reason: LoadReason = .appear) async {
         if let inFlight = loadTask {
             await inFlight.value
+            if reason == .user { startEnrichment(force: true) }
             refreshControl.endRefreshing()
             return
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performLoad()
+            await self.performLoad(reason)
         }
         loadTask = task
         await task.value
         if loadTask == task { loadTask = nil }
     }
 
-    private func performLoad() async {
-        await viewModel.load()
+    private func performLoad(_ reason: LoadReason) async {
+        await viewModel.load(tolerateSingleFailure: reason == .poll)
         refreshControl.endRefreshing()
         hasLoadedOnce = true
         updateComposer()
         applySnapshot()
-        startEnrichment()
+        startEnrichment(force: reason == .user)
     }
 
     /// Deliberately not awaited by `performLoad`: quota and scan work is
@@ -210,7 +275,13 @@ final class HomeViewController: UIViewController {
     /// the refresh spinner — nor a caller that coalesced onto this load, which
     /// is how pull-to-refresh ended up waiting on an unreachable server twice
     /// over.
-    private func startEnrichment() {
+    /// Unforced callers (returning to Home, the live-refresh cadence) are rate
+    /// limited: quotas move on the scale of minutes, and re-running the whole
+    /// fan-out every few seconds would burn a request per server per tick for
+    /// numbers that cannot have changed.
+    private func startEnrichment(force: Bool) {
+        if !force, let last = lastEnrichment, Date().timeIntervalSince(last) < 90 { return }
+        lastEnrichment = Date()
         enrichmentTask?.cancel()
         isFetchingLiveQuotas = true
         isScanningOpencode = true
@@ -300,7 +371,12 @@ final class HomeViewController: UIViewController {
         if !live.isEmpty {
             snapshot.appendSections([.live])
             snapshot.appendItems(
-                live.map { .live(LiveCard(entry: $0, presence: presence(for: $0))) },
+                live.map {
+                    .live(
+                        LiveCard(
+                            entry: $0, presence: presence(for: $0),
+                            activity: SessionActivity.shared.liveDetail(for: $0.session.id)))
+                },
                 toSection: .live)
         }
         let projects = projectCards()
@@ -476,7 +552,9 @@ final class HomeViewController: UIViewController {
     }
 
     @discardableResult
-    private func openChat(for entry: SessionEntry) -> ChatViewModel? {
+    private func openChat(for entry: SessionEntry, seeding choice: ModelChoice? = nil)
+        -> ChatViewModel?
+    {
         guard let backend = viewModel.backend(for: entry) else { return nil }
         SessionSeenStore.markSeen(entry.session.id)
         let chatViewModel =
@@ -485,6 +563,7 @@ final class HomeViewController: UIViewController {
             ?? ChatViewModel(
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
+        if let choice { chatViewModel.seed(choice) }
         navigationController?.pushViewController(
             ChatViewController(viewModel: chatViewModel), animated: true)
         return chatViewModel
@@ -492,9 +571,12 @@ final class HomeViewController: UIViewController {
 
     private func startChat(on profile: ConnectionProfile) {
         Theme.Haptics.tap()
-        NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { [weak self] entry in
-            self?.openChat(for: entry)
-        }
+        let stored = AppPreferences.lastComposeTarget
+        let directory =
+            (stored?.profileID == profile.id ? stored?.directory : nil)
+            ?? recentDirectories(for: profile).first
+        setComposeTarget(profile: profile, directory: directory)
+        composerBar.focus()
     }
 
     private func pushChats(filterProfileID: String? = nil) {
@@ -707,6 +789,11 @@ extension HomeViewController: HomeComposerBarDelegate {
         return (first.id, FileBrowserRecents.all(for: first.id).first)
     }
 
+    /// Reapplies only when something the user can see actually changed: the live
+    /// refresh runs this every few seconds, and reassigning a button's menu
+    /// underneath an open one is exactly the kind of churn that makes a picker
+    /// flicker shut mid-choice. Both menus resolve their contents when opened,
+    /// so skipping the rebuild can't serve a stale list.
     private func updateComposer() {
         composerBar.isHidden = viewModel.servers.isEmpty
         guard let target = composeTarget,
@@ -714,15 +801,143 @@ extension HomeViewController: HomeComposerBarDelegate {
         else { return }
         let project = target.directory.map { ($0 as NSString).lastPathComponent }
         let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
+        let modelLabel = modelChipLabel(for: profile)
+        let state = "\(profile.id)|\(target.directory ?? "")|\(title)|\(modelLabel ?? "")"
+        guard state != appliedComposerState else { return }
+        appliedComposerState = state
         let icon = UIImage(
             systemName: profile.backend.symbolName,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
             .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
         composerBar.setContext(icon: icon, title: title, menu: composeTargetMenu())
+        updateModelChip(for: profile, label: modelLabel)
         view.setNeedsLayout()
     }
 
+    /// The chip names the model the next message will actually run on — resolved
+    /// exactly the way the chat screen resolves it — so starting a chat is never
+    /// a blind commitment to whatever the server happens to default to. Nil for
+    /// a backend that has neither model nor effort control, which then shows no
+    /// chip at all.
+    private func modelChipLabel(for profile: ConnectionProfile) -> String? {
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsModelSelection
+                || backend.capabilities.supportsReasoningEffort
+        else { return nil }
+        let choice = modelChoices[profile.id] ?? ModelChoice()
+        return ModelBadge.label(model: choice.model, effort: choice.effort)
+    }
+
+    private func updateModelChip(for profile: ConnectionProfile, label: String?) {
+        guard let label, let backend = viewModel.backend(forProfileID: profile.id) else {
+            composerBar.setModel(title: nil, menu: nil)
+            return
+        }
+        composerBar.setModel(title: label, menu: modelMenu(for: profile, backend: backend))
+        resolveModelChoiceIfNeeded(for: profile, backend: backend)
+    }
+
+    private func resolveModelChoiceIfNeeded(
+        for profile: ConnectionProfile, backend: any CodingAgentBackend
+    ) {
+        guard modelChoices[profile.id] == nil, resolvingModels.insert(profile.id).inserted else {
+            return
+        }
+        Task { @MainActor in
+            let choice = await ChatModelResolver.choice(profileID: profile.id, backend: backend)
+            resolvingModels.remove(profile.id)
+            modelChoices[profile.id] = choice
+            updateComposer()
+        }
+    }
+
+    /// Built lazily on every present: the catalog may still be in flight when
+    /// the chip is first drawn, and a menu opened a second later must show the
+    /// models rather than the placeholder it was built with.
+    private func modelMenu(for profile: ConnectionProfile, backend: any CodingAgentBackend)
+        -> UIMenu
+    {
+        UIMenu(
+            title: "Model",
+            children: [
+                UIDeferredMenuElement.uncached { [weak self] completion in
+                    Task { @MainActor in
+                        guard let self else { return completion([]) }
+                        let models =
+                            backend.capabilities.supportsModelSelection
+                            ? await ModelCatalog.models(for: profile.id, backend: backend) : []
+                        completion(
+                            ModelMenu.elements(
+                                models: models,
+                                choice: self.modelChoices[profile.id] ?? ModelChoice(),
+                                efforts: backend.reasoningEffortOptions,
+                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                                actions: ModelMenu.Actions(
+                                    selectModel: { [weak self] selection in
+                                        self?.setComposeModel(selection, for: profile)
+                                    },
+                                    selectEffort: { [weak self] level in
+                                        self?.setComposeEffort(level, for: profile)
+                                    },
+                                    browseAll: { [weak self] in
+                                        self?.presentComposeModelPicker(
+                                            profile: profile, models: models)
+                                    })))
+                    }
+                }
+            ])
+    }
+
+    private func setComposeModel(_ selection: ModelSelection?, for profile: ConnectionProfile) {
+        if let selection { RecentModelsStore.record(selection) }
+        ModelPreferenceStore.setGlobalModel(selection, forContextID: profile.id)
+        if selection == nil {
+            modelChoices[profile.id] = nil
+        } else {
+            var choice = modelChoices[profile.id] ?? ModelChoice()
+            choice.model = selection
+            modelChoices[profile.id] = choice
+        }
+        Theme.Haptics.selection()
+        updateComposer()
+    }
+
+    private func setComposeEffort(_ level: String?, for profile: ConnectionProfile) {
+        EffortPreferenceStore.setGlobalEffort(level, forContextID: profile.id)
+        var choice = modelChoices[profile.id] ?? ModelChoice()
+        choice.effort = level
+        modelChoices[profile.id] = choice
+        Theme.Haptics.selection()
+        updateComposer()
+    }
+
+    private func presentComposeModelPicker(profile: ConnectionProfile, models: [ModelInfo]) {
+        guard !models.isEmpty else { return }
+        Theme.Haptics.tap()
+        let picker = ModelPickerViewController(
+            models: models, selected: modelChoices[profile.id]?.model
+        ) { [weak self] selection in
+            self?.setComposeModel(selection, for: profile)
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
     private func composeTargetMenu() -> UIMenu {
+        UIMenu(
+            title: "Start the chat in…",
+            children: [
+                UIDeferredMenuElement.uncached { [weak self] completion in
+                    completion(self?.composeTargets() ?? [])
+                }
+            ])
+    }
+
+    private func composeTargets() -> [UIMenuElement] {
         let current = composeTarget
         let serverMenus: [UIMenuElement] = viewModel.servers.map { profile in
             var children: [UIMenuElement] = []
@@ -759,7 +974,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                 image: UIImage(systemName: profile.backend.symbolName),
                 children: children)
         }
-        return UIMenu(title: "Start the chat in…", children: serverMenus)
+        return serverMenus
     }
 
     /// Explicitly chosen recents first, then directories of past sessions.
@@ -849,7 +1064,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             composerBar.clearText()
             view.endEditing(true)
             Theme.Haptics.success()
-            openChat(for: entry)?.send(text)
+            openChat(for: entry, seeding: modelChoices[profile.id])?.send(text)
         }
     }
 }

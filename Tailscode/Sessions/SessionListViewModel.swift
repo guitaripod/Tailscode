@@ -69,9 +69,15 @@ final class SessionListViewModel {
         }
     }
 
+    /// One missed answer during the background refresh cadence is usually a slow
+    /// fold on a busy server, not a server that has gone away; calling it
+    /// unreachable on the spot makes the alert card flash on and off. A load the
+    /// user asked for stays strict — they are waiting for a verdict.
+    private var failureStreaks: [String: Int] = [:]
+
     /// Re-reads the profile list on every load so servers added or removed
     /// in Settings appear without recreating this screen.
-    func load() async {
+    func load(tolerateSingleFailure: Bool = false) async {
         let current = ConnectionController.shared.profiles.map(\.id)
         if current != sources.map(\.profile.id) {
             sources = ConnectionController.shared.allBackends()
@@ -90,6 +96,7 @@ final class SessionListViewModel {
             for await (source, result) in group {
                 switch result {
                 case .success(let list):
+                    failureStreaks[source.profile.id] = 0
                     for session in list where session.parentID == nil {
                         collected.append(
                             SessionEntry(
@@ -100,7 +107,11 @@ final class SessionListViewModel {
                                 session: session))
                     }
                 case .failure(let error):
-                    failed.append(source.profile.id)
+                    let streak = (failureStreaks[source.profile.id] ?? 0) + 1
+                    failureStreaks[source.profile.id] = streak
+                    if !tolerateSingleFailure || streak > 1 {
+                        failed.append(source.profile.id)
+                    }
                     collected.append(contentsOf: entries.filter { $0.profileID == source.profile.id })
                     AppLogger.session.error(
                         "load failed for \(source.profile.name): \(Self.readable(error))")
@@ -108,10 +119,14 @@ final class SessionListViewModel {
             }
         }
 
+        let changed = collected.count != entries.count || failed.sorted() != unreachable.sorted()
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = failed
         SessionListCache.save(entries)
-        AppLogger.session.info("loaded \(entries.count) sessions across \(sources.count) servers")
+        if changed {
+            AppLogger.session.info(
+                "loaded \(entries.count) sessions across \(sources.count) servers")
+        }
         onChange?()
     }
 

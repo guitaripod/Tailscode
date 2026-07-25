@@ -130,8 +130,6 @@ final class ChatViewModel {
         (try? await backend.subagents(for: session.id)) ?? []
     }
 
-    private var isClaude: Bool { backend.agentType == .claudeCode }
-
     /// Reusing a still-running view model (reopened while a turn is in flight)
     /// must not spawn a second `states()` loop — it would double every render
     /// and leak the old task. Re-emit the current state so the freshly bound
@@ -516,7 +514,7 @@ final class ChatViewModel {
     private var knownModels: [ModelInfo] = []
 
     func availableModels() async -> [ModelInfo] {
-        let models = (try? await backend.availableModels()) ?? []
+        let models = await ModelCatalog.models(for: contextID, backend: backend)
         if !models.isEmpty { knownModels = models }
         return models
     }
@@ -542,18 +540,33 @@ final class ChatViewModel {
         dismissedFailure = state.lastFailure
     }
 
-    func selectModel(_ model: ModelSelection) {
+    func selectModel(_ model: ModelSelection?) {
         selectedModel = model
-        RecentModelsStore.record(model)
+        if let model { RecentModelsStore.record(model) }
         ModelPreferenceStore.setModel(model, forKey: persistKey)
         ModelPreferenceStore.setGlobalModel(model, forContextID: contextID)
         onModelChange?()
     }
 
-    func setEffort(_ level: String) {
+    func setEffort(_ level: String?) {
         currentEffort = level
         EffortPreferenceStore.setEffort(level, forKey: persistKey)
+        EffortPreferenceStore.setGlobalEffort(level, forContextID: contextID)
         onModelChange?()
+    }
+
+    /// Applies the model and effort chosen before this session existed — Home's
+    /// composer picks them, then creates the session on send — so the first turn
+    /// runs on the intended model instead of racing the async default lookup.
+    func seed(_ choice: ModelChoice) {
+        if let model = choice.model {
+            selectedModel = model
+            ModelPreferenceStore.setModel(model, forKey: persistKey)
+        }
+        if let effort = choice.effort {
+            currentEffort = effort
+            EffortPreferenceStore.setEffort(effort, forKey: persistKey)
+        }
     }
 
     func clearConversation() {
@@ -564,17 +577,16 @@ final class ChatViewModel {
     }
 
     private func loadDefaultModelIfNeeded() async {
-        guard supportsModelSelection, selectedModel == nil else { return }
-        if let saved = ModelPreferenceStore.model(forKey: persistKey)
-            ?? ModelPreferenceStore.globalModel(forContextID: contextID)
-        {
-            selectedModel = saved
-        } else if !isClaude, let fallback = try? await backend.defaultModel() {
-            selectedModel = fallback
+        if supportsReasoningEffort, currentEffort == nil {
+            currentEffort = ChatModelResolver.effort(
+                profileID: contextID, backend: backend, sessionKey: persistKey)
         }
-        if isClaude, currentEffort == nil {
-            currentEffort = EffortPreferenceStore.effort(forKey: persistKey)
+        guard supportsModelSelection, selectedModel == nil else {
+            onModelChange?()
+            return
         }
+        selectedModel = await ChatModelResolver.model(
+            profileID: contextID, backend: backend, sessionKey: persistKey)
         onModelChange?()
     }
 

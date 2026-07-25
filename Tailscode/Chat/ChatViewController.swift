@@ -1000,11 +1000,8 @@ final class ChatViewController: UIViewController {
 
     private func updateNavControls() {
         var items: [UIBarButtonItem] = []
-        if viewModel.supportsModelSelection {
+        if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
             items.append(modelBarButton())
-        }
-        if viewModel.supportsReasoningEffort {
-            items.append(effortBarButton())
         }
         items.append(overflowBarButton())
         navigationItem.rightBarButtonItems = items
@@ -1360,6 +1357,13 @@ final class ChatViewController: UIViewController {
     private func presentEffortSheet() {
         let sheet = UIAlertController(
             title: "Reasoning effort", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(
+            UIAlertAction(
+                title: viewModel.currentEffort == nil ? "Default ✓" : "Default", style: .default
+            ) { [weak self] _ in
+                self?.viewModel.setEffort(nil)
+                self?.updateNavControls()
+            })
         for level in viewModel.reasoningEffortOptions {
             let selected = viewModel.currentEffort == level
             sheet.addAction(
@@ -1492,56 +1496,33 @@ final class ChatViewController: UIViewController {
         toast.flash(in: view, above: composer.topAnchor)
     }
 
+    /// One chip carries both the model and the effort, and names them: which
+    /// model a chat is running was previously hidden behind a bare `cpu` icon.
     private func modelBarButton() -> UIBarButtonItem {
-        let current = viewModel.selectedModel
-        let currentName = current?.modelID ?? "Model"
-        var providers: [String: [ModelInfo]] = [:]
-        for model in availableModels {
-            providers[model.providerID, default: []].append(model)
-        }
-        let sortedProviders = providers.keys.sorted()
-        let header = UIAction(
-            title: currentName, subtitle: "Model", attributes: .disabled, handler: { _ in })
-        var menuChildren: [UIMenuElement] = [header]
-        for providerID in sortedProviders {
-            guard let models = providers[providerID] else { continue }
-            let actions = models.map { model in
-                UIAction(
-                    title: model.name,
-                    state: current?.modelID == model.id && current?.providerID == model.providerID
-                        ? .on : .off
-                ) { [weak self] _ in
+        let choice = ModelChoice(model: viewModel.selectedModel, effort: viewModel.currentEffort)
+        let label = ModelBadge.label(model: choice.model, effort: choice.effort)
+        let elements = ModelMenu.elements(
+            models: viewModel.supportsModelSelection ? availableModels : [],
+            choice: choice,
+            efforts: viewModel.reasoningEffortOptions,
+            allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
+            actions: ModelMenu.Actions(
+                selectModel: { [weak self] selection in
                     Theme.Haptics.selection()
-                    self?.viewModel.selectModel(model.selection)
+                    self?.viewModel.selectModel(selection)
                     self?.updateNavControls()
-                }
-            }
-            if sortedProviders.count > 1 {
-                menuChildren.append(UIMenu(title: providerID, children: actions))
-            } else {
-                menuChildren.append(contentsOf: actions)
-            }
-        }
-        return UIBarButtonItem(
-            image: UIImage(systemName: "cpu"),
-            menu: UIMenu(title: "Model", children: menuChildren))
-    }
-
-    private func effortBarButton() -> UIBarButtonItem {
-        let current = viewModel.currentEffort
-        let actions = viewModel.reasoningEffortOptions.map { level in
-            UIAction(
-                title: level.capitalized,
-                state: current == level ? .on : .off
-            ) { [weak self] _ in
-                Theme.Haptics.selection()
-                self?.viewModel.setEffort(level)
-                self?.updateNavControls()
-            }
-        }
-        return UIBarButtonItem(
-            image: UIImage(systemName: "gauge.with.dots.needle.50percent"),
-            menu: UIMenu(title: "Reasoning effort", children: actions))
+                },
+                selectEffort: { [weak self] level in
+                    Theme.Haptics.selection()
+                    self?.viewModel.setEffort(level)
+                    self?.updateNavControls()
+                },
+                browseAll: { [weak self] in self?.presentModelPicker() }))
+        let item = UIBarButtonItem(
+            title: label, image: nil, primaryAction: nil,
+            menu: UIMenu(title: "Model", children: elements))
+        item.accessibilityLabel = "Model: \(label)"
+        return item
     }
 
     @objc private func presentModelPicker() {

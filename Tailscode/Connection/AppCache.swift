@@ -56,12 +56,21 @@ enum RecentModelsStore {
     }
 }
 
-/// Persists the chosen reasoning-effort level per session (Claude Code).
+/// Persists the chosen reasoning-effort level per session (Claude Code), plus a
+/// per-server default so a new chat starts at the effort you last worked at.
 enum EffortPreferenceStore {
     private static let prefix = "tailscode.effort."
 
     static func effort(forKey key: String) -> String? {
         UserDefaults.standard.string(forKey: prefix + key)
+    }
+
+    static func globalEffort(forContextID contextID: String) -> String? {
+        effort(forKey: contextID)
+    }
+
+    static func setGlobalEffort(_ level: String?, forContextID contextID: String) {
+        setEffort(level, forKey: contextID)
     }
 
     static func setEffort(_ level: String?, forKey key: String) {
