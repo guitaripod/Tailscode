@@ -184,8 +184,8 @@ final class HomeViewController: UIViewController {
 
     private var lastOpencodeScan: Date?
     private var lastEnrichment: Date?
+    private var isEnriching = false
     private var loadTask: Task<Void, Never>?
-    private var enrichmentTask: Task<Void, Never>?
     private var liveRefreshTask: Task<Void, Never>?
 
     /// Home is a status board, so it keeps itself current while it is on screen:
@@ -279,15 +279,22 @@ final class HomeViewController: UIViewController {
     /// limited: quotas move on the scale of minutes, and re-running the whole
     /// fan-out every few seconds would burn a request per server per tick for
     /// numbers that cannot have changed.
+    /// Never restarts work that is already running. Cancelling and relaunching
+    /// looked harmless until launch itself did it — the initial load starts the
+    /// scan, `didBecomeActive` lands a moment later and forced a restart, and the
+    /// half-second-old opencode scan died with "failed on every host". It then
+    /// stayed dead, because the scan had already stamped its 5-minute cooldown.
     private func startEnrichment(force: Bool) {
+        guard !isEnriching else { return }
         if !force, let last = lastEnrichment, Date().timeIntervalSince(last) < 90 { return }
         lastEnrichment = Date()
-        enrichmentTask?.cancel()
+        isEnriching = true
         isFetchingLiveQuotas = true
         isScanningOpencode = true
-        enrichmentTask = Task { @MainActor [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             await self.loadEnrichment()
+            self.isEnriching = false
         }
     }
 
@@ -295,22 +302,24 @@ final class HomeViewController: UIViewController {
         async let quotas: Void = loadQuotas()
         async let scan: Void = scanOpencodeIfNeeded()
         _ = await (quotas, scan)
-        guard !Task.isCancelled else { return }
         isFetchingLiveQuotas = false
         isScanningOpencode = false
         applySnapshot()
     }
 
+    /// The cooldown is stamped on success only: a scan that failed has told us
+    /// nothing, so blocking the retry for five minutes just leaves the card
+    /// missing for five minutes.
     private func scanOpencodeIfNeeded() async {
         defer { isScanningOpencode = false }
         if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
         let entries = ConnectionController.shared.opencodeBackends()
         guard !entries.isEmpty else { return }
-        lastOpencodeScan = Date()
         guard
             let result = await UsageScanner.scanOpencode(
                 backends: entries.map { ($0.profile.name, $0.backend) })
         else { return }
+        lastOpencodeScan = Date()
         opencodeQuota = UsageScanner.quota(from: result)
         applySnapshot()
     }
