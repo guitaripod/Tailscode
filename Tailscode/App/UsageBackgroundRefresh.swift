@@ -38,7 +38,10 @@ enum UsageBackgroundRefresh {
         let work = Task { @MainActor in
             AppLogger.session.info("usage: background refresh started")
             let quotas = await LiveQuotaFetcher.fetch(deadline: 10)
-            if !quotas.isEmpty { UsageWidgetStore.writeLive(quotas, reload: false) }
+            if !quotas.isEmpty {
+                UsageWidgetStore.writeLive(quotas, reload: false)
+                UsageWarnings.evaluate(quotas: quotas)
+            }
             if !Task.isCancelled {
                 let entries = ConnectionController.shared.opencodeBackends()
                 if !entries.isEmpty {

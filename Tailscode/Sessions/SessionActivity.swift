@@ -69,6 +69,7 @@ final class SessionActivity {
         statuses[sessionID] = status
         if status == .idle, previous != .idle, !remotePushCovers(profileID: profileID) {
             NotificationManager.notify(
+                kind: .turnComplete,
                 title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
                 sessionID: sessionID)
         }

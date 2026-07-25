@@ -37,6 +37,10 @@ final class AppActivityController {
         onPushToken: (@Sendable (String, Date) async -> Void)? = nil
     ) -> Bool {
         guard entries[sessionID] == nil else { return true }
+        guard AppPreferences.liveActivitiesEnabled else {
+            AppLogger.chat.info("Live Activity disabled in settings")
+            return false
+        }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             AppLogger.chat.info("Live Activity not authorized")
             return false

@@ -50,6 +50,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) {
         let applied = UsagePushPayload.apply(userInfo: userInfo)
         AppLogger.connection.info("push: silent notification applied \(applied) usage snapshot(s)")
+        if applied > 0 {
+            let providers = UsagePushPayload.providers(from: userInfo)
+            Task { @MainActor in UsageWarnings.evaluate(providers: providers) }
+        }
         completionHandler(applied > 0 ? .newData : .noData)
     }
 

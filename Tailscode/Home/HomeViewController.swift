@@ -365,6 +365,7 @@ final class HomeViewController: UIViewController {
         guard !fetched.isEmpty else { return }
         quotas = fetched
         UsageWidgetStore.writeLive(fetched)
+        UsageWarnings.evaluate(quotas: fetched)
         applySnapshot()
     }
 

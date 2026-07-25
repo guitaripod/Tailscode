@@ -5,6 +5,20 @@ import UserNotifications
 /// so a phone user can send a long task, leave, and get pinged when it's done or needs approval.
 @MainActor
 enum NotificationManager {
+    /// Every alert the app raises itself, each behind its own preference so a
+    /// user who only wants approval pings isn't opted into the rest.
+    enum Kind {
+        case turnComplete, approval, usage
+
+        var isEnabled: Bool {
+            switch self {
+            case .turnComplete: return AppPreferences.notifyTurnComplete
+            case .approval: return AppPreferences.notifyApprovals
+            case .usage: return AppPreferences.notifyUsageWarnings
+            }
+        }
+    }
+
     static func requestAuthorizationIfNeeded() {
         guard !CommandLine.arguments.contains("--demo"),
             !CommandLine.arguments.contains("--usage")
@@ -21,6 +35,24 @@ enum NotificationManager {
         }
     }
 
+    static func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    /// The explicit ask from the Settings row, for a user who reached the app's
+    /// notification controls without ever having seen the system prompt.
+    @discardableResult
+    static func requestAuthorization() async -> Bool {
+        AppLogger.lifecycle.info("notification authorization requested from settings")
+        return (try? await UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .sound, .badge])) ?? false
+    }
+
+    static func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     /// An approval or question notification describes a request that stops
     /// existing the moment it is answered — on the phone, on another device, or
     /// by the agent timing out. Left in Notification Center it becomes a lie
@@ -33,7 +65,13 @@ enum NotificationManager {
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
-    static func notify(title: String, body: String, identifier: String, sessionID: String? = nil) {
+    static func notify(
+        kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil
+    ) {
+        guard kind.isEnabled else {
+            AppLogger.lifecycle.info("notification suppressed by preference: \(identifier)")
+            return
+        }
         guard UIApplication.shared.applicationState != .active else { return }
         let content = UNMutableNotificationContent()
         content.title = title
@@ -43,6 +81,23 @@ enum NotificationManager {
         let request = UNNotificationRequest(
             identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Proves the whole delivery path end to end from Settings — authorization,
+    /// presentation, sound — which is otherwise only observable by waiting for a
+    /// real turn to finish while the app is backgrounded. The short delay is what
+    /// lets it banner over a foreground app.
+    static func sendTest() {
+        let content = UNMutableNotificationContent()
+        content.title = "Tailscode"
+        content.body = "Notifications are working. This is what a finished turn looks like."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "test:\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
+        UNUserNotificationCenter.current().add(request)
+        AppLogger.lifecycle.info("test notification scheduled")
     }
 }
 
