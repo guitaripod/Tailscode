@@ -21,6 +21,20 @@ enum UsageScanner {
     private static let concurrency = 6
     private static let opencodeProviderID = "opencode-go"
 
+    /// Go's rolling dollar-cap windows; the single definition behind the Home
+    /// card, the Usage screen gauges, and the widget snapshots.
+    struct Window: Sendable {
+        let name: String
+        let seconds: TimeInterval
+        let cap: Double
+    }
+
+    static let windows = [
+        Window(name: "5-hour", seconds: 5 * 3600, cap: 12),
+        Window(name: "Weekly", seconds: 7 * 24 * 3600, cap: 30),
+        Window(name: "Monthly", seconds: 30 * 24 * 3600, cap: 60),
+    ]
+
     /// `background` trims the scan to fit a ~30-second `BGAppRefreshTask` window;
     /// the trimmed tail covers the 5-hour window authoritatively but undercounts
     /// weekly/monthly, so a partial scan refreshes 5-hour and only ratchets the
@@ -134,23 +148,46 @@ enum UsageScanner {
         case failed
     }
 
+    /// The merged scan as a renderable quota, so Home and the Usage screen
+    /// present the same combined cross-server estimate.
+    static func quota(from result: UsageScanResult) -> UsageQuota {
+        let now = Date()
+        let gauges = windows.map { window in
+            UsageQuota.Gauge(
+                key: window.name, label: window.name,
+                fraction: stats(window, samples: result.samples, now: now).fraction,
+                resetsAt: nil, trustedReset: false)
+        }
+        let hosts = result.scannedHosts.count
+        return UsageQuota(
+            providerName: UsageWidgetStore.opencodeProviderName,
+            subtitle: hosts > 1
+                ? "$10/mo · estimated from \(hosts) servers"
+                : "$10/mo · estimated from this server",
+            source: "opencode.db estimate",
+            live: false,
+            gauges: gauges,
+            details: [])
+    }
+
+    private static func stats(
+        _ window: Window, samples: [UsageSample], now: Date
+    ) -> (spend: Double, requests: Int, fraction: Double) {
+        let cutoff = now.addingTimeInterval(-window.seconds)
+        let inWindow = samples.filter { $0.createdAt >= cutoff }
+        let spend = inWindow.reduce(0) { $0 + $1.cost }
+        return (spend, inWindow.count, window.cap > 0 ? min(1, spend / window.cap) : 0)
+    }
+
     private static func writeOpencodeGauges(result: UsageScanResult, partial: Bool, reload: Bool) {
         let now = Date()
-        let windows: [(String, TimeInterval, Double)] = [
-            ("5-hour", 5 * 3600, 12),
-            ("Weekly", 7 * 24 * 3600, 30),
-            ("Monthly", 30 * 24 * 3600, 60),
-        ]
-        var gauges = windows.map { name, seconds, cap in
-            let cutoff = now.addingTimeInterval(-seconds)
-            let inWindow = result.samples.filter { $0.createdAt >= cutoff }
-            let spend = inWindow.reduce(0) { $0 + $1.cost }
-            let fraction = cap > 0 ? min(1, spend / cap) : 0
+        var gauges = windows.map { window in
+            let windowStats = stats(window, samples: result.samples, now: now)
             return UsageWidgetEntry.GaugeSnapshot(
-                label: name,
-                fraction: fraction,
-                percentText: "\(Int((fraction * 100).rounded()))%",
-                caption: "\(currency(spend)) / \(currency(cap)) \u{00b7} \(inWindow.count) req",
+                label: window.name,
+                fraction: windowStats.fraction,
+                percentText: "\(Int((windowStats.fraction * 100).rounded()))%",
+                caption: "\(currency(windowStats.spend)) / \(currency(window.cap)) · \(windowStats.requests) req",
                 resetsAt: nil)
         }
         if partial { gauges = ratchetedAgainstStored(gauges) }

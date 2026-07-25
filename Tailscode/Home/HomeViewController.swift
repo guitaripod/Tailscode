@@ -16,6 +16,7 @@ final class HomeViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
     private var quotas: [UsageQuota] = []
+    private var opencodeQuota: UsageQuota?
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var wantsComposerFocus = false
@@ -224,7 +225,11 @@ final class HomeViewController: UIViewController {
         let entries = ConnectionController.shared.opencodeBackends()
         guard !entries.isEmpty else { return }
         lastOpencodeScan = Date()
-        await UsageScanner.scanOpencode(backends: entries.map { ($0.profile.name, $0.backend) })
+        guard
+            let result = await UsageScanner.scanOpencode(
+                backends: entries.map { ($0.profile.name, $0.backend) })
+        else { return }
+        opencodeQuota = UsageScanner.quota(from: result)
     }
 
     /// A bridge answers for every provider its host machine is signed into,
@@ -302,10 +307,11 @@ final class HomeViewController: UIViewController {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        if !quotas.isEmpty {
+        let usageCards = quotas.map { QuotaCard(quota: $0) }
+            + (opencodeQuota.map { [QuotaCard(quota: $0)] } ?? [])
+        if !usageCards.isEmpty {
             snapshot.appendSections([.usage])
-            snapshot.appendItems(
-                quotas.map { .usage(QuotaCard(quota: $0)) }, toSection: .usage)
+            snapshot.appendItems(usageCards.map(HomeItem.usage), toSection: .usage)
         }
         let existing = Set(dataSource.snapshot().itemIdentifiers)
         let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }

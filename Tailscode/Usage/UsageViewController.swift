@@ -2,12 +2,6 @@ import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
 
-private struct UsageWindow {
-    let name: String
-    let seconds: TimeInterval
-    let cap: Double
-}
-
 private struct QuotaUnavailableError: LocalizedError, Sendable {
     var errorDescription: String? {
         "Claude quota is unavailable right now — the bridge couldn't reach api.anthropic.com."
@@ -299,11 +293,6 @@ final class UsageViewController: UIViewController {
     }
 
     private static func opencodeModel(_ result: UsageScanResult) -> CardModel {
-        let windows = [
-            UsageWindow(name: "5-hour", seconds: 5 * 3600, cap: 12),
-            UsageWindow(name: "Weekly", seconds: 7 * 24 * 3600, cap: 30),
-            UsageWindow(name: "Monthly", seconds: 30 * 24 * 3600, cap: 60),
-        ]
         let samples = result.samples
         let totalSpend = samples.reduce(0) { $0 + $1.cost }
         let totalTokens = samples.reduce(0) { $0 + $1.tokens }
@@ -318,12 +307,10 @@ final class UsageViewController: UIViewController {
             ("Tokens (in + out)", tokenCount(totalTokens)),
         ]
         return CardModel(
-            subtitle: hosts > 1
-                ? "$10/mo · estimated from \(hosts) servers"
-                : "$10/mo · estimated from this server",
+            subtitle: UsageScanner.quota(from: result).subtitle,
             pill: "EST",
             accent: Theme.Color.opencode,
-            gauges: gaugeVMs(samples: samples, windows: windows),
+            gauges: gaugeVMs(samples: samples, windows: UsageScanner.windows),
             details: details,
             note: unavailableSuffix(opencodeNote(result), result: result))
     }
@@ -354,7 +341,7 @@ final class UsageViewController: UIViewController {
         return note + " \(result.unavailable) \(plural) unavailable — totals are incomplete."
     }
 
-    private static func gaugeVMs(samples: [UsageSample], windows: [UsageWindow]) -> [GaugeVM] {
+    private static func gaugeVMs(samples: [UsageSample], windows: [UsageScanner.Window]) -> [GaugeVM] {
         let now = Date()
         return windows.map { window in
             let cutoff = now.addingTimeInterval(-window.seconds)
