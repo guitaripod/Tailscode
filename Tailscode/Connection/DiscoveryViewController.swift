@@ -6,12 +6,9 @@ import UIKit
 final class DiscoveryViewController: UIViewController {
     var onConnected: (() -> Void)?
 
-    private let keychain = KeychainSecretStore()
-    private let tokenKey = "tailscale.token"
+    private var apiToken: String { TailnetCredentials.token ?? "" }
 
-    private var apiToken: String { (try? keychain.value(for: tokenKey)) ?? "" }
-
-    private var hasCreds: Bool { !apiToken.isEmpty }
+    private var hasCreds: Bool { TailnetCredentials.hasToken }
 
     private let statusLabel = UILabel()
     private let scanButton = PrimaryButton(title: "Scan tailnet")
@@ -226,95 +223,15 @@ final class DiscoveryViewController: UIViewController {
     }
 
     private func presentCredentialForm() {
-        let formVC = UIViewController()
-        formVC.title = "Tailscale Token"
-        formVC.view.backgroundColor = Theme.Color.groupedBackground
-
-        let header = UILabel()
-        header.text = "Generate an API access token (Devices read) on the Tailscale keys page. One paste is all you need."
-        header.font = Theme.Font.subheadline()
-        header.textColor = Theme.Color.secondaryLabel
-        header.numberOfLines = 0
-
-        let tokenField = FormField(title: "API access token", placeholder: "tskey-api-...", secure: true)
-        tokenField.setText(apiToken)
-
-        let openButton = UIButton(type: .system)
-        openButton.setTitle("Open Keys page to generate token", for: .normal)
-        openButton.titleLabel?.font = Theme.Font.caption()
-        openButton.addAction(UIAction { _ in
-            if let url = URL(string: "https://login.tailscale.com/admin/settings/keys") {
-                UIApplication.shared.open(url)
-            }
-        }, for: .touchUpInside)
-
-        let note = UILabel()
-        note.text = "Stored only in the keychain. Used solely to list your Tailscale devices."
-        note.font = Theme.Font.caption()
-        note.textColor = Theme.Color.tertiaryLabel
-        note.numberOfLines = 0
-
-        let saveButton = PrimaryButton(title: "Save")
-        saveButton.addAction(UIAction { [weak self, weak formVC] _ in
+        let editor = TailnetTokenViewController()
+        editor.onChange = { [weak self] in
             guard let self else { return }
-            let token = tokenField.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !token.isEmpty {
-                do {
-                    try self.keychain.setValue(token, for: self.tokenKey)
-                } catch {
-                    Theme.Haptics.error()
-                    let alert = UIAlertController(
-                        title: "Couldn't save token",
-                        message: error.localizedDescription, preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    formVC?.present(alert, animated: true)
-                    return
-                }
-                AppLogger.connection.info("tailscale token saved")
-                self.refreshState()
-                if self.suggestions.isEmpty {
-                    self.scanTapped()
-                }
-            }
-            formVC?.dismiss(animated: true)
-        }, for: .touchUpInside)
-
-        let clearButton = UIButton(type: .system)
-        clearButton.setTitle("Clear token", for: .normal)
-        clearButton.setTitleColor(Theme.Color.danger, for: .normal)
-        clearButton.addAction(UIAction { [weak self, weak formVC] _ in
-            guard let self else { return }
-            try? self.keychain.removeValue(for: self.tokenKey)
-            AppLogger.connection.info("tailscale token cleared")
             self.refreshState()
-            formVC?.dismiss(animated: true)
-        }, for: .touchUpInside)
-
-        let stack = UIStackView(arrangedSubviews: [header, openButton, tokenField, note, saveButton, clearButton])
-        stack.axis = .vertical
-        stack.spacing = Theme.Spacing.l
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let scroll = UIScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(stack)
-        formVC.view.addSubview(scroll)
-
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: formVC.view.safeAreaLayoutGuide.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: formVC.view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: formVC.view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: formVC.view.keyboardLayoutGuide.topAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: Theme.Spacing.xl),
-            stack.leadingAnchor.constraint(equalTo: formVC.view.leadingAnchor, constant: Theme.Spacing.l),
-            stack.trailingAnchor.constraint(equalTo: formVC.view.trailingAnchor, constant: -Theme.Spacing.l),
-            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -Theme.Spacing.xl),
-            stack.widthAnchor.constraint(equalTo: formVC.view.widthAnchor, constant: -2 * Theme.Spacing.l),
-        ])
-
-        let nav = UINavigationController(rootViewController: formVC)
-        formVC.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(dismissForm))
-        present(nav, animated: true)
+            if self.hasCreds, self.suggestions.isEmpty { self.scanTapped() }
+        }
+        editor.navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .cancel, target: self, action: #selector(dismissForm))
+        present(UINavigationController(rootViewController: editor), animated: true)
     }
 
     private var scanTask: Task<Void, Never>?
@@ -360,6 +277,7 @@ final class DiscoveryViewController: UIViewController {
                     })
                 guard !Task.isCancelled else { return }
                 suggestions = found.sorted { $0.recommendedProfileName < $1.recommendedProfileName }
+                TailnetCredentials.recordScan(devices: fetched.count, servers: found.count)
                 AppLogger.connection.info("scanner returned \(found.count) unique suggestions after dedup")
                 let countText = found.isEmpty ? "No supported servers found" : "Found \(found.count) server(s)"
                 statusLabel.text = lastDeviceCount.map { "Scanned \($0) devices. \(countText)" } ?? countText
