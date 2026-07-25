@@ -166,8 +166,11 @@ final class HomeViewController: UIViewController {
     private var loadTask: Task<Void, Never>?
     private var enrichmentTask: Task<Void, Never>?
     /// True from launch so the usage section reserves its height on the first
-    /// frame instead of shoving the list when the quotas land.
-    private var isEnrichingUsage = true
+    /// frame instead of shoving the list when the quotas land. Tracked per source
+    /// because the opencode scan finishes long after the live fetch, and a card
+    /// with no seat reserved is exactly the shove this avoids.
+    private var isFetchingLiveQuotas = true
+    private var isScanningOpencode = true
 
     /// The session fan-out alone decides when the pull-to-refresh spinner stops:
     /// quota and scan work is best-effort enrichment, and an unreachable server
@@ -209,7 +212,8 @@ final class HomeViewController: UIViewController {
     /// over.
     private func startEnrichment() {
         enrichmentTask?.cancel()
-        isEnrichingUsage = true
+        isFetchingLiveQuotas = true
+        isScanningOpencode = true
         enrichmentTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.loadEnrichment()
@@ -221,11 +225,13 @@ final class HomeViewController: UIViewController {
         async let scan: Void = scanOpencodeIfNeeded()
         _ = await (quotas, scan)
         guard !Task.isCancelled else { return }
-        isEnrichingUsage = false
+        isFetchingLiveQuotas = false
+        isScanningOpencode = false
         applySnapshot()
     }
 
     private func scanOpencodeIfNeeded() async {
+        defer { isScanningOpencode = false }
         if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
         let entries = ConnectionController.shared.opencodeBackends()
         guard !entries.isEmpty else { return }
@@ -249,6 +255,7 @@ final class HomeViewController: UIViewController {
     /// answered in time, which must not blank a good card.
     private func loadQuotas() async {
         let fetched = await LiveQuotaFetcher.fetch(deadline: 10)
+        isFetchingLiveQuotas = false
         guard !fetched.isEmpty else { return }
         quotas = fetched
         UsageWidgetStore.writeLive(fetched)
@@ -316,17 +323,11 @@ final class HomeViewController: UIViewController {
         }
         let usageCards = quotas.map { QuotaCard(quota: $0) }
             + (opencodeQuota.map { [QuotaCard(quota: $0)] } ?? [])
-        if !usageCards.isEmpty {
+        let reserved = reservedUsageCards
+        if !usageCards.isEmpty || reserved > 0 {
             snapshot.appendSections([.usage])
             snapshot.appendItems(usageCards.map(HomeItem.usage), toSection: .usage)
-            let missing = expectedUsageCards - usageCards.count
-            if isEnrichingUsage, missing > 0 {
-                snapshot.appendItems((0..<missing).map(HomeItem.usagePlaceholder), toSection: .usage)
-            }
-        } else if isEnrichingUsage, expectedUsageCards > 0 {
-            snapshot.appendSections([.usage])
-            snapshot.appendItems(
-                (0..<expectedUsageCards).map(HomeItem.usagePlaceholder), toSection: .usage)
+            snapshot.appendItems((0..<reserved).map(HomeItem.usagePlaceholder), toSection: .usage)
         }
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
@@ -349,11 +350,16 @@ final class HomeViewController: UIViewController {
             || previous.itemIdentifiers != next.itemIdentifiers
     }
 
-    /// How many usage cards the connected servers can eventually produce — the
-    /// count the section reserves space for while the fetch and scan are out.
-    private var expectedUsageCards: Int {
+    /// Skeletons to hold open for cards that are still out. One per source that
+    /// can still answer, and only for sources this user actually has: someone
+    /// without an opencode server must never see a slot for one. A bridge can
+    /// answer for several providers at once (Claude and Grok), so the live fetch
+    /// reserves a single seat and any extra card animates in beside it.
+    private var reservedUsageCards: Int {
         let backends = Set(viewModel.servers.map(\.backend))
-        return (backends.contains(.claudeCode) ? 1 : 0) + (backends.contains(.openCode) ? 1 : 0)
+        let live = isFetchingLiveQuotas && quotas.isEmpty && backends.contains(.claudeCode)
+        let scan = isScanningOpencode && opencodeQuota == nil && backends.contains(.openCode)
+        return (live ? 1 : 0) + (scan ? 1 : 0)
     }
 
     private func projectCards() -> [ProjectCard] {

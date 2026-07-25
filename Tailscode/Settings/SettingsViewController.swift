@@ -9,6 +9,24 @@ final class SettingsViewController: UIViewController {
 
     private enum Section: Int, CaseIterable {
         case connections, appearance, chat, goCaps, pro, diagnostics, about
+
+        var title: String {
+            switch self {
+            case .connections: return "Connections"
+            case .appearance: return "Appearance"
+            case .chat: return "Chat"
+            case .goCaps: return "opencode go"
+            case .pro: return "Support"
+            case .diagnostics: return "Diagnostics"
+            case .about: return "About"
+            }
+        }
+    }
+
+    /// Sections are appended conditionally, so a supplementary view's index is
+    /// not its `rawValue`.
+    private func section(at indexPath: IndexPath) -> Section? {
+        dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
     }
 
     private enum Toggle: Hashable {
@@ -120,19 +138,16 @@ final class SettingsViewController: UIViewController {
         }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
-        ) { view, _, indexPath in
+        ) { [weak self] view, _, indexPath in
             var content = UIListContentConfiguration.header()
-            content.text = [
-                "Connections", "Appearance", "Chat", "opencode go", "Support", "Diagnostics",
-                "About",
-            ][indexPath.section]
+            content.text = self?.section(at: indexPath)?.title
             view.contentConfiguration = content
         }
         let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionFooter
-        ) { view, _, indexPath in
+        ) { [weak self] view, _, indexPath in
             var content = UIListContentConfiguration.footer()
-            switch Section(rawValue: indexPath.section) {
+            switch self?.section(at: indexPath) {
             case .goCaps:
                 content.text = "Go has no usage API, so the Usage screen estimates spend against "
                     + "these caps. The first subscription month runs on a $40 promotional ceiling; "
@@ -428,9 +443,15 @@ final class SettingsViewController: UIViewController {
         (1...31).contains(day) ? "Day \(day)" : "Auto"
     }
 
+    /// The Go caps only mean anything to someone running opencode, so the
+    /// section stays out of the way until a server is connected.
+    private var showsGoCaps: Bool {
+        ConnectionController.shared.profiles.contains { $0.backend == .openCode }
+    }
+
     private func applySnapshot() {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        snapshot.appendSections(Section.allCases)
+        snapshot.appendSections(Section.allCases.filter { $0 != .goCaps || showsGoCaps })
         var connectionItems =
             ConnectionController.shared.profiles.map { Item.profile($0) } + [.addConnection, .discover]
         if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
@@ -442,7 +463,7 @@ final class SettingsViewController: UIViewController {
                 .toggle(.sendOnReturn),
             ],
             toSection: .chat)
-        snapshot.appendItems([.goMonthlyCap, .goBillingDay], toSection: .goCaps)
+        if showsGoCaps { snapshot.appendItems([.goMonthlyCap, .goBillingDay], toSection: .goCaps) }
         snapshot.appendItems([.pro], toSection: .pro)
         snapshot.appendItems([.usage, .viewLogs, .testAll], toSection: .diagnostics)
         snapshot.appendItems([.version, .source], toSection: .about)
