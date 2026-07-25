@@ -571,10 +571,6 @@ extension SettingsViewController: UICollectionViewDelegate {
         switch item {
         case .profile(let profile):
             let detail = ServerDetailViewController(profile: profile)
-            detail.onRemoved = { [weak self] in
-                self?.applySnapshot()
-                self?.onConnectionChanged?()
-            }
             navigationController?.pushViewController(detail, animated: true)
         case .addConnection:
             guard allowAnotherConnection() else { return }
