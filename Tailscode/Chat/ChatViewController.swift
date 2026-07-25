@@ -2,6 +2,7 @@ import CodingAgentKit
 import PhotosUI
 import SafariServices
 import UIKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class ChatViewController: UIViewController {
@@ -83,7 +84,7 @@ final class ChatViewController: UIViewController {
         configureNavTitleView()
         configureDataSource()
         composer.delegate = self
-        composer.showsAttach = viewModel.canAttachImages
+        composer.showsAttach = canAttachAnything
         if !isReadOnly {
             enhancement.onStatusChange = { [weak self] status in
                 self?.handleEnhancementStatus(status)
@@ -1008,6 +1009,12 @@ final class ChatViewController: UIViewController {
         refreshAttachmentGating()
     }
 
+    /// A model that takes no images can still take files — the agent opens those
+    /// on the server — so the affordance survives a switch to a text-only model.
+    private var canAttachAnything: Bool {
+        viewModel.canAttachImages || viewModel.canAttachFiles
+    }
+
     /// Keeps the attach affordance in sync with what the selected model can
     /// actually see: hides the picker for text-only models and drops pending
     /// image attachments that a model switch made unsendable.
@@ -1017,7 +1024,7 @@ final class ChatViewController: UIViewController {
             updateAttachmentStrip()
             presentToast("Image removed — this model can't see images.")
         }
-        composer.showsAttach = viewModel.canAttachImages
+        composer.showsAttach = canAttachAnything
     }
 
     private func updateOverflowBadge(hasPermission: Bool) {
@@ -1689,7 +1696,7 @@ extension ChatViewController: ComposerViewDelegate {
     private func sendDraft(_ text: String, model: ModelSelection? = nil, effort: String? = nil) {
         let attachments = pendingAttachments
         pendingAttachments = []
-        composer.showsAttach = viewModel.canAttachImages
+        composer.showsAttach = canAttachAnything
         updateAttachmentStrip()
         userScrolledUp = false
         animateNextRender = true
@@ -1775,13 +1782,81 @@ extension ChatViewController: ComposerViewDelegate {
         enhanceOverlay?.render(status, original: enhancement.latestInput)
     }
 
-    func composerDidTapAttach() {
+    /// Photos and files are different enough errands to be asked about rather
+    /// than guessed at: an image goes to the model's vision input, a file lands
+    /// on the server for the agent to open. Only the sources the current model
+    /// can actually accept are offered.
+    func composerAttachOptions() -> [UIMenuElement] {
+        var actions: [UIMenuElement] = []
+        if viewModel.canAttachImages {
+            actions.append(
+                UIAction(
+                    title: "Photo Library", image: UIImage(systemName: "photo.on.rectangle")
+                ) { [weak self] _ in self?.presentPhotoPicker() })
+        }
+        if viewModel.canAttachFiles {
+            actions.append(
+                UIAction(title: "Files", image: UIImage(systemName: "folder")) { [weak self] _ in
+                    self?.presentDocumentPicker()
+                })
+        }
+        return actions
+    }
+
+    private func presentPhotoPicker() {
+        Theme.Haptics.tap()
         var config = PHPickerConfiguration()
         config.filter = .images
         config.selectionLimit = 1
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         present(picker, animated: true)
+    }
+
+    private func presentDocumentPicker() {
+        Theme.Haptics.tap()
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        present(picker, animated: true)
+    }
+}
+
+extension ChatViewController: UIDocumentPickerDelegate {
+    func documentPicker(
+        _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
+    ) {
+        guard let url = urls.first else { return }
+        attachFile(at: url)
+    }
+
+    /// The whole payload rides base64-encoded inside the send, whose timeout
+    /// scales with its size — so an oversized file is refused up front instead
+    /// of failing halfway into a turn.
+    private static let attachmentSizeLimit = 8 * 1024 * 1024
+
+    private func attachFile(at url: URL) {
+        let name = url.lastPathComponent
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+            presentToast("Couldn't read \(name).")
+            return
+        }
+        guard data.count <= Self.attachmentSizeLimit else {
+            let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            presentToast("\(name) is \(size) — attachments are capped at 8 MB.")
+            return
+        }
+        let mime =
+            UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            ?? "application/octet-stream"
+        guard !mime.hasPrefix("image/") || viewModel.canAttachImages else {
+            presentToast("This model can't see images.")
+            return
+        }
+        pendingAttachments.append(PromptAttachment(mime: mime, filename: name, data: data))
+        Theme.Haptics.success()
+        updateAttachmentStrip()
+        presentToast("\(name) attached — it'll be sent with your next message.")
     }
 }
 
@@ -1860,7 +1935,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
                 self.pendingAttachments.remove(at: index)
                 self.updateAttachmentStrip()
                 if self.pendingAttachments.isEmpty {
-                    self.composer.showsAttach = self.viewModel.canAttachImages
+                    self.composer.showsAttach = self.canAttachAnything
                 }
             }
             attachmentStrip.addArrangedSubview(chip)

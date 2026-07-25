@@ -6,7 +6,9 @@ protocol ComposerViewDelegate: AnyObject {
     func composerTextDidChange(_ text: String)
     func composerDidLongPressSend(from view: UIView)
     func composerDidPasteLargeText(_ text: String)
-    func composerDidTapAttach()
+    /// Built when the attach menu opens, so it always reflects what the model
+    /// selected right now can actually accept.
+    func composerAttachOptions() -> [UIMenuElement]
     func composerDidTapStop()
     func composerDidBeginEditing()
 }
@@ -82,8 +84,15 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
                 UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)), for: .normal)
         attachButton.tintColor = Theme.Color.secondaryLabel
         attachButton.translatesAutoresizingMaskIntoConstraints = false
-        attachButton.addTarget(self, action: #selector(attachTapped), for: .touchUpInside)
-        attachButton.accessibilityLabel = "Attach image"
+        attachButton.showsMenuAsPrimaryAction = true
+        attachButton.menu = UIMenu(
+            title: "Attach",
+            children: [
+                UIDeferredMenuElement.uncached { [weak self] completion in
+                    completion(self?.delegate?.composerAttachOptions() ?? [])
+                }
+            ])
+        attachButton.accessibilityLabel = "Attach"
 
         var send = UIButton.Configuration.filled()
         send.cornerStyle = .capsule
@@ -262,7 +271,6 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.reloadInputViews()
     }
 
-    @objc private func attachTapped() { delegate?.composerDidTapAttach() }
 
     @objc private func sendLongPressed(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began, !trimmed.isEmpty else { return }
