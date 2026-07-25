@@ -85,7 +85,7 @@ enum UsageWidgetStore {
                     gauges: [
                         UsageWidgetEntry.GaugeSnapshot(label: "5-hour", fraction: 0.28, percentText: "28%", caption: "$3.42 / $12 \u{00b7} 12 req", resetsAt: nil),
                         UsageWidgetEntry.GaugeSnapshot(label: "Weekly", fraction: 0.14, percentText: "14%", caption: "$4.20 / $30 \u{00b7} 12 req", resetsAt: nil),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Monthly", fraction: 0.05, percentText: "5%", caption: "$3.00 / $60 \u{00b7} 12 req", resetsAt: nil),
+                        UsageWidgetEntry.GaugeSnapshot(label: "Monthly", fraction: 0.08, percentText: "8%", caption: "$3.00 / $40 \u{00b7} 12 req", resetsAt: nil),
                     ]),
             ],
             isStale: false)

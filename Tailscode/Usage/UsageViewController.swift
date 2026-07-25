@@ -302,7 +302,7 @@ final class UsageViewController: UIViewController {
             details.append(("Servers", serverCoverage(result)))
         }
         details += [
-            ("All-time spend", currency(totalSpend)),
+            ("Spend (31 days)", currency(totalSpend)),
             ("Requests", "\(samples.count)"),
             ("Tokens (in + out)", tokenCount(totalTokens)),
         ]
@@ -310,7 +310,7 @@ final class UsageViewController: UIViewController {
             subtitle: UsageScanner.quota(from: result).subtitle,
             pill: "EST",
             accent: Theme.Color.opencode,
-            gauges: gaugeVMs(samples: samples, windows: UsageScanner.windows),
+            gauges: gaugeVMs(result: result),
             details: details,
             note: unavailableSuffix(opencodeNote(result), result: result))
     }
@@ -327,12 +327,30 @@ final class UsageViewController: UIViewController {
         let scope = result.scannedHosts.count > 1
             ? "estimated from the opencode.db on \(result.scannedHosts.joined(separator: " and "))"
             : "estimated from this server's opencode.db"
-        var note = "No usage API — \(scope) against Go's rolling dollar caps. "
+        var note = "No usage API — \(scope) against Go's dollar caps: an anchored 5-hour block, "
+            + "the trailing week, and the billing month. "
             + "May miss usage on machines without a profile here and server-side accounting."
+        if let multipliers = multiplierNote(result.multipliers) { note += " \(multipliers)" }
         for host in result.failedHosts {
             note += " \(host) unreachable — its spend is not included."
         }
         return note
+    }
+
+    /// Names the models Go bills above face value, so weighted spend reading
+    /// higher than the raw dollar cost is explained rather than mysterious.
+    private static func multiplierNote(_ multipliers: [String: UsageMultiplier]) -> String? {
+        let weighted = multipliers.values.sorted { $0.weight > $1.weight }
+        guard !weighted.isEmpty else { return nil }
+        let list = weighted.map {
+            "\(baseModelName($0.displayName)) counts \(String(format: "%g", $0.weight))x"
+        }
+        return "Model multipliers applied (\(list.joined(separator: ", ")))."
+    }
+
+    private static func baseModelName(_ displayName: String) -> String {
+        guard let suffix = displayName.range(of: " (") else { return displayName }
+        return String(displayName[..<suffix.lowerBound])
     }
 
     private static func unavailableSuffix(_ note: String, result: UsageScanResult) -> String {
@@ -341,18 +359,17 @@ final class UsageViewController: UIViewController {
         return note + " \(result.unavailable) \(plural) unavailable — totals are incomplete."
     }
 
-    private static func gaugeVMs(samples: [UsageSample], windows: [UsageScanner.Window]) -> [GaugeVM] {
+    private static func gaugeVMs(result: UsageScanResult) -> [GaugeVM] {
         let now = Date()
-        return windows.map { window in
-            let cutoff = now.addingTimeInterval(-window.seconds)
-            let inWindow = samples.filter { $0.createdAt >= cutoff }
-            let spend = inWindow.reduce(0) { $0 + $1.cost }
-            let fraction = window.cap > 0 ? min(1, spend / window.cap) : 0
+        return UsageScanner.windows.map { window in
+            let stats = UsageScanner.windowStats(window, samples: result.samples, now: now)
+            var caption = "\(currency(stats.spend)) / \(currency(window.cap)) · \(stats.requests) req"
+            if let resetsAt = stats.resetsAt { caption += "\n~resets \(humanize(until: resetsAt))" }
             return GaugeVM(
                 name: window.name,
-                fraction: fraction,
-                percentText: "\(Int((fraction * 100).rounded()))%",
-                caption: "\(currency(spend)) / \(currency(window.cap)) · \(inWindow.count) req")
+                fraction: stats.fraction,
+                percentText: "\(Int((stats.fraction * 100).rounded()))%",
+                caption: caption)
         }
     }
 

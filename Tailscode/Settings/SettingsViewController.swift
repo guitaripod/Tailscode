@@ -8,7 +8,7 @@ final class SettingsViewController: UIViewController {
     var onConnectionChanged: (() -> Void)?
 
     private enum Section: Int, CaseIterable {
-        case connections, appearance, chat, pro, diagnostics, about
+        case connections, appearance, chat, goCaps, pro, diagnostics, about
     }
 
     private enum Toggle: Hashable {
@@ -54,6 +54,8 @@ final class SettingsViewController: UIViewController {
         case leaveDemo
         case appearance
         case toggle(Toggle)
+        case goMonthlyCap
+        case goBillingDay
         case usage
         case viewLogs
         case testAll
@@ -120,20 +122,28 @@ final class SettingsViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionHeader
         ) { view, _, indexPath in
             var content = UIListContentConfiguration.header()
-            content.text = ["Connections", "Appearance", "Chat", "Support", "Diagnostics", "About"][
-                indexPath.section]
+            content.text = [
+                "Connections", "Appearance", "Chat", "opencode go", "Support", "Diagnostics",
+                "About",
+            ][indexPath.section]
             view.contentConfiguration = content
         }
         let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionFooter
         ) { view, _, indexPath in
-            guard indexPath.section == Section.about.rawValue else {
+            var content = UIListContentConfiguration.footer()
+            switch Section(rawValue: indexPath.section) {
+            case .goCaps:
+                content.text = "Go has no usage API, so the Usage screen estimates spend against "
+                    + "these caps. The first subscription month runs on a $40 promotional ceiling; "
+                    + "the published one is $60. Auto reads the renewal day from your oldest Go request."
+            case .about:
+                content.text = "\(Self.copyright)\nCoding agents over Tailscale."
+                content.textProperties.alignment = .center
+            default:
                 view.contentConfiguration = nil
                 return
             }
-            var content = UIListContentConfiguration.groupedFooter()
-            content.text = "\(Self.copyright)\nCoding agents over Tailscale."
-            content.textProperties.alignment = .center
             view.contentConfiguration = content
         }
 
@@ -190,6 +200,16 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: icon(for: toggle))
             content.imageProperties.tintColor = tint(for: toggle)
             cell.accessories = [.customView(configuration: switchAccessory(toggle))]
+        case .goMonthlyCap:
+            content.text = "Monthly cap"
+            content.image = UIImage(systemName: "dollarsign.circle")
+            content.imageProperties.tintColor = Theme.Color.opencode
+            cell.accessories = [.customView(configuration: monthlyCapAccessory())]
+        case .goBillingDay:
+            content.text = "Billing day"
+            content.image = UIImage(systemName: "calendar")
+            content.imageProperties.tintColor = Theme.Color.opencode
+            cell.accessories = [.customView(configuration: billingDayAccessory())]
         case .usage:
             content.text = "Usage"
             content.image = UIImage(systemName: "gauge.with.dots.needle.67percent")
@@ -289,14 +309,15 @@ final class SettingsViewController: UIViewController {
         let button = UIButton(configuration: .plain())
         button.showsMenuAsPrimaryAction = true
         button.changesSelectionAsPrimaryAction = false
-        Self.rebuildAppearanceButton(button)
+        Self.style(button, title: AppPreferences.appearance.title)
         button.menu = Self.appearanceMenu(button: button)
         return .init(customView: button, placement: .trailing())
     }
 
-    private static func rebuildAppearanceButton(_ button: UIButton) {
+    /// The inline trailing menu button shared by every value row.
+    private static func style(_ button: UIButton, title: String) {
         var config = UIButton.Configuration.plain()
-        config.title = AppPreferences.appearance.title
+        config.title = title
         config.image = UIImage(
             systemName: "chevron.up.chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
@@ -315,10 +336,96 @@ final class SettingsViewController: UIViewController {
                     AppPreferences.appearance = option
                     AppPreferences.applyAppearance()
                     guard let button else { return }
-                    rebuildAppearanceButton(button)
+                    style(button, title: option.title)
                     button.menu = appearanceMenu(button: button)
                 }
             })
+    }
+
+    private static let monthlyCapPresets: [Double] = [40, 60]
+
+    private func monthlyCapAccessory() -> UICellAccessory.CustomViewConfiguration {
+        let button = UIButton(configuration: .plain())
+        button.showsMenuAsPrimaryAction = true
+        Self.style(button, title: Self.capTitle(AppPreferences.goMonthlyCap))
+        button.menu = monthlyCapMenu(button: button)
+        return .init(customView: button, placement: .trailing())
+    }
+
+    private func monthlyCapMenu(button: UIButton) -> UIMenu {
+        let current = AppPreferences.goMonthlyCap
+        var actions = Self.monthlyCapPresets.map { cap in
+            UIAction(title: Self.capTitle(cap), state: current == cap ? .on : .off) {
+                [weak self, weak button] _ in
+                self?.setMonthlyCap(cap, button: button)
+            }
+        }
+        actions.append(
+            UIAction(
+                title: "Custom…", state: Self.monthlyCapPresets.contains(current) ? .off : .on
+            ) { [weak self, weak button] _ in
+                self?.promptForMonthlyCap(button: button)
+            })
+        return UIMenu(children: actions)
+    }
+
+    private func setMonthlyCap(_ cap: Double, button: UIButton?) {
+        AppPreferences.goMonthlyCap = cap
+        Theme.Haptics.tap()
+        guard let button else { return }
+        Self.style(button, title: Self.capTitle(cap))
+        button.menu = monthlyCapMenu(button: button)
+    }
+
+    private func promptForMonthlyCap(button: UIButton?) {
+        let alert = UIAlertController(
+            title: "Monthly cap",
+            message: "The dollar ceiling the monthly gauge fills against.",
+            preferredStyle: .alert)
+        alert.addTextField { field in
+            field.keyboardType = .decimalPad
+            field.text = Self.amountText(AppPreferences.goMonthlyCap)
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+                let typed = alert?.textFields?.first?.text ?? ""
+                guard let cap = Double(typed.replacingOccurrences(of: ",", with: ".")), cap > 0
+                else { return }
+                self?.setMonthlyCap(cap, button: button)
+            })
+        present(alert, animated: true)
+    }
+
+    private func billingDayAccessory() -> UICellAccessory.CustomViewConfiguration {
+        let button = UIButton(configuration: .plain())
+        button.showsMenuAsPrimaryAction = true
+        Self.style(button, title: Self.billingDayTitle(AppPreferences.goBillingDay))
+        button.menu = billingDayMenu(button: button)
+        return .init(customView: button, placement: .trailing())
+    }
+
+    private func billingDayMenu(button: UIButton) -> UIMenu {
+        let current = AppPreferences.goBillingDay
+        return UIMenu(
+            children: ([0] + Array(1...31)).map { day in
+                UIAction(title: Self.billingDayTitle(day), state: current == day ? .on : .off) {
+                    [weak self, weak button] _ in
+                    AppPreferences.goBillingDay = day
+                    Theme.Haptics.tap()
+                    guard let self, let button else { return }
+                    Self.style(button, title: Self.billingDayTitle(day))
+                    button.menu = self.billingDayMenu(button: button)
+                }
+            })
+    }
+
+    private static func capTitle(_ cap: Double) -> String { "$\(amountText(cap))" }
+
+    private static func amountText(_ value: Double) -> String { String(format: "%g", value) }
+
+    private static func billingDayTitle(_ day: Int) -> String {
+        (1...31).contains(day) ? "Day \(day)" : "Auto"
     }
 
     private func applySnapshot() {
@@ -335,6 +442,7 @@ final class SettingsViewController: UIViewController {
                 .toggle(.sendOnReturn),
             ],
             toSection: .chat)
+        snapshot.appendItems([.goMonthlyCap, .goBillingDay], toSection: .goCaps)
         snapshot.appendItems([.pro], toSection: .pro)
         snapshot.appendItems([.usage, .viewLogs, .testAll], toSection: .diagnostics)
         snapshot.appendItems([.version, .source], toSection: .about)
@@ -481,7 +589,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             if let url = URL(string: "https://github.com/guitaripod/Tailscode") {
                 present(SFSafariViewController(url: url), animated: true)
             }
-        case .appearance, .toggle, .version:
+        case .appearance, .toggle, .version, .goMonthlyCap, .goBillingDay:
             break
         }
     }
