@@ -3,11 +3,15 @@ import CodingAgentKitApple
 import UIKit
 
 @MainActor
-final class AppCoordinator {
+final class AppCoordinator: NSObject {
     private let window: UIWindow
 
     init(window: UIWindow) {
         self.window = window
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(connectionsDidChange),
+            name: ConnectionController.didChange, object: nil)
     }
 
     func start() {
@@ -43,10 +47,21 @@ final class AppCoordinator {
             if CommandLine.arguments.contains("--usage") {
                 openUsageForDebug()
             }
+            if let slug = ProcessInfo.processInfo.environment["TAILSCODE_SETTINGS_SECTION"] {
+                openSettingsForDebug(slug: slug)
+            }
         #endif
     }
 
     #if DEBUG
+        /// Opens Settings scrolled to a section on launch, so each part of the
+        /// screen can be screenshotted without driving touches.
+        private func openSettingsForDebug(slug: String) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.openSettings(section: SettingsViewController.Section(rawValue: slug))
+            }
+        }
+
         private func openUsageForDebug() {
             guard let nav = window.rootViewController as? UINavigationController else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -102,12 +117,43 @@ final class AppCoordinator {
         return true
     }
 
+    /// The root only ever changes across one boundary: having a server or not.
+    /// Editing, renaming, or adding a second connection used to cross-dissolve a
+    /// brand-new root and eject the user from Settings; now the screens listen
+    /// for the change themselves and this only steps in when onboarding has to
+    /// appear or disappear.
+    @objc private func connectionsDidChange() {
+        guard ConnectionController.shared.hasConnection != showingMain else { return }
+        guard window.rootViewController?.presentedViewController == nil else {
+            needsRootSync = true
+            return
+        }
+        route(animated: true)
+    }
+
+    private var showingMain = false
+    private var needsRootSync = false
+
+    /// Deferred until Settings closes: swapping the root out from under a modal
+    /// tears the modal down mid-interaction, and removing your last server is
+    /// usually followed by adding another one.
+    private func syncRootIfNeeded() {
+        guard needsRootSync else { return }
+        needsRootSync = false
+        guard ConnectionController.shared.hasConnection != showingMain else { return }
+        route(animated: true)
+    }
+
     /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat.
     /// Links that arrive before the session list exists are parked and
     /// delivered on the next route to the main UI; a link older than 30s is
     /// dropped rather than hijacking navigation long after the tap.
     func handle(_ url: URL) {
         guard url.scheme == "tailscode" else { return }
+        if url.host() == "settings" {
+            openSettings(section: SettingsViewController.Section(rawValue: url.lastPathComponent))
+            return
+        }
         if url.host() == "usage" {
             guard let home else {
                 pendingSessionLink = (url, Date())
@@ -140,8 +186,25 @@ final class AppCoordinator {
             .viewControllers.first as? HomeViewController
     }
 
+    /// Opens Settings at a given section, so anything that finds a broken setting
+    /// can point at the row that fixes it rather than describing where it lives.
+    func openSettings(section: SettingsViewController.Section?) {
+        guard let home else { return }
+        let presenter = home.navigationController ?? home
+        if let nav = presenter.presentedViewController as? UINavigationController,
+            let settings = nav.viewControllers.first as? SettingsViewController
+        {
+            nav.popToRootViewController(animated: true)
+            if let section { settings.reveal(section: section) }
+            return
+        }
+        guard presenter.presentedViewController == nil else { return }
+        presentSettings(from: presenter, section: section)
+    }
+
     private func route(animated: Bool) {
-        let root = ConnectionController.shared.hasConnection ? makeMain() : makeOnboarding()
+        showingMain = ConnectionController.shared.hasConnection
+        let root = showingMain ? makeMain() : makeOnboarding()
         if animated {
             UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {
                 self.window.rootViewController = root
@@ -176,12 +239,19 @@ final class AppCoordinator {
         return nav
     }
 
-    private func presentSettings(from presenter: UIViewController) {
-        let settings = SettingsViewController()
-        settings.onConnectionChanged = { [weak self] in
-            presenter.dismiss(animated: true) { self?.route(animated: true) }
-        }
+    private func presentSettings(
+        from presenter: UIViewController, section: SettingsViewController.Section? = nil
+    ) {
+        let settings = SettingsViewController(initialSection: section)
+        settings.onFinish = { [weak self] in self?.syncRootIfNeeded() }
         let nav = UINavigationController(rootViewController: settings)
+        nav.presentationController?.delegate = self
         presenter.present(nav, animated: true)
+    }
+}
+
+extension AppCoordinator: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        syncRootIfNeeded()
     }
 }
