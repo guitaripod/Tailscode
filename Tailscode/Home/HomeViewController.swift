@@ -138,9 +138,23 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneWillResign),
             name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(connectionsDidChange),
+            name: ConnectionController.didChange, object: nil)
     }
 
     @objc private func activityDidChange() { applySnapshot() }
+
+    /// Settings edited the servers. Rebuilding the backends here — rather than
+    /// recreating the whole screen — keeps scroll position, the composer draft,
+    /// and any in-flight chat intact through something as small as a rename.
+    @objc private func connectionsDidChange() {
+        viewModel.refreshSources()
+        updateComposeButton()
+        updateComposer()
+        applySnapshot()
+        Task { await load(.user) }
+    }
 
     @objc private func sceneDidActivate() {
         Task { await load(.user) }

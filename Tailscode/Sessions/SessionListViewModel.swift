@@ -28,6 +28,7 @@ final class SessionListViewModel {
     }
 
     private var sources: [Source]
+    private var sourcesRevision: Int
     private(set) var entries: [SessionEntry] = []
     private(set) var unreachable: [String] = []
 
@@ -36,8 +37,23 @@ final class SessionListViewModel {
 
     init(sources: [Source]) {
         self.sources = sources
+        self.sourcesRevision = ConnectionController.shared.revision
         let profileIDs = Set(sources.map(\.profile.id))
         entries = SessionListCache.load().filter { profileIDs.contains($0.profileID) }
+    }
+
+    /// Rebuilds the backends from the saved profiles, dropping entries whose
+    /// server is gone. Called when Settings edits connections, so the list
+    /// follows an add, a removal, a rename, or a new address without the screen
+    /// being recreated.
+    func refreshSources() {
+        sourcesRevision = ConnectionController.shared.revision
+        sources = ConnectionController.shared.allBackends()
+            .map { Source(profile: $0.profile, backend: $0.backend) }
+        let live = Set(sources.map(\.profile.id))
+        entries.removeAll { !live.contains($0.profileID) }
+        unreachable.removeAll { !live.contains($0) }
+        onChange?()
     }
 
     var servers: [ConnectionProfile] { sources.map(\.profile) }
@@ -78,8 +94,8 @@ final class SessionListViewModel {
     /// Re-reads the profile list on every load so servers added or removed
     /// in Settings appear without recreating this screen.
     func load(tolerateSingleFailure: Bool = false) async {
-        let current = ConnectionController.shared.profiles.map(\.id)
-        if current != sources.map(\.profile.id) {
+        if ConnectionController.shared.revision != sourcesRevision {
+            sourcesRevision = ConnectionController.shared.revision
             sources = ConnectionController.shared.allBackends()
                 .map { Source(profile: $0.profile, backend: $0.backend) }
         }

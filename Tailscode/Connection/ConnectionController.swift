@@ -6,11 +6,26 @@ import Foundation
 final class ConnectionController {
     static let shared = ConnectionController()
 
+    /// Posted whenever the saved set of servers, their details, or the default
+    /// changes. Screens holding backends rebuild from this instead of being torn
+    /// down and recreated.
+    static let didChange = Notification.Name("ConnectionController.didChange")
+
     private let store: ConnectionProfileStore?
     private let activeKey = "tailscode.activeProfileID"
     private let demoKey = "tailscode.demoMode"
     private(set) var activeProfileID: String?
     private(set) var isDemoMode: Bool
+
+    /// Bumped on every mutation, so a consumer can tell "the same three servers,
+    /// one of them renamed" from "no change at all" — an ID list comparison
+    /// can't.
+    private(set) var revision = 0
+
+    private func mutated() {
+        revision += 1
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
 
     private struct StoreUnavailable: LocalizedError {
         var errorDescription: String? { "Profile storage is unavailable on this device." }
@@ -32,7 +47,7 @@ final class ConnectionController {
             AppLogger.connection.error("profile store unavailable")
         }
         if activeProfileID == nil, let first = profiles.first {
-            setActive(first.id)
+            assignActive(first.id)
         }
     }
 
@@ -117,6 +132,7 @@ final class ConnectionController {
         let remaining = profiles.first?.id
         setActive(activeProfileID.flatMap { id in profiles.contains { $0.id == id } ? id : nil } ?? remaining)
         AppLogger.connection.info("left demo mode")
+        mutated()
     }
 
     var activeProfile: ConnectionProfile? {
@@ -153,6 +169,24 @@ final class ConnectionController {
         if makeActive { setActive(profile.id) }
         AppLogger.connection.info("saved profile \(profile.name) [\(profile.backend.rawValue)]")
         if profile.backend == .claudeCode { PushRegistrar.reregisterIfNeeded() }
+        mutated()
+    }
+
+    /// Edits an existing server in place. Separate from ``save(_:password:)``
+    /// because an edit is never a new connection and so is never Pro-gated, and
+    /// because leaving the password argument out must keep the stored one rather
+    /// than erase it.
+    func update(_ profile: ConnectionProfile, password: String?? = nil) throws {
+        guard let store else { throw StoreUnavailable() }
+        let resolved = try password ?? store.password(for: profile.id)
+        try store.save(profile, password: resolved)
+        AppLogger.connection.info("updated profile \(profile.name)")
+        if profile.backend == .claudeCode { PushRegistrar.reregisterIfNeeded() }
+        mutated()
+    }
+
+    func password(for id: String) -> String? {
+        (try? store?.password(for: id)) ?? nil
     }
 
     func delete(_ id: String) throws {
@@ -177,9 +211,19 @@ final class ConnectionController {
             PushRegistrar.unregister(
                 from: pushBackend, baseURL: deleted.baseURL, name: deleted.name)
         }
+        mutated()
     }
 
     func setActive(_ id: String?) {
+        guard activeProfileID != id else { return }
+        assignActive(id)
+        mutated()
+    }
+
+    /// Writes the default without announcing it. `init` picks a default when none
+    /// is stored, and posting from inside the singleton's own initializer would
+    /// re-enter `shared` from an observer while it is still being created.
+    private func assignActive(_ id: String?) {
         activeProfileID = id
         UserDefaults.standard.set(id, forKey: activeKey)
     }
