@@ -127,13 +127,52 @@ enum UsageScanner {
 
     private static func collect(backend: any CodingAgentBackend, budget: Budget) async throws -> UsageScanResult {
         let multipliers = (try? await usageMultipliers(backend: backend)) ?? fallbackMultipliers
-        let sessions = try await backend.listSessions()
+        let sessions = try await allSessions(backend: backend, budget: budget)
         let cutoff = Date().addingTimeInterval(-historySpan)
-        let scanned = Array(sessions.filter { $0.updatedAt >= cutoff }.prefix(budget.sessionLimit))
+        let scanned = Array(
+            sessions
+                .filter { $0.updatedAt >= cutoff }
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .prefix(budget.sessionLimit))
         var result = await scan(
             backend: backend, sessions: scanned, budget: budget, multipliers: multipliers)
         result.multipliers = multipliers
         return result
+    }
+
+    /// opencode scopes its session list to the project its server was launched
+    /// in, so one call misses every other worktree's spend against an
+    /// account-wide cap. Walk the projects too and union by id — the server's own
+    /// project answers twice.
+    private static func allSessions(
+        backend: any CodingAgentBackend, budget: Budget
+    ) async throws -> [AgentSession] {
+        var byID: [String: AgentSession] = [:]
+        for session in try await backend.listSessions() { byID[session.id] = session }
+        let worktrees = ((try? await backend.projects()) ?? []).map(\.worktree)
+        guard !worktrees.isEmpty else { return Array(byID.values) }
+        let timeout = budget.perRequestTimeout
+        let listed = await withTaskGroup(of: [AgentSession].self) { group in
+            var pending = worktrees.makeIterator()
+
+            func schedule() {
+                guard let worktree = pending.next() else { return }
+                group.addTask {
+                    await withTimeout(timeout) { try? await backend.listSessions(inWorktree: worktree) }
+                        ?? []
+                }
+            }
+
+            for _ in 0..<concurrency { schedule() }
+            var all: [AgentSession] = []
+            for await sessions in group {
+                all.append(contentsOf: sessions)
+                schedule()
+            }
+            return all
+        }
+        for session in listed { byID[session.id] = session }
+        return Array(byID.values)
     }
 
     /// Go publishes each model's cap weighting in its display name, so the
