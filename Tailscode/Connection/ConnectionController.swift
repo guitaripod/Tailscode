@@ -185,11 +185,15 @@ final class ConnectionController {
     }
 
     #if DEBUG
-        private var overridePasswords: [String: String] = [:]
+        /// Doubly optional on purpose: a seeded server with no password is a valid
+        /// configuration, and storing a plain nil would erase the entry instead of
+        /// recording "this one needs no password" — leaving the simulator with a
+        /// profile it could never build a backend for.
+        private var overridePasswords: [String: String?] = [:]
         private var debugProfiles: [ConnectionProfile] = []
 
         func setOverridePassword(_ password: String?, for id: String) {
-            overridePasswords[id] = password
+            overridePasswords.updateValue(password, forKey: id)
         }
 
         /// Keeps a seeded profile alive in memory when the simulator Keychain
@@ -211,8 +215,8 @@ final class ConnectionController {
             return backend
         }
         #if DEBUG
-            if let password = overridePasswords[profile.id] {
-                return profile.makeBackend(password: password, policy: policy)
+            if let override = overridePasswords[profile.id] {
+                return profile.makeBackend(password: override, policy: policy)
             }
         #endif
         return nil
