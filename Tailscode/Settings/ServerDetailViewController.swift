@@ -19,6 +19,9 @@ final class ServerDetailViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private var statusText = "Checking…"
     private var sessionCount: Int?
+    private var serverVersion: String?
+    private var modelCount: Int?
+    private var latestVersion: String?
 
     init(profile: ConnectionProfile) {
         self.profile = profile
@@ -55,6 +58,9 @@ final class ServerDetailViewController: UIViewController {
                 content.secondaryText = value
                 content.prefersSideBySideTextAndSecondaryText = true
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+                if label == "Update available" {
+                    content.secondaryTextProperties.color = Theme.Color.warning
+                }
             case .status(let text):
                 content.text = "Status"
                 content.secondaryText = text
@@ -98,11 +104,22 @@ final class ServerDetailViewController: UIViewController {
             .value(label: "Host", value: profile.baseURL.host ?? "—"),
             .value(label: "Port", value: profile.baseURL.port.map(String.init) ?? "—"),
         ]
+        if let serverVersion {
+            info.append(.value(label: "Version", value: serverVersion))
+        }
+        if let modelCount {
+            info.append(.value(label: "Models", value: String(modelCount)))
+        }
         if let sessionCount {
             info.append(.value(label: "Sessions", value: String(sessionCount)))
         }
         snapshot.appendItems(info, toSection: .info)
-        snapshot.appendItems([.status(statusText), .test], toSection: .status)
+        var statusItems: [Item] = [.status(statusText)]
+        if let latestVersion, let serverVersion, serverVersion != latestVersion {
+            statusItems.append(.value(label: "Update available", value: latestVersion))
+        }
+        statusItems.append(.test)
+        snapshot.appendItems(statusItems, toSection: .status)
         snapshot.appendItems([.remove], toSection: .actions)
         dataSource.apply(snapshot, animatingDifferences: false)
     }
@@ -110,6 +127,8 @@ final class ServerDetailViewController: UIViewController {
     private func refresh() async {
         statusText = "Checking…"
         sessionCount = nil
+        serverVersion = nil
+        modelCount = nil
         applySnapshot()
         let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
         guard let backend = ConnectionController.shared.makeBackend(for: profile, policy: policy) else {
@@ -119,12 +138,33 @@ final class ServerDetailViewController: UIViewController {
         }
         do {
             let health = try await backend.health()
-            statusText = health.healthy ? "Healthy · \(health.version ?? "connected")" : "Unhealthy"
+            statusText = health.healthy ? "Healthy" : "Unhealthy"
+            serverVersion = health.version
             sessionCount = (try? await backend.listSessions())?.count
+            if profile.backend == .openCode {
+                modelCount = try? await backend.availableModels().count
+                latestVersion = await fetchLatestOpencodeRelease()
+            }
         } catch {
             statusText = "Unreachable"
         }
         applySnapshot()
+    }
+
+    /// GitHub's latest opencode release tag, so the user can see at a glance
+    /// whether the server process is behind and might be missing new models.
+    private func fetchLatestOpencodeRelease() async -> String? {
+        guard let url = URL(string: "https://api.github.com/repos/anomalyco/opencode/releases/latest")
+        else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 6
+        guard
+            let (data, _) = try? await URLSession.shared.data(for: request),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let tag = json["tag_name"] as? String
+        else { return nil }
+        return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
     }
 
     private func confirmRemove() {
