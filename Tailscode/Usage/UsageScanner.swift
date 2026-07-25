@@ -30,6 +30,10 @@ enum GoCaps {
     /// Day of the month the subscription renews; `0` infers it from the oldest
     /// Go request on record.
     static var billingDay: Int { AppPreferences.goBillingDay }
+
+    /// Identity of the configured caps, so a screen or a stored snapshot built
+    /// against the old numbers can tell that it is describing a different plan.
+    static var signature: String { "\(monthlyCap)|\(billingDay)" }
 }
 
 struct UsageScanResult {

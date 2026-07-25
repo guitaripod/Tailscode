@@ -198,6 +198,10 @@ final class HomeViewController: UIViewController {
     }
 
     private var lastOpencodeScan: Date?
+    /// The caps the last scan was priced against; changing them in Settings
+    /// invalidates the cooldown, or the card would keep the old percentages for
+    /// up to five minutes.
+    private var scannedCaps = GoCaps.signature
     private var lastEnrichment: Date?
     private var isEnriching = false
     private var loadTask: Task<Void, Never>?
@@ -338,7 +342,9 @@ final class HomeViewController: UIViewController {
     /// missing for five minutes.
     private func scanOpencodeIfNeeded() async {
         defer { isScanningOpencode = false }
+        if scannedCaps != GoCaps.signature { lastOpencodeScan = nil }
         if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
+        scannedCaps = GoCaps.signature
         let entries = ConnectionController.shared.opencodeBackends()
         guard !entries.isEmpty else { return }
         guard

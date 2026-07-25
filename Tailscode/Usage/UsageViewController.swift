@@ -67,12 +67,20 @@ final class UsageViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refreshUpdatedLabel()
-        if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) > Self.staleInterval,
-            loadTask == nil
-        {
+        guard loadTask == nil else { return }
+        if loadedCaps != GoCaps.signature {
+            startLoad()
+            return
+        }
+        if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) > Self.staleInterval {
             startLoad()
         }
     }
+
+    /// The caps the gauges on screen were computed against. Editing them in
+    /// Settings changes what every opencode percentage means, so coming back
+    /// here recomputes instead of waiting out the staleness window.
+    private var loadedCaps = GoCaps.signature
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
@@ -84,6 +92,7 @@ final class UsageViewController: UIViewController {
 
     private func startLoad() {
         loadTask?.cancel()
+        loadedCaps = GoCaps.signature
         loadTask = Task {
             await load()
             if !Task.isCancelled { loadTask = nil }

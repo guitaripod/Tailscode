@@ -114,6 +114,26 @@ enum UsageWidgetStore {
         if reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
     }
 
+    /// Drops a provider's stored gauges. Used when the numbers behind them stop
+    /// being true — an estimate whose cap the user just changed describes a plan
+    /// that no longer exists, and showing it on the Home screen until the next
+    /// scan is worse than showing nothing.
+    static func removeProvider(named name: String, reload: Bool = true) {
+        var removed = false
+        withProvidersLock {
+            guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+                let stored = try? JSONDecoder().decode(Storage.self, from: data),
+                stored.providers.contains(where: { $0.providerName == name })
+            else { return }
+            let remaining = stored.providers.filter { $0.providerName != name }
+            let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)
+            guard let encoded = try? JSONEncoder().encode(storage) else { return }
+            UserDefaults(suiteName: suiteName)?.set(encoded, forKey: providersKey)
+            removed = true
+        }
+        if removed, reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
+    }
+
     /// The app, the widget, and the notification service extension all
     /// read-modify-write the provider list from separate processes; an exclusive
     /// flock on a file in the shared container keeps a concurrent writer from
