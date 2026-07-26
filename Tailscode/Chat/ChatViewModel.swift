@@ -204,6 +204,9 @@ final class ChatViewModel {
         let id = UUID()
         let text: String
         let baselineUserCount: Int
+        /// Rendered from the bytes still in memory, so an image the user just
+        /// picked is on screen before the server has echoed the message back.
+        var attachments: [PromptAttachment] = []
     }
 
     private(set) var localEchoes: [LocalEcho] = []
@@ -364,7 +367,8 @@ final class ChatViewModel {
             text: text, model: model, effort: effort, attachments: attachments)
         lastSent = pending
         let echo = LocalEcho(
-            text: text, baselineUserCount: state.messages.count { $0.role == .user })
+            text: text, baselineUserCount: state.messages.count { $0.role == .user },
+            attachments: attachments.filter { $0.mime.hasPrefix("image/") && $0.data != nil })
         localEchoes.append(echo)
         optimisticThinking = true
         onState?(state)

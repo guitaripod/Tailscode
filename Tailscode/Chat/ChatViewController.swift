@@ -112,6 +112,12 @@ final class ChatViewController: UIViewController {
                     self?.composerDidSend(auto)
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_ATTACHMENT"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.openFirstAttachment()
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] != nil, !isReadOnly {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
@@ -223,6 +229,8 @@ final class ChatViewController: UIViewController {
         collectionView.addGestureRecognizer(dismissTap)
         collectionView.register(TextBubbleCell.self, forCellWithReuseIdentifier: TextBubbleCell.reuseID)
         collectionView.register(CodeBlockCell.self, forCellWithReuseIdentifier: CodeBlockCell.reuseID)
+        collectionView.register(
+            ImageBubbleCell.self, forCellWithReuseIdentifier: ImageBubbleCell.reuseID)
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
@@ -438,6 +446,24 @@ final class ChatViewController: UIViewController {
                 return collectionView.dequeueReusableCell(
                     withReuseIdentifier: ThinkingCell.reuseID, for: indexPath)
             }
+            if id.hasPrefix("local:"), id.contains(":img"),
+                let echo = self.viewModel.localEchoes.first(where: {
+                    id.hasPrefix("local:\($0.id.uuidString):img")
+                }),
+                let index = Int(id.components(separatedBy: ":img").last ?? ""),
+                echo.attachments.indices.contains(index)
+            {
+                let attachment = echo.attachments[index]
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
+                cell.delegate = self
+                cell.configure(
+                    file: FileReference(
+                        path: nil, mime: attachment.mime, url: "local:\(echo.id.uuidString):\(index)",
+                        filename: attachment.filename),
+                    role: .user, backend: self.viewModel.backend, localData: attachment.data)
+                return cell
+            }
             if id.hasPrefix("local:"),
                 let echo = self.viewModel.localEchoes.first(where: { "local:\($0.id.uuidString)" == id })
             {
@@ -513,6 +539,13 @@ final class ChatViewController: UIViewController {
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
+            case .image(let file):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
+                cell.delegate = self
+                cell.onLoaded = { [weak self] in self?.remeasureRow(row.id) }
+                cell.configure(file: file, role: row.role, backend: self.viewModel.backend)
+                return cell
             case .error(let text):
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
@@ -605,7 +638,14 @@ final class ChatViewController: UIViewController {
         withdrawResolvedRequests(
             previousPermission: previousPermissionID, previousQuestion: previousQuestionID)
         var ids = orderedIDs
-        for echo in viewModel.localEchoes { ids.append("local:\(echo.id.uuidString)") }
+        for echo in viewModel.localEchoes {
+            for index in echo.attachments.indices {
+                ids.append("local:\(echo.id.uuidString):img\(index)")
+            }
+            if !echo.text.isEmpty || echo.attachments.isEmpty {
+                ids.append("local:\(echo.id.uuidString)")
+            }
+        }
         let lastContentRole: MessageRole? =
             viewModel.localEchoes.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
@@ -983,6 +1023,29 @@ final class ChatViewController: UIViewController {
     private func isActivity(_ row: ChatRow) -> Bool {
         if case .activity = row.content { return true }
         return false
+    }
+
+    #if DEBUG
+        /// Opens the first attached image full screen, so the viewer can be
+        /// captured from a script the way every other screen already can be.
+        private func openFirstAttachment() {
+            for cell in collectionView.visibleCells {
+                guard let cell = cell as? ImageBubbleCell, let image = cell.displayedImage else {
+                    continue
+                }
+                imageBubbleCell(cell, didTap: image, from: cell.imageContainer)
+                return
+            }
+        }
+    #endif
+
+    /// Re-runs one row's cell provider so a now-decoded image is laid out at
+    /// its real aspect ratio instead of the placeholder's.
+    private func remeasureRow(_ id: String) {
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(id) else { return }
+        snapshot.reconfigureItems([id])
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     private func toggleReasoning(_ id: String) {
@@ -1469,7 +1532,7 @@ final class ChatViewController: UIViewController {
                     case .tool(let call): return "[\(call.title ?? call.name)]"
                     }
                 }.joined(separator: "\n")
-            case .file(let file):
+            case .file(let file), .image(let file):
                 body = "[file: \(file.path ?? file.filename ?? "attachment")]"
             case .timestamp, .error:
                 continue
@@ -1628,7 +1691,9 @@ final class ChatViewController: UIViewController {
                 case .file(let file):
                     flushActivity()
                     rows.append(
-                        ChatRow(id: id, messageID: message.id, role: message.role, content: .file(file)))
+                        ChatRow(
+                            id: id, messageID: message.id, role: message.role,
+                            content: file.isImage ? .image(file) : .file(file)))
                 case .unknown:
                     continue
                 }
@@ -2040,7 +2105,7 @@ extension ChatViewController: UICollectionViewDelegate {
                 case .tool(let call): return call.output ?? call.title ?? call.name
                 }
             }.joined(separator: "\n\n")
-        case .file(let file):
+        case .file(let file), .image(let file):
             return file.filename ?? file.mime
         case .timestamp, .error:
             return nil
@@ -2068,6 +2133,12 @@ extension ChatViewController: UICollectionViewDelegate {
 extension ChatViewController: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         Task { await refreshAgentsChip() }
+    }
+}
+
+extension ChatViewController: ImageBubbleCellDelegate {
+    func imageBubbleCell(_ cell: ImageBubbleCell, didTap image: UIImage, from view: UIView) {
+        present(ImageViewerViewController(image: image, from: view), animated: false)
     }
 }
 

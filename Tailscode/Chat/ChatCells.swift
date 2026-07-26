@@ -17,6 +17,7 @@ struct ChatRow: Hashable {
         case code(CodeBlock)
         case activity([ActivityStep])
         case file(FileReference)
+        case image(FileReference)
         case timestamp(String)
         case error(String)
     }
