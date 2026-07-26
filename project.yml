@@ -75,14 +75,16 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: Tailscode/Tailscode-Debug.entitlements
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Dev iPhone Air 2026
         Release:
           CODE_SIGN_ENTITLEMENTS: Tailscode/Tailscode-Release.entitlements
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode App Store 2026
 
   TailscodeWidget:
     type: app-extension
@@ -128,10 +130,15 @@ targets:
         CURRENT_PROJECT_VERSION: "8"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
         CODE_SIGN_ENTITLEMENTS: TailscodeWidget/TailscodeWidget.entitlements
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
+        Release:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget App Store 2026
 
   TailscodeNSE:
     type: app-extension
@@ -164,10 +171,15 @@ targets:
         CURRENT_PROJECT_VERSION: "8"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-        PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE Dev iPhone Air 2026
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
         CODE_SIGN_ENTITLEMENTS: TailscodeNSE/TailscodeNSE.entitlements
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE Dev iPhone Air 2026
+        Release:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE App Store 2026
 
 schemes:
   Tailscode:
