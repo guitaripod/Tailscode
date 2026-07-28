@@ -1,5 +1,6 @@
 {
   "appId": "6791660932",
+  "releaseType": "AFTER_APPROVAL",
   "name": "Tailscode",
   "subtitle": "Remote for AI coding agents",
   "primaryCategory": "DEVELOPER_TOOLS",

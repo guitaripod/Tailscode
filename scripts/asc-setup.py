@@ -3,7 +3,7 @@
 
 Reads docs/asc-metadata.json and pushes the decided listing: categories,
 name/subtitle/privacy URL (appInfoLocalization), description/keywords/promo/
-URLs (the 1.0 version localization), MANUAL release, review details (demo
+URLs (the editable version's localization), release type, review details (demo
 instructions), free price, China-mainland availability off, and a fully-NONE
 age rating. Re-runnable.
 
@@ -50,8 +50,9 @@ def push_listing():
     print(f"name/subtitle/privacy set ({iloc})")
 
     ver = editable_version()
+    release_type = spec.get("releaseType", "AFTER_APPROVAL")
     asc.patch(f"/v1/appStoreVersions/{ver['id']}", {"data": {"type": "appStoreVersions",
-        "id": ver["id"], "attributes": {"releaseType": "MANUAL"}}})
+        "id": ver["id"], "attributes": {"releaseType": release_type}}})
     vlocs = first(f"/v1/appStoreVersions/{ver['id']}/appStoreVersionLocalizations")
     vloc = next(l["id"] for l in vlocs if l["attributes"].get("locale") == "en-US")
     asc.patch(f"/v1/appStoreVersionLocalizations/{vloc}", {"data": {
@@ -59,7 +60,7 @@ def push_listing():
             "description": spec["description"], "keywords": spec["keywords"],
             "promotionalText": spec["promotionalText"],
             "supportUrl": spec["supportUrl"], "marketingUrl": spec["marketingUrl"]}}})
-    print(f"version {ver['attributes'].get('versionString')} localization set; release=MANUAL")
+    print(f"version {ver['attributes'].get('versionString')} localization set; release={release_type}")
     return ver["id"]
 
 
