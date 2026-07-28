@@ -22,6 +22,9 @@ final class ChatViewController: UIViewController {
     private var pendingAttachments: [PromptAttachment] = []
     private var pendingPermission: PermissionRequest?
     private var pendingQuestion: QuestionRequest?
+    /// The compaction happening right now, or the one that was just refused. Finished ones are
+    /// rows in the transcript and need no state here.
+    private var liveCompaction: CompactionRow?
     private var questionSelection = QuestionCell.Selection()
     private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
@@ -118,6 +121,14 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     self?.openFirstAttachment()
+                }
+            }
+            if let which = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_COMPACT"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    which == "summary"
+                        ? self.openFirstCompactionSummary() : self.presentCompactPreflight()
                 }
             }
             if let hook = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] {
@@ -257,6 +268,8 @@ final class ChatViewController: UIViewController {
             ThinkingCell.self, forCellWithReuseIdentifier: ThinkingCell.reuseID)
         collectionView.register(
             QuestionCell.self, forCellWithReuseIdentifier: QuestionCell.reuseID)
+        collectionView.register(
+            CompactionCell.self, forCellWithReuseIdentifier: CompactionCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -449,6 +462,35 @@ final class ChatViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
+    /// most people don't know it accepts. The sheet is where that gets said.
+    private func presentCompactPreflight() {
+        let sheet = CompactPreflightViewController(
+            messageCount: viewModel.state.messages.count(where: { $0.role != .system }),
+            lastCompaction: viewModel.lastCompaction
+        ) { [weak self] instructions in
+            self?.viewModel.compact(instructions: instructions)
+        }
+        let nav = UINavigationController(rootViewController: sheet)
+        if let presentation = nav.sheetPresentationController {
+            presentation.detents = [.large(), .medium()]
+            presentation.selectedDetentIdentifier = .large
+            presentation.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
+    private func presentCompactionSummary(_ row: CompactionRow) {
+        guard let compaction = row.compaction, row.isReadable else { return }
+        let nav = UINavigationController(
+            rootViewController: CompactionSummaryViewController(compaction: compaction))
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
     private func presentGoalDetail() {
         guard let goal = viewModel.goal, goal.isActive else { return }
         let sheet = UIAlertController(
@@ -543,6 +585,12 @@ final class ChatViewController: UIViewController {
             if id == "thinking" {
                 return collectionView.dequeueReusableCell(
                     withReuseIdentifier: ThinkingCell.reuseID, for: indexPath)
+            }
+            if let live = self.liveCompaction, live.id == id {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
+                cell.configure(live, onTap: nil)
+                return cell
             }
             if id.hasPrefix("local:"), id.contains(":img"),
                 let echo = self.viewModel.localEchoes.first(where: {
@@ -648,6 +696,13 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: SubagentGroupCell.reuseID, for: indexPath)
                     as! SubagentGroupCell
                 cell.configure(group) { [weak self] in self?.toggleAgentGroup(group.id) }
+                return cell
+            case .compaction(let compaction):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: CompactionCell.reuseID, for: indexPath) as! CompactionCell
+                cell.configure(compaction) { [weak self] in
+                    self?.presentCompactionSummary(compaction)
+                }
                 return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
@@ -777,7 +832,14 @@ final class ChatViewController: UIViewController {
         let lastContentRole: MessageRole? =
             viewModel.localEchoes.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
-        if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
+        liveCompaction = state.compaction.map {
+            CompactionRow(
+                id: $0.isRunning ? "compacting" : "compaction-failed",
+                state: $0.failure.map { .failed($0) } ?? .running(startedAt: $0.startedAt))
+        }
+        if let liveCompaction {
+            ids.append(liveCompaction.id)
+        } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
             lastContentRole != .assistant
         {
             ids.append("thinking")
@@ -1315,6 +1377,13 @@ final class ChatViewController: UIViewController {
                     [weak self] _ in self?.promptRename()
                 })
         }
+        if viewModel.supportsCompaction {
+            children.append(
+                UIAction(
+                    title: "Compact conversation",
+                    image: UIImage(systemName: "arrow.down.right.and.arrow.up.left")
+                ) { [weak self] _ in self?.presentCompactPreflight() })
+        }
         if viewModel.canFork {
             children.append(
                 UIAction(
@@ -1396,6 +1465,14 @@ final class ChatViewController: UIViewController {
     }
 
     #if DEBUG
+        private func openFirstCompactionSummary() {
+            guard let row = orderedIDs.compactMap({ id -> CompactionRow? in
+                guard case .compaction(let row) = rowsByID[id]?.content else { return nil }
+                return row
+            }).first else { return }
+            presentCompactionSummary(row)
+        }
+
         private func scrollToFirstAgentGroup() {
             guard let id = orderedIDs.first(where: { id in
                 guard case .subagentGroup = rowsByID[id]?.content else { return false }
@@ -1647,6 +1724,11 @@ final class ChatViewController: UIViewController {
             presentGoalComposer()
             return
         }
+        if command.name == "compact", viewModel.supportsCompaction {
+            composer.clear()
+            presentCompactPreflight()
+            return
+        }
         guard !command.takesArguments else {
             composer.setDraft("/\(command.name) ", focus: true)
             return
@@ -1830,6 +1912,9 @@ final class ChatViewController: UIViewController {
                 body = "_\(group.total) agents_"
             case .file(let file), .image(let file):
                 body = "[file: \(file.path ?? file.filename ?? "attachment")]"
+            case .compaction(let row):
+                out.append(Self.compactionMarkdown(row))
+                continue
             case .timestamp, .error:
                 continue
             }
@@ -2012,7 +2097,14 @@ final class ChatViewController: UIViewController {
                         ChatRow(
                             id: id, messageID: message.id, role: message.role,
                             content: file.isImage ? .image(file) : .file(file)))
-                case .compaction, .unknown:
+                case .compaction(let compaction):
+                    flushActivity()
+                    rows.append(
+                        ChatRow(
+                            id: id, messageID: message.id, role: .system,
+                            content: .compaction(
+                                CompactionRow(id: id, state: .done(compaction)))))
+                case .unknown:
                     continue
                 }
             }
@@ -2544,9 +2636,24 @@ extension ChatViewController: UICollectionViewDelegate {
             return nil
         case .file(let file), .image(let file):
             return file.filename ?? file.mime
+        case .compaction(let row):
+            return row.compaction?.summary
         case .timestamp, .error:
             return nil
         }
+    }
+
+    /// A shared transcript has to keep the seam: the messages above it are still there to read, but
+    /// they stopped being what the agent knew.
+    private static func compactionMarkdown(_ row: CompactionRow) -> String {
+        guard let compaction = row.compaction else { return "---\n\n_Context compacted._" }
+        var line = "---\n\n_Context compacted"
+        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
+            line += ": \(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"
+        }
+        line += " — everything above this point was replaced by a summary._"
+        guard let summary = compaction.summary, !summary.isEmpty else { return line }
+        return line + "\n\n<details><summary>Summary</summary>\n\n\(summary)\n\n</details>"
     }
 
     /// A shared transcript keeps a spawned agent inside the conversation it

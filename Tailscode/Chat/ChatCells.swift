@@ -18,6 +18,7 @@ struct ChatRow: Hashable {
         case activity([ActivityStep])
         case subagent(SubagentCard)
         case subagentGroup(SubagentGroup)
+        case compaction(CompactionRow)
         case file(FileReference)
         case image(FileReference)
         case timestamp(String)

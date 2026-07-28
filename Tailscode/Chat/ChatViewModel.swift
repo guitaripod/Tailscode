@@ -241,6 +241,32 @@ final class ChatViewModel {
         }
     }
 
+    var supportsCompaction: Bool { backend.capabilities.supportsCompaction }
+
+    /// A compaction in flight, or the one that was just refused. The transcript records finished
+    /// ones itself — this is only the part of the story that has no row of its own yet.
+    var compactionActivity: CompactionActivity? { state.compaction }
+
+    /// The most recent finished compaction, so the app can say what the last one cost before
+    /// asking for another.
+    var lastCompaction: Compaction? {
+        state.messages.reversed()
+            .lazy
+            .flatMap { $0.parts }
+            .compactMap { part -> Compaction? in
+                guard case .compaction(let value) = part.kind else { return nil }
+                return value
+            }
+            .first
+    }
+
+    /// Compaction is a turn like any other — it echoes, engages the thinking state, and queues
+    /// behind a running one — so it goes out through the ordinary send path.
+    func compact(instructions: String?) {
+        let command = AgentCommand(name: "compact", details: "", source: .builtin)
+        run(command, arguments: instructions)
+    }
+
     func setGoal(_ condition: String) {
         run(AgentCommand(name: "goal", details: "", source: .builtin), arguments: condition)
     }

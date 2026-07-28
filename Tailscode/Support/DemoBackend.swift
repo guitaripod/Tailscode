@@ -325,6 +325,7 @@ enum DemoWorld {
                 MessagePart(id: "t", kind: .text(
                     "## Token lifecycle\n\nThe flow lives in Sources/Pulse/Auth/TokenStore.swift and has three phases:\n\n- **Mint** — `TokenStore.bootstrap()` exchanges the refresh token at startup\n- **Serve** — requests read the in-memory access token; no locking on the hot path\n- **Refresh** — a background task renews 90 seconds before expiry\n\n> The refresh task is the only writer. Readers never block — they race the swap and always see either the old or the new token, both valid.\n\nRetry policy: refresh failures back off exponentially (`1s, 2s, 4s… capped at 60s`) and never give up while the process lives. See [RFC 6749 §6](https://datatracker.ietf.org/doc/html/rfc6749#section-6) for the grant semantics.")),
             ], cost: nil, tokens: 12_400)),
+            step(compaction("c4x", .claudeCode, at: ago(94_250))),
             step(user("c4u2", .claudeCode, "And what happens when the refresh itself 401s?", at: ago(94_200))),
             step(assistant("c4a2", .claudeCode, at: ago(94_100), model: "claude-fable-5", parts: [
                 MessagePart(id: "t1", kind: .text(
@@ -561,6 +562,56 @@ enum DemoWorld {
             id: id, role: .user, agentType: type,
             parts: [MessagePart(id: "t", kind: .text(text))], createdAt: date)
     }
+
+    private static func compaction(_ id: String, _ type: AgentType, at date: Date) -> ChatMessage {
+        ChatMessage(
+            id: id, role: .system, agentType: type,
+            parts: [
+                MessagePart(
+                    id: "compaction",
+                    kind: .compaction(
+                        Compaction(
+                            trigger: .manual, tokensBefore: 311_551, tokensAfter: 16_418,
+                            duration: 114, preservedMessageCount: 9,
+                            summary: demoCompactionSummary)))
+            ],
+            createdAt: date)
+    }
+
+    private static let demoCompactionSummary = """
+        This session is being continued from a previous conversation that ran out of context. \
+        The summary below covers the earlier portion of the conversation.
+
+        **1. Primary request and intent**
+
+        Walk through how token refresh works in `pulse-server`, with particular attention to where \
+        it retries and what happens when a refresh fails outright.
+
+        **2. Key technical concepts**
+
+        - `TokenStore` owns the whole lifecycle: mint at boot, serve from memory, refresh ahead of \
+        expiry. It is the only writer; readers never take a lock.
+        - Refresh fires 90 seconds before the access token expires, with exponential backoff \
+        (`1s, 2s, 4s…` capped at 60s) on transient failure.
+        - A 401 on the refresh call is terminal — the refresh token itself is dead, so the store \
+        moves to `.needsReauth` instead of retrying.
+
+        **3. Files and code sections**
+
+        - `Sources/Pulse/Auth/TokenStore.swift` — `bootstrap()`, the refresh task, and the \
+        `.unauthorized` escalation path.
+        - `Sources/Pulse/Auth/DeviceIdentity.swift` — supplies the credential the reauth hook signs \
+        back in with.
+
+        **4. Errors and fixes**
+
+        None encountered; this portion of the conversation was explanatory.
+
+        **5. Pending work**
+
+        The user was asking what happens when the refresh call itself returns 401. The answer had \
+        not yet been given when the context filled.
+        """
 
     private static func assistant(
         _ id: String, _ type: AgentType, at date: Date, streaming: Bool = false,
