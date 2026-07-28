@@ -94,6 +94,7 @@ final class SessionListViewController: UIViewController {
     private func updateComposeButton() {
         let servers = viewModel.servers
         let compose = UIImage(systemName: "square.and.pencil")
+        let composeItem: UIBarButtonItem
         if servers.count > 1 {
             let actions = servers.map { profile in
                 UIAction(
@@ -102,16 +103,26 @@ final class SessionListViewController: UIViewController {
                     image: Self.serverIcon(for: profile.backend)
                 ) { [weak self] _ in self?.startChat(on: profile) }
             }
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
+            composeItem = UIBarButtonItem(
                 image: compose, menu: UIMenu(title: "New chat on…", children: actions))
         } else {
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
+            composeItem = UIBarButtonItem(
                 image: compose, primaryAction: UIAction { [weak self] _ in
                     guard let self, let profile = self.viewModel.servers.first else { return }
                     self.startChat(on: profile)
                 })
         }
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
+        composeItem.accessibilityLabel = "New chat"
+        let saved = UIBarButtonItem(
+            image: UIImage(systemName: "bookmark"),
+            primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
+        saved.accessibilityLabel = "Saved chats"
+        navigationItem.rightBarButtonItems = [composeItem, saved]
+    }
+
+    private func pushSaved() {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(SavedChatsViewController(), animated: true)
     }
 
     private func configureChipBar() {
@@ -223,6 +234,21 @@ final class SessionListViewController: UIViewController {
             let config = UISwipeActionsConfiguration(actions: [delete])
             config.performsFirstActionWithFullSwipe = false
             return config
+        }
+        config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath)
+            else { return nil }
+            let isSaved = SavedChatStore.contains(entry)
+            let save = UIContextualAction(
+                style: .normal, title: isSaved ? "Remove" : "Save"
+            ) { _, _, done in
+                Theme.Haptics.tap()
+                SavedChatStore.toggle(entry)
+                done(true)
+            }
+            save.image = UIImage(systemName: isSaved ? "bookmark.slash" : "bookmark")
+            save.backgroundColor = Theme.Color.warning
+            return UISwipeActionsConfiguration(actions: [save])
         }
         let layout = UICollectionViewCompositionalLayout.list(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -588,6 +614,15 @@ extension SessionListViewController: UICollectionViewDelegate {
                         }
                     })
             }
+            let isSaved = SavedChatStore.contains(entry)
+            actions.append(
+                UIAction(
+                    title: isSaved ? "Remove from Saved" : "Save chat",
+                    image: UIImage(systemName: isSaved ? "bookmark.slash" : "bookmark")
+                ) { _ in
+                    Theme.Haptics.tap()
+                    SavedChatStore.toggle(entry)
+                })
             if self.viewModel.supportsRenaming(entry) {
                 actions.append(
                     UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {

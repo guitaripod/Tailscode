@@ -211,6 +211,7 @@ final class ConnectionController {
             PushRegistrar.unregister(
                 from: pushBackend, baseURL: deleted.baseURL, name: deleted.name)
         }
+        SavedChatStore.removeAll(profileID: id)
         mutated()
     }
 

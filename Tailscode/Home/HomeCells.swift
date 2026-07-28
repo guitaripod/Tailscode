@@ -2,17 +2,44 @@ import CodingAgentKit
 import UIKit
 
 enum HomeSection: Hashable {
-    case alerts, live, projects, recent, usage
+    case alerts, live, saved, projects, recent, usage
 }
 
 enum HomeItem: Hashable {
     case alert(ServerAlertCard)
     case live(LiveCard)
+    case saved(SavedCard)
     case project(ProjectCard)
     case recent(RecentCard)
     case usage(QuotaCard)
     case placeholder(Int)
     case usagePlaceholder(Int)
+}
+
+/// A bookmarked conversation on Home. Reads from the saved snapshot rather than
+/// the live listing, so the section survives a server being unreachable — which
+/// is most of the reason to bookmark a chat in the first place.
+struct SavedCard: Hashable {
+    let chat: SavedChat
+    let title: String
+    let detail: String
+    let unread: Bool
+
+    init(chat: SavedChat, unread: Bool) {
+        self.chat = chat
+        self.unread = unread
+        self.title = chat.displayTitle
+        var parts: [String] = [chat.profileName]
+        if let project = chat.projectName { parts.append(project) }
+        parts.append(chat.updatedAt.formatted(.relative(presentation: .named)))
+        self.detail = parts.joined(separator: " · ")
+    }
+
+    static func == (lhs: SavedCard, rhs: SavedCard) -> Bool {
+        lhs.chat == rhs.chat && lhs.detail == rhs.detail && lhs.unread == rhs.unread
+    }
+
+    func hash(into hasher: inout Hasher) { hasher.combine(chat) }
 }
 
 struct LiveCard: Hashable {
@@ -478,16 +505,44 @@ final class RecentSessionCell: GlassCardCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ card: RecentCard) {
-        iconView.image = UIImage(systemName: card.entry.backendType.symbolName)?
-            .withTintColor(card.entry.backendType.brandColor, renderingMode: .alwaysOriginal)
-        unreadBadge.isHidden = !card.unread
-        titleLabel.font = card.unread
+        apply(
+            symbol: card.entry.backendType.symbolName,
+            tint: card.entry.backendType.brandColor,
+            title: card.title, detail: card.detail, unread: card.unread, badge: nil)
+    }
+
+    func configure(_ card: SavedCard) {
+        apply(
+            symbol: card.chat.backend.symbolName,
+            tint: card.chat.backend.brandColor,
+            title: card.title, detail: card.detail, unread: card.unread, badge: "bookmark.fill")
+    }
+
+    private func apply(
+        symbol: String, tint: UIColor, title: String, detail: String, unread: Bool,
+        badge: String?
+    ) {
+        iconView.image = UIImage(systemName: symbol)?
+            .withTintColor(tint, renderingMode: .alwaysOriginal)
+        unreadBadge.isHidden = !unread
+        titleLabel.font = unread
             ? .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
             : .preferredFont(forTextStyle: .subheadline)
-        titleLabel.text = card.title
-        detailLabel.text = card.detail
-        accessibilityLabel = card.unread
-            ? "Unread: \(card.title), \(card.detail)" : "\(card.title), \(card.detail)"
+        titleLabel.text = title
+        detailLabel.text = detail
+        if let badge, let image = UIImage(
+            systemName: badge,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        {
+            chevron.image = image
+            chevron.tintColor = Theme.Color.warning
+        } else {
+            chevron.image = UIImage(
+                systemName: "chevron.right",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+            chevron.tintColor = Theme.Color.tertiaryLabel
+        }
+        accessibilityLabel = unread ? "Unread: \(title), \(detail)" : "\(title), \(detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
     }

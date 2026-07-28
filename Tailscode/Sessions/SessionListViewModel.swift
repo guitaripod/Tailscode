@@ -139,6 +139,7 @@ final class SessionListViewModel {
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = failed
         SessionListCache.save(entries)
+        SavedChatStore.reconcile(with: entries)
         if changed {
             AppLogger.session.info(
                 "loaded \(entries.count) sessions across \(sources.count) servers")
@@ -169,6 +170,7 @@ final class SessionListViewModel {
         do {
             try await backend.deleteSession(entry.session.id)
             entries.removeAll { $0 == entry }
+            SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
             onChange?()
         } catch {
             onError?(Self.readable(error))

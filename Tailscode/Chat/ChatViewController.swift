@@ -42,9 +42,11 @@ final class ChatViewController: UIViewController {
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
     private let agentsChip = UIButton(type: .system)
+    private let goalChip = UIButton(type: .system)
+    private var lastRenderedGoal: SessionGoal?
     private let composerAccessories = UIStackView()
-    private var agentsPollTask: Task<Void, Never>?
-    private var lastAgents: [SubagentSummary] = []
+    private var streamingActivityID: String?
+    private var expandedAgentGroups: Set<String> = []
     private let navTitleContainer = UIView()
     private let navSpinner = UIActivityIndicatorView(style: .medium)
     private let attachmentStrip = UIStackView()
@@ -56,18 +58,14 @@ final class ChatViewController: UIViewController {
     private var isApplyingEnhancedPrompt = false
 
     var sessionID: String { viewModel.session.id }
-    private let isReadOnly: Bool
-
-    init(viewModel: ChatViewModel, readOnly: Bool = false) {
+    init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
-        self.isReadOnly = readOnly
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     deinit {
-        agentsPollTask?.cancel()
         elapsedTicker?.cancel()
         revealFallback?.cancel()
     }
@@ -81,14 +79,13 @@ final class ChatViewController: UIViewController {
         configureLayout()
         configureFAB()
         configureAgentsChip()
+        configureGoalChip()
         configureNavTitleView()
         configureDataSource()
         composer.delegate = self
         composer.showsAttach = canAttachAnything
-        if !isReadOnly {
-            enhancement.onStatusChange = { [weak self] status in
-                self?.handleEnhancementStatus(status)
-            }
+        enhancement.onStatusChange = { [weak self] status in
+            self?.handleEnhancementStatus(status)
         }
         NotificationManager.requestAuthorizationIfNeeded()
         NotificationCenter.default.addObserver(
@@ -106,11 +103,16 @@ final class ChatViewController: UIViewController {
         bind()
         viewModel.start()
         #if DEBUG
-            if let auto = ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"], !isReadOnly {
+            if let auto = ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     self?.composerDidSend(auto)
                 }
+            }
+            if let option = ProcessInfo.processInfo.environment["TAILSCODE_ANSWER_QUESTION"]
+                .flatMap(Int.init)
+            {
+                Task { [weak self] in await self?.answerPendingQuestion(option: option) }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_ATTACHMENT"] != nil {
                 Task { [weak self] in
@@ -118,41 +120,55 @@ final class ChatViewController: UIViewController {
                     self?.openFirstAttachment()
                 }
             }
-            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] != nil, !isReadOnly {
+            if let hook = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     guard let self else { return }
-                    let agents = await self.viewModel.subagents()
-                    if !agents.isEmpty { self.presentSubagents(agents) }
+                    let agents = self.viewModel.trackedSubagents
+                    guard !agents.isEmpty else { return }
+                    switch hook {
+                    case "first": self.revealSubagent(id: agents[0].id)
+                    case "group": self.scrollToFirstAgentGroup()
+                    default: self.presentSubagents(agents)
+                    }
                 }
             }
-            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] != nil, !isReadOnly {
+            if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.composer.setDraft(draft)
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     self?.presentModelPicker()
                 }
             }
         #endif
-        if !isReadOnly, let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
+        if let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
             composer.setDraft(draft, focus: false)
         }
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
             Task { await loadModels() }
         }
+        viewModel.loadServerCommands()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         viewModel.isBound = true
+        viewModel.startSubagentTracking()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         saveDraft()
         SessionSeenStore.markSeen(viewModel.session.id)
+        viewModel.stopSubagentTracking()
         if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
             viewModel.isBound = false
-            if isReadOnly || !viewModel.isBusy { viewModel.stop() }
+            if !viewModel.isBusy { viewModel.stop() }
             enhancement.cancel()
             enhanceOverlay?.removeFromSuperview()
             enhanceOverlay = nil
@@ -170,7 +186,6 @@ final class ChatViewController: UIViewController {
     private var draftKey: String { "tailscode.draft.\(viewModel.contextID)/\(viewModel.session.id)" }
 
     @objc private func saveDraft() {
-        guard !isReadOnly else { return }
         let text = composer.currentText
         if text.isEmpty {
             UserDefaults.standard.removeObject(forKey: draftKey)
@@ -235,6 +250,10 @@ final class ChatViewController: UIViewController {
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
         collectionView.register(
+            SubagentCardCell.self, forCellWithReuseIdentifier: SubagentCardCell.reuseID)
+        collectionView.register(
+            SubagentGroupCell.self, forCellWithReuseIdentifier: SubagentGroupCell.reuseID)
+        collectionView.register(
             ThinkingCell.self, forCellWithReuseIdentifier: ThinkingCell.reuseID)
         collectionView.register(
             QuestionCell.self, forCellWithReuseIdentifier: QuestionCell.reuseID)
@@ -255,11 +274,14 @@ final class ChatViewController: UIViewController {
         attachmentStrip.isHidden = true
         agentsChip.isHidden = true
         agentsChip.translatesAutoresizingMaskIntoConstraints = false
+        goalChip.isHidden = true
+        goalChip.translatesAutoresizingMaskIntoConstraints = false
         composerAccessories.axis = .vertical
         composerAccessories.spacing = Theme.Spacing.xs
         composerAccessories.alignment = .leading
         composerAccessories.translatesAutoresizingMaskIntoConstraints = false
         composerAccessories.addArrangedSubview(attachmentStrip)
+        composerAccessories.addArrangedSubview(goalChip)
         composerAccessories.addArrangedSubview(agentsChip)
         view.addSubview(composerAccessories)
 
@@ -275,11 +297,8 @@ final class ChatViewController: UIViewController {
 
             composer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            isReadOnly
-                ? composer.topAnchor.constraint(equalTo: view.bottomAnchor)
-                : composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
-        composer.isHidden = isReadOnly
 
         commandPalette.isHidden = true
         view.addSubview(commandPalette)
@@ -290,6 +309,9 @@ final class ChatViewController: UIViewController {
                 equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             commandPalette.bottomAnchor.constraint(
                 equalTo: composerAccessories.topAnchor, constant: -Theme.Spacing.xs),
+            commandPalette.topAnchor.constraint(
+                greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
+                constant: Theme.Spacing.s),
         ])
 
         NSLayoutConstraint.activate([
@@ -301,18 +323,16 @@ final class ChatViewController: UIViewController {
                 equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
         ])
 
-        if !isReadOnly {
-            emptyState.translatesAutoresizingMaskIntoConstraints = false
-            emptyState.isHidden = true
-            emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
-            view.insertSubview(emptyState, belowSubview: composer)
-            NSLayoutConstraint.activate([
-                emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
-                emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
-                emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
-                emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
-            ])
-        }
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        emptyState.isHidden = true
+        emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
+        view.insertSubview(emptyState, belowSubview: composer)
+        NSLayoutConstraint.activate([
+            emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
+            emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
+            emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor),
+        ])
 
         loadingState.translatesAutoresizingMaskIntoConstraints = false
         loadingState.isHidden = true
@@ -330,7 +350,7 @@ final class ChatViewController: UIViewController {
     /// deep in fan-out work can leave the main transcript still for minutes,
     /// which otherwise reads as "nothing is happening".
     private func configureAgentsChip() {
-        guard viewModel.supportsSubagents, !isReadOnly else { return }
+        guard viewModel.supportsSubagents else { return }
         var config = UIButton.Configuration.gray()
         config.cornerStyle = .capsule
         config.buttonSize = .small
@@ -342,27 +362,105 @@ final class ChatViewController: UIViewController {
         agentsChip.configuration = config
         agentsChip.addAction(
             UIAction { [weak self] _ in
-                guard let self, !self.lastAgents.isEmpty else { return }
-                self.presentSubagents(self.lastAgents)
+                guard let self else { return }
+                let agents = self.viewModel.trackedSubagents
+                guard !agents.isEmpty else { return }
+                if agents.count == 1 {
+                    self.revealSubagent(id: agents[0].id)
+                } else {
+                    self.presentSubagents(agents)
+                }
             }, for: .touchUpInside)
-        agentsPollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refreshAgentsChip()
-                try? await Task.sleep(for: .seconds(8))
-            }
-        }
+        viewModel.startSubagentTracking()
     }
 
-    private func refreshAgentsChip() async {
-        let agents = await viewModel.subagents()
-        lastAgents = agents
-        let live = agents.count(where: \.isActive)
+    private func refreshAgentsChip() {
+        let live = viewModel.liveSubagentCount
         guard live > 0 else {
             agentsChip.isHidden = true
             return
         }
         agentsChip.configuration?.title = "\(live) agent\(live == 1 ? "" : "s") working"
         agentsChip.isHidden = false
+    }
+
+    private func configureGoalChip() {
+        guard viewModel.supportsGoals else { return }
+        var config = UIButton.Configuration.tinted()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.image = UIImage(
+            systemName: "target",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        config.imagePadding = 6
+        config.baseForegroundColor = Theme.Color.warning
+        config.baseBackgroundColor = Theme.Color.warning
+        config.titleLineBreakMode = .byTruncatingTail
+        goalChip.configuration = config
+        goalChip.titleLabel?.lineBreakMode = .byTruncatingTail
+        goalChip.accessibilityHint = "Shows the goal the agent is working toward."
+        goalChip.addAction(
+            UIAction { [weak self] _ in self?.presentGoalDetail() }, for: .touchUpInside)
+    }
+
+    /// The chip is the only place a pursued goal is visible, so it tracks the active goal exactly:
+    /// a goal that has been met or cleared leaves nothing behind but the toast that announced it.
+    private func updateGoalChip(for state: ConversationState) {
+        guard viewModel.supportsGoals else { return }
+        let previous = lastRenderedGoal
+        lastRenderedGoal = state.goal
+        if let active = state.activeGoal {
+            goalChip.configuration?.title = active.condition
+            goalChip.accessibilityLabel = "Working toward: \(active.condition)"
+            goalChip.isHidden = false
+        } else {
+            goalChip.isHidden = true
+        }
+        guard let settled = state.goal, settled.isMet, previous?.isActive == true,
+            previous?.condition == settled.condition
+        else { return }
+        AppLogger.chat.info("goal reached: \(settled.condition)")
+        Theme.Haptics.received()
+        presentToast("Goal reached — \(settled.condition)")
+    }
+
+    /// Asks for a stop condition rather than a message. A goal is a predicate the agent checks
+    /// before it is allowed to finish, so it reads and writes differently from a prompt — worth its
+    /// own field and its own words.
+    private func presentGoalComposer() {
+        let alert = UIAlertController(
+            title: "Set a goal",
+            message:
+                "The agent keeps working until this is true, and won't stop early. You can close the app.",
+            preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "the test suite passes"
+            field.autocapitalizationType = .none
+            field.returnKeyType = .go
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: "Start", style: .default) { [weak self, weak alert] _ in
+                guard let condition = alert?.textFields?.first?.text?
+                    .trimmingCharacters(in: .whitespacesAndNewlines), !condition.isEmpty
+                else { return }
+                self?.viewModel.setGoal(condition)
+            })
+        present(alert, animated: true)
+    }
+
+    private func presentGoalDetail() {
+        guard let goal = viewModel.goal, goal.isActive else { return }
+        let sheet = UIAlertController(
+            title: "Working toward", message: goal.condition, preferredStyle: .actionSheet)
+        sheet.addAction(
+            UIAlertAction(title: "Stop pursuing this", style: .destructive) { [weak self] _ in
+                self?.viewModel.clearGoal()
+            })
+        sheet.addAction(UIAlertAction(title: "Keep going", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = goalChip
+        sheet.popoverPresentationController?.sourceRect = goalChip.bounds
+        present(sheet, animated: true)
     }
 
     private func configureFAB() {
@@ -525,16 +623,31 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: ActivityGroupCell.reuseID, for: indexPath)
                     as! ActivityGroupCell
-                let streaming = self.viewModel.isBusy && id == self.orderedIDs.last
+                let streaming = self.viewModel.isBusy && id == self.streamingActivityID
                 let toolTap: ((ToolCall) -> Void)? =
                     self.viewModel.supportsSubagents
-                    ? { [weak self] call in self?.openSubagentTranscript(for: call) } : nil
+                    ? { [weak self] call in self?.revealSubagent(spawnedBy: call) } : nil
                 cell.configure(
                     steps: steps, expanded: self.expandedReasoning.contains(id),
                     streaming: streaming,
                     onToggle: { [weak self] in self?.toggleReasoning(id) },
                     onToolTap: toolTap,
                     onLinkTap: { [weak self] url in self?.openWebLink(url) })
+                return cell
+            case .subagent(let card):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: SubagentCardCell.reuseID, for: indexPath)
+                    as! SubagentCardCell
+                cell.configure(
+                    card,
+                    onToggle: { [weak self] in self?.toggleSubagent(card.agentID) },
+                    onLinkTap: { [weak self] url in self?.openWebLink(url) })
+                return cell
+            case .subagentGroup(let group):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: SubagentGroupCell.reuseID, for: indexPath)
+                    as! SubagentGroupCell
+                cell.configure(group) { [weak self] in self?.toggleAgentGroup(group.id) }
                 return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
@@ -581,6 +694,15 @@ final class ChatViewController: UIViewController {
     private func bind() {
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
+        viewModel.onCommandsChange = { [weak self] in
+            guard let self, !self.commandPalette.isHidden else { return }
+            self.updateCommandPalette(for: self.composer.currentText)
+        }
+        viewModel.onSubagentsChange = { [weak self] in
+            guard let self else { return }
+            self.refreshAgentsChip()
+            self.render(self.viewModel.state)
+        }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
         viewModel.onTitleChange = { [weak self] in
             guard let self else { return }
@@ -611,10 +733,16 @@ final class ChatViewController: UIViewController {
     }
 
     private func render(_ state: ConversationState) {
-        let rows = Self.makeRows(from: state.messages)
+        let rows = Self.makeRows(
+            from: state.messages, agents: subagentPlacement(for: state.messages))
         let previous = rowsByID
         rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         orderedIDs = rows.map(\.id)
+        streamingActivityID = orderedIDs.last(where: { id in
+            guard let content = rowsByID[id]?.content else { return false }
+            if case .activity = content { return true }
+            return false
+        })
 
         if AppPreferences.autoExpandThinking {
             for row in rows where isActivity(row) && !seenReasoning.contains(row.id) {
@@ -683,7 +811,7 @@ final class ChatViewController: UIViewController {
         snapshot.appendItems(ids, toSection: .main)
 
         var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
-        let streamingID = viewModel.isBusy ? orderedIDs.last : nil
+        let streamingID = viewModel.isBusy ? streamingActivityID : nil
         if streamingID != lastStreamingID {
             for id in [streamingID, lastStreamingID].compactMap({ $0 })
             where rowsByID[id] != nil && !changed.contains(id) {
@@ -757,6 +885,7 @@ final class ChatViewController: UIViewController {
                 identifier: "question:\(question.id)", sessionID: viewModel.session.id)
         }
         updateBanner(for: state)
+        updateGoalChip(for: state)
         updateOverflowBadge(hasPermission: pendingPermission != nil)
     }
 
@@ -776,7 +905,6 @@ final class ChatViewController: UIViewController {
     /// The suggestion chips fade rather than hard-cut, so a first send reads
     /// as the empty state yielding to the conversation.
     private func setEmptyStateVisible(_ visible: Bool) {
-        guard !isReadOnly else { return }
         if visible {
             if emptyState.isHidden {
                 emptyState.alpha = 0
@@ -1151,23 +1279,32 @@ final class ChatViewController: UIViewController {
             ])
         }
         let subagents = UIDeferredMenuElement.uncached { [weak self] completion in
-            Task { @MainActor in
-                guard let self, self.viewModel.supportsSubagents, !self.isReadOnly else {
-                    return completion([])
-                }
-                let agents = await self.viewModel.subagents()
-                guard !agents.isEmpty else { return completion([]) }
-                let live = agents.count(where: \.isActive)
-                let title = live > 0 ? "Agents (\(agents.count) · \(live) live)" : "Agents (\(agents.count))"
-                completion([
-                    UIAction(
-                        title: title,
-                        image: UIImage(systemName: "point.3.connected.trianglepath.dotted")
-                    ) { [weak self] _ in self?.presentSubagents(agents) }
-                ])
+            guard let self, self.viewModel.supportsSubagents else {
+                return completion([])
             }
+            let agents = self.viewModel.trackedSubagents
+            guard !agents.isEmpty else { return completion([]) }
+            let live = agents.count(where: \.isActive)
+            let title = live > 0 ? "Agents (\(agents.count) · \(live) live)" : "Agents (\(agents.count))"
+            completion([
+                UIAction(
+                    title: title,
+                    image: UIImage(systemName: "point.3.connected.trianglepath.dotted")
+                ) { [weak self] _ in self?.presentSubagents(agents) }
+            ])
         }
-        var children: [UIMenuElement] = [jump, subagents, regenerate, usage]
+        let save = UIDeferredMenuElement.uncached { [weak self] completion in
+            guard let self else { return completion([]) }
+            let isSaved = SavedChatStore.contains(
+                profileID: self.viewModel.contextID, sessionID: self.viewModel.session.id)
+            completion([
+                UIAction(
+                    title: isSaved ? "Remove from Saved" : "Save chat",
+                    image: UIImage(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                ) { [weak self] _ in self?.toggleSaved() }
+            ])
+        }
+        var children: [UIMenuElement] = [jump, subagents, regenerate, usage, save]
         children.append(
             UIAction(
                 title: "Share transcript", image: UIImage(systemName: "square.and.arrow.up")
@@ -1197,6 +1334,25 @@ final class ChatViewController: UIViewController {
             menu: UIMenu(children: children))
     }
 
+    /// Saving from inside a conversation is the moment it usually matters, and
+    /// the only entry point where the chat's own title is what gets kept.
+    private func toggleSaved() {
+        let entry = SessionEntry(
+            profileID: viewModel.contextID,
+            profileName: viewModel.serverName.isEmpty
+                ? viewModel.backend.agentType.displayName : viewModel.serverName,
+            host: viewModel.serverName,
+            backendType: viewModel.backend.agentType,
+            session: viewModel.sessionSnapshot)
+        if SavedChatStore.toggle(entry) {
+            Theme.Haptics.success()
+            presentToast("Saved — find it under Saved in Chats.")
+        } else {
+            Theme.Haptics.tap()
+            presentToast("Removed from Saved.")
+        }
+    }
+
     private func scrollTo(id: String) {
         guard let index = dataSource.snapshot().indexOfItem(id) else { return }
         collectionView.scrollToItem(
@@ -1204,28 +1360,73 @@ final class ChatViewController: UIViewController {
         Theme.Haptics.selection()
     }
 
-    /// Opens the transcript of the subagent a Task/Agent tool call spawned,
-    /// matched by tool-use id.
-    private func openSubagentTranscript(for call: ToolCall) {
-        Task { @MainActor in
-            let agents = await viewModel.subagents()
-            guard let match = agents.first(where: { $0.toolUseID == call.id }) else {
-                presentToast("No transcript for this agent yet.")
-                return
+    /// A spawned agent lives in this conversation, so "open" means scroll to its
+    /// card and expand it — never push a second chat the user has to come back from.
+    private func revealSubagent(id agentID: String) {
+        if !viewModel.isSubagentExpanded(agentID) { viewModel.toggleSubagent(agentID) }
+        let rowID = "agent:\(agentID)"
+        if !dataSource.snapshot().itemIdentifiers.contains(rowID) {
+            let groups = rowsByID.values.compactMap { row -> String? in
+                guard case .subagentGroup(let group) = row.content else { return nil }
+                return group.id
             }
-            navigationController?.pushViewController(
-                SubagentListViewController.transcriptViewController(
-                    backend: viewModel.backend, parentSessionID: viewModel.session.id,
-                    agent: match),
-                animated: true)
+            expandedAgentGroups.formUnion(groups)
+            render(viewModel.state)
         }
+        guard dataSource.snapshot().itemIdentifiers.contains(rowID) else {
+            presentToast("That agent hasn't reported into this conversation yet.")
+            return
+        }
+        userScrolledUp = true
+        scrollTo(id: rowID)
+        flash(rowID: rowID)
+    }
+
+    private func revealSubagent(spawnedBy call: ToolCall) {
+        guard let agent = viewModel.trackedSubagents.first(where: { $0.toolUseID == call.id })
+        else {
+            presentToast("No transcript for this agent yet.")
+            return
+        }
+        revealSubagent(id: agent.id)
+    }
+
+    private func toggleSubagent(_ agentID: String) {
+        viewModel.toggleSubagent(agentID)
+    }
+
+    #if DEBUG
+        private func scrollToFirstAgentGroup() {
+            guard let id = orderedIDs.first(where: { id in
+                guard case .subagentGroup = rowsByID[id]?.content else { return false }
+                return true
+            }) else { return }
+            userScrolledUp = true
+            scrollTo(id: id)
+        }
+    #endif
+
+    private func toggleAgentGroup(_ groupID: String) {
+        if expandedAgentGroups.remove(groupID) == nil { expandedAgentGroups.insert(groupID) }
+        animateNextRender = true
+        render(viewModel.state)
+    }
+
+    /// A brief highlight after jumping, so a card reached from the agent list is
+    /// obvious among the rows around it.
+    private func flash(rowID: String) {
+        guard let index = dataSource.snapshot().indexOfItem(rowID),
+            let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+        else { return }
+        cell.contentView.alpha = 0.25
+        UIView.animate(withDuration: 0.45, delay: 0.1) { cell.contentView.alpha = 1 }
     }
 
     private func presentSubagents(_ agents: [SubagentSummary]) {
         let list = SubagentListViewController(
             backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents)
-        list.onDismiss = { [weak self] in
-            Task { await self?.refreshAgentsChip() }
+        list.onSelect = { [weak self] agentID in
+            self?.revealSubagent(id: agentID)
         }
         let nav = UINavigationController(rootViewController: list)
         nav.modalPresentationStyle = .pageSheet
@@ -1272,6 +1473,25 @@ final class ChatViewController: UIViewController {
         })
         present(alert, animated: true)
     }
+
+    #if DEBUG
+        /// Answers whatever the agent asks with one of its offered options, so the
+        /// ask-and-answer round trip can be verified without driving touches.
+        private func answerPendingQuestion(option: Int) async {
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let request = pendingQuestion,
+                    answeredQuestionIDs.insert(request.id).inserted
+                else { continue }
+                viewModel.answerQuestion(
+                    request,
+                    answers: request.questions.map { item in
+                        item.options.indices.contains(option) ? [item.options[option].label] : []
+                    })
+                return
+            }
+        }
+    #endif
 
     private func promptCustomAnswer(for request: QuestionRequest, questionIndex: Int) {
         let item = request.questions[questionIndex]
@@ -1323,12 +1543,16 @@ final class ChatViewController: UIViewController {
             return
         }
         let query = String(text.dropFirst()).lowercased()
-        let matches = allCommands().filter { command in
-            query.isEmpty
-                || command.keywords.contains { $0.hasPrefix(query) }
-                || command.title.lowercased().contains(query)
+        let matches = commandSections().map { section in
+            SlashCommandSection(
+                title: section.title,
+                commands: section.commands.filter { command in
+                    query.isEmpty
+                        || command.keywords.contains { $0.hasPrefix(query) }
+                        || command.title.lowercased().contains(query)
+                })
         }
-        guard !matches.isEmpty else {
+        guard matches.contains(where: { !$0.commands.isEmpty }) else {
             hideCommandPalette()
             return
         }
@@ -1363,7 +1587,75 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    private func allCommands() -> [SlashCommand] {
+    /// `/` addresses two machines: the app and the agent. They stay in separate sections so
+    /// nobody expects `/copy` to reach the server or `/compact` to be a local trick.
+    private func commandSections() -> [SlashCommandSection] {
+        let server = viewModel.serverCommands.map(makeServerCommand)
+        guard !server.isEmpty else {
+            return [SlashCommandSection(title: "", commands: appCommands())]
+        }
+        return [
+            SlashCommandSection(title: "On the server", commands: server),
+            SlashCommandSection(title: "In Tailscode", commands: appCommands()),
+        ]
+    }
+
+    private func makeServerCommand(_ command: AgentCommand) -> SlashCommand {
+        var subtitle = command.details
+        if let scope = command.scope, !scope.isEmpty {
+            subtitle = subtitle.isEmpty ? scope : "\(subtitle) · \(scope)"
+        }
+        return SlashCommand(
+            keywords: [command.name.lowercased()],
+            title: "/\(command.name)",
+            subtitle: subtitle,
+            symbol: Self.symbol(for: command),
+            runsOnServer: true
+        ) { [weak self] in
+            self?.hideCommandPalette()
+            Theme.Haptics.selection()
+            self?.invokeServerCommand(command)
+        }
+    }
+
+    private static func symbol(for command: AgentCommand) -> String {
+        switch command.name {
+        case "goal": return "target"
+        case "recap": return "text.line.first.and.arrowtriangle.forward"
+        case "compact": return "arrow.down.right.and.arrow.up.left"
+        case "context": return "chart.pie"
+        case "usage": return "creditcard"
+        case "init": return "doc.badge.plus"
+        case "review": return "checklist"
+        default: break
+        }
+        switch command.source {
+        case .plugin: return "puzzlepiece.extension"
+        case .project: return "folder"
+        case .mcp: return "cable.connector"
+        case .skill: return "wand.and.stars"
+        default: return "terminal"
+        }
+    }
+
+    /// A command that takes arguments lands in the composer for the user to complete rather than
+    /// firing bare; `/goal` gets a purpose-built prompt because a stop condition is a different
+    /// kind of writing from a message.
+    private func invokeServerCommand(_ command: AgentCommand) {
+        if command.name == "goal" {
+            composer.clear()
+            presentGoalComposer()
+            return
+        }
+        guard !command.takesArguments else {
+            composer.setDraft("/\(command.name) ", focus: true)
+            return
+        }
+        composer.clear()
+        viewModel.run(command)
+    }
+
+    private func appCommands() -> [SlashCommand] {
         var list: [SlashCommand] = []
         if viewModel.supportsModelSelection {
             list.append(
@@ -1532,6 +1824,10 @@ final class ChatViewController: UIViewController {
                     case .tool(let call): return "[\(call.title ?? call.name)]"
                     }
                 }.joined(separator: "\n")
+            case .subagent(let card):
+                body = Self.subagentMarkdown(card)
+            case .subagentGroup(let group):
+                body = "_\(group.total) agents_"
             case .file(let file), .image(let file):
                 body = "[file: \(file.path ?? file.filename ?? "attachment")]"
             case .timestamp, .error:
@@ -1632,11 +1928,16 @@ final class ChatViewController: UIViewController {
     }
 
     /// Folds consecutive agent actions (thinking + tools) into one `.activity` row; text and files
-    /// break the group and render on their own.
-    private static func makeRows(from messages: [ChatMessage]) -> [ChatRow] {
+    /// break the group and render on their own. A tool call that spawned a subagent is replaced by
+    /// that agent's own card, so the agent's work sits in the conversation at the point it began
+    /// instead of behind a screen of its own.
+    private static func makeRows(
+        from messages: [ChatMessage], agents: SubagentPlacement
+    ) -> [ChatRow] {
         var rows: [ChatRow] = []
         var lastDate: Date?
         var seenMessageIDs = Set<String>()
+        var pendingUnattached = agents.unattached
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
@@ -1667,8 +1968,25 @@ final class ChatViewController: UIViewController {
                     if steps.isEmpty { groupID = part.id }
                     steps.append(.reasoning(text))
                 case .tool(let call):
+                    if var card = agents.byToolUse[call.id] {
+                        flushActivity()
+                        card.spawnSummary = call.summary.displayOutput ?? call.sanitizedOutput
+                        rows.append(
+                            ChatRow(
+                                id: "agent:\(card.agentID)", messageID: message.id,
+                                role: message.role, content: .subagent(card)))
+                        continue
+                    }
                     if steps.isEmpty { groupID = part.id }
                     steps.append(.tool(call))
+                    if call.summary.kind == .workflow, !pendingUnattached.isEmpty {
+                        flushActivity()
+                        rows.append(
+                            contentsOf: Self.agentRows(
+                                pendingUnattached, groupID: call.id, messageID: message.id,
+                                role: message.role, expandedGroups: agents.expandedGroups))
+                        pendingUnattached = []
+                    }
                 case .text(let text):
                     flushActivity()
                     if text.isEmpty { continue }
@@ -1694,7 +2012,7 @@ final class ChatViewController: UIViewController {
                         ChatRow(
                             id: id, messageID: message.id, role: message.role,
                             content: file.isImage ? .image(file) : .file(file)))
-                case .unknown:
+                case .compaction, .unknown:
                     continue
                 }
             }
@@ -1705,7 +2023,122 @@ final class ChatViewController: UIViewController {
                     content: .error(error)))
             }
         }
+        rows.append(
+            contentsOf: Self.agentRows(
+                pendingUnattached, groupID: "session", messageID: "agents", role: .assistant,
+                expandedGroups: agents.expandedGroups))
         return fuseActivity(rows)
+    }
+
+    /// Above this many agents with no spawn point of their own, the cards
+    /// collapse behind one row: a workflow can fan out to a hundred, and a
+    /// hundred cards buries the conversation they belong to.
+    private static let inlineAgentLimit = 3
+
+    private static func agentRows(
+        _ cards: [SubagentCard], groupID: String, messageID: String, role: MessageRole,
+        expandedGroups: Set<String>
+    ) -> [ChatRow] {
+        guard !cards.isEmpty else { return [] }
+        func card(_ card: SubagentCard) -> ChatRow {
+            ChatRow(
+                id: "agent:\(card.agentID)", messageID: messageID, role: role,
+                content: .subagent(card))
+        }
+        guard cards.count > inlineAgentLimit else { return cards.map(card) }
+        let id = "agents:\(groupID)"
+        let expanded = expandedGroups.contains(id)
+        let header = ChatRow(
+            id: id, messageID: messageID, role: role,
+            content: .subagentGroup(
+                SubagentGroup(
+                    id: id, total: cards.count, live: cards.count(where: \.isActive),
+                    expanded: expanded)))
+        return expanded ? [header] + cards.map(card) : [header]
+    }
+
+    /// Where each spawned agent's card belongs: against the tool call that
+    /// spawned it when the server resolved one, otherwise trailing the workflow
+    /// that fanned it out (workflow agents have no spawning call of their own).
+    struct SubagentPlacement {
+        var byToolUse: [String: SubagentCard] = [:]
+        var unattached: [SubagentCard] = []
+        var expandedGroups: Set<String> = []
+    }
+
+    private func subagentPlacement(for messages: [ChatMessage]) -> SubagentPlacement {
+        guard viewModel.supportsSubagents, !viewModel.trackedSubagents.isEmpty else {
+            return SubagentPlacement()
+        }
+        let spawnIDs = messages.flatMap { message in
+            message.parts.compactMap { part -> String? in
+                guard case .tool(let call) = part.kind, call.spawnsSubagent else { return nil }
+                return call.id
+            }
+        }
+        let known = Set(spawnIDs)
+        var placement = SubagentPlacement(expandedGroups: expandedAgentGroups)
+        var unmatched: [SubagentCard] = []
+        for agent in viewModel.trackedSubagents.sorted(by: { $0.updatedAt < $1.updatedAt }) {
+            let card = subagentCard(for: agent)
+            if let toolUseID = agent.toolUseID, known.contains(toolUseID) {
+                placement.byToolUse[toolUseID] = card
+            } else {
+                unmatched.append(card)
+            }
+        }
+        // Backends that don't name the spawning call (opencode's child sessions,
+        // or a bridge that hasn't resolved the id yet) are seated in order against
+        // the spawn calls still free, so a card still lands where its work began.
+        var free = spawnIDs.filter { placement.byToolUse[$0] == nil }[...]
+        for card in unmatched {
+            guard let slot = free.first else {
+                placement.unattached.append(card)
+                continue
+            }
+            free = free.dropFirst()
+            placement.byToolUse[slot] = card
+        }
+        return placement
+    }
+
+    private func subagentCard(for agent: SubagentSummary) -> SubagentCard {
+        let digest = Self.digest(viewModel.subagentTranscripts[agent.id])
+        return SubagentCard(
+            agentID: agent.id,
+            title: agent.title,
+            agentType: agent.agentType,
+            isActive: agent.isActive,
+            isCompleted: agent.isCompleted,
+            updatedAt: agent.updatedAt,
+            expanded: viewModel.isSubagentExpanded(agent.id),
+            isLoading: viewModel.loadingSubagents.contains(agent.id),
+            steps: digest.steps,
+            report: digest.report)
+    }
+
+    /// A subagent transcript reads as a run of work plus one answer: its thoughts
+    /// and tool calls become steps, and its final message is what it reported to
+    /// the conversation that spawned it.
+    private static func digest(_ messages: [ChatMessage]?) -> (steps: [ActivityStep], report: String?) {
+        guard let messages else { return ([], nil) }
+        var steps: [ActivityStep] = []
+        var report: String?
+        for message in messages where message.role == .assistant {
+            for part in message.parts {
+                switch part.kind {
+                case .reasoning(let text):
+                    if !text.isEmpty { steps.append(.reasoning(text)) }
+                case .tool(let call):
+                    steps.append(.tool(call))
+                case .text(let text):
+                    if !text.isEmpty { report = text }
+                case .file, .compaction, .unknown:
+                    continue
+                }
+            }
+        }
+        return (steps, report)
     }
 
     private static func relativeTimestamp(_ date: Date) -> String {
@@ -1767,14 +2200,14 @@ extension ChatViewController: ComposerViewDelegate {
         updateAttachmentStrip()
         userScrolledUp = false
         animateNextRender = true
-        isHandingOffEmptyState = !isReadOnly && !emptyState.isHidden && emptyState.alpha > 0
+        isHandingOffEmptyState = !emptyState.isHidden && emptyState.alpha > 0
         UserDefaults.standard.removeObject(forKey: draftKey)
         viewModel.send(text, model: model, effort: effort, attachments: attachments)
     }
 
     func composerTextDidChange(_ text: String) {
         updateCommandPalette(for: text)
-        guard !isReadOnly, !isApplyingEnhancedPrompt else { return }
+        guard !isApplyingEnhancedPrompt else { return }
         enhancement.updateInput(text)
         enhanceOverlay?.requestDismiss()
     }
@@ -2105,11 +2538,29 @@ extension ChatViewController: UICollectionViewDelegate {
                 case .tool(let call): return call.output ?? call.title ?? call.name
                 }
             }.joined(separator: "\n\n")
+        case .subagent(let card):
+            return Self.subagentMarkdown(card)
+        case .subagentGroup:
+            return nil
         case .file(let file), .image(let file):
             return file.filename ?? file.mime
         case .timestamp, .error:
             return nil
         }
+    }
+
+    /// A shared transcript keeps a spawned agent inside the conversation it
+    /// belongs to, indented under the line that spawned it.
+    private static func subagentMarkdown(_ card: SubagentCard) -> String {
+        var lines = ["_Agent\(card.agentType.map { " · \($0)" } ?? "")_: \(card.title)"]
+        for step in card.steps {
+            switch step {
+            case .reasoning(let text): lines.append("> \(text)")
+            case .tool(let call): lines.append("> [\(call.title ?? call.name)]")
+            }
+        }
+        if let report = card.report { lines.append("> \(report)") }
+        return lines.joined(separator: "\n")
     }
 
     private func shareText(_ text: String) {
@@ -2132,7 +2583,7 @@ extension ChatViewController: UICollectionViewDelegate {
 
 extension ChatViewController: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        Task { await refreshAgentsChip() }
+        refreshAgentsChip()
     }
 }
 
@@ -2188,11 +2639,9 @@ extension ChatViewController: TextBubbleCellDelegate {
             Theme.Haptics.success()
             self?.presentToast("Path copied.")
         })
-        if !isReadOnly {
-            sheet.addAction(UIAlertAction(title: "Add to message", style: .default) { [weak self] _ in
-                self?.composer.appendPath(path)
-            })
-        }
+        sheet.addAction(UIAlertAction(title: "Add to message", style: .default) { [weak self] _ in
+            self?.composer.appendPath(path)
+        })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
         present(sheet, animated: true)

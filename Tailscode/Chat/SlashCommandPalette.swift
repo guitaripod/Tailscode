@@ -6,7 +6,17 @@ struct SlashCommand {
     let title: String
     let subtitle: String
     let symbol: String
+    /// Server commands are tinted; app actions stay neutral, so the two never read as one list.
+    var runsOnServer: Bool = false
     let run: () -> Void
+}
+
+/// A titled run of commands. The split exists because `/` addresses two different machines: rows
+/// that act on this app, and rows the agent itself will resolve.
+@MainActor
+struct SlashCommandSection {
+    let title: String
+    let commands: [SlashCommand]
 }
 
 /// A floating command list shown above the composer when the draft begins with `/`.
@@ -48,8 +58,7 @@ final class SlashCommandPalette: UIView {
 
         let content = scroll.contentLayoutGuide
         let frame = scroll.frameLayoutGuide
-        let hugContent = scroll.heightAnchor.constraint(equalTo: stack.heightAnchor)
-        hugContent.priority = UILayoutPriority(999)
+        let hugContent = hugContentConstraint()
         heightCap = heightAnchor.constraint(lessThanOrEqualToConstant: 320)
 
         NSLayoutConstraint.activate([
@@ -79,21 +88,54 @@ final class SlashCommandPalette: UIView {
         layer.shadowOffset = CGSize(width: 0, height: 6)
     }
 
-    /// Caps the palette to half the window so a long command list scrolls
-    /// instead of extending past the top of the screen in landscape or with
-    /// large Dynamic Type.
+    /// Shrinks the palette to its content when the list is short. Its priority must stay below the
+    /// rows' compression resistance (750): any higher and it outranks their intrinsic heights, so a
+    /// catalog taller than the gap between the navigation bar and the composer gets squashed —
+    /// rows collapsing onto each other instead of scrolling.
+    private func hugContentConstraint() -> NSLayoutConstraint {
+        let constraint = scroll.heightAnchor.constraint(equalTo: stack.heightAnchor)
+        constraint.priority = UILayoutPriority(700)
+        return constraint
+    }
+
+    /// A backstop only: the owner constrains the palette's top to the safe area, which is what
+    /// actually keeps a long catalog from growing up behind the navigation bar. This keeps the
+    /// list from dominating the screen on a tall device even when there is room for it.
     override func layoutSubviews() {
         super.layoutSubviews()
         if let window {
-            let cap = window.bounds.height * 0.5
+            let cap = window.bounds.height * 0.55
             if heightCap.constant != cap { heightCap.constant = cap }
         }
     }
 
-    func update(with commands: [SlashCommand]) {
+    func update(with sections: [SlashCommandSection]) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for command in commands { stack.addArrangedSubview(makeRow(command)) }
+        let titled = sections.count > 1
+        for section in sections where !section.commands.isEmpty {
+            if titled { stack.addArrangedSubview(makeHeader(section.title)) }
+            for command in section.commands { stack.addArrangedSubview(makeRow(command)) }
+        }
         scroll.setContentOffset(.zero, animated: false)
+    }
+
+    private func makeHeader(_ title: String) -> UIView {
+        let label = UILabel()
+        label.text = title.uppercased()
+        label.font = .preferredFont(forTextStyle: .caption2)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.tertiaryLabel
+        let container = UIView()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -2),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(
+                lessThanOrEqualTo: container.trailingAnchor, constant: -14),
+        ])
+        return container
     }
 
     private func makeRow(_ command: SlashCommand) -> UIView {
@@ -118,7 +160,8 @@ final class SlashCommandPalette: UIView {
         }
         config.contentInsets = NSDirectionalEdgeInsets(
             top: 9, leading: 14, bottom: 9, trailing: 14)
-        config.baseForegroundColor = Theme.Color.accent
+        config.baseForegroundColor =
+            command.runsOnServer ? Theme.Color.accent : Theme.Color.secondaryLabel
 
         let button = UIButton(configuration: config)
         button.contentHorizontalAlignment = .leading

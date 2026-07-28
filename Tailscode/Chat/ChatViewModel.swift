@@ -27,7 +27,7 @@ final class ChatViewModel {
 
     init(
         backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default",
-        serverName: String = "", reportsActivity: Bool = true
+        serverName: String = ""
     ) {
         self.backend = backend
         self.session = session
@@ -36,18 +36,21 @@ final class ChatViewModel {
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
         self.serverName = serverName
-        self.reportsActivity = reportsActivity
     }
-
-    /// Read-only transcript observers (subagent views) must not feed
-    /// SessionActivity — they would fire phantom "finished" notifications
-    /// with deep links that resolve to no session.
-    let reportsActivity: Bool
 
     let serverName: String
 
     private(set) lazy var displayTitle: String = session.title
     var title: String { displayTitle }
+
+    /// The session as this chat now understands it: the server usually auto-titles
+    /// a conversation after its first turn, long after the list that opened it.
+    var sessionSnapshot: AgentSession {
+        var snapshot = session
+        snapshot.title = displayTitle
+        snapshot.updatedAt = max(session.updatedAt, state.messages.last?.createdAt ?? .distantPast)
+        return snapshot
+    }
     var canRename: Bool { backend.capabilities.supportsRenaming }
 
     private var manuallyRenamed = false
@@ -64,7 +67,7 @@ final class ChatViewModel {
     /// writes an LLM title shortly after); pick the new name up when the turn
     /// settles so the list, nav bar, and Live Activity all read well.
     private func refreshTitleFromServer(delay: Duration = .zero) {
-        guard reportsActivity, !manuallyRenamed else { return }
+        guard !manuallyRenamed else { return }
         Task {
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !manuallyRenamed,
@@ -130,6 +133,122 @@ final class ChatViewModel {
         (try? await backend.subagents(for: session.id)) ?? []
     }
 
+    private(set) var trackedSubagents: [SubagentSummary] = []
+    private(set) var subagentTranscripts: [String: [ChatMessage]] = [:]
+    private(set) var expandedSubagents: Set<String> = []
+    private(set) var loadingSubagents: Set<String> = []
+    var onSubagentsChange: (() -> Void)?
+    private var subagentTask: Task<Void, Never>?
+
+    var liveSubagentCount: Int { trackedSubagents.count(where: \.isActive) }
+
+    /// Subagents belong to this conversation, so the chat owns their polling for
+    /// as long as it is on screen. The cadence follows the work: quick while an
+    /// agent is running or a card is open, slow once they have settled, and
+    /// slower still for the ordinary chat that never spawned one — opencode
+    /// answers this by listing every session, which is too costly to ask often.
+    func startSubagentTracking() {
+        guard supportsSubagents, subagentTask == nil else { return }
+        subagentTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.refreshSubagents()
+                try? await Task.sleep(for: .seconds(self.subagentPollInterval))
+            }
+        }
+    }
+
+    private var subagentPollInterval: Int {
+        if liveSubagentCount > 0 || !expandedSubagents.isEmpty { return 4 }
+        return trackedSubagents.isEmpty ? 30 : 12
+    }
+
+    func stopSubagentTracking() {
+        subagentTask?.cancel()
+        subagentTask = nil
+    }
+
+    func isSubagentExpanded(_ agentID: String) -> Bool { expandedSubagents.contains(agentID) }
+
+    func toggleSubagent(_ agentID: String) {
+        if expandedSubagents.remove(agentID) == nil {
+            expandedSubagents.insert(agentID)
+            if subagentTranscripts[agentID] == nil { loadingSubagents.insert(agentID) }
+            Task { [weak self] in await self?.loadSubagentTranscript(agentID) }
+        }
+        onSubagentsChange?()
+    }
+
+    private func refreshSubagents() async {
+        let fresh = await subagents()
+        let changed = fresh != trackedSubagents
+        trackedSubagents = fresh
+        let stale = fresh.filter { expandedSubagents.contains($0.id) && $0.isActive }.map(\.id)
+        for agentID in stale { await loadSubagentTranscript(agentID) }
+        if changed || !stale.isEmpty { onSubagentsChange?() }
+    }
+
+    private func loadSubagentTranscript(_ agentID: String) async {
+        let messages = try? await backend.subagentMessages(
+            sessionID: session.id, agentID: agentID)
+        loadingSubagents.remove(agentID)
+        guard let messages else {
+            onSubagentsChange?()
+            return
+        }
+        let changed = subagentTranscripts[agentID] != messages
+        subagentTranscripts[agentID] = messages
+        if changed { onSubagentsChange?() }
+    }
+
+    var supportsServerCommands: Bool { backend.capabilities.supportsCommands }
+    var supportsGoals: Bool { backend.capabilities.supportsGoals }
+    var goal: SessionGoal? { state.goal }
+
+    private(set) var serverCommands: [AgentCommand] = []
+    var onCommandsChange: (() -> Void)?
+
+    /// The server's command catalog, fetched once per chat. A server that can't answer leaves the
+    /// list empty and the palette shows only the app's own actions.
+    func loadServerCommands() {
+        guard supportsServerCommands, serverCommands.isEmpty else { return }
+        Task { [weak self] in
+            guard let self,
+                let commands = try? await backend.availableCommands(
+                    directory: session.directory), !commands.isEmpty
+            else { return }
+            self.serverCommands = commands
+            self.onCommandsChange?()
+        }
+    }
+
+    /// Runs a server-side command. Where a command is just prompt text (any CLI-backed agent) it
+    /// goes through the ordinary send path, so it echoes into the transcript, engages the thinking
+    /// state, and starts a Live Activity exactly like a typed message — anything else would make
+    /// the app look frozen until the server streamed something back.
+    func run(_ command: AgentCommand, arguments: String? = nil) {
+        if backend.resolvesCommandsFromPromptText {
+            send(command.invocation(arguments: arguments))
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await conversation.run(command, arguments: arguments)
+            } catch {
+                self.onError?("Couldn't run /\(command.name).")
+            }
+        }
+    }
+
+    func setGoal(_ condition: String) {
+        run(AgentCommand(name: "goal", details: "", source: .builtin), arguments: condition)
+    }
+
+    func clearGoal() {
+        run(AgentCommand(name: "goal", details: "", source: .builtin), arguments: "clear")
+    }
+
     /// Reusing a still-running view model (reopened while a turn is in flight)
     /// must not spawn a second `states()` loop — it would double every render
     /// and leak the old task. Re-emit the current state so the freshly bound
@@ -160,13 +279,11 @@ final class ChatViewModel {
                 self.onState?(state)
                 let awaiting =
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
-                if self.reportsActivity {
-                    SessionActivity.shared.update(
-                        sessionID: self.session.id, profileID: self.contextID,
-                        title: self.displayTitle,
-                        status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
-                        keepAlive: self)
-                }
+                SessionActivity.shared.update(
+                    sessionID: self.session.id, profileID: self.contextID,
+                    title: self.displayTitle,
+                    status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
+                    keepAlive: self)
                 self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
                 if !self.isBusy, !awaiting, !self.isBound, self.queued.isEmpty {
@@ -190,9 +307,7 @@ final class ChatViewModel {
         guard generation == streamGeneration, streamTask != nil else { return }
         AppLogger.chat.info("stream terminated for \(session.id); releasing busy state")
         streamTask = nil
-        if reportsActivity {
-            SessionActivity.shared.markUnobserved(sessionID: session.id)
-        }
+        SessionActivity.shared.markUnobserved(sessionID: session.id)
         onState?(state)
     }
 
@@ -491,8 +606,19 @@ final class ChatViewModel {
         }
     }
 
+    /// An agent that takes its answer as an ordinary message is answered through
+    /// the composer's own path: the reply queues behind a turn already running
+    /// (which a direct call would be refused for), echoes locally, and reads back
+    /// as what the user actually said.
     func answerQuestion(_ question: QuestionRequest, answers: [[String]]) {
         AppLogger.chat.info("question \(question.id) answered")
+        if backend.capabilities.answersQuestionsByMessage {
+            let text = question.answerMessage(answers)
+            guard !text.isEmpty else { return }
+            send(text, model: selectedModel, effort: currentEffort)
+            Task { await conversation.markAnswered(question) }
+            return
+        }
         Task {
             do {
                 try await conversation.answer(question, answers: answers)

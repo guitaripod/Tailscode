@@ -26,6 +26,7 @@ enum ToolIconography {
         case .taskTracking: return "checklist"
         case .subagent, .workflow: return "person.2"
         case .skill: return "wand.and.stars"
+        case .question: return "questionmark.bubble"
         case .other: return "wrench.and.screwdriver"
         }
     }
@@ -38,6 +39,7 @@ enum ToolIconography {
         case .fileRead, .fileSearch: return .systemTeal
         case .subagent, .workflow: return .systemPink
         case .taskTracking, .skill: return Theme.Color.accent
+        case .question: return .systemYellow
         case .other: return Theme.Color.secondaryLabel
         }
     }

@@ -132,14 +132,17 @@ enum DemoWorld {
                 FileNode(path: "/Users/demo/dev/pulse-ios/project.yml", name: "project.yml", isDirectory: false),
             ],
         ],
-        subagents: [
-            SubagentSummary(
-                id: "agent-cache-audit", title: "Audit cache keys across workflows",
-                agentType: "Explore", toolUseID: "task-1", updatedAt: ago(3400), isCompleted: true),
-            SubagentSummary(
-                id: "agent-test-shard", title: "Shard the UI test suite",
-                agentType: "general-purpose", toolUseID: "task-2", updatedAt: ago(3350),
-                isCompleted: true),
+        subagentsBySession: [
+            "demo-c2": [
+                SubagentSummary(
+                    id: "agent-cache-audit", title: "Audit cache keys across workflows",
+                    agentType: "Explore", toolUseID: "task-1", updatedAt: ago(3400),
+                    isCompleted: true),
+                SubagentSummary(
+                    id: "agent-test-shard", title: "Shard the UI test suite",
+                    agentType: "general-purpose", toolUseID: "task-2", updatedAt: ago(3350),
+                    isCompleted: true),
+            ]
         ],
         subagentScripts: [
             "agent-cache-audit": subagentCacheScript,

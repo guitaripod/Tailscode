@@ -16,6 +16,7 @@ final class HomeViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
     private var quotas: [UsageQuota] = []
+    private var savedChats: [SavedChat] = SavedChatStore.all()
     private var opencodeQuota: UsageQuota?
     private var hasAppeared = false
     private var hasLoadedOnce = false
@@ -57,6 +58,23 @@ final class HomeViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     self?.pushChats()
+                }
+            }
+            if let session = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    let id =
+                        session == "first"
+                        ? self.viewModel.entries.first?.session.id : session
+                    if let id { self.openSession(withID: id) }
+                }
+            }
+            if let mode = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SAVED"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    self?.seedSavedForVerification(mode)
+                    self?.pushSaved()
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
@@ -133,6 +151,9 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(activityDidChange),
             name: SessionActivity.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(savedDidChange),
+            name: SavedChatStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(
@@ -168,6 +189,11 @@ final class HomeViewController: UIViewController {
         onOpenSettings?()
     }
     @objc private func refresh() { Task { await load(.user) } }
+
+    @objc private func savedDidChange() {
+        savedChats = SavedChatStore.all()
+        applySnapshot()
+    }
 
     /// Compose aims the docked composer instead of creating a session: server,
     /// project, and model are all chosen there, and nothing exists on the server
@@ -392,6 +418,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func applySnapshot() {
+        savedChats = SavedChatStore.all()
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
         if hasLoadedOnce {
             let down = viewModel.servers.filter { viewModel.unreachable.contains($0.id) }
@@ -421,14 +448,23 @@ final class HomeViewController: UIViewController {
                 },
                 toSection: .live)
         }
+        let isUnread = SessionSeenStore.unreadEvaluator()
+        let liveIDs = Set(live.map(\.session.id))
+        let savedCards = savedChats
+            .filter { isOpenable($0) && !liveIDs.contains($0.sessionID) }
+            .prefix(3)
+            .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) }
+        if !savedCards.isEmpty {
+            snapshot.appendSections([.saved])
+            snapshot.appendItems(savedCards.map(HomeItem.saved), toSection: .saved)
+        }
         let projects = projectCards()
         if !projects.isEmpty {
             snapshot.appendSections([.projects])
             snapshot.appendItems(projects.map(HomeItem.project), toSection: .projects)
         }
-        let liveIDs = Set(live.map(\.session.id))
-        let isUnread = SessionSeenStore.unreadEvaluator()
-        let recent = viewModel.entries.filter { !liveIDs.contains($0.session.id) }.prefix(6)
+        let shown = liveIDs.union(savedCards.map(\.chat.sessionID))
+        let recent = viewModel.entries.filter { !shown.contains($0.session.id) }.prefix(6)
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(
@@ -454,6 +490,17 @@ final class HomeViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
         updateEmptyState(itemCount: snapshot.numberOfItems)
         consumePendingDeepLink()
+    }
+
+    /// Home lists a saved chat only while it is something you can actually open.
+    /// A bookmark whose conversation was deleted, or whose server was
+    /// disconnected, is a tidying-up job for the Saved screen, not a launch pad.
+    private func isOpenable(_ chat: SavedChat) -> Bool {
+        guard viewModel.servers.contains(where: { $0.id == chat.profileID }) else { return false }
+        if viewModel.entries.contains(where: {
+            $0.profileID == chat.profileID && $0.session.id == chat.sessionID
+        }) { return true }
+        return !hasLoadedOnce || viewModel.unreachable.contains(chat.profileID)
     }
 
     /// Only structural changes animate, and only once something is on screen to
@@ -621,6 +668,66 @@ final class HomeViewController: UIViewController {
         composerBar.focus()
     }
 
+    private func pushSaved() {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(SavedChatsViewController(), animated: true)
+    }
+
+    #if DEBUG
+        /// Puts the Saved list into a named state so each one can be reviewed
+        /// without tapping: `empty` clears it, `seed` bookmarks real chats, and
+        /// `states` adds a chat its server no longer has plus one whose server
+        /// is gone entirely.
+        private func seedSavedForVerification(_ mode: String) {
+            for chat in SavedChatStore.all() {
+                SavedChatStore.remove(profileID: chat.profileID, sessionID: chat.sessionID)
+            }
+            guard mode != "empty" else { return }
+            for entry in viewModel.entries.prefix(3) { SavedChatStore.save(entry) }
+            guard mode == "states", let sample = viewModel.entries.first else { return }
+            var ghost = sample.session
+            ghost.title = "Deleted on the server"
+            SavedChatStore.save(
+                SessionEntry(
+                    profileID: sample.profileID, profileName: sample.profileName,
+                    host: sample.host, backendType: sample.backendType,
+                    session: AgentSession(
+                        id: "ghost-session", agentType: sample.backendType, title: ghost.title,
+                        createdAt: ghost.createdAt, updatedAt: ghost.updatedAt)))
+            SavedChatStore.save(
+                SessionEntry(
+                    profileID: "removed-server", profileName: "old-laptop",
+                    host: "old-laptop", backendType: sample.backendType,
+                    session: AgentSession(
+                        id: "orphan-session", agentType: sample.backendType,
+                        title: "Chat on a server I disconnected",
+                        createdAt: ghost.createdAt, updatedAt: ghost.updatedAt)))
+        }
+    #endif
+
+    /// Opening from Home prefers the live session so the chat starts with the
+    /// server's own view of it, and falls back to the saved snapshot when the
+    /// listing hasn't landed — the bookmark is meant to work while offline.
+    private func openSaved(_ chat: SavedChat) {
+        if let entry = viewModel.entries.first(where: {
+            $0.profileID == chat.profileID && $0.session.id == chat.sessionID
+        }) {
+            openChat(for: entry)
+            return
+        }
+        guard let profile = viewModel.servers.first(where: { $0.id == chat.profileID }) else {
+            pushSaved()
+            return
+        }
+        let entry = SessionEntry(
+            profileID: chat.profileID, profileName: chat.profileName,
+            host: profile.baseURL.host ?? chat.profileName, backendType: chat.backend,
+            session: AgentSession(
+                id: chat.sessionID, agentType: chat.backend, title: chat.title,
+                directory: chat.directory, createdAt: chat.updatedAt, updatedAt: chat.updatedAt))
+        openChat(for: entry)
+    }
+
     private func pushChats(filterProfileID: String? = nil) {
         navigationController?.pushViewController(
             SessionListViewController(filterProfileID: filterProfileID), animated: true)
@@ -639,7 +746,7 @@ final class HomeViewController: UIViewController {
             case .live: return Self.liveSection()
             case .projects: return Self.projectsSection()
             case .alerts: return Self.listSection(withHeader: false)
-            case .recent, .usage: return Self.listSection()
+            case .saved, .recent, .usage: return Self.listSection()
             }
         }
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
@@ -745,6 +852,9 @@ final class HomeViewController: UIViewController {
         let recentCell = UICollectionView.CellRegistration<RecentSessionCell, RecentCard> {
             cell, _, card in cell.configure(card)
         }
+        let savedCell = UICollectionView.CellRegistration<RecentSessionCell, SavedCard> {
+            cell, _, card in cell.configure(card)
+        }
         let quotaCell = UICollectionView.CellRegistration<QuotaCardCell, QuotaCard> {
             cell, _, card in cell.configure(card)
         }
@@ -767,6 +877,9 @@ final class HomeViewController: UIViewController {
             case .project(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: projectCell, for: indexPath, item: card)
+            case .saved(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: savedCell, for: indexPath, item: card)
             case .recent(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: recentCell, for: indexPath, item: card)
@@ -795,6 +908,10 @@ final class HomeViewController: UIViewController {
                 view.configure(title: "Live now")
             case .projects:
                 view.configure(title: "Projects")
+            case .saved:
+                view.configure(title: "Saved", actionTitle: "See all") { [weak self] in
+                    self?.pushSaved()
+                }
             case .recent:
                 view.configure(title: "Recent", actionTitle: "See all") { [weak self] in
                     self?.pushChats()
@@ -1125,6 +1242,8 @@ extension HomeViewController: UICollectionViewDelegate {
             else { return }
             setComposeTarget(profile: profile, directory: card.directory)
             composerBar.focus()
+        case .saved(let card):
+            openSaved(card.chat)
         case .recent(let card):
             openChat(for: card.entry)
         case .usage:
@@ -1163,12 +1282,31 @@ extension HomeViewController: UICollectionViewDelegate {
                     ) { _ in self?.pushChats(filterProfileID: card.profileID) },
                 ])
             }
+        case .saved(let card):
+            return savedMenu(for: card.chat)
         case .recent(let card):
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
         case .alert, .usage, .placeholder, .usagePlaceholder:
             return nil
+        }
+    }
+
+    private func savedMenu(for chat: SavedChat) -> UIContextMenuConfiguration {
+        UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(children: [
+                UIAction(title: "Open", image: UIImage(systemName: "bubble.left")) { _ in
+                    self?.openSaved(chat)
+                },
+                UIAction(
+                    title: "Remove from Saved", image: UIImage(systemName: "bookmark.slash"),
+                    attributes: .destructive
+                ) { _ in
+                    Theme.Haptics.tap()
+                    SavedChatStore.remove(profileID: chat.profileID, sessionID: chat.sessionID)
+                },
+            ])
         }
     }
 

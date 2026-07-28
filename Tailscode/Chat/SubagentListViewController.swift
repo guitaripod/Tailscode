@@ -1,8 +1,9 @@
 import CodingAgentKit
 import UIKit
 
-/// The subagents a session has spawned, each opening as a read-only live
-/// transcript rendered by the regular chat UI.
+/// An index of the subagents a session has spawned, for when there are too many
+/// to scan by scrolling. Picking one jumps to its card in the conversation —
+/// the agents themselves are never lifted out into chats of their own.
 @MainActor
 final class SubagentListViewController: UIViewController {
     private enum Section { case main }
@@ -14,7 +15,7 @@ final class SubagentListViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     private var refreshTask: Task<Void, Never>?
-    var onDismiss: (() -> Void)?
+    var onSelect: ((String) -> Void)?
 
     init(backend: any CodingAgentBackend, parentSessionID: String, agents: [SubagentSummary]) {
         self.backend = backend
@@ -42,23 +43,9 @@ final class SubagentListViewController: UIViewController {
                 await self?.reload()
             }
         }
-        #if DEBUG
-            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_AGENTS"] == "first",
-                let first = agents.first
-            {
-                open(first)
-            }
-        #endif
     }
 
     deinit { refreshTask?.cancel() }
-
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        if isBeingDismissed || navigationController?.isBeingDismissed == true {
-            onDismiss?()
-        }
-    }
 
     private func reload() async {
         guard let fresh = try? await backend.subagents(for: parentSessionID) else { return }
@@ -111,7 +98,12 @@ final class SubagentListViewController: UIViewController {
             }
             content.imageToTextPadding = Theme.Spacing.m
             cell.contentConfiguration = content
-            cell.accessories = [.disclosureIndicator()]
+            let jump = UIImageView(
+                image: UIImage(
+                    systemName: "arrow.turn.down.right",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
+            jump.tintColor = Theme.Color.tertiaryLabel
+            cell.accessories = [.customView(configuration: .init(customView: jump, placement: .trailing()))]
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, agentID in
@@ -142,7 +134,7 @@ final class SubagentListViewController: UIViewController {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "point.3.connected.trianglepath.dotted")
             config.text = "No Agents"
-            config.secondaryText = "Subagents spawned by this session will appear here."
+            config.secondaryText = "Agents spawned by this session appear in the conversation."
             contentUnavailableConfiguration = config
         } else {
             contentUnavailableConfiguration = nil
@@ -153,31 +145,8 @@ final class SubagentListViewController: UIViewController {
 extension SubagentListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let agentID = dataSource.itemIdentifier(for: indexPath),
-            let agent = agents.first(where: { $0.id == agentID })
-        else { return }
-        open(agent)
-    }
-}
-
-extension SubagentListViewController {
-    static func transcriptViewController(
-        backend: any CodingAgentBackend, parentSessionID: String, agent: SubagentSummary
-    ) -> ChatViewController {
-        let transcriptBackend = SubagentTranscriptBackend(
-            base: backend, parentSessionID: parentSessionID, agentID: agent.id)
-        let session = AgentSession(
-            id: "subagent:\(parentSessionID):\(agent.id)", agentType: backend.agentType,
-            title: agent.title, createdAt: agent.updatedAt, updatedAt: agent.updatedAt)
-        let viewModel = ChatViewModel(
-            backend: transcriptBackend, session: session, reportsActivity: false)
-        return ChatViewController(viewModel: viewModel, readOnly: true)
-    }
-
-    fileprivate func open(_ agent: SubagentSummary) {
-        navigationController?.pushViewController(
-            Self.transcriptViewController(
-                backend: backend, parentSessionID: parentSessionID, agent: agent),
-            animated: true)
+        guard let agentID = dataSource.itemIdentifier(for: indexPath) else { return }
+        Theme.Haptics.selection()
+        dismiss(animated: true) { [onSelect] in onSelect?(agentID) }
     }
 }
