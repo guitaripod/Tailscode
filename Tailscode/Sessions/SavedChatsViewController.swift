@@ -93,7 +93,7 @@ final class SavedChatsViewController: UIViewController {
     @objc private func refresh() { Task { await load() } }
 
     private func load() async {
-        await viewModel.load(tolerateSingleFailure: true)
+        await viewModel.load()
         hasLoadedOnce = true
         SavedChatStore.reconcile(with: viewModel.entries)
         saved = SavedChatStore.all()

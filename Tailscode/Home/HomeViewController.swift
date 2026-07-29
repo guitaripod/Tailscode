@@ -331,9 +331,9 @@ final class HomeViewController: UIViewController {
     private var isScanningOpencode = true
 
     /// Why the list is being refreshed, which decides how eagerly the expensive
-    /// parts run: a load the user asked for re-runs everything and treats a
-    /// silent server as down immediately, while the background cadence rides on
-    /// throttled enrichment and gives a slow server a second chance.
+    /// parts run: a load the user asked for re-runs the quota and scan work,
+    /// while the background cadence rides on throttled enrichment. Reachability
+    /// is not on this dial — a server is judged the same way whoever asked.
     private enum LoadReason {
         case user, appear, poll
     }
@@ -364,7 +364,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func performLoad(_ reason: LoadReason) async {
-        await viewModel.load(tolerateSingleFailure: reason == .poll)
+        await viewModel.load()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
         updateComposer()

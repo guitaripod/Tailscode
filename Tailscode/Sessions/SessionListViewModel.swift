@@ -45,14 +45,19 @@ final class SessionListViewModel {
     /// Rebuilds the backends from the saved profiles, dropping entries whose
     /// server is gone. Called when Settings edits connections, so the list
     /// follows an add, a removal, a rename, or a new address without the screen
-    /// being recreated.
+    /// being recreated. Every verdict is torn up with them: the user just
+    /// changed what these servers are, so what the old ones failed to answer
+    /// says nothing about the new ones.
     func refreshSources() {
         sourcesRevision = ConnectionController.shared.revision
         sources = ConnectionController.shared.allBackends()
             .map { Source(profile: $0.profile, backend: $0.backend) }
         let live = Set(sources.map(\.profile.id))
         entries.removeAll { !live.contains($0.profileID) }
-        unreachable.removeAll { !live.contains($0) }
+        unreachable = []
+        failureStreaks = [:]
+        confirmationTask?.cancel()
+        confirmationTask = nil
         onChange?()
     }
 
@@ -85,59 +90,85 @@ final class SessionListViewModel {
         }
     }
 
-    /// One missed answer during the background refresh cadence is usually a slow
-    /// fold on a busy server, not a server that has gone away; calling it
-    /// unreachable on the spot makes the alert card flash on and off. A load the
-    /// user asked for stays strict — they are waiting for a verdict.
+    /// A server is only called unreachable once a second attempt agrees. The
+    /// first fan-out after the app comes back from a long pause fails on servers
+    /// that were up the whole time — the tailnet tunnel has to re-handshake and
+    /// the sockets the app left open died while it was away — so publishing that
+    /// first answer accused a healthy machine of being down every single time
+    /// the app was reopened.
     private var failureStreaks: [String: Int] = [:]
+    private var confirmationTask: Task<Void, Never>?
+
+    private static let failuresBeforeVerdict = 2
+    private static let confirmationDelay: Duration = .seconds(2)
 
     /// Re-reads the profile list on every load so servers added or removed
     /// in Settings appear without recreating this screen.
-    func load(tolerateSingleFailure: Bool = false) async {
+    func load() async {
         if ConnectionController.shared.revision != sourcesRevision {
             sourcesRevision = ConnectionController.shared.revision
             sources = ConnectionController.shared.allBackends()
                 .map { Source(profile: $0.profile, backend: $0.backend) }
         }
-        var collected: [SessionEntry] = []
-        var failed: [String] = []
+        await refresh(sources, deadline: Self.sourceDeadline)
+    }
 
+    /// Lists `targets` concurrently and merges their answers into what is
+    /// already on screen, so a server that stayed silent keeps the sessions it
+    /// last reported rather than blanking. Servers outside `targets` are left
+    /// untouched, which is what lets a doubted server be re-checked on its own.
+    private func refresh(_ targets: [Source], deadline: Duration) async {
+        var fresh: [String: [SessionEntry]] = [:]
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
-            for source in sources {
+            for source in targets {
                 group.addTask {
-                    do { return (source, .success(try await Self.listWithDeadline(source))) }
-                    catch { return (source, .failure(error)) }
+                    do {
+                        return (
+                            source,
+                            .success(try await Self.listWithDeadline(source, deadline: deadline))
+                        )
+                    } catch {
+                        return (source, .failure(error))
+                    }
                 }
             }
             for await (source, result) in group {
                 switch result {
                 case .success(let list):
                     failureStreaks[source.profile.id] = 0
-                    for session in list where session.parentID == nil {
-                        collected.append(
-                            SessionEntry(
-                                profileID: source.profile.id,
-                                profileName: source.profile.name,
-                                host: source.profile.baseURL.host ?? source.profile.name,
-                                backendType: source.profile.backend,
-                                session: session))
+                    fresh[source.profile.id] = list.filter { $0.parentID == nil }.map {
+                        SessionEntry(
+                            profileID: source.profile.id,
+                            profileName: source.profile.name,
+                            host: source.profile.baseURL.host ?? source.profile.name,
+                            backendType: source.profile.backend,
+                            session: $0)
                     }
                 case .failure(let error):
                     let streak = (failureStreaks[source.profile.id] ?? 0) + 1
                     failureStreaks[source.profile.id] = streak
-                    if !tolerateSingleFailure || streak > 1 {
-                        failed.append(source.profile.id)
-                    }
-                    collected.append(contentsOf: entries.filter { $0.profileID == source.profile.id })
                     AppLogger.session.error(
-                        "load failed for \(source.profile.name): \(Self.readable(error))")
+                        "load failed for \(source.profile.name) (attempt \(streak)): "
+                            + Self.readable(error))
                 }
             }
         }
+        publish(fresh)
+    }
 
-        let changed = collected.count != entries.count || failed.sorted() != unreachable.sorted()
+    /// Merged onto whatever is on screen at this moment rather than onto a
+    /// snapshot taken before the fan-out: the confirmation pass and the cadence
+    /// can be in flight together, and neither may republish the other's servers
+    /// from a list it read minutes ago.
+    private func publish(_ fresh: [String: [SessionEntry]]) {
+        let byProfile = Dictionary(grouping: entries, by: \.profileID)
+            .merging(fresh) { _, new in new }
+        let live = sources.map(\.profile.id)
+        let collected = live.flatMap { byProfile[$0] ?? [] }
+        let verdicts = live.filter { (failureStreaks[$0] ?? 0) >= Self.failuresBeforeVerdict }
+        let changed = collected.count != entries.count || verdicts != unreachable
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
-        unreachable = failed
+        unreachable = verdicts
         SessionListCache.save(entries)
         SavedChatStore.reconcile(with: entries)
         if changed {
@@ -145,6 +176,27 @@ final class SessionListViewModel {
                 "loaded \(entries.count) sessions across \(sources.count) servers")
         }
         onChange?()
+        scheduleConfirmation(live.filter { failureStreaks[$0] == 1 })
+    }
+
+    /// A server that has missed once is re-checked on its own a moment later
+    /// instead of waiting for the next cadence tick or a pull: the verdict has
+    /// to settle by itself, and a tunnel that was still coming up gets the
+    /// seconds it needs. The second look is generous with time where the first
+    /// is deliberately short — nothing is waiting on it, the list is already
+    /// painted, and the only thing it decides is whether to raise an alarm.
+    private func scheduleConfirmation(_ ids: [String]) {
+        confirmationTask?.cancel()
+        confirmationTask = nil
+        guard !ids.isEmpty else { return }
+        confirmationTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.confirmationDelay)
+            guard !Task.isCancelled, let self else { return }
+            self.confirmationTask = nil
+            await self.refresh(
+                self.sources.filter { ids.contains($0.profile.id) },
+                deadline: Self.confirmationDeadline)
+        }
     }
 
     func newSession(on profile: ConnectionProfile, directory: String? = nil) async -> SessionEntry? {
@@ -190,11 +242,18 @@ final class SessionListViewModel {
     /// cached entries survive and the reachable servers paint immediately.
     private static let sourceDeadline: Duration = .seconds(8)
 
-    private static func listWithDeadline(_ source: Source) async throws -> [AgentSession] {
+    /// The confirmation pass runs off-screen with the list already painted, so
+    /// it can afford to wait out a tailnet that is still re-establishing itself
+    /// rather than inheriting a deadline sized for a spinner.
+    private static let confirmationDeadline: Duration = .seconds(20)
+
+    private static func listWithDeadline(
+        _ source: Source, deadline: Duration
+    ) async throws -> [AgentSession] {
         try await withThrowingTaskGroup(of: [AgentSession].self) { group in
             group.addTask { try await source.backend.listSessions() }
             group.addTask {
-                try await Task.sleep(for: sourceDeadline)
+                try await Task.sleep(for: deadline)
                 throw SourceTimeout()
             }
             guard let first = try await group.next() else { throw SourceTimeout() }
