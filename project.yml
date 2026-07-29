@@ -16,6 +16,8 @@ targets:
       - path: TailscodeWidget/UsageWidget.swift
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
+      - path: Resources/InfoPlist.xcstrings
+        buildPhase: resources
     dependencies:
       - package: CodingAgentKit
         product: CodingAgentKit
@@ -96,6 +98,8 @@ targets:
       - path: TailscodeWidget
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
+      - path: Resources/Widget/InfoPlist.xcstrings
+        buildPhase: resources
       - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageControlIntents.swift
@@ -151,6 +155,8 @@ targets:
     platform: iOS
     sources:
       - path: TailscodeNSE
+      - path: Resources/Localizable.xcstrings
+        buildPhase: resources
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Logging/AppLogger.swift
@@ -170,6 +176,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
         SKIP_INSTALL: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1"

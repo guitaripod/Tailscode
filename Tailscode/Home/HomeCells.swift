@@ -717,7 +717,11 @@ final class QuotaCardCell: GlassCardCell {
         }
         accessibilityLabel = card.quota.providerName
         accessibilityValue = card.quota.gauges.prefix(3)
-            .map { String(localized: "\($0.label) \(Int($0.fraction * 100)) percent") }
+            .map {
+                String(
+                    localized:
+                        "\(UsageGaugeFormat.gaugeLabel($0.label)) \(Int($0.fraction * 100)) percent")
+            }
             .joined(separator: ", ")
         isAccessibilityElement = true
         accessibilityTraits = .button
@@ -727,7 +731,7 @@ final class QuotaCardCell: GlassCardCell {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .caption2)
         label.textColor = Theme.Color.secondaryLabel
-        label.text = gauge.label
+        label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let percent = UILabel()

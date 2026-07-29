@@ -287,8 +287,8 @@ enum UsageScanner {
         return UsageQuota(
             providerName: UsageWidgetStore.opencodeProviderName,
             subtitle: hosts > 1
-                ? "$10/mo · estimated from \(hosts) servers"
-                : "$10/mo · estimated from this server",
+                ? String(localized: "$10/mo · estimated from \(hosts) servers")
+                : String(localized: "$10/mo · estimated from this server"),
             source: "opencode.db estimate",
             live: false,
             gauges: gauges,
@@ -382,7 +382,9 @@ enum UsageScanner {
                         + "(\(currency(stats.spend))/\(currency(window.cap)), \(stats.requests) req)"
                 }.joined(separator: " | "))
         var gauges = computed.map { window, stats in
-            var caption = "\(currency(stats.spend)) / \(currency(window.cap)) · \(stats.requests) req"
+            var caption = UsageGaugeFormat.spendCaption(
+                spend: currency(stats.spend), cap: currency(window.cap),
+                requests: stats.requests)
             let reset = UsageGaugeFormat.resetCaption(resetsAt: stats.resetsAt, trustedReset: false)
             if !reset.isEmpty { caption += " · \(reset)" }
             return UsageWidgetEntry.GaugeSnapshot(

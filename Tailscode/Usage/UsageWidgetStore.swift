@@ -66,29 +66,49 @@ enum UsageWidgetStore {
                     subtitle: "Max 20x",
                     isLive: true,
                     gauges: [
-                        UsageWidgetEntry.GaugeSnapshot(label: "Token input", fraction: 0.47, percentText: "47%", caption: "resets 1h 15m", resetsAt: now.addingTimeInterval(4500)),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Token output", fraction: 0.32, percentText: "32%", caption: "resets 4h", resetsAt: now.addingTimeInterval(14400)),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Cache write", fraction: 0.18, percentText: "18%", caption: "resets 12h", resetsAt: now.addingTimeInterval(43200)),
+                        previewGauge("Token input", 0.47, "47%", resetsIn: 4500, from: now),
+                        previewGauge("Token output", 0.32, "32%", resetsIn: 14400, from: now),
+                        previewGauge("Cache write", 0.18, "18%", resetsIn: 43200, from: now),
                     ]),
                 UsageWidgetEntry.ProviderSnapshot(
                     providerName: "Grok",
                     subtitle: "X Premium+",
                     isLive: true,
                     gauges: [
-                        UsageWidgetEntry.GaugeSnapshot(label: "Chat messages", fraction: 0.12, percentText: "12%", caption: "resets 45m", resetsAt: now.addingTimeInterval(2700)),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Reasoning", fraction: 0.05, percentText: "5%", caption: "resets 45m", resetsAt: now.addingTimeInterval(2700)),
+                        previewGauge("Chat messages", 0.12, "12%", resetsIn: 2700, from: now),
+                        previewGauge("Reasoning", 0.05, "5%", resetsIn: 2700, from: now),
                     ]),
                 UsageWidgetEntry.ProviderSnapshot(
                     providerName: "opencode go",
-                    subtitle: "$10/mo \u{00b7} estimated",
+                    subtitle: String(localized: "$10/mo · estimated"),
                     isLive: false,
                     gauges: [
-                        UsageWidgetEntry.GaugeSnapshot(label: "5-hour", fraction: 0.28, percentText: "28%", caption: "$3.42 / $12 \u{00b7} 12 req", resetsAt: nil),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Weekly", fraction: 0.14, percentText: "14%", caption: "$4.20 / $30 \u{00b7} 12 req", resetsAt: nil),
-                        UsageWidgetEntry.GaugeSnapshot(label: "Monthly", fraction: 0.08, percentText: "8%", caption: "$3.00 / $40 \u{00b7} 12 req", resetsAt: nil),
+                        previewSpendGauge("5-hour", 0.28, "28%", spend: "$3.42", cap: "$12"),
+                        previewSpendGauge("Weekly", 0.14, "14%", spend: "$4.20", cap: "$30"),
+                        previewSpendGauge("Monthly", 0.08, "8%", spend: "$3.00", cap: "$40"),
                     ]),
             ],
             isStale: false)
+    }
+
+    private static func previewGauge(
+        _ label: String, _ fraction: Double, _ percentText: String,
+        resetsIn: TimeInterval, from: Date
+    ) -> UsageWidgetEntry.GaugeSnapshot {
+        let resetsAt = from.addingTimeInterval(resetsIn)
+        return UsageWidgetEntry.GaugeSnapshot(
+            label: label, fraction: fraction, percentText: percentText,
+            caption: UsageGaugeFormat.resetCaption(resetsAt: resetsAt, trustedReset: true),
+            resetsAt: resetsAt)
+    }
+
+    private static func previewSpendGauge(
+        _ label: String, _ fraction: Double, _ percentText: String, spend: String, cap: String
+    ) -> UsageWidgetEntry.GaugeSnapshot {
+        UsageWidgetEntry.GaugeSnapshot(
+            label: label, fraction: fraction, percentText: percentText,
+            caption: UsageGaugeFormat.spendCaption(spend: spend, cap: cap, requests: 12),
+            resetsAt: nil)
     }
 
     private struct Storage: Codable {

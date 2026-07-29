@@ -7,13 +7,37 @@ enum UsageGaugeFormat {
 
     static func resetCaption(resetsAt: Date?, trustedReset: Bool) -> String {
         guard let resetsAt else { return "" }
-        let prefix = trustedReset ? "resets " : "~resets "
-        let seconds = max(0, resetsAt.timeIntervalSinceNow)
-        let minutes = Int(seconds / 60)
-        if minutes < 60 { return "\(prefix)\(minutes)m" }
+        let remaining = remaining(until: resetsAt)
+        return trustedReset
+            ? String(localized: "resets \(remaining)")
+            : String(localized: "~resets \(remaining)")
+    }
+
+    /// The caption under a Go gauge, whose numbers are dollars rather than a
+    /// percentage of a plan the server can report.
+    static func spendCaption(spend: String, cap: String, requests: Int) -> String {
+        String(localized: "\(spend) / \(cap) · \(requests) req")
+    }
+
+    /// A gauge label as a person reads it. The Go window names travel English
+    /// between the app, the widget and the notification service, which match on
+    /// them; only the rendered form is translated. Labels a server sent are its
+    /// own and pass through untouched.
+    static func gaugeLabel(_ label: String) -> String {
+        switch label {
+        case "5-hour": return String(localized: "5-hour")
+        case "Weekly": return String(localized: "Weekly")
+        case "Monthly": return String(localized: "Monthly")
+        default: return label
+        }
+    }
+
+    private static func remaining(until date: Date) -> String {
+        let minutes = Int(max(0, date.timeIntervalSinceNow) / 60)
+        if minutes < 60 { return "\(minutes)m" }
         let hours = minutes / 60
-        if hours < 24 { return "\(prefix)\(hours)h \(minutes % 60)m" }
-        return "\(prefix)\(hours / 24)d \(hours % 24)h"
+        if hours < 24 { return "\(hours)h \(minutes % 60)m" }
+        return "\(hours / 24)d \(hours % 24)h"
     }
 }
 

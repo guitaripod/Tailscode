@@ -275,8 +275,8 @@ final class UsageViewController: UIViewController {
             accent: accent,
             gauges: provider.gauges.prefix(3).map {
                 GaugeVM(
-                    name: $0.label, fraction: $0.fraction, percentText: $0.percentText,
-                    caption: $0.caption)
+                    name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
+                    percentText: $0.percentText, caption: $0.caption)
             },
             details: [],
             note: String(localized: "Last saved figures — refreshing from the server now."))
@@ -469,14 +469,14 @@ final class UsageViewController: UIViewController {
         let now = Date()
         return UsageScanner.windows.map { window in
             let stats = UsageScanner.windowStats(window, samples: result.samples, now: now)
-            var caption =
-                "\(currency(stats.spend)) / \(currency(window.cap)) · "
-                + String(localized: "\(stats.requests) req")
+            var caption = UsageGaugeFormat.spendCaption(
+                spend: currency(stats.spend), cap: currency(window.cap),
+                requests: stats.requests)
             if let resetsAt = stats.resetsAt {
                 caption += "\n" + String(localized: "~resets \(humanize(until: resetsAt))")
             }
             return GaugeVM(
-                name: window.name,
+                name: UsageGaugeFormat.gaugeLabel(window.name),
                 fraction: stats.fraction,
                 percentText: "\(Int((stats.fraction * 100).rounded()))%",
                 caption: caption)

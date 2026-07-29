@@ -49,7 +49,7 @@ extension UsageWidgetStore {
     static func writeOpencode(gauges: [UsageWidgetEntry.GaugeSnapshot], reload: Bool = true) {
         let provider = UsageWidgetEntry.ProviderSnapshot(
             providerName: opencodeProviderName,
-            subtitle: "$10/mo · estimated",
+            subtitle: String(localized: "$10/mo · estimated"),
             isLive: false,
             gauges: gauges)
         upsertProvider(provider, reload: reload)

@@ -1,0 +1,71 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode's widgets read live usage from coding-agent servers you run, including ones on your local network."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Widgets von Tailscode lesen die aktuelle Nutzung von Coding-Agent-Servern, die du betreibst — auch von denen in deinem lokalen Netzwerk."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los widgets de Tailscode leen el uso en directo de los servidores de agentes de programación que ejecutas, incluidos los de tu red local."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les widgets de Tailscode lisent l’utilisation en direct des serveurs d’agents de programmation que vous exécutez, y compris ceux de votre réseau local."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I widget di Tailscode leggono l’utilizzo in tempo reale dai server di agenti di programmazione che esegui, compresi quelli sulla tua rete locale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode のウィジェットは、自分で動かしているコーディングエージェントのサーバー（ローカルネットワーク上のものを含む）から現在の使用状況を読み取ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 위젯은 사용자가 실행하는 코딩 에이전트 서버에서 실시간 사용량을 읽어오며, 여기에는 로컬 네트워크의 서버도 포함됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os widgets do Tailscode leem o uso ao vivo dos servidores de agentes de programação que você executa, inclusive os da sua rede local."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 的小组件会从你运行的编程代理服务器读取实时用量，包括本地网络中的服务器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 的小工具會從你執行的編碼代理伺服器讀取即時用量，包含區域網路上的伺服器。"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

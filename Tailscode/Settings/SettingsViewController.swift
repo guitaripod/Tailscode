@@ -975,7 +975,8 @@ final class SettingsViewController: UIViewController {
         case .toggle(let toggle): return "\(toggle.title) \(toggle.subtitle ?? "")"
         case .pushState(let id):
             let name = ConnectionController.shared.profiles.first { $0.id == id }?.name ?? ""
-            return "push notifications bridge \(name)"
+            return String(localized: "push notifications bridge", comment: "search keywords")
+                + " \(name)"
         case .testNotification:
             return String(localized: "test notification send check", comment: "search keywords")
         case .usage:
