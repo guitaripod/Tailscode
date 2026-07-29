@@ -1450,14 +1450,52 @@ final class ChatViewController: UIViewController {
 
     private func scrollTo(id: String) {
         guard let index = dataSource.snapshot().indexOfItem(id) else { return }
-        collectionView.scrollToItem(
-            at: IndexPath(item: index, section: 0), at: .top, animated: true)
+        let path = IndexPath(item: index, section: 0)
+        #if DEBUG
+            if TourDriver.isFilming,
+                let attributes = collectionView.layoutAttributesForItem(at: path)
+            {
+                tourGlide(
+                    to: attributes.frame.minY - collectionView.adjustedContentInset.top - 10,
+                    duration: 1.35)
+                Theme.Haptics.selection()
+                return
+            }
+        #endif
+        collectionView.scrollToItem(at: path, at: .top, animated: true)
         Theme.Haptics.selection()
     }
+
+    #if DEBUG
+        /// UIKit's `scrollToItem(animated:)` covers any distance in the same ~0.3s, so
+        /// a long jump lands as a snap and a growing transcript re-snaps on every
+        /// render. A take needs the list to move like a camera instead: eased, and
+        /// paced by how far it actually has to travel.
+        private func tourGlide(to y: CGFloat, duration: Double) {
+            let top = -collectionView.adjustedContentInset.top
+            let bottom = max(
+                top,
+                collectionView.contentSize.height + collectionView.adjustedContentInset.bottom
+                    - collectionView.bounds.height)
+            let target = min(max(y, top), bottom)
+            guard abs(target - collectionView.contentOffset.y) > 0.5 else { return }
+            UIView.animate(
+                withDuration: duration, delay: 0,
+                options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction]
+            ) {
+                self.collectionView.contentOffset.y = target
+            }
+        }
+    #endif
 
     /// A spawned agent lives in this conversation, so "open" means scroll to its
     /// card and expand it — never push a second chat the user has to come back from.
     private func revealSubagent(id agentID: String) {
+        #if DEBUG
+            // Expanding a card inserts rows underneath it, which on a plain snapshot
+            // apply shoves everything below by a card's height in one frame.
+            if TourDriver.isFilming { animateNextRender = true }
+        #endif
         if !viewModel.isSubagentExpanded(agentID) { viewModel.toggleSubagent(agentID) }
         let rowID = "agent:\(agentID)"
         if !dataSource.snapshot().itemIdentifiers.contains(rowID) {
@@ -1626,6 +1664,8 @@ final class ChatViewController: UIViewController {
         }
 
         func tourToggleSaved() { toggleSaved() }
+
+        func tourDismissKeyboard() { view.endEditing(true) }
     #endif
 
     private func toggleAgentGroup(_ groupID: String) {
@@ -2436,6 +2476,17 @@ final class ChatViewController: UIViewController {
         let count = dataSource.snapshot().numberOfItems
         guard count > 0 else { return }
         let indexPath = IndexPath(item: count - 1, section: 0)
+        #if DEBUG
+            if TourDriver.isFilming, animated,
+                let attributes = collectionView.layoutAttributesForItem(at: indexPath)
+            {
+                tourGlide(
+                    to: attributes.frame.maxY + collectionView.adjustedContentInset.bottom
+                        - collectionView.bounds.height,
+                    duration: 0.6)
+                return
+            }
+        #endif
         collectionView.scrollToItem(at: indexPath, at: .bottom, animated: animated)
     }
 

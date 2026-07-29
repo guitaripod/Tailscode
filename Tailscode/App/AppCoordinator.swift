@@ -50,6 +50,7 @@ final class AppCoordinator: NSObject {
             if let slug = ProcessInfo.processInfo.environment["TAILSCODE_SETTINGS_SECTION"] {
                 openSettingsForDebug(slug: slug)
             }
+            if CommandLine.arguments.contains("--tour") { TourDriver.start(in: window) }
         #endif
     }
 

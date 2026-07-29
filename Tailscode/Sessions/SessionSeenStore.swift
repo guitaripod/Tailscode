@@ -15,6 +15,16 @@ enum SessionSeenStore {
         defaults.set(Date().timeIntervalSince1970, forKey: baselineKey)
     }
 
+    #if DEBUG
+        /// Backdates the "last looked" mark so a filmed board opens carrying the unread
+        /// state a real one has after an evening away, rather than the blank slate a
+        /// clean install always produces.
+        static func tourRewindBaseline(_ seconds: TimeInterval) {
+            defaults.set(
+                Date().addingTimeInterval(-seconds).timeIntervalSince1970, forKey: baselineKey)
+        }
+    #endif
+
     static func markSeen(_ sessionID: String) {
         var seen = defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
         seen[sessionID] = Date().timeIntervalSince1970
