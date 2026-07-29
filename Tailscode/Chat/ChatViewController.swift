@@ -1295,15 +1295,14 @@ final class ChatViewController: UIViewController {
         composer.showsAttach = canAttachAnything
     }
 
+    /// Marks the overflow button while a permission waits, by tint rather than by
+    /// a badged symbol: `ellipsis.circle.badge.exclamationmark` does not exist, so
+    /// asking for it returned nil and blanked the button in the one state where
+    /// the menu behind it matters most.
     private func updateOverflowBadge(hasPermission: Bool) {
         guard let barItem = navigationItem.rightBarButtonItems?.last else { return }
-        if hasPermission {
-            barItem.image = UIImage(
-                systemName: "ellipsis.circle.badge.exclamationmark",
-                withConfiguration: UIImage.SymbolConfiguration(paletteColors: [Theme.Color.label, Theme.Color.warning]))
-        } else {
-            barItem.image = UIImage(systemName: "ellipsis.circle")
-        }
+        barItem.image = UIImage(systemName: "ellipsis.circle")
+        barItem.tintColor = hasPermission ? Theme.Color.warning : nil
     }
 
     private func overflowBarButton() -> UIBarButtonItem {

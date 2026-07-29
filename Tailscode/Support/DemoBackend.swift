@@ -225,7 +225,15 @@ enum DemoWorld {
                 title: "Read Sources/Pulse/ReconnectScheduler.swift"))))),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2", kind: .text("")))),
             step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Found it. `ReconnectScheduler` applies ±40% jitter to the 400 ms base delay, so the worst case is 560 ms — past the test's 500 ms ceiling.\n\n")),
-            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Injecting a deterministic jitter source in tests is the honest fix — the scheduler keeps its production behavior. Running the suite now.")),
+            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "Injecting a deterministic jitter source in tests is the honest fix — the scheduler keeps its production behavior:\n\n")),
+            step(.partTextDelta(messageID: "c1a1", partID: "t2", delta: "```swift\nprotocol JitterSource: Sendable {\n    func factor(in range: ClosedRange<Double>) -> Double\n}\n\nstruct FixedJitter: JitterSource {\n    let value: Double\n    func factor(in _: ClosedRange<Double>) -> Double { value }\n}\n```\n\n")),
+            step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2b", kind: .tool(ToolCall(
+                id: "c1t3", name: "Edit", status: .completed,
+                input: .object(["file_path": .string("/Users/dev/pulse/Tests/PulseTests/ReconnectTests.swift")]),
+                output: "Applied 1 edit",
+                title: "Edit Tests/PulseTests/ReconnectTests.swift"))))),
+            step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2c", kind: .text("")))),
+            step(.partTextDelta(messageID: "c1a1", partID: "t2c", delta: "The suite now pins the factor to 1.0, so the assertion measures the backoff and not the dice. Running it.")),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t3", kind: .tool(ToolCall(
                 id: "c1t2", name: "Bash", status: .running,
                 input: .object([
@@ -301,7 +309,11 @@ enum DemoWorld {
                     output: "12:  .background(Color.white)\n47:  .background(Color.white)\n81:  .foregroundColor(.black)",
                     title: "Read Pulse/Settings/SettingsView.swift"))),
                 MessagePart(id: "t2", kind: .text(
-                    "Three hardcoded colors. Replacing them with the semantic tokens — this is the first edit:")),
+                    "Three hardcoded colors, and Home already reads the semantic tokens for exactly these surfaces. Mapping each literal onto the token it should have been:")),
+                MessagePart(id: "t2b", kind: .text(
+                    "```diff\n- .background(Color.white)\n+ .background(Theme.Color.surface)\n\n- .foregroundColor(.black)\n+ .foregroundColor(Theme.Color.label)\n```")),
+                MessagePart(id: "t2c", kind: .text(
+                    "That keeps the two screens in lockstep the next time the palette moves. Starting with the first edit:")),
                 MessagePart(id: "t3", kind: .tool(ToolCall(
                     id: "c3t2", name: "Edit", status: .pending,
                     input: .object([
