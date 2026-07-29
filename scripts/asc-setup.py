@@ -59,6 +59,7 @@ def push_listing():
         "type": "appStoreVersionLocalizations", "id": vloc, "attributes": {
             "description": spec["description"], "keywords": spec["keywords"],
             "promotionalText": spec["promotionalText"],
+            "whatsNew": spec.get("whatsNew"),
             "supportUrl": spec["supportUrl"], "marketingUrl": spec["marketingUrl"]}}})
     print(f"version {ver['attributes'].get('versionString')} localization set; release={release_type}")
     return ver["id"]
