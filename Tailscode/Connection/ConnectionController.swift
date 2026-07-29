@@ -301,19 +301,30 @@ enum AgentProbe {
     /// Retries with the other backend's Basic-auth username on .authFailed:
     /// the caller's backend may be a port guess, and claude-bridge rejects a
     /// correct password sent under the wrong username.
-    static func probe(baseURL: URL, password: String?, preferring backend: AgentType) async -> ConnectionProbe.Outcome {
+    ///
+    /// A probe fired while the user is still typing needs a much shorter leash
+    /// than one they asked for, hence the policy and retry overrides.
+    static func probe(
+        baseURL: URL,
+        password: String?,
+        preferring backend: AgentType,
+        policy: ConnectionPolicy = policy,
+        retryUnreachable: Bool = true
+    ) async -> ConnectionProbe.Outcome {
         guard let password else {
-            return await ConnectionProbe().probe(baseURL: baseURL, credentials: nil, policy: policy)
+            return await ConnectionProbe().probe(
+                baseURL: baseURL, credentials: nil, policy: policy,
+                retryUnreachable: retryUnreachable)
         }
         let outcome = await ConnectionProbe().probe(
             baseURL: baseURL,
             credentials: BasicCredentials(username: username(for: backend), password: password),
-            policy: policy)
+            policy: policy, retryUnreachable: retryUnreachable)
         guard case .authFailed = outcome else { return outcome }
         let other: AgentType = backend == .openCode ? .claudeCode : .openCode
         return await ConnectionProbe().probe(
             baseURL: baseURL,
             credentials: BasicCredentials(username: username(for: other), password: password),
-            policy: policy)
+            policy: policy, retryUnreachable: retryUnreachable)
     }
 }

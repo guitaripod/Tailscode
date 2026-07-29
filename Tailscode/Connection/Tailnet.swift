@@ -59,6 +59,13 @@ enum TailnetStatus {
     /// tailnet address is a `100.64.0.0/10` (CGNAT) address on a `utun`
     /// interface; nothing is present unless the VPN is up and configured.
     static func localAddress() -> String? {
+        #if DEBUG
+            switch ProcessInfo.processInfo.environment["TAILSCODE_FAKE_TAILNET"] {
+            case "down": return nil
+            case "up": return "100.101.102.103"
+            default: break
+            }
+        #endif
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return nil }
         defer { freeifaddrs(head) }

@@ -44,6 +44,7 @@ final class HomeViewController: UIViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "gearshape"), style: .plain, target: self,
             action: #selector(openSettings))
+        updateDemoBadge()
         updateComposeButton()
         configureCollectionView()
         configureDataSource()
@@ -217,6 +218,7 @@ final class HomeViewController: UIViewController {
     /// and any in-flight chat intact through something as small as a rename.
     @objc private func connectionsDidChange() {
         viewModel.refreshSources()
+        updateDemoBadge()
         updateComposeButton()
         updateComposer()
         applySnapshot()
@@ -239,6 +241,57 @@ final class HomeViewController: UIViewController {
     @objc private func savedDidChange() {
         savedChats = SavedChatStore.all()
         applySnapshot()
+    }
+
+    /// The demo is a full, believable two-server world, which is exactly why it
+    /// needs to say so on every screen — and why the way out of it belongs here
+    /// rather than three taps deep in Settings.
+    private func updateDemoBadge() {
+        let settings = navigationItem.leftBarButtonItem
+        guard ConnectionController.shared.isDemoMode else {
+            navigationItem.leftBarButtonItems = [settings].compactMap { $0 }
+            return
+        }
+        var config = UIButton.Configuration.tinted()
+        config.title = String(localized: "DEMO")
+        config.baseForegroundColor = Theme.Color.warning
+        config.baseBackgroundColor = Theme.Color.warning
+        config.cornerStyle = .capsule
+        config.buttonSize = .mini
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var out = $0
+            out.font = .systemFont(ofSize: 11, weight: .bold)
+            return out
+        }
+        let button = UIButton(configuration: config)
+        button.accessibilityLabel = String(localized: "Demo mode. Sample data, no real servers.")
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(children: [
+            UIAction(
+                title: String(localized: "Set up my machine"), image: UIImage(systemName: "server.rack")
+            ) { [weak self] _ in self?.presentSetup() },
+            UIAction(
+                title: String(localized: "Leave the demo"), image: UIImage(systemName: "xmark"),
+                attributes: .destructive
+            ) { _ in
+                Theme.Haptics.warning()
+                ConnectionController.shared.leaveDemoMode()
+            },
+        ])
+        navigationItem.leftBarButtonItems = [settings, UIBarButtonItem(customView: button)]
+            .compactMap { $0 }
+    }
+
+    private func presentSetup() {
+        Theme.Haptics.tap()
+        let setup = ServerSetupViewController(mode: .addServer)
+        let nav = UINavigationController(rootViewController: setup)
+        nav.navigationBar.prefersLargeTitles = true
+        setup.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            systemItem: .close,
+            primaryAction: UIAction { [weak nav] _ in nav?.dismiss(animated: true) })
+        setup.onConnected = { [weak nav] in nav?.dismiss(animated: true) }
+        present(nav, animated: true)
     }
 
     /// Compose aims the docked composer instead of creating a session: server,

@@ -24,30 +24,72 @@ final class PrimaryButton: UIButton {
     }
 }
 
+/// The same shape as ``PrimaryButton`` without the claim: only one action on a
+/// screen can be the primary one.
+final class SecondaryButton: UIButton {
+    init(title: String) {
+        super.init(frame: .zero)
+        var config = Theme.Glass.buttonConfiguration()
+        config.title = title
+        config.baseForegroundColor = Theme.Color.label
+        config.cornerStyle = .large
+        config.buttonSize = .large
+        configuration = config
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func setLoading(_ loading: Bool) {
+        configuration?.showsActivityIndicator = loading
+        isEnabled = !loading
+    }
+
+    func setTitle(_ title: String) {
+        configuration?.title = title
+    }
+}
+
 final class FormField: UIView {
     let textField = UITextField()
+    /// Fired by the keyboard's return key, so a form can be submitted without
+    /// dismissing the keyboard and hunting for the button.
+    var onSubmit: (() -> Void)?
     private let titleLabel = UILabel()
+    private let revealButton = UIButton(type: .system)
 
     init(
         title: String,
         placeholder: String,
         secure: Bool = false,
-        keyboard: UIKeyboardType = .default
+        keyboard: UIKeyboardType = .default,
+        contentType: UITextContentType? = nil,
+        capitalization: UITextAutocapitalizationType = .none,
+        returnKey: UIReturnKeyType = .done
     ) {
         super.init(frame: .zero)
-        titleLabel.text = title.uppercased()
+        titleLabel.text = title.localizedUppercase
         titleLabel.font = .preferredFont(forTextStyle: .caption2)
         titleLabel.textColor = Theme.Color.secondaryLabel
         titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.numberOfLines = 0
+        titleLabel.accessibilityLabel = title
 
         textField.placeholder = placeholder
         textField.borderStyle = .roundedRect
         textField.isSecureTextEntry = secure
         textField.keyboardType = keyboard
-        textField.autocapitalizationType = .none
+        textField.textContentType = contentType
+        textField.autocapitalizationType = capitalization
         textField.autocorrectionType = .no
+        textField.spellCheckingType = .no
+        textField.returnKeyType = returnKey
+        textField.enablesReturnKeyAutomatically = false
+        textField.clearButtonMode = secure ? .never : .whileEditing
         textField.font = Theme.Font.body()
         textField.adjustsFontForContentSizeCategory = true
+        textField.accessibilityLabel = title
+        textField.addAction(UIAction { [weak self] _ in self?.onSubmit?() }, for: .primaryActionTriggered)
 
         let stack = UIStackView(arrangedSubviews: [titleLabel, textField])
         stack.axis = .vertical
@@ -60,6 +102,35 @@ final class FormField: UIView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        if secure { installRevealButton() }
+    }
+
+    /// A password typed blind on a phone is the most common reason a correct
+    /// password is reported wrong, so a secure field can always show itself.
+    private func installRevealButton() {
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(
+            systemName: "eye",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+        config.baseForegroundColor = Theme.Color.secondaryLabel
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: Theme.Spacing.s, bottom: 0, trailing: Theme.Spacing.s)
+        revealButton.configuration = config
+        revealButton.accessibilityLabel = String(localized: "Show password")
+        revealButton.frame = CGRect(x: 0, y: 0, width: 44, height: 34)
+        revealButton.addAction(UIAction { [weak self] _ in self?.toggleReveal() }, for: .touchUpInside)
+        textField.rightView = revealButton
+        textField.rightViewMode = .always
+    }
+
+    private func toggleReveal() {
+        Theme.Haptics.selection()
+        let revealing = textField.isSecureTextEntry
+        textField.isSecureTextEntry = !revealing
+        revealButton.configuration?.image = UIImage(
+            systemName: revealing ? "eye.slash" : "eye",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+        revealButton.accessibilityLabel =
+            revealing ? String(localized: "Hide password") : String(localized: "Show password")
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

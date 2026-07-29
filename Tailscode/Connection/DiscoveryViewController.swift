@@ -12,7 +12,7 @@ final class DiscoveryViewController: UIViewController {
 
     private let statusLabel = UILabel()
     private let scanButton = PrimaryButton(title: String(localized: "Scan tailnet"))
-    private let configureButton = PrimaryButton(title: String(localized: "Set up tailnet access"))
+    private let configureButton = SecondaryButton(title: String(localized: "Set up tailnet access"))
     private let resultsHeader = UILabel()
     private let resultsContainer = UIView()
     private let emptyLabel = UILabel()
@@ -46,12 +46,12 @@ final class DiscoveryViewController: UIViewController {
         refreshState()
     }
 
+    /// Never demands the token on appear: an unrequested modal on top of a modal,
+    /// asking for a third-party API key before the screen has explained itself,
+    /// is the shape of an abandoned setup. The button is right there.
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if !hasCreds {
-            presentCredentialForm()
-            return
-        }
+        guard hasCreds else { return }
         if suggestions.isEmpty && !didAutoScan {
             didAutoScan = true
             scanTapped()
@@ -62,7 +62,7 @@ final class DiscoveryViewController: UIViewController {
         let header = UILabel()
         header.text = String(
             localized:
-                "Uses the Tailscale API to list your devices, then checks which ones are running supported coding agent servers."
+                "A shortcut, not a requirement: with a Tailscale API token this lists your machines and checks which ones are already running an agent. You can always type the address instead."
         )
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
@@ -261,9 +261,7 @@ final class DiscoveryViewController: UIViewController {
                 guard !Task.isCancelled else { return }
                 AppLogger.connection.info("fetched \(fetched.count) tailscale devices")
                 lastDeviceCount = fetched.count
-                devices = fetched.sorted {
-                    ($0.lastSeenDate ?? .distantPast) > ($1.lastSeenDate ?? .distantPast)
-                }
+                devices = TailnetScanner.scannableDevices(fetched)
                 let online = TailnetScanner.scannableDevices(fetched).count
                 skippedDeviceCount = fetched.count - online
                 statusLabel.text = Self.probingStatus(
@@ -293,6 +291,7 @@ final class DiscoveryViewController: UIViewController {
                     lastDeviceCount.map {
                         String(localized: "Scanned \($0) devices.") + " " + countText
                     } ?? countText
+                UIAccessibility.post(notification: .announcement, argument: statusLabel.text)
             } catch let error as AgentError {
                 if case .http(let status, _) = error, status == 401 || status == 403 {
                     statusLabel.text = String(

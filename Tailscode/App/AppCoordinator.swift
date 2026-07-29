@@ -155,6 +155,10 @@ final class AppCoordinator: NSObject {
             openSettings(section: SettingsViewController.Section(rawValue: url.lastPathComponent))
             return
         }
+        if url.host() == "connect" {
+            handleConnectLink(url)
+            return
+        }
         if url.host() == "usage" {
             guard let home else {
                 pendingSessionLink = (url, Date())
@@ -173,6 +177,24 @@ final class AppCoordinator: NSObject {
         }
         pendingSessionLink = nil
         home.openSession(withID: sessionID)
+    }
+
+    /// Fills the setup screen in from a link the server itself can print, so the
+    /// address makes the trip from computer to phone without being typed twice.
+    private func handleConnectLink(_ url: URL) {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard let host = items.first(where: { $0.name == "host" })?.value, !host.isEmpty else { return }
+        let port = items.first { $0.name == "port" }?.value
+        let address = port.map { "\(host):\($0)" } ?? host
+        guard
+            let nav = window.rootViewController as? UINavigationController,
+            let welcome = nav.viewControllers.first as? WelcomeViewController
+        else {
+            AppLogger.lifecycle.info("connect link ignored — a server is already set up")
+            return
+        }
+        nav.dismiss(animated: true)
+        welcome.openSetup(prefilling: address)
     }
 
     /// The Top Usage control opens the app and leaves a route flag in the shared App Group
@@ -224,9 +246,11 @@ final class AppCoordinator: NSObject {
     }
 
     private func makeOnboarding() -> UIViewController {
-        let onboarding = OnboardingViewController()
-        onboarding.onConnected = { [weak self] in self?.route(animated: true) }
-        return UINavigationController(rootViewController: onboarding)
+        let welcome = WelcomeViewController()
+        welcome.onConnected = { [weak self] in self?.route(animated: true) }
+        let nav = UINavigationController(rootViewController: welcome)
+        nav.navigationBar.prefersLargeTitles = true
+        return nav
     }
 
     private func makeMain() -> UIViewController {

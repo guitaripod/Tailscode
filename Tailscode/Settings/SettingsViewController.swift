@@ -1163,12 +1163,12 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(detail, animated: true)
         case .addConnection:
             guard allowAnotherConnection() else { return }
-            let onboarding = OnboardingViewController()
-            onboarding.onConnected = { [weak self] in
+            let setup = ServerSetupViewController(mode: .addServer)
+            setup.onConnected = { [weak self] in
                 guard let self else { return }
                 self.navigationController?.popToViewController(self, animated: true)
             }
-            navigationController?.pushViewController(onboarding, animated: true)
+            navigationController?.pushViewController(setup, animated: true)
         case .discover:
             guard allowAnotherConnection() else { return }
             let discovery = DiscoveryViewController()

@@ -5,6 +5,7 @@ enum Theme {
         static let background = UIColor.systemBackground
         static let secondaryBackground = UIColor.secondarySystemBackground
         static let groupedBackground = UIColor.systemGroupedBackground
+        static let groupedSurface = UIColor.secondarySystemGroupedBackground
         static let label = UIColor.label
         static let secondaryLabel = UIColor.secondaryLabel
         static let tertiaryLabel = UIColor.tertiaryLabel
@@ -38,6 +39,8 @@ enum Theme {
         static let m: CGFloat = 12
         static let l: CGFloat = 16
         static let xl: CGFloat = 24
+        static let xxl: CGFloat = 32
+        static let xxxl: CGFloat = 48
     }
 
     enum Radius {
@@ -50,9 +53,35 @@ enum Theme {
         static func body() -> UIFont { .preferredFont(forTextStyle: .body) }
         static func headline() -> UIFont { .preferredFont(forTextStyle: .headline) }
         static func subheadline() -> UIFont { .preferredFont(forTextStyle: .subheadline) }
+        static func footnote() -> UIFont { .preferredFont(forTextStyle: .footnote) }
         static func caption() -> UIFont { .preferredFont(forTextStyle: .caption1) }
         static func mono(_ size: CGFloat = 13) -> UIFont {
             .monospacedSystemFont(ofSize: size, weight: .regular)
+        }
+
+        /// A display headline that still answers to Dynamic Type: the metrics of a
+        /// text style scale a weighted system face, which `.systemFont(ofSize:)`
+        /// alone never does. The base size is read at the default content size —
+        /// reading the current one and scaling it again doubles the growth.
+        static func display(_ style: UIFont.TextStyle = .largeTitle, weight: UIFont.Weight = .bold)
+            -> UIFont
+        {
+            UIFontMetrics(forTextStyle: style).scaledFont(
+                for: .systemFont(ofSize: baseSize(of: style), weight: weight))
+        }
+
+        static func scaledMono(_ style: UIFont.TextStyle = .footnote, weight: UIFont.Weight = .regular)
+            -> UIFont
+        {
+            UIFontMetrics(forTextStyle: style).scaledFont(
+                for: .monospacedSystemFont(ofSize: baseSize(of: style), weight: weight))
+        }
+
+        private static func baseSize(of style: UIFont.TextStyle) -> CGFloat {
+            UIFontDescriptor.preferredFontDescriptor(
+                withTextStyle: style,
+                compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+            ).pointSize
         }
     }
 

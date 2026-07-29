@@ -391,6 +391,136 @@
         }
       }
     },
+    "%@ answered, but not as an agent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ answered, but not as an agent"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat geantwortet, aber nicht als Agent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ha respondido, pero no como un agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ a répondu, mais pas en tant qu’agent"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ha risposto, ma non come agente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ は応答しましたが、エージェントではありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 응답이 왔지만 에이전트가 아닙니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ respondeu, mas não como agente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 有响应，但不是智能体"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 有回應，但不是代理"
+          }
+        }
+      }
+    },
+    "%@ answered. Ready to connect.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ answered. Ready to connect."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat geantwortet. Bereit zum Verbinden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ha respondido. Listo para conectar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ a répondu. Prêt à se connecter."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ha risposto. Pronto per la connessione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ が応答しました。接続できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 응답이 왔습니다. 연결할 준비가 되었습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ respondeu. Pronto para conectar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 有响应。可以连接了。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已回應。可以連線了。"
+          }
+        }
+      }
+    },
     "%@ attached — it'll be sent with your next message.": {
       "extractionState": "manual",
       "localizations": {
@@ -1427,6 +1557,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@：%2$@，%3$@，%4$@前"
+          }
+        }
+      }
+    },
+    "%@:// isn't supported — use http.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// isn't supported — use http."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// wird nicht unterstützt – nutze http."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// no es compatible: usa http."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// n’est pas pris en charge — utilisez http."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// non è supportato — usa http."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// はサポートされていません。http を使ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@://는 지원되지 않습니다 — http를 사용하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:// não é suportado — use http."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支持 %@:// — 请使用 http。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支援 %@:// — 請使用 http。"
           }
         }
       }
@@ -4953,6 +5148,71 @@
         }
       }
     },
+    "(port added)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(port added)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Port ergänzt)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(puerto añadido)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(port ajouté)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(porta aggiunta)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（ポートを追加）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(포트 추가됨)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(porta adicionada)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（已添加端口）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（已加上連接埠）"
+          }
+        }
+      }
+    },
     "+%lld more results": {
       "extractionState": "manual",
       "localizations": {
@@ -5214,6 +5474,71 @@
         }
       }
     },
+    "0.0.0.0 is what the server binds to. Use that machine's own address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 is what the server binds to. Use that machine's own address."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An 0.0.0.0 bindet sich der Server. Nutze die eigene Adresse des Rechners."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 es la dirección en la que escucha el servidor. Usa la dirección propia de esa máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 est l’adresse d’écoute du serveur. Utilisez l’adresse propre de cette machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 è l’indirizzo su cui il server si mette in ascolto. Usa l’indirizzo proprio di quella macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 はサーバがバインドするアドレスです。そのマシン自身のアドレスを使ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0은 서버가 바인딩하는 주소입니다. 해당 컴퓨터 자체의 주소를 사용하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 é o endereço em que o servidor escuta. Use o endereço da própria máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 是服务器绑定的地址。请使用那台机器自己的地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.0.0.0 是伺服器綁定的位址。請改用那台電腦自己的位址。"
+          }
+        }
+      }
+    },
     "5-hour": {
       "extractionState": "manual",
       "localizations": {
@@ -5275,6 +5600,201 @@
           "stringUnit": {
             "state": "translated",
             "value": "5 小時"
+          }
+        }
+      }
+    },
+    "A second server needs Pro": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A second server needs Pro"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein zweiter Server erfordert Pro"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un segundo servidor requiere Pro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un deuxième serveur nécessite Pro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un secondo server richiede Pro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2 台目のサーバには Pro が必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "두 번째 서버에는 Pro가 필요합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um segundo servidor requer o Pro"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第二台服务器需要 Pro"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第二台伺服器需要 Pro"
+          }
+        }
+      }
+    },
+    "A shortcut, not a requirement: with a Tailscale API token this lists your machines and checks which ones are already running an agent. You can always type the address instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A shortcut, not a requirement: with a Tailscale API token this lists your machines and checks which ones are already running an agent. You can always type the address instead."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Abkürzung, keine Pflicht: Mit einem Tailscale-API-Token werden deine Rechner aufgelistet und geprüft, auf welchen schon ein Agent läuft. Du kannst die Adresse stattdessen auch immer eingeben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un atajo, no un requisito: con un token de la API de Tailscale, esto lista tus máquinas y comprueba cuáles ya ejecutan un agente. Siempre puedes escribir la dirección en su lugar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un raccourci, pas une obligation : avec un jeton API Tailscale, cela liste vos machines et vérifie lesquelles exécutent déjà un agent. Vous pouvez toujours saisir l’adresse à la place."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una scorciatoia, non un requisito: con un token API di Tailscale elenca le tue macchine e verifica quali stanno già eseguendo un agente. In alternativa, puoi sempre digitare l’indirizzo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "必須ではなく近道です。Tailscale API トークンがあれば、マシンの一覧を取得して、すでにエージェントが動いているものを確認します。アドレスを直接入力してもかまいません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "필수가 아니라 지름길입니다. Tailscale API 토큰이 있으면 컴퓨터 목록을 가져와 이미 에이전트를 실행 중인 컴퓨터를 확인합니다. 언제든 주소를 직접 입력해도 됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um atalho, não uma exigência: com um token de API do Tailscale, isto lista suas máquinas e verifica quais já estão rodando um agente. Você sempre pode digitar o endereço."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是捷径，不是必需：有了 Tailscale API 令牌，它会列出你的机器并检查哪些已经在运行智能体。你也随时可以直接输入地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這是捷徑，不是必要條件：有了 Tailscale API 權杖，這裡會列出你的電腦並檢查哪幾台已經在執行代理。你也可以隨時改為手動輸入位址。"
+          }
+        }
+      }
+    },
+    "A tailnet address can't present a certificate for itself, so TLS fails before the agent is reached. Tailscale already encrypts the link.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tailnet address can't present a certificate for itself, so TLS fails before the agent is reached. Tailscale already encrypts the link."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Tailnet-Adresse kann kein Zertifikat für sich selbst vorweisen, daher scheitert TLS, bevor der Agent erreicht wird. Tailscale verschlüsselt die Verbindung bereits."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una dirección de tailnet no puede presentar un certificado propio, así que TLS falla antes de llegar al agente. Tailscale ya cifra el enlace."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une adresse tailnet ne peut pas présenter de certificat pour elle-même : TLS échoue donc avant d’atteindre l’agent. Tailscale chiffre déjà la liaison."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un indirizzo tailnet non può presentare un certificato per sé stesso, quindi TLS fallisce prima di raggiungere l’agente. Tailscale cifra già il collegamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet アドレスは自身の証明書を提示できないため、エージェントに届く前に TLS が失敗します。通信は Tailscale がすでに暗号化しています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 주소는 자체 인증서를 제시할 수 없어 에이전트에 닿기 전에 TLS가 실패합니다. Tailscale이 이미 연결을 암호화합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um endereço tailnet não pode apresentar um certificado para si mesmo, então o TLS falha antes de chegar ao agente. O Tailscale já criptografa a conexão."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 地址无法为自己出示证书，因此在到达智能体之前 TLS 就会失败。Tailscale 本身已经加密了链路。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 位址無法為自己提供憑證，因此在連上代理之前 TLS 就會失敗。Tailscale 已經為這條連線加密。"
           }
         }
       }
@@ -5734,6 +6254,71 @@
         }
       }
     },
+    "Add a server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir un servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter un serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi un server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバを追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 추가"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar um servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增伺服器"
+          }
+        }
+      }
+    },
     "Add access token": {
       "extractionState": "manual",
       "localizations": {
@@ -5990,6 +6575,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入訊息"
+          }
+        }
+      }
+    },
+    "Address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Address"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アドレス"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "주소"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereço"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地址"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位址"
           }
         }
       }
@@ -7164,6 +7814,71 @@
         }
       }
     },
+    "An address like 100.101.102.103 or studio:4098.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An address like 100.101.102.103 or studio:4098."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Adresse wie 100.101.102.103 oder studio:4098."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una dirección como 100.101.102.103 o studio:4098."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une adresse comme 100.101.102.103 ou studio:4098."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un indirizzo come 100.101.102.103 o studio:4098."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "100.101.102.103 や studio:4098 のようなアドレスです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "100.101.102.103 또는 studio:4098 같은 주소입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um endereço como 100.101.102.103 ou studio:4098."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "类似 100.101.102.103 或 studio:4098 的地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "例如 100.101.102.103 或 studio:4098 這樣的位址。"
+          }
+        }
+      }
+    },
     "Answer": {
       "extractionState": "manual",
       "localizations": {
@@ -7225,6 +7940,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "回答"
+          }
+        }
+      }
+    },
+    "Answering": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Answering"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antwortet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responde"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Répond"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Risponde"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "応答あり"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "응답 중"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respondendo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有响应"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有回應"
+          }
+        }
+      }
+    },
+    "Any provider you have configured. One command, no build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Any provider you have configured. One command, no build."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Anbieter, den du eingerichtet hast. Ein Befehl, kein Build."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cualquier proveedor que tengas configurado. Un comando, sin compilar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "N’importe quel fournisseur que vous avez configuré. Une commande, aucune compilation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualsiasi provider che hai configurato. Un comando, nessuna compilazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定済みのどのプロバイダでも使えます。コマンド 1 つで、ビルドは不要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정해 둔 모든 제공자를 사용할 수 있습니다. 명령 한 줄, 빌드 없음."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualquer provedor que você tenha configurado. Um comando, sem compilação."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你配置过的任何提供方。一条命令，无需构建。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你設定過的任何供應商。一條命令，無需建置。"
           }
         }
       }
@@ -8919,6 +9764,71 @@
         }
       }
     },
+    "Can't resolve that name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't resolve that name"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name lässt sich nicht auflösen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se puede resolver ese nombre"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de résoudre ce nom"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile risolvere quel nome"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その名前を解決できません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이름을 확인할 수 없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não é possível resolver esse nome"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法解析该名称"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法解析該名稱"
+          }
+        }
+      }
+    },
     "Cancel": {
       "extractionState": "manual",
       "localizations": {
@@ -10154,6 +11064,71 @@
         }
       }
     },
+    "Command copied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command copied"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehl kopiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando copiado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commande copiée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando copiato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドをコピーしました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "명령 복사됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando copiado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制命令"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已複製命令"
+          }
+        }
+      }
+    },
     "Compact": {
       "extractionState": "manual",
       "localizations": {
@@ -10609,6 +11584,71 @@
         }
       }
     },
+    "Connect this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect this iPhone"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone verbinden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecta este iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecter cet iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connetti questo iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone を接続"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone 연결"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectar este iPhone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接这台 iPhone"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線這台 iPhone"
+          }
+        }
+      }
+    },
     "Connect to %@": {
       "extractionState": "manual",
       "localizations": {
@@ -10800,6 +11840,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "連線無限台伺服器 — 將 tailnet 上所有電腦彙整為一份工作階段清單"
+          }
+        }
+      }
+    },
+    "Connected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbunden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecté"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connesso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已連線"
           }
         }
       }
@@ -11320,6 +12425,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "複製程式碼"
+          }
+        }
+      }
+    },
+    "Copy command": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy command"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehl kopieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar comando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier la commande"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copia comando"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドをコピー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "명령 복사"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar comando"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制命令"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製命令"
           }
         }
       }
@@ -12624,6 +13794,71 @@
         }
       }
     },
+    "Couldn't save that server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't save that server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server konnte nicht gesichert werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar ese servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’enregistrer ce serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile salvare quel server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバを保存できませんでした"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버를 저장하지 못했습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar esse servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存该服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存該伺服器"
+          }
+        }
+      }
+    },
     "Couldn't save token": {
       "extractionState": "manual",
       "localizations": {
@@ -13010,6 +14245,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "自訂…"
+          }
+        }
+      }
+    },
+    "DEMO": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DEMO"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DEMO"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DEMO"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DÉMO"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DEMO"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デモ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "데모"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DEMO"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "示範"
           }
         }
       }
@@ -13534,6 +14834,71 @@
         }
       }
     },
+    "Demo mode. Sample data, no real servers.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo mode. Sample data, no real servers."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo-Modus. Beispieldaten, keine echten Server."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo demo. Datos de ejemplo, ningún servidor real."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode démo. Données d’exemple, aucun serveur réel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modalità demo. Dati di esempio, nessun server reale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デモモードです。サンプルデータのみで、実際のサーバはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "데모 모드입니다. 예제 데이터이며 실제 서버는 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modo demonstração. Dados de exemplo, nenhum servidor real."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式。示例数据，没有真实服务器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "示範模式。範例資料，沒有真實伺服器。"
+          }
+        }
+      }
+    },
     "Deny": {
       "extractionState": "manual",
       "localizations": {
@@ -13790,6 +15155,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "診斷資訊已複製到剪貼板。"
+          }
+        }
+      }
+    },
+    "Diagnostics copied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics copied"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnose kopiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico copiado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostic copié"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostica copiata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断情報をコピーしました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진단 정보 복사됨"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico copiado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制诊断信息"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已複製診斷資訊"
           }
         }
       }
@@ -15614,6 +17044,71 @@
         }
       }
     },
+    "Enter that machine's tailnet address. Run tailscale ip -4 on it, or read it off the machine list in the Tailscale app.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter that machine's tailnet address. Run tailscale ip -4 on it, or read it off the machine list in the Tailscale app."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib die Tailnet-Adresse des Rechners ein. Führe dort tailscale ip -4 aus oder lies sie in der Geräteliste der Tailscale-App ab."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduce la dirección de tailnet de esa máquina. Ejecuta tailscale ip -4 en ella o consúltala en la lista de máquinas de la app de Tailscale."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez l’adresse tailnet de cette machine. Lancez tailscale ip -4 dessus, ou lisez-la dans la liste des machines de l’app Tailscale."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci l’indirizzo tailnet di quella macchina. Esegui tailscale ip -4 su di essa, oppure leggilo nell’elenco delle macchine nell’app Tailscale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのマシンの tailnet アドレスを入力します。マシン上で tailscale ip -4 を実行するか、Tailscale App のマシン一覧で確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해당 컴퓨터의 tailnet 주소를 입력하세요. 그 컴퓨터에서 tailscale ip -4를 실행하거나, Tailscale 앱의 기기 목록에서 확인하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite o endereço tailnet dessa máquina. Rode tailscale ip -4 nela ou leia na lista de máquinas do app Tailscale."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入那台机器的 tailnet 地址。在它上面运行 tailscale ip -4，或在 Tailscale App 的机器列表中查看。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "輸入那台電腦的 tailnet 位址。在它上面執行 tailscale ip -4，或在 Tailscale App 的電腦清單中查看。"
+          }
+        }
+      }
+    },
     "Error": {
       "extractionState": "manual",
       "localizations": {
@@ -16264,6 +17759,71 @@
         }
       }
     },
+    "Filled in below, so this phone and the bridge carry the same password.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filled in below, so this phone and the bridge carry the same password."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unten eingetragen, damit dieses iPhone und die Bridge dasselbe Passwort haben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ha rellenado abajo, para que este teléfono y el bridge lleven la misma contraseña."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renseigné ci-dessous, pour que ce téléphone et le bridge portent le même mot de passe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserita qui sotto, così questo telefono e il bridge usano la stessa password."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下に入力しました。これでこの iPhone とブリッジが同じパスワードを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아래에 입력해 두었으니 이 휴대폰과 브리지가 같은 암호를 사용합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preenchida abaixo, para que este telefone e o bridge usem a mesma senha."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已填入下方，这样这台手机和 bridge 使用同一个密码。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已填入下方，讓這台手機和 bridge 使用同一組密碼。"
+          }
+        }
+      }
+    },
     "Find the least-tested important module and write tests for it.": {
       "extractionState": "manual",
       "localizations": {
@@ -16850,6 +18410,71 @@
         }
       }
     },
+    "From your server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From your server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Von deinem Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desde tu servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Celui de votre serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dal tuo server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバから"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 서버에서"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do seu servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自你的服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自你的伺服器"
+          }
+        }
+      }
+    },
     "Generate an API access token with Devices read access on the Tailscale keys page. One paste is all you need.": {
       "extractionState": "manual",
       "localizations": {
@@ -17110,6 +18735,71 @@
         }
       }
     },
+    "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gute Nachricht: Unter %@ antwortet etwas. Gib das Passwort ein, mit dem es gestartet wurde – bei claude-bridge ist das BRIDGE_PASSWORD."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buenas noticias: algo responde en %@. Introduce la contraseña con la que se inició: en claude-bridge es BRIDGE_PASSWORD."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bonne nouvelle : quelque chose répond à %@. Saisissez le mot de passe avec lequel il a été démarré — pour claude-bridge, c’est BRIDGE_PASSWORD."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buone notizie: qualcosa risponde su %@. Inserisci la password con cui è stato avviato — per claude-bridge è BRIDGE_PASSWORD."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "幸い、%@ で何かが応答しています。起動時に指定したパスワードを入力してください。claude-bridge なら BRIDGE_PASSWORD です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "좋은 소식입니다. %@에서 무언가 응답하고 있습니다. 실행할 때 지정한 암호를 입력하세요 — claude-bridge에서는 BRIDGE_PASSWORD입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boa notícia: algo está respondendo em %@. Digite a senha com que ele foi iniciado — no claude-bridge, é BRIDGE_PASSWORD."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好消息：%@ 上有程序在响应。请输入它启动时使用的密码 — 对 claude-bridge 来说就是 BRIDGE_PASSWORD。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好消息：%@ 上有東西在回應。請輸入它啟動時使用的密碼 — claude-bridge 就是 BRIDGE_PASSWORD。"
+          }
+        }
+      }
+    },
     "Grok": {
       "extractionState": "manual",
       "localizations": {
@@ -17366,6 +19056,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "正常"
+          }
+        }
+      }
+    },
+    "Hide password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide password"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort ausblenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを非表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "암호 숨기기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar senha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏密码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隱藏密碼"
           }
         }
       }
@@ -17695,6 +19450,71 @@
         }
       }
     },
+    "I already have a server running": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I already have a server running"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bei mir läuft schon ein Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya tengo un servidor en marcha"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "J’ai déjà un serveur qui tourne"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ho già un server in esecuzione"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバはすでに動いています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미 서버가 실행 중입니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Já tenho um servidor rodando"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我已经有服务器在运行"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "我已經有伺服器在執行"
+          }
+        }
+      }
+    },
     "Idle since %@": {
       "extractionState": "manual",
       "localizations": {
@@ -18016,6 +19836,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "輸入"
+          }
+        }
+      }
+    },
+    "Install Tailscale here and on the computer that will run the agent, then sign both into the same account. Free for personal use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Tailscale here and on the computer that will run the agent, then sign both into the same account. Free for personal use."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installiere Tailscale hier und auf dem Rechner, der den Agenten ausführt, und melde beide im selben Account an. Für privaten Gebrauch kostenlos."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instala Tailscale aquí y en el ordenador que ejecutará el agente, y luego inicia sesión en ambos con la misma cuenta. Gratis para uso personal."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installez Tailscale ici et sur l’ordinateur qui exécutera l’agent, puis connectez les deux au même compte. Gratuit pour un usage personnel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installa Tailscale qui e sul computer che eseguirà l’agente, poi accedi con lo stesso account su entrambi. Gratis per uso personale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone とエージェントを動かすコンピュータの両方に Tailscale をインストールし、同じアカウントでサインインします。個人利用は無料です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기와 에이전트를 실행할 컴퓨터에 Tailscale을 설치한 뒤, 둘 다 같은 계정으로 로그인하세요. 개인 사용은 무료입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instale o Tailscale aqui e no computador que vai rodar o agente e entre com a mesma conta nos dois. Gratuito para uso pessoal."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这里以及将运行智能体的电脑上安装 Tailscale，然后让两者登录同一账户。个人使用免费。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這裡以及將執行代理的電腦上安裝 Tailscale，然後讓兩者登入同一個帳號。個人使用免費。"
           }
         }
       }
@@ -20360,6 +22245,71 @@
         }
       }
     },
+    "Looking for an agent…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking for an agent…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suche nach einem Agenten …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando un agente…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche d’un agent…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricerca di un agente…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントを探しています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트를 찾는 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Procurando um agente…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找智能体…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在尋找代理…"
+          }
+        }
+      }
+    },
     "Make default server": {
       "extractionState": "manual",
       "localizations": {
@@ -21140,6 +23090,71 @@
         }
       }
     },
+    "Needs a computer on that tailnet running opencode or Claude Code.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs a computer on that tailnet running opencode or Claude Code."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erfordert einen Rechner im Tailnet, auf dem opencode oder Claude Code läuft."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesita un ordenador en esa tailnet que ejecute opencode o Claude Code."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nécessite un ordinateur sur ce tailnet exécutant opencode ou Claude Code."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiede un computer su quel tailnet che esegua opencode o Claude Code."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その tailnet 上に opencode か Claude Code を動かすコンピュータが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해당 tailnet에서 opencode 또는 Claude Code를 실행하는 컴퓨터가 필요합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requer um computador nessa tailnet rodando opencode ou Claude Code."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要该 tailnet 上有一台电脑在运行 opencode 或 Claude Code。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要該 tailnet 上有一台電腦執行 opencode 或 Claude Code。"
+          }
+        }
+      }
+    },
     "Needs approval": {
       "extractionState": "manual",
       "localizations": {
@@ -21786,6 +23801,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "沒有代理"
+          }
+        }
+      }
+    },
+    "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Account, keine Anmeldung, keine Telemetrie. App, Engine und Bridge sind GPL-3.0."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin cuenta, sin inicio de sesión, sin telemetría. La app, el motor y el bridge son GPL-3.0."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun compte, aucune connexion, aucune télémétrie. L’app, le moteur et le bridge sont en GPL-3.0."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun account, nessun accesso, nessuna telemetria. App, motore e bridge sono GPL-3.0."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントもサインインもテレメトリもありません。App、エンジン、ブリッジはすべて GPL-3.0 です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "계정도, 로그인도, 텔레메트리도 없습니다. 앱과 엔진, 브리지는 모두 GPL-3.0입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem conta, sem login, sem telemetria. App, motor e bridge são GPL-3.0."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有账户、无需登录、没有遥测。App、引擎和 bridge 均为 GPL-3.0。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有帳號、無需登入、沒有遙測。App、引擎與 bridge 皆為 GPL-3.0。"
+          }
+        }
+      }
+    },
+    "No answer from %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No answer from %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Antwort von %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin respuesta de %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune réponse de %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna risposta da %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ から応答がありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 응답 없음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem resposta de %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 没有响应"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 沒有回應"
           }
         }
       }
@@ -23805,6 +25950,71 @@
         }
       }
     },
+    "Nothing can answer until Tailscale is connected here. Open it, sign in to the same account as your computer, then come back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing can answer until Tailscale is connected here. Open it, sign in to the same account as your computer, then come back."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts kann antworten, solange Tailscale hier nicht verbunden ist. Öffne es, melde dich im selben Account wie auf deinem Rechner an und komm dann zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada puede responder hasta que Tailscale esté conectado aquí. Ábrelo, inicia sesión con la misma cuenta que tu ordenador y vuelve."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien ne peut répondre tant que Tailscale n’est pas connecté ici. Ouvrez-le, connectez-vous au même compte que votre ordinateur, puis revenez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla può rispondere finché Tailscale non è connesso qui. Aprilo, accedi con lo stesso account del tuo computer, poi torna qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone で Tailscale が接続されるまで、応答は返ってきません。Tailscale を開き、コンピュータと同じアカウントでサインインしてから戻ってきてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 Tailscale이 연결되기 전에는 아무것도 응답할 수 없습니다. Tailscale을 열어 컴퓨터와 같은 계정으로 로그인한 뒤 돌아오세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada pode responder enquanto o Tailscale não estiver conectado aqui. Abra-o, entre com a mesma conta do seu computador e volte."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台设备连上 Tailscale 之前，不会有任何响应。请打开它，登录与你电脑相同的账户，然后回到这里。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 在這裡連線之前，不會有任何東西回應。請開啟它，登入與你電腦相同的帳號，然後回來。"
+          }
+        }
+      }
+    },
     "Nothing has gone wrong — diagnostics are clean.": {
       "extractionState": "manual",
       "localizations": {
@@ -23931,6 +26141,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "這裡的內容不會消失 — 每則訊息都會保留，縮小的只是代理的記憶。"
+          }
+        }
+      }
+    },
+    "Nothing is listening on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing is listening on %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf %@ lauscht nichts"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada escucha en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n’écoute sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla è in ascolto su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ で待ち受けているものがありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 대기 중인 것이 없습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada está escutando em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上没有程序在监听"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上沒有東西在監聽"
           }
         }
       }
@@ -24715,6 +26990,136 @@
         }
       }
     },
+    "Open Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einstellungen öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Ajustes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir les Réglages"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Impostazioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「設定」を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Ajustes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开“设置”"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟「設定」"
+          }
+        }
+      }
+    },
+    "Open Tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Tailscale"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 열기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir o Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟 Tailscale"
+          }
+        }
+      }
+    },
     "Open Tailscode to the Usage dashboard.": {
       "extractionState": "manual",
       "localizations": {
@@ -25036,6 +27441,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "選填 — 例如失敗的測試名稱"
+          }
+        }
+      }
+    },
+    "Optional. Needs a Tailscale API token with Devices read access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. Needs a Tailscale API token with Devices read access."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. Erfordert ein Tailscale-API-Token mit Lesezugriff auf Geräte."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcional. Necesita un token de la API de Tailscale con acceso de lectura a los dispositivos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Facultatif. Nécessite un jeton API Tailscale avec le droit de lecture Devices."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Facoltativo. Richiede un token API di Tailscale con accesso in lettura ai dispositivi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任意です。Devices の読み取り権限を持つ Tailscale API トークンが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택 사항입니다. Devices 읽기 권한이 있는 Tailscale API 토큰이 필요합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcional. Requer um token de API do Tailscale com acesso de leitura a dispositivos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可选。需要具有 Devices 读取权限的 Tailscale API 令牌。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選填。需要具備 Devices 讀取權限的 Tailscale API 權杖。"
           }
         }
       }
@@ -25430,6 +27900,71 @@
         }
       }
     },
+    "Password taken from what you pasted.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password taken from what you pasted."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort aus dem übernommen, was du eingesetzt hast."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña extraída de lo que pegaste."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe extrait de ce que vous avez collé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password ricavata da ciò che hai incollato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペーストした内容からパスワードを取得しました。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "붙여넣은 내용에서 암호를 가져왔습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha extraída do que você colou."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密码已从你粘贴的内容中提取。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密碼取自你貼上的內容。"
+          }
+        }
+      }
+    },
     "Path copied.": {
       "extractionState": "manual",
       "localizations": {
@@ -25686,6 +28221,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "照片圖庫"
+          }
+        }
+      }
+    },
+    "Point to point over your own tailnet. No relay, no account, no analytics.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Point to point over your own tailnet. No relay, no account, no analytics."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Punkt zu Punkt über dein eigenes Tailnet. Kein Relay, kein Account, keine Analysen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Punto a punto por tu propia tailnet. Sin relé, sin cuenta, sin analíticas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De point à point via votre propre tailnet. Aucun relais, aucun compte, aucun suivi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Punto a punto sul tuo tailnet. Nessun relay, nessun account, nessuna analisi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分の tailnet 上でのポイントツーポイント接続です。中継もアカウントも分析もありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet을 통한 지점 간 직접 연결. 릴레이도, 계정도, 분석도 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ponto a ponto pela sua própria tailnet. Sem relay, sem conta, sem análises."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你自己的 tailnet 上点对点连接。没有中继、没有账户、没有分析。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在你自己的 tailnet 上點對點連線。沒有中繼、沒有帳號、沒有分析。"
           }
         }
       }
@@ -29136,6 +31736,71 @@
         }
       }
     },
+    "Run an agent on that computer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run an agent on that computer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenten auf dem Rechner starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ejecuta un agente en ese ordenador"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lancer un agent sur cet ordinateur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esegui un agente su quel computer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのコンピュータでエージェントを動かす"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해당 컴퓨터에서 에이전트 실행"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rodar um agente nesse computador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台电脑上运行智能体"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在那台電腦上執行代理"
+          }
+        }
+      }
+    },
     "Run the test suite, find the failures, and fix them.": {
       "extractionState": "manual",
       "localizations": {
@@ -30107,6 +32772,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "掃描失敗：%@"
+          }
+        }
+      }
+    },
+    "Scan my tailnet instead": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan my tailnet instead"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stattdessen mein Tailnet durchsuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mejor escanear mi tailnet"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanner plutôt mon tailnet"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scansiona il mio tailnet"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代わりに tailnet をスキャン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대신 tailnet 검색"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanear minha tailnet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为扫描我的 tailnet"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改為掃描我的 tailnet"
           }
         }
       }
@@ -31545,6 +34275,71 @@
         }
       }
     },
+    "See Pro": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See Pro"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro ansehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver Pro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voir Pro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scopri Pro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro を見る"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver o Pro"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "了解 Pro"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看 Pro"
+          }
+        }
+      }
+    },
     "See all": {
       "extractionState": "manual",
       "localizations": {
@@ -31866,6 +34661,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "傳送測試通知"
+          }
+        }
+      }
+    },
+    "Send command to another device": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send command to another device"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehl an ein anderes Gerät senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar el comando a otro dispositivo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer la commande à un autre appareil"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia il comando a un altro dispositivo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドを別のデバイスに送信"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 기기로 명령 보내기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar comando para outro dispositivo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送命令到其他设备"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將命令傳送到其他裝置"
           }
         }
       }
@@ -32325,6 +35185,71 @@
         }
       }
     },
+    "Set up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "セットアップ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정하기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定"
+          }
+        }
+      }
+    },
     "Set up a server": {
       "extractionState": "manual",
       "localizations": {
@@ -32386,6 +35311,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "設定伺服器"
+          }
+        }
+      }
+    },
+    "Set up my machine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up my machine"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meinen Rechner einrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar mi máquina"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurer ma machine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura la mia macchina"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マシンをセットアップする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 컴퓨터 설정"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar minha máquina"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置我的机器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定我的電腦"
           }
         }
       }
@@ -32976,6 +35966,71 @@
         }
       }
     },
+    "Show password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show password"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "암호 표시"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exibir senha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示密码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示密碼"
+          }
+        }
+      }
+    },
     "Show the agent's reasoning without tapping to unfold it": {
       "extractionState": "manual",
       "localizations": {
@@ -33297,6 +36352,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "略過"
+          }
+        }
+      }
+    },
+    "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf %@ lauscht etwas, aber es ist nicht opencode oder claude-bridge. opencode läuft auf Port 4096, claude-bridge auf Port 4098."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algo escucha en %@, pero no es opencode ni claude-bridge. opencode usa el puerto 4096 y claude-bridge el 4098."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quelque chose écoute sur %@, mais ce n’est pas opencode ni claude-bridge. opencode expose le port 4096, claude-bridge le port 4098."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualcosa è in ascolto su %@, ma non è opencode né claude-bridge. opencode usa la porta 4096, claude-bridge la 4098."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ で何かが待ち受けていますが、opencode でも claude-bridge でもありません。opencode はポート 4096、claude-bridge はポート 4098 を使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 무언가 대기 중이지만 opencode도 claude-bridge도 아닙니다. opencode는 4096 포트, claude-bridge는 4098 포트를 사용합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algo está escutando em %@, mas não é o opencode nem o claude-bridge. O opencode serve na porta 4096; o claude-bridge, na 4098."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上有程序在监听，但它不是 opencode 或 claude-bridge。opencode 使用 4096 端口，claude-bridge 使用 4098 端口。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 上有東西在監聽，但不是 opencode 或 claude-bridge。opencode 使用 4096 連接埠，claude-bridge 使用 4098。"
           }
         }
       }
@@ -34077,6 +37197,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "狀態"
+          }
+        }
+      }
+    },
+    "Step %lld of %lld: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Step %lld of %lld: %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schritt %1$lld von %2$lld: %3$@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paso %lld de %lld: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Étape %1$lld sur %2$lld : %3$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passaggio %lld di %lld: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ステップ %lld/%lld: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld/%2$lld단계: %3$@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passo %1$lld de %2$lld: %3$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$lld 步，共 %2$lld 步：%3$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$lld 步，共 %2$lld 步：%3$@"
           }
         }
       }
@@ -35186,6 +38371,136 @@
         }
       }
     },
+    "Tailscale on this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on this iPhone"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale auf diesem iPhone"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale en este iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale sur cet iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale su questo iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone の Tailscale"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone의 Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale neste iPhone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 上的 Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 上的 Tailscale"
+          }
+        }
+      }
+    },
+    "Tailscode Pro is a one-time purchase that lifts the one-server limit. Your first server keeps working either way.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro is a one-time purchase that lifts the one-server limit. Your first server keeps working either way."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro ist ein einmaliger Kauf, der die Grenze von einem Server aufhebt. Dein erster Server funktioniert in jedem Fall weiter."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro es una compra única que elimina el límite de un servidor. Tu primer servidor seguirá funcionando en cualquier caso."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro est un achat unique qui lève la limite d’un seul serveur. Votre premier serveur continue de fonctionner dans tous les cas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro è un acquisto una tantum che rimuove il limite di un solo server. Il tuo primo server continua a funzionare in ogni caso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro は買い切りで、サーバ 1 台の上限を解除します。どちらの場合も 1 台目のサーバはそのまま使えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro는 서버 한 대 제한을 해제하는 일회성 구매입니다. 어느 쪽이든 첫 번째 서버는 계속 작동합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode Pro é uma compra única que remove o limite de um servidor. Seu primeiro servidor continua funcionando de qualquer forma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro 是一次性购买，可解除单台服务器的限制。无论怎样，你的第一台服务器都会继续可用。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro 是一次性購買，可解除單一伺服器的限制。無論如何，你的第一台伺服器都會繼續運作。"
+          }
+        }
+      }
+    },
     "Tailscode is free software under the GNU General Public License v3. You are entitled to the complete source, which is linked above.": {
       "extractionState": "manual",
       "localizations": {
@@ -35312,6 +38627,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode 是開放原始碼軟體，沒有廣告、沒有追蹤，你和你的代理之間也沒有伺服器。一次性解鎖 Pro 用於支持開發。"
+          }
+        }
+      }
+    },
+    "Tailscode is the remote. Send a prompt from anywhere on your tailnet and watch the turn land — thinking, tool runs, approvals.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode is the remote. Send a prompt from anywhere on your tailnet and watch the turn land — thinking, tool runs, approvals."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode ist die Fernbedienung. Sende von überall in deinem Tailnet einen Prompt und verfolge, wie der Zug ankommt – Denken, Werkzeugläufe, Freigaben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode es el mando. Envía un prompt desde cualquier punto de tu tailnet y observa cómo llega el turno: razonamiento, ejecuciones de herramientas, aprobaciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode est la télécommande. Envoyez une invite depuis n’importe où sur votre tailnet et regardez le tour se dérouler — raisonnement, exécutions d’outils, approbations."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode è il telecomando. Invia un prompt da qualsiasi punto del tuo tailnet e guarda il turno arrivare — ragionamento, esecuzioni di strumenti, approvazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode はリモコンです。tailnet のどこからでもプロンプトを送り、ターンが届くまでを見られます。思考、ツールの実行、承認まで。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode는 리모컨입니다. tailnet 어디서든 프롬프트를 보내고 턴이 도착하는 것을 지켜보세요 — 추론, 도구 실행, 승인."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode é o controle remoto. Envie um prompt de qualquer ponto da sua tailnet e acompanhe o turno chegar — raciocínio, execuções de ferramentas, aprovações."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 就是遥控器。在你 tailnet 上的任何地方发送提示词，看着这一回合落地 — 思考、工具运行、批准。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 就是那支遙控器。從 tailnet 上的任何地方送出提示詞，看著這個回合落地 — 思考過程、工具執行、核准。"
           }
         }
       }
@@ -35897,6 +39277,201 @@
           "stringUnit": {
             "state": "translated",
             "value": "該代理尚未在此對話中回報。"
+          }
+        }
+      }
+    },
+    "That is a local-network address. If Local Network access is off for Tailscode, every attempt fails as a timeout — check it in Settings, or use the machine's 100.x tailnet address instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That is a local-network address. If Local Network access is off for Tailscode, every attempt fails as a timeout — check it in Settings, or use the machine's 100.x tailnet address instead."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist eine Adresse im lokalen Netzwerk. Wenn der Zugriff auf das lokale Netzwerk für Tailscode aus ist, scheitert jeder Versuch mit einer Zeitüberschreitung – prüfe das in den Einstellungen oder nutze stattdessen die 100.x-Tailnet-Adresse des Rechners."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa es una dirección de red local. Si el acceso a la red local está desactivado para Tailscode, todos los intentos fallan por tiempo de espera: compruébalo en Ajustes o usa la dirección 100.x de tailnet de la máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C’est une adresse de réseau local. Si l’accès au réseau local est désactivé pour Tailscode, chaque tentative échoue par expiration du délai — vérifiez-le dans Réglages, ou utilisez plutôt l’adresse tailnet 100.x de la machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo è un indirizzo di rete locale. Se l’accesso alla Rete locale è disattivato per Tailscode, ogni tentativo va in timeout — controlla in Impostazioni, oppure usa l’indirizzo tailnet 100.x della macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはローカルネットワークのアドレスです。Tailscode のローカルネットワークアクセスがオフだと、すべての試行がタイムアウトになります。「設定」で確認するか、マシンの 100.x の tailnet アドレスを使ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 네트워크 주소입니다. Tailscode의 로컬 네트워크 접근이 꺼져 있으면 모든 시도가 시간 초과로 실패합니다 — 설정에서 확인하거나, 컴퓨터의 100.x tailnet 주소를 사용하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse é um endereço de rede local. Se o acesso à Rede Local estiver desativado para o Tailscode, toda tentativa falha por tempo esgotado — verifique em Ajustes ou use o endereço tailnet 100.x da máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是本地网络地址。如果 Tailscode 的“本地网络”访问已关闭，每次尝试都会以超时失败 — 请在“设置”中检查，或改用那台机器的 100.x tailnet 地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這是區域網路位址。如果 Tailscode 的「區域網路」存取權限已關閉，每次嘗試都會逾時失敗 — 請在「設定」中檢查，或改用那台電腦的 100.x tailnet 位址。"
+          }
+        }
+      }
+    },
+    "That isn't an agent server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That isn't an agent server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist kein Agent-Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese no es un servidor de agentes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce n’est pas un serveur d’agent"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è un server agente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントサーバではありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 서버가 아닙니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso não é um servidor de agente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是智能体服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "那不是代理伺服器"
+          }
+        }
+      }
+    },
+    "That password was rejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That password was rejected"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Passwort wurde abgelehnt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa contraseña fue rechazada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce mot de passe a été refusé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quella password è stata rifiutata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードが拒否されました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "암호가 거부되었습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa senha foi rejeitada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密码被拒绝"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密碼被拒絕"
           }
         }
       }
@@ -36551,6 +40126,71 @@
         }
       }
     },
+    "The machine is reachable, so the address is right — but no agent is bound to that port. Start it there, and make sure it binds 0.0.0.0 rather than localhost.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The machine is reachable, so the address is right — but no agent is bound to that port. Start it there, and make sure it binds 0.0.0.0 rather than localhost."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Rechner ist erreichbar, die Adresse stimmt also – aber an diesem Port ist kein Agent gebunden. Starte ihn dort und achte darauf, dass er an 0.0.0.0 statt an localhost bindet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se puede llegar a la máquina, así que la dirección es correcta, pero ningún agente está enlazado a ese puerto. Inícialo allí y asegúrate de que escuche en 0.0.0.0 y no en localhost."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La machine est joignable, donc l’adresse est bonne — mais aucun agent n’est lié à ce port. Démarrez-le sur cette machine, et assurez-vous qu’il écoute sur 0.0.0.0 plutôt que sur localhost."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La macchina è raggiungibile, quindi l’indirizzo è corretto — ma nessun agente è in ascolto su quella porta. Avvialo lì, e assicurati che si metta in ascolto su 0.0.0.0 anziché localhost."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "マシンには到達できているので、アドレスは正しいです。ただしそのポートにエージェントがバインドされていません。マシン上で起動し、localhost ではなく 0.0.0.0 にバインドさせてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "컴퓨터에는 연결되므로 주소는 맞습니다 — 다만 그 포트에 바인딩된 에이전트가 없습니다. 그 컴퓨터에서 에이전트를 실행하고, localhost가 아니라 0.0.0.0에 바인딩하도록 하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A máquina está acessível, então o endereço está certo — mas nenhum agente está vinculado a essa porta. Inicie-o lá e garanta que ele escute em 0.0.0.0 e não em localhost."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以访问那台机器，说明地址没错 — 但没有智能体绑定到该端口。请在那台机器上启动它，并确保它绑定 0.0.0.0 而不是 localhost。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以連線到那台電腦，所以位址是對的 — 但沒有代理綁定到該連接埠。請在那台電腦上啟動它，並確認它綁定 0.0.0.0 而不是 localhost。"
+          }
+        }
+      }
+    },
     "The on-device model is still preparing — try again in a moment.": {
       "extractionState": "manual",
       "localizations": {
@@ -36612,6 +40252,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "裝置端模型仍在準備中 — 請稍後再試。"
+          }
+        }
+      }
+    },
+    "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Port ist offen und etwas liegt darauf, doch es hat nicht als opencode oder claude-bridge geantwortet. Prüfe den Port – 4096 für opencode, 4098 für claude-bridge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El puerto está abierto y hay algo en él, pero no respondió como opencode ni como claude-bridge. Comprueba el puerto: 4096 para opencode, 4098 para claude-bridge."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le port est ouvert et quelque chose s’y trouve, mais il n’a pas répondu comme opencode ou claude-bridge. Vérifiez le port — 4096 pour opencode, 4098 pour claude-bridge."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La porta è aperta e c’è qualcosa in ascolto, ma non ha risposto come opencode o claude-bridge. Controlla la porta — 4096 per opencode, 4098 per claude-bridge."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ポートは開いていて何かが動いていますが、opencode でも claude-bridge でもない応答でした。ポートを確認してください。opencode は 4096、claude-bridge は 4098 です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포트가 열려 있고 무언가 사용 중이지만, opencode나 claude-bridge로 응답하지는 않았습니다. 포트를 확인하세요 — opencode는 4096, claude-bridge는 4098입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A porta está aberta e há algo nela, mas não respondeu como opencode nem como claude-bridge. Verifique a porta — 4096 para o opencode, 4098 para o claude-bridge."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端口是开放的，上面也有程序，但它没有以 opencode 或 claude-bridge 的方式响应。请检查端口 — opencode 是 4096，claude-bridge 是 4098。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連接埠是開的，上面也有東西，但它的回應不像 opencode 或 claude-bridge。請檢查連接埠 — opencode 是 4096，claude-bridge 是 4098。"
+          }
+        }
+      }
+    },
+    "The server answered, so the address is right. claude-bridge wants the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server answered, so the address is right. claude-bridge wants the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server hat geantwortet, die Adresse stimmt also. claude-bridge will das Passwort, das du als BRIDGE_PASSWORD übergeben hast; opencode braucht keins, außer du hast eins gesetzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El servidor respondió, así que la dirección es correcta. claude-bridge pide la contraseña que pasaste como BRIDGE_PASSWORD; opencode no necesita ninguna salvo que la hayas configurado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le serveur a répondu, donc l’adresse est bonne. claude-bridge attend le mot de passe passé dans BRIDGE_PASSWORD ; opencode n’en a pas besoin, sauf si vous en avez défini un."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il server ha risposto, quindi l’indirizzo è corretto. claude-bridge vuole la password che hai passato come BRIDGE_PASSWORD; opencode non ne richiede nessuna, a meno che tu non l’abbia impostata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバが応答したので、アドレスは正しいです。claude-bridge には BRIDGE_PASSWORD に渡したパスワードが必要です。opencode は自分で設定していなければ不要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버가 응답했으므로 주소는 맞습니다. claude-bridge는 BRIDGE_PASSWORD로 전달한 암호를 요구하고, opencode는 따로 설정하지 않았다면 암호가 필요 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O servidor respondeu, então o endereço está certo. O claude-bridge quer a senha que você passou em BRIDGE_PASSWORD; o opencode não precisa de nenhuma, a menos que você defina uma."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器有响应，说明地址没错。claude-bridge 需要你通过 BRIDGE_PASSWORD 传入的密码；opencode 除非你设置过，否则不需要密码。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器有回應，所以位址是對的。claude-bridge 需要你以 BRIDGE_PASSWORD 傳入的密碼；opencode 除非你自己設定，否則不需要密碼。"
           }
         }
       }
@@ -36742,6 +40512,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "伺服器沒有回應 — 請檢查你的連線。"
+          }
+        }
+      }
+    },
+    "The server needs a password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server needs a password"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server braucht ein Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El servidor necesita una contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le serveur a besoin d’un mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il server richiede una password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバにはパスワードが必要です"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버에 암호가 필요합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O servidor precisa de uma senha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器需要密码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器需要密碼"
           }
         }
       }
@@ -37396,6 +41231,461 @@
         }
       }
     },
+    "This iPhone can't turn %@ into an address. MagicDNS may be off — use the machine's 100.x address instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone can't turn %@ into an address. MagicDNS may be off — use the machine's 100.x address instead."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone kann %@ nicht in eine Adresse auflösen. Vielleicht ist MagicDNS aus – nutze stattdessen die 100.x-Adresse des Rechners."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone no puede convertir %@ en una dirección. MagicDNS puede estar desactivado: usa la dirección 100.x de la máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone ne peut pas transformer %@ en adresse. MagicDNS est peut-être désactivé — utilisez plutôt l’adresse 100.x de la machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone non riesce a tradurre %@ in un indirizzo. MagicDNS potrebbe essere disattivato — usa l’indirizzo 100.x della macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は %@ をアドレスに変換できません。MagicDNS がオフの可能性があります。マシンの 100.x のアドレスを使ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone은 %@에 해당하는 주소를 찾지 못했습니다. MagicDNS가 꺼져 있을 수 있습니다 — 대신 컴퓨터의 100.x 주소를 사용하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone não consegue transformar %@ em um endereço. O MagicDNS pode estar desativado — use o endereço 100.x da máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 无法把 %@ 变成地址。可能是 MagicDNS 已关闭 — 请改用那台机器的 100.x 地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 無法將 %@ 解析成位址。MagicDNS 可能已關閉 — 請改用那台電腦的 100.x 位址。"
+          }
+        }
+      }
+    },
+    "This iPhone is not on your tailnet, so it cannot reach your machine yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone is not on your tailnet, so it cannot reach your machine yet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist nicht in deinem Tailnet und kann deinen Rechner daher noch nicht erreichen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone no está en tu tailnet, así que aún no puede llegar a tu máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone n’est pas sur votre tailnet, il ne peut donc pas encore joindre votre machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone non è sul tuo tailnet, quindi non può ancora raggiungere la tua macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は tailnet に接続されていないため、まだマシンに到達できません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone이 tailnet에 없어 아직 컴퓨터에 연결할 수 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone não está na sua tailnet, então ainda não consegue alcançar sua máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 不在你的 tailnet 上，因此还无法访问你的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 不在你的 tailnet 上，因此還無法連線到你的電腦。"
+          }
+        }
+      }
+    },
+    "This iPhone is on the tailnet but that machine never replied. It may be asleep, offline, or signed into a different tailnet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone is on the tailnet but that machine never replied. It may be asleep, offline, or signed into a different tailnet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist im Tailnet, aber der Rechner hat nie geantwortet. Er schläft vielleicht, ist offline oder in einem anderen Tailnet angemeldet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está en la tailnet, pero esa máquina nunca respondió. Puede estar en reposo, sin conexión o con la sesión iniciada en otra tailnet."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone est sur le tailnet, mais cette machine n’a jamais répondu. Elle est peut-être en veille, hors ligne, ou connectée à un autre tailnet."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone è sul tailnet ma quella macchina non ha mai risposto. Potrebbe essere in sospensione, offline o collegata a un altro tailnet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は tailnet に接続されていますが、そのマシンからは応答がありませんでした。スリープ中かオフライン、または別の tailnet にサインインしている可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone은 tailnet에 있지만 그 컴퓨터가 응답하지 않았습니다. 절전 상태이거나 오프라인이거나 다른 tailnet에 로그인되어 있을 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está na tailnet, mas essa máquina não respondeu. Ela pode estar em repouso, off-line ou conectada a outra tailnet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已在 tailnet 上，但那台机器始终没有回应。它可能处于睡眠、离线，或登录了另一个 tailnet。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 在 tailnet 上，但那台電腦始終沒有回覆。它可能在睡眠、離線，或登入了不同的 tailnet。"
+          }
+        }
+      }
+    },
+    "This iPhone is on your tailnet at %@, able to reach your machine.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone is on your tailnet at %@, able to reach your machine."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist unter %@ in deinem Tailnet und kann deinen Rechner erreichen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está en tu tailnet en %@ y puede llegar a tu máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone est sur votre tailnet à l’adresse %@, capable de joindre votre machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone è sul tuo tailnet all’indirizzo %@, in grado di raggiungere la tua macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は %@ として tailnet に接続されていて、マシンに到達できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone은 tailnet에서 %@ 주소로 연결되어 있어 컴퓨터에 닿을 수 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está na sua tailnet em %@ e consegue alcançar sua máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已在你的 tailnet 上，地址为 %@，可以访问你的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 已在你的 tailnet 上，位址為 %@，可以連線到你的電腦。"
+          }
+        }
+      }
+    },
+    "This iPhone is on your tailnet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone is on your tailnet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist in deinem Tailnet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está en tu tailnet."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone est sur votre tailnet."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone è sul tuo tailnet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は tailnet に接続されています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone은 tailnet에 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está na sua tailnet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已在你的 tailnet 上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 在你的 tailnet 上。"
+          }
+        }
+      }
+    },
+    "This iPhone is on your tailnet. The computer that runs the agent has to be signed into the same account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone is on your tailnet. The computer that runs the agent has to be signed into the same account."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist in deinem Tailnet. Der Rechner, der den Agenten ausführt, muss im selben Account angemeldet sein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está en tu tailnet. El ordenador que ejecuta el agente debe tener la sesión iniciada con la misma cuenta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone est sur votre tailnet. L’ordinateur qui exécute l’agent doit être connecté au même compte."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone è sul tuo tailnet. Il computer che esegue l’agente deve essere collegato allo stesso account."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は tailnet に接続されています。エージェントを動かすコンピュータも同じアカウントでサインインする必要があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone은 tailnet에 있습니다. 에이전트를 실행하는 컴퓨터도 같은 계정으로 로그인되어 있어야 합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone está na sua tailnet. O computador que roda o agente precisa estar conectado à mesma conta."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 已在你的 tailnet 上。运行智能体的电脑必须登录同一账户。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 在你的 tailnet 上。執行代理的電腦必須登入同一個帳號。"
+          }
+        }
+      }
+    },
+    "This iPhone isn't on your tailnet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iPhone isn't on your tailnet"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone ist nicht in deinem Tailnet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone no está en tu tailnet"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet iPhone n’est pas sur votre tailnet"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo iPhone non è sul tuo tailnet"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone は tailnet に接続されていません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone이 tailnet에 없습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone não está na sua tailnet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 不在你的 tailnet 上"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 不在你的 tailnet 上"
+          }
+        }
+      }
+    },
     "This model can't see images.": {
       "extractionState": "manual",
       "localizations": {
@@ -37587,6 +41877,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "此伺服器需要驗證。"
+          }
+        }
+      }
+    },
+    "This server wants a password": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This server wants a password"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Server will ein Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este servidor pide una contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce serveur demande un mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo server vuole una password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサーバはパスワードを要求しています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 서버는 암호를 요구합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este servidor quer uma senha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此服务器需要密码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台伺服器需要密碼"
           }
         }
       }
@@ -38111,6 +42466,201 @@
         }
       }
     },
+    "Try port %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try port %lld"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %lld versuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probar el puerto %lld"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer le port %lld"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova la porta %lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ポート %lld を試す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 포트 시도"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tentar a porta %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试试 %lld 端口"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "嘗試 %lld 連接埠"
+          }
+        }
+      }
+    },
+    "Try the demo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try the demo"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probier die Demo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probar la demo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer la démo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova la demo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デモを試す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "데모 사용해 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimentar a demonstração"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "试试演示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試試示範"
+          }
+        }
+      }
+    },
+    "Try the demo instead": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try the demo instead"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probier stattdessen die Demo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mejor probar la demo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer plutôt la démo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova invece la demo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代わりにデモを試す"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대신 데모 사용해 보기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimentar a demonstração"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改为试试演示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改為試試示範"
+          }
+        }
+      }
+    },
     "Turn finished": {
       "extractionState": "manual",
       "localizations": {
@@ -38367,6 +42917,266 @@
           "stringUnit": {
             "state": "translated",
             "value": "已關閉 — 輕點開啟 iOS「設定」"
+          }
+        }
+      }
+    },
+    "Turns finish on your Lock Screen while the phone is in your pocket.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns finish on your Lock Screen while the phone is in your pocket."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Züge laufen auf dem Sperrbildschirm zu Ende, während das iPhone in der Tasche steckt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los turnos terminan en tu pantalla bloqueada mientras el teléfono está en el bolsillo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les tours se terminent sur votre écran verrouillé pendant que le téléphone est dans votre poche."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I turni si concludono sulla schermata di blocco mentre il telefono è in tasca."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone をポケットに入れている間も、ターンの完了はロック画面に届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "휴대폰이 주머니에 있는 동안 잠금 화면에서 턴이 완료됩니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os turnos terminam na Tela Bloqueada com o telefone no bolso."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手机放在口袋里时，回合会在锁定屏幕上完成。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手機放在口袋裡時，回合會在鎖定畫面上完成。"
+          }
+        }
+      }
+    },
+    "Two sample servers. Nothing real.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Two sample servers. Nothing real."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zwei Beispielserver. Nichts davon ist echt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dos servidores de ejemplo. Nada real."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deux serveurs d’exemple. Rien de réel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Due server di esempio. Nulla di reale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サンプルのサーバが 2 台。実際のものではありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "예제 서버 두 개. 실제 서버는 없습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dois servidores de exemplo. Nada real."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两台示例服务器。都不是真实的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "兩台範例伺服器。沒有任何真實內容。"
+          }
+        }
+      }
+    },
+    "Type these on the computer, not on this phone. The build needs a Swift toolchain and takes a few minutes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type these on the computer, not on this phone. The build needs a Swift toolchain and takes a few minutes."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippe das auf dem Rechner ein, nicht auf diesem iPhone. Der Build braucht eine Swift-Toolchain und dauert einige Minuten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe esto en el ordenador, no en este teléfono. La compilación necesita una cadena de herramientas de Swift y tarda unos minutos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tapez ces commandes sur l’ordinateur, pas sur ce téléphone. La compilation nécessite une chaîne d’outils Swift et prend quelques minutes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digita questi comandi sul computer, non su questo telefono. La compilazione richiede una toolchain Swift e alcuni minuti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これらはこの iPhone ではなくコンピュータで入力します。ビルドには Swift ツールチェーンが必要で、数分かかります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 휴대폰이 아니라 컴퓨터에서 입력하세요. 빌드에는 Swift 툴체인이 필요하고 몇 분이 걸립니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite estes comandos no computador, não neste telefone. A compilação requer um toolchain Swift e leva alguns minutos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在电脑上输入这些命令，而不是在这台手机上。构建需要 Swift 工具链，耗时几分钟。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在電腦上輸入這些命令，不是在這台手機上。建置需要 Swift 工具鏈，會花上幾分鐘。"
+          }
+        }
+      }
+    },
+    "Type this on the computer, not on this phone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type this on the computer, not on this phone."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tippe das auf dem Rechner ein, nicht auf diesem iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe esto en el ordenador, no en este teléfono."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tapez ceci sur l’ordinateur, pas sur ce téléphone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digita questo comando sul computer, non su questo telefono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはこの iPhone ではなくコンピュータで入力します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 휴대폰이 아니라 컴퓨터에서 입력하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite isto no computador, não neste telefone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在电脑上输入，而不是在这台手机上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在電腦上輸入這行，不是在這台手機上。"
           }
         }
       }
@@ -39671,6 +44481,71 @@
         }
       }
     },
+    "Use http instead": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use http instead"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stattdessen http nutzen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar http"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser plutôt http"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa http"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "http を使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대신 http 사용"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar http"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用 http"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用 http"
+          }
+        }
+      }
+    },
     "Use this prompt": {
       "extractionState": "manual",
       "localizations": {
@@ -40642,6 +45517,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "每週"
+          }
+        }
+      }
+    },
+    "What is Tailscale?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What is Tailscale?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was ist Tailscale?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué es Tailscale?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qu’est-ce que Tailscale ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Che cos’è Tailscale?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale とは"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale이란?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que é o Tailscale?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 是什么？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 是什麼？"
           }
         }
       }
@@ -41881,6 +46821,71 @@
         }
       }
     },
+    "Your agents stay on your machine.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your agents stay on your machine."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Agenten bleiben auf deinem Rechner."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus agentes se quedan en tu máquina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos agents restent sur votre machine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I tuoi agenti restano sulla tua macchina."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントはあなたのマシンに留まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트는 당신의 컴퓨터에 그대로 남습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus agentes ficam na sua máquina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的智能体留在你自己的机器上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的代理留在你的電腦上。"
+          }
+        }
+      }
+    },
     "Your answer": {
       "extractionState": "manual",
       "localizations": {
@@ -42011,6 +47016,71 @@
         }
       }
     },
+    "Your iPhone reaches your machine over an encrypted Tailscale link.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your iPhone reaches your machine over an encrypted Tailscale link."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein iPhone erreicht deinen Rechner über eine verschlüsselte Tailscale-Verbindung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu iPhone llega a tu máquina por un enlace cifrado de Tailscale."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre iPhone joint votre machine via une liaison Tailscale chiffrée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo iPhone raggiunge la tua macchina tramite un collegamento Tailscale cifrato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone は暗号化された Tailscale の接続でマシンに到達します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone은 암호화된 Tailscale 연결로 컴퓨터에 닿습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu iPhone alcança sua máquina por uma conexão Tailscale criptografada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 iPhone 通过加密的 Tailscale 链路访问你的机器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 iPhone 經由加密的 Tailscale 連線連上你的電腦。"
+          }
+        }
+      }
+    },
     "Your machine": {
       "extractionState": "manual",
       "localizations": {
@@ -42072,6 +47142,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的電腦"
+          }
+        }
+      }
+    },
+    "Your own Claude subscription, through claude-bridge.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your own Claude subscription, through claude-bridge."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein eigenes Claude-Abo, über claude-bridge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu propia suscripción de Claude, a través de claude-bridge."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre propre abonnement Claude, via claude-bridge."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo abbonamento Claude, tramite claude-bridge."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge 経由で、あなた自身の Claude サブスクリプションを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "당신의 Claude 구독을 claude-bridge를 통해 사용합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua própria assinatura do Claude, via claude-bridge."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 claude-bridge 使用你自己的 Claude 订阅。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你自己的 Claude 訂閱，透過 claude-bridge。"
           }
         }
       }
@@ -42335,6 +47470,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "帳單日 續訂 週期 opencode go"
+          }
+        }
+      }
+    },
+    "claude-bridge always needs a password — the one in the command above.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge always needs a password — the one in the command above."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge braucht immer ein Passwort – das aus dem Befehl oben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge siempre necesita una contraseña: la del comando de arriba."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge exige toujours un mot de passe — celui de la commande ci-dessus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge richiede sempre una password — quella nel comando qui sopra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge には必ずパスワードが必要です。上のコマンドで指定したものです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge에는 항상 암호가 필요합니다 — 위 명령에 있는 그 암호입니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O claude-bridge sempre precisa de uma senha — a do comando acima."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge 始终需要密码 — 就是上面命令中的那个。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claude-bridge 一律需要密碼 — 就是上面命令中的那一組。"
           }
         }
       }
@@ -42992,6 +48192,71 @@
         }
       }
     },
+    "https can't work here": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https can't work here"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https funktioniert hier nicht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https no puede funcionar aquí"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https ne peut pas fonctionner ici"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https non può funzionare qui"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここでは https は使えません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기서는 https를 사용할 수 없습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https não funciona aqui"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这里无法使用 https"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "https 在這裡無法運作"
+          }
+        }
+      }
+    },
     "idle since %@": {
       "extractionState": "manual",
       "localizations": {
@@ -43381,6 +48646,71 @@
           "stringUnit": {
             "state": "translated",
             "value": "需要密碼"
+          }
+        }
+      }
+    },
+    "not connected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not connected"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nicht verbunden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sin conectar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "non connecté"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "non connesso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未接続"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결되지 않음"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "não conectado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未连接"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未連線"
           }
         }
       }

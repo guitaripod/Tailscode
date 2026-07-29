@@ -16,8 +16,9 @@ DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
 OUT="$ROOT/marketing/appstore/iphone"
 
 # name | launch args | env (space separated KEY=VALUE) | seconds to settle
-# "setup" runs against a fresh install with no demo backend: it is the onboarding
-# guide a first launch actually shows.
+# "welcome" and "setup" run against a fresh install with no demo backend: they are
+# the first screen and the setup checklist a first launch actually shows. The faked
+# tailnet keeps this machine's real 100.x address out of the marketing set.
 SHOTS=(
   "01-live|--demo|TAILSCODE_OPEN_SESSION=demo-c1|14"
   "02-work|--demo|TAILSCODE_OPEN_SESSION=demo-c2|9"
@@ -30,7 +31,8 @@ SHOTS=(
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
   "10-models|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=1|9"
   "11-compaction|--demo|TAILSCODE_OPEN_SESSION=demo-c4|9"
-  "setup||TAILSCODE_OPEN_GUIDE=1|6"
+  "welcome||TAILSCODE_FAKE_TAILNET=up|5"
+  "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
 )
 
 boot_device() {
@@ -88,7 +90,7 @@ install_fresh "$DEVICE" "$APP"
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name args envs delay <<<"$shot"
   if [ $# -gt 0 ] && [[ ! " $* " == *" $name "* ]]; then continue; fi
-  if [ "$name" = "setup" ]; then install_fresh "$DEVICE" "$APP"; fi
+  case "$name" in welcome | setup) install_fresh "$DEVICE" "$APP" ;; esac
   capture "$DEVICE" "$name" "$args" "$envs" "$delay"
 done
 
