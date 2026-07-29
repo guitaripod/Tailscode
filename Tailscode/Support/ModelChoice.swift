@@ -146,7 +146,8 @@ enum ModelMenu {
         if allowsServerDefault {
             picks.append(
                 UIAction(
-                    title: "Auto", subtitle: "Whatever the server runs",
+                    title: String(localized: "Auto"),
+                    subtitle: String(localized: "Whatever the server runs"),
                     image: UIImage(systemName: "wand.and.stars"),
                     state: choice.model == nil ? .on : .off
                 ) { _ in actions.selectModel(nil) })
@@ -161,7 +162,7 @@ enum ModelMenu {
         }
         if picks.isEmpty {
             picks.append(
-                UIAction(title: "No models reported", attributes: .disabled) { _ in })
+                UIAction(title: String(localized: "No models reported"), attributes: .disabled) { _ in })
         }
         sections.append(UIMenu(options: .displayInline, children: picks))
         if let browseAll = actions.browseAll, models.count > shortlist.count {
@@ -170,7 +171,8 @@ enum ModelMenu {
                     options: .displayInline,
                     children: [
                         UIAction(
-                            title: "All models…", subtitle: "\(models.count) available",
+                            title: String(localized: "All models…"),
+                            subtitle: String(localized: "\(models.count) available"),
                             image: UIImage(systemName: "magnifyingglass")
                         ) { _ in browseAll() }
                     ]))
@@ -178,7 +180,7 @@ enum ModelMenu {
         if !efforts.isEmpty {
             var levels: [UIMenuElement] = [
                 UIAction(
-                    title: "Default", state: choice.effort == nil ? .on : .off
+                    title: String(localized: "Default"), state: choice.effort == nil ? .on : .off
                 ) { _ in actions.selectEffort(nil) }
             ]
             levels += efforts.map { level in
@@ -188,8 +190,8 @@ enum ModelMenu {
             }
             sections.append(
                 UIMenu(
-                    title: "Reasoning effort",
-                    subtitle: choice.effort?.capitalized ?? "Default",
+                    title: String(localized: "Reasoning effort"),
+                    subtitle: choice.effort?.capitalized ?? String(localized: "Default"),
                     image: UIImage(systemName: "gauge.with.dots.needle.50percent"),
                     children: levels))
         }

@@ -58,7 +58,7 @@ enum UsageWarnings {
         } ?? ""
         NotificationManager.notify(
             kind: .usage,
-            title: "\(hottest.provider) is \(percent)% used",
+            title: String(localized: "\(hottest.provider) is \(percent)% used"),
             body: "\(hottest.label)\(reset)",
             identifier: "usage:\(key)")
         AppLogger.session.info("usage warning raised for \(key) at \(percent)%")

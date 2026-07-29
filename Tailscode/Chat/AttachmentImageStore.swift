@@ -65,6 +65,7 @@ extension FileReference {
     var isImage: Bool { (mime ?? "").hasPrefix("image/") }
 
     var displayName: String {
-        filename ?? path.map { ($0 as NSString).lastPathComponent } ?? "attachment"
+        filename ?? path.map { ($0 as NSString).lastPathComponent }
+            ?? String(localized: "attachment")
     }
 }

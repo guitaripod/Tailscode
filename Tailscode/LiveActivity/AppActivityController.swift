@@ -51,11 +51,11 @@ final class AppActivityController {
         }
         let attr = ChatActivityAttributes(
             sessionID: sessionID,
-            sessionTitle: sessionTitle.isEmpty ? "Agent session" : sessionTitle,
+            sessionTitle: sessionTitle.isEmpty ? String(localized: "Agent session") : sessionTitle,
             serverName: serverName)
         let startedAt = Date()
         let state = ChatActivityAttributes.ContentState(
-            phase: .thinking, statusText: "Thinking\u{2026}", lastTool: nil, toolCount: 0,
+            phase: .thinking, statusText: String(localized: "Thinking…"), lastTool: nil, toolCount: 0,
             startedAt: startedAt, endedAt: nil, title: nil)
         do {
             let activity = try Activity.request(
@@ -113,8 +113,10 @@ final class AppActivityController {
         let alert: AlertConfiguration? =
             becameApproval
             ? AlertConfiguration(
-                title: "Approval needed",
-                body: "\(entry.latestTitle ?? entry.activity.attributes.sessionTitle) is waiting for you.",
+                title: LocalizedStringResource("Approval needed"),
+                body: LocalizedStringResource(
+                    "\(entry.latestTitle ?? entry.activity.attributes.sessionTitle) is waiting for you."
+                ),
                 sound: .default)
             : nil
         enqueue(sessionID, entry.activity) { act in
@@ -146,9 +148,9 @@ final class AppActivityController {
     }
 
     private static func summary(outcome: Phase, toolCount: Int, duration: TimeInterval) -> String {
-        guard outcome != .error else { return "Something went wrong" }
-        var parts = ["Done in \(Self.compactDuration(duration))"]
-        if toolCount > 0 { parts.append("\(toolCount) tool\(toolCount == 1 ? "" : "s")") }
+        guard outcome != .error else { return String(localized: "Something went wrong") }
+        var parts = [String(localized: "Done in \(Self.compactDuration(duration))")]
+        if toolCount > 0 { parts.append(String(localized: "\(toolCount) tools")) }
         return parts.joined(separator: " · ")
     }
 

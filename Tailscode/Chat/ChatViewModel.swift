@@ -236,7 +236,7 @@ final class ChatViewModel {
             do {
                 try await conversation.run(command, arguments: arguments)
             } catch {
-                self.onError?("Couldn't run /\(command.name).")
+                self.onError?(String(localized: "Couldn't run /\(command.name)."))
             }
         }
     }
@@ -483,7 +483,9 @@ final class ChatViewModel {
     private var sendTask: Task<Void, Never>?
 
     private struct SendTimeout: LocalizedError {
-        var errorDescription: String? { "The server didn't respond — check your connection." }
+        var errorDescription: String? {
+            String(localized: "The server didn't respond — check your connection.")
+        }
     }
 
     /// Sends optimistically: the prompt echoes into the transcript, the
@@ -560,7 +562,8 @@ final class ChatViewModel {
                     localEchoes.removeAll { $0.id == echo.id }
                     if activityLive {
                         AppActivityController.shared.end(
-                            sessionID: session.id, outcome: .error, statusText: "No response")
+                            sessionID: session.id, outcome: .error,
+                            statusText: String(localized: "No response"))
                         activityLive = false
                     }
                     onState?(state)
@@ -577,7 +580,9 @@ final class ChatViewModel {
                 if activityLive, !turnSawRunning {
                     AppActivityController.shared.end(
                         sessionID: session.id, outcome: cancelled ? .done : .error,
-                        statusText: cancelled ? "Cancelled" : "Couldn't send")
+                        statusText: cancelled
+                            ? String(localized: "Cancelled")
+                            : String(localized: "Couldn't send"))
                     activityLive = false
                 }
                 onState?(state)
@@ -600,7 +605,7 @@ final class ChatViewModel {
             localEchoes.removeAll()
             if activityLive {
                 AppActivityController.shared.end(
-                    sessionID: session.id, outcome: .done, statusText: "Cancelled")
+                    sessionID: session.id, outcome: .done, statusText: String(localized: "Cancelled"))
                 activityLive = false
             }
             onState?(state)
@@ -757,20 +762,20 @@ final class ChatViewModel {
         let runningTool = tools.last { $0.status == .running }
         let lastTool = (runningTool ?? tools.last).map(\.name)
         if state.pendingQuestions.first != nil {
-            return (.approval, "Waiting for your answer", lastTool, tools.count)
+            return (.approval, String(localized: "Waiting for your answer"), lastTool, tools.count)
         }
         if state.pendingPermissions.first != nil {
-            return (.approval, "Awaiting your approval", lastTool, tools.count)
+            return (.approval, String(localized: "Awaiting your approval"), lastTool, tools.count)
         }
         if let runningTool {
-            return (.tool, "Running \(runningTool.name)", lastTool, tools.count)
+            return (.tool, String(localized: "Running \(runningTool.name)"), lastTool, tools.count)
         }
         if let last, last.role == .assistant, last.completedAt == nil,
             case .text(let text)? = last.parts.last?.kind, !text.isEmpty
         {
-            return (.responding, "Writing\u{2026}", lastTool, tools.count)
+            return (.responding, String(localized: "Writing…"), lastTool, tools.count)
         }
-        return (.thinking, "Thinking\u{2026}", lastTool, tools.count)
+        return (.thinking, String(localized: "Thinking…"), lastTool, tools.count)
     }
 
     static func readable(_ error: Error) -> String {

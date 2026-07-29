@@ -69,7 +69,7 @@ final class EnhancedPromptCell: UICollectionViewCell {
         badge.text = prompt.label.localizedUppercase
         textView.text = prompt.text
         textView.setContentOffset(.zero, animated: false)
-        accessibilityLabel = "Enhanced prompt, \(prompt.label): \(prompt.text)"
+        accessibilityLabel = String(localized: "Enhanced prompt, \(prompt.label): \(prompt.text)")
     }
 
     override func prepareForReuse() {
@@ -157,7 +157,7 @@ final class EnhanceMessageCell: UICollectionViewCell {
 
         var retryConfig = Theme.Glass.buttonConfiguration()
         retryConfig.cornerStyle = .capsule
-        retryConfig.title = "Try again"
+        retryConfig.title = String(localized: "Try again")
         retry.configuration = retryConfig
         retry.isHidden = true
         retry.addAction(UIAction { [weak self] _ in self?.onRetry?() }, for: .touchUpInside)

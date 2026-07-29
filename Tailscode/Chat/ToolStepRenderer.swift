@@ -116,7 +116,8 @@ final class ToolStepRenderer {
                 Self.bodyLabel(
                     attributed: Self.summaryLine(
                         "point.3.connected.trianglepath.dotted", Theme.Color.accent,
-                        summary.title.map { "Workflow · \($0)" } ?? "Workflow"),
+                        summary.title.map { String(localized: "Workflow · \($0)") }
+                            ?? String(localized: "Workflow")),
                     lines: 2))
         case .question:
             if let title = summary.title {
@@ -140,8 +141,9 @@ final class ToolStepRenderer {
                 column.addArrangedSubview(Self.outputLabel(output))
             }
         case .skill:
-            let name = summary.title ?? "Skill"
-            let text = "Skill · \(name)" + (summary.detail.map { " \($0)" } ?? "")
+            let name = summary.title ?? String(localized: "Skill")
+            let text =
+                String(localized: "Skill · \(name)") + (summary.detail.map { " \($0)" } ?? "")
             column.addArrangedSubview(
                 Self.bodyLabel(
                     attributed: Self.summaryLine("wand.and.stars", Theme.Color.accent, text),
@@ -186,7 +188,7 @@ final class ToolStepRenderer {
             }
             if summary.links.count > 4 {
                 column.addArrangedSubview(
-                    Self.pathLabel("+\(summary.links.count - 4) more results"))
+                    Self.pathLabel(String(localized: "+\(summary.links.count - 4) more results")))
             }
         case .webFetch, .fileSearch, .other:
             if let title = summary.title ?? Self.fallbackTitle(call) {

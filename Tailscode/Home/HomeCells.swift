@@ -60,7 +60,9 @@ struct LiveCard: Hashable {
         self.entry = entry
         self.presence = presence
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
+        self.title =
+            AgentSession.isPlaceholderTitle(trimmed)
+            ? String(localized: "New conversation") : trimmed
         self.age = compactAge(entry.session.updatedAt)
         let project = entry.session.directory.map { ($0 as NSString).lastPathComponent }
         if let activity {
@@ -138,7 +140,9 @@ struct RecentCard: Hashable {
         self.entry = entry
         self.unread = unread
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.title = AgentSession.isPlaceholderTitle(trimmed) ? "New conversation" : trimmed
+        self.title =
+            AgentSession.isPlaceholderTitle(trimmed)
+            ? String(localized: "New conversation") : trimmed
         var parts: [String] = [entry.profileName]
         if let directory = entry.session.directory {
             parts.append((directory as NSString).lastPathComponent)
@@ -268,13 +272,14 @@ final class LiveSessionCell: GlassCardCell {
         ageLabel.text = card.age
         let (color, state): (UIColor, String) =
             switch card.presence {
-            case .needsInput: (Theme.Color.warning, "NEEDS YOU")
-            case .working: (Theme.Color.success, "LIVE")
-            case .syncing: (Theme.Color.tertiaryLabel, "SYNCING")
+            case .needsInput: (Theme.Color.warning, String(localized: "NEEDS YOU"))
+            case .working: (Theme.Color.success, String(localized: "LIVE"))
+            case .syncing: (Theme.Color.tertiaryLabel, String(localized: "SYNCING"))
             }
         applyPresence(color: color, state: state, animated: presence != nil && presence != card.presence)
         presence = card.presence
-        accessibilityLabel = "\(state): \(card.title), \(card.detail), \(card.age) ago"
+        accessibilityLabel = String(
+            localized: "\(state): \(card.title), \(card.detail), \(card.age) ago")
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -372,10 +377,11 @@ final class ProjectCell: GlassCardCell {
         iconView.image = UIImage(systemName: "folder.fill")?
             .withTintColor(card.backend.brandColor, renderingMode: .alwaysOriginal)
         nameLabel.text = card.name
-        let detail = "\(card.chatCount) chat\(card.chatCount == 1 ? "" : "s") · \(card.profileName)"
+        let detail =
+            String(localized: "\(card.chatCount) chats") + " · \(card.profileName)"
         detailLabel.text = detail
-        accessibilityLabel = "Project \(card.name), \(detail)"
-        accessibilityHint = "Aims the composer at this project"
+        accessibilityLabel = String(localized: "Project \(card.name), \(detail)")
+        accessibilityHint = String(localized: "Aims the composer at this project")
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -435,9 +441,10 @@ final class ServerAlertCell: GlassCardCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ card: ServerAlertCard) {
-        titleLabel.text = "\(card.name) is unreachable"
-        detailLabel.text = "Check the server or Tailscale, then pull to refresh."
-        accessibilityLabel = "\(card.name) is unreachable"
+        titleLabel.text = String(localized: "\(card.name) is unreachable")
+        detailLabel.text = String(
+            localized: "Check the server or Tailscale, then pull to refresh.")
+        accessibilityLabel = String(localized: "\(card.name) is unreachable")
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -542,7 +549,8 @@ final class RecentSessionCell: GlassCardCell {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
             chevron.tintColor = Theme.Color.tertiaryLabel
         }
-        accessibilityLabel = unread ? "Unread: \(title), \(detail)" : "\(title), \(detail)"
+        accessibilityLabel =
+            unread ? String(localized: "Unread: \(title), \(detail)") : "\(title), \(detail)"
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -607,7 +615,7 @@ final class RecentPlaceholderCell: ShimmerCardCell {
         ])
 
         isAccessibilityElement = true
-        accessibilityLabel = "Loading recent chats"
+        accessibilityLabel = String(localized: "Loading recent chats")
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -641,7 +649,7 @@ final class QuotaPlaceholderCell: ShimmerCardCell {
         ])
 
         isAccessibilityElement = true
-        accessibilityLabel = "Loading usage"
+        accessibilityLabel = String(localized: "Loading usage")
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -700,7 +708,7 @@ final class QuotaCardCell: GlassCardCell {
         {
             let minutes = max(1, Int(resetsAt.timeIntervalSinceNow / 60))
             let countdown = minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h \(minutes % 60)m"
-            header += "  ·  resets in \(countdown)"
+            header += "  ·  " + String(localized: "resets in \(countdown)")
         }
         providerLabel.text = header
         gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -709,7 +717,7 @@ final class QuotaCardCell: GlassCardCell {
         }
         accessibilityLabel = card.quota.providerName
         accessibilityValue = card.quota.gauges.prefix(3)
-            .map { "\($0.label) \(Int($0.fraction * 100)) percent" }
+            .map { String(localized: "\($0.label) \(Int($0.fraction * 100)) percent") }
             .joined(separator: ", ")
         isAccessibilityElement = true
         accessibilityTraits = .button

@@ -20,7 +20,9 @@ struct TopUsageValueProvider: ControlValueProvider {
                 .flatMap({ provider in provider.gauges.map { (provider, $0) } })
                 .max(by: { $0.1.fraction < $1.1.fraction })
         else {
-            return TopUsageValue(percentText: "—", symbol: "gauge.with.dots.needle", providerName: "Usage", isEmpty: true)
+            return TopUsageValue(
+                percentText: "—", symbol: "gauge.with.dots.needle",
+                providerName: String(localized: "Usage"), isEmpty: true)
         }
         let gauge = top.1
         return TopUsageValue(
@@ -36,13 +38,17 @@ struct TopUsageControl: ControlWidget {
         StaticControlConfiguration(kind: "com.guitaripod.tailscode.TopUsageControl", provider: TopUsageValueProvider()) { value in
             ControlWidgetButton(action: OpenUsageIntent()) {
                 Label {
-                    Text(value.isEmpty ? "Usage" : "\(value.providerName) \(value.percentText)")
+                    Text(
+                        value.isEmpty
+                            ? String(localized: "Usage")
+                            : "\(value.providerName) \(value.percentText)")
                 } icon: {
                     Image(systemName: value.symbol)
                 }
             }
         }
-        .displayName("Top Agent Usage")
-        .description("Your hottest agent quota, one tap from the dashboard.")
+        .displayName(LocalizedStringResource("Top Agent Usage"))
+        .description(
+            LocalizedStringResource("Your hottest agent quota, one tap from the dashboard."))
     }
 }

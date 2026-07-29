@@ -11,12 +11,14 @@ final class ServerEditViewController: UIViewController {
     var onSaved: ((ConnectionProfile) -> Void)?
 
     private let profile: ConnectionProfile
-    private let nameField = FormField(title: "Name", placeholder: "homelab")
+    private let nameField = FormField(title: String(localized: "Name"), placeholder: "homelab")
     private let hostField = FormField(
-        title: "Host URL", placeholder: "http://100.x.y.z:4096", keyboard: .URL)
+        title: String(localized: "Host URL"), placeholder: "http://100.x.y.z:4096",
+        keyboard: .URL)
     private let passwordField = FormField(
-        title: "Password", placeholder: "Leave blank for none", secure: true)
-    private let saveButton = PrimaryButton(title: "Save")
+        title: String(localized: "Password"),
+        placeholder: String(localized: "Leave blank for none"), secure: true)
+    private let saveButton = PrimaryButton(title: String(localized: "Save"))
     private let statusLabel = UILabel()
     private var verifyTask: Task<Void, Never>?
 
@@ -29,7 +31,7 @@ final class ServerEditViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Edit Server"
+        title = String(localized: "Edit Server")
         view.backgroundColor = Theme.Color.groupedBackground
         buildUI()
     }
@@ -40,9 +42,10 @@ final class ServerEditViewController: UIViewController {
         passwordField.setText(ConnectionController.shared.password(for: profile.id) ?? "")
 
         let header = UILabel()
-        header.text =
-            "The address is verified before it is saved, so a typo fails here rather than as "
-            + "errors in every chat."
+        header.text = String(
+            localized:
+                "The address is verified before it is saved, so a typo fails here rather than as errors in every chat."
+        )
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
@@ -87,7 +90,7 @@ final class ServerEditViewController: UIViewController {
         let name = nameField.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let host = hostField.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: host), url.host != nil else {
-            showStatus("Enter a valid URL like http://100.x.y.z:4096", ok: false)
+            showStatus(String(localized: "Enter a valid URL like http://100.x.y.z:4096"), ok: false)
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
@@ -101,7 +104,7 @@ final class ServerEditViewController: UIViewController {
         }
 
         saveButton.setLoading(true)
-        showStatus("Verifying \(url.host ?? "server")…", ok: true)
+        showStatus(String(localized: "Verifying \(url.host ?? "server")…"), ok: true)
         let backend = profile.backend
         verifyTask = Task { [weak self] in
             defer { self?.verifyTask = nil }
@@ -117,14 +120,16 @@ final class ServerEditViewController: UIViewController {
                 self.commit(verified, password: password)
             case .authFailed:
                 Theme.Haptics.error()
-                self.showStatus("Wrong password for \(url.host ?? "server").", ok: false)
+                self.showStatus(
+                    String(localized: "Wrong password for \(url.host ?? "server")."), ok: false)
             case .notAnAgentServer:
                 Theme.Haptics.error()
                 self.showStatus(
-                    "Reachable, but not an opencode or claude-bridge server.", ok: false)
+                    String(localized: "Reachable, but not an opencode or claude-bridge server."),
+                    ok: false)
             case .unreachable(let detail):
                 Theme.Haptics.error()
-                self.showStatus("Unreachable: \(detail)", ok: false)
+                self.showStatus(String(localized: "Unreachable: \(detail)"), ok: false)
             }
         }
     }
@@ -144,7 +149,7 @@ final class ServerEditViewController: UIViewController {
             navigationController?.popViewController(animated: true)
         } catch {
             Theme.Haptics.error()
-            showStatus("Save failed: \(error.localizedDescription)", ok: false)
+            showStatus(String(localized: "Save failed: \(error.localizedDescription)"), ok: false)
         }
     }
 

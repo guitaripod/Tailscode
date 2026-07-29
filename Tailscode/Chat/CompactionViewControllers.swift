@@ -24,7 +24,7 @@ final class CompactPreflightViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.groupedBackground
-        title = "Compact"
+        title = String(localized: "Compact")
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             systemItem: .cancel,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
@@ -39,13 +39,21 @@ final class CompactPreflightViewController: UIViewController {
         let stack = UIStackView(arrangedSubviews: [
             hero(),
             body(
-                "The agent re-reads this conversation, writes a summary of it, and carries the "
-                    + "summary forward instead of the whole transcript."),
-            body("Nothing here disappears — you keep every message. Only the agent's memory shrinks."),
+                String(
+                    localized:
+                        "The agent re-reads this conversation, writes a summary of it, and carries the summary forward instead of the whole transcript."
+                )),
+            body(
+                String(
+                    localized:
+                        "Nothing here disappears — you keep every message. Only the agent's memory shrinks."
+                )),
             instructionsField(),
             previously(),
             body(
-                "Takes a minute or two, and the conversation is busy until it finishes.",
+                String(
+                    localized:
+                        "Takes a minute or two, and the conversation is busy until it finishes."),
                 color: Theme.Color.tertiaryLabel),
         ].compactMap { $0 })
         stack.axis = .vertical
@@ -93,7 +101,7 @@ final class CompactPreflightViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
 
         let headline = UILabel()
-        headline.text = "Free up the context window"
+        headline.text = String(localized: "Free up the context window")
         headline.font = UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
         headline.adjustsFontForContentSizeCategory = true
         headline.numberOfLines = 0
@@ -102,8 +110,8 @@ final class CompactPreflightViewController: UIViewController {
         let subtitle = UILabel()
         subtitle.text =
             messageCount > 0
-            ? "\(messageCount) message\(messageCount == 1 ? "" : "s") in this conversation"
-            : "This conversation"
+            ? String(localized: "\(messageCount) messages in this conversation")
+            : String(localized: "This conversation")
         subtitle.font = .preferredFont(forTextStyle: .footnote)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = Theme.Color.secondaryLabel
@@ -133,12 +141,12 @@ final class CompactPreflightViewController: UIViewController {
 
     private func instructionsField() -> UIView {
         let caption = UILabel()
-        caption.text = "WHAT MUST THE SUMMARY KEEP?"
+        caption.text = String(localized: "WHAT MUST THE SUMMARY KEEP?")
         caption.font = .preferredFont(forTextStyle: .caption2)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.tertiaryLabel
 
-        instructions.placeholder = "Optional — e.g. the failing test names"
+        instructions.placeholder = String(localized: "Optional — e.g. the failing test names")
         instructions.font = Theme.Font.body()
         instructions.adjustsFontForContentSizeCategory = true
         instructions.borderStyle = .none
@@ -178,16 +186,19 @@ final class CompactPreflightViewController: UIViewController {
             let after = lastCompaction.tokensAfter
         else { return nil }
         var text =
-            "Last time: \(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"
+            String(
+                localized:
+                    "Last time: \(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"
+            )
         if let duration = lastCompaction.duration, duration >= 1 {
-            text += " in \(CompactionCell.elapsed(duration))"
+            text += " " + String(localized: "in \(CompactionCell.elapsed(duration))")
         }
         return body(text + ".", color: Theme.Color.tertiaryLabel)
     }
 
     private func compactButton() -> UIView {
         var config = Theme.Glass.buttonConfiguration(prominent: true)
-        config.title = "Compact conversation"
+        config.title = String(localized: "Compact conversation")
         config.baseBackgroundColor = Theme.Color.accent
         config.contentInsets = NSDirectionalEdgeInsets(
             top: 14, leading: 20, bottom: 14, trailing: 20)
@@ -223,7 +234,7 @@ final class CompactionSummaryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.background
-        title = "Summary"
+        title = String(localized: "Summary")
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "doc.on.doc"),
             primaryAction: UIAction { [weak self] _ in
@@ -293,15 +304,21 @@ final class CompactionSummaryViewController: UIViewController {
     private static func stats(for compaction: Compaction) -> String {
         var parts: [String] = []
         if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            parts.append("\(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens")
+            parts.append(
+                String(
+                    localized:
+                        "\(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"))
         }
         if let reduction = compaction.reduction {
-            parts.append("\(Int((reduction * 100).rounded()))% freed")
+            parts.append(String(localized: "\(Int((reduction * 100).rounded()))% freed"))
         }
         if let duration = compaction.duration, duration >= 1 {
             parts.append(CompactionCell.elapsed(duration))
         }
-        guard !parts.isEmpty else { return "What the agent carries forward from here." }
-        return parts.joined(separator: " · ") + " — this is what the agent carries forward."
+        guard !parts.isEmpty else {
+            return String(localized: "What the agent carries forward from here.")
+        }
+        return parts.joined(separator: " · ") + " — "
+            + String(localized: "this is what the agent carries forward.")
     }
 }

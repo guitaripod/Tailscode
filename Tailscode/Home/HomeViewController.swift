@@ -137,6 +137,52 @@ final class HomeViewController: UIViewController {
         composerBar.focus()
     }
 
+    #if DEBUG
+        var tourScrollView: UIScrollView { collectionView }
+
+        func tourFocusComposer() { composerBar.focus() }
+
+        func tourType(_ text: String, perCharacter: Double) async {
+            for index in text.indices {
+                composerBar.tourSetText(String(text[text.startIndex...index]))
+                try? await Task.sleep(for: .seconds(perCharacter))
+            }
+        }
+
+        func tourSendComposer() { composerSend(composerBar.tourText) }
+
+        func tourPushChats() { pushChats() }
+
+        func tourPushSaved(seeding mode: String? = nil) {
+            if let mode { seedSavedForVerification(mode) }
+            pushSaved()
+        }
+
+        func tourOpenSettings() { onOpenSettings?() }
+
+        func tourPop() { navigationController?.popViewController(animated: true) }
+
+        /// Puts the board into its first-frame state for a take: no bookmarks carried
+        /// over from an earlier run, and recent work that moved while you were away.
+        func tourResetBoard(seenAge: TimeInterval) {
+            for chat in SavedChatStore.all() {
+                SavedChatStore.remove(profileID: chat.profileID, sessionID: chat.sessionID)
+            }
+            SessionSeenStore.tourRewindBaseline(seenAge)
+            savedChats = SavedChatStore.all()
+            applySnapshot()
+        }
+
+        var tourProjectsRail: UIScrollView? {
+            collectionView.visibleCells.first { $0 is ProjectCell }?.superview as? UIScrollView
+        }
+
+        func tourAim(serverIndex: Int, directory: String?) {
+            guard viewModel.servers.indices.contains(serverIndex) else { return }
+            setComposeTarget(profile: viewModel.servers[serverIndex], directory: directory)
+        }
+    #endif
+
     private func bind() {
         viewModel.onChange = { [weak self] in
             self?.updateComposeButton()
@@ -212,7 +258,7 @@ final class HomeViewController: UIViewController {
                 ) { [weak self] _ in self?.startChat(on: profile) }
             }
             navigationItem.rightBarButtonItem = UIBarButtonItem(
-                image: compose, menu: UIMenu(title: "New chat on…", children: actions))
+                image: compose, menu: UIMenu(title: String(localized: "New chat on…"), children: actions))
         } else {
             navigationItem.rightBarButtonItem = UIBarButtonItem(
                 image: compose, primaryAction: UIAction { [weak self] _ in
@@ -220,7 +266,7 @@ final class HomeViewController: UIViewController {
                     self.startChat(on: profile)
                 })
         }
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "New chat"
+        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "New chat")
     }
 
     private var lastOpencodeScan: Date?
@@ -559,8 +605,9 @@ final class HomeViewController: UIViewController {
         } else if viewModel.isEmptyOfServers {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "server.rack")
-            config.text = "No servers connected"
-            config.secondaryText = "Add a connection in Settings to start chatting with your agents."
+            config.text = String(localized: "No servers connected")
+            config.secondaryText = String(
+                localized: "Add a connection in Settings to start chatting with your agents.")
             contentUnavailableConfiguration = config
         } else if !hasLoadedOnce {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
@@ -581,13 +628,13 @@ final class HomeViewController: UIViewController {
         icon.contentMode = .scaleAspectFit
 
         let title = UILabel()
-        title.text = "No conversations yet"
+        title.text = String(localized: "No conversations yet")
         title.font = .preferredFont(forTextStyle: .headline)
         title.textColor = Theme.Color.secondaryLabel
         title.textAlignment = .center
 
         let subtitle = UILabel()
-        subtitle.text = "Start one below."
+        subtitle.text = String(localized: "Start one below.")
         subtitle.font = .preferredFont(forTextStyle: .subheadline)
         subtitle.textColor = Theme.Color.tertiaryLabel
         subtitle.textAlignment = .center
@@ -905,19 +952,25 @@ final class HomeViewController: UIViewController {
             case .alerts:
                 break
             case .live:
-                view.configure(title: "Live now")
+                view.configure(title: String(localized: "Live now"))
             case .projects:
-                view.configure(title: "Projects")
+                view.configure(title: String(localized: "Projects"))
             case .saved:
-                view.configure(title: "Saved", actionTitle: "See all") { [weak self] in
+                view.configure(
+                    title: String(localized: "Saved"), actionTitle: String(localized: "See all")
+                ) { [weak self] in
                     self?.pushSaved()
                 }
             case .recent:
-                view.configure(title: "Recent", actionTitle: "See all") { [weak self] in
+                view.configure(
+                    title: String(localized: "Recent"), actionTitle: String(localized: "See all")
+                ) { [weak self] in
                     self?.pushChats()
                 }
             case .usage:
-                view.configure(title: "Usage", actionTitle: "Details") { [weak self] in
+                view.configure(
+                    title: String(localized: "Usage"), actionTitle: String(localized: "Details")
+                ) { [weak self] in
                     self?.pushUsage()
                 }
             }
@@ -1017,7 +1070,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         -> UIMenu
     {
         UIMenu(
-            title: "Model",
+            title: String(localized: "Model"),
             children: [
                 UIDeferredMenuElement.uncached { [weak self] completion in
                     Task { @MainActor in
@@ -1088,7 +1141,7 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     private func composeTargetMenu() -> UIMenu {
         UIMenu(
-            title: "Start the chat in…",
+            title: String(localized: "Start the chat in…"),
             children: [
                 UIDeferredMenuElement.uncached { [weak self] completion in
                     completion(self?.composeTargets() ?? [])
@@ -1116,12 +1169,18 @@ extension HomeViewController: HomeComposerBarDelegate {
                 backend?.capabilities.supportsFileBrowsing == true
             {
                 children.append(
-                    UIAction(title: "Browse…", image: UIImage(systemName: "folder.badge.plus")) {
+                    UIAction(
+                        title: String(localized: "Browse…"),
+                        image: UIImage(systemName: "folder.badge.plus")
+                    ) {
                         [weak self] _ in self?.browseComposeTarget(profile: profile)
                     })
             } else {
                 children.append(
-                    UIAction(title: "Enter path…", image: UIImage(systemName: "character.cursor.ibeam")) {
+                    UIAction(
+                        title: String(localized: "Enter path…"),
+                        image: UIImage(systemName: "character.cursor.ibeam")
+                    ) {
                         [weak self] _ in self?.promptComposePath(profile: profile)
                     })
             }
@@ -1175,8 +1234,8 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     private func promptComposePath(profile: ConnectionProfile) {
         let alert = UIAlertController(
-            title: "Project directory",
-            message: "Enter a directory path on \(profile.name)",
+            title: String(localized: "Project directory"),
+            message: String(localized: "Enter a directory path on \(profile.name)"),
             preferredStyle: .alert)
         alert.addTextField { textField in
             textField.placeholder = "/path/to/project"
@@ -1184,14 +1243,16 @@ extension HomeViewController: HomeComposerBarDelegate {
             textField.autocapitalizationType = .none
             textField.keyboardType = .URL
         }
-        alert.addAction(UIAlertAction(title: "Use", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Use"), style: .default) {
+                [weak self, weak alert] _ in
             let trimmed = alert?.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard let trimmed, !trimmed.isEmpty else { return }
             self?.setComposeTarget(profile: profile, directory: trimmed)
             self?.composerBar.focus()
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -1208,10 +1269,12 @@ extension HomeViewController: HomeComposerBarDelegate {
                 composerBar.setSending(false)
                 Theme.Haptics.error()
                 let alert = UIAlertController(
-                    title: "Couldn't start the chat",
-                    message: "\(profile.name) didn't respond. Check the connection and try again.",
+                    title: String(localized: "Couldn't start the chat"),
+                    message: String(
+                        localized:
+                            "\(profile.name) didn't respond. Check the connection and try again."),
                     preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
                 present(alert, animated: true)
                 return
             }
@@ -1264,7 +1327,10 @@ extension HomeViewController: UICollectionViewDelegate {
         case .project(let card):
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
                 UIMenu(children: [
-                    UIAction(title: "New chat here", image: UIImage(systemName: "plus.bubble")) { _ in
+                    UIAction(
+                        title: String(localized: "New chat here"),
+                        image: UIImage(systemName: "plus.bubble")
+                    ) { _ in
                         guard let self,
                             let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
                         else { return }
@@ -1277,7 +1343,7 @@ extension HomeViewController: UICollectionViewDelegate {
                         }
                     },
                     UIAction(
-                        title: "View chats on \(card.profileName)",
+                        title: String(localized: "View chats on \(card.profileName)"),
                         image: UIImage(systemName: "bubble.left.and.bubble.right")
                     ) { _ in self?.pushChats(filterProfileID: card.profileID) },
                 ])
@@ -1296,11 +1362,14 @@ extension HomeViewController: UICollectionViewDelegate {
     private func savedMenu(for chat: SavedChat) -> UIContextMenuConfiguration {
         UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             UIMenu(children: [
-                UIAction(title: "Open", image: UIImage(systemName: "bubble.left")) { _ in
+                UIAction(
+                    title: String(localized: "Open"), image: UIImage(systemName: "bubble.left")
+                ) { _ in
                     self?.openSaved(chat)
                 },
                 UIAction(
-                    title: "Remove from Saved", image: UIImage(systemName: "bookmark.slash"),
+                    title: String(localized: "Remove from Saved"),
+                    image: UIImage(systemName: "bookmark.slash"),
                     attributes: .destructive
                 ) { _ in
                     Theme.Haptics.tap()
@@ -1318,7 +1387,9 @@ extension HomeViewController: UICollectionViewDelegate {
         UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self else { return UIMenu() }
             var actions: [UIMenuElement] = [
-                UIAction(title: "Open", image: UIImage(systemName: "bubble.left")) {
+                UIAction(
+                    title: String(localized: "Open"), image: UIImage(systemName: "bubble.left")
+                ) {
                     [weak self] _ in self?.openChat(for: entry)
                 }
             ]
@@ -1327,7 +1398,8 @@ extension HomeViewController: UICollectionViewDelegate {
             {
                 actions.append(
                     UIAction(
-                        title: "New chat in same project", image: UIImage(systemName: "plus.bubble")
+                        title: String(localized: "New chat in same project"),
+                        image: UIImage(systemName: "plus.bubble")
                     ) { [weak self] _ in
                         Task {
                             guard let self,
@@ -1341,14 +1413,16 @@ extension HomeViewController: UICollectionViewDelegate {
             }
             if self.viewModel.supportsRenaming(entry) {
                 actions.append(
-                    UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                    UIAction(
+                        title: String(localized: "Rename"), image: UIImage(systemName: "pencil")
+                    ) {
                         [weak self] _ in self?.promptRename(entry)
                     })
             }
             if allowDelete, self.viewModel.supportsMultipleSessions(entry) {
                 actions.append(
                     UIAction(
-                        title: "Delete", image: UIImage(systemName: "trash"),
+                        title: String(localized: "Delete"), image: UIImage(systemName: "trash"),
                         attributes: .destructive
                     ) { [weak self] _ in self?.confirmDelete(entry) })
             }
@@ -1358,14 +1432,16 @@ extension HomeViewController: UICollectionViewDelegate {
 
     private func promptRename(_ entry: SessionEntry) {
         let alert = UIAlertController(
-            title: "Rename conversation", message: nil, preferredStyle: .alert)
+            title: String(localized: "Rename conversation"), message: nil, preferredStyle: .alert)
         alert.addTextField { field in
             field.text = entry.session.title
             field.clearButtonMode = .whileEditing
             field.autocapitalizationType = .sentences
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Rename"), style: .default) {
+                [weak self, weak alert] _ in
             let title = alert?.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty, title != entry.session.title else { return }
@@ -1377,11 +1453,15 @@ extension HomeViewController: UICollectionViewDelegate {
 
     private func confirmDelete(_ entry: SessionEntry) {
         let alert = UIAlertController(
-            title: "Delete conversation?",
-            message: "\"\(SessionListViewController.displayTitle(entry.session.title))\" will be removed from the server.",
+            title: String(localized: "Delete conversation?"),
+            message: String(
+                localized:
+                    "\"\(SessionListViewController.displayTitle(entry.session.title))\" will be removed from the server."
+            ),
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Delete"), style: .destructive) { [weak self] _ in
             Theme.Haptics.warning()
             Task { await self?.viewModel.delete(entry) }
         })

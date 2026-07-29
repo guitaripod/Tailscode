@@ -90,7 +90,8 @@ enum NotificationManager {
     static func sendTest() {
         let content = UNMutableNotificationContent()
         content.title = "Tailscode"
-        content.body = "Notifications are working. This is what a finished turn looks like."
+        content.body = String(
+            localized: "Notifications are working. This is what a finished turn looks like.")
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: "test:\(UUID().uuidString)",

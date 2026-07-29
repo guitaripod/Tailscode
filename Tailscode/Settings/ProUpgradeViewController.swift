@@ -7,7 +7,7 @@ import UIKit
 final class ProUpgradeViewController: UIViewController {
     private let scroll = UIScrollView()
     private let stack = UIStackView()
-    private let purchaseButton = PrimaryButton(title: "Unlock Pro")
+    private let purchaseButton = PrimaryButton(title: String(localized: "Unlock Pro"))
     private let restoreButton = UIButton(type: .system)
     private let tipStack = UIStackView()
     private let tipHeader = UILabel()
@@ -37,7 +37,7 @@ final class ProUpgradeViewController: UIViewController {
 
     @objc private func proStateChanged() {
         guard ProStore.shared.isPro else { return }
-        purchaseButton.setTitle("You're a supporter — thank you ♥")
+        purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
         purchaseButton.isEnabled = false
         statusLabel.text = nil
     }
@@ -58,13 +58,15 @@ final class ProUpgradeViewController: UIViewController {
         heroIcon.contentMode = .scaleAspectFit
 
         let heroTitle = UILabel()
-        heroTitle.text = "Support Tailscode"
+        heroTitle.text = String(localized: "Support Tailscode")
         heroTitle.font = Theme.Font.headline()
         heroTitle.textAlignment = .center
 
         let heroBody = UILabel()
-        heroBody.text =
-            "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development."
+        heroBody.text = String(
+            localized:
+                "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development."
+        )
         heroBody.font = Theme.Font.subheadline()
         heroBody.textColor = Theme.Color.secondaryLabel
         heroBody.textAlignment = .center
@@ -97,9 +99,23 @@ final class ProUpgradeViewController: UIViewController {
         stack.setCustomSpacing(Theme.Spacing.xl, after: heroContainer)
 
         for (symbol, text) in [
-            ("server.rack", "Connect unlimited servers — one unified session list across every machine on your tailnet"),
-            ("bolt.badge.clock", "Concurrent Live Activities for every running session, not just one"),
-            ("heart.fill", "Supporter badge, and a say in what gets built next"),
+            (
+                "server.rack",
+                String(
+                    localized:
+                        "Connect unlimited servers — one unified session list across every machine on your tailnet"
+                )
+            ),
+            (
+                "bolt.badge.clock",
+                String(
+                    localized:
+                        "Concurrent Live Activities for every running session, not just one")
+            ),
+            (
+                "heart.fill",
+                String(localized: "Supporter badge, and a say in what gets built next")
+            ),
         ] {
             stack.addArrangedSubview(featureRow(symbol: symbol, text: text))
         }
@@ -108,12 +124,12 @@ final class ProUpgradeViewController: UIViewController {
         stack.setCustomSpacing(Theme.Spacing.xl, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(purchaseButton)
 
-        restoreButton.setTitle("Restore purchases", for: .normal)
+        restoreButton.setTitle(String(localized: "Restore purchases"), for: .normal)
         restoreButton.titleLabel?.font = Theme.Font.caption()
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
         stack.addArrangedSubview(restoreButton)
 
-        tipHeader.text = "Or leave a tip — no unlock, just thanks"
+        tipHeader.text = String(localized: "Or leave a tip — no unlock, just thanks")
         tipHeader.font = Theme.Font.caption()
         tipHeader.textColor = Theme.Color.secondaryLabel
         tipHeader.textAlignment = .center
@@ -173,7 +189,7 @@ final class ProUpgradeViewController: UIViewController {
 
     private func load() async {
         if ProStore.shared.isPro {
-            purchaseButton.setTitle("You're a supporter — thank you ♥")
+            purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
             purchaseButton.isEnabled = false
         } else {
             purchaseButton.isEnabled = false
@@ -185,12 +201,13 @@ final class ProUpgradeViewController: UIViewController {
             purchaseButton.setLoading(false)
             if let pro {
                 purchaseButton.isEnabled = true
-                purchaseButton.setTitle("Unlock Pro · \(pro.displayPrice)")
+                purchaseButton.setTitle(String(localized: "Unlock Pro · \(pro.displayPrice)"))
                 statusLabel.text = nil
             } else {
                 purchaseButton.isEnabled = true
-                purchaseButton.setTitle("Store unavailable — tap to retry")
-                statusLabel.text = "Couldn't reach the App Store. Check your connection and try again."
+                purchaseButton.setTitle(String(localized: "Store unavailable — tap to retry"))
+                statusLabel.text = String(
+                    localized: "Couldn't reach the App Store. Check your connection and try again.")
             }
         }
         tipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -224,15 +241,18 @@ final class ProUpgradeViewController: UIViewController {
                     Theme.Haptics.success()
                     dismiss(animated: true)
                 case .pending:
-                    statusLabel.text = "Waiting for approval — Pro unlocks automatically once approved."
+                    statusLabel.text = String(
+                        localized: "Waiting for approval — Pro unlocks automatically once approved.")
                 case .unverified:
-                    statusLabel.text = "Purchase couldn't be verified — try Restore purchases later."
+                    statusLabel.text = String(
+                        localized: "Purchase couldn't be verified — try Restore purchases later.")
                     Theme.Haptics.error()
                 case .cancelled:
                     break
                 }
             } catch {
-                statusLabel.text = "Purchase failed: \(error.localizedDescription)"
+                statusLabel.text = String(
+                    localized: "Purchase failed: \(error.localizedDescription)")
                 Theme.Haptics.error()
             }
         }
@@ -247,16 +267,18 @@ final class ProUpgradeViewController: UIViewController {
                 switch try await ProStore.shared.purchase(product) {
                 case .success:
                     Theme.Haptics.success()
-                    statusLabel.text = "Thank you! 🙏"
+                    statusLabel.text = String(localized: "Thank you! 🙏")
                 case .pending:
-                    statusLabel.text = "Waiting for approval — thank you!"
+                    statusLabel.text = String(localized: "Waiting for approval — thank you!")
                 case .unverified:
-                    statusLabel.text = "Purchase couldn't be verified — please try again later."
+                    statusLabel.text = String(
+                        localized: "Purchase couldn't be verified — please try again later.")
                 case .cancelled:
                     break
                 }
             } catch {
-                statusLabel.text = "Purchase failed: \(error.localizedDescription)"
+                statusLabel.text = String(
+                    localized: "Purchase failed: \(error.localizedDescription)")
             }
         }
     }
@@ -264,7 +286,7 @@ final class ProUpgradeViewController: UIViewController {
     @objc private func restoreTapped() {
         Theme.Haptics.tap()
         restoreButton.isEnabled = false
-        statusLabel.text = "Restoring…"
+        statusLabel.text = String(localized: "Restoring…")
         Task {
             defer { restoreButton.isEnabled = true }
             do {
@@ -273,12 +295,12 @@ final class ProUpgradeViewController: UIViewController {
                     Theme.Haptics.success()
                     dismiss(animated: true)
                 } else {
-                    statusLabel.text = "No previous purchase found for this Apple ID."
+                    statusLabel.text = String(localized: "No previous purchase found for this Apple ID.")
                 }
             } catch StoreKitError.userCancelled {
                 statusLabel.text = nil
             } catch {
-                statusLabel.text = "Restore failed: \(error.localizedDescription)"
+                statusLabel.text = String(localized: "Restore failed: \(error.localizedDescription)")
             }
         }
     }

@@ -8,22 +8,23 @@ final class TailnetTokenViewController: UIViewController {
     var onChange: (() -> Void)?
 
     private let tokenField = FormField(
-        title: "API access token", placeholder: "tskey-api-...", secure: true)
-    private let saveButton = PrimaryButton(title: "Save")
+        title: String(localized: "API access token"), placeholder: "tskey-api-...", secure: true)
+    private let saveButton = PrimaryButton(title: String(localized: "Save"))
     private let clearButton = UIButton(type: .system)
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Tailscale Token"
+        title = String(localized: "Tailscale Token")
         view.backgroundColor = Theme.Color.groupedBackground
         buildUI()
     }
 
     private func buildUI() {
         let header = UILabel()
-        header.text =
-            "Generate an API access token with Devices read access on the Tailscale keys page. "
-            + "One paste is all you need."
+        header.text = String(
+            localized:
+                "Generate an API access token with Devices read access on the Tailscale keys page. One paste is all you need."
+        )
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
@@ -31,7 +32,7 @@ final class TailnetTokenViewController: UIViewController {
         tokenField.setText(TailnetCredentials.token ?? "")
 
         let openButton = UIButton(type: .system)
-        openButton.setTitle("Open Keys page to generate token", for: .normal)
+        openButton.setTitle(String(localized: "Open Keys page to generate token"), for: .normal)
         openButton.titleLabel?.font = Theme.Font.caption()
         openButton.addAction(
             UIAction { _ in
@@ -41,16 +42,17 @@ final class TailnetTokenViewController: UIViewController {
             }, for: .touchUpInside)
 
         let note = UILabel()
-        note.text =
-            "Stored only in the Keychain. Used solely to list your Tailscale devices — "
-            + "connecting to a server never needs it."
+        note.text = String(
+            localized:
+                "Stored only in the Keychain. Used solely to list your Tailscale devices — connecting to a server never needs it."
+        )
         note.font = Theme.Font.caption()
         note.textColor = Theme.Color.tertiaryLabel
         note.numberOfLines = 0
 
         saveButton.addAction(UIAction { [weak self] _ in self?.save() }, for: .touchUpInside)
 
-        clearButton.setTitle("Clear token", for: .normal)
+        clearButton.setTitle(String(localized: "Clear token"), for: .normal)
         clearButton.setTitleColor(Theme.Color.danger, for: .normal)
         clearButton.isHidden = !TailnetCredentials.hasToken
         clearButton.addAction(UIAction { [weak self] _ in self?.clear() }, for: .touchUpInside)
@@ -96,9 +98,10 @@ final class TailnetTokenViewController: UIViewController {
         } catch {
             Theme.Haptics.error()
             let alert = UIAlertController(
-                title: "Couldn't save token", message: error.localizedDescription,
+                title: String(localized: "Couldn't save token"),
+                message: error.localizedDescription,
                 preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
             present(alert, animated: true)
             return
         }

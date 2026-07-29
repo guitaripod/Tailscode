@@ -8,7 +8,7 @@ final class ServerDetailViewController: UIViewController {
 
     private enum Section: Int, CaseIterable { case info, status, defaults, actions }
     private enum Item: Hashable {
-        case value(label: String, value: String)
+        case value(label: String, value: String, warning: Bool = false)
         case status(String)
         case pushState
         case test
@@ -21,7 +21,7 @@ final class ServerDetailViewController: UIViewController {
 
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    private var statusText = "Checking…"
+    private var statusText = String(localized: "Checking…")
     private var sessionCount: Int?
     private var serverVersion: String?
     private var modelCount: Int?
@@ -85,9 +85,10 @@ final class ServerDetailViewController: UIViewController {
                 return
             }
             var content = UIListContentConfiguration.footer()
-            content.text =
-                "The default server is where a new chat starts when you haven't aimed the "
-                + "composer somewhere else."
+            content.text = String(
+                localized:
+                    "The default server is where a new chat starts when you haven't aimed the composer somewhere else."
+            )
             view.contentConfiguration = content
         }
 
@@ -104,9 +105,9 @@ final class ServerDetailViewController: UIViewController {
 
     private func sectionTitle(at index: Int) -> String? {
         switch dataSource.snapshot().sectionIdentifiers[safe: index] {
-        case .info: return "Server"
-        case .status: return "Health"
-        case .defaults: return "Defaults"
+        case .info: return String(localized: "Server")
+        case .status: return String(localized: "Health")
+        case .defaults: return String(localized: "Defaults")
         case .actions, .none: return nil
         }
     }
@@ -115,50 +116,52 @@ final class ServerDetailViewController: UIViewController {
         var content = cell.defaultContentConfiguration()
         cell.accessories = []
         switch item {
-        case .value(let label, let value):
+        case .value(let label, let value, let warning):
             content.text = label
             content.secondaryText = value
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color =
-                label == "Update available" ? Theme.Color.warning : Theme.Color.secondaryLabel
+                warning ? Theme.Color.warning : Theme.Color.secondaryLabel
         case .status(let text):
-            content.text = "Status"
+            content.text = String(localized: "Status")
             content.secondaryText = text
             content.prefersSideBySideTextAndSecondaryText = true
         case .pushState:
             let state = PushRegistrar.state(for: profile.baseURL)
-            content.text = "Push notifications"
+            content.text = String(localized: "Push notifications")
             content.secondaryText = Self.pushDetail(state)
             content.secondaryTextProperties.color =
                 state == .registered ? Theme.Color.secondaryLabel : Theme.Color.warning
         case .test:
-            content.text = "Test connection"
+            content.text = String(localized: "Test connection")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "antenna.radiowaves.left.and.right")
             content.imageProperties.tintColor = Theme.Color.accent
         case .makeDefault:
-            content.text = "Make default server"
+            content.text = String(localized: "Make default server")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "star")
             content.imageProperties.tintColor = Theme.Color.accent
         case .isDefault:
-            content.text = "Default server"
+            content.text = String(localized: "Default server")
             content.image = UIImage(systemName: "star.fill")
             content.imageProperties.tintColor = .systemYellow
             cell.accessories = [.checkmark()]
         case .defaultModel:
-            content.text = "Default model"
+            content.text = String(localized: "Default model")
             content.image = UIImage(systemName: "cpu")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.customView(configuration: modelAccessory())]
         case .edit:
-            content.text = "Edit server"
+            content.text = String(localized: "Edit server")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "pencil")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.disclosureIndicator()]
         case .remove:
-            content.text = isDemo ? "Leave the demo" : "Remove connection"
+            content.text =
+                isDemo
+                ? String(localized: "Leave the demo") : String(localized: "Remove connection")
             content.textProperties.color = Theme.Color.danger
             content.image = UIImage(systemName: "trash")
             content.imageProperties.tintColor = Theme.Color.danger
@@ -168,11 +171,12 @@ final class ServerDetailViewController: UIViewController {
 
     private static func pushDetail(_ state: PushRegistrar.State) -> String {
         switch state {
-        case .registered: return "Registered"
-        case .unsupported: return "Bridge too old for pushes"
-        case .failed(let reason): return "Failed — \(reason)"
+        case .registered: return String(localized: "Registered")
+        case .unsupported: return String(localized: "Bridge too old for pushes")
+        case .failed(let reason): return String(localized: "Failed — \(reason)")
         case .unknown:
-            return AppPreferences.pushAlertsEnabled ? "Not registered yet" : "Turned off"
+            return AppPreferences.pushAlertsEnabled
+                ? String(localized: "Not registered yet") : String(localized: "Turned off")
         }
     }
 
@@ -196,7 +200,7 @@ final class ServerDetailViewController: UIViewController {
     /// was drawn is complete by the time the menu opens.
     private func modelMenu() -> UIMenu {
         UIMenu(
-            title: "Default model",
+            title: String(localized: "Default model"),
             children: [
                 UIDeferredMenuElement.uncached { [weak self] completion in
                     Task { @MainActor in
@@ -265,24 +269,29 @@ final class ServerDetailViewController: UIViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections(Section.allCases)
         var info: [Item] = [
-            .value(label: "Backend", value: profile.backend.displayName),
-            .value(label: "Host", value: profile.baseURL.host ?? "—"),
-            .value(label: "Port", value: profile.baseURL.port.map(String.init) ?? "—"),
+            .value(label: String(localized: "Backend"), value: profile.backend.displayName),
+            .value(label: String(localized: "Host"), value: profile.baseURL.host ?? "—"),
+            .value(
+                label: String(localized: "Port"),
+                value: profile.baseURL.port.map(String.init) ?? "—"),
         ]
         if let serverVersion {
-            info.append(.value(label: "Version", value: serverVersion))
+            info.append(.value(label: String(localized: "Version"), value: serverVersion))
         }
         if let modelCount {
-            info.append(.value(label: "Models", value: String(modelCount)))
+            info.append(.value(label: String(localized: "Models"), value: String(modelCount)))
         }
         if let sessionCount {
-            info.append(.value(label: "Sessions", value: String(sessionCount)))
+            info.append(.value(label: String(localized: "Sessions"), value: String(sessionCount)))
         }
         snapshot.appendItems(info, toSection: .info)
 
         var statusItems: [Item] = [.status(statusText)]
         if let latestVersion, let serverVersion, serverVersion != latestVersion {
-            statusItems.append(.value(label: "Update available", value: latestVersion))
+            statusItems.append(
+                .value(
+                    label: String(localized: "Update available"), value: latestVersion,
+                    warning: true))
         }
         if profile.backend == .claudeCode, !isDemo { statusItems.append(.pushState) }
         statusItems.append(.test)
@@ -309,7 +318,7 @@ final class ServerDetailViewController: UIViewController {
     @objc private func pushStatesChanged() { reconfigure([.pushState]) }
 
     private func refresh() async {
-        statusText = "Checking…"
+        statusText = String(localized: "Checking…")
         sessionCount = nil
         serverVersion = nil
         modelCount = nil
@@ -317,7 +326,7 @@ final class ServerDetailViewController: UIViewController {
         let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
         guard let backend = ConnectionController.shared.makeBackend(for: profile, policy: policy)
         else {
-            statusText = "No credentials"
+            statusText = String(localized: "No credentials")
             applySnapshot()
             return
         }
@@ -325,7 +334,8 @@ final class ServerDetailViewController: UIViewController {
         modelChoice = await ChatModelResolver.choice(profileID: profile.id, backend: backend)
         do {
             let health = try await backend.health()
-            statusText = health.healthy ? "Healthy" : "Unhealthy"
+            statusText =
+                health.healthy ? String(localized: "Healthy") : String(localized: "Unhealthy")
             serverVersion = health.version
             ServerHealthMonitor.record(health.healthy, for: profile.id)
             sessionCount = (try? await backend.listSessions())?.count
@@ -334,7 +344,7 @@ final class ServerDetailViewController: UIViewController {
                 latestVersion = await fetchLatestOpencodeRelease()
             }
         } catch {
-            statusText = "Unreachable"
+            statusText = String(localized: "Unreachable")
             ServerHealthMonitor.record(false, for: profile.id)
         }
         applySnapshot()
@@ -376,13 +386,18 @@ final class ServerDetailViewController: UIViewController {
 
     private func confirmRemove() {
         let alert = UIAlertController(
-            title: isDemo ? "Leave the demo?" : "Remove \(profile.name)?",
+            title: isDemo
+                ? String(localized: "Leave the demo?")
+                : String(localized: "Remove \(profile.name)?"),
             message: isDemo
-                ? "This removes both sample servers."
-                : "This deletes the saved server and its password from the Keychain.",
+                ? String(localized: "This removes both sample servers.")
+                : String(
+                    localized: "This deletes the saved server and its password from the Keychain."),
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Remove"), style: .destructive) {
+                [weak self] _ in
             guard let self else { return }
             try? ConnectionController.shared.delete(profile.id)
             ServerHealthMonitor.forget(profile.id)
@@ -419,11 +434,13 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard indexPaths.count == 1,
-            case .value(let label, let value) = dataSource.itemIdentifier(for: indexPaths[0])
+            case .value(_, let value, _) = dataSource.itemIdentifier(for: indexPaths[0])
         else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
             UIMenu(children: [
-                UIAction(title: "Copy \(label.lowercased())", image: UIImage(systemName: "doc.on.doc")) {
+                UIAction(
+                    title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")
+                ) {
                     _ in
                     UIPasteboard.general.string = value
                     Theme.Haptics.tap()

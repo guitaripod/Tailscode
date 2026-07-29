@@ -13,15 +13,15 @@ final class SettingsViewController: UIViewController {
 
         var title: String {
             switch self {
-            case .connections: return "Connections"
-            case .tailnet: return "Tailnet"
-            case .notifications: return "Notifications"
-            case .usage: return "Usage"
-            case .chat: return "Chat"
-            case .appearance: return "Appearance"
+            case .connections: return String(localized: "Connections")
+            case .tailnet: return String(localized: "Tailnet")
+            case .notifications: return String(localized: "Notifications")
+            case .usage: return String(localized: "Usage")
+            case .chat: return String(localized: "Chat")
+            case .appearance: return String(localized: "Appearance")
             case .pro: return "Tailscode Pro"
-            case .diagnostics: return "Diagnostics"
-            case .about: return "About"
+            case .diagnostics: return String(localized: "Diagnostics")
+            case .about: return String(localized: "About")
             }
         }
     }
@@ -32,35 +32,39 @@ final class SettingsViewController: UIViewController {
 
         var title: String {
             switch self {
-            case .autoExpandThinking: return "Auto-expand thinking"
-            case .haptics: return "Haptic feedback"
-            case .sendOnReturn: return "Send on return key"
-            case .promptEnhancement: return "Enhance prompts"
-            case .notifyTurnComplete: return "Turn finished"
-            case .notifyApprovals: return "Approvals and questions"
-            case .notifyUsage: return "Usage warnings"
-            case .serverPush: return "Push from servers"
-            case .liveActivities: return "Live Activities"
+            case .autoExpandThinking: return String(localized: "Auto-expand thinking")
+            case .haptics: return String(localized: "Haptic feedback")
+            case .sendOnReturn: return String(localized: "Send on return key")
+            case .promptEnhancement: return String(localized: "Enhance prompts")
+            case .notifyTurnComplete: return String(localized: "Turn finished")
+            case .notifyApprovals: return String(localized: "Approvals and questions")
+            case .notifyUsage: return String(localized: "Usage warnings")
+            case .serverPush: return String(localized: "Push from servers")
+            case .liveActivities: return String(localized: "Live Activities")
             }
         }
 
         var subtitle: String? {
             switch self {
             case .autoExpandThinking:
-                return "Show the agent's reasoning without tapping to unfold it"
-            case .haptics: return "Taps and thumps as messages send and land"
-            case .sendOnReturn: return "Return sends instead of inserting a newline"
+                return String(localized: "Show the agent's reasoning without tapping to unfold it")
+            case .haptics: return String(localized: "Taps and thumps as messages send and land")
+            case .sendOnReturn:
+                return String(localized: "Return sends instead of inserting a newline")
             case .promptEnhancement:
-                return "Hold Send to refine your draft with the on-device model"
+                return String(localized: "Hold Send to refine your draft with the on-device model")
             case .notifyTurnComplete:
-                return "When an agent this device is watching goes idle"
-            case .notifyApprovals: return "When an agent stops to ask permission or a question"
+                return String(localized: "When an agent this device is watching goes idle")
+            case .notifyApprovals:
+                return String(localized: "When an agent stops to ask permission or a question")
             case .notifyUsage:
-                return "Once per window when a plan limit passes 90%"
+                return String(localized: "Once per window when a plan limit passes 90%")
             case .serverPush:
-                return "Keeps this device registered with claude-bridge, which pushes "
-                    + "turn alerts and refreshes the usage widget while the app is closed"
-            case .liveActivities: return "Live turn progress on the Lock Screen"
+                return String(
+                    localized:
+                        "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed"
+                )
+            case .liveActivities: return String(localized: "Live turn progress on the Lock Screen")
             }
         }
 
@@ -180,7 +184,7 @@ final class SettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Settings"
+        title = String(localized: "Settings")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done, target: self, action: #selector(done))
@@ -293,7 +297,7 @@ final class SettingsViewController: UIViewController {
         let search = UISearchController(searchResultsController: nil)
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
-        search.searchBar.placeholder = "Search settings"
+        search.searchBar.placeholder = String(localized: "Search settings")
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.preferredSearchBarPlacement = .stacked
@@ -307,7 +311,9 @@ final class SettingsViewController: UIViewController {
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, case .profile(let profile) = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
-            let delete = UIContextualAction(style: .destructive, title: "Remove") { _, _, done in
+            let delete = UIContextualAction(
+                style: .destructive, title: String(localized: "Remove")
+            ) { _, _, done in
                 self.removeProfile(profile)
                 done(false)
             }
@@ -372,20 +378,25 @@ final class SettingsViewController: UIViewController {
         switch section {
         case .connections:
             guard query.isEmpty, let checked = ServerHealthMonitor.lastCheckedAt else { return nil }
-            return "Reachability checked \(Self.relative(checked))."
+            return String(localized: "Reachability checked \(Self.relative(checked)).")
         case .tailnet:
-            return "Every server in Tailscode is reached over your tailnet. The API token is "
-                + "only used to list your devices during discovery."
+            return String(
+                localized:
+                    "Every server in Tailscode is reached over your tailnet. The API token is only used to list your devices during discovery."
+            )
         case .notifications:
-            return "Approvals and turn alerts are raised by this device while it is watching a "
-                + "session. Push from servers is what reaches you after the app is closed."
+            return String(
+                localized:
+                    "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed."
+            )
         case .usage:
             guard showsGoCaps else { return nil }
-            return "Go has no usage API, so the Usage screen estimates spend against these "
-                + "caps. The first subscription month runs on a $40 promotional ceiling; the "
-                + "published one is $60. Auto reads the renewal day from your oldest Go request."
+            return String(
+                localized:
+                    "Go has no usage API, so the Usage screen estimates spend against these caps. The first subscription month runs on a $40 promotional ceiling; the published one is $60. Auto reads the renewal day from your oldest Go request."
+            )
         case .about:
-            return "\(Self.copyright)\nCoding agents over Tailscale."
+            return "\(Self.copyright)\n" + String(localized: "Coding agents over Tailscale.")
         case .chat, .appearance, .pro, .diagnostics:
             return nil
         }
@@ -397,13 +408,20 @@ final class SettingsViewController: UIViewController {
         switch item {
         case .connectionAlert:
             let tailnetDown = ServerHealthMonitor.verdict() == .tailnetDown
-            content.text = tailnetDown ? "Tailscale looks disconnected" : "No server is answering"
+            content.text =
+                tailnetDown
+                ? String(localized: "Tailscale looks disconnected")
+                : String(localized: "No server is answering")
             content.secondaryText =
                 tailnetDown
-                ? "This device has no tailnet address, so none of your servers can be reached. "
-                    + "Open Tailscale and connect."
-                : "Tailscale is up, so the agent processes are the likely problem. Check that "
-                    + "opencode or claude-bridge is still running."
+                ? String(
+                    localized:
+                        "This device has no tailnet address, so none of your servers can be reached. Open Tailscale and connect."
+                )
+                : String(
+                    localized:
+                        "Tailscale is up, so the agent processes are the likely problem. Check that opencode or claude-bridge is still running."
+                )
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.textProperties.color = Theme.Color.warning
             content.image = UIImage(
@@ -416,7 +434,7 @@ final class SettingsViewController: UIViewController {
             if profile.id == ConnectionController.shared.activeProfileID,
                 ConnectionController.shared.profiles.count > 1
             {
-                detail += " · default"
+                detail += " · " + String(localized: "default")
             }
             content.secondaryText = detail
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -424,55 +442,59 @@ final class SettingsViewController: UIViewController {
             content.imageProperties.tintColor = profile.backend.brandColor
             cell.accessories = [healthDot(for: profile.id), .disclosureIndicator()]
         case .addConnection:
-            content.text = "Add connection"
+            content.text = String(localized: "Add connection")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "plus.circle.fill")
             content.imageProperties.tintColor = Theme.Color.accent
         case .discover:
-            content.text = "Discover on tailnet"
+            content.text = String(localized: "Discover on tailnet")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "magnifyingglass")
             content.imageProperties.tintColor = Theme.Color.accent
         case .leaveDemo:
-            content.text = "Leave the demo"
-            content.secondaryText = "Remove the sample servers and connect your own"
+            content.text = String(localized: "Leave the demo")
+            content.secondaryText = String(
+                localized: "Remove the sample servers and connect your own")
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "play.slash")
             content.imageProperties.tintColor = .systemOrange
         case .tailnetStatus:
             content.text = "Tailscale"
             if let tailnetAddress {
-                content.secondaryText = "Connected · \(tailnetAddress)"
+                content.secondaryText = String(localized: "Connected · \(tailnetAddress)")
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
                 content.image = UIImage(systemName: "checkmark.shield.fill")
                 content.imageProperties.tintColor = Theme.Color.success
             } else {
-                content.secondaryText = "No tailnet address — tap to open Tailscale"
+                content.secondaryText = String(localized: "No tailnet address — tap to open Tailscale")
                 content.secondaryTextProperties.color = Theme.Color.warning
                 content.image = UIImage(systemName: "exclamationmark.shield.fill")
                 content.imageProperties.tintColor = Theme.Color.warning
             }
         case .tailnetToken:
-            content.text = "API access token"
-            content.secondaryText = TailnetCredentials.hasToken ? "Saved in Keychain" : "Not set"
+            content.text = String(localized: "API access token")
+            content.secondaryText =
+                TailnetCredentials.hasToken
+                ? String(localized: "Saved in Keychain") : String(localized: "Not set")
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "key")
             content.imageProperties.tintColor = .systemIndigo
             cell.accessories = [.disclosureIndicator()]
         case .tailnetScan:
-            content.text = "Last discovery"
+            content.text = String(localized: "Last discovery")
             if let scan = TailnetCredentials.lastScan {
                 content.secondaryText =
-                    "\(scan.serverCount) of \(scan.deviceCount) devices · \(Self.relative(scan.date))"
+                    String(localized: "\(scan.serverCount) of \(scan.deviceCount) devices")
+                    + " · \(Self.relative(scan.date))"
             } else {
-                content.secondaryText = "Never"
+                content.secondaryText = String(localized: "Never")
             }
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "dot.radiowaves.left.and.right")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
         case .notificationPermission:
-            content.text = "System permission"
+            content.text = String(localized: "System permission")
             let (detail, color, symbol) = permissionDetail()
             content.secondaryText = detail
             content.secondaryTextProperties.color = color
@@ -491,7 +513,7 @@ final class SettingsViewController: UIViewController {
         case .pushState(let profileID):
             let profile = ConnectionController.shared.profiles.first { $0.id == profileID }
             let state = profile.map { PushRegistrar.state(for: $0.baseURL) } ?? .unknown
-            content.text = profile?.name ?? "Server"
+            content.text = profile?.name ?? String(localized: "Server")
             content.secondaryText = pushDetail(state)
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color =
@@ -500,88 +522,89 @@ final class SettingsViewController: UIViewController {
             content.imageProperties.tintColor =
                 state == .registered ? Theme.Color.success : Theme.Color.warning
         case .testNotification:
-            content.text = "Send a test notification"
+            content.text = String(localized: "Send a test notification")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "paperplane")
             content.imageProperties.tintColor = Theme.Color.accent
         case .usage:
-            content.text = "Usage and limits"
+            content.text = String(localized: "Usage and limits")
             content.image = UIImage(systemName: "gauge.with.dots.needle.67percent")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.disclosureIndicator()]
         case .goMonthlyCap:
-            content.text = "opencode go monthly cap"
+            content.text = String(localized: "opencode go monthly cap")
             content.image = UIImage(systemName: "dollarsign.circle")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.customView(configuration: monthlyCapAccessory())]
         case .goBillingDay:
-            content.text = "Billing day"
+            content.text = String(localized: "Billing day")
             content.image = UIImage(systemName: "calendar")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.customView(configuration: billingDayAccessory())]
         case .appearance:
-            content.text = "Theme"
+            content.text = String(localized: "Theme")
             content.image = UIImage(systemName: "circle.lefthalf.filled")
             content.imageProperties.tintColor = .systemIndigo
             cell.accessories = [.customView(configuration: appearanceAccessory())]
         case .pro:
             content.text = "Tailscode Pro"
             if ProStore.shared.isPro {
-                content.secondaryText = "Supporter — thank you ♥"
+                content.secondaryText = String(localized: "Supporter — thank you ♥")
                 content.image = UIImage(systemName: "heart.fill")
                 content.imageProperties.tintColor = Theme.Color.danger
             } else {
-                content.secondaryText =
-                    "Unlimited servers, concurrent Live Activities, support development"
+                content.secondaryText = String(
+                    localized: "Unlimited servers, concurrent Live Activities, support development")
                 content.image = UIImage(systemName: "sparkles")
                 content.imageProperties.tintColor = .systemPurple
             }
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .viewLogs:
-            content.text = "View logs"
+            content.text = String(localized: "View logs")
             content.image = UIImage(systemName: "doc.text.magnifyingglass")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .testAll:
-            content.text = "Test all connections"
+            content.text = String(localized: "Test all connections")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "antenna.radiowaves.left.and.right")
             content.imageProperties.tintColor = Theme.Color.accent
         case .copyDiagnostics:
-            content.text = "Copy diagnostics"
-            content.secondaryText = "Build, tailnet, notifications, servers, usage — as text"
+            content.text = String(localized: "Copy diagnostics")
+            content.secondaryText = String(
+                localized: "Build, tailnet, notifications, servers, usage — as text")
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "doc.on.clipboard")
             content.imageProperties.tintColor = Theme.Color.accent
         case .emailDiagnostics:
-            content.text = "Email diagnostics"
+            content.text = String(localized: "Email diagnostics")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "envelope")
             content.imageProperties.tintColor = Theme.Color.accent
         case .version:
-            content.text = "Version"
+            content.text = String(localized: "Version")
             content.secondaryText = Self.versionString
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
         case .source:
-            content.text = "Source code"
+            content.text = String(localized: "Source code")
             content.image = UIImage(systemName: "chevron.left.forwardslash.chevron.right")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .privacy:
-            content.text = "Privacy policy"
+            content.text = String(localized: "Privacy policy")
             content.image = UIImage(systemName: "hand.raised.square")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .support:
-            content.text = "Support"
+            content.text = String(localized: "Support")
             content.image = UIImage(systemName: "lifepreserver")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .licenses:
-            content.text = "Acknowledgements"
+            content.text = String(localized: "Acknowledgements")
             content.image = UIImage(systemName: "doc.text")
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
@@ -592,26 +615,33 @@ final class SettingsViewController: UIViewController {
     private func permissionDetail() -> (String, UIColor, String) {
         switch notificationStatus {
         case .some(.authorized), .some(.provisional), .some(.ephemeral):
-            return ("Allowed", Theme.Color.secondaryLabel, "bell.badge.fill")
+            return (String(localized: "Allowed"), Theme.Color.secondaryLabel, "bell.badge.fill")
         case .some(.denied):
-            return ("Turned off — tap to open iOS Settings", Theme.Color.danger, "bell.slash.fill")
+            return (
+                String(localized: "Turned off — tap to open iOS Settings"), Theme.Color.danger,
+                "bell.slash.fill"
+            )
         case .some(.notDetermined):
-            return ("Not requested — tap to allow", Theme.Color.warning, "bell.badge")
+            return (
+                String(localized: "Not requested — tap to allow"), Theme.Color.warning, "bell.badge"
+            )
         case .none:
-            return ("Checking…", Theme.Color.secondaryLabel, "bell.badge")
+            return (String(localized: "Checking…"), Theme.Color.secondaryLabel, "bell.badge")
         default:
-            return ("Unknown", Theme.Color.secondaryLabel, "bell.badge")
+            return (String(localized: "Unknown"), Theme.Color.secondaryLabel, "bell.badge")
         }
     }
 
     private func pushDetail(_ state: PushRegistrar.State) -> String {
         switch state {
-        case .registered: return "Registered"
-        case .unsupported: return "Bridge too old"
-        case .failed: return "Failed — tap to retry"
+        case .registered: return String(localized: "Registered")
+        case .unsupported: return String(localized: "Bridge too old")
+        case .failed: return String(localized: "Failed — tap to retry")
         case .unknown:
-            if !AppPreferences.pushAlertsEnabled { return "Turned off" }
-            return PushRegistrar.hasToken ? "Not registered — tap to retry" : "Waiting for token"
+            if !AppPreferences.pushAlertsEnabled { return String(localized: "Turned off") }
+            return PushRegistrar.hasToken
+                ? String(localized: "Not registered — tap to retry")
+                : String(localized: "Waiting for token")
         }
     }
 
@@ -620,10 +650,18 @@ final class SettingsViewController: UIViewController {
         let color: UIColor
         let label: String
         switch ServerHealthMonitor.entry(for: id)?.reachable {
-        case .some(true): (symbol, color, label) = ("circle.fill", Theme.Color.success, "Reachable")
+        case .some(true):
+            (symbol, color, label) = (
+                "circle.fill", Theme.Color.success, String(localized: "Reachable")
+            )
         case .some(false):
-            (symbol, color, label) = ("exclamationmark.circle.fill", Theme.Color.danger, "Unreachable")
-        case .none: (symbol, color, label) = ("circle.dotted", Theme.Color.separator, "Checking")
+            (symbol, color, label) = (
+                "exclamationmark.circle.fill", Theme.Color.danger, String(localized: "Unreachable")
+            )
+        case .none:
+            (symbol, color, label) = (
+                "circle.dotted", Theme.Color.separator, String(localized: "Checking")
+            )
         }
         let dot = UIImageView(
             image: UIImage(
@@ -711,7 +749,8 @@ final class SettingsViewController: UIViewController {
         }
         actions.append(
             UIAction(
-                title: "Custom…", state: Self.monthlyCapPresets.contains(current) ? .off : .on
+                title: String(localized: "Custom…"),
+                state: Self.monthlyCapPresets.contains(current) ? .off : .on
             ) { [weak self] _ in
                 self?.promptForMonthlyCap()
             })
@@ -736,16 +775,17 @@ final class SettingsViewController: UIViewController {
 
     private func promptForMonthlyCap() {
         let alert = UIAlertController(
-            title: "Monthly cap",
-            message: "The dollar ceiling the monthly gauge fills against.",
+            title: String(localized: "Monthly cap"),
+            message: String(localized: "The dollar ceiling the monthly gauge fills against."),
             preferredStyle: .alert)
         alert.addTextField { field in
             field.keyboardType = .decimalPad
             field.text = Self.amountText(AppPreferences.goMonthlyCap)
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
-            UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            UIAlertAction(title: String(localized: "Save"), style: .default) {
+                [weak self, weak alert] _ in
                 let typed = alert?.textFields?.first?.text ?? ""
                 guard let cap = Double(typed.replacingOccurrences(of: ",", with: ".")), cap > 0
                 else { return }
@@ -782,7 +822,7 @@ final class SettingsViewController: UIViewController {
     private static func amountText(_ value: Double) -> String { String(format: "%g", value) }
 
     private static func billingDayTitle(_ day: Int) -> String {
-        (1...31).contains(day) ? "Day \(day)" : "Auto"
+        (1...31).contains(day) ? String(localized: "Day \(day)") : String(localized: "Auto")
     }
 
     /// The Go caps only mean anything to someone running opencode, so the
@@ -856,7 +896,7 @@ final class SettingsViewController: UIViewController {
             return
         }
         var config = UIContentUnavailableConfiguration.search()
-        config.text = "No settings match \"\(query)\""
+        config.text = String(localized: "No settings match \"\(query)\"")
         contentUnavailableConfiguration = config
     }
 
@@ -909,35 +949,72 @@ final class SettingsViewController: UIViewController {
 
     private func keywords(for item: Item) -> String {
         switch item {
-        case .connectionAlert: return "unreachable tailscale offline servers"
+        case .connectionAlert:
+            return String(localized: "unreachable tailscale offline servers", comment: "search keywords")
         case .profile(let profile):
-            return "\(profile.name) \(profile.backend.displayName) \(profile.baseURL.host ?? "") server connection"
-        case .addConnection: return "add connection server new"
-        case .discover: return "discover tailnet scan servers"
-        case .leaveDemo: return "leave demo sample"
-        case .tailnetStatus: return "tailscale tailnet vpn status connected address"
-        case .tailnetToken: return "tailscale api token key keychain discovery"
-        case .tailnetScan: return "last discovery scan devices tailnet"
-        case .notificationPermission: return "notifications permission authorization alerts allow"
+            return "\(profile.name) \(profile.backend.displayName) \(profile.baseURL.host ?? "") "
+                + String(localized: "server connection", comment: "search keywords")
+        case .addConnection:
+            return String(localized: "add connection server new", comment: "search keywords")
+        case .discover:
+            return String(localized: "discover tailnet scan servers", comment: "search keywords")
+        case .leaveDemo: return String(localized: "leave demo sample", comment: "search keywords")
+        case .tailnetStatus:
+            return String(
+                localized: "tailscale tailnet vpn status connected address", comment: "search keywords")
+        case .tailnetToken:
+            return String(
+                localized: "tailscale api token key keychain discovery", comment: "search keywords")
+        case .tailnetScan:
+            return String(
+                localized: "last discovery scan devices tailnet", comment: "search keywords")
+        case .notificationPermission:
+            return String(
+                localized: "notifications permission authorization alerts allow",
+                comment: "search keywords")
         case .toggle(let toggle): return "\(toggle.title) \(toggle.subtitle ?? "")"
         case .pushState(let id):
             let name = ConnectionController.shared.profiles.first { $0.id == id }?.name ?? ""
             return "push notifications bridge \(name)"
-        case .testNotification: return "test notification send check"
-        case .usage: return "usage limits quota gauges plan spend"
-        case .goMonthlyCap: return "opencode go monthly cap dollars limit spend"
-        case .goBillingDay: return "billing day renewal cycle opencode go"
-        case .appearance: return "theme appearance dark light mode"
-        case .pro: return "pro purchase upgrade supporter restore tip"
-        case .viewLogs: return "logs diagnostics view file debug"
-        case .testAll: return "test all connections health reachability"
-        case .copyDiagnostics: return "copy diagnostics report bug support"
-        case .emailDiagnostics: return "email diagnostics support bug report"
-        case .version: return "version build number"
-        case .source: return "source code github open source gpl"
-        case .privacy: return "privacy policy data"
-        case .support: return "support help contact"
-        case .licenses: return "acknowledgements licenses third party open source"
+        case .testNotification:
+            return String(localized: "test notification send check", comment: "search keywords")
+        case .usage:
+            return String(
+                localized: "usage limits quota gauges plan spend", comment: "search keywords")
+        case .goMonthlyCap:
+            return String(
+                localized: "opencode go monthly cap dollars limit spend", comment: "search keywords")
+        case .goBillingDay:
+            return String(
+                localized: "billing day renewal cycle opencode go", comment: "search keywords")
+        case .appearance:
+            return String(
+                localized: "theme appearance dark light mode", comment: "search keywords")
+        case .pro:
+            return String(
+                localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
+        case .viewLogs:
+            return String(
+                localized: "logs diagnostics view file debug", comment: "search keywords")
+        case .testAll:
+            return String(
+                localized: "test all connections health reachability", comment: "search keywords")
+        case .copyDiagnostics:
+            return String(
+                localized: "copy diagnostics report bug support", comment: "search keywords")
+        case .emailDiagnostics:
+            return String(
+                localized: "email diagnostics support bug report", comment: "search keywords")
+        case .version: return String(localized: "version build number", comment: "search keywords")
+        case .source:
+            return String(
+                localized: "source code github open source gpl", comment: "search keywords")
+        case .privacy: return String(localized: "privacy policy data", comment: "search keywords")
+        case .support: return String(localized: "support help contact", comment: "search keywords")
+        case .licenses:
+            return String(
+                localized: "acknowledgements licenses third party open source",
+                comment: "search keywords")
         }
     }
 
@@ -959,13 +1036,17 @@ final class SettingsViewController: UIViewController {
     private func removeProfile(_ profile: ConnectionProfile) {
         let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let alert = UIAlertController(
-            title: isDemo ? "Leave the demo?" : "Remove \(profile.name)?",
+            title: isDemo
+                ? String(localized: "Leave the demo?")
+                : String(localized: "Remove \(profile.name)?"),
             message: isDemo
-                ? "This removes both sample servers."
-                : "This deletes the saved server and its password from the Keychain.",
+                ? String(localized: "This removes both sample servers.")
+                : String(
+                    localized: "This deletes the saved server and its password from the Keychain."),
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Remove", style: .destructive) { _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Remove"), style: .destructive) { _ in
             try? ConnectionController.shared.delete(profile.id)
             ServerHealthMonitor.forget(profile.id)
             Theme.Haptics.warning()
@@ -1007,9 +1088,10 @@ final class SettingsViewController: UIViewController {
             Theme.Haptics.success()
             guard let self else { return }
             let alert = UIAlertController(
-                title: "Copied", message: "Diagnostics are on the clipboard.",
+                title: String(localized: "Copied"),
+                message: String(localized: "Diagnostics are on the clipboard."),
                 preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
             self.present(alert, animated: true)
         }
     }
@@ -1035,11 +1117,13 @@ final class SettingsViewController: UIViewController {
 
     private func presentMailFallback() {
         let alert = UIAlertController(
-            title: "No mail account",
-            message:
-                "Diagnostics were copied to the clipboard instead. Send them to \(Self.supportEmail).",
+            title: String(localized: "No mail account"),
+            message: String(
+                localized:
+                    "Diagnostics were copied to the clipboard instead. Send them to \(Self.supportEmail)."
+            ),
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
         present(alert, animated: true)
     }
 
@@ -1146,7 +1230,9 @@ extension SettingsViewController: UICollectionViewDelegate {
         guard indexPaths.count == 1, case .version = dataSource.itemIdentifier(for: indexPaths[0])
         else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-            let copy = UIAction(title: "Copy version", image: UIImage(systemName: "doc.on.doc")) { _ in
+            let copy = UIAction(
+                title: String(localized: "Copy version"), image: UIImage(systemName: "doc.on.doc")
+            ) { _ in
                 UIPasteboard.general.string = "Tailscode \(Self.versionString)"
                 Theme.Haptics.tap()
             }

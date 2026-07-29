@@ -55,7 +55,7 @@ final class SavedChatsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Saved"
+        title = String(localized: "Saved")
         navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
         configureSearch()
@@ -104,7 +104,7 @@ final class SavedChatsViewController: UIViewController {
     private func configureSearch() {
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search saved"
+        searchController.searchBar.placeholder = String(localized: "Search saved")
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
         definesPresentationContext = true
@@ -117,7 +117,9 @@ final class SavedChatsViewController: UIViewController {
             guard let self, let row = self.dataSource.itemIdentifier(for: indexPath) else {
                 return nil
             }
-            let remove = UIContextualAction(style: .destructive, title: "Remove") { _, _, done in
+            let remove = UIContextualAction(
+                style: .destructive, title: String(localized: "Remove")
+            ) { _, _, done in
                 Theme.Haptics.tap()
                 SavedChatStore.remove(
                     profileID: row.chat.profileID, sessionID: row.chat.sessionID)
@@ -199,11 +201,14 @@ final class SavedChatsViewController: UIViewController {
     private static func detail(for row: Row) -> String {
         switch row.availability {
         case .missing:
-            return "No longer on \(row.chat.profileName)"
+            return String(localized: "No longer on \(row.chat.profileName)")
         case .serverRemoved:
-            return "Server removed — saved copy only"
+            return String(localized: "Server removed — saved copy only")
         case .offline:
-            return "\(row.chat.profileName) unreachable · saved \(row.chat.savedAt.formatted(.relative(presentation: .named)))"
+            return String(
+                localized:
+                    "\(row.chat.profileName) unreachable · saved \(row.chat.savedAt.formatted(.relative(presentation: .named)))"
+            )
         case .live, .unknown:
             var parts = [row.chat.profileName]
             if let project = row.chat.projectName { parts.append(project) }
@@ -286,10 +291,11 @@ final class SavedChatsViewController: UIViewController {
         } else {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "bookmark")
-            config.text = "Nothing saved"
-            config.secondaryText =
-                "Swipe a conversation in Chats, or use the ⋯ menu inside one, to keep it here — "
-                + "saved chats stay listed even when their server is offline."
+            config.text = String(localized: "Nothing saved")
+            config.secondaryText = String(
+                localized:
+                    "Swipe a conversation in Chats, or use the ⋯ menu inside one, to keep it here — saved chats stay listed even when their server is offline."
+            )
             contentUnavailableConfiguration = config
         }
     }
@@ -325,13 +331,14 @@ final class SavedChatsViewController: UIViewController {
     private func confirmRemoveUnavailable(_ row: Row) {
         let reason =
             row.availability == .serverRemoved
-            ? "Its server is no longer connected."
-            : "It is no longer on \(row.chat.profileName)."
+            ? String(localized: "Its server is no longer connected.")
+            : String(localized: "It is no longer on \(row.chat.profileName).")
         let alert = UIAlertController(
-            title: "Can't open this chat", message: reason, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Keep", style: .cancel))
+            title: String(localized: "Can't open this chat"), message: reason,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Keep"), style: .cancel))
         alert.addAction(
-            UIAlertAction(title: "Remove from Saved", style: .destructive) { _ in
+            UIAlertAction(title: String(localized: "Remove from Saved"), style: .destructive) { _ in
                 Theme.Haptics.tap()
                 SavedChatStore.remove(
                     profileID: row.chat.profileID, sessionID: row.chat.sessionID)
@@ -358,18 +365,25 @@ extension SavedChatsViewController: UICollectionViewDelegate {
             var actions: [UIMenuElement] = []
             if row.availability.isOpenable {
                 actions.append(
-                    UIAction(title: "Open", image: UIImage(systemName: "bubble.left")) { _ in
+                    UIAction(
+                        title: String(localized: "Open"),
+                        image: UIImage(systemName: "bubble.left")
+                    ) { _ in
                         self?.open(row)
                     })
             }
             actions.append(
-                UIAction(title: "Copy title", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIAction(
+                    title: String(localized: "Copy title"),
+                    image: UIImage(systemName: "doc.on.doc")
+                ) { _ in
                     UIPasteboard.general.string = row.chat.displayTitle
                     Theme.Haptics.success()
                 })
             actions.append(
                 UIAction(
-                    title: "Remove from Saved", image: UIImage(systemName: "bookmark.slash"),
+                    title: String(localized: "Remove from Saved"),
+                    image: UIImage(systemName: "bookmark.slash"),
                     attributes: .destructive
                 ) { _ in
                     Theme.Haptics.tap()

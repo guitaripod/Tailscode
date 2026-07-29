@@ -17,8 +17,8 @@ final class LicensesViewController: UIViewController {
         var title: String {
             switch self {
             case .tailscode: return "Tailscode"
-            case .apple: return "Apple Open Source"
-            case .thirdParty: return "Third Party"
+            case .apple: return String(localized: "Apple Open Source")
+            case .thirdParty: return String(localized: "Third Party")
             }
         }
     }
@@ -71,7 +71,7 @@ final class LicensesViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Acknowledgements"
+        title = String(localized: "Acknowledgements")
         view.backgroundColor = Theme.Color.groupedBackground
         configure()
         applySnapshot()
@@ -115,9 +115,10 @@ final class LicensesViewController: UIViewController {
                 return
             }
             var content = UIListContentConfiguration.footer()
-            content.text =
-                "Tailscode is free software under the GNU General Public License v3. "
-                + "You are entitled to the complete source, which is linked above."
+            content.text = String(
+                localized:
+                    "Tailscode is free software under the GNU General Public License v3. You are entitled to the complete source, which is linked above."
+            )
             view.contentConfiguration = content
         }
 

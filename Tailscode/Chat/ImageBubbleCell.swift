@@ -159,7 +159,7 @@ final class ImageBubbleCell: UICollectionViewCell {
     private func showFailure(_ file: FileReference) {
         stopShimmer()
         failure.isHidden = false
-        failure.text = "Couldn't load \(file.displayName)"
+        failure.text = String(localized: "Couldn't load \(file.displayName)")
         ratio?.isActive = false
         ratio = imageView.widthAnchor.constraint(equalTo: imageView.heightAnchor, multiplier: 1.9)
         ratio?.priority = UILayoutPriority(998)

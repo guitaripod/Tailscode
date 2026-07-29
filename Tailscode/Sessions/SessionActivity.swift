@@ -70,7 +70,8 @@ final class SessionActivity {
         if status == .idle, previous != .idle, !remotePushCovers(profileID: profileID) {
             NotificationManager.notify(
                 kind: .turnComplete,
-                title: title, body: "Your agent finished.", identifier: "done:\(sessionID)",
+                title: title, body: String(localized: "Your agent finished."),
+                identifier: "done:\(sessionID)",
                 sessionID: sessionID)
         }
         NotificationCenter.default.post(name: Self.didChange, object: nil)

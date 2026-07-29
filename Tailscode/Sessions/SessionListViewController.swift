@@ -39,7 +39,7 @@ final class SessionListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Chats"
+        title = String(localized: "Chats")
         navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
         configureSearch()
@@ -86,7 +86,8 @@ final class SessionListViewController: UIViewController {
     private func configureSearch() {
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search chats, projects, servers"
+        searchController.searchBar.placeholder = String(
+            localized: "Search chats, projects, servers")
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
     }
@@ -104,7 +105,7 @@ final class SessionListViewController: UIViewController {
                 ) { [weak self] _ in self?.startChat(on: profile) }
             }
             composeItem = UIBarButtonItem(
-                image: compose, menu: UIMenu(title: "New chat on…", children: actions))
+                image: compose, menu: UIMenu(title: String(localized: "New chat on…"), children: actions))
         } else {
             composeItem = UIBarButtonItem(
                 image: compose, primaryAction: UIAction { [weak self] _ in
@@ -112,11 +113,11 @@ final class SessionListViewController: UIViewController {
                     self.startChat(on: profile)
                 })
         }
-        composeItem.accessibilityLabel = "New chat"
+        composeItem.accessibilityLabel = String(localized: "New chat")
         let saved = UIBarButtonItem(
             image: UIImage(systemName: "bookmark"),
             primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
-        saved.accessibilityLabel = "Saved chats"
+        saved.accessibilityLabel = String(localized: "Saved chats")
         navigationItem.rightBarButtonItems = [composeItem, saved]
     }
 
@@ -160,13 +161,17 @@ final class SessionListViewController: UIViewController {
 
     private func rebuildChips() {
         chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        chipStack.addArrangedSubview(chip(title: "All", isSelected: filter == .all) { [weak self] in
+        chipStack.addArrangedSubview(
+            chip(title: String(localized: "All"), isSelected: filter == .all) { [weak self] in
             self?.setFilter(.all)
-        })
+            })
         let liveCount = viewModel.entries.count(where: isLive)
         if liveCount > 0 || filter == .live {
             chipStack.addArrangedSubview(
-                chip(title: "Live · \(liveCount)", isSelected: filter == .live, tint: Theme.Color.success) {
+                chip(
+                    title: String(localized: "Live · \(liveCount)"), isSelected: filter == .live,
+                    tint: Theme.Color.success
+                ) {
                     [weak self] in self?.setFilter(.live)
                 })
         }
@@ -226,7 +231,9 @@ final class SessionListViewController: UIViewController {
             guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath),
                 self.viewModel.supportsMultipleSessions(entry)
             else { return nil }
-            let delete = UIContextualAction(style: .destructive, title: "Delete") {
+            let delete = UIContextualAction(
+                style: .destructive, title: String(localized: "Delete")
+            ) {
                 [weak self] _, _, done in
                 self?.confirmDelete(entry, done: done)
             }
@@ -240,7 +247,8 @@ final class SessionListViewController: UIViewController {
             else { return nil }
             let isSaved = SavedChatStore.contains(entry)
             let save = UIContextualAction(
-                style: .normal, title: isSaved ? "Remove" : "Save"
+                style: .normal,
+                title: isSaved ? String(localized: "Remove") : String(localized: "Save")
             ) { _, _, done in
                 Theme.Haptics.tap()
                 SavedChatStore.toggle(entry)
@@ -317,11 +325,11 @@ final class SessionListViewController: UIViewController {
 
             switch SessionActivity.shared.status(for: entry.session.id) {
             case .running:
-                cell.accessibilityValue = "Agent running"
+                cell.accessibilityValue = String(localized: "Agent running")
             case .awaitingApproval:
-                cell.accessibilityValue = "Awaiting approval"
+                cell.accessibilityValue = String(localized: "Awaiting approval")
             case .idle:
-                cell.accessibilityValue = isLive ? "Live" : nil
+                cell.accessibilityValue = isLive ? String(localized: "Live") : nil
             }
         }
 
@@ -365,8 +373,8 @@ final class SessionListViewController: UIViewController {
             unreachableLabel.isHidden = true
             unreachableLabel.text = nil
         } else {
-            unreachableLabel.text =
-                "\(names.joined(separator: ", ")) unreachable — pull to retry"
+            unreachableLabel.text = String(
+                localized: "\(names.joined(separator: ", ")) unreachable — pull to retry")
             unreachableLabel.isHidden = false
         }
     }
@@ -417,40 +425,44 @@ final class SessionListViewController: UIViewController {
         } else if case .live = filter {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "moon.zzz")
-            config.text = "Nothing running"
-            config.secondaryText = "Live sessions show up here the moment an agent starts working."
+            config.text = String(localized: "Nothing running")
+            config.secondaryText = String(
+                localized: "Live sessions show up here the moment an agent starts working.")
             contentUnavailableConfiguration = config
         } else if viewModel.isEmptyOfServers {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "server.rack")
-            config.text = "No servers connected"
-            config.secondaryText = "Add a connection in Settings to start chatting with your agents."
+            config.text = String(localized: "No servers connected")
+            config.secondaryText = String(
+                localized: "Add a connection in Settings to start chatting with your agents.")
             contentUnavailableConfiguration = config
         } else if viewModel.entries.isEmpty, !viewModel.unreachable.isEmpty {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "wifi.exclamationmark")
-            config.text = "Server unreachable"
-            config.secondaryText = "Pull down to retry the connection."
+            config.text = String(localized: "Server unreachable")
+            config.secondaryText = String(localized: "Pull down to retry the connection.")
             contentUnavailableConfiguration = config
         } else {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "bubble.left.and.bubble.right")
-            config.text = "No conversations here yet"
-            config.secondaryText = "Start one with the compose button."
+            config.text = String(localized: "No conversations here yet")
+            config.secondaryText = String(localized: "Start one with the compose button.")
             contentUnavailableConfiguration = config
         }
     }
 
     private func promptRename(_ entry: SessionEntry) {
         let alert = UIAlertController(
-            title: "Rename conversation", message: nil, preferredStyle: .alert)
+            title: String(localized: "Rename conversation"), message: nil, preferredStyle: .alert)
         alert.addTextField { field in
             field.text = entry.session.title
             field.clearButtonMode = .whileEditing
             field.autocapitalizationType = .sentences
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Rename"), style: .default) {
+                [weak self, weak alert] _ in
             let title = alert?.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty, title != entry.session.title else { return }
@@ -462,11 +474,16 @@ final class SessionListViewController: UIViewController {
 
     private func confirmDelete(_ entry: SessionEntry, done: @escaping (Bool) -> Void) {
         let alert = UIAlertController(
-            title: "Delete conversation?",
-            message: "\"\(Self.displayTitle(entry.session.title))\" will be removed from the server.",
+            title: String(localized: "Delete conversation?"),
+            message: String(
+                localized:
+                    "\"\(Self.displayTitle(entry.session.title))\" will be removed from the server."
+            ),
             preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(false) })
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in done(false) })
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Delete"), style: .destructive) { [weak self] _ in
             Theme.Haptics.warning()
             Task {
                 await self?.viewModel.delete(entry)
@@ -481,7 +498,7 @@ final class SessionListViewController: UIViewController {
             return title.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "Empty conversation" : "New conversation"
+            ? String(localized: "Empty conversation") : String(localized: "New conversation")
     }
 
     private static func relativeDate(_ date: Date) -> String {
@@ -489,11 +506,11 @@ final class SessionListViewController: UIViewController {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) {
             let diff = now.timeIntervalSince(date)
-            if diff < 60 { return "Just now" }
-            if diff < 3600 { return "\(Int(diff / 60))m ago" }
+            if diff < 60 { return String(localized: "Just now") }
+            if diff < 3600 { return String(localized: "\(Int(diff / 60))m ago") }
             return date.formatted(.dateTime.hour().minute())
         }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        if calendar.isDateInYesterday(date) { return String(localized: "Yesterday") }
         if calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
             return date.formatted(.dateTime.weekday(.wide))
         }
@@ -518,7 +535,7 @@ final class SessionListViewController: UIViewController {
                 configuration: .init(customView: spinner, placement: .trailing(displayed: .always)))
         case .awaitingApproval:
             let label = UILabel()
-            label.text = "APPROVAL"
+            label.text = String(localized: "APPROVAL")
             label.font = UIFontMetrics(forTextStyle: .caption2)
                 .scaledFont(for: .systemFont(ofSize: 10, weight: .bold))
             label.adjustsFontForContentSizeCategory = true
@@ -570,10 +587,23 @@ final class SessionListViewController: UIViewController {
         navigationController?.pushViewController(chat, animated: true)
     }
 
+    #if DEBUG
+        var tourScrollView: UIScrollView { collectionView }
+
+        func tourOpen(_ sessionID: String) {
+            guard let entry = viewModel.entries.first(where: { $0.session.id == sessionID })
+            else { return }
+            SessionSeenStore.markSeen(sessionID)
+            openChat(for: entry)
+        }
+    #endif
+
     private func present(error message: String) {
         refreshControl.endRefreshing()
-        let alert = UIAlertController(title: "Something went wrong", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(
+            title: String(localized: "Something went wrong"), message: message,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
         present(alert, animated: true)
     }
 }
@@ -601,7 +631,7 @@ extension SessionListViewController: UICollectionViewDelegate {
             {
                 actions.append(
                     UIAction(
-                        title: "New chat in same project",
+                        title: String(localized: "New chat in same project"),
                         image: UIImage(systemName: "plus.bubble")
                     ) { [weak self] _ in
                         Task {
@@ -617,7 +647,8 @@ extension SessionListViewController: UICollectionViewDelegate {
             let isSaved = SavedChatStore.contains(entry)
             actions.append(
                 UIAction(
-                    title: isSaved ? "Remove from Saved" : "Save chat",
+                    title: isSaved
+                        ? String(localized: "Remove from Saved") : String(localized: "Save chat"),
                     image: UIImage(systemName: isSaved ? "bookmark.slash" : "bookmark")
                 ) { _ in
                     Theme.Haptics.tap()
@@ -625,20 +656,25 @@ extension SessionListViewController: UICollectionViewDelegate {
                 })
             if self.viewModel.supportsRenaming(entry) {
                 actions.append(
-                    UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                    UIAction(
+                        title: String(localized: "Rename"), image: UIImage(systemName: "pencil")
+                    ) {
                         [weak self] _ in
                         self?.promptRename(entry)
                     })
             }
             actions.append(
-                UIAction(title: "Copy title", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIAction(
+                    title: String(localized: "Copy title"),
+                    image: UIImage(systemName: "doc.on.doc")
+                ) { _ in
                     UIPasteboard.general.string = entry.session.title
                     Theme.Haptics.success()
                 })
             if self.viewModel.supportsMultipleSessions(entry) {
                 actions.append(
                     UIAction(
-                        title: "Delete", image: UIImage(systemName: "trash"),
+                        title: String(localized: "Delete"), image: UIImage(systemName: "trash"),
                         attributes: .destructive
                     ) { [weak self] _ in
                         self?.confirmDelete(entry) { _ in }
@@ -686,7 +722,7 @@ final class FileBrowserViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = path == "." ? "Files" : (path as NSString).lastPathComponent
+        title = path == "." ? String(localized: "Files") : (path as NSString).lastPathComponent
         view.backgroundColor = Theme.Color.groupedBackground
         configureNavBar()
         configureCollectionView()
@@ -702,7 +738,8 @@ final class FileBrowserViewController: UIViewController {
 
     private func configureNavBar() {
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Select", style: .done, target: self, action: #selector(selectTapped))
+            title: String(localized: "Select"), style: .done, target: self,
+            action: #selector(selectTapped))
         let favImage = isFavorite ? "star.fill" : "star"
         let favButton = UIBarButtonItem(
             image: UIImage(systemName: favImage), style: .plain, target: self,
@@ -731,7 +768,9 @@ final class FileBrowserViewController: UIViewController {
             case .recent(let path): stalePath = path
             case .node: return nil
             }
-            let remove = UIContextualAction(style: .destructive, title: "Remove") {
+            let remove = UIContextualAction(
+                style: .destructive, title: String(localized: "Remove")
+            ) {
                 [weak self] _, _, done in
                 guard let self else { return done(false) }
                 if case .favorite = item {
@@ -809,9 +848,9 @@ final class FileBrowserViewController: UIViewController {
             let section = sections[indexPath.section]
             var content = UIListContentConfiguration.prominentInsetGroupedHeader()
             switch section {
-            case .favorites: content.text = "Favorites"
-            case .recents: content.text = "Recent"
-            case .files: content.text = "Files"
+            case .favorites: content.text = String(localized: "Favorites")
+            case .recents: content.text = String(localized: "Recent")
+            case .files: content.text = String(localized: "Files")
             }
             view.contentConfiguration = content
         }
@@ -857,7 +896,7 @@ final class FileBrowserViewController: UIViewController {
             if empty {
                 var config = UIContentUnavailableConfiguration.empty()
                 config.image = UIImage(systemName: "folder")
-                config.text = "Empty folder"
+                config.text = String(localized: "Empty folder")
                 contentUnavailableConfiguration = config
             } else {
                 contentUnavailableConfiguration = nil
@@ -868,10 +907,10 @@ final class FileBrowserViewController: UIViewController {
             if dataSource.snapshot().numberOfItems == 0 {
                 var config = UIContentUnavailableConfiguration.empty()
                 config.image = UIImage(systemName: "exclamationmark.triangle")
-                config.text = "Couldn't load files"
+                config.text = String(localized: "Couldn't load files")
                 config.secondaryText = SessionListViewModel.readable(error)
                 var buttonConfig = UIButton.Configuration.borderedProminent()
-                buttonConfig.title = "Retry"
+                buttonConfig.title = String(localized: "Retry")
                 config.button = buttonConfig
                 config.buttonProperties.primaryAction = UIAction { [weak self] _ in
                     Task { await self?.load() }
@@ -880,8 +919,9 @@ final class FileBrowserViewController: UIViewController {
             } else {
                 contentUnavailableConfiguration = nil
                 let alert = UIAlertController(
-                    title: "Error", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    title: String(localized: "Error"), message: error.localizedDescription,
+                    preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
                 present(alert, animated: true)
             }
         }

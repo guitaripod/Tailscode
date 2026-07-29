@@ -100,7 +100,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.delegate = self
         textView.translatesAutoresizingMaskIntoConstraints = false
 
-        placeholder.text = "Start a new chat…"
+        placeholder.text = String(localized: "Start a new chat…")
         placeholder.font = Theme.Font.body()
         placeholder.textColor = Theme.Color.tertiaryLabel
         placeholder.translatesAutoresizingMaskIntoConstraints = false
@@ -172,7 +172,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         config.attributedTitle = Self.chipTitle(title)
         chipButton.configuration = config
         chipButton.menu = menu
-        chipButton.accessibilityLabel = "Chat destination: \(title)"
+        chipButton.accessibilityLabel = String(localized: "Chat destination: \(title)")
     }
 
     /// Passing no title hides the chip entirely — a backend without model
@@ -187,7 +187,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         config.attributedTitle = Self.chipTitle(title)
         modelButton.configuration = config
         modelButton.menu = menu
-        modelButton.accessibilityLabel = "Model: \(title)"
+        modelButton.accessibilityLabel = String(localized: "Model: \(title)")
     }
 
     private static func chipTitle(_ text: String) -> AttributedString {
@@ -218,6 +218,15 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     var isEditingText: Bool { textView.isFirstResponder }
 
+    #if DEBUG
+        var tourText: String { textView.text }
+
+        func tourSetText(_ text: String) {
+            textView.text = text
+            textViewDidChange(textView)
+        }
+    #endif
+
     @objc private func focusInput() { textView.becomeFirstResponder() }
 
     func gestureRecognizer(
@@ -244,7 +253,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         config.baseForegroundColor = .white
         sendButton.configuration = config
         sendButton.isEnabled = hasText && !isSending
-        sendButton.accessibilityLabel = "Send"
+        sendButton.accessibilityLabel = String(localized: "Send")
     }
 
     @objc private func sendTapped() {

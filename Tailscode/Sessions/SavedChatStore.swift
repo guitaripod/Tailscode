@@ -17,7 +17,8 @@ struct SavedChat: Codable, Hashable {
     var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard AgentSession.isPlaceholderTitle(trimmed) else { return trimmed }
-        return trimmed.isEmpty ? "Empty conversation" : "New conversation"
+        return trimmed.isEmpty
+            ? String(localized: "Empty conversation") : String(localized: "New conversation")
     }
 
     var projectName: String? {

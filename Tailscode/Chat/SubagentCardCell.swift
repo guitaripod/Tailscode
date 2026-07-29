@@ -30,9 +30,13 @@ struct SubagentCard: Hashable {
     }
 
     var statusText: String {
-        if isActive { return "Working" }
-        if isCompleted { return "Finished \(updatedAt.formatted(.relative(presentation: .named)))" }
-        return "Idle since \(updatedAt.formatted(.relative(presentation: .named)))"
+        if isActive { return String(localized: "Working") }
+        if isCompleted {
+            return String(
+                localized: "Finished \(updatedAt.formatted(.relative(presentation: .named)))")
+        }
+        return String(
+            localized: "Idle since \(updatedAt.formatted(.relative(presentation: .named)))")
     }
 
     var statusColor: UIColor {
@@ -53,12 +57,12 @@ struct SubagentCard: Hashable {
             case .reasoning: thoughts += 1
             }
         }
-        var parts = ["\(steps.count) step\(steps.count == 1 ? "" : "s")"]
+        var parts = [String(localized: "\(steps.count) steps")]
         if !names.isEmpty {
             let shown = names.prefix(3).joined(separator: " · ")
             parts.append(names.count > 3 ? "\(shown) +\(names.count - 3)" : shown)
         } else if thoughts > 0 {
-            parts.append("thinking")
+            parts.append(String(localized: "thinking"))
         }
         return parts.joined(separator: "  ·  ")
     }
@@ -73,10 +77,12 @@ struct SubagentGroup: Hashable {
     let live: Int
     let expanded: Bool
 
-    var title: String { "\(total) agents" }
+    var title: String { String(localized: "\(total) agents") }
 
     var detail: String {
-        live > 0 ? "\(live) working · tap to see them all" : "tap to see them all"
+        live > 0
+            ? String(localized: "\(live) working · tap to see them all")
+            : String(localized: "tap to see them all")
     }
 }
 
@@ -190,13 +196,14 @@ final class SubagentGroupCell: UICollectionViewCell {
     func configure(_ group: SubagentGroup, onToggle: @escaping () -> Void) {
         self.onToggle = onToggle
         titleLabel.text = group.title
-        detailLabel.text = group.expanded ? "tap to collapse" : group.detail
+        detailLabel.text = group.expanded ? String(localized: "tap to collapse") : group.detail
         rail.backgroundColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
         iconView.tintColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
         if group.live > 0 { spinner.startAnimating() } else { spinner.stopAnimating() }
         chevron.transform = group.expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         toggle.accessibilityLabel = "\(group.title), \(group.detail)"
-        toggle.accessibilityValue = group.expanded ? "Expanded" : "Collapsed"
+        toggle.accessibilityValue =
+            group.expanded ? String(localized: "Expanded") : String(localized: "Collapsed")
     }
 
     @objc private func toggleTapped() {
@@ -386,21 +393,25 @@ final class SubagentCardCell: UICollectionViewCell {
                 stack.addArrangedSubview(Self.reportView(answer))
             } else if !card.isLoading && card.steps.isEmpty {
                 stack.addArrangedSubview(
-                    ToolStepRenderer.pathLabel("This agent has not written anything yet."))
+                    ToolStepRenderer.pathLabel(
+                        String(localized: "This agent has not written anything yet.")))
             }
         }
 
         isAccessibilityElement = false
-        toggle.accessibilityLabel = "Agent: \(card.title)"
-        toggle.accessibilityValue = "\(card.statusText). \(card.expanded ? "Expanded" : "Collapsed")"
+        toggle.accessibilityLabel = String(localized: "Agent: \(card.title)")
+        toggle.accessibilityValue =
+            "\(card.statusText). "
+            + (card.expanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
         toggle.accessibilityHint = card.expanded
-            ? "Double tap to hide this agent's work" : "Double tap to show this agent's work"
+            ? String(localized: "Double tap to hide this agent's work")
+            : String(localized: "Double tap to show this agent's work")
     }
 
     /// Collapsed, the card answers "what is it doing / what did it find" — the
     /// live tool trail while it runs, what it reported once it is done.
     private static func collapsedPreview(_ card: SubagentCard) -> String? {
-        if card.isActive { return card.stepSummary ?? "Working on it…" }
+        if card.isActive { return card.stepSummary ?? String(localized: "Working on it…") }
         guard let answer = card.answer else { return card.stepSummary }
         return answer
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
@@ -410,7 +421,8 @@ final class SubagentCardCell: UICollectionViewCell {
     private static func loadingRow() -> UIView {
         let spinner = UIActivityIndicatorView(style: .medium)
         spinner.startAnimating()
-        let label = ToolStepRenderer.pathLabel("Loading this agent's transcript…")
+        let label = ToolStepRenderer.pathLabel(
+            String(localized: "Loading this agent's transcript…"))
         let row = UIStackView(arrangedSubviews: [spinner, label, UIView()])
         row.axis = .horizontal
         row.spacing = Theme.Spacing.s
@@ -425,7 +437,7 @@ final class SubagentCardCell: UICollectionViewCell {
         let heading = UILabel()
         heading.font = .preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
         heading.textColor = Theme.Color.tertiaryLabel
-        heading.text = "REPORTED BACK"
+        heading.text = String(localized: "REPORTED BACK")
         let column = UIStackView(arrangedSubviews: [heading])
         column.axis = .vertical
         column.spacing = Theme.Spacing.s

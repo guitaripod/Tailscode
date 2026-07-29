@@ -136,8 +136,9 @@ struct UsageWidget: Widget {
             UsageWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) { ContainerBackdrop(entry: entry) }
         }
-        .configurationDisplayName("Usage")
-        .description("Live agent spend and rate-limit quotas across your coding servers.")
+        .configurationDisplayName(String(localized: "Usage"))
+        .description(
+            String(localized: "Live agent spend and rate-limit quotas across your coding servers."))
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryCircular, .accessoryInline])
     }
 }
@@ -211,18 +212,18 @@ private func usageURL() -> URL { URL(string: "tailscode://usage")! }
 
 private func shortGaugeLabel(_ label: String) -> String {
     let lower = label.lowercased()
-    if lower.contains("cache") { return "Cache" }
-    if lower.contains("input") { return "Input" }
-    if lower.contains("output") { return "Output" }
-    if lower.contains("reason") { return "Reason" }
-    if lower.contains("chat") { return "Chat" }
-    if lower.contains("build") { return "Build" }
-    if lower.contains("credit") { return "Credits" }
-    if lower.contains("5-hour") || lower.contains("5 hour") { return "5-hour" }
+    if lower.contains("cache") { return String(localized: "Cache") }
+    if lower.contains("input") { return String(localized: "Input") }
+    if lower.contains("output") { return String(localized: "Output") }
+    if lower.contains("reason") { return String(localized: "Reason") }
+    if lower.contains("chat") { return String(localized: "Chat") }
+    if lower.contains("build") { return String(localized: "Build") }
+    if lower.contains("credit") { return String(localized: "Credits") }
+    if lower.contains("5-hour") || lower.contains("5 hour") { return String(localized: "5-hour") }
     if lower.contains("fable") { return "Fable" }
-    if lower.contains("all models") { return "All models" }
-    if lower.contains("month") { return "Monthly" }
-    if lower.contains("week") { return "Weekly" }
+    if lower.contains("all models") { return String(localized: "All models") }
+    if lower.contains("month") { return String(localized: "Monthly") }
+    if lower.contains("week") { return String(localized: "Weekly") }
     return label
 }
 
@@ -282,7 +283,10 @@ struct SmallUsageView: View {
             : Array(providers.prefix(3).compactMap(peakGauge))
         return VStack(spacing: 7) {
             HStack(spacing: 4) {
-                Text(single ? ProviderPalette.short(providers[0].providerName) : "Usage")
+                Text(
+                    single
+                        ? ProviderPalette.short(providers[0].providerName)
+                        : String(localized: "Usage"))
                     .font(.caption.weight(.bold)).lineLimit(1)
                 if single {
                     StatusDot(isLive: providers[0].isLive, isStale: entry.isStale)
@@ -407,17 +411,17 @@ struct LargeUsageView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Usage").font(.headline.weight(.bold))
+            Text(String(localized: "Usage")).font(.headline.weight(.bold))
             Spacer()
             if entry.isStale {
-                Text("STALE")
+                Text(String(localized: "STALE"))
                     .font(.system(size: 9, weight: .heavy))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5).padding(.vertical, 1.5)
                     .background(Capsule().fill(Color.secondary.opacity(0.18)))
             } else {
                 HStack(spacing: 3) {
-                    Text("Updated")
+                    Text(String(localized: "Updated"))
                     Text(entry.date, style: .relative)
                 }
                 .font(.caption2).foregroundStyle(.tertiary)
@@ -478,7 +482,7 @@ struct AccessoryRectangularView: View {
 
     var body: some View {
         if entry.providers.isEmpty {
-            Text("No usage data").font(.caption2).foregroundStyle(.secondary)
+            Text(String(localized: "No usage data")).font(.caption2).foregroundStyle(.secondary)
         } else {
             let rows = accessoryRows(entry)
             VStack(alignment: .leading, spacing: 3) {
@@ -537,7 +541,7 @@ struct AccessoryInlineView: View {
         if let hero = globalHottest(entry) {
             Label(inlineText(hero), systemImage: hero.fraction > 0.85 ? "exclamationmark.triangle.fill" : "gauge.with.needle")
         } else {
-            Label("No usage data", systemImage: "gauge.with.dots.needle")
+            Label(String(localized: "No usage data"), systemImage: "gauge.with.dots.needle")
         }
     }
 
@@ -658,7 +662,7 @@ private struct GaugeTable: View {
 
     private func captionText(_ gauge: RankedGauge) -> String? {
         if let resetsAt = gauge.resetsAt, resetsAt > entryDate {
-            return "resets \(compactRemaining(resetsAt, from: entryDate))"
+            return String(localized: "resets \(compactRemaining(resetsAt, from: entryDate))")
         }
         return gauge.caption.isEmpty ? nil : gauge.caption
     }
@@ -716,7 +720,7 @@ private struct StatusPill: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Text(isLive ? "LIVE" : "EST")
+            Text(isLive ? String(localized: "LIVE") : String(localized: "EST"))
                 .font(.system(size: 8.5, weight: .heavy))
             if isLive {
                 Circle()
@@ -746,10 +750,10 @@ struct EmptyUsageView: View {
             Image(systemName: "gauge.with.dots.needle.33percent")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("No usage data")
+            Text(String(localized: "No usage data"))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("Connect a server to see quotas")
+            Text(String(localized: "Connect a server to see quotas"))
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

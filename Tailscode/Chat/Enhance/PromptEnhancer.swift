@@ -26,18 +26,27 @@ final class PromptEnhancer {
             case .unavailable(let reason):
                 switch reason {
                 case .deviceNotEligible:
-                    return .unavailable("This device doesn't support Apple Intelligence.")
+                    return .unavailable(
+                        String(localized: "This device doesn't support Apple Intelligence."))
                 case .appleIntelligenceNotEnabled:
-                    return .unavailable("Turn on Apple Intelligence in Settings to enhance prompts.")
+                    return .unavailable(
+                        String(
+                            localized:
+                                "Turn on Apple Intelligence in Settings to enhance prompts."))
                 case .modelNotReady:
-                    return .unavailable("The on-device model is still preparing — try again in a moment.")
+                    return .unavailable(
+                        String(
+                            localized:
+                                "The on-device model is still preparing — try again in a moment."))
                 @unknown default:
-                    return .unavailable("Prompt enhancement isn't available right now.")
+                    return .unavailable(
+                        String(localized: "Prompt enhancement isn't available right now."))
                 }
             }
         }
         #endif
-        return .unavailable("Prompt enhancement needs Apple Intelligence on iOS 26.")
+        return .unavailable(
+            String(localized: "Prompt enhancement needs Apple Intelligence on iOS 26."))
     }
 
     /// Loads the model into memory once, on first focus, so the first real

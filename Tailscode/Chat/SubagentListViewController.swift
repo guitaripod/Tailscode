@@ -28,7 +28,7 @@ final class SubagentListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Agents"
+        title = String(localized: "Agents")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .close, primaryAction: UIAction { [weak self] _ in
@@ -72,11 +72,19 @@ final class SubagentListViewController: UIViewController {
             content.textProperties.numberOfLines = 2
             var parts: [String] = []
             if agent.isCompleted {
-                parts.append("finished \(agent.updatedAt.formatted(.relative(presentation: .named)))")
+                parts.append(
+                    String(
+                        localized:
+                            "finished \(agent.updatedAt.formatted(.relative(presentation: .named)))"
+                    ))
             } else if agent.isActive {
-                parts.append("working")
+                parts.append(String(localized: "working"))
             } else {
-                parts.append("idle since \(agent.updatedAt.formatted(.relative(presentation: .named)))")
+                parts.append(
+                    String(
+                        localized:
+                            "idle since \(agent.updatedAt.formatted(.relative(presentation: .named)))"
+                    ))
             }
             if let type = agent.agentType { parts.append(type) }
             content.secondaryText = parts.joined(separator: " · ")
@@ -133,14 +141,24 @@ final class SubagentListViewController: UIViewController {
         if agents.isEmpty {
             var config = UIContentUnavailableConfiguration.empty()
             config.image = UIImage(systemName: "point.3.connected.trianglepath.dotted")
-            config.text = "No Agents"
-            config.secondaryText = "Agents spawned by this session appear in the conversation."
+            config.text = String(localized: "No Agents")
+            config.secondaryText = String(
+                localized: "Agents spawned by this session appear in the conversation.")
             contentUnavailableConfiguration = config
         } else {
             contentUnavailableConfiguration = nil
         }
     }
+
+    #if DEBUG
+        func tourSelect(_ index: Int) {
+            guard agents.indices.contains(index) else { return }
+            let agentID = agents[index].id
+            dismiss(animated: true) { [onSelect] in onSelect?(agentID) }
+        }
+    #endif
 }
+
 
 extension SubagentListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

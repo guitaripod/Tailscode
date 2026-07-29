@@ -197,10 +197,22 @@ final class ChatEmptyStateView: UIView {
     var onSuggestion: ((String) -> Void)?
 
     private static let suggestions: [(symbol: String, title: String, prompt: String)] = [
-        ("checkmark.diamond", "Fix the failing tests", "Run the test suite, find the failures, and fix them."),
-        ("sparkle.magnifyingglass", "Review recent changes", "Review the latest commits and point out anything risky."),
-        ("ladybug", "Hunt a bug", "Look through the codebase for likely bugs and fix the most severe one."),
-        ("text.badge.plus", "Add test coverage", "Find the least-tested important module and write tests for it."),
+        (
+            "checkmark.diamond", String(localized: "Fix the failing tests"),
+            String(localized: "Run the test suite, find the failures, and fix them.")
+        ),
+        (
+            "sparkle.magnifyingglass", String(localized: "Review recent changes"),
+            String(localized: "Review the latest commits and point out anything risky.")
+        ),
+        (
+            "ladybug", String(localized: "Hunt a bug"),
+            String(localized: "Look through the codebase for likely bugs and fix the most severe one.")
+        ),
+        (
+            "text.badge.plus", String(localized: "Add test coverage"),
+            String(localized: "Find the least-tested important module and write tests for it.")
+        ),
     ]
 
     init() {
@@ -213,7 +225,7 @@ final class ChatEmptyStateView: UIView {
         image.contentMode = .scaleAspectFit
 
         let titleLabel = UILabel()
-        titleLabel.text = "What should your agent do?"
+        titleLabel.text = String(localized: "What should your agent do?")
         titleLabel.font = Theme.Font.headline()
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center

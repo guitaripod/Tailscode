@@ -29,12 +29,12 @@ extension ChatActivityAttributes.ContentState.Phase {
 
     var label: String {
         switch self {
-        case .thinking: return "Thinking"
-        case .tool: return "Running tool"
-        case .responding: return "Writing"
-        case .approval: return "Needs approval"
-        case .done: return "Done"
-        case .error: return "Failed"
+        case .thinking: return String(localized: "Thinking")
+        case .tool: return String(localized: "Running tool")
+        case .responding: return String(localized: "Writing")
+        case .approval: return String(localized: "Needs approval")
+        case .done: return String(localized: "Done")
+        case .error: return String(localized: "Failed")
         }
     }
 }
@@ -87,7 +87,7 @@ struct LiveActivityWidget: Widget {
                         }
                         Spacer()
                         if state.toolCount > 0 {
-                            Text("\(state.toolCount) tool\(state.toolCount == 1 ? "" : "s")")
+                            Text(String(localized: "\(state.toolCount) tools"))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -113,7 +113,7 @@ struct LiveActivityWidget: Widget {
                     Image(systemName: "clock.badge.exclamationmark")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Waiting for updates")
+                        .accessibilityLabel(String(localized: "Waiting for updates"))
                 } else {
                     Text(state.startedAt, style: .timer)
                         .font(.caption2.weight(.medium))
@@ -191,7 +191,7 @@ private struct StatusText: View {
 
     var body: some View {
         if isStale && !state.phase.isTerminal {
-            Text("Waiting for updates\u{2026}")
+            Text(String(localized: "Waiting for updates…"))
                 .foregroundStyle(.secondary)
         } else {
             Text(state.statusText)
@@ -222,7 +222,7 @@ private struct ElapsedView: View {
             Image(systemName: "clock.badge.exclamationmark")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Waiting for updates")
+                .accessibilityLabel(String(localized: "Waiting for updates"))
         } else {
             Text(state.startedAt, style: .timer)
                 .font(.subheadline.weight(.medium))

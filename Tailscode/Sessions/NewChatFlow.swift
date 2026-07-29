@@ -41,8 +41,8 @@ enum NewChatFlow {
         onOpen: @escaping (SessionEntry) -> Void
     ) {
         let alert = UIAlertController(
-            title: "New Chat",
-            message: "Enter a directory path on the server",
+            title: String(localized: "New Chat"),
+            message: String(localized: "Enter a directory path on the server"),
             preferredStyle: .alert)
         alert.addTextField { textField in
             textField.placeholder = "/path/to/project"
@@ -50,7 +50,8 @@ enum NewChatFlow {
             textField.autocapitalizationType = .none
             textField.keyboardType = .URL
         }
-        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak alert] _ in
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Create"), style: .default) { [weak alert] _ in
             let trimmed = alert?.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let directory = trimmed?.isEmpty == false ? trimmed : nil
@@ -60,7 +61,7 @@ enum NewChatFlow {
                 onOpen(entry)
             }
         })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         presenter.present(alert, animated: true)
     }
 }

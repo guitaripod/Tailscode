@@ -393,7 +393,7 @@ final class ChatViewController: UIViewController {
             agentsChip.isHidden = true
             return
         }
-        agentsChip.configuration?.title = "\(live) agent\(live == 1 ? "" : "s") working"
+        agentsChip.configuration?.title = String(localized: "\(live) agents working")
         agentsChip.isHidden = false
     }
 
@@ -411,7 +411,7 @@ final class ChatViewController: UIViewController {
         config.titleLineBreakMode = .byTruncatingTail
         goalChip.configuration = config
         goalChip.titleLabel?.lineBreakMode = .byTruncatingTail
-        goalChip.accessibilityHint = "Shows the goal the agent is working toward."
+        goalChip.accessibilityHint = String(localized: "Shows the goal the agent is working toward.")
         goalChip.addAction(
             UIAction { [weak self] _ in self?.presentGoalDetail() }, for: .touchUpInside)
     }
@@ -424,7 +424,7 @@ final class ChatViewController: UIViewController {
         lastRenderedGoal = state.goal
         if let active = state.activeGoal {
             goalChip.configuration?.title = active.condition
-            goalChip.accessibilityLabel = "Working toward: \(active.condition)"
+            goalChip.accessibilityLabel = String(localized: "Working toward: \(active.condition)")
             goalChip.isHidden = false
         } else {
             goalChip.isHidden = true
@@ -434,7 +434,7 @@ final class ChatViewController: UIViewController {
         else { return }
         AppLogger.chat.info("goal reached: \(settled.condition)")
         Theme.Haptics.received()
-        presentToast("Goal reached — \(settled.condition)")
+        presentToast(String(localized: "Goal reached — \(settled.condition)"))
     }
 
     /// Asks for a stop condition rather than a message. A goal is a predicate the agent checks
@@ -442,18 +442,21 @@ final class ChatViewController: UIViewController {
     /// own field and its own words.
     private func presentGoalComposer() {
         let alert = UIAlertController(
-            title: "Set a goal",
-            message:
-                "The agent keeps working until this is true, and won't stop early. You can close the app.",
+            title: String(localized: "Set a goal"),
+            message: String(
+                localized:
+                    "The agent keeps working until this is true, and won't stop early. You can close the app."
+            ),
             preferredStyle: .alert)
         alert.addTextField { field in
-            field.placeholder = "the test suite passes"
+            field.placeholder = String(localized: "the test suite passes")
             field.autocapitalizationType = .none
             field.returnKeyType = .go
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
-            UIAlertAction(title: "Start", style: .default) { [weak self, weak alert] _ in
+            UIAlertAction(title: String(localized: "Start"), style: .default) {
+                [weak self, weak alert] _ in
                 guard let condition = alert?.textFields?.first?.text?
                     .trimmingCharacters(in: .whitespacesAndNewlines), !condition.isEmpty
                 else { return }
@@ -494,12 +497,14 @@ final class ChatViewController: UIViewController {
     private func presentGoalDetail() {
         guard let goal = viewModel.goal, goal.isActive else { return }
         let sheet = UIAlertController(
-            title: "Working toward", message: goal.condition, preferredStyle: .actionSheet)
+            title: String(localized: "Working toward"), message: goal.condition,
+            preferredStyle: .actionSheet)
         sheet.addAction(
-            UIAlertAction(title: "Stop pursuing this", style: .destructive) { [weak self] _ in
+            UIAlertAction(title: String(localized: "Stop pursuing this"), style: .destructive) {
+                [weak self] _ in
                 self?.viewModel.clearGoal()
             })
-        sheet.addAction(UIAlertAction(title: "Keep going", style: .cancel))
+        sheet.addAction(UIAlertAction(title: String(localized: "Keep going"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = goalChip
         sheet.popoverPresentationController?.sourceRect = goalChip.bounds
         present(sheet, animated: true)
@@ -507,7 +512,7 @@ final class ChatViewController: UIViewController {
 
     private func configureFAB() {
         fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = "Scroll to bottom"
+        fab.accessibilityLabel = String(localized: "Scroll to bottom")
         fab.translatesAutoresizingMaskIntoConstraints = false
         fab.isHidden = true
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
@@ -647,8 +652,10 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: PermissionCell.reuseID, for: indexPath) as! PermissionCell
                 cell.configure(
-                    title: request.toolName.map { "Allow \($0)?" } ?? "Permission requested",
-                    detail: request.title ?? "The agent needs your approval to continue."
+                    title: request.toolName.map { String(localized: "Allow \($0)?") }
+                        ?? String(localized: "Permission requested"),
+                    detail: request.title
+                        ?? String(localized: "The agent needs your approval to continue.")
                 ) { [weak self] decision in
                     self?.viewModel.respond(to: request, decision: decision)
                 }
@@ -705,7 +712,7 @@ final class ChatViewController: UIViewController {
                 }
                 return cell
             case .file(let file):
-                let label = "📎 \(file.filename ?? file.mime ?? "attachment")"
+                let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
             case .image(let file):
                 let cell = collectionView.dequeueReusableCell(
@@ -779,10 +786,11 @@ final class ChatViewController: UIViewController {
             if self.composer.currentText.isEmpty {
                 self.composer.setDraft(text, focus: false)
                 self.saveDraft()
-                self.presentToast("Not sent — your message is back in the composer.")
+                self.presentToast(
+                    String(localized: "Not sent — your message is back in the composer."))
             } else {
                 UIPasteboard.general.string = text
-                self.presentToast("Not sent — message copied to clipboard.")
+                self.presentToast(String(localized: "Not sent — message copied to clipboard."))
             }
         }
     }
@@ -934,7 +942,8 @@ final class ChatViewController: UIViewController {
             NotificationManager.notify(
                 kind: .approval,
                 title: viewModel.title,
-                body: permission.toolName.map { "Approval needed: \($0)" } ?? "Approval needed.",
+                body: permission.toolName.map { String(localized: "Approval needed: \($0)") }
+                    ?? String(localized: "Approval needed."),
                 identifier: "perm:\(permission.id)", sessionID: viewModel.session.id)
         }
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
@@ -943,7 +952,8 @@ final class ChatViewController: UIViewController {
             NotificationManager.notify(
                 kind: .approval,
                 title: viewModel.title,
-                body: question.questions.first?.question ?? "The agent has a question.",
+                body: question.questions.first?.question
+                    ?? String(localized: "The agent has a question."),
                 identifier: "question:\(question.id)", sessionID: viewModel.session.id)
         }
         updateBanner(for: state)
@@ -1045,12 +1055,15 @@ final class ChatViewController: UIViewController {
         switch state.connection {
         case .reconnecting:
             if Date() > suppressBannerUntil {
-                banner.show("Reconnecting…", color: Theme.Color.warning, symbol: "wifi.exclamationmark")
+                banner.show(
+                    String(localized: "Reconnecting…"), color: Theme.Color.warning,
+                    symbol: "wifi.exclamationmark")
             }
         case .offline:
             if Date() > suppressBannerUntil {
                 banner.show(
-                    "Offline — tap to retry", color: Theme.Color.danger, symbol: "wifi.slash")
+                    String(localized: "Offline — tap to retry"), color: Theme.Color.danger,
+                    symbol: "wifi.slash")
             }
         case .connecting, .live:
             if let failure = state.lastFailure, failure != viewModel.dismissedFailure,
@@ -1110,14 +1123,14 @@ final class ChatViewController: UIViewController {
         guard count > 0, userScrolledUp, !fab.isHidden else { return }
         unreadCount += count
         fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = "Scroll to bottom, \(unreadCount) new"
+        fab.accessibilityLabel = String(localized: "Scroll to bottom, \(unreadCount) new")
     }
 
     private func clearUnread() {
         guard unreadCount != 0 else { return }
         unreadCount = 0
         fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = "Scroll to bottom"
+        fab.accessibilityLabel = String(localized: "Scroll to bottom")
     }
 
     private var turnStartedAt: Date?
@@ -1277,7 +1290,7 @@ final class ChatViewController: UIViewController {
         if !viewModel.canAttachImages, pendingAttachments.contains(where: { $0.mime.hasPrefix("image/") }) {
             pendingAttachments.removeAll { $0.mime.hasPrefix("image/") }
             updateAttachmentStrip()
-            presentToast("Image removed — this model can't see images.")
+            presentToast(String(localized: "Image removed — this model can't see images."))
         }
         composer.showsAttach = canAttachAnything
     }
@@ -1307,7 +1320,8 @@ final class ChatViewController: UIViewController {
             guard !prompts.isEmpty else { return completion([]) }
             completion([
                 UIMenu(
-                    title: "Jump to message", image: UIImage(systemName: "list.bullet"),
+                    title: String(localized: "Jump to message"),
+                    image: UIImage(systemName: "list.bullet"),
                     children: Array(prompts.suffix(20)))
             ])
         }
@@ -1316,14 +1330,15 @@ final class ChatViewController: UIViewController {
                 guard let self, self.viewModel.supportsUsage, let usage = await self.viewModel.usage() else { return completion([]) }
                 var parts: [String] = []
                 if let tokens = usage.tokens {
-                    parts.append("\(tokens.formatted(.number.notation(.compactName))) tokens")
+                    parts.append(
+                        String(localized: "\(tokens.formatted(.number.notation(.compactName))) tokens"))
                 }
                 if let cost = usage.costUSD {
                     parts.append(String(format: "$%.3f", cost))
                 }
                 guard !parts.isEmpty else { return completion([]) }
                 let item = UIAction(
-                    title: "Last turn · \(parts.joined(separator: " · "))",
+                    title: String(localized: "Last turn · \(parts.joined(separator: " · "))"),
                     image: UIImage(systemName: "gauge.with.dots.needle.bottom.50percent"),
                     attributes: .disabled
                 ) { _ in }
@@ -1333,7 +1348,10 @@ final class ChatViewController: UIViewController {
         let regenerate = UIDeferredMenuElement.uncached { [weak self] completion in
             guard let self, self.viewModel.canRegenerate else { return completion([]) }
             completion([
-                UIAction(title: "Regenerate", image: UIImage(systemName: "arrow.clockwise")) {
+                UIAction(
+                    title: String(localized: "Regenerate"),
+                    image: UIImage(systemName: "arrow.clockwise")
+                ) {
                     [weak self] _ in
                     Theme.Haptics.tap()
                     self?.viewModel.regenerate()
@@ -1347,7 +1365,10 @@ final class ChatViewController: UIViewController {
             let agents = self.viewModel.trackedSubagents
             guard !agents.isEmpty else { return completion([]) }
             let live = agents.count(where: \.isActive)
-            let title = live > 0 ? "Agents (\(agents.count) · \(live) live)" : "Agents (\(agents.count))"
+            let title =
+                live > 0
+                ? String(localized: "Agents (\(agents.count) · \(live) live)")
+                : String(localized: "Agents (\(agents.count))")
             completion([
                 UIAction(
                     title: title,
@@ -1361,7 +1382,8 @@ final class ChatViewController: UIViewController {
                 profileID: self.viewModel.contextID, sessionID: self.viewModel.session.id)
             completion([
                 UIAction(
-                    title: isSaved ? "Remove from Saved" : "Save chat",
+                    title: isSaved
+                        ? String(localized: "Remove from Saved") : String(localized: "Save chat"),
                     image: UIImage(systemName: isSaved ? "bookmark.fill" : "bookmark")
                 ) { [weak self] _ in self?.toggleSaved() }
             ])
@@ -1369,32 +1391,36 @@ final class ChatViewController: UIViewController {
         var children: [UIMenuElement] = [jump, subagents, regenerate, usage, save]
         children.append(
             UIAction(
-                title: "Share transcript", image: UIImage(systemName: "square.and.arrow.up")
+                title: String(localized: "Share transcript"),
+                image: UIImage(systemName: "square.and.arrow.up")
             ) { [weak self] _ in self?.shareTranscript() })
         if viewModel.canRename {
             children.append(
-                UIAction(title: "Rename", image: UIImage(systemName: "pencil")) {
+                UIAction(
+                    title: String(localized: "Rename"), image: UIImage(systemName: "pencil")
+                ) {
                     [weak self] _ in self?.promptRename()
                 })
         }
         if viewModel.supportsCompaction {
             children.append(
                 UIAction(
-                    title: "Compact conversation",
+                    title: String(localized: "Compact conversation"),
                     image: UIImage(systemName: "arrow.down.right.and.arrow.up.left")
                 ) { [weak self] _ in self?.presentCompactPreflight() })
         }
         if viewModel.canFork {
             children.append(
                 UIAction(
-                    title: "Fork conversation",
+                    title: String(localized: "Fork conversation"),
                     image: UIImage(systemName: "arrow.triangle.branch")
                 ) { [weak self] _ in self?.forkConversation() })
         }
         if viewModel.canClear {
             children.append(
                 UIAction(
-                    title: "Clear conversation", image: UIImage(systemName: "eraser"),
+                    title: String(localized: "Clear conversation"),
+                    image: UIImage(systemName: "eraser"),
                     attributes: .destructive
                 ) { [weak self] _ in self?.confirmClear() })
         }
@@ -1415,10 +1441,10 @@ final class ChatViewController: UIViewController {
             session: viewModel.sessionSnapshot)
         if SavedChatStore.toggle(entry) {
             Theme.Haptics.success()
-            presentToast("Saved — find it under Saved in Chats.")
+            presentToast(String(localized: "Saved — find it under Saved in Chats."))
         } else {
             Theme.Haptics.tap()
-            presentToast("Removed from Saved.")
+            presentToast(String(localized: "Removed from Saved."))
         }
     }
 
@@ -1443,7 +1469,7 @@ final class ChatViewController: UIViewController {
             render(viewModel.state)
         }
         guard dataSource.snapshot().itemIdentifiers.contains(rowID) else {
-            presentToast("That agent hasn't reported into this conversation yet.")
+            presentToast(String(localized: "That agent hasn't reported into this conversation yet."))
             return
         }
         userScrolledUp = true
@@ -1454,7 +1480,7 @@ final class ChatViewController: UIViewController {
     private func revealSubagent(spawnedBy call: ToolCall) {
         guard let agent = viewModel.trackedSubagents.first(where: { $0.toolUseID == call.id })
         else {
-            presentToast("No transcript for this agent yet.")
+            presentToast(String(localized: "No transcript for this agent yet."))
             return
         }
         revealSubagent(id: agent.id)
@@ -1481,6 +1507,125 @@ final class ChatViewController: UIViewController {
             userScrolledUp = true
             scrollTo(id: id)
         }
+
+        var tourScrollView: UIScrollView { collectionView }
+
+        func tourRevealFirstSubagent() {
+            guard let agent = viewModel.trackedSubagents.first else { return }
+            revealSubagent(id: agent.id)
+        }
+
+        func tourScrollToCompaction() {
+            guard let id = orderedIDs.first(where: { id in
+                guard case .compaction = rowsByID[id]?.content else { return false }
+                return true
+            }) else { return }
+            userScrolledUp = true
+            scrollTo(id: id)
+        }
+
+        func tourAllowPermission() {
+            guard let request = pendingPermission else { return }
+            viewModel.respond(to: request, decision: .once)
+        }
+
+        func tourAnswerQuestion(option: Int) async {
+            await answerPendingQuestion(option: option)
+        }
+
+        func tourPresentModelPicker() { presentModelPicker() }
+
+        func tourPresentEffortSheet() { presentEffortSheet() }
+
+        func tourPresentSubagents() { presentSubagents(viewModel.trackedSubagents) }
+
+        func tourPresentCompactPreflight() { presentCompactPreflight() }
+
+        func tourOpenCompactionSummary() { openFirstCompactionSummary() }
+
+        func tourPresentFileBrowser() { presentFileBrowser() }
+
+        func tourPresentJumpSheet() { presentJumpSheet() }
+
+        func tourPresentUsage() { presentUsage() }
+
+        func tourScrollToBottom() { scrollToBottom(animated: true) }
+
+        func tourScrollToTop() {
+            userScrolledUp = true
+            collectionView.setContentOffset(
+                CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: false)
+        }
+
+        /// The palette is driven by what is in the composer, so the tour opens it the
+        /// same way a thumb does — by putting a slash there.
+        func tourOpenCommandPalette() {
+            composer.setDraft("/", focus: true)
+            composerTextDidChange("/")
+        }
+
+        func tourClearComposer() {
+            composer.clear()
+            composerTextDidChange("")
+        }
+
+        func tourType(_ text: String, perCharacter: Double) async {
+            for index in text.indices {
+                let partial = String(text[text.startIndex...index])
+                composer.setDraft(partial, focus: true)
+                composerTextDidChange(partial)
+                try? await Task.sleep(for: .seconds(perCharacter))
+            }
+        }
+
+        func tourSend(_ text: String) { composerDidSend(text) }
+
+        func tourDismissSheet() { presentedViewController?.dismiss(animated: true) }
+
+        /// Runs the identical closure a tap on the palette row runs, including the
+        /// composer clear, the palette dismissal and the selection haptic.
+        func tourRunAppCommand(_ keyword: String) {
+            appCommands().first { $0.keywords.contains(keyword) }?.run()
+        }
+
+        func tourPickQuestionOption(_ option: Int, question: Int = 0) {
+            guard let request = pendingQuestion,
+                request.questions.indices.contains(question)
+            else { return }
+            var picked = questionSelection.picked[question] ?? []
+            if request.questions[question].multiple {
+                if !picked.insert(option).inserted { picked.remove(option) }
+            } else {
+                picked = [option]
+            }
+            questionSelection.picked[question] = picked
+            var snapshot = dataSource.snapshot()
+            snapshot.reconfigureItems(["question:\(request.id)"])
+            dataSource.apply(snapshot, animatingDifferences: false)
+        }
+
+        func tourSubmitQuestion() {
+            guard let request = pendingQuestion,
+                let answers = questionSelection.answers(for: request),
+                answeredQuestionIDs.insert(request.id).inserted
+            else { return }
+            viewModel.answerQuestion(request, answers: answers)
+        }
+
+        func tourPromptRename(to newTitle: String) {
+            promptRename()
+            (presentedViewController as? UIAlertController)?.textFields?.first?.text = newTitle
+        }
+
+        func tourConfirmRename(to newTitle: String) {
+            presentedViewController?.dismiss(animated: true)
+            Task {
+                try? await viewModel.rename(to: newTitle)
+                self.title = navDisplayTitle
+            }
+        }
+
+        func tourToggleSaved() { toggleSaved() }
     #endif
 
     private func toggleAgentGroup(_ groupID: String) {
@@ -1515,14 +1660,16 @@ final class ChatViewController: UIViewController {
 
     private func promptRename() {
         let alert = UIAlertController(
-            title: "Rename conversation", message: nil, preferredStyle: .alert)
+            title: String(localized: "Rename conversation"), message: nil, preferredStyle: .alert)
         alert.addTextField { [weak self] field in
             field.text = self?.viewModel.title
             field.clearButtonMode = .whileEditing
             field.autocapitalizationType = .sentences
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self, weak alert] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Rename"), style: .default) {
+                [weak self, weak alert] _ in
             let title = alert?.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard let self, !title.isEmpty, title != self.viewModel.title else { return }
@@ -1532,7 +1679,7 @@ final class ChatViewController: UIViewController {
                     self.title = self.navDisplayTitle
                     Theme.Haptics.success()
                 } catch {
-                    self.presentToast("Couldn't rename this conversation.")
+                    self.presentToast(String(localized: "Couldn't rename this conversation."))
                 }
             }
         })
@@ -1541,10 +1688,12 @@ final class ChatViewController: UIViewController {
 
     private func confirmClear() {
         let alert = UIAlertController(
-            title: "Clear conversation?",
-            message: "This starts a fresh conversation on the agent.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
+            title: String(localized: "Clear conversation?"),
+            message: String(localized: "This starts a fresh conversation on the agent."),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Clear"), style: .destructive) { [weak self] _ in
             Theme.Haptics.warning()
             self?.viewModel.clearConversation()
         })
@@ -1572,14 +1721,17 @@ final class ChatViewController: UIViewController {
 
     private func promptCustomAnswer(for request: QuestionRequest, questionIndex: Int) {
         let item = request.questions[questionIndex]
-        let alert = UIAlertController(title: item.header.isEmpty ? "Your answer" : item.header,
+        let alert = UIAlertController(
+            title: item.header.isEmpty ? String(localized: "Your answer") : item.header,
             message: item.question, preferredStyle: .alert)
         alert.addTextField { field in
-            field.placeholder = "Type your answer"
+            field.placeholder = String(localized: "Type your answer")
             field.text = self.questionSelection.custom[questionIndex]
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Use answer", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Use answer"), style: .default) {
+                [weak self] _ in
             guard let self else { return }
             let text = alert.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1609,7 +1761,7 @@ final class ChatViewController: UIViewController {
                 navigationController?.pushViewController(
                     ChatViewController(viewModel: forked), animated: true)
             } catch {
-                presentToast("Couldn't fork this conversation.")
+                presentToast(String(localized: "Couldn't fork this conversation."))
             }
         }
     }
@@ -1672,8 +1824,8 @@ final class ChatViewController: UIViewController {
             return [SlashCommandSection(title: "", commands: appCommands())]
         }
         return [
-            SlashCommandSection(title: "On the server", commands: server),
-            SlashCommandSection(title: "In Tailscode", commands: appCommands()),
+            SlashCommandSection(title: String(localized: "On the server"), commands: server),
+            SlashCommandSection(title: String(localized: "In Tailscode"), commands: appCommands()),
         ]
     }
 
@@ -1742,59 +1894,67 @@ final class ChatViewController: UIViewController {
         if viewModel.supportsModelSelection {
             list.append(
                 makeCommand(
-                    ["model", "m"], "Model", viewModel.selectedModel?.modelID ?? "Choose a model",
+                    ["model", "m"], String(localized: "Model"),
+                    viewModel.selectedModel?.modelID ?? String(localized: "Choose a model"),
                     "cpu"
                 ) { [weak self] in self?.presentModelPicker() })
         }
         if viewModel.supportsReasoningEffort {
             list.append(
                 makeCommand(
-                    ["effort", "reasoning", "think"], "Reasoning effort",
-                    (viewModel.currentEffort ?? "default").capitalized,
+                    ["effort", "reasoning", "think"], String(localized: "Reasoning effort"),
+                    viewModel.currentEffort?.capitalized ?? String(localized: "Default"),
                     "gauge.with.dots.needle.50percent"
                 ) { [weak self] in self?.presentEffortSheet() })
         }
         if viewModel.canRegenerate {
             list.append(
                 makeCommand(
-                    ["regenerate", "retry"], "Regenerate", "Re-run the last prompt",
+                    ["regenerate", "retry"], String(localized: "Regenerate"),
+                    String(localized: "Re-run the last prompt"),
                     "arrow.clockwise"
                 ) { [weak self] in self?.viewModel.regenerate() })
         }
         if viewModel.supportsUsage {
             list.append(
                 makeCommand(
-                    ["usage", "cost", "tokens"], "Usage & cost", "Tokens and spend for this session",
+                    ["usage", "cost", "tokens"], String(localized: "Usage & cost"),
+                    String(localized: "Tokens and spend for this session"),
                     "gauge.with.dots.needle.bottom.50percent"
                 ) { [weak self] in self?.presentUsage() })
         }
         if viewModel.supportsFileBrowsing {
             list.append(
                 makeCommand(
-                    ["browse", "file", "path"], "Browse files", "Open file browser on server",
+                    ["browse", "file", "path"], String(localized: "Browse files"),
+                    String(localized: "Open file browser on server"),
                     "folder.fill"
                 ) { [weak self] in self?.presentFileBrowser() })
         }
         if viewModel.canFork {
             list.append(
                 makeCommand(
-                    ["fork", "branch"], "Fork conversation",
-                    "Branch to explore a different direction", "arrow.triangle.branch"
+                    ["fork", "branch"], String(localized: "Fork conversation"),
+                    String(localized: "Branch to explore a different direction"),
+                    "arrow.triangle.branch"
                 ) { [weak self] in self?.forkConversation() })
         }
         list.append(
             makeCommand(
-                ["jump", "goto"], "Jump to message", "Scroll to an earlier prompt", "list.bullet"
+                ["jump", "goto"], String(localized: "Jump to message"),
+                String(localized: "Scroll to an earlier prompt"), "list.bullet"
             ) { [weak self] in self?.presentJumpSheet() })
         list.append(
             makeCommand(
-                ["copy", "transcript"], "Copy transcript", "Copy the whole conversation",
+                ["copy", "transcript"], String(localized: "Copy transcript"),
+                String(localized: "Copy the whole conversation"),
                 "doc.on.doc"
             ) { [weak self] in self?.copyTranscript() })
         if viewModel.canClear {
             list.append(
                 makeCommand(
-                    ["clear", "reset"], "Clear conversation", "Start fresh on the agent", "eraser"
+                    ["clear", "reset"], String(localized: "Clear conversation"),
+                    String(localized: "Start fresh on the agent"), "eraser"
                 ) { [weak self] in self?.confirmClear() })
         }
         return list
@@ -1802,10 +1962,13 @@ final class ChatViewController: UIViewController {
 
     private func presentEffortSheet() {
         let sheet = UIAlertController(
-            title: "Reasoning effort", message: nil, preferredStyle: .actionSheet)
+            title: String(localized: "Reasoning effort"), message: nil,
+            preferredStyle: .actionSheet)
         sheet.addAction(
             UIAlertAction(
-                title: viewModel.currentEffort == nil ? "Default ✓" : "Default", style: .default
+                title: viewModel.currentEffort == nil
+                    ? String(localized: "Default") + " ✓" : String(localized: "Default"),
+                style: .default
             ) { [weak self] _ in
                 self?.viewModel.setEffort(nil)
                 self?.updateNavControls()
@@ -1820,7 +1983,7 @@ final class ChatViewController: UIViewController {
                     self?.updateNavControls()
                 })
         }
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
         present(sheet, animated: true)
     }
@@ -1830,20 +1993,21 @@ final class ChatViewController: UIViewController {
             guard viewModel.supportsUsage, let usage = await viewModel.usage(),
                 usage.tokens != nil || usage.costUSD != nil
             else {
-                self.presentToast("No usage recorded for this session yet.")
+                self.presentToast(String(localized: "No usage recorded for this session yet."))
                 return
             }
             var lines: [String] = []
             if let tokens = usage.tokens {
-                lines.append("\(tokens.formatted()) tokens")
+                lines.append(String(localized: "\(tokens.formatted()) tokens"))
             }
             if let cost = usage.costUSD {
                 lines.append(String(format: "$%.4f", cost))
             }
             let alert = UIAlertController(
-                title: "Last turn usage", message: lines.joined(separator: "\n"),
+                title: String(localized: "Last turn usage"),
+                message: lines.joined(separator: "\n"),
                 preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
             self.present(alert, animated: true)
         }
     }
@@ -1856,7 +2020,7 @@ final class ChatViewController: UIViewController {
             guard let self else { return }
             browser.dismiss(animated: true) {
                 UIPasteboard.general.string = path
-                self.presentToast("Path copied: \(path)")
+                self.presentToast(String(localized: "Path copied: \(path)"))
                 self.composer.appendPath(path)
             }
         }
@@ -1871,18 +2035,19 @@ final class ChatViewController: UIViewController {
             return (id, String(text.prefix(50)))
         }
         guard !prompts.isEmpty else {
-            presentToast("No earlier messages to jump to.")
+            presentToast(String(localized: "No earlier messages to jump to."))
             return
         }
         let sheet = UIAlertController(
-            title: "Jump to message", message: nil, preferredStyle: .actionSheet)
+            title: String(localized: "Jump to message"), message: nil,
+            preferredStyle: .actionSheet)
         for (id, title) in prompts.suffix(15) {
             sheet.addAction(
                 UIAlertAction(title: title, style: .default) { [weak self] _ in
                     self?.scrollTo(id: id)
                 })
         }
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
         present(sheet, animated: true)
     }
@@ -1891,7 +2056,7 @@ final class ChatViewController: UIViewController {
         var out: [String] = []
         for id in orderedIDs {
             guard let row = rowsByID[id], !id.hasPrefix("ts:") else { continue }
-            let who = row.role == .user ? "You" : "Agent"
+            let who = row.role == .user ? String(localized: "You") : String(localized: "Agent")
             let body: String
             switch row.content {
             case .text(let text):
@@ -1909,9 +2074,9 @@ final class ChatViewController: UIViewController {
             case .subagent(let card):
                 body = Self.subagentMarkdown(card)
             case .subagentGroup(let group):
-                body = "_\(group.total) agents_"
+                body = "_" + String(localized: "\(group.total) agents") + "_"
             case .file(let file), .image(let file):
-                body = "[file: \(file.path ?? file.filename ?? "attachment")]"
+                body = "[file: \(file.path ?? file.filename ?? String(localized: "attachment"))]"
             case .compaction(let row):
                 out.append(Self.compactionMarkdown(row))
                 continue
@@ -1926,7 +2091,7 @@ final class ChatViewController: UIViewController {
     private func copyTranscript() {
         UIPasteboard.general.string = transcriptMarkdown()
         Theme.Haptics.success()
-        presentToast("Transcript copied to clipboard.")
+        presentToast(String(localized: "Transcript copied to clipboard."))
     }
 
     private func shareTranscript() {
@@ -1936,7 +2101,7 @@ final class ChatViewController: UIViewController {
         do {
             try transcriptMarkdown().write(to: url, atomically: true, encoding: .utf8)
         } catch {
-            presentToast("Couldn't export the transcript.")
+            presentToast(String(localized: "Couldn't export the transcript."))
             return
         }
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
@@ -1973,8 +2138,8 @@ final class ChatViewController: UIViewController {
                 browseAll: { [weak self] in self?.presentModelPicker() }))
         let item = UIBarButtonItem(
             title: label, image: nil, primaryAction: nil,
-            menu: UIMenu(title: "Model", children: elements))
-        item.accessibilityLabel = "Model: \(label)"
+            menu: UIMenu(title: String(localized: "Model"), children: elements))
+        item.accessibilityLabel = String(localized: "Model: \(label)")
         return item
     }
 
@@ -2235,8 +2400,10 @@ final class ChatViewController: UIViewController {
 
     private static func relativeTimestamp(_ date: Date) -> String {
         let time = date.formatted(date: .omitted, time: .shortened)
-        if Calendar.current.isDateInToday(date) { return "Today \(time)" }
-        if Calendar.current.isDateInYesterday(date) { return "Yesterday \(time)" }
+        if Calendar.current.isDateInToday(date) { return String(localized: "Today \(time)") }
+        if Calendar.current.isDateInYesterday(date) {
+            return String(localized: "Yesterday \(time)")
+        }
         return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
     }
 
@@ -2273,8 +2440,9 @@ final class ChatViewController: UIViewController {
     }
 
     private func presentError(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(
+            title: String(localized: "Error"), message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
         present(alert, animated: true)
     }
 }
@@ -2331,7 +2499,10 @@ extension ChatViewController: ComposerViewDelegate {
         composer.showsAttach = true
         updateAttachmentStrip()
         Theme.Haptics.success()
-        presentToast("Attached \(text.count.formatted()) characters — sent with your next message.")
+        presentToast(
+            String(
+                localized:
+                    "Attached \(text.count.formatted()) characters — sent with your next message."))
     }
 
     func composerDidTapStop() {
@@ -2383,12 +2554,15 @@ extension ChatViewController: ComposerViewDelegate {
         if viewModel.canAttachImages {
             actions.append(
                 UIAction(
-                    title: "Photo Library", image: UIImage(systemName: "photo.on.rectangle")
+                    title: String(localized: "Photo Library"),
+                    image: UIImage(systemName: "photo.on.rectangle")
                 ) { [weak self] _ in self?.presentPhotoPicker() })
         }
         if viewModel.canAttachFiles {
             actions.append(
-                UIAction(title: "Files", image: UIImage(systemName: "folder")) { [weak self] _ in
+                UIAction(
+                    title: String(localized: "Files"), image: UIImage(systemName: "folder")
+                ) { [weak self] _ in
                     self?.presentDocumentPicker()
                 })
         }
@@ -2430,25 +2604,25 @@ extension ChatViewController: UIDocumentPickerDelegate {
     private func attachFile(at url: URL) {
         let name = url.lastPathComponent
         guard let data = try? Data(contentsOf: url), !data.isEmpty else {
-            presentToast("Couldn't read \(name).")
+            presentToast(String(localized: "Couldn't read \(name)."))
             return
         }
         guard data.count <= Self.attachmentSizeLimit else {
             let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-            presentToast("\(name) is \(size) — attachments are capped at 8 MB.")
+            presentToast(String(localized: "\(name) is \(size) — attachments are capped at 8 MB."))
             return
         }
         let mime =
             UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
             ?? "application/octet-stream"
         guard !mime.hasPrefix("image/") || viewModel.canAttachImages else {
-            presentToast("This model can't see images.")
+            presentToast(String(localized: "This model can't see images."))
             return
         }
         pendingAttachments.append(PromptAttachment(mime: mime, filename: name, data: data))
         Theme.Haptics.success()
         updateAttachmentStrip()
-        presentToast("\(name) attached — it'll be sent with your next message.")
+        presentToast(String(localized: "\(name) attached — it'll be sent with your next message."))
     }
 }
 
@@ -2466,7 +2640,7 @@ extension ChatViewController: PromptEnhanceOverlayDelegate {
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {
         UIPasteboard.general.string = prompt.text
         Theme.Haptics.success()
-        presentToast("Enhanced prompt copied.")
+        presentToast(String(localized: "Enhanced prompt copied."))
     }
 
     func enhanceOverlayDidRequestRetry(_ overlay: PromptEnhanceOverlay) {
@@ -2512,7 +2686,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
     private func presentAttachmentToast() {
         Theme.Haptics.success()
         updateAttachmentStrip()
-        presentToast("Image attached — it'll be sent with your next message.")
+        presentToast(String(localized: "Image attached — it'll be sent with your next message."))
     }
 
     private func updateAttachmentStrip() {
@@ -2551,7 +2725,9 @@ extension ChatViewController: UICollectionViewDelegate {
             return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
                 [weak self] _ in
                 UIMenu(children: [
-                    UIAction(title: "Edit", image: UIImage(systemName: "pencil")) { _ in
+                    UIAction(
+                        title: String(localized: "Edit"), image: UIImage(systemName: "pencil")
+                    ) { _ in
                         guard let self, let removed = self.viewModel.removeQueued(id: message.id)
                         else { return }
                         self.composer.setDraft(removed.text)
@@ -2562,7 +2738,8 @@ extension ChatViewController: UICollectionViewDelegate {
                         }
                     },
                     UIAction(
-                        title: "Remove from queue", image: UIImage(systemName: "trash"),
+                        title: String(localized: "Remove from queue"),
+                        image: UIImage(systemName: "trash"),
                         attributes: .destructive
                     ) { _ in
                         Theme.Haptics.warning()
@@ -2576,24 +2753,35 @@ extension ChatViewController: UICollectionViewDelegate {
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
             var actions: [UIAction] = [
-                UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIAction(
+                    title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")
+                ) { _ in
                     UIPasteboard.general.string = text
                     Theme.Haptics.success()
                 }
             ]
             if let code = Self.firstCodeBlock(in: text) {
                 actions.append(
-                    UIAction(title: "Copy code", image: UIImage(systemName: "curlybraces")) { _ in
+                    UIAction(
+                        title: String(localized: "Copy code"),
+                        image: UIImage(systemName: "curlybraces")
+                    ) { _ in
                         UIPasteboard.general.string = code
                         Theme.Haptics.success()
                     })
             }
             actions.append(
-                UIAction(title: "Quote", image: UIImage(systemName: "quote.opening")) { _ in
+                UIAction(
+                    title: String(localized: "Quote"),
+                    image: UIImage(systemName: "quote.opening")
+                ) { _ in
                     self?.composer.insertQuote(text)
                 })
             actions.append(
-                UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { _ in
+                UIAction(
+                    title: String(localized: "Share"),
+                    image: UIImage(systemName: "square.and.arrow.up")
+                ) { _ in
                     self?.shareText(text)
                 })
             return UIMenu(children: actions)
@@ -2646,20 +2834,30 @@ extension ChatViewController: UICollectionViewDelegate {
     /// A shared transcript has to keep the seam: the messages above it are still there to read, but
     /// they stopped being what the agent knew.
     private static func compactionMarkdown(_ row: CompactionRow) -> String {
-        guard let compaction = row.compaction else { return "---\n\n_Context compacted._" }
-        var line = "---\n\n_Context compacted"
+        let compacted = String(localized: "Context compacted")
+        guard let compaction = row.compaction else { return "---\n\n_\(compacted)._" }
+        var line = "---\n\n_\(compacted)"
         if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            line += ": \(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"
+            line += ": "
+                + String(
+                    localized:
+                        "\(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens")
         }
-        line += " — everything above this point was replaced by a summary._"
+        line += " — "
+            + String(localized: "everything above this point was replaced by a summary.") + "_"
         guard let summary = compaction.summary, !summary.isEmpty else { return line }
-        return line + "\n\n<details><summary>Summary</summary>\n\n\(summary)\n\n</details>"
+        let heading = String(localized: "Summary")
+        return line
+            + "\n\n<details><summary>\(heading)</summary>\n\n\(summary)\n\n</details>"
     }
 
     /// A shared transcript keeps a spawned agent inside the conversation it
     /// belongs to, indented under the line that spawned it.
     private static func subagentMarkdown(_ card: SubagentCard) -> String {
-        var lines = ["_Agent\(card.agentType.map { " · \($0)" } ?? "")_: \(card.title)"]
+        var lines = [
+            "_" + String(localized: "Agent") + "\(card.agentType.map { " · \($0)" } ?? "")"
+                + "_: \(card.title)"
+        ]
         for step in card.steps {
             switch step {
             case .reasoning(let text): lines.append("> \(text)")
@@ -2725,31 +2923,36 @@ extension ChatViewController: TextBubbleCellDelegate {
 
     private func confirmExternalOpen(_ url: URL) {
         let sheet = UIAlertController(
-            title: "Open outside Tailscode?",
+            title: String(localized: "Open outside Tailscode?"),
             message: url.absoluteString, preferredStyle: .alert)
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        sheet.addAction(UIAlertAction(title: "Open", style: .default) { _ in
-            UIApplication.shared.open(url)
-        })
-        sheet.addAction(UIAlertAction(title: "Copy link", style: .default) { [weak self] _ in
-            UIPasteboard.general.string = url.absoluteString
-            self?.presentToast("Link copied.")
-        })
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Open"), style: .default) { _ in
+                UIApplication.shared.open(url)
+            })
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Copy link"), style: .default) { [weak self] _ in
+                UIPasteboard.general.string = url.absoluteString
+                self?.presentToast(String(localized: "Link copied."))
+            })
         present(sheet, animated: true)
     }
 
     private func presentPathActions(_ path: String) {
         Theme.Haptics.tap()
         let sheet = UIAlertController(title: path, message: nil, preferredStyle: .actionSheet)
-        sheet.addAction(UIAlertAction(title: "Copy path", style: .default) { [weak self] _ in
-            UIPasteboard.general.string = path
-            Theme.Haptics.success()
-            self?.presentToast("Path copied.")
-        })
-        sheet.addAction(UIAlertAction(title: "Add to message", style: .default) { [weak self] _ in
-            self?.composer.appendPath(path)
-        })
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Copy path"), style: .default) { [weak self] _ in
+                UIPasteboard.general.string = path
+                Theme.Haptics.success()
+                self?.presentToast(String(localized: "Path copied."))
+            })
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Add to message"), style: .default) {
+                [weak self] _ in
+                self?.composer.appendPath(path)
+            })
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
         present(sheet, animated: true)
     }

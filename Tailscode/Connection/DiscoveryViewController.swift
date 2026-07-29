@@ -11,8 +11,8 @@ final class DiscoveryViewController: UIViewController {
     private var hasCreds: Bool { TailnetCredentials.hasToken }
 
     private let statusLabel = UILabel()
-    private let scanButton = PrimaryButton(title: "Scan tailnet")
-    private let configureButton = PrimaryButton(title: "Set up tailnet access")
+    private let scanButton = PrimaryButton(title: String(localized: "Scan tailnet"))
+    private let configureButton = PrimaryButton(title: String(localized: "Set up tailnet access"))
     private let resultsHeader = UILabel()
     private let resultsContainer = UIView()
     private let emptyLabel = UILabel()
@@ -39,7 +39,7 @@ final class DiscoveryViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Discover"
+        title = String(localized: "Discover")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(done))
         buildUI()
@@ -60,7 +60,10 @@ final class DiscoveryViewController: UIViewController {
 
     private func buildUI() {
         let header = UILabel()
-        header.text = "Uses the Tailscale API to list your devices, then checks which ones are running supported coding agent servers."
+        header.text = String(
+            localized:
+                "Uses the Tailscale API to list your devices, then checks which ones are running supported coding agent servers."
+        )
         header.font = Theme.Font.subheadline()
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
@@ -129,7 +132,7 @@ final class DiscoveryViewController: UIViewController {
                 secondary += " · \(os)"
             }
             if item.suggestion.requiresAuth {
-                secondary += " · needs password"
+                secondary += " · " + String(localized: "needs password")
             }
             content.secondaryText = secondary
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -154,7 +157,7 @@ final class DiscoveryViewController: UIViewController {
             let label = { () -> String in
                 if !item.device.hostname.isEmpty { return item.device.hostname }
                 if let n = item.device.name, !n.isEmpty { return n }
-                return item.device.addresses.first ?? "Unknown"
+                return item.device.addresses.first ?? String(localized: "Unknown")
             }()
             content.text = label
             var parts: [String] = []
@@ -201,13 +204,15 @@ final class DiscoveryViewController: UIViewController {
     private func refreshState() {
         if hasCreds {
             if suggestions.isEmpty && devices.isEmpty {
-                statusLabel.text = "Tap Scan to discover servers on your tailnet."
+                statusLabel.text = String(
+                    localized: "Tap Scan to discover servers on your tailnet.")
             }
-            configureButton.configuration?.title = "Update token"
+            configureButton.configuration?.title = String(localized: "Update token")
             scanButton.isHidden = false
         } else {
-            statusLabel.text = "Add a Tailscale API access token to discover servers."
-            configureButton.configuration?.title = "Add access token"
+            statusLabel.text = String(
+                localized: "Add a Tailscale API access token to discover servers.")
+            configureButton.configuration?.title = String(localized: "Add access token")
             scanButton.isHidden = true
         }
         let hasResults = !suggestions.isEmpty || (!devices.isEmpty && suggestions.isEmpty)
@@ -240,7 +245,7 @@ final class DiscoveryViewController: UIViewController {
         guard hasCreds, scanTask == nil else { return }
         scanButton.setLoading(true)
         scanActivity.startAnimating()
-        statusLabel.text = "Fetching devices and probing servers…"
+        statusLabel.text = String(localized: "Fetching devices and probing servers…")
         lastDeviceCount = nil
         devices = []
         suggestions = []
@@ -269,7 +274,8 @@ final class DiscoveryViewController: UIViewController {
                     onProgress: { [weak self] checked, total in
                         Task { @MainActor in
                             guard let self, self.scanTask != nil else { return }
-                            self.statusLabel.text = "Probing \(checked)/\(total) candidates…"
+                            self.statusLabel.text = String(
+                                localized: "Probing \(checked)/\(total) candidates…")
                         }
                     },
                     onFound: { [weak self] suggestion in
@@ -279,24 +285,33 @@ final class DiscoveryViewController: UIViewController {
                 suggestions = found.sorted { $0.recommendedProfileName < $1.recommendedProfileName }
                 TailnetCredentials.recordScan(devices: fetched.count, servers: found.count)
                 AppLogger.connection.info("scanner returned \(found.count) unique suggestions after dedup")
-                let countText = found.isEmpty ? "No supported servers found" : "Found \(found.count) server(s)"
-                statusLabel.text = lastDeviceCount.map { "Scanned \($0) devices. \(countText)" } ?? countText
+                let countText =
+                    found.isEmpty
+                    ? String(localized: "No supported servers found")
+                    : String(localized: "Found \(found.count) servers")
+                statusLabel.text =
+                    lastDeviceCount.map {
+                        String(localized: "Scanned \($0) devices.") + " " + countText
+                    } ?? countText
             } catch let error as AgentError {
                 if case .http(let status, _) = error, status == 401 || status == 403 {
-                    statusLabel.text = "Invalid Tailscale token. Update it and try again."
+                    statusLabel.text = String(
+                        localized: "Invalid Tailscale token. Update it and try again.")
                 } else {
-                    statusLabel.text = "Scan failed: \(error.localizedDescription)"
+                    statusLabel.text = String(
+                        localized: "Scan failed: \(error.localizedDescription)")
                 }
                 AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
                 suggestions = []
             } catch {
                 AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
-                statusLabel.text = "Scan failed: \(error.localizedDescription)"
+                statusLabel.text = String(
+                    localized: "Scan failed: \(error.localizedDescription)")
                 suggestions = []
             }
             scanButton.setLoading(false)
             scanActivity.stopAnimating()
-            scanButton.setTitle("Scan again")
+            scanButton.setTitle(String(localized: "Scan again"))
             applyResultsSnapshot()
             refreshState()
         }
@@ -305,8 +320,8 @@ final class DiscoveryViewController: UIViewController {
     private var skippedDeviceCount = 0
 
     private static func probingStatus(online: Int, skipped: Int) -> String {
-        var text = "Probing \(online) online device\(online == 1 ? "" : "s")…"
-        if skipped > 0 { text += " (\(skipped) offline skipped)" }
+        var text = String(localized: "Probing \(online) online devices…")
+        if skipped > 0 { text += " " + String(localized: "(\(skipped) offline skipped)") }
         return text
     }
 
@@ -344,18 +359,27 @@ final class DiscoveryViewController: UIViewController {
 
         if !suggestions.isEmpty {
             let count = lastDeviceCount ?? suggestions.count
-            resultsHeader.text = "Scanned \(count) devices, \(suggestions.count) servers found"
+            resultsHeader.text =
+                String(localized: "Scanned \(count) devices,") + " "
+                + String(localized: "\(suggestions.count) servers found")
             resultsHeader.isHidden = false
             emptyLabel.isHidden = true
         } else if showDeviceFallback {
-            resultsHeader.text = "No servers detected. Tap a device to connect manually:"
+            resultsHeader.text = String(
+                localized: "No servers detected. Tap a device to connect manually:")
             resultsHeader.isHidden = false
             emptyLabel.isHidden = true
         } else if let count = lastDeviceCount {
             resultsHeader.isHidden = true
-            var text = "Scanned \(count) devices.\nNo opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+            var text =
+                String(localized: "Scanned \(count) devices.") + "\n"
+                + String(
+                    localized:
+                        "No opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+                )
             if skippedDeviceCount > 0 {
-                text += "\nOffline devices (\(skippedDeviceCount)) were skipped."
+                text +=
+                    "\n" + String(localized: "Offline devices (\(skippedDeviceCount)) were skipped.")
             }
             emptyLabel.text = text
             emptyLabel.isHidden = false
@@ -374,13 +398,17 @@ final class DiscoveryViewController: UIViewController {
     }
 
     private func promptForPassword(for s: TailnetScanner.Suggestion) {
-        let alert = UIAlertController(title: "Password for \(s.baseURL.host ?? "")", message: "This server requires authentication.", preferredStyle: .alert)
+        let alert = UIAlertController(
+            title: String(localized: "Password for \(s.baseURL.host ?? "")"),
+            message: String(localized: "This server requires authentication."),
+            preferredStyle: .alert)
         alert.addTextField { tf in
-            tf.placeholder = "Password"
+            tf.placeholder = String(localized: "Password")
             tf.isSecureTextEntry = true
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Connect"), style: .default) { [weak self] _ in
             let pw = alert.textFields?.first?.text?.isEmpty == false ? alert.textFields?.first?.text : nil
             self?.connect(with: s, password: pw)
         })
@@ -394,7 +422,7 @@ final class DiscoveryViewController: UIViewController {
     private func connect(with suggestion: TailnetScanner.Suggestion, password: String?) {
         guard connectTask == nil else { return }
         view.endEditing(true)
-        statusLabel.text = "Verifying \(suggestion.baseURL.host ?? "server")…"
+        statusLabel.text = String(localized: "Verifying \(suggestion.baseURL.host ?? "server")…")
         connectTask = Task {
             defer { connectTask = nil }
             let outcome = await AgentProbe.probe(
@@ -405,21 +433,25 @@ final class DiscoveryViewController: UIViewController {
                 saveVerified(suggestion, backend: detected, password: password)
             case .notAnAgentServer:
                 Theme.Haptics.error()
-                statusLabel.text = "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode or claude-bridge server."
+                statusLabel.text = String(
+                    localized:
+                        "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode or claude-bridge server."
+                )
             case .authFailed:
                 Theme.Haptics.error()
-                statusLabel.text = "Wrong password for \(suggestion.baseURL.host ?? "server")."
+                statusLabel.text = String(
+                    localized: "Wrong password for \(suggestion.baseURL.host ?? "server").")
                 promptForPassword(for: suggestion)
             case .unreachable(let detail):
                 Theme.Haptics.error()
-                statusLabel.text = "Unreachable: \(detail)"
+                statusLabel.text = String(localized: "Unreachable: \(detail)")
             }
         }
     }
 
     private func saveVerified(_ suggestion: TailnetScanner.Suggestion, backend: AgentType, password: String?) {
         let profName = suggestion.recommendedProfileName.isEmpty
-            ? (suggestion.baseURL.host ?? "Server")
+            ? (suggestion.baseURL.host ?? String(localized: "Server"))
             : suggestion.recommendedProfileName
         let profile = ConnectionProfile(
             id: UUID().uuidString, name: profName, backend: backend,
@@ -430,7 +462,7 @@ final class DiscoveryViewController: UIViewController {
             Theme.Haptics.success()
             dismiss(animated: true) { [onConnected] in onConnected?() }
         } catch {
-            statusLabel.text = "Save failed: \(error.localizedDescription)"
+            statusLabel.text = String(localized: "Save failed: \(error.localizedDescription)")
             Theme.Haptics.error()
         }
     }

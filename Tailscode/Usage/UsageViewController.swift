@@ -4,13 +4,18 @@ import UIKit
 
 private struct QuotaUnavailableError: LocalizedError, Sendable {
     var errorDescription: String? {
-        "Claude quota is unavailable right now — the bridge couldn't reach api.anthropic.com."
+        String(
+            localized:
+                "Claude quota is unavailable right now — the bridge couldn't reach api.anthropic.com."
+        )
     }
 }
 
 private struct CredentialsUnavailableError: LocalizedError, Sendable {
     let profileName: String
-    var errorDescription: String? { "Couldn't read stored credentials for \(profileName)." }
+    var errorDescription: String? {
+        String(localized: "Couldn't read stored credentials for \(profileName).")
+    }
 }
 
 private struct GaugeVM {
@@ -51,12 +56,12 @@ final class UsageViewController: UIViewController {
 
     private lazy var emptyStateView = EmptyStateView(
         symbol: "gauge.with.dots.needle.67percent",
-        title: "Not connected",
-        message: "Connect to a Claude Code or opencode server to see usage.")
+        title: String(localized: "Not connected"),
+        message: String(localized: "Connect to a Claude Code or opencode server to see usage."))
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Usage"
+        title = String(localized: "Usage")
         view.backgroundColor = Theme.Color.groupedBackground
         setupScroll()
         setupEmptyState()
@@ -171,8 +176,9 @@ final class UsageViewController: UIViewController {
         }
         let age = Date().timeIntervalSince(lastRefreshed)
         updatedLabel.text = age < 60
-            ? "Updated just now"
-            : "Updated \(lastRefreshed.formatted(.relative(presentation: .named)))"
+            ? String(localized: "Updated just now")
+            : String(
+                localized: "Updated \(lastRefreshed.formatted(.relative(presentation: .named)))")
         updatedLabel.isHidden = false
     }
 
@@ -265,7 +271,7 @@ final class UsageViewController: UIViewController {
     ) -> CardModel {
         CardModel(
             subtitle: provider.subtitle,
-            pill: provider.isLive ? "LIVE" : "EST",
+            pill: provider.isLive ? String(localized: "LIVE") : String(localized: "EST"),
             accent: accent,
             gauges: provider.gauges.prefix(3).map {
                 GaugeVM(
@@ -273,7 +279,7 @@ final class UsageViewController: UIViewController {
                     caption: $0.caption)
             },
             details: [],
-            note: "Last saved figures — refreshing from the server now.")
+            note: String(localized: "Last saved figures — refreshing from the server now."))
     }
 
     private func preferredProfile(
@@ -375,12 +381,14 @@ final class UsageViewController: UIViewController {
         }
         return CardModel(
             subtitle: quota.subtitle,
-            pill: "LIVE",
+            pill: String(localized: "LIVE"),
             accent: accent,
             gauges: Array(gauges),
             details: quota.details.map { ($0.key, $0.value) },
-            note: "Live rolling rate limits straight from \(quota.source). Percentages are your "
-                + "actual plan consumption, not an estimate.")
+            note: String(
+                localized:
+                    "Live rolling rate limits straight from \(quota.source). Percentages are your actual plan consumption, not an estimate."
+            ))
     }
 
     private static func opencodeModel(_ result: UsageScanResult) -> CardModel {
@@ -390,16 +398,16 @@ final class UsageViewController: UIViewController {
         let hosts = result.scannedHosts.count
         var details: [(String, String)] = []
         if hosts > 1 || !result.failedHosts.isEmpty {
-            details.append(("Servers", serverCoverage(result)))
+            details.append((String(localized: "Servers"), serverCoverage(result)))
         }
         details += [
-            ("Spend (31 days)", currency(totalSpend)),
-            ("Requests", "\(samples.count)"),
-            ("Tokens (in + out)", tokenCount(totalTokens)),
+            (String(localized: "Spend (31 days)"), currency(totalSpend)),
+            (String(localized: "Requests"), "\(samples.count)"),
+            (String(localized: "Tokens (in + out)"), tokenCount(totalTokens)),
         ]
         return CardModel(
             subtitle: UsageScanner.quota(from: result).subtitle,
-            pill: "EST",
+            pill: String(localized: "EST"),
             accent: Theme.Color.opencode,
             gauges: gaugeVMs(result: result),
             details: details,
@@ -409,21 +417,25 @@ final class UsageViewController: UIViewController {
     private static func serverCoverage(_ result: UsageScanResult) -> String {
         var text = result.scannedHosts.joined(separator: " + ")
         if !result.failedHosts.isEmpty {
-            text += " · \(result.failedHosts.joined(separator: ", ")) unreachable"
+            text += " · " + String(localized: "\(result.failedHosts.joined(separator: ", ")) unreachable")
         }
         return text
     }
 
     private static func opencodeNote(_ result: UsageScanResult) -> String {
         let scope = result.scannedHosts.count > 1
-            ? "estimated from the opencode.db on \(result.scannedHosts.joined(separator: " and "))"
-            : "estimated from this server's opencode.db"
-        var note = "No usage API — \(scope) against Go's dollar caps: an anchored 5-hour block, "
-            + "the trailing week, and the billing month. "
-            + "May miss usage on machines without a profile here and server-side accounting."
+            ? String(
+                localized:
+                    "estimated from the opencode.db on \(result.scannedHosts.joined(separator: " and "))"
+            )
+            : String(localized: "estimated from this server's opencode.db")
+        var note = String(
+            localized:
+                "No usage API — \(scope) against Go's dollar caps: an anchored 5-hour block, the trailing week, and the billing month. May miss usage on machines without a profile here and server-side accounting."
+        )
         if let multipliers = multiplierNote(result.multipliers) { note += " \(multipliers)" }
         for host in result.failedHosts {
-            note += " \(host) unreachable — its spend is not included."
+            note += " " + String(localized: "\(host) unreachable — its spend is not included.")
         }
         return note
     }
@@ -434,9 +446,11 @@ final class UsageViewController: UIViewController {
         let weighted = multipliers.values.sorted { $0.weight > $1.weight }
         guard !weighted.isEmpty else { return nil }
         let list = weighted.map {
-            "\(baseModelName($0.displayName)) counts \(String(format: "%g", $0.weight))x"
+            String(
+                localized:
+                    "\(baseModelName($0.displayName)) counts \(String(format: "%g", $0.weight))x")
         }
-        return "Model multipliers applied (\(list.joined(separator: ", ")))."
+        return String(localized: "Model multipliers applied (\(list.joined(separator: ", "))).")
     }
 
     private static func baseModelName(_ displayName: String) -> String {
@@ -446,16 +460,21 @@ final class UsageViewController: UIViewController {
 
     private static func unavailableSuffix(_ note: String, result: UsageScanResult) -> String {
         guard result.unavailable > 0 else { return note }
-        let plural = result.unavailable == 1 ? "session" : "sessions"
-        return note + " \(result.unavailable) \(plural) unavailable — totals are incomplete."
+        return note + " "
+            + String(
+                localized: "\(result.unavailable) sessions unavailable — totals are incomplete.")
     }
 
     private static func gaugeVMs(result: UsageScanResult) -> [GaugeVM] {
         let now = Date()
         return UsageScanner.windows.map { window in
             let stats = UsageScanner.windowStats(window, samples: result.samples, now: now)
-            var caption = "\(currency(stats.spend)) / \(currency(window.cap)) · \(stats.requests) req"
-            if let resetsAt = stats.resetsAt { caption += "\n~resets \(humanize(until: resetsAt))" }
+            var caption =
+                "\(currency(stats.spend)) / \(currency(window.cap)) · "
+                + String(localized: "\(stats.requests) req")
+            if let resetsAt = stats.resetsAt {
+                caption += "\n" + String(localized: "~resets \(humanize(until: resetsAt))")
+            }
             return GaugeVM(
                 name: window.name,
                 fraction: stats.fraction,
@@ -466,8 +485,9 @@ final class UsageViewController: UIViewController {
 
     private static func resetCaption(_ gauge: UsageQuota.Gauge) -> String {
         guard let resetsAt = gauge.resetsAt else { return "—" }
-        let prefix = gauge.trustedReset ? "resets " : "~resets "
-        return prefix + humanize(until: resetsAt)
+        let elapsed = humanize(until: resetsAt)
+        return gauge.trustedReset
+            ? String(localized: "resets \(elapsed)") : String(localized: "~resets \(elapsed)")
     }
 
     private static func humanize(until date: Date) -> String {
@@ -496,7 +516,7 @@ final class UsageViewController: UIViewController {
     }
 
     private func showError(_ error: Error) {
-        errorLabel.text = "Couldn't load usage: \(error.localizedDescription)"
+        errorLabel.text = String(localized: "Couldn't load usage: \(error.localizedDescription)")
         errorLabel.isHidden = false
     }
 }

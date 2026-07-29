@@ -15,7 +15,7 @@ final class SetupGuideViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Set up a server"
+        title = String(localized: "Set up a server")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.largeTitleDisplayMode = .never
         buildUI()
@@ -26,31 +26,34 @@ final class SetupGuideViewController: UIViewController {
 
     private func buildUI() {
         let title = UILabel()
-        title.text = "Run agents on your own machine"
+        title.text = String(localized: "Run agents on your own machine")
         title.font = .systemFont(ofSize: 26, weight: .bold)
         title.textColor = Theme.Color.label
         title.numberOfLines = 0
 
         let subtitle = UILabel()
-        subtitle.text = "Three steps, about five minutes. Your code and your Claude or opencode session stay on hardware you own — Tailscale just lets your phone reach them."
+        subtitle.text = String(
+            localized:
+                "Three steps, about five minutes. Your code and your Claude or opencode session stay on hardware you own — Tailscale just lets your phone reach them."
+        )
         subtitle.font = Theme.Font.subheadline()
         subtitle.textColor = Theme.Color.secondaryLabel
         subtitle.numberOfLines = 0
 
         let backendCaption = UILabel()
-        backendCaption.text = "WHICH AGENT?"
+        backendCaption.text = String(localized: "WHICH AGENT?")
         backendCaption.font = .preferredFont(forTextStyle: .caption2)
         backendCaption.textColor = Theme.Color.tertiaryLabel
 
         stepsStack.axis = .vertical
         stepsStack.spacing = 0
 
-        let ready = PrimaryButton(title: "My server is running — connect")
+        let ready = PrimaryButton(title: String(localized: "My server is running — connect"))
         ready.addTarget(self, action: #selector(readyTapped), for: .touchUpInside)
 
         let demo = UIButton(type: .system)
         var demoConfig = UIButton.Configuration.plain()
-        demoConfig.title = "Not yet? Explore the demo"
+        demoConfig.title = String(localized: "Not yet? Explore the demo")
         demoConfig.image = UIImage(systemName: "play.circle")
         demoConfig.imagePadding = 6
         demoConfig.baseForegroundColor = Theme.Color.accent
@@ -113,7 +116,7 @@ final class SetupGuideViewController: UIViewController {
     private func copy(_ text: String) {
         UIPasteboard.general.string = text
         Theme.Haptics.success()
-        let toast = ToastView(message: "Copied")
+        let toast = ToastView(message: String(localized: "Copied"))
         toast.flash(in: view, above: view.safeAreaLayoutGuide.bottomAnchor)
     }
 
@@ -138,31 +141,36 @@ final class SetupGuideViewController: UIViewController {
         switch backend {
         case .openCode:
             serverStep = SetupStep(
-                icon: "terminal", title: "Start opencode",
-                detail: "On that machine, serve opencode on the tailnet. Install it first if needed.",
+                icon: "terminal", title: String(localized: "Start opencode"),
+                detail: String(
+                    localized:
+                        "On that machine, serve opencode on the tailnet. Install it first if needed."),
                 command: "opencode serve --hostname 0.0.0.0 --port 4096",
-                link: ("Install opencode", "https://opencode.ai"))
+                link: (String(localized: "Install opencode"), "https://opencode.ai"))
         case .claudeCode:
             serverStep = SetupStep(
-                icon: "terminal", title: "Start claude-bridge",
-                detail:
-                    "claude-bridge fronts your logged-in Claude Code CLI. Build it once, then run it with a password.",
+                icon: "terminal", title: String(localized: "Start claude-bridge"),
+                detail: String(
+                    localized:
+                        "claude-bridge fronts your logged-in Claude Code CLI. Build it once, then run it with a password."),
                 command:
                     "git clone https://github.com/guitaripod/claude-bridge\ncd claude-bridge && swift build -c release\nBRIDGE_BIND=0.0.0.0 BRIDGE_PASSWORD=your-password .build/release/claude-bridge",
-                link: ("claude-bridge on GitHub", "https://github.com/guitaripod/claude-bridge"))
+                link: (String(localized: "claude-bridge on GitHub"), "https://github.com/guitaripod/claude-bridge"))
         }
         return [
             SetupStep(
-                icon: "network", title: "Join your tailnet",
-                detail:
-                    "Install Tailscale on this iPhone and on the computer that will run the agent, signed into the same account. Now they share a private, encrypted network.",
+                icon: "network", title: String(localized: "Join your tailnet"),
+                detail: String(
+                    localized:
+                        "Install Tailscale on this iPhone and on the computer that will run the agent, signed into the same account. Now they share a private, encrypted network."),
                 command: nil,
-                link: ("Get Tailscale", "https://tailscale.com/download")),
+                link: (String(localized: "Get Tailscale"), "https://tailscale.com/download")),
             serverStep,
             SetupStep(
-                icon: "checkmark.circle", title: "Connect from your phone",
-                detail:
-                    "Come back here. Tap Discover to scan your tailnet, or enter the machine's Tailscale address — like \(Self.exampleURL(backend)).",
+                icon: "checkmark.circle", title: String(localized: "Connect from your phone"),
+                detail: String(
+                    localized:
+                        "Come back here. Tap Discover to scan your tailnet, or enter the machine's Tailscale address — like \(Self.exampleURL(backend))."),
                 command: nil,
                 link: nil),
         ]
@@ -373,8 +381,10 @@ private final class CommandBlockView: UIView {
 /// Animated phone ↔ Tailscale ↔ server diagram that heads the guide.
 @MainActor
 private final class TailnetDiagramView: UIView {
-    private let phoneNode = NodeView(symbol: "iphone", caption: "This iPhone", tint: Theme.Color.accent)
-    private let serverNode = NodeView(symbol: "server.rack", caption: "Your machine", tint: Theme.Color.opencode)
+    private let phoneNode = NodeView(
+        symbol: "iphone", caption: String(localized: "This iPhone"), tint: Theme.Color.accent)
+    private let serverNode = NodeView(
+        symbol: "server.rack", caption: String(localized: "Your machine"), tint: Theme.Color.opencode)
     private let lineLayer = CAShapeLayer()
     private let dotLayer = CAShapeLayer()
     private let lockBadge = UIView()

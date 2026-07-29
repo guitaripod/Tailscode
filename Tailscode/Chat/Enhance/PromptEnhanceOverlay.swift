@@ -87,7 +87,7 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)),
             for: .normal)
         dismissButton.tintColor = Theme.Color.tertiaryLabel
-        dismissButton.accessibilityLabel = "Dismiss"
+        dismissButton.accessibilityLabel = String(localized: "Dismiss")
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
         dismissButton.addAction(UIAction { [weak self] _ in self?.requestDismiss() }, for: .touchUpInside)
         bubble.addSubview(dismissButton)
@@ -105,12 +105,12 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)),
             for: .normal)
         copyButton.tintColor = Theme.Color.secondaryLabel
-        copyButton.accessibilityLabel = "Copy"
+        copyButton.accessibilityLabel = String(localized: "Copy")
         copyButton.addAction(UIAction { [weak self] _ in self?.useCopy() }, for: .touchUpInside)
 
         var use = Theme.Glass.buttonConfiguration(prominent: true)
         use.cornerStyle = .capsule
-        use.title = "Use"
+        use.title = String(localized: "Use")
         use.image = UIImage(
             systemName: "arrow.up",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))
@@ -118,7 +118,7 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
         use.baseBackgroundColor = Theme.Color.accent
         use.baseForegroundColor = .white
         useButton.configuration = use
-        useButton.accessibilityLabel = "Use this prompt"
+        useButton.accessibilityLabel = String(localized: "Use this prompt")
         useButton.addAction(UIAction { [weak self] _ in self?.useCurrent() }, for: .touchUpInside)
 
         let spacer = UIView()
@@ -258,7 +258,8 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
             snapshot.appendItems([
                 .message(MessageInfo(
                     symbol: "exclamationmark.bubble",
-                    text: "Couldn't refine that one. Give it another try.", showsRetry: true))
+                    text: String(localized: "Couldn't refine that one. Give it another try."),
+                    showsRetry: true))
             ])
             pageControl.numberOfPages = 0
             footer.isHidden = true

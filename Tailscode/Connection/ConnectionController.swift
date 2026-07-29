@@ -28,12 +28,14 @@ final class ConnectionController {
     }
 
     private struct StoreUnavailable: LocalizedError {
-        var errorDescription: String? { "Profile storage is unavailable on this device." }
+        var errorDescription: String? {
+            String(localized: "Profile storage is unavailable on this device.")
+        }
     }
 
     struct ProRequired: LocalizedError {
         var errorDescription: String? {
-            "Connecting more than one server requires Tailscode Pro."
+            String(localized: "Connecting more than one server requires Tailscode Pro.")
         }
     }
 

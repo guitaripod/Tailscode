@@ -34,7 +34,7 @@ final class ModelPickerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Model"
+        title = String(localized: "Model")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close, target: self, action: #selector(close))
@@ -61,7 +61,7 @@ final class ModelPickerViewController: UIViewController {
     private func configureSearch() {
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
-        search.searchBar.placeholder = "Search \(allModels.count) models"
+        search.searchBar.placeholder = String(localized: "Search \(allModels.count) models")
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
     }
@@ -94,7 +94,7 @@ final class ModelPickerViewController: UIViewController {
                         systemName: "photo",
                         withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)))
                 badge.tintColor = Theme.Color.tertiaryLabel
-                badge.accessibilityLabel = "Supports images"
+                badge.accessibilityLabel = String(localized: "Supports images")
                 accessories.append(.customView(configuration: .init(customView: badge, placement: .trailing())))
             }
             if isSelected { accessories.append(.checkmark()) }
@@ -138,7 +138,7 @@ final class ModelPickerViewController: UIViewController {
                 }
             }
             if !recents.isEmpty {
-                let group = ProviderGroup(id: "·recent", name: "Recent")
+                let group = ProviderGroup(id: "·recent", name: String(localized: "Recent"))
                 snapshot.appendSections([group])
                 snapshot.appendItems(recents.map { Row(model: $0, recent: true) }, toSection: group)
             }
@@ -162,7 +162,16 @@ final class ModelPickerViewController: UIViewController {
     }
 
     @objc private func close() { dismiss(animated: true) }
+
+    #if DEBUG
+        func tourSelect(matching modelID: String) {
+            guard let model = allModels.first(where: { $0.id == modelID }) else { return }
+            onSelect(model.selection)
+            dismiss(animated: true)
+        }
+    #endif
 }
+
 
 extension ModelPickerViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {

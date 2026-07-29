@@ -175,9 +175,11 @@ final class CompactionCell: UICollectionViewCell {
 
     private func configureRunning(startedAt: Date) {
         symbol("arrow.down.right.and.arrow.up.left", tint: Theme.Color.accent)
-        titleLabel.text = "Compacting…"
+        titleLabel.text = String(localized: "Compacting…")
         detailLabel.text =
-            "Re-reading the conversation to summarize it. This can take a minute or two."
+            String(
+                localized:
+                    "Re-reading the conversation to summarize it. This can take a minute or two.")
         track.isHidden = false
         fill.backgroundColor = Theme.Color.accent
         footnote.isHidden = false
@@ -189,10 +191,10 @@ final class CompactionCell: UICollectionViewCell {
 
     private func configureFailed(_ reason: String) {
         symbol("exclamationmark.triangle.fill", tint: Theme.Color.warning)
-        titleLabel.text = "Couldn't compact"
+        titleLabel.text = String(localized: "Couldn't compact")
         detailLabel.text = reason
         track.isHidden = true
-        footnote.text = "The conversation is unchanged."
+        footnote.text = String(localized: "The conversation is unchanged.")
         footnote.isHidden = false
     }
 
@@ -220,21 +222,23 @@ final class CompactionCell: UICollectionViewCell {
     }
 
     private static func title(for trigger: Compaction.Trigger?) -> String {
-        trigger == .auto ? "Context compacted automatically" : "Context compacted"
+        trigger == .auto
+            ? String(localized: "Context compacted automatically")
+            : String(localized: "Context compacted")
     }
 
     private static func detail(for compaction: Compaction) -> String {
         var parts: [String] = []
         if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            parts.append("\(tokens(before)) → \(tokens(after)) tokens")
+            parts.append(String(localized: "\(tokens(before)) → \(tokens(after)) tokens"))
         } else if let after = compaction.tokensAfter {
-            parts.append("\(tokens(after)) tokens in context")
+            parts.append(String(localized: "\(tokens(after)) tokens in context"))
         }
         if let duration = compaction.duration, duration >= 1 {
             parts.append(elapsed(duration))
         }
         guard !parts.isEmpty else {
-            return "The conversation so far was replaced by a summary of it."
+            return String(localized: "The conversation so far was replaced by a summary of it.")
         }
         return parts.joined(separator: " · ")
     }
@@ -242,10 +246,12 @@ final class CompactionCell: UICollectionViewCell {
     private static func footnote(for compaction: Compaction) -> String {
         var sentence =
             compaction.reduction.map {
-                "\(Int(($0 * 100).rounded()))% of the context was replaced by a summary"
-            } ?? "Earlier messages were replaced by a summary"
+                String(
+                    localized: "\(Int(($0 * 100).rounded()))% of the context was replaced by a summary"
+                )
+            } ?? String(localized: "Earlier messages were replaced by a summary")
         if let preserved = compaction.preservedMessageCount, preserved > 0 {
-            sentence += "; the last \(preserved) message\(preserved == 1 ? "" : "s") carried over"
+            sentence += "; " + String(localized: "the last \(preserved) messages carried over")
         }
         return sentence + "."
     }
@@ -264,7 +270,8 @@ final class CompactionCell: UICollectionViewCell {
 
     private func updateElapsed() {
         guard let startedAt else { return }
-        footnote.text = "Running for \(Self.elapsed(Date().timeIntervalSince(startedAt)))"
+        footnote.text = String(
+            localized: "Running for \(Self.elapsed(Date().timeIntervalSince(startedAt)))")
     }
 
     private func startTicking() {

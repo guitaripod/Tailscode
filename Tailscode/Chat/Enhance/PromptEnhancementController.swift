@@ -85,7 +85,8 @@ final class PromptEnhancementController {
         }
         guard Self.isEnhanceable(text) else {
             AppLogger.ui.info("enhance: requestNow — draft too short (\(text.count) chars)")
-            status = .unavailable("Add a bit more detail, then hold Send to refine it.")
+            status = .unavailable(
+                String(localized: "Add a bit more detail, then hold Send to refine it."))
             return true
         }
         if text == generatedInput, case .ready = status {

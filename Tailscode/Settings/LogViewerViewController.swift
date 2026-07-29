@@ -10,7 +10,7 @@ final class LogViewerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Logs"
+        title = String(localized: "Logs")
         view.backgroundColor = Theme.Color.background
         navigationItem.rightBarButtonItems = [
             UIBarButtonItem(
@@ -44,11 +44,13 @@ final class LogViewerViewController: UIViewController {
                 systemName: errorsOnly
                     ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"),
             menu: UIMenu(children: [
-                UIAction(title: "All entries", state: errorsOnly ? .off : .on) { [weak self] _ in
+                UIAction(title: String(localized: "All entries"), state: errorsOnly ? .off : .on) {
+                    [weak self] _ in
                     self?.errorsOnly = false
                     self?.refreshFilterUI()
                 },
-                UIAction(title: "Errors only", state: errorsOnly ? .on : .off) { [weak self] _ in
+                UIAction(title: String(localized: "Errors only"), state: errorsOnly ? .on : .off) {
+                    [weak self] _ in
                     self?.errorsOnly = true
                     self?.refreshFilterUI()
                 },
@@ -84,12 +86,14 @@ final class LogViewerViewController: UIViewController {
         var config = UIContentUnavailableConfiguration.empty()
         if errorsOnly {
             config.image = UIImage(systemName: "checkmark.seal")
-            config.text = "No errors logged"
-            config.secondaryText = "Nothing has gone wrong — diagnostics are clean."
+            config.text = String(localized: "No errors logged")
+            config.secondaryText = String(
+                localized: "Nothing has gone wrong — diagnostics are clean.")
         } else {
             config.image = UIImage(systemName: "doc.text.magnifyingglass")
-            config.text = "No logs yet"
-            config.secondaryText = "Diagnostics from connections, chats, and syncs show up here."
+            config.text = String(localized: "No logs yet")
+            config.secondaryText = String(
+                localized: "Diagnostics from connections, chats, and syncs show up here.")
         }
         return config
     }
@@ -102,7 +106,8 @@ final class LogViewerViewController: UIViewController {
         guard rendered.length > 0 else { return nil }
         guard clipped.startIndex != text.startIndex else { return rendered }
         let result = NSMutableAttributedString(
-            string: "… earlier entries omitted — Share exports the full log\n",
+            string: String(localized: "… earlier entries omitted — Share exports the full log")
+                + "\n",
             attributes: [
                 .font: Theme.Font.mono(11),
                 .foregroundColor: Theme.Color.secondaryLabel,

@@ -179,7 +179,7 @@ final class SessionListViewModel {
     }
 
     private struct SourceTimeout: LocalizedError {
-        var errorDescription: String? { "The server did not answer in time." }
+        var errorDescription: String? { String(localized: "The server did not answer in time.") }
     }
 
     /// A session list is a refresh, not a long-running turn, so it must not

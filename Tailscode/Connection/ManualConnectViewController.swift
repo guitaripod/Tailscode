@@ -9,10 +9,14 @@ final class ManualConnectViewController: UIViewController {
     private let device: TailscaleDevice
 
     private let backendControl = UISegmentedControl(items: ["opencode", "Claude Code"])
-    private let nameField = FormField(title: "Name", placeholder: "My server")
-    private let hostField = FormField(title: "Host URL", placeholder: "http://100.x.y.z:4096", keyboard: .URL)
-    private let passwordField = FormField(title: "Password (optional)", placeholder: "Leave blank on a private tailnet", secure: true)
-    private let connectButton = PrimaryButton(title: "Test & Connect")
+    private let nameField = FormField(
+        title: String(localized: "Name"), placeholder: String(localized: "My server"))
+    private let hostField = FormField(
+        title: String(localized: "Host URL"), placeholder: "http://100.x.y.z:4096", keyboard: .URL)
+    private let passwordField = FormField(
+        title: String(localized: "Password (optional)"),
+        placeholder: String(localized: "Leave blank on a private tailnet"), secure: true)
+    private let connectButton = PrimaryButton(title: String(localized: "Test & Connect"))
     private let statusLabel = UILabel()
 
     private var backend: AgentType { backendControl.selectedSegmentIndex == 0 ? .openCode : .claudeCode }
@@ -33,7 +37,7 @@ final class ManualConnectViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Connect to \(device.hostname)"
+        title = String(localized: "Connect to \(device.hostname)")
         view.backgroundColor = Theme.Color.groupedBackground
         buildUI()
         backendControl.selectedSegmentIndex = 0
@@ -109,19 +113,19 @@ final class ManualConnectViewController: UIViewController {
     private func attemptConnect() async {
         let host = hostField.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !host.isEmpty, let url = URL(string: host), url.scheme != nil, url.host != nil else {
-            showStatus("Enter a valid URL like http://100.x.y.z:4096", ok: false)
+            showStatus(String(localized: "Enter a valid URL like http://100.x.y.z:4096"), ok: false)
             return
         }
         let password = passwordField.text.isEmpty ? nil : passwordField.text
 
         connectButton.setLoading(true)
-        showStatus("Testing connection…", ok: true)
+        showStatus(String(localized: "Testing connection…"), ok: true)
         let outcome = await AgentProbe.probe(baseURL: url, password: password, preferring: backend)
         connectButton.setLoading(false)
 
         switch outcome {
         case .ok(let detected, let version):
-            let name = nameField.text.isEmpty ? (url.host ?? "Server") : nameField.text
+            let name = nameField.text.isEmpty ? (url.host ?? String(localized: "Server")) : nameField.text
             let profile = ConnectionProfile(id: UUID().uuidString, name: name, backend: detected, baseURL: url)
             do {
                 try ConnectionController.shared.save(profile, password: password)
@@ -129,16 +133,16 @@ final class ManualConnectViewController: UIViewController {
                 Theme.Haptics.success()
                 onConnected?()
             } catch {
-                showStatus("Couldn't save profile: \(error.localizedDescription)", ok: false)
+                showStatus(String(localized: "Couldn't save profile: \(error.localizedDescription)"), ok: false)
             }
         case .authFailed:
-            showStatus("Authentication failed — check the password.", ok: false)
+            showStatus(String(localized: "Authentication failed — check the password."), ok: false)
             Theme.Haptics.error()
         case .unreachable(let detail):
-            showStatus("Unreachable: \(detail)", ok: false)
+            showStatus(String(localized: "Unreachable: \(detail)"), ok: false)
             Theme.Haptics.error()
         case .notAnAgentServer:
-            showStatus("Reachable, but not an opencode or claude-bridge server.", ok: false)
+            showStatus(String(localized: "Reachable, but not an opencode or claude-bridge server."), ok: false)
             Theme.Haptics.error()
         }
     }

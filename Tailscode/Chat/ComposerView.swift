@@ -74,7 +74,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.delegate = self
         textView.translatesAutoresizingMaskIntoConstraints = false
 
-        placeholder.text = "Message your agent…"
+        placeholder.text = String(localized: "Message your agent…")
         placeholder.font = Theme.Font.body()
         placeholder.textColor = Theme.Color.tertiaryLabel
         placeholder.translatesAutoresizingMaskIntoConstraints = false
@@ -86,13 +86,13 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         attachButton.translatesAutoresizingMaskIntoConstraints = false
         attachButton.showsMenuAsPrimaryAction = true
         attachButton.menu = UIMenu(
-            title: "Attach",
+            title: String(localized: "Attach"),
             children: [
                 UIDeferredMenuElement.uncached { [weak self] completion in
                     completion(self?.delegate?.composerAttachOptions() ?? [])
                 }
             ])
-        attachButton.accessibilityLabel = "Attach"
+        attachButton.accessibilityLabel = String(localized: "Attach")
 
         var send = UIButton.Configuration.filled()
         send.cornerStyle = .capsule
@@ -192,13 +192,17 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         config.baseForegroundColor = .white
         sendButton.configuration = config
         sendButton.isEnabled = isBusy || hasText
-        sendButton.accessibilityLabel = showStop ? "Stop" : (isBusy ? "Queue message" : "Send")
+        sendButton.accessibilityLabel =
+            showStop
+            ? String(localized: "Stop")
+            : (isBusy ? String(localized: "Queue message") : String(localized: "Send"))
     }
 
     func setBusy(_ busy: Bool) {
         guard isBusy != busy else { return }
         isBusy = busy
-        placeholder.text = busy ? "Queue a message…" : "Message your agent…"
+        placeholder.text =
+            busy ? String(localized: "Queue a message…") : String(localized: "Message your agent…")
         UIView.transition(with: sendButton, duration: 0.2, options: .transitionCrossDissolve) {
             self.updateSendButton()
         }
@@ -283,7 +287,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func setEnhanceHint(_ visible: Bool) {
         let target: CGFloat = visible ? 1 : 0
         guard enhanceBadge.alpha != target else { return }
-        sendButton.accessibilityHint = visible ? "Hold to enhance your prompt" : nil
+        sendButton.accessibilityHint =
+            visible ? String(localized: "Hold to enhance your prompt") : nil
         if visible {
             enhanceBadge.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
             UIView.animate(

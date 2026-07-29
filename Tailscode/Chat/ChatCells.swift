@@ -414,9 +414,13 @@ final class PermissionCell: UICollectionViewCell {
         detailLabel.numberOfLines = 0
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        configureButton(allowButton, title: "Allow once", tint: Theme.Color.accent, filled: true)
-        configureButton(alwaysButton, title: "Always", tint: Theme.Color.accent, filled: false)
-        configureButton(denyButton, title: "Deny", tint: Theme.Color.danger, filled: false)
+        configureButton(
+            allowButton, title: String(localized: "Allow once"), tint: Theme.Color.accent,
+            filled: true)
+        configureButton(
+            alwaysButton, title: String(localized: "Always"), tint: Theme.Color.accent, filled: false)
+        configureButton(
+            denyButton, title: String(localized: "Deny"), tint: Theme.Color.danger, filled: false)
         allowButton.addTarget(self, action: #selector(allowTapped), for: .touchUpInside)
         alwaysButton.addTarget(self, action: #selector(alwaysTapped), for: .touchUpInside)
         denyButton.addTarget(self, action: #selector(denyTapped), for: .touchUpInside)
@@ -515,7 +519,7 @@ final class CodeBlockCell: UICollectionViewCell {
         copyConfig.baseForegroundColor = Theme.Color.secondaryLabel
         copyConfig.contentInsets = .zero
         copyButton.configuration = copyConfig
-        copyButton.accessibilityLabel = "Copy code"
+        copyButton.accessibilityLabel = String(localized: "Copy code")
         copyButton.translatesAutoresizingMaskIntoConstraints = false
         copyButton.addTarget(self, action: #selector(copyTapped), for: .touchUpInside)
 
@@ -599,12 +603,12 @@ final class CodeBlockCell: UICollectionViewCell {
             let shortSource = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
             codeLabel.attributedText = Self.highlightedCode(shortSource, language: block.language)
             lineNumberLabel.text = Self.lineNumbers(count: Self.collapsedLineLimit)
-            toggleButton.setTitle("Show all \(lines.count) lines", for: .normal)
+            toggleButton.setTitle(String(localized: "Show all \(lines.count) lines"), for: .normal)
             toggleButton.isHidden = false
         } else {
             codeLabel.attributedText = Self.highlightedCode(block.source, language: block.language)
             lineNumberLabel.text = Self.lineNumbers(count: lines.count)
-            toggleButton.setTitle("Collapse", for: .normal)
+            toggleButton.setTitle(String(localized: "Collapse"), for: .normal)
             toggleButton.isHidden = !isLong
         }
     }
@@ -850,9 +854,11 @@ final class ActivityGroupCell: UICollectionViewCell {
         iconView.tintColor = failed ? Theme.Color.warning : Theme.Color.accent
         summaryLabel.text = Self.summary(steps, streaming: streaming)
         toggle.accessibilityLabel = summaryLabel.text
-        toggle.accessibilityValue = expanded ? "Expanded" : "Collapsed"
+        toggle.accessibilityValue =
+            expanded ? String(localized: "Expanded") : String(localized: "Collapsed")
         toggle.accessibilityHint = expanded
-            ? "Double tap to hide agent steps" : "Double tap to show agent steps"
+            ? String(localized: "Double tap to hide agent steps")
+            : String(localized: "Double tap to show agent steps")
         chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         if streaming { spinner.startAnimating() } else { spinner.stopAnimating() }
 
@@ -885,7 +891,7 @@ final class ActivityGroupCell: UICollectionViewCell {
         guard call.summary.kind == .question, let question = call.summary.title else {
             return call.name
         }
-        return "Asked · \(question)"
+        return String(localized: "Asked · \(question)")
     }
 
     private static func summary(_ steps: [ActivityStep], streaming: Bool) -> String {
@@ -897,7 +903,7 @@ final class ActivityGroupCell: UICollectionViewCell {
                     return "\(call.name) · \(title)"
                 }
                 return "\(call.name)…"
-            case .reasoning: return "Thinking…"
+            case .reasoning: return String(localized: "Thinking…")
             }
         }
         var names: [String] = []
@@ -911,13 +917,13 @@ final class ActivityGroupCell: UICollectionViewCell {
             }
         }
         var parts: [String] = []
-        if thinkingCount == 1 { parts.append("Thought") }
-        else if thinkingCount > 1 { parts.append("\(thinkingCount) thoughts") }
+        if thinkingCount > 0 { parts.append(String(localized: "\(thinkingCount) thoughts")) }
         if !names.isEmpty {
             let shown = names.prefix(3).joined(separator: " · ")
             parts.append(names.count > 3 ? "\(shown) +\(names.count - 3)" : shown)
         }
-        return parts.isEmpty ? "\(steps.count) steps" : parts.joined(separator: "  ·  ")
+        return parts.isEmpty
+            ? String(localized: "\(steps.count) steps") : parts.joined(separator: "  ·  ")
     }
 }
 
@@ -1049,7 +1055,7 @@ final class QuestionCell: UICollectionViewCell {
     private var onSkip: (() -> Void)?
     private var onCustom: ((Int) -> Void)?
     private var onSelectionChanged: ((Selection) -> Void)?
-    private let submitButton = PrimaryButton(title: "Answer")
+    private let submitButton = PrimaryButton(title: String(localized: "Answer"))
     private let skipButton = UIButton(type: .system)
 
     override init(frame: CGRect) {
@@ -1112,7 +1118,7 @@ final class QuestionCell: UICollectionViewCell {
         guard let request else { return }
 
         let title = UILabel()
-        title.text = "The agent has a question"
+        title.text = String(localized: "The agent has a question")
         title.font = .preferredFont(forTextStyle: .caption1)
         title.textColor = Theme.Color.secondaryLabel
         stack.addArrangedSubview(title)
@@ -1151,13 +1157,13 @@ final class QuestionCell: UICollectionViewCell {
         let footer = UIStackView()
         footer.axis = .horizontal
         footer.spacing = Theme.Spacing.m
-        skipButton.setTitle("Skip", for: .normal)
+        skipButton.setTitle(String(localized: "Skip"), for: .normal)
         skipButton.titleLabel?.font = Theme.Font.caption()
         skipButton.setTitleColor(Theme.Color.secondaryLabel, for: .normal)
         skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
         footer.addArrangedSubview(skipButton)
         if !isSingleTapFastPath {
-            submitButton.setTitle("Answer")
+            submitButton.setTitle(String(localized: "Answer"))
             submitButton.isEnabled = selection.answers(for: request) != nil
             submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
             footer.addArrangedSubview(submitButton)
@@ -1211,7 +1217,8 @@ final class QuestionCell: UICollectionViewCell {
         config.background.cornerRadius = Theme.Radius.control
         config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
         let custom = selection.custom[questionIndex]
-        var titleAttr = AttributedString(custom?.isEmpty == false ? custom! : "Other…")
+        var titleAttr = AttributedString(
+            custom?.isEmpty == false ? custom! : String(localized: "Other…"))
         titleAttr.font = UIFont.preferredFont(forTextStyle: .subheadline)
         config.attributedTitle = titleAttr
         config.image = UIImage(
