@@ -160,6 +160,7 @@ final class ChatViewModel {
 
     private var subagentPollInterval: Int {
         if liveSubagentCount > 0 || !expandedSubagents.isEmpty { return 4 }
+        if state.status == .running { return 8 }
         return trackedSubagents.isEmpty ? 30 : 12
     }
 

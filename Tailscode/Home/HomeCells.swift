@@ -67,6 +67,8 @@ struct LiveCard: Hashable {
         let project = entry.session.directory.map { ($0 as NSString).lastPathComponent }
         if let activity {
             self.detail = [project ?? entry.profileName, activity].joined(separator: " · ")
+        } else if let agents = Self.agentActivity(entry.session) {
+            self.detail = [project ?? entry.profileName, agents].joined(separator: " · ")
         } else {
             var parts = [entry.profileName]
             if let project { parts.append(project) }
@@ -75,6 +77,17 @@ struct LiveCard: Hashable {
             }
             self.detail = parts.joined(separator: " · ")
         }
+    }
+
+    /// What a session that handed its turn to agents is doing, for the card that
+    /// would otherwise repeat the model and server while the real work happens
+    /// somewhere the transcript doesn't show.
+    private static func agentActivity(_ session: AgentSession) -> String? {
+        guard let count = session.activeAgents, count > 0 else { return nil }
+        if count == 1, let task = session.agentTask, !task.isEmpty {
+            return String(localized: "Agent: \(task)")
+        }
+        return String(localized: "\(count) agents working")
     }
 
     static func == (lhs: LiveCard, rhs: LiveCard) -> Bool {

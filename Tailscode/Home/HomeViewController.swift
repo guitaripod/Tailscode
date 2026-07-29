@@ -448,7 +448,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func isLive(_ entry: SessionEntry) -> Bool {
-        entry.session.isActive == true
+        entry.session.isWorking
             || SessionActivity.shared.status(for: entry.session.id) != .idle
     }
 
