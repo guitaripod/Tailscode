@@ -284,6 +284,63 @@ final class MainWindow: @unchecked Sendable {
         context.requestSubagent = { [weak self] call in
             Gtk.onMain { [weak self] in self?.fetchSubagent(call) }
         }
+        context.openImage = { [weak self] key, name in
+            Gtk.onMain { [weak self] in self?.presentImage(key: key, name: name) }
+        }
+    }
+
+    /// The picture at full size in its own window, and a save that hands over the bytes the
+    /// server sent — never a re-encode of the bitmap a row downsampled to display.
+    private func presentImage(key: String, name: String) {
+        guard let bits = context.textures[key], bits != 0 else { return }
+        let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
+        let data = context.imageData[key]
+        let (viewer, content) = Dialogs.window(title: name, parent: window, width: 960)
+        gtk_window_set_default_size(ptr(viewer), 960, 720)
+
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
+        let picture = tailscode_picture_for_texture(texture)!
+        gtk_widget_set_size_request(
+            picture, tailscode_texture_width(texture), tailscode_texture_height(texture))
+        gtk_scrolled_window_set_child(op(scroller), picture)
+        gtk_widget_set_vexpand(scroller, 1)
+        gtk_box_append(ptr(content), scroller)
+
+        let bar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(bar),
+            Gtk.label(
+                "\(tailscode_texture_width(texture))×\(tailscode_texture_height(texture))",
+                css: "row-detail", selectable: false))
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(bar), spacer)
+        if let data {
+            let filename = name
+            gtk_box_append(
+                ptr(bar),
+                Gtk.button(Localized.text("Save to Downloads"), css: ["suggested-action"]) {
+                    [weak self] in
+                    let target = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent("Downloads", isDirectory: true)
+                        .appendingPathComponent(filename)
+                    try? FileManager.default.createDirectory(
+                        at: target.deletingLastPathComponent(),
+                        withIntermediateDirectories: true)
+                    let wrote = (try? data.write(to: target)) != nil
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        gtk_label_set_text(
+                            op(self.statusLabel),
+                            wrote
+                                ? Localized.text("Saved %@", target.path)
+                                : Localized.text("Could not write %@", target.path))
+                    }
+                })
+        }
+        gtk_box_append(ptr(content), bar)
+        gtk_window_present(ptr(viewer))
     }
 
     private func startRefreshing() {
@@ -392,6 +449,7 @@ final class MainWindow: @unchecked Sendable {
 
     private func open(_ entry: SessionEntry) {
         guard selectedID != entry.session.id else { return }
+        stashDraft()
         selectedID = entry.session.id
         currentEntry = entry
         conversation = nil
@@ -404,9 +462,11 @@ final class MainWindow: @unchecked Sendable {
         turnStartedAt = nil
         context.expanded = []
         context.textures = [:]
+        context.imageData = [:]
         context.subagentRows = [:]
         inFlightImages = []
         inFlightSubagents = []
+        restoreDraft(for: entry.session.id)
         streamTask?.cancel()
         showPlaceholder(Localized.text("Connecting…"))
         Gtk.removeChildren(of: pendingBox)
@@ -978,6 +1038,7 @@ final class MainWindow: @unchecked Sendable {
                 }
                 guard let texture else { return }
                 self.context.textures[key] = UInt(bitPattern: texture)
+                self.context.imageData[key] = data
                 self.forceRebuild()
             }
         }
@@ -1174,20 +1235,43 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_grab_focus(entryView)
     }
 
-    private func sendFromComposer() {
+    private func composerText() -> String {
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         var start = GtkTextIter()
         var end = GtkTextIter()
         gtk_text_buffer_get_bounds(buffer, &start, &end)
-        guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return }
-        let text = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
-        g_free(raw)
-        guard !text.isEmpty, let conversation else { return }
-        if handleSlashCommand(text) {
-            gtk_text_buffer_set_text(buffer, "", 0)
-            return
+        guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return "" }
+        defer { g_free(raw) }
+        return String(cString: raw)
+    }
+
+    /// Half-typed prompts follow their conversation, not the window: switching chats stashes what
+    /// was in the composer and restores whatever was stashed for the chat being opened.
+    private func stashDraft() {
+        guard let selectedID else { return }
+        let text = composerText()
+        let key = "tailscode.draft.\(selectedID)"
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else {
+            UserDefaults.standard.set(text, forKey: key)
         }
+    }
+
+    private func restoreDraft(for sessionID: String) {
+        let draft = UserDefaults.standard.string(forKey: "tailscode.draft.\(sessionID)") ?? ""
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), draft, -1)
+    }
+
+    private func sendFromComposer() {
+        let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let conversation else { return }
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
+        if let selectedID {
+            UserDefaults.standard.removeObject(forKey: "tailscode.draft.\(selectedID)")
+        }
+        if handleSlashCommand(text) { return }
         let model = chosenModel
         let effort = chosenEffort
         Task { try? await conversation.send(text, model: model, reasoningEffort: effort) }

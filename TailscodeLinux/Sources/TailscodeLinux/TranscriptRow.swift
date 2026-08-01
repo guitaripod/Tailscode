@@ -10,10 +10,12 @@ import TailscodeCore
 final class TranscriptContext: @unchecked Sendable {
     var expanded: Set<String> = []
     var textures: [String: UInt] = [:]
+    var imageData: [String: Data] = [:]
     var subagentRows: [String: [TranscriptRow]] = [:]
     var onToggle: (@Sendable (String, Bool) -> Void)?
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
+    var openImage: (@Sendable (String, String) -> Void)?
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
 }
@@ -197,11 +199,18 @@ struct TranscriptRow: Hashable {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
             let picture = tailscode_picture_for_texture(texture)!
             gtk_widget_set_size_request(picture, -1, min(420, tailscode_texture_height(texture)))
-            gtk_widget_set_halign(picture, GTK_ALIGN_START)
             Gtk.addClass(picture, "image-part")
             let width = tailscode_texture_width(texture)
             let height = tailscode_texture_height(texture)
-            gtk_box_append(ptr(column), picture)
+            let opener = gtk_button_new()!
+            Gtk.addClass(opener, "flat")
+            gtk_widget_set_halign(opener, GTK_ALIGN_START)
+            gtk_button_set_child(ptr(opener), picture)
+            let open = context.openImage
+            Gtk.connect(UnsafeMutableRawPointer(opener), "clicked") {
+                open?(key, name)
+            }
+            gtk_box_append(ptr(column), opener)
             gtk_box_append(
                 ptr(column),
                 Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
