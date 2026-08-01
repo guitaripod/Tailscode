@@ -3,14 +3,14 @@
 set -euo pipefail
 
 EX=(--exclude '.git' --exclude '.build' --exclude 'DerivedData' --exclude '*.xcodeproj' --exclude build)
-rsync -az --delete "${EX[@]}" "$HOME/Dev/swift/CodingAgentKit/" macbook:Dev/swift/CodingAgentKit/
-rsync -az --delete "${EX[@]}" "$HOME/Dev/ios/Tailscode/" macbook:Dev/ios/Tailscode/
+rsync -az "${EX[@]}" "$HOME/Dev/swift/CodingAgentKit/" macbook:Dev/swift/CodingAgentKit/
+rsync -az --delete "${EX[@]}" "$HOME/Dev/iOS/Tailscode/" macbook:Dev/iOS/Tailscode/
 
 ssh macbook "TAILSCODE_HOST=$(printf %q "${TAILSCODE_HOST:-}") TAILSCODE_PASSWORD=$(printf %q "${TAILSCODE_PASSWORD:-}") bash -l" <<'REMOTE'
 set -e
 BUNDLE=com.guitaripod.tailscode
 rm -f ~/tailscode-onboarding.png ~/tailscode-live.png ~/tailscode-demo.png
-cd ~/Dev/ios/Tailscode
+cd ~/Dev/iOS/Tailscode
 xcodegen generate >/dev/null
 xcodebuild -project Tailscode.xcodeproj -scheme Tailscode -configuration Debug \
   -destination "generic/platform=iOS Simulator" -derivedDataPath build build \
