@@ -9,6 +9,30 @@ if SelfTest.isRequested {
     dispatchMain()
 }
 
+/// Anything that is not a request to open a window is answered before GApplication registers on
+/// the session bus. An unrecognised flag that reaches `g_application_run` starts a headless
+/// instance that owns the name forever, and every launch after it remote-activates that zombie and
+/// exits without a window.
+if CommandLine.arguments.contains("--version") {
+    print("tailscode \(TailscodeVersion.current)")
+    exit(0)
+}
+
+if CommandLine.arguments.contains("--help") || CommandLine.arguments.contains("-h") {
+    print(TailscodeVersion.usage)
+    exit(0)
+}
+
+let knownOptions: Set<String> = [
+    "--selftest", "--connect", "--password", "--name", "--opencode", "--version", "--help", "-h",
+]
+if let stray = CommandLine.arguments.dropFirst().first(where: {
+    $0.hasPrefix("-") && !knownOptions.contains($0)
+}) {
+    print("unknown option \(stray)\n\n\(TailscodeVersion.usage)")
+    exit(2)
+}
+
 if Connect.isRequested {
     Task { await Connect.run() }
     dispatchMain()
