@@ -321,15 +321,18 @@ final class MainWindow: @unchecked Sendable {
         }
 
         Gtk.removeChildren(of: sidebarList)
-        let saved = Set(SavedChatStore.all().map(\.sessionID))
+        let savedChats = SavedChatStore.all()
+        let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
         let needle = filter.lowercased()
-        visible = entries.map {
+        var rows = entries.map {
             SessionRowModel(
                 entry: $0, unreachable: unreachable.contains($0.profileName),
                 unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id))
-        }.filter {
+        }
+        rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        visible = rows.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
         }
@@ -367,6 +370,24 @@ final class MainWindow: @unchecked Sendable {
         filter = String(cString: raw)
         cursor = 0
         renderSidebar()
+    }
+
+    /// A bookmark must still list and explain itself when its server is unreachable, its session
+    /// deleted, or its profile removed — the saved list never depends on a live listing. Rows for
+    /// chats the listing no longer covers are rebuilt from the bookmark's own snapshot.
+    private static func orphanedSavedRows(
+        _ savedChats: [SavedChat], listed: [SessionEntry]
+    ) -> [SessionRowModel] {
+        let listedIDs = Set(listed.map(\.session.id))
+        return savedChats.filter { !listedIDs.contains($0.sessionID) }.map { chat in
+            let session = AgentSession(
+                id: chat.sessionID, agentType: chat.backend, title: chat.displayTitle,
+                directory: chat.directory, createdAt: chat.savedAt, updatedAt: chat.updatedAt)
+            let entry = SessionEntry(
+                profileID: chat.profileID, profileName: chat.profileName,
+                host: chat.profileName, backendType: chat.backend, session: session)
+            return SessionRowModel(entry: entry, unreachable: true, unread: false, saved: true)
+        }
     }
 
     private func open(_ entry: SessionEntry) {
