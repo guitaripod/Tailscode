@@ -126,9 +126,10 @@ enum TranscriptRow {
     }
 
     private static func summary(of call: ToolCall) -> String {
-        let raw = call.title
-            ?? call.input?.objectValue?.values.compactMap(\.stringValue).first(where: { !$0.isEmpty })
-            ?? ""
+        let fromInput = call.input?.objectValue?.values
+            .compactMap(\.stringValue).first(where: { !$0.isEmpty })
+        let fromTitle = call.title.flatMap { $0 == call.name ? nil : $0 }
+        let raw = fromInput ?? fromTitle ?? ""
         return String(raw.replacingOccurrences(of: "\n", with: " ").prefix(120))
     }
 
