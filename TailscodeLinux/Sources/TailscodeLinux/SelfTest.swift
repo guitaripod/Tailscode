@@ -61,6 +61,18 @@ public enum SelfTest {
         let (entries, unreachable) = await ServerDirectory.shared.entries()
         report("list: \(entries.count) entries, \(unreachable.count) unreachable")
 
+        #if !HAS_VTE
+            let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
+            if shellOutput.contains("tailscode-shell-ok") {
+                report("shell: ok (one command at a time; install vte4 for a full terminal)")
+            } else {
+                report("shell: no output")
+                failures += 1
+            }
+        #else
+            report("shell: vte4 terminal")
+        #endif
+
         do {
             let count = try await checkTwoObservers(profiles)
             report("two observers: agree on \(count) messages")
