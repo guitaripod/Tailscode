@@ -61,6 +61,24 @@ public enum SelfTest {
         let (entries, unreachable) = await ServerDirectory.shared.entries()
         report("list: \(entries.count) entries, \(unreachable.count) unreachable")
 
+        do {
+            let count = try await checkTwoObservers(profiles)
+            report("two observers: agree on \(count) messages")
+        } catch {
+            report("two observers: \(error)")
+            failures += 1
+        }
+
+        if ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_SEND"] == "1" {
+            do {
+                try await checkRoundTrip(profiles)
+                report("send: ok")
+            } catch {
+                report("send: \(error)")
+                failures += 1
+            }
+        }
+
         report(failures == 0 ? "SELFTEST_OK" : "SELFTEST_FAILED")
         exit(failures == 0 ? 0 : 1)
     }
@@ -96,6 +114,68 @@ public enum SelfTest {
         guard try store.profiles().isEmpty else {
             throw SelfTestFailure("profile survived deletion")
         }
+    }
+
+    /// Two observers on one conversation, which is the whole point of a desktop client that is a
+    /// peer of the phone rather than a second app. Until recently the second call to `states()`
+    /// tore down the first, so this is the check that the fix holds against a real server.
+    private static func checkTwoObservers(_ profiles: [ConnectionProfile]) async throws -> Int {
+        guard let profile = profiles.first,
+            let backend = await ServerDirectory.shared.backend(for: profile),
+            let session = try await backend.listSessions().max(by: { $0.updatedAt < $1.updatedAt })
+        else { throw SelfTestFailure("nothing to observe") }
+
+        let conversation = AgentConversation(backend: backend, sessionID: session.id)
+        async let first = settled(conversation)
+        async let second = settled(conversation)
+        let (a, b) = try await (first, second)
+
+        guard !a.isEmpty else { throw SelfTestFailure("first observer saw nothing") }
+        guard a == b else {
+            throw SelfTestFailure("observers diverged: \(a.count) vs \(b.count) messages")
+        }
+        return a.count
+    }
+
+    private static func settled(_ conversation: AgentConversation) async throws -> [String] {
+        let deadline = Date().addingTimeInterval(20)
+        for await state in await conversation.states() {
+            if state.hasLoadedTranscript { return state.messages.map(\.id) }
+            if Date() > deadline { break }
+        }
+        throw SelfTestFailure("observer never loaded a transcript")
+    }
+
+    /// Sends a real prompt through the same path the composer uses and waits for the answer, in a
+    /// throwaway session in a throwaway directory. Opt-in, because it spends tokens and starts a
+    /// turn on the user's own machine.
+    private static func checkRoundTrip(_ profiles: [ConnectionProfile]) async throws {
+        guard let profile = profiles.first,
+            let backend = await ServerDirectory.shared.backend(for: profile)
+        else { throw SelfTestFailure("no backend to send through") }
+
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tailscode-roundtrip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let session = try await backend.createSession(
+            title: "selftest", directory: scratch.path)
+        defer { Task { try? await backend.deleteSession(session.id) } }
+
+        let conversation = AgentConversation(backend: backend, sessionID: session.id)
+        let states = await conversation.states()
+        try await conversation.send("Reply with the single word PONG and nothing else.")
+
+        let deadline = Date().addingTimeInterval(90)
+        for await state in states {
+            let answered = state.messages.contains {
+                $0.role == .assistant && $0.text.uppercased().contains("PONG")
+            }
+            if answered { return }
+            if Date() > deadline { break }
+        }
+        throw SelfTestFailure("no answer within the deadline")
     }
 
     private static func firstState(

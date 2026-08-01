@@ -1,4 +1,5 @@
 import CodingAgentKit
+import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
@@ -43,8 +44,46 @@ enum SelfTest {
                 failures += 1
             }
         }
+        do {
+            let count = try await checkTwoObservers(profiles)
+            report("two observers: agree on \(count) messages")
+        } catch {
+            report("two observers: \(error)")
+            failures += 1
+        }
+
         report(failures == 0 ? "SELFTEST_OK" : "SELFTEST_FAILED")
         exit(failures == 0 ? 0 : 1)
+    }
+
+    /// Two observers on one conversation, which is the whole point of a desktop client that is a
+    /// peer of the phone rather than a second app. Until recently the second call to `states()`
+    /// tore down the first, so this is the check that the fix holds against a real server.
+    private static func checkTwoObservers(_ profiles: [ConnectionProfile]) async throws -> Int {
+        guard let profile = profiles.first,
+            let backend = ServerDirectory.shared.backend(for: profile),
+            let session = try await backend.listSessions().max(by: { $0.updatedAt < $1.updatedAt })
+        else { throw SelfTestFailure("nothing to observe") }
+
+        let conversation = AgentConversation(backend: backend, sessionID: session.id)
+        async let first = settled(conversation)
+        async let second = settled(conversation)
+        let (a, b) = try await (first, second)
+
+        guard !a.isEmpty else { throw SelfTestFailure("first observer saw nothing") }
+        guard a == b else {
+            throw SelfTestFailure("observers diverged: \(a.count) vs \(b.count) messages")
+        }
+        return a.count
+    }
+
+    private static func settled(_ conversation: AgentConversation) async throws -> [String] {
+        let deadline = Date().addingTimeInterval(20)
+        for await state in await conversation.states() {
+            if state.hasLoadedTranscript { return state.messages.map(\.id) }
+            if Date() > deadline { break }
+        }
+        throw SelfTestFailure("observer never loaded a transcript")
     }
 
     /// The first snapshot that has actually loaded a transcript, or whatever arrived within the
@@ -75,4 +114,9 @@ enum SelfTest {
     private static func report(_ line: String) {
         FileHandle.standardOutput.write(Data((line + "\n").utf8))
     }
+}
+
+struct SelfTestFailure: Error, CustomStringConvertible {
+    let description: String
+    init(_ description: String) { self.description = description }
 }
