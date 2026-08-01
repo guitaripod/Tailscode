@@ -37,6 +37,12 @@ enum KeyAction: Equatable {
     case stop
     case toggleHelp
     case reload
+    case allowOnce
+    case allowAlways
+    case deny
+    case newChat
+    case toggleSaved
+    case commandPalette
 }
 
 enum Keymap {
@@ -54,8 +60,20 @@ enum Keymap {
     static let control: UInt32 = 1 << 2
     static let shift: UInt32 = 1 << 0
 
-    /// The binding for a key in normal mode, or nil if the key should be left alone.
-    static func normal(keyval: UInt32, state: UInt32, pending: String) -> KeyAction? {
+    /// The binding for a key in normal mode, or nil if the key should be left alone. When an
+    /// approval is waiting, y/a/n answer it — the same letters the CLI takes — and win over
+    /// whatever else those letters do.
+    static func normal(
+        keyval: UInt32, state: UInt32, pending: String, awaitingApproval: Bool = false
+    ) -> KeyAction? {
+        if awaitingApproval, state & control == 0 {
+            switch scalar(keyval) {
+            case "y": return .allowOnce
+            case "a": return .allowAlways
+            case "n": return .deny
+            default: break
+            }
+        }
         let isControl = state & control != 0
         if isControl {
             switch scalar(keyval) {
@@ -90,6 +108,9 @@ enum Keymap {
         case "G": return .scrollBottom
         case "i", "a", "o": return .insert
         case "q": return .stop
+        case "n": return .newChat
+        case "b": return .toggleSaved
+        case ":": return .commandPalette
         default: return nil
         }
     }
@@ -121,6 +142,10 @@ enum Keymap {
             ("^h ^k ^l ^j", Localized.text("Focus chats / transcript / files / terminal")),
             ("tab", Localized.text("Cycle panes")),
             ("/", Localized.text("Filter chats")),
+            (":", Localized.text("Slash commands")),
+            ("n", Localized.text("New conversation")),
+            ("b", Localized.text("Save / unsave this chat")),
+            ("y / a / n", Localized.text("Answer a waiting approval")),
             ("^r", Localized.text("Refresh now")),
             ("q / ^c", Localized.text("Stop the running turn")),
             ("?", Localized.text("This list")),

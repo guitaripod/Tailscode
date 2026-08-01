@@ -34,6 +34,7 @@ public enum SelfTest {
             exit(1)
         }
 
+        var warmed: (backend: any CodingAgentBackend, session: AgentSession)?
         for profile in profiles {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else {
                 report("\(profile.name): no backend")
@@ -44,7 +45,7 @@ public enum SelfTest {
                 let health = try await backend.health()
                 let sessions = try await backend.listSessions()
                 report("\(profile.name): \(health.version ?? "unknown") · \(sessions.count) sessions")
-                guard let newest = sessions.max(by: { $0.updatedAt < $1.updatedAt }) else { continue }
+                guard let newest = Self.observable(in: sessions) else { continue }
                 let state = try await firstState(of: newest, on: backend)
                 report("  \(newest.title.prefix(50)): \(state.messages.count) messages")
                 guard state.hasLoadedTranscript else {
@@ -52,6 +53,7 @@ public enum SelfTest {
                     failures += 1
                     continue
                 }
+                if warmed == nil { warmed = (backend, newest) }
             } catch {
                 report("\(profile.name): \(error)")
                 failures += 1
@@ -73,11 +75,17 @@ public enum SelfTest {
             report("shell: vte4 terminal")
         #endif
 
-        do {
-            let count = try await checkTwoObservers(profiles)
-            report("two observers: agree on \(count) messages")
-        } catch {
-            report("two observers: \(error)")
+        if let warmed {
+            do {
+                let count = try await checkTwoObservers(
+                    backend: warmed.backend, session: warmed.session)
+                report("two observers: agree on \(count) messages")
+            } catch {
+                report("two observers: \(error)")
+                failures += 1
+            }
+        } else {
+            report("two observers: no loaded session to observe")
             failures += 1
         }
 
@@ -131,12 +139,9 @@ public enum SelfTest {
     /// Two observers on one conversation, which is the whole point of a desktop client that is a
     /// peer of the phone rather than a second app. Until recently the second call to `states()`
     /// tore down the first, so this is the check that the fix holds against a real server.
-    private static func checkTwoObservers(_ profiles: [ConnectionProfile]) async throws -> Int {
-        guard let profile = profiles.first,
-            let backend = await ServerDirectory.shared.backend(for: profile),
-            let session = try await backend.listSessions().max(by: { $0.updatedAt < $1.updatedAt })
-        else { throw SelfTestFailure("nothing to observe") }
-
+    private static func checkTwoObservers(
+        backend: any CodingAgentBackend, session: AgentSession
+    ) async throws -> Int {
         let conversation = AgentConversation(backend: backend, sessionID: session.id)
         async let first = settled(conversation)
         async let second = settled(conversation)
@@ -149,13 +154,26 @@ public enum SelfTest {
         return a.count
     }
 
+    /// Bounded from outside the stream: a `for await` whose server never answers receives no
+    /// state to check a deadline against, so the deadline must not live inside the loop.
     private static func settled(_ conversation: AgentConversation) async throws -> [String] {
-        let deadline = Date().addingTimeInterval(20)
-        for await state in await conversation.states() {
-            if state.hasLoadedTranscript { return state.messages.map(\.id) }
-            if Date() > deadline { break }
+        try await withThrowingTaskGroup(of: [String].self) { group in
+            group.addTask {
+                for await state in await conversation.states() {
+                    if state.hasLoadedTranscript { return state.messages.map(\.id) }
+                }
+                throw SelfTestFailure("observer stream ended before a transcript")
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(25))
+                throw SelfTestFailure("observer never loaded a transcript in 25s")
+            }
+            guard let first = try await group.next() else {
+                throw SelfTestFailure("no observer outcome")
+            }
+            group.cancelAll()
+            return first
         }
-        throw SelfTestFailure("observer never loaded a transcript")
     }
 
     /// Sends a real prompt through the same path the composer uses and waits for the answer, in a
@@ -190,22 +208,41 @@ public enum SelfTest {
         throw SelfTestFailure("no answer within the deadline")
     }
 
+    /// Bounded the same way as ``settled(_:)``: the deadline lives outside the stream, and it is
+    /// generous — a bridge mid-turn on a large transcript legitimately takes tens of seconds
+    /// today, and this test is about correctness, not the latency the sync plan will buy.
     private static func firstState(
         of session: AgentSession, on backend: any CodingAgentBackend
     ) async throws -> ConversationState {
         let conversation = AgentConversation(backend: backend, sessionID: session.id)
-        var latest = ConversationState()
-        let deadline = Date().addingTimeInterval(20)
-        for await state in await conversation.states() {
-            latest = state
-            if state.hasLoadedTranscript || Date() > deadline { break }
+        return await withTaskGroup(of: ConversationState?.self) { group in
+            group.addTask {
+                for await state in await conversation.states() where state.hasLoadedTranscript {
+                    return state
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(45))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? ConversationState()
         }
-        return latest
+    }
+
+    /// The newest session that is not mid-turn. An active session's transcript can be enormous
+    /// and its server busy running it — that is the wrong subject for a bounded smoke test, and
+    /// the two-observer check does not care which conversation it observes.
+    private static func observable(in sessions: [AgentSession]) -> AgentSession? {
+        let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
+        return sorted.first { !$0.isWorking } ?? sorted.first
     }
 
     private static func startWatchdog() {
         Task.detached {
-            try? await Task.sleep(for: .seconds(90))
+            try? await Task.sleep(for: .seconds(150))
             FileHandle.standardOutput.write(Data("SELFTEST_TIMEOUT\n".utf8))
             exit(2)
         }

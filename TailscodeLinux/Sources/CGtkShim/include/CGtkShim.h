@@ -26,3 +26,15 @@ void tailscode_connect_key(
 
 /// Whether the widget that currently has focus inside `root` is one that takes text.
 gboolean tailscode_focus_is_editable(GtkWidget *root);
+
+/// Decodes image bytes into a texture the app can keep and reuse across renders. NULL when the
+/// bytes are not a decodable image. The caller owns the returned reference.
+GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len);
+
+/// A picture widget over a texture, sized to fit its own allocation. `GDK_PAINTABLE` is a macro,
+/// which is why the cast lives here.
+GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
+
+/// The texture's pixel size, for captioning a picture with what it actually is.
+int tailscode_texture_width(GdkTexture *texture);
+int tailscode_texture_height(GdkTexture *texture);

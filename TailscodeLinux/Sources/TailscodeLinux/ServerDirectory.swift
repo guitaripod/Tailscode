@@ -48,6 +48,11 @@ public actor ServerDirectory {
         reload()
     }
 
+    public func delete(id: String) {
+        try? store.delete(id: id)
+        reload()
+    }
+
     /// Every session on every configured server, as one list — the same shape the phone's list
     /// speaks, so the sidebar and a future shared view model agree on what a row is.
     public func entries() async -> (entries: [SessionEntry], unreachable: [String]) {

@@ -120,6 +120,102 @@ enum Gtk {
         }
     }
 
+    static func button(
+        _ title: String, css: [String] = [], onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new_with_label(title)!
+        for name in css { addClass(button, name) }
+        connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        return button
+    }
+
+    static func copyToClipboard(_ text: String) {
+        guard let display = gdk_display_get_default(),
+            let clipboard = gdk_display_get_clipboard(display)
+        else { return }
+        gdk_clipboard_set_text(clipboard, text)
+    }
+
+    static func hairline() -> UnsafeMutablePointer<GtkWidget> {
+        let rule = box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        addClass(rule, "turn-rule")
+        gtk_widget_set_hexpand(rule, 1)
+        return rule
+    }
+
+    /// A header you click to show or hide a body, with the state reported back so a re-render can
+    /// restore it. GtkExpander's own toggle notifies through a three-argument signal the shim does
+    /// not marshal; a plain button avoids the whole shape.
+    static func disclosure(
+        header: UnsafeMutablePointer<GtkWidget>,
+        body: UnsafeMutablePointer<GtkWidget>,
+        expanded: Bool,
+        onToggle: @escaping @Sendable (Bool) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let column = box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        let button = gtk_button_new()!
+        addClass(button, "flat")
+        addClass(button, "disclosure")
+        gtk_button_set_child(ptr(button), header)
+        gtk_widget_set_visible(body, expanded ? 1 : 0)
+        let bodyBits = UInt(bitPattern: body)
+        connect(UnsafeMutableRawPointer(button), "clicked") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bodyBits) else { return }
+            let body: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            let showing = gtk_widget_get_visible(body) != 0
+            gtk_widget_set_visible(body, showing ? 0 : 1)
+            onToggle(!showing)
+        }
+        gtk_box_append(ptr(column), button)
+        gtk_box_append(ptr(column), body)
+        return column
+    }
+
+    /// A button that opens a popover of rows. One shape serves the actions menu, the model picker
+    /// and the effort picker; the rows are built lazily on every open so they always reflect
+    /// current state.
+    static func menuButton(
+        _ title: String, css: [String] = [],
+        rows: @escaping @Sendable () -> [(title: String, detail: String?, action: @Sendable () -> Void)]
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_menu_button_new()!
+        gtk_menu_button_set_label(op(button), title)
+        for name in css { addClass(button, name) }
+        let popover = gtk_popover_new()!
+        gtk_menu_button_set_popover(op(button), popover)
+        let popoverBits = UInt(bitPattern: popover)
+        connect(UnsafeMutableRawPointer(popover), "map") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+            let column = box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+            gtk_scrolled_window_set_max_content_height(op(scroller), 420)
+            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+            gtk_scrolled_window_set_propagate_natural_width(op(scroller), 1)
+            for row in rows() {
+                let item = gtk_button_new()!
+                addClass(item, "flat")
+                let lines = box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                gtk_box_append(ptr(lines), label(row.title, css: "row-title", selectable: false))
+                if let detail = row.detail, !detail.isEmpty {
+                    gtk_box_append(
+                        ptr(lines), label(detail, css: "row-detail", selectable: false))
+                }
+                gtk_button_set_child(ptr(item), lines)
+                let action = row.action
+                connect(UnsafeMutableRawPointer(item), "clicked") {
+                    guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+                    gtk_popover_popdown(ptr(raw))
+                    action()
+                }
+                gtk_box_append(ptr(column), item)
+            }
+            gtk_scrolled_window_set_child(op(scroller), column)
+            gtk_popover_set_child(ptr(raw), scroller)
+        }
+        return button
+    }
+
     /// The app's own style. Chrome is left to libadwaita; this only sets the transcript's rhythm
     /// and the two type registers the design calls for.
     static func installStyle() {

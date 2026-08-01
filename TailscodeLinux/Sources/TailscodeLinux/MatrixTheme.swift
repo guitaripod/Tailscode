@@ -124,6 +124,87 @@ enum MatrixTheme {
         .tree-row { font-family: monospace; font-size: 0.85rem; color: \(text); }
         .tree-dir { color: \(cyan); font-family: monospace; font-size: 0.85rem; }
         .tree-path { color: \(textDim); font-family: monospace; font-size: 0.78rem; }
+
+        .code-header {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: 0.75rem;
+            letter-spacing: 0.06em;
+        }
+        .code-copy { color: \(cyan); font-family: monospace; font-size: 0.75rem; padding: 0 6px; }
+        .code-body { font-family: monospace; font-size: 0.85rem; color: \(text); }
+        .tool-output {
+            font-family: monospace;
+            font-size: 0.82rem;
+            color: \(textDim);
+        }
+        .reasoning-body {
+            color: \(textDim);
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+        .disclosure { padding: 0; min-height: 0; }
+        .disclosure:hover { background-color: \(canvasRaised); }
+
+        .card {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            padding: 12px 16px;
+        }
+        .card-permission { border-left: 2px solid \(amber); }
+        .card-question { border-left: 2px solid \(cyan); }
+        .card-title { font-size: 0.95rem; font-weight: 600; color: \(text); }
+        .answer-option {
+            font-family: monospace;
+            font-size: 0.88rem;
+            color: \(cyan);
+            background-color: transparent;
+            border: 1px solid \(rule);
+            border-radius: 0;
+            padding: 3px 10px;
+        }
+        .answer-option:hover { border-color: \(cyan); }
+        .answer-selected { border-color: \(phosphor); color: \(phosphor); }
+
+        .seam-text {
+            color: \(amber);
+            font-family: monospace;
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+        }
+        .subagent-card {
+            border-left: 2px solid \(cyan);
+            padding: 6px 10px;
+            background-color: #0d120e;
+        }
+        .image-part { border: 1px solid \(rule); }
+
+        .goal-line {
+            color: \(cyan);
+            font-family: monospace;
+            font-size: 0.8rem;
+            padding: 2px 26px;
+        }
+        .banner-auth {
+            color: \(canvas);
+            background-color: \(amber);
+            font-family: monospace;
+            font-size: 0.85rem;
+            padding: 4px 12px;
+        }
+        .pill-row { padding: 0px 22px 10px 22px; }
+        .pill-row button {
+            font-family: monospace;
+            font-size: 0.78rem;
+            min-height: 0;
+            padding: 2px 10px;
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 0;
+            color: \(textDim);
+        }
+        .pill-row button:hover { border-color: \(phosphor); color: \(text); }
+        popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
         """
     }
 

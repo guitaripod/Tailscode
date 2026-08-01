@@ -93,3 +93,25 @@ gboolean tailscode_focus_is_editable(GtkWidget *root) {
     return GTK_IS_TEXT_VIEW(focus) || GTK_IS_ENTRY(focus) || GTK_IS_EDITABLE(focus)
         || g_type_is_a(G_TYPE_FROM_INSTANCE(focus), g_type_from_name("VteTerminal"));
 }
+
+GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len) {
+    GBytes *bytes = g_bytes_new(data, len);
+    GdkTexture *texture = gdk_texture_new_from_bytes(bytes, NULL);
+    g_bytes_unref(bytes);
+    return texture;
+}
+
+GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
+    GtkWidget *picture = gtk_picture_new_for_paintable(GDK_PAINTABLE(texture));
+    gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_SCALE_DOWN);
+    gtk_picture_set_can_shrink(GTK_PICTURE(picture), TRUE);
+    return picture;
+}
+
+int tailscode_texture_width(GdkTexture *texture) {
+    return gdk_texture_get_width(texture);
+}
+
+int tailscode_texture_height(GdkTexture *texture) {
+    return gdk_texture_get_height(texture);
+}

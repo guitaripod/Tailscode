@@ -1,50 +1,125 @@
 import CAdw
+import CGtkShim
 import CodingAgentKit
 import Foundation
+import TailscodeCore
+
+/// What a row needs from the window that is not in the row itself: which rows are open, the
+/// pictures and subagent transcripts already fetched, and the callbacks that fetch more. Rows are
+/// rebuilt freely; this survives them.
+final class TranscriptContext: @unchecked Sendable {
+    var expanded: Set<String> = []
+    var textures: [String: UInt] = [:]
+    var subagentRows: [String: [TranscriptRow]] = [:]
+    var onToggle: (@Sendable (String, Bool) -> Void)?
+    var requestImage: (@Sendable (FileReference, String) -> Void)?
+    var requestSubagent: (@Sendable (ToolCall) -> Void)?
+
+    func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
+}
 
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
-/// agent's answer as prose at full measure, reasoning collapsed, and every tool call as one dense
-/// monospace line. No bubbles — the material lives in the chrome around this.
-enum TranscriptRow {
-    case userText(String)
-    case agentText(String)
-    case reasoning(String)
-    case tool(ToolCall)
-    case file(String)
-
-    static func rows(for message: ChatMessage) -> [TranscriptRow] {
-        message.parts.compactMap { part in
-            switch part.kind {
-            case .text(let text):
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return nil }
-                return message.role == .user ? .userText(trimmed) : .agentText(trimmed)
-            case .reasoning(let text):
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return nil }
-                return .reasoning(trimmed)
-            case .tool(let call):
-                return .tool(call)
-            case .file(let reference):
-                return .file(reference.filename ?? reference.path ?? "file")
-            case .compaction, .unknown:
-                return nil
-            }
-        }
+/// agent's answer as prose at full measure, code as blocks that copy byte-exactly, edits as
+/// diffs, reasoning and tool output behind a disclosure, a compaction as a seam, a picture as
+/// the picture. No bubbles — the material lives in the chrome around this.
+struct TranscriptRow: Hashable {
+    enum Kind: Hashable {
+        case userText(String)
+        case agentProse(String)
+        case codeBlock(language: String?, body: String)
+        case reasoning(String)
+        case tool(ToolCall)
+        case subagent(ToolCall)
+        case file(FileReference)
+        case compaction(Compaction)
+        case turnBreak
     }
 
-    func makeWidget() -> UnsafeMutablePointer<GtkWidget> {
-        switch self {
+    let key: String
+    let kind: Kind
+
+    static func rows(for message: ChatMessage) -> [TranscriptRow] {
+        var rows: [TranscriptRow] = []
+        for part in message.parts {
+            let key = "\(message.id):\(part.id)"
+            switch part.kind {
+            case .text(let text):
+                let stripped = AgentMarkup.strip(text)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !stripped.isEmpty else { continue }
+                if message.role == .user {
+                    rows.append(TranscriptRow(key: key, kind: .userText(stripped)))
+                    continue
+                }
+                for (index, segment) in MessageSegment.split(stripped).enumerated() {
+                    switch segment {
+                    case .prose(let prose):
+                        rows.append(
+                            TranscriptRow(key: "\(key):s\(index)", kind: .agentProse(prose)))
+                    case .code(let language, let body):
+                        rows.append(
+                            TranscriptRow(
+                                key: "\(key):s\(index)",
+                                kind: .codeBlock(language: language, body: body)))
+                    }
+                }
+            case .reasoning(let text):
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                rows.append(TranscriptRow(key: key, kind: .reasoning(trimmed)))
+            case .tool(let call):
+                if call.asksUserQuestion, call.isAwaitingAnswer { continue }
+                rows.append(
+                    TranscriptRow(
+                        key: key, kind: call.spawnsSubagent ? .subagent(call) : .tool(call)))
+            case .file(let reference):
+                rows.append(TranscriptRow(key: key, kind: .file(reference)))
+            case .compaction(let compaction):
+                rows.append(TranscriptRow(key: key, kind: .compaction(compaction)))
+            case .unknown:
+                continue
+            }
+        }
+        return rows
+    }
+
+    /// Rows for a whole transcript, with a hairline between turns so the reading rhythm survives
+    /// density.
+    static func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+        var all: [TranscriptRow] = []
+        for message in messages {
+            let rows = Self.rows(for: message)
+            guard !rows.isEmpty else { continue }
+            if message.role == .user, !all.isEmpty {
+                all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
+            }
+            all += rows
+        }
+        return all
+    }
+
+    func makeWidget(context: TranscriptContext) -> UnsafeMutablePointer<GtkWidget> {
+        switch kind {
         case .userText(let text):
             return Self.prompt(text)
-        case .agentText(let text):
+        case .agentProse(let text):
             return Gtk.label(text, css: "agent-text", wrap: true)
+        case .codeBlock(let language, let body):
+            return Self.codeBlock(language: language, body: body)
         case .reasoning(let text):
-            return Gtk.label(Self.thoughtSummary(text), css: "dim", wrap: false)
+            return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
-            return Self.toolLine(call)
-        case .file(let name):
-            return Gtk.label("📎 \(name)", css: "dim")
+            return ToolRowView.make(call, key: key, context: context)
+        case .subagent(let call):
+            return SubagentRowView.make(call, key: key, context: context)
+        case .file(let reference):
+            return Self.filePart(reference, key: key, context: context)
+        case .compaction(let compaction):
+            return Self.seam(compaction, key: key, context: context)
+        case .turnBreak:
+            let rule = Gtk.hairline()
+            Gtk.margins(rule, top: 10, bottom: 10)
+            return rule
         }
     }
 
@@ -53,43 +128,143 @@ enum TranscriptRow {
         let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(rule, "prompt-rule")
         gtk_widget_set_size_request(rule, 2, -1)
-        let label = Gtk.label(text, css: "agent-text", wrap: true)
+        let label = Gtk.label(text, css: "prompt-text", wrap: true)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), label)
         return row
     }
 
-    private static func toolLine(_ call: ToolCall) -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private static func codeBlock(language: String?, body: String)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(column, "code-block")
+
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let tag = Gtk.label(language ?? "text", css: "code-header", selectable: false)
+        gtk_widget_set_hexpand(tag, 1)
+        gtk_box_append(ptr(header), tag)
+        let bytes = body
         gtk_box_append(
-            ptr(row), Gtk.label(glyph(call.status), css: "tool-line", selectable: false))
-        gtk_box_append(ptr(row), Gtk.label(call.name, css: "tool-line"))
-        let detail = Gtk.label(summary(of: call), css: "tool-line")
-        Gtk.addClass(detail, "dim")
-        gtk_widget_set_hexpand(detail, 1)
-        gtk_box_append(ptr(row), detail)
-        return row
-    }
+            ptr(header),
+            Gtk.button(Localized.text("copy"), css: ["flat", "code-copy"]) {
+                Gtk.copyToClipboard(bytes)
+            })
+        gtk_box_append(ptr(column), header)
 
-    private static func glyph(_ status: ToolStatus) -> String {
-        switch status {
-        case .completed: return "⏺"
-        case .error: return "✗"
-        case .running: return "◐"
-        case .pending: return "○"
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
+        let text = Gtk.label(body, css: "code-body", wrap: true)
+        if lines > 18, body.count > 600 {
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
+            gtk_scrolled_window_set_max_content_height(op(scroller), 320)
+            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+            gtk_scrolled_window_set_child(op(scroller), text)
+            gtk_box_append(ptr(column), scroller)
+        } else {
+            gtk_box_append(ptr(column), text)
         }
+        return column
     }
 
-    private static func summary(of call: ToolCall) -> String {
-        let fromInput = call.input?.objectValue?.values
-            .compactMap(\.stringValue).first(where: { !$0.isEmpty })
-        let fromTitle = call.title.flatMap { $0 == call.name ? nil : $0 }
-        let raw = fromInput ?? fromTitle ?? ""
-        return String(raw.replacingOccurrences(of: "\n", with: " ").prefix(120))
+    private static func reasoning(_ text: String, key: String, context: TranscriptContext)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let words = text.split(separator: " ").count
+        let header = Gtk.label(
+            Localized.text("⌄ Thought · %@ words", "\(words)"), css: "dim", selectable: false)
+        let body = Gtk.label(text, css: "reasoning-body", wrap: true)
+        Gtk.margins(body, leading: 14)
+        let toggle = context.onToggle
+        return Gtk.disclosure(
+            header: header, body: body, expanded: context.isExpanded(key)
+        ) { open in toggle?(key, open) }
     }
 
-    private static func thoughtSummary(_ text: String) -> String {
-        "⌄ thought · \(text.split(separator: " ").count) words"
+    private static func filePart(
+        _ reference: FileReference, key: String, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let name = reference.filename ?? reference.path.map {
+            URL(fileURLWithPath: $0).lastPathComponent
+        } ?? "file"
+        let isImage = (reference.mime ?? "").hasPrefix("image/")
+        guard isImage else {
+            return Gtk.label("📎 \(name)", css: "attachment")
+        }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        if let bits = context.textures[key], bits != 0 {
+            let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
+            let picture = tailscode_picture_for_texture(texture)!
+            gtk_widget_set_size_request(picture, -1, min(420, tailscode_texture_height(texture)))
+            gtk_widget_set_halign(picture, GTK_ALIGN_START)
+            Gtk.addClass(picture, "image-part")
+            let width = tailscode_texture_width(texture)
+            let height = tailscode_texture_height(texture)
+            gtk_box_append(ptr(column), picture)
+            gtk_box_append(
+                ptr(column),
+                Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
+        } else {
+            gtk_box_append(
+                ptr(column),
+                Gtk.label(Localized.text("🖼 %@ — loading…", name), css: "dim", selectable: false))
+            context.requestImage?(reference, key)
+        }
+        return column
+    }
+
+    /// A compaction is a seam, not a message: the rule says the transcript restarted here, the
+    /// card says what was traded for what, and the CLI's machine-facing summary stays behind a
+    /// disclosure rather than in the flow.
+    private static func seam(
+        _ compaction: Compaction, key: String, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_box_append(ptr(column), Gtk.hairline())
+
+        var facts: [String] = []
+        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
+            facts.append("\(Self.tokens(before)) → \(Self.tokens(after))")
+        }
+        if let duration = compaction.duration, duration > 0 {
+            facts.append(Self.clock(duration))
+        }
+        if let kept = compaction.preservedMessageCount {
+            facts.append(Localized.text("%@ messages kept", "\(kept)"))
+        }
+        if compaction.trigger == .auto { facts.append(Localized.text("automatic")) }
+        let title = facts.isEmpty
+            ? Localized.text("COMPACTED") : "COMPACTED · " + facts.joined(separator: " · ")
+
+        if let summary = compaction.summary, !summary.isEmpty {
+            let header = Gtk.label(title, css: "seam-text", selectable: false)
+            let body = Gtk.label(summary, css: "reasoning-body", wrap: true)
+            Gtk.margins(body, leading: 14)
+            let scroller = gtk_scrolled_window_new()!
+            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+            gtk_scrolled_window_set_max_content_height(op(scroller), 340)
+            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+            gtk_scrolled_window_set_child(op(scroller), body)
+            let toggle = context.onToggle
+            gtk_box_append(
+                ptr(column),
+                Gtk.disclosure(
+                    header: header, body: scroller, expanded: context.isExpanded(key)
+                ) { open in toggle?(key, open) })
+        } else {
+            gtk_box_append(ptr(column), Gtk.label(title, css: "seam-text", selectable: false))
+        }
+        gtk_box_append(ptr(column), Gtk.hairline())
+        return column
+    }
+
+    static func tokens(_ count: Int) -> String {
+        count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
+    }
+
+    static func clock(_ interval: TimeInterval) -> String {
+        let seconds = Int(interval)
+        return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
     }
 }

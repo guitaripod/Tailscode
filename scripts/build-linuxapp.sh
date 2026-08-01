@@ -21,7 +21,10 @@ case "${1:-}" in
 --shot)
     # A nested X server rather than the session's own compositor: the screenshot then contains the
     # app and nothing else, and the same command works over ssh on a machine with no desktop.
-    xvfb-run -a --server-args="-screen 0 1280x820x24" bash -c "
+    # A private session bus as well: GApplication is single-instance per bus name, so without one
+    # the dev build would remote-activate an installed tailscode already running on the desktop
+    # and exit 0 with nothing to photograph.
+    xvfb-run -a --server-args="-screen 0 1280x820x24" dbus-run-session -- bash -c "
         env -u WAYLAND_DISPLAY GDK_BACKEND=x11 '$BIN' > /tmp/tailscode-linux-run.log 2>&1 &
         sleep 20
         import -window root /tmp/tailscode-linux.png
