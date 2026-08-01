@@ -123,6 +123,12 @@ final class ChatViewController: UIViewController {
                     self?.openFirstAttachment()
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_SAVE_ATTACHMENT"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.saveFirstAttachment()
+                }
+            }
             if let which = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_COMPACT"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -1237,6 +1243,16 @@ final class ChatViewController: UIViewController {
                     continue
                 }
                 imageBubbleCell(cell, didTap: image, from: cell.imageContainer)
+                return
+            }
+        }
+
+        /// Runs the save an attachment's context menu would run, so the photo
+        /// library path can be exercised from a script the way the viewer can.
+        private func saveFirstAttachment() {
+            for cell in collectionView.visibleCells {
+                guard let payload = (cell as? ImageBubbleCell)?.payload else { continue }
+                saveToPhotos(payload)
                 return
             }
         }
@@ -2944,7 +2960,93 @@ extension ChatViewController: UIAdaptivePresentationControllerDelegate {
 
 extension ChatViewController: ImageBubbleCellDelegate {
     func imageBubbleCell(_ cell: ImageBubbleCell, didTap image: UIImage, from view: UIView) {
-        present(ImageViewerViewController(image: image, from: view), animated: false)
+        let items = galleryImages()
+        let id = collectionView.indexPath(for: cell).flatMap { dataSource.itemIdentifier(for: $0) }
+        let start = items.firstIndex { $0.id == id } ?? 0
+        guard !items.isEmpty else { return }
+        present(
+            ImageViewerViewController(
+                items: items, startIndex: start, backend: viewModel.backend, from: view),
+            animated: false)
+    }
+
+    func imageBubbleCell(_ cell: ImageBubbleCell, menuFor payload: ImagePayload) -> UIMenu {
+        UIMenu(children: [
+            UIAction(
+                title: String(localized: "Save to Photos"),
+                image: UIImage(systemName: "square.and.arrow.down")
+            ) { [weak self] _ in self?.saveToPhotos(payload) },
+            UIAction(title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")) {
+                _ in
+                ImageExport.copy(payload)
+                Theme.Haptics.success()
+            },
+            UIAction(
+                title: String(localized: "Save to Files"),
+                image: UIImage(systemName: "folder")
+            ) { [weak self] _ in self?.exportToFiles(payload) },
+            UIAction(
+                title: String(localized: "Share"),
+                image: UIImage(systemName: "square.and.arrow.up")
+            ) { [weak self] _ in self?.shareImage(payload, from: cell) },
+        ])
+    }
+
+    /// Every picture in the conversation, in the order it was said, so the
+    /// viewer can swipe across the whole chat from whichever one was tapped.
+    private func galleryImages() -> [GalleryImage] {
+        dataSource.snapshot().itemIdentifiers.compactMap { id in
+            if case .image(let file)? = rowsByID[id]?.content {
+                return GalleryImage(id: id, file: file, localData: nil)
+            }
+            guard id.hasPrefix("local:"), id.contains(":img"),
+                let echo = viewModel.localEchoes.first(where: {
+                    id.hasPrefix("local:\($0.id.uuidString):img")
+                }),
+                let index = Int(id.components(separatedBy: ":img").last ?? ""),
+                echo.attachments.indices.contains(index)
+            else { return nil }
+            let attachment = echo.attachments[index]
+            return GalleryImage(
+                id: id,
+                file: FileReference(
+                    path: nil, mime: attachment.mime,
+                    url: "local:\(echo.id.uuidString):\(index)", filename: attachment.filename),
+                localData: attachment.data)
+        }
+    }
+
+    private func saveToPhotos(_ payload: ImagePayload) {
+        Task { [weak self] in
+            switch await ImageExport.saveToPhotos(payload) {
+            case .saved:
+                Theme.Haptics.success()
+                self?.presentToast(String(localized: "Saved to Photos"))
+            case .denied:
+                Theme.Haptics.warning()
+                self?.presentToast(
+                    String(localized: "Allow photo access in Settings to save pictures."))
+            case .failed:
+                Theme.Haptics.error()
+                self?.presentToast(String(localized: "Couldn't save to Photos"))
+            }
+        }
+    }
+
+    private func exportToFiles(_ payload: ImagePayload) {
+        guard let url = ImageExport.temporaryFile(payload) else {
+            presentToast(String(localized: "Couldn't export the picture."))
+            return
+        }
+        present(UIDocumentPickerViewController(forExporting: [url], asCopy: true), animated: true)
+    }
+
+    private func shareImage(_ payload: ImagePayload, from source: UIView) {
+        let item: Any = ImageExport.temporaryFile(payload) ?? payload.image
+        let sheet = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = source
+        sheet.popoverPresentationController?.sourceRect = source.bounds
+        present(sheet, animated: true)
     }
 }
 

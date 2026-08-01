@@ -61,6 +61,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Automatic
         NSPhotoLibraryUsageDescription: Attach images from your library to a prompt.
+        NSPhotoLibraryAddUsageDescription: Save pictures from a conversation to your photo library.
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:

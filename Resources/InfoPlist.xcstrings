@@ -66,6 +66,71 @@
         }
       }
     },
+    "NSPhotoLibraryAddUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sichere Bilder aus einer Unterhaltung in deiner Fotomediathek."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save pictures from a conversation to your photo library."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda imágenes de una conversación en tu fototeca."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrez les images d’une conversation dans votre photothèque."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva le immagini di una conversazione nella tua libreria foto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会話内の画像を写真ライブラリに保存します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대화의 사진을 사진 보관함에 저장합니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salve imagens de uma conversa na sua fototeca."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将对话中的图片存储到你的照片图库。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將對話中的圖片儲存至你的照片圖庫。"
+          }
+        }
+      }
+    },
     "NSPhotoLibraryUsageDescription": {
       "extractionState": "manual",
       "localizations": {

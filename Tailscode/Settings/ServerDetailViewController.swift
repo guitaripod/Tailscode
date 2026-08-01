@@ -6,12 +6,15 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     private var profile: ConnectionProfile
 
-    private enum Section: Int, CaseIterable { case info, status, defaults, actions }
+    private enum Section: Int, CaseIterable { case info, status, software, defaults, actions }
     private enum Item: Hashable {
         case value(label: String, value: String, warning: Bool = false)
         case status(String)
         case pushState
         case test
+        case updateState
+        case runUpdate(String)
+        case copyInstallCommand
         case makeDefault
         case isDefault
         case defaultModel
@@ -28,6 +31,7 @@ final class ServerDetailViewController: UIViewController {
     private var latestVersion: String?
     private var backend: (any CodingAgentBackend)?
     private var modelChoice = ModelChoice()
+    private let updater = BridgeUpdater()
 
     private var isDemo: Bool { profile.id.hasPrefix(DemoWorld.profilePrefix) }
 
@@ -47,7 +51,18 @@ final class ServerDetailViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(pushStatesChanged), name: PushRegistrar.didChangeStates,
             object: nil)
+        updater.onChange = { [weak self] state in
+            guard let self else { return }
+            if let version = state.status?.version { self.serverVersion = version }
+            self.applySnapshot()
+            self.reconfigure([.updateState])
+        }
         Task { await refresh() }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent { updater.stop() }
     }
 
     private func configure() {
@@ -107,6 +122,7 @@ final class ServerDetailViewController: UIViewController {
         switch dataSource.snapshot().sectionIdentifiers[safe: index] {
         case .info: return String(localized: "Server")
         case .status: return String(localized: "Health")
+        case .software: return String(localized: "Software")
         case .defaults: return String(localized: "Defaults")
         case .actions, .none: return nil
         }
@@ -136,6 +152,25 @@ final class ServerDetailViewController: UIViewController {
             content.text = String(localized: "Test connection")
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "antenna.radiowaves.left.and.right")
+            content.imageProperties.tintColor = Theme.Color.accent
+        case .updateState:
+            content.text = String(localized: "Server software")
+            content.secondaryText = updateDetail()
+            content.secondaryTextProperties.color =
+                updateIsWarning ? Theme.Color.warning : Theme.Color.secondaryLabel
+            if case .checking = updater.state { cell.accessories = [spinner()] }
+            if case .working = updater.state { cell.accessories = [spinner()] }
+        case .runUpdate(let version):
+            content.text = String(localized: "Update to \(version)")
+            content.textProperties.color = Theme.Color.accent
+            content.image = UIImage(systemName: "arrow.down.circle")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
+        case .copyInstallCommand:
+            content.text = String(localized: "Copy update command")
+            content.secondaryText = String(localized: "Run it on the server over ssh or a terminal")
+            content.textProperties.color = Theme.Color.accent
+            content.image = UIImage(systemName: "doc.on.doc")
             content.imageProperties.tintColor = Theme.Color.accent
         case .makeDefault:
             content.text = String(localized: "Make default server")
@@ -167,6 +202,117 @@ final class ServerDetailViewController: UIViewController {
             content.imageProperties.tintColor = Theme.Color.danger
         }
         cell.contentConfiguration = content
+    }
+
+    private func spinner() -> UICellAccessory {
+        let view = UIActivityIndicatorView(style: .medium)
+        view.startAnimating()
+        return .customView(configuration: .init(customView: view, placement: .trailing()))
+    }
+
+    /// One line that says where this server's software stands, whatever the answer turned out to
+    /// be: a version, a job in flight, or the reason the server can't move itself forward.
+    private func updateDetail() -> String {
+        switch updater.state {
+        case .unknown, .checking:
+            return String(localized: "Checking…")
+        case .current(let status):
+            return String(localized: "\(status.version) — up to date")
+        case .available(let status):
+            let version = status.latestVersion ?? status.latestCommit ?? ""
+            guard let behind = status.behind, behind > 0 else {
+                return String(localized: "\(version) available")
+            }
+            guard behind > 1 else { return String(localized: "\(version) available — 1 commit newer") }
+            return String(localized: "\(version) available — \(behind) commits newer")
+        case .blocked(let status):
+            return status.reason ?? String(localized: "This server can't update itself")
+        case .unsupported:
+            return String(localized: "Too old to update itself")
+        case .unreachable:
+            return String(localized: "Couldn't check")
+        case .working(let status):
+            switch status.phase {
+            case .building: return String(localized: "Building…")
+            case .restarting: return String(localized: "Restarting…")
+            default: return String(localized: "Updating…")
+            }
+        case .failed(let status):
+            return status.log?.split(separator: "\n").last.map(String.init)
+                ?? String(localized: "The last update failed")
+        }
+    }
+
+    private var updateIsWarning: Bool {
+        switch updater.state {
+        case .available, .blocked, .unsupported, .failed: return true
+        case .unknown, .checking, .current, .unreachable, .working: return false
+        }
+    }
+
+    private func softwareItems() -> [Item] {
+        var items: [Item] = [.updateState]
+        switch updater.state {
+        case .available(let status):
+            items.append(.runUpdate(status.latestVersion ?? String(localized: "the latest build")))
+        case .failed:
+            items.append(.runUpdate(String(localized: "try again")))
+            items.append(.copyInstallCommand)
+        case .blocked, .unsupported:
+            items.append(.copyInstallCommand)
+        case .unknown, .checking, .current, .unreachable, .working:
+            break
+        }
+        return items
+    }
+
+    /// The changes an update would bring, before it is taken: an update restarts the server, and a
+    /// person is entitled to know what they are restarting it for.
+    private func confirmUpdate(_ status: ServerUpdate) {
+        let changes = status.changes.prefix(8).map { "• \($0)" }.joined(separator: "\n")
+        let alert = UIAlertController(
+            title: String(localized: "Update this server?"),
+            message: changes.isEmpty
+                ? String(
+                    localized:
+                        "The server pulls the new code, rebuilds it, and restarts. It stops answering for a moment while it does."
+                )
+                : String(
+                    localized:
+                        "\(changes)\n\nThe server rebuilds and restarts, so it stops answering for a moment."
+                ),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: String(localized: "Update"), style: .default) { [weak self] _ in
+                Theme.Haptics.tap()
+                Task { await self?.updater.update() }
+            })
+        present(alert, animated: true)
+    }
+
+    private func showUpdateLog(_ status: ServerUpdate) {
+        let alert = UIAlertController(
+            title: String(localized: "Update failed"),
+            message: status.log ?? status.reason
+                ?? String(localized: "The server didn't say why."),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func copyInstallCommand() {
+        UIPasteboard.general.string = BridgeUpdater.installCommand
+        Theme.Haptics.success()
+        let alert = UIAlertController(
+            title: String(localized: "Copied"),
+            message: String(
+                localized:
+                    "Run it on the machine the server runs on. It updates in place and keeps your password."
+            ),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+        present(alert, animated: true)
     }
 
     private static func pushDetail(_ state: PushRegistrar.State) -> String {
@@ -297,6 +443,10 @@ final class ServerDetailViewController: UIViewController {
         statusItems.append(.test)
         snapshot.appendItems(statusItems, toSection: .status)
 
+        if profile.backend == .claudeCode, !isDemo {
+            snapshot.appendItems(softwareItems(), toSection: .software)
+        }
+
         var defaults: [Item] = [
             ConnectionController.shared.activeProfileID == profile.id ? .isDefault : .makeDefault
         ]
@@ -342,6 +492,17 @@ final class ServerDetailViewController: UIViewController {
             if profile.backend == .openCode {
                 modelCount = try? await backend.availableModels().count
                 latestVersion = await fetchLatestOpencodeRelease()
+            }
+            if profile.backend == .claudeCode, !isDemo {
+                updater.attach(backend)
+                Task {
+                    await updater.check()
+                    #if DEBUG
+                        if ProcessInfo.processInfo.environment["TAILSCODE_RUN_UPDATE"] != nil {
+                            await updater.update()
+                        }
+                    #endif
+                }
             }
         } catch {
             statusText = String(localized: "Unreachable")
@@ -424,6 +585,20 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .pushState:
             PushRegistrar.reregisterIfNeeded()
             Theme.Haptics.tap()
+        case .updateState:
+            if case .failed(let status) = updater.state {
+                showUpdateLog(status)
+            } else if case .working = updater.state {
+                break
+            } else {
+                Theme.Haptics.tap()
+                Task { await updater.check() }
+            }
+        case .runUpdate:
+            guard let status = updater.state.status else { break }
+            confirmUpdate(status)
+        case .copyInstallCommand:
+            copyInstallCommand()
         default:
             break
         }

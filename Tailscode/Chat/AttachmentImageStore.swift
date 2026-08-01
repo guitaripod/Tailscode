@@ -9,15 +9,25 @@ final class AttachmentImageStore {
     static let shared = AttachmentImageStore()
 
     private let cache = NSCache<NSString, UIImage>()
+    /// The bytes as they arrived, kept for saving and sharing: what the photo
+    /// library should receive is the file the server has, not a re-encode of the
+    /// downsampled bitmap a chat bubble displays.
+    private let originals = NSCache<NSString, NSData>()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
     private init() {
         cache.countLimit = 60
         cache.totalCostLimit = 64 * 1024 * 1024
+        originals.countLimit = 12
+        originals.totalCostLimit = 48 * 1024 * 1024
     }
 
     func cached(_ file: FileReference) -> UIImage? {
         Self.key(file).flatMap { cache.object(forKey: $0 as NSString) }
+    }
+
+    func cachedData(_ file: FileReference) -> Data? {
+        Self.key(file).flatMap { originals.object(forKey: $0 as NSString) } as Data?
     }
 
     /// Decoded off the main thread and downsampled to what a bubble can show:
@@ -31,6 +41,7 @@ final class AttachmentImageStore {
             let data = try? await backend.attachmentData(file)
             guard let data, let image = await Self.decode(data) else { return nil }
             self?.store(image, key: key)
+            self?.store(data, key: key)
             return image
         }
         inFlight[key] = task
@@ -39,14 +50,19 @@ final class AttachmentImageStore {
         return image
     }
 
-    func store(_ image: UIImage, for file: FileReference) {
+    func store(_ image: UIImage, for file: FileReference, data: Data? = nil) {
         guard let key = Self.key(file) else { return }
         store(image, key: key)
+        if let data { store(data, key: key) }
     }
 
     private func store(_ image: UIImage, key: String) {
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
         cache.setObject(image, forKey: key as NSString, cost: cost)
+    }
+
+    private func store(_ data: Data, key: String) {
+        originals.setObject(data as NSData, forKey: key as NSString, cost: data.count)
     }
 
     private static func key(_ file: FileReference) -> String? {

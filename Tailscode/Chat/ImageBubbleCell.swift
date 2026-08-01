@@ -4,10 +4,14 @@ import UIKit
 @MainActor
 protocol ImageBubbleCellDelegate: AnyObject {
     func imageBubbleCell(_ cell: ImageBubbleCell, didTap image: UIImage, from view: UIView)
+    func imageBubbleCell(_ cell: ImageBubbleCell, menuFor payload: ImagePayload) -> UIMenu
 }
 
 /// An attached image, rendered at the size it actually is (capped) rather than
 /// in a fixed box, so a screenshot reads as a screenshot and a photo as a photo.
+/// A picture the agent sent names itself underneath; one you sent needs no
+/// caption. Press and hold for the things you do with a picture, or drag it
+/// straight into another app.
 final class ImageBubbleCell: UICollectionViewCell {
     static let reuseID = "ImageBubbleCell"
     weak var delegate: ImageBubbleCellDelegate?
@@ -18,17 +22,28 @@ final class ImageBubbleCell: UICollectionViewCell {
 
     private let bubble = UIView()
     private let imageView = UIImageView()
+    private let caption = UILabel()
     private let shimmer = CAGradientLayer()
     private let failure = UILabel()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
+    private var imageBottomPin: NSLayoutConstraint!
+    private var captionBottomPin: NSLayoutConstraint!
     private var ratio: NSLayoutConstraint?
     private var loadToken = UUID()
+    private var file: FileReference?
+    private var originalData: Data?
 
-    private static let maxHeight: CGFloat = 260
+    private static let maxHeight: CGFloat = 300
 
     var displayedImage: UIImage? { imageView.image }
     var imageContainer: UIView { imageView }
+
+    var payload: ImagePayload? {
+        guard let image = imageView.image else { return nil }
+        return ImagePayload(
+            image: image, data: originalData, filename: file?.displayName ?? "")
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -44,7 +59,15 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         imageView.isUserInteractionEnabled = true
+        imageView.isAccessibilityElement = true
+        imageView.accessibilityTraits = [.image, .button]
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        caption.font = Theme.Font.caption()
+        caption.adjustsFontForContentSizeCategory = true
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.lineBreakMode = .byTruncatingMiddle
+        caption.isHidden = true
+        caption.translatesAutoresizingMaskIntoConstraints = false
         failure.font = Theme.Font.caption()
         failure.textColor = Theme.Color.tertiaryLabel
         failure.textAlignment = .center
@@ -60,6 +83,7 @@ final class ImageBubbleCell: UICollectionViewCell {
         bubble.layer.addSublayer(shimmer)
         contentView.addSubview(bubble)
         bubble.addSubview(imageView)
+        bubble.addSubview(caption)
         bubble.addSubview(failure)
 
         leadingPin = bubble.leadingAnchor.constraint(
@@ -69,17 +93,26 @@ final class ImageBubbleCell: UICollectionViewCell {
         let widthPin = bubble.widthAnchor.constraint(
             equalTo: contentView.widthAnchor, multiplier: 0.72)
         widthPin.priority = UILayoutPriority(999)
+        imageBottomPin = imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
+        captionBottomPin = caption.bottomAnchor.constraint(
+            equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s)
+        imageBottomPin.isActive = true
         NSLayoutConstraint.activate([
             bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
             bubble.bottomAnchor.constraint(
                 equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             widthPin,
-            bubble.heightAnchor.constraint(lessThanOrEqualToConstant: Self.maxHeight),
+            imageView.heightAnchor.constraint(lessThanOrEqualToConstant: Self.maxHeight),
             imageView.topAnchor.constraint(equalTo: bubble.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
             imageView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
-            failure.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            caption.topAnchor.constraint(
+                equalTo: imageView.bottomAnchor, constant: Theme.Spacing.s),
+            caption.leadingAnchor.constraint(
+                equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
+            caption.trailingAnchor.constraint(
+                equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m),
+            failure.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
             failure.leadingAnchor.constraint(
                 equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
             failure.trailingAnchor.constraint(
@@ -87,6 +120,10 @@ final class ImageBubbleCell: UICollectionViewCell {
         ])
         imageView.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+        imageView.addInteraction(UIContextMenuInteraction(delegate: self))
+        let drag = UIDragInteraction(delegate: self)
+        drag.isEnabled = true
+        imageView.addInteraction(drag)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -102,6 +139,11 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.image = nil
         imageView.alpha = 1
         failure.isHidden = true
+        caption.isHidden = true
+        imageBottomPin.isActive = true
+        captionBottomPin.isActive = false
+        file = nil
+        originalData = nil
         delegate = nil
         onLoaded = nil
     }
@@ -113,12 +155,17 @@ final class ImageBubbleCell: UICollectionViewCell {
         let isUser = role == .user
         leadingPin.isActive = !isUser
         trailingPin.isActive = isUser
+        self.file = file
+        self.originalData = localData
+        imageView.accessibilityLabel = file.displayName
+        showCaption(isUser ? nil : file.displayName)
         if let cached = AttachmentImageStore.shared.cached(file) {
+            originalData = localData ?? AttachmentImageStore.shared.cachedData(file)
             show(cached, animated: false)
             return
         }
         if let localData, let image = UIImage(data: localData) {
-            AttachmentImageStore.shared.store(image, for: file)
+            AttachmentImageStore.shared.store(image, for: file, data: localData)
             show(image, animated: false)
             return
         }
@@ -131,9 +178,25 @@ final class ImageBubbleCell: UICollectionViewCell {
                 self.showFailure(file)
                 return
             }
+            self.originalData = AttachmentImageStore.shared.cachedData(file)
             self.show(image, animated: true)
             self.onLoaded?()
         }
+    }
+
+    /// A caption is what makes a picture from the agent legible as a file on the
+    /// server rather than an image from nowhere.
+    private func showCaption(_ name: String?) {
+        guard let name, !name.isEmpty else {
+            caption.isHidden = true
+            captionBottomPin.isActive = false
+            imageBottomPin.isActive = true
+            return
+        }
+        caption.text = name
+        caption.isHidden = false
+        imageBottomPin.isActive = false
+        captionBottomPin.isActive = true
     }
 
     /// The intrinsic aspect ratio drives the bubble's height, clamped so a tall
@@ -190,5 +253,66 @@ final class ImageBubbleCell: UICollectionViewCell {
         guard let image = imageView.image else { return }
         Theme.Haptics.tap()
         delegate?.imageBubbleCell(self, didTap: image, from: imageView)
+    }
+}
+
+extension ImageBubbleCell: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let payload, let delegate else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in
+            guard let self else { return nil }
+            return delegate.imageBubbleCell(self, menuFor: payload)
+        }
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        highlightPreviewForItemWithIdentifier identifier: NSCopying
+    ) -> UITargetedPreview? {
+        preview()
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        dismissalPreviewForItemWithIdentifier identifier: NSCopying
+    ) -> UITargetedPreview? {
+        preview()
+    }
+
+    private func preview() -> UITargetedPreview? {
+        guard imageView.image != nil else { return nil }
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: imageView.bounds, cornerRadius: Theme.Radius.bubble)
+        return UITargetedPreview(view: imageView, parameters: parameters)
+    }
+}
+
+extension ImageBubbleCell: UIDragInteractionDelegate {
+    func dragInteraction(
+        _ interaction: UIDragInteraction, itemsForBeginning session: any UIDragSession
+    ) -> [UIDragItem] {
+        guard let payload else { return [] }
+        let provider = NSItemProvider(object: payload.image)
+        provider.suggestedName = payload.exportFilename
+        let item = UIDragItem(itemProvider: provider)
+        item.localObject = payload.image
+        return item.itemProvider.registeredTypeIdentifiers.isEmpty ? [] : [item]
+    }
+
+    func dragInteraction(
+        _ interaction: UIDragInteraction, previewForLifting item: UIDragItem,
+        session: any UIDragSession
+    ) -> UITargetedDragPreview? {
+        let parameters = UIDragPreviewParameters()
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: imageView.bounds, cornerRadius: Theme.Radius.bubble)
+        return UITargetedDragPreview(view: imageView, parameters: parameters)
     }
 }
