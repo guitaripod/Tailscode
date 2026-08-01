@@ -492,17 +492,23 @@ final class ChatViewModel {
         streamTask = nil
     }
 
-    /// Tears down and re-establishes the event stream, then re-fetches the
-    /// transcript. Called on foregrounding: the socket may be half-open after
-    /// suspension (reads hang, no error), so waiting for it to fail isn't
-    /// enough — the reconnect has to be forced.
+    /// Re-dials the event stream and re-fetches the transcript. Called on foregrounding: the
+    /// socket may be half-open after suspension (reads hang, no error), so waiting for it to fail
+    /// isn't enough — the reconnect has to be forced. The conversation reconnects underneath us
+    /// rather than the stream being torn down and rebuilt, so no snapshot is lost in the gap and
+    /// a second observer (another window, the session list) is not disturbed. A stream that ended
+    /// on its own is started rather than reconnected — there is nothing to re-dial.
     private var lastResync: Date = .distantPast
 
     func resync() {
         guard streamTask != nil || isBound, Date().timeIntervalSince(lastResync) > 1 else { return }
         lastResync = Date()
-        stop()
-        start()
+        guard streamTask != nil else {
+            start()
+            return
+        }
+        let conversation = self.conversation
+        Task { await conversation.reconnect() }
     }
 
     func send(
