@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import Foundation
 #if canImport(ActivityKit)

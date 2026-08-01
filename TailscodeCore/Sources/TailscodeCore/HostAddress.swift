@@ -6,17 +6,22 @@ import Foundation
 /// line copied out of the server's own startup log — resolved to one base URL.
 /// The old form demanded a scheme and a port and rejected the two inputs users
 /// actually have.
-struct HostAddress: Equatable, Sendable {
-    static let openCodePort = 4096
-    static let claudeCodePort = 4098
+public struct HostAddress: Equatable, Sendable {
+    public static let openCodePort = 4096
+    public static let claudeCodePort = 4098
 
-    let url: URL
+    public let url: URL
     /// True when the app supplied the port rather than the user. The other
     /// agent's port is then worth probing too, which makes the agent choice
     /// almost never matter.
-    let portWasInferred: Bool
+    public let portWasInferred: Bool
 
-    enum Reading: Equatable, Sendable {
+    public init(url: URL, portWasInferred: Bool) {
+        self.url = url
+        self.portWasInferred = portWasInferred
+    }
+
+    public enum Reading: Equatable, Sendable {
         case empty
         case address(HostAddress)
         /// `0.0.0.0` and `::` are what a server binds to, never where it lives.
@@ -25,11 +30,11 @@ struct HostAddress: Equatable, Sendable {
         case invalid
     }
 
-    static func port(for backend: AgentType) -> Int {
+    public static func port(for backend: AgentType) -> Int {
         backend == .openCode ? openCodePort : claudeCodePort
     }
 
-    static func read(_ raw: String, defaultPort: Int) -> Reading {
+    public static func read(_ raw: String, defaultPort: Int) -> Reading {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .empty }
         guard let token = candidateToken(in: trimmed) else { return .invalid }
@@ -65,7 +70,7 @@ struct HostAddress: Equatable, Sendable {
 
     /// The addresses worth probing, best guess first: when the user never named a
     /// port, the other agent's default is the single most likely correction.
-    func probeCandidates() -> [URL] {
+    public func probeCandidates() -> [URL] {
         guard portWasInferred, let port = url.port else { return [url] }
         let alternate = port == Self.openCodePort ? Self.claudeCodePort : Self.openCodePort
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
@@ -75,7 +80,7 @@ struct HostAddress: Equatable, Sendable {
         return [url, components.url].compactMap { $0 }
     }
 
-    var displayHost: String {
+    public var displayHost: String {
         guard let host = url.host else { return url.absoluteString }
         guard let port = url.port else { return host }
         return "\(host):\(port)"
@@ -83,7 +88,7 @@ struct HostAddress: Equatable, Sendable {
 
     /// Private-range hosts trip iOS's Local Network prompt; a denial there fails
     /// every later probe as a plain timeout, so it is worth naming separately.
-    var isPrivateRange: Bool {
+    public var isPrivateRange: Bool {
         guard let host = url.host else { return false }
         let octets = host.split(separator: ".").compactMap { UInt8($0) }
         guard octets.count == 4 else { return false }
@@ -93,7 +98,7 @@ struct HostAddress: Equatable, Sendable {
         return false
     }
 
-    var isTailnetRange: Bool {
+    public var isTailnetRange: Bool {
         guard let host = url.host else { return false }
         let octets = host.split(separator: ".").compactMap { Int($0) }
         guard octets.count == 4 else { return false }

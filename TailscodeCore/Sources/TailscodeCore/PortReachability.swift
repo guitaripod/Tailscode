@@ -1,3 +1,5 @@
+#if canImport(Network)
+
 import Foundation
 import Network
 
@@ -6,15 +8,15 @@ import Network
 /// (asleep, or not on the tailnet) from "that name doesn't resolve" (MagicDNS is
 /// off) — and those are three different things to tell the user. A raw TCP
 /// connect can.
-enum PortReachability {
-    enum Verdict: Sendable, Equatable {
+public enum PortReachability {
+    public enum Verdict: Sendable, Equatable {
         case listening
         case refused
         case timedOut
         case nameNotResolved
     }
 
-    static func check(host: String, port: UInt16, timeout: Duration = .seconds(3)) async -> Verdict {
+    public static func check(host: String, port: UInt16, timeout: Duration = .seconds(3)) async -> Verdict {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else { return .timedOut }
         let (stream, continuation) = AsyncStream<Verdict>.makeStream()
         let connection = NWConnection(
@@ -63,3 +65,5 @@ enum PortReachability {
         }
     }
 }
+
+#endif

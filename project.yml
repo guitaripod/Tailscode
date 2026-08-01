@@ -7,6 +7,8 @@ options:
 packages:
   CodingAgentKit:
     path: ../../swift/CodingAgentKit
+  TailscodeCore:
+    path: TailscodeCore
 targets:
   Tailscode:
     type: application
@@ -25,6 +27,8 @@ targets:
         product: CodingAgentKitApple
       - package: CodingAgentKit
         product: AgentTestSupport
+      - package: TailscodeCore
+        product: TailscodeCore
       - target: TailscodeWidget
         embed: true
       - target: TailscodeNSE

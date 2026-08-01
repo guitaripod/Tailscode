@@ -6,7 +6,7 @@ import Foundation
 /// fetched over Tailscale. Liveness is only trustworthy fresh from the
 /// network, so `isActive` is stripped on load — a cached list can never show
 /// phantom live sessions.
-enum SessionListCache {
+public enum SessionListCache {
     private struct Entry: Codable {
         let profileID: String
         let profileName: String
@@ -22,7 +22,7 @@ enum SessionListCache {
             .appendingPathComponent("session-list.json")
     }
 
-    static func load() -> [SessionEntry] {
+    public static func load() -> [SessionEntry] {
         guard let data = try? Data(contentsOf: fileURL),
             let cached = try? JSONDecoder().decode([Entry].self, from: data)
         else { return [] }
@@ -35,7 +35,7 @@ enum SessionListCache {
         }
     }
 
-    static func save(_ entries: [SessionEntry]) {
+    public static func save(_ entries: [SessionEntry]) {
         let cached = entries.prefix(maxEntries).map {
             Entry(
                 profileID: $0.profileID, profileName: $0.profileName, host: $0.host,

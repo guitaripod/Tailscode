@@ -1,8 +1,8 @@
 import CodingAgentKit
 import Foundation
 
-enum AppCache {
-    static let sessionCache: SessionCache? = {
+public enum AppCache {
+    public static let sessionCache: SessionCache? = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sessions", isDirectory: true)
         return try? FileSessionCache(directory: dir)
@@ -12,15 +12,15 @@ enum AppCache {
 /// Persists the user's chosen model per session (keyed by connection + session id) so a
 /// per-message model choice survives reopening the chat. Also stores a global default per
 /// context (without session id) so new chats default to the last-used model.
-enum ModelPreferenceStore {
+public enum ModelPreferenceStore {
     private static let prefix = "tailscode.selectedModel."
 
-    static func model(forKey key: String) -> ModelSelection? {
+    public static func model(forKey key: String) -> ModelSelection? {
         guard let raw = UserDefaults.standard.string(forKey: prefix + key) else { return nil }
         return ModelSelection(string: raw)
     }
 
-    static func setModel(_ model: ModelSelection?, forKey key: String) {
+    public static func setModel(_ model: ModelSelection?, forKey key: String) {
         let defaults = UserDefaults.standard
         if let model {
             defaults.set(model.rawValue, forKey: prefix + key)
@@ -29,56 +29,56 @@ enum ModelPreferenceStore {
         }
     }
 
-    static func globalModel(forContextID contextID: String) -> ModelSelection? {
+    public static func globalModel(forContextID contextID: String) -> ModelSelection? {
         model(forKey: contextID)
     }
 
-    static func setGlobalModel(_ model: ModelSelection?, forContextID contextID: String) {
+    public static func setGlobalModel(_ model: ModelSelection?, forContextID contextID: String) {
         setModel(model, forKey: contextID)
     }
 }
 
 /// The last few models picked anywhere, surfaced as a "Recent" section at the
 /// top of the model picker (opencode catalogs run to hundreds of models).
-enum RecentModelsStore {
-    private static let key = "tailscode.recentModels"
+public enum RecentModelsStore {
+    static let storageKey = "tailscode.recentModels"
 
-    static func all() -> [ModelSelection] {
-        (UserDefaults.standard.stringArray(forKey: key) ?? [])
+    public static func all() -> [ModelSelection] {
+        (UserDefaults.standard.stringArray(forKey: storageKey) ?? [])
             .compactMap(ModelSelection.init(string:))
     }
 
-    static func record(_ selection: ModelSelection) {
-        var raw = UserDefaults.standard.stringArray(forKey: key) ?? []
+    public static func record(_ selection: ModelSelection) {
+        var raw = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
         raw.removeAll { $0 == selection.rawValue }
         raw.insert(selection.rawValue, at: 0)
-        UserDefaults.standard.set(Array(raw.prefix(5)), forKey: key)
+        UserDefaults.standard.set(Array(raw.prefix(5)), forKey: storageKey)
     }
 }
 
 /// Persists the chosen reasoning-effort level per session (Claude Code), plus a
 /// per-server default so a new chat starts at the effort you last worked at.
-enum EffortPreferenceStore {
-    private static let prefix = "tailscode.effort."
+public enum EffortPreferenceStore {
+    static let storagePrefix = "tailscode.effort."
 
-    static func effort(forKey key: String) -> String? {
-        UserDefaults.standard.string(forKey: prefix + key)
+    public static func effort(forKey key: String) -> String? {
+        UserDefaults.standard.string(forKey: storagePrefix + key)
     }
 
-    static func globalEffort(forContextID contextID: String) -> String? {
+    public static func globalEffort(forContextID contextID: String) -> String? {
         effort(forKey: contextID)
     }
 
-    static func setGlobalEffort(_ level: String?, forContextID contextID: String) {
+    public static func setGlobalEffort(_ level: String?, forContextID contextID: String) {
         setEffort(level, forKey: contextID)
     }
 
-    static func setEffort(_ level: String?, forKey key: String) {
+    public static func setEffort(_ level: String?, forKey key: String) {
         let defaults = UserDefaults.standard
         if let level {
-            defaults.set(level, forKey: prefix + key)
+            defaults.set(level, forKey: storagePrefix + key)
         } else {
-            defaults.removeObject(forKey: prefix + key)
+            defaults.removeObject(forKey: storagePrefix + key)
         }
     }
 }

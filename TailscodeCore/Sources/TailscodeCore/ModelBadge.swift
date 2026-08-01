@@ -4,8 +4,8 @@ import CodingAgentKit
 /// e.g. "Fable max" or "Sonnet high". Backends report either an alias
 /// ("sonnet") or a full model id ("claude-fable-5"); both collapse to the
 /// family name. Sessions without a reported model produce nothing.
-enum ModelBadge {
-    static func text(for session: AgentSession) -> String? {
+public enum ModelBadge {
+    public static func text(for session: AgentSession) -> String? {
         guard let raw = session.model, let name = familyName(raw) else { return nil }
         guard let effort = session.reasoningEffort, !effort.isEmpty else { return name }
         return "\(name) \(effort)"
@@ -13,8 +13,8 @@ enum ModelBadge {
 
     /// Chip text for a pending choice: "Opus · max", or "Auto" while the server
     /// is the one deciding.
-    static func label(model: ModelSelection?, effort: String?) -> String {
-        let name = model.flatMap { familyName($0.modelID) } ?? String(localized: "Auto")
+    public static func label(model: ModelSelection?, effort: String?) -> String {
+        let name = model.flatMap { familyName($0.modelID) } ?? Localized.text("Auto")
         guard let effort, !effort.isEmpty else { return name }
         return "\(name) · \(effort)"
     }

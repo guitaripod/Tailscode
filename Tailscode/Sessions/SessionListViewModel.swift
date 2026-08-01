@@ -1,23 +1,7 @@
+import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
-
-struct SessionEntry: Hashable {
-    let profileID: String
-    let profileName: String
-    let host: String
-    let backendType: AgentType
-    let session: AgentSession
-
-    static func == (lhs: SessionEntry, rhs: SessionEntry) -> Bool {
-        lhs.profileID == rhs.profileID && lhs.session.id == rhs.session.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(profileID)
-        hasher.combine(session.id)
-    }
-}
 
 /// Each section in the session list represents one backend server.
 @MainActor
