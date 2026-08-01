@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.guitaripod
   deploymentTarget:
     iOS: "18.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 packages:
   CodingAgentKit:
@@ -199,6 +200,46 @@ targets:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE App Store 2026
 
+  TailscodeMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: TailscodeMac
+    dependencies:
+      - package: CodingAgentKit
+        product: CodingAgentKit
+      - package: CodingAgentKit
+        product: CodingAgentKitApple
+      - package: TailscodeCore
+        product: TailscodeCore
+    info:
+      path: TailscodeMac/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "GPL-3.0"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.guitaripod.tailscode
+            CFBundleURLSchemes: [tailscode]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
+        MARKETING_VERSION: "1.3"
+        CURRENT_PROJECT_VERSION: "12"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_DEBUG_DYLIB: NO
+
 schemes:
   Tailscode:
     build:
@@ -207,5 +248,13 @@ schemes:
     run:
       config: Debug
       storeKitConfiguration: Tailscode.storekit
+    archive:
+      config: Release
+  TailscodeMac:
+    build:
+      targets:
+        TailscodeMac: all
+    run:
+      config: Debug
     archive:
       config: Release
