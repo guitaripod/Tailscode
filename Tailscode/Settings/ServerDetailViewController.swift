@@ -11,6 +11,7 @@ final class ServerDetailViewController: UIViewController {
         case value(label: String, value: String, warning: Bool = false)
         case status(String)
         case pushState
+        case account(signedIn: Bool)
         case test
         case updateState
         case runUpdate(String)
@@ -31,6 +32,7 @@ final class ServerDetailViewController: UIViewController {
     private var latestVersion: String?
     private var backend: (any CodingAgentBackend)?
     private var modelChoice = ModelChoice()
+    private var auth: ServerAuth?
     private let updater = BridgeUpdater()
 
     private var isDemo: Bool { profile.id.hasPrefix(DemoWorld.profilePrefix) }
@@ -148,6 +150,20 @@ final class ServerDetailViewController: UIViewController {
             content.secondaryText = Self.pushDetail(state)
             content.secondaryTextProperties.color =
                 state == .registered ? Theme.Color.secondaryLabel : Theme.Color.warning
+        case .account(let signedIn):
+            content.text = String(localized: "Claude account")
+            content.secondaryText =
+                signedIn
+                ? (auth?.accountLabel ?? String(localized: "Signed in"))
+                : String(localized: "Signed out — tap to sign in")
+            content.prefersSideBySideTextAndSecondaryText = signedIn
+            content.secondaryTextProperties.color =
+                signedIn ? Theme.Color.secondaryLabel : Theme.Color.warning
+            if !signedIn {
+                content.image = UIImage(systemName: "person.badge.key")
+                content.imageProperties.tintColor = Theme.Color.warning
+                cell.accessories = [.disclosureIndicator()]
+            }
         case .test:
             content.text = String(localized: "Test connection")
             content.textProperties.color = Theme.Color.accent
@@ -301,6 +317,20 @@ final class ServerDetailViewController: UIViewController {
         present(alert, animated: true)
     }
 
+    /// The sign-in is the server's, so it is presented over this screen rather than pushed: it
+    /// belongs to the machine, not to the settings hierarchy.
+    private func presentSignIn() {
+        guard let backend = backend as? any AuthenticatingBackend else { return }
+        Theme.Haptics.tap()
+        let signIn = ServerSignInViewController(profile: profile, backend: backend)
+        signIn.onSignedIn = { [weak self] status in
+            self?.auth = status
+            self?.applySnapshot()
+        }
+        let nav = UINavigationController(rootViewController: signIn)
+        present(nav, animated: true)
+    }
+
     private func copyInstallCommand() {
         UIPasteboard.general.string = BridgeUpdater.installCommand
         Theme.Haptics.success()
@@ -439,7 +469,10 @@ final class ServerDetailViewController: UIViewController {
                     label: String(localized: "Update available"), value: latestVersion,
                     warning: true))
         }
-        if profile.backend == .claudeCode, !isDemo { statusItems.append(.pushState) }
+        if profile.backend == .claudeCode, !isDemo {
+            statusItems.append(.pushState)
+            if let auth { statusItems.append(.account(signedIn: auth.loggedIn)) }
+        }
         statusItems.append(.test)
         snapshot.appendItems(statusItems, toSection: .status)
 
@@ -494,6 +527,7 @@ final class ServerDetailViewController: UIViewController {
                 latestVersion = await fetchLatestOpencodeRelease()
             }
             if profile.backend == .claudeCode, !isDemo {
+                auth = try? await (backend as? any AuthenticatingBackend)?.authStatus()
                 updater.attach(backend)
                 Task {
                     await updater.check()
@@ -509,6 +543,13 @@ final class ServerDetailViewController: UIViewController {
             ServerHealthMonitor.record(false, for: profile.id)
         }
         applySnapshot()
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SIGNIN"] != nil,
+                presentedViewController == nil
+            {
+                presentSignIn()
+            }
+        #endif
     }
 
     /// GitHub's latest opencode release tag, so the user can see at a glance
@@ -597,6 +638,9 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .runUpdate:
             guard let status = updater.state.status else { break }
             confirmUpdate(status)
+        case .account(let signedIn):
+            guard !signedIn else { break }
+            presentSignIn()
         case .copyInstallCommand:
             copyInstallCommand()
         default:

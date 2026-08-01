@@ -53,6 +53,50 @@ final class ChatViewModel {
     }
     var canRename: Bool { backend.capabilities.supportsRenaming }
 
+    /// Whether the machine's Claude is signed out.
+    ///
+    /// A signed-out CLI does not fail a turn — it answers it, with "Not logged in · Please run
+    /// /login" — so the reply is the only hint, and the server's own account state is the proof.
+    /// The hint is cheap and wrong sometimes; the proof costs a round trip, so it is only asked for
+    /// when the hint appears, and at most twice a minute.
+    private(set) var isSignedOut = false
+    var onSignInStateChanged: (() -> Void)?
+    private var lastAuthCheck = Date.distantPast
+
+    var authenticator: (any AuthenticatingBackend)? { backend as? any AuthenticatingBackend }
+
+    func noteSignedOutIfHinted(_ state: ConversationState) {
+        guard authenticator != nil, state.status != .running else { return }
+        guard Self.looksSignedOut(state) else { return }
+        guard Date().timeIntervalSince(lastAuthCheck) > 30 else { return }
+        lastAuthCheck = Date()
+        Task { await checkSignIn() }
+    }
+
+    func checkSignIn() async {
+        guard let authenticator else { return }
+        guard let status = try? await authenticator.authStatus() else { return }
+        guard isSignedOut != !status.loggedIn else { return }
+        isSignedOut = !status.loggedIn
+        AppLogger.connection.info("server signed \(self.isSignedOut ? "out" : "in")")
+        onSignInStateChanged?()
+    }
+
+    func clearSignedOut() {
+        guard isSignedOut else { return }
+        isSignedOut = false
+        onSignInStateChanged?()
+    }
+
+    private static func looksSignedOut(_ state: ConversationState) -> Bool {
+        if let failure = state.lastFailure, failure.message.contains("/login") { return true }
+        guard let last = state.messages.last, last.role == .assistant else { return false }
+        return last.parts.contains { part in
+            guard case .text(let text) = part.kind else { return false }
+            return text.contains("Please run /login") || text.contains("Not logged in")
+        }
+    }
+
     private var manuallyRenamed = false
 
     func rename(to title: String) async throws {

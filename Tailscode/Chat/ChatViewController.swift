@@ -574,9 +574,30 @@ final class ChatViewController: UIViewController {
 
     @objc private func bannerTapped() {
         Theme.Haptics.tap()
+        if viewModel.isSignedOut {
+            presentSignIn()
+            return
+        }
         viewModel.acknowledgeFailure()
         banner.hide()
         viewModel.refresh()
+    }
+
+    /// Signing the machine back in is the one repair a phone can make from here, so the banner
+    /// leads straight to it rather than to a retry that will fail the same way.
+    private func presentSignIn() {
+        guard let authenticator = viewModel.authenticator else { return }
+        let profile = ConnectionController.shared.profiles.first { $0.id == viewModel.contextID }
+            ?? ConnectionController.shared.activeProfile
+        guard let profile else { return }
+        let signIn = ServerSignInViewController(profile: profile, backend: authenticator)
+        signIn.onSignedIn = { [weak self] _ in
+            guard let self else { return }
+            self.viewModel.clearSignedOut()
+            self.banner.hide()
+            self.viewModel.refresh()
+        }
+        present(UINavigationController(rootViewController: signIn), animated: true)
     }
 
     private func configureDataSource() {
@@ -761,6 +782,10 @@ final class ChatViewController: UIViewController {
 
     private func bind() {
         viewModel.onState = { [weak self] state in self?.render(state) }
+        viewModel.onSignInStateChanged = { [weak self] in
+            guard let self else { return }
+            self.updateBanner(for: self.viewModel.state)
+        }
         viewModel.onModelChange = { [weak self] in self?.updateNavControls() }
         viewModel.onCommandsChange = { [weak self] in
             guard let self, !self.commandPalette.isHidden else { return }
@@ -1056,6 +1081,13 @@ final class ChatViewController: UIViewController {
     private func updateBanner(for state: ConversationState) {
         guard UIApplication.shared.applicationState == .active else {
             banner.hide()
+            return
+        }
+        viewModel.noteSignedOutIfHinted(state)
+        if viewModel.isSignedOut {
+            banner.show(
+                String(localized: "Claude is signed out on this machine — tap to sign in"),
+                color: Theme.Color.warning, symbol: "person.badge.key")
             return
         }
         switch state.connection {
