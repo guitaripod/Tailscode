@@ -51,6 +51,33 @@ enum Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// Key presses on a widget, in the capture phase, so normal-mode letters never reach a text
+    /// view that would otherwise swallow them.
+    static func onKey(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (UInt32, UInt32) -> Bool
+    ) {
+        let box = Unmanaged.passRetained(KeyBox(handler)).toOpaque()
+        let callback: @convention(c) (guint, guint, UnsafeMutableRawPointer?) -> gboolean = {
+            keyval, state, raw in
+            guard let raw else { return 0 }
+            let box = Unmanaged<KeyBox>.fromOpaque(raw).takeUnretainedValue()
+            return box.handler(UInt32(keyval), UInt32(state)) ? 1 : 0
+        }
+        tailscode_connect_key(widget, callback, box)
+    }
+
+    final class KeyBox: @unchecked Sendable {
+        let handler: @Sendable (UInt32, UInt32) -> Bool
+        init(_ handler: @escaping @Sendable (UInt32, UInt32) -> Bool) { self.handler = handler }
+    }
+
+    /// Whether what has focus right now takes text. Insert mode is implied by focus rather than
+    /// declared, so clicking into the composer and typing behaves the way a pointer user expects.
+    static func focusTakesText(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        tailscode_focus_is_editable(widget) != 0
+    }
+
     static func label(_ text: String, css: String? = nil, wrap: Bool = false, selectable: Bool = true)
         -> UnsafeMutablePointer<GtkWidget>
     {

@@ -22,6 +22,7 @@ final class TerminalPane: @unchecked Sendable {
 
     #if HAS_VTE
         private let terminal = vte_terminal_new()!
+        private var spawned = false
     #else
         private let output = gtk_text_view_new()!
         private let entry = gtk_entry_new()!
@@ -39,11 +40,29 @@ final class TerminalPane: @unchecked Sendable {
         #endif
     }
 
+    func takeFocus() {
+        #if HAS_VTE
+            gtk_widget_grab_focus(terminal)
+        #else
+            gtk_widget_grab_focus(entry)
+        #endif
+    }
+
     func setDirectory(_ path: String?) {
         guard directory != path else { return }
         directory = path
         #if HAS_VTE
-            respawn()
+            guard spawned else {
+                respawn()
+                return
+            }
+            // A running shell is not restarted to follow the conversation: it is told to change
+            // directory, the way you would. History, environment and whatever is half-typed all
+            // survive.
+            if let path {
+                let line = "cd \(path.replacingOccurrences(of: "'", with: "'\\''"))\n"
+                vte_terminal_feed_child(ptr(terminal), line, gssize(line.utf8.count))
+            }
         #else
             appendLine("cd \(path ?? "~")", css: "dim")
         #endif
@@ -68,9 +87,10 @@ final class TerminalPane: @unchecked Sendable {
             let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/bash"
             var argv: [UnsafeMutablePointer<CChar>?] = [strdup(shell), strdup("-l"), nil]
             defer { argv.forEach { free($0) } }
+            spawned = true
             vte_terminal_spawn_async(
-                ptr(terminal), VTE_PTY_DEFAULT, directory, &argv, nil,
-                G_SPAWN_SEARCH_PATH, nil, nil, nil, -1, nil, nil, nil)
+                ptr(terminal), VtePtyFlags(rawValue: 0), directory, &argv, nil,
+                GSpawnFlags(rawValue: 4), nil, nil, nil, -1, nil, nil, nil)
         }
     #else
         private func buildRunner() {

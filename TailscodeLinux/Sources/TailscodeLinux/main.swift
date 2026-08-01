@@ -9,6 +9,11 @@ if SelfTest.isRequested {
     dispatchMain()
 }
 
+if Connect.isRequested {
+    Task { await Connect.run() }
+    dispatchMain()
+}
+
 /// The window is built inside `activate`, never before it: GTK widgets cannot be constructed
 /// until the toolkit has initialised, and one made at top level segfaults inside `gtk_box_new`
 /// before the app has run a line of its own.

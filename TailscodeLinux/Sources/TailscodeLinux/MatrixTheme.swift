@@ -105,6 +105,10 @@ enum MatrixTheme {
         .pill-saved { color: \(cyan); border: 1px solid \(cyan); }
         .pill-offline { color: \(textDim); border: 1px solid \(rule); }
 
+        .row-focused {
+            background-color: \(canvasRaised);
+            box-shadow: inset 2px 0 0 \(phosphor);
+        }
         .row-title { font-size: 0.92rem; }
         .row-title-unread { font-size: 0.92rem; font-weight: 700; }
         .row-detail { font-size: 0.78rem; opacity: 0.65; font-family: monospace; }

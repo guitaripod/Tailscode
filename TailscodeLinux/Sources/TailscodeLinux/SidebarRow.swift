@@ -32,11 +32,12 @@ enum SidebarRow {
 
     /// One conversation. Three registers on two lines — what it is, where it lives, and what it is
     /// doing — with the state carried by a pill rather than by a colour a reader has to decode.
-    static func make(_ model: SessionRowModel, onOpen: @escaping @Sendable () -> Void)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
+    static func make(
+        _ model: SessionRowModel, focused: Bool, onOpen: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
+        if focused { Gtk.addClass(button, "row-focused") }
 
         let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)

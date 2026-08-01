@@ -18,3 +18,11 @@ GtkListItemFactory *tailscode_make_factory(
     void (*setup)(GtkListItem *, void *),
     void (*bind)(GtkListItem *, void *),
     void *data);
+
+/// A key-press controller on `widget` forwarding to Swift. Returning true stops propagation, which
+/// is how a normal-mode binding keeps a letter from reaching a text view.
+void tailscode_connect_key(
+    GtkWidget *widget, gboolean (*handler)(guint keyval, guint state, void *), void *data);
+
+/// Whether the widget that currently has focus inside `root` is one that takes text.
+gboolean tailscode_focus_is_editable(GtkWidget *root);

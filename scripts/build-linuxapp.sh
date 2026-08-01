@@ -9,7 +9,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../TailscodeLinux"
 
-swift build 2>&1 | grep -E "error:|warning: .*never used|Build complete" || true
+swift build --manifest-cache none 2>&1 | grep -E "error:|warning: .*never used|Build complete" || true
 
 BIN=.build/debug/tailscode
 

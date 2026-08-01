@@ -23,8 +23,17 @@ final class MainWindow: @unchecked Sendable {
     private let fileTree = FileTree()
     private let terminal = TerminalPane()
 
+    private let searchEntry = gtk_search_entry_new()!
+    private let helpOverlay = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+
     private var entries: [SessionEntry] = []
+    private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
+    private var cursor = 0
+    private var filter = ""
+    private var pending = ""
+    private var helpShown = false
+    private var focused: Pane = .chats
     private var selectedID: String?
     private var conversation: AgentConversation?
     private var streamTask: Task<Void, Never>?
@@ -35,7 +44,8 @@ final class MainWindow: @unchecked Sendable {
 
         let window = adw_application_window_new(ptr(app))!
         gtk_window_set_title(ptr(window), "Tailscode")
-        gtk_window_set_default_size(ptr(window), 1400, 880)
+        gtk_window_set_default_size(ptr(window), 1400, 900)
+        gtk_window_set_icon_name(ptr(window), "tailscode")
         self.window = window
 
         let split = adw_navigation_split_view_new()!
@@ -44,10 +54,21 @@ final class MainWindow: @unchecked Sendable {
         adw_navigation_split_view_set_min_sidebar_width(op(split), 260)
         adw_navigation_split_view_set_max_sidebar_width(op(split), 400)
 
-        adw_application_window_set_content(ptr(window), split)
+        // The shell runs the full width of the window under everything else, the way a terminal
+        // pane sits under an editor: what you run there is about the whole project, not about the
+        // one conversation that happens to be open.
+        let stack = gtk_paned_new(GTK_ORIENTATION_VERTICAL)!
+        gtk_paned_set_start_child(op(stack), split)
+        gtk_paned_set_end_child(op(stack), terminal.widget)
+        gtk_paned_set_position(op(stack), 600)
+        gtk_paned_set_resize_start_child(op(stack), 1)
+        gtk_paned_set_shrink_end_child(op(stack), 0)
+
+        adw_application_window_set_content(ptr(window), stack)
         gtk_window_present(ptr(window))
 
         fileTree.onOpen = { [weak self] path in self?.insertIntoComposer("@\(path) ") }
+        installKeymap(on: window)
         startRefreshing()
     }
 
@@ -59,6 +80,12 @@ final class MainWindow: @unchecked Sendable {
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_search_entry_set_placeholder_text(op(searchEntry), Localized.text("Filter chats  /"))
+        Gtk.margins(searchEntry, top: 4, bottom: 4, leading: 6, trailing: 6)
+        Gtk.connect(UnsafeMutableRawPointer(searchEntry), "search-changed") { [weak self] in
+            self?.applyFilterFromEntry()
+        }
+        gtk_box_append(ptr(column), searchEntry)
         gtk_box_append(ptr(column), sidebarBanner)
 
         let scroller = gtk_scrolled_window_new()!
@@ -104,18 +131,26 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         transcriptScroller = scroller
         gtk_box_append(ptr(column), scroller)
+        gtk_widget_set_visible(helpOverlay, 0)
+        Gtk.addClass(helpOverlay, "canvas")
+        Gtk.margins(helpOverlay, top: 8, bottom: 8, leading: 26, trailing: 26)
+        for entry in Keymap.help {
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+            let keys = Gtk.label(entry.keys, css: "tool-name", selectable: false)
+            gtk_widget_set_size_request(keys, 130, -1)
+            gtk_box_append(ptr(row), keys)
+            gtk_box_append(ptr(row), Gtk.label(entry.what, css: "row-detail", selectable: false))
+            gtk_box_append(ptr(helpOverlay), row)
+        }
+        gtk_box_append(ptr(column), helpOverlay)
         gtk_box_append(ptr(column), statusLabel)
         gtk_box_append(ptr(column), makeComposer())
         return column
     }
 
     private func makeProjectColumn() -> UnsafeMutablePointer<GtkWidget> {
-        let panes = gtk_paned_new(GTK_ORIENTATION_VERTICAL)!
-        gtk_widget_set_size_request(panes, 380, -1)
-        gtk_paned_set_start_child(op(panes), fileTree.widget)
-        gtk_paned_set_end_child(op(panes), terminal.widget)
-        gtk_paned_set_position(op(panes), 380)
-        return panes
+        gtk_widget_set_size_request(fileTree.widget, 340, -1)
+        return fileTree.widget
     }
 
     private func makeComposer() -> UnsafeMutablePointer<GtkWidget> {
@@ -180,26 +215,52 @@ final class MainWindow: @unchecked Sendable {
         }
 
         Gtk.removeChildren(of: sidebarList)
-        guard !entries.isEmpty else {
-            gtk_box_append(ptr(sidebarList), SidebarRow.empty(Localized.text("No conversations yet")))
-            return
-        }
         let saved = Set(SavedChatStore.all().map(\.sessionID))
-        let rows = entries.map {
+        let unread = SessionSeenStore.unreadEvaluator()
+        let needle = filter.lowercased()
+        visible = entries.map {
             SessionRowModel(
                 entry: $0, unreachable: unreachable.contains($0.profileName),
-                unread: SessionSeenStore.unreadEvaluator()($0.session.id, $0.session.updatedAt),
+                unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id))
+        }.filter {
+            needle.isEmpty || $0.title.lowercased().contains(needle)
+                || $0.detail.lowercased().contains(needle)
         }
-        for (section, members) in groupIntoSections(rows) {
+
+        guard !visible.isEmpty else {
+            gtk_box_append(
+                ptr(sidebarList),
+                SidebarRow.empty(
+                    filter.isEmpty
+                        ? Localized.text("No conversations yet")
+                        : Localized.text("Nothing matches “%@”", filter)))
+            return
+        }
+        cursor = min(cursor, visible.count - 1)
+
+        var index = 0
+        for (section, members) in groupIntoSections(visible) {
             gtk_box_append(
                 ptr(sidebarList), SidebarRow.header(section.title, count: members.count))
-            for row in members.prefix(section == .recent ? 120 : 20) {
+            for row in members {
+                let position = index
                 gtk_box_append(
                     ptr(sidebarList),
-                    SidebarRow.make(row) { [weak self] in self?.open(row.entry) })
+                    SidebarRow.make(row, focused: position == cursor) { [weak self] in
+                        self?.cursor = position
+                        self?.open(row.entry)
+                    })
+                index += 1
             }
         }
+    }
+
+    private func applyFilterFromEntry() {
+        guard let raw = gtk_editable_get_text(op(searchEntry)) else { return }
+        filter = String(cString: raw)
+        cursor = 0
+        renderSidebar()
     }
 
     private func open(_ entry: SessionEntry) {
@@ -300,6 +361,126 @@ final class MainWindow: @unchecked Sendable {
                 adjustment,
                 gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
         }
+    }
+
+    /// Normal mode owns the letters; focusing anything that takes text hands them back. Every
+    /// binding has a thing you can also click, so the keyboard is a shortcut rather than the only
+    /// way in.
+    private func installKeymap(on window: UnsafeMutablePointer<GtkWidget>) {
+        let root = UInt(bitPattern: window)
+        Gtk.onKey(window) { [weak self] keyval, state in
+            guard let self, let base = UnsafeMutableRawPointer(bitPattern: root) else {
+                return false
+            }
+            let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            if Gtk.focusTakesText(window) {
+                guard let action = Keymap.insert(keyval: keyval, state: state) else { return false }
+                return self.perform(action)
+            }
+            let action = Keymap.normal(keyval: keyval, state: state, pending: self.pending)
+            self.pending = Keymap.scalar(keyval) == "g" && action == nil ? "g" : ""
+            guard let action else { return false }
+            return self.perform(action)
+        }
+    }
+
+    private func perform(_ action: KeyAction) -> Bool {
+        switch action {
+        case .focus(let pane): focus(pane)
+        case .cycleForward: focus(nextPane(after: focused, by: 1))
+        case .cycleBackward: focus(nextPane(after: focused, by: -1))
+        case .selectNext: move(by: 1)
+        case .selectPrevious: move(by: -1)
+        case .selectFirst: cursor = 0; renderSidebar(); openCursor()
+        case .selectLast: cursor = max(0, visible.count - 1); renderSidebar(); openCursor()
+        case .openSelected: openCursor()
+        case .scrollDown: scroll(by: 60)
+        case .scrollUp: scroll(by: -60)
+        case .halfPageDown: scroll(byPages: 0.5)
+        case .halfPageUp: scroll(byPages: -0.5)
+        case .scrollTop: scroll(toEnd: false)
+        case .scrollBottom: scroll(toEnd: true)
+        case .insert: focus(.transcript); gtk_widget_grab_focus(entryView)
+        case .leaveInsert: gtk_widget_grab_focus(sidebarList); setHelp(false)
+        case .search: gtk_widget_grab_focus(searchEntry)
+        case .send: sendFromComposer()
+        case .stop: stopTurn()
+        case .toggleHelp: setHelp(!helpShown)
+        case .reload: Task { [weak self] in await self?.refresh() }
+        }
+        return true
+    }
+
+    private func nextPane(after pane: Pane, by delta: Int) -> Pane {
+        let all = Pane.allCases
+        let index = (all.firstIndex(of: pane) ?? 0) + delta
+        return all[(index % all.count + all.count) % all.count]
+    }
+
+    private func focus(_ pane: Pane) {
+        focused = pane
+        switch pane {
+        case .chats: gtk_widget_grab_focus(sidebarList)
+        case .transcript: gtk_widget_grab_focus(transcriptBox)
+        case .files: gtk_widget_grab_focus(fileTree.widget)
+        case .terminal: terminal.takeFocus()
+        }
+    }
+
+    private func move(by delta: Int) {
+        guard !visible.isEmpty else { return }
+        cursor = max(0, min(visible.count - 1, cursor + delta))
+        renderSidebar()
+        openCursor()
+    }
+
+    private func openCursor() {
+        guard cursor < visible.count else { return }
+        open(visible[cursor].entry)
+    }
+
+    private func setHelp(_ shown: Bool) {
+        helpShown = shown
+        gtk_widget_set_visible(helpOverlay, shown ? 1 : 0)
+    }
+
+    private func stopTurn() {
+        guard let conversation else { return }
+        Task { try? await conversation.cancelCurrentTurn() }
+    }
+
+    private func scroll(by amount: Double) {
+        adjust { $0 + amount }
+    }
+
+    private func scroll(byPages fraction: Double) {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let page = gtk_adjustment_get_page_size(adjustment) * fraction
+        adjust { $0 + page }
+    }
+
+    private func scroll(toEnd bottom: Bool) {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let limit =
+            bottom
+            ? gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment)
+            : gtk_adjustment_get_lower(adjustment)
+        adjust { _ in limit }
+    }
+
+    private func adjust(_ transform: (Double) -> Double) {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let ceiling = gtk_adjustment_get_upper(adjustment)
+            - gtk_adjustment_get_page_size(adjustment)
+        let next = min(max(gtk_adjustment_get_lower(adjustment),
+            transform(gtk_adjustment_get_value(adjustment))), max(0, ceiling))
+        gtk_adjustment_set_value(adjustment, next)
     }
 
     private func insertIntoComposer(_ text: String) {
