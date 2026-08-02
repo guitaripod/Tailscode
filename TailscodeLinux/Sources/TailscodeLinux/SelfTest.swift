@@ -51,6 +51,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            try checkSettingsFile()
+            report("settings file: survives a reinstall")
+        } catch {
+            report("settings file: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -256,6 +264,40 @@ public enum SelfTest {
             }
         }
         return cases.count
+    }
+
+    /// The durable half of the settings: written to a file, wiped from the in-memory defaults the
+    /// way a reinstall wipes them, and read back. Sizes, panes, bookmarks and drafts all ride on
+    /// this, so the round trip is worth asserting rather than assuming.
+    private static func checkSettingsFile() throws {
+        let defaults = UserDefaults.standard
+        let keys = [
+            "tailscode.selftest.flag", "tailscode.selftest.number", "tailscode.selftest.text",
+            "tailscode.selftest.data",
+        ]
+        let previous = keys.map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            for (key, value) in previous { SettingsFile.set(value, forKey: key) }
+        }
+
+        SettingsFile.set(true, forKey: keys[0])
+        SettingsFile.set(1234, forKey: keys[1])
+        SettingsFile.set("kept", forKey: keys[2])
+        SettingsFile.set(Data("bytes".utf8), forKey: keys[3])
+
+        for key in keys { defaults.removeObject(forKey: key) }
+        SettingsFile.load()
+
+        guard defaults.bool(forKey: keys[0]) else { throw SelfTestFailure("a switch was lost") }
+        guard defaults.integer(forKey: keys[1]) == 1234 else {
+            throw SelfTestFailure("a size was lost")
+        }
+        guard defaults.string(forKey: keys[2]) == "kept" else {
+            throw SelfTestFailure("a draft was lost")
+        }
+        guard defaults.data(forKey: keys[3]) == Data("bytes".utf8) else {
+            throw SelfTestFailure("saved chats would be lost")
+        }
     }
 
     /// The band over the prompt box: a status that shows every field always is a status nobody

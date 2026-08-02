@@ -30,11 +30,44 @@ enum Preferences {
 
     private static var defaults: UserDefaults { .standard }
 
-    /// Settings are flushed as they change rather than at exit: this app is routinely killed by a
-    /// window manager or a session logout, and a preference that only survives a graceful quit is
-    /// a preference that appears not to stick.
-    private static func flush() {
-        defaults.synchronize()
+    /// Every setting is written through the file, not merely to the defaults: the defaults are
+    /// where readers look, the file is what survives a reinstall.
+    private static func write(_ value: Any?, forKey key: String) {
+        SettingsFile.set(value, forKey: key)
+    }
+
+    /// Window geometry, so the app opens the size and place it was left — including maximized,
+    /// which is not a size and has to be remembered separately.
+    static var windowSize: (width: Int32, height: Int32) {
+        let width = defaults.integer(forKey: "tailscode.window.width")
+        let height = defaults.integer(forKey: "tailscode.window.height")
+        return width > 200 && height > 200 ? (Int32(width), Int32(height)) : (1400, 900)
+    }
+
+    static func setWindowSize(width: Int32, height: Int32) {
+        guard width > 200, height > 200 else { return }
+        guard windowSize != (width, height) else { return }
+        write(Int(width), forKey: "tailscode.window.width")
+        write(Int(height), forKey: "tailscode.window.height")
+    }
+
+    static var windowMaximized: Bool {
+        defaults.bool(forKey: "tailscode.window.maximized")
+    }
+
+    static func setWindowMaximized(_ value: Bool) {
+        guard value != windowMaximized else { return }
+        write(value, forKey: "tailscode.window.maximized")
+    }
+
+    /// The conversation that was open, reopened on the next launch.
+    static var lastSession: String? {
+        defaults.string(forKey: "tailscode.lastSession")
+    }
+
+    static func setLastSession(_ id: String?) {
+        guard id != lastSession else { return }
+        write(id, forKey: "tailscode.lastSession")
     }
 
     static func scale(_ area: Area) -> Double {
@@ -43,8 +76,9 @@ enum Preferences {
     }
 
     static func setScale(_ value: Double, for area: Area) {
-        defaults.set(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.\(area.rawValue)")
-        flush()
+        write(
+            min(2.5, max(0.6, (value * 20).rounded() / 20)),
+            forKey: "tailscode.scale.\(area.rawValue)")
     }
 
     static func stepScale(_ delta: Double, for area: Area) {
@@ -52,7 +86,7 @@ enum Preferences {
     }
 
     static func resetScales() {
-        for area in Area.allCases { defaults.removeObject(forKey: "tailscode.scale.\(area.rawValue)") }
+        for area in Area.allCases { write(nil, forKey: "tailscode.scale.\(area.rawValue)") }
     }
 
     /// Terminal type is VTE's own business — it scales its font rather than its CSS.
@@ -62,8 +96,7 @@ enum Preferences {
     }
 
     static func setTerminalScale(_ value: Double) {
-        defaults.set(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.terminal")
-        flush()
+        write(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.terminal")
     }
 
     static var sendOnReturn: Bool {
@@ -71,8 +104,7 @@ enum Preferences {
     }
 
     static func setSendOnReturn(_ value: Bool) {
-        defaults.set(value, forKey: "tailscode.sendOnReturn")
-        flush()
+        write(value, forKey: "tailscode.sendOnReturn")
     }
 
     /// An environment override for a switch, so a setting can be tried — or screenshotted, or
@@ -88,8 +120,7 @@ enum Preferences {
     }
 
     static func setCompactTools(_ value: Bool) {
-        defaults.set(value, forKey: "tailscode.compactTools")
-        flush()
+        write(value, forKey: "tailscode.compactTools")
     }
 
     /// Tighter vertical rhythm everywhere in the canvas.
@@ -98,8 +129,7 @@ enum Preferences {
     }
 
     static func setDenseRows(_ value: Bool) {
-        defaults.set(value, forKey: "tailscode.denseRows")
-        flush()
+        write(value, forKey: "tailscode.denseRows")
     }
 
     static var vimComposer: Bool {
@@ -107,8 +137,7 @@ enum Preferences {
     }
 
     static func setVimComposer(_ value: Bool) {
-        defaults.set(value, forKey: "tailscode.vimComposer")
-        flush()
+        write(value, forKey: "tailscode.vimComposer")
     }
 
     /// How tall the prompt box is allowed to get before it scrolls instead of growing.
@@ -118,8 +147,7 @@ enum Preferences {
     }
 
     static func setComposerLines(_ value: Int) {
-        defaults.set(min(20, max(1, value)), forKey: "tailscode.composerLines")
-        flush()
+        write(min(20, max(1, value)), forKey: "tailscode.composerLines")
     }
 
     static var transcriptWindow: Int {
@@ -128,8 +156,7 @@ enum Preferences {
     }
 
     static func setTranscriptWindow(_ value: Int) {
-        defaults.set(min(5000, max(50, value)), forKey: "tailscode.transcriptWindow")
-        flush()
+        write(min(5000, max(50, value)), forKey: "tailscode.transcriptWindow")
     }
 
     static func divider(_ divider: Divider) -> Int32? {
@@ -139,14 +166,12 @@ enum Preferences {
 
     static func setDivider(_ divider: Divider, position: Int32) {
         guard position > 0 else { return }
-        defaults.set(Int(position), forKey: "tailscode.divider.\(divider.rawValue)")
-        flush()
+        write(Int(position), forKey: "tailscode.divider.\(divider.rawValue)")
     }
 
     static func resetDividers() {
         for divider in [Divider.sidebar, .project, .terminal] {
-            defaults.removeObject(forKey: "tailscode.divider.\(divider.rawValue)")
-            flush()
+            write(nil, forKey: "tailscode.divider.\(divider.rawValue)")
         }
     }
 }

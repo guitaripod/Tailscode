@@ -4,6 +4,10 @@ import Foundation
 
 /// `--selftest` never opens a display: a headless box, a tty, or a build loop over ssh has no
 /// Wayland or X to render into, and that is exactly where this app most needs to be checked.
+/// Read before anything asks a preference: the durable copy of the app's own state lives in a
+/// file, not in the executable-keyed defaults store a reinstall abandons.
+SettingsFile.load()
+
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()

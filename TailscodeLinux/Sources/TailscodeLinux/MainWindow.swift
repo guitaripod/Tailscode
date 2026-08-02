@@ -108,7 +108,9 @@ final class MainWindow: @unchecked Sendable {
 
         let window = adw_application_window_new(ptr(app))!
         gtk_window_set_title(ptr(window), "Tailscode")
-        gtk_window_set_default_size(ptr(window), 1400, 900)
+        let size = Preferences.windowSize
+        gtk_window_set_default_size(ptr(window), size.width, size.height)
+        if Preferences.windowMaximized { gtk_window_maximize(ptr(window)) }
         gtk_window_set_icon_name(ptr(window), DesktopIntegration.appID)
         self.window = window
 
@@ -222,7 +224,12 @@ final class MainWindow: @unchecked Sendable {
         gtk_paned_set_end_child(op(panes), makeProjectColumn())
         gtk_paned_set_position(op(panes), Preferences.divider(.project) ?? 800)
         gtk_paned_set_resize_start_child(op(panes), 1)
-        gtk_paned_set_shrink_end_child(op(panes), 0)
+        // Both children may be squeezed below their natural width. Without this a pane whose
+        // content is naturally wide — a long status segment, a deep file path — makes the split
+        // wider than the window, and GTK resolves that by drawing the conversation off the left
+        // edge, underneath the chat list.
+        gtk_paned_set_shrink_start_child(op(panes), 1)
+        gtk_paned_set_shrink_end_child(op(panes), 1)
         projectPaned = panes
 
         adw_toolbar_view_set_content(op(toolbar), panes)
@@ -232,6 +239,7 @@ final class MainWindow: @unchecked Sendable {
     private func makeConversationColumn() -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(column, "canvas")
+        gtk_widget_set_size_request(column, 320, -1)
 
         Gtk.addClass(authBanner, "banner-auth")
         gtk_widget_set_visible(authBanner, 0)
@@ -305,7 +313,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func makeProjectColumn() -> UnsafeMutablePointer<GtkWidget> {
-        gtk_widget_set_size_request(fileTree.widget, 340, -1)
+        gtk_widget_set_size_request(fileTree.widget, 180, -1)
         return fileTree.widget
     }
 
@@ -519,14 +527,21 @@ final class MainWindow: @unchecked Sendable {
         Gtk.onMain { [weak self] in
             self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
+            SettingsFile.capture()
         }
     }
 
+    /// Opens the conversation that was open last, not merely the newest one: reopening where you
+    /// were is the difference between a window that restores and a window that resets.
     private func applyEntries(_ entries: [SessionEntry], unreachable: [String]) {
         self.entries = entries
         self.unreachable = unreachable
         renderSidebar()
-        if selectedID == nil, !entries.isEmpty { open(entries[0]) }
+        guard selectedID == nil, !entries.isEmpty else { return }
+        let remembered = Preferences.lastSession.flatMap { id in
+            entries.first { $0.session.id == id }
+        }
+        open(remembered ?? entries[0])
     }
 
     /// Rebuilding two hundred rows of widgets is a visible stutter, and the 10-second refresh
@@ -1300,6 +1315,7 @@ final class MainWindow: @unchecked Sendable {
     private func toggleSaved() {
         guard let entry = currentEntry else { return }
         _ = SavedChatStore.toggle(entry)
+        SettingsFile.capture()
         renderSidebar()
     }
 
@@ -1475,7 +1491,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func togglePane(_ pane: ClosablePane) {
-        UserDefaults.standard.set(!paneShown(pane), forKey: pane.key)
+        SettingsFile.set(!paneShown(pane), forKey: pane.key)
         applyPane(pane)
     }
 
@@ -1531,7 +1547,40 @@ final class MainWindow: @unchecked Sendable {
     /// The dividers are read back rather than watched: `notify::position` carries three arguments
     /// the shim's trampoline cannot marshal, and a size that is saved a few seconds after the drag
     /// is indistinguishable from one saved during it.
+    /// A position saved on a wide window would leave nothing for the other pane on a narrow one,
+    /// so every divider is pulled back inside the window it is actually in before it is saved.
+    private func clampDividers() {
+        for paned in [splitWidget, projectPaned].compactMap({ $0 }) {
+            let width = gtk_widget_get_width(paned)
+            guard width > 400 else { continue }
+            let position = gtk_paned_get_position(op(paned))
+            let ceiling = width - 200
+            if position > ceiling { gtk_paned_set_position(op(paned), ceiling) }
+        }
+        if let terminalPaned {
+            let height = gtk_widget_get_height(terminalPaned)
+            guard height > 300 else { return }
+            let position = gtk_paned_get_position(op(terminalPaned))
+            if position > height - 120 { gtk_paned_set_position(op(terminalPaned), height - 120) }
+        }
+    }
+
+    /// The window's own shape, read back on the same slow tick as the dividers: `notify::` on
+    /// size and maximization carries arguments the shim's trampoline cannot marshal, and a shape
+    /// saved a few seconds after a drag is indistinguishable from one saved during it.
+    private func rememberWindow() {
+        guard let window else { return }
+        let maximized = gtk_window_is_maximized(ptr(window)) != 0
+        Preferences.setWindowMaximized(maximized)
+        guard !maximized else { return }
+        Preferences.setWindowSize(
+            width: gtk_widget_get_width(window), height: gtk_widget_get_height(window))
+    }
+
     private func rememberDividers() {
+        clampDividers()
+        rememberWindow()
+        Preferences.setLastSession(selectedID)
         if let splitWidget, gtk_widget_get_visible(sidebarPane ?? splitWidget) != 0 {
             Preferences.setDivider(.sidebar, position: gtk_paned_get_position(op(splitWidget)))
         }
@@ -1763,11 +1812,8 @@ final class MainWindow: @unchecked Sendable {
         guard let selectedID else { return }
         let text = composerText()
         let key = "tailscode.draft.\(selectedID)"
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
-        } else {
-            UserDefaults.standard.set(text, forKey: key)
-        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsFile.set(trimmed.isEmpty ? nil : text, forKey: key)
     }
 
     private func restoreDraft(for sessionID: String) {
@@ -1784,7 +1830,7 @@ final class MainWindow: @unchecked Sendable {
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
         if let selectedID {
-            UserDefaults.standard.removeObject(forKey: "tailscode.draft.\(selectedID)")
+            SettingsFile.set(nil, forKey: "tailscode.draft.\(selectedID)")
         }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()

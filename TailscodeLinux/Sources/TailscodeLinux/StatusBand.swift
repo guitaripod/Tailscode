@@ -197,10 +197,17 @@ enum StatusBand {
                 let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
                     perform(action)
                 }
+                // A segment must never widen the column it sits in: the band ellipsizes, the
+                // conversation keeps its width.
+                if let child = gtk_button_get_child(ptr(button)) {
+                    gtk_label_set_ellipsize(op(child), PANGO_ELLIPSIZE_END)
+                    gtk_label_set_max_width_chars(op(child), 48)
+                }
                 gtk_box_append(ptr(box), button)
             } else {
                 let label = Gtk.label(segment.text, css: segment.css, selectable: false)
                 Gtk.addClass(label, "seg")
+                gtk_label_set_max_width_chars(op(label), 48)
                 gtk_box_append(ptr(box), label)
             }
         }
