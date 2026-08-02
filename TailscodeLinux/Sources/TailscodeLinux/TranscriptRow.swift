@@ -279,6 +279,48 @@ struct TranscriptRow: Hashable {
         return row
     }
 
+    /// Markdown as the transcript renders it — headings, emphasis, lists, links, fenced code with
+    /// its own copy — for prose that lives outside the transcript: a compaction summary in the
+    /// reader, where the CLI's own formatting is the only structure the text has.
+    static func richBody(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        let palette = MatrixTheme.palette
+        for segment in MessageSegment.split(text) {
+            switch segment {
+            case .prose(let prose):
+                for chunk in paragraphChunks(prose) {
+                    let markup = PangoMarkdown.render(
+                        chunk, dim: palette.textDim, code: palette.info, accent: palette.accent)
+                    gtk_box_append(ptr(column), Gtk.markupLabel(markup, css: "agent-text"))
+                }
+            case .code(let language, let body):
+                gtk_box_append(ptr(column), codeBlock(language: language, body: body))
+            }
+        }
+        return column
+    }
+
+    /// Bounded labels: one Pango layout over forty thousand words takes a visible pause to
+    /// measure, so prose breaks at blank lines into pieces each small enough to lay out in a
+    /// frame, and the reading is unchanged.
+    static func paragraphChunks(_ prose: String, limit: Int = 3000) -> [String] {
+        guard prose.count > limit else { return [prose] }
+        var chunks: [String] = []
+        var current: [String] = []
+        var size = 0
+        for paragraph in prose.components(separatedBy: "\n\n") {
+            if size > 0, size + paragraph.count > limit {
+                chunks.append(current.joined(separator: "\n\n"))
+                current = []
+                size = 0
+            }
+            current.append(paragraph)
+            size += paragraph.count + 2
+        }
+        if !current.isEmpty { chunks.append(current.joined(separator: "\n\n")) }
+        return chunks
+    }
+
     private static func codeBlock(language: String?, body: String)
         -> UnsafeMutablePointer<GtkWidget>
     {

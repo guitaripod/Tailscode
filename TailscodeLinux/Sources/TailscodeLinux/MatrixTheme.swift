@@ -398,6 +398,7 @@ enum MatrixTheme {
             box-shadow: none;
         }
         .seam-read:hover { border-color: \(info); background-color: alpha(\(info), 0.08); }
+        .reader-prose { background-color: \(canvas); }
         .reader-body, .reader-body text {
             background-color: \(canvas);
             color: \(text);

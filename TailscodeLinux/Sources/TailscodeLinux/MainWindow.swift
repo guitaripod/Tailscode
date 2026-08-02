@@ -211,7 +211,26 @@ final class MainWindow: @unchecked Sendable {
                 case "reader":
                     self.context.presentText?(
                         "Compaction summary", "COMPACTED · 527.8k → 24.8k · 2m 4s",
-                        String(repeating: "The summary the CLI wrote, paragraph after paragraph. ", count: 200),
+                        """
+                        ## 1. Primary Request and Intent
+
+                        The user asked for a **full performance remaster** of the Linux app, with
+                        *proper* theming and `TranscriptRow` rebuilt off-main.
+
+                        - Tail-first fill so the visible screenful lands in one frame
+                        - Disk-cached images keyed by their server path
+                        - A pin that runs outside layout, never inside `changed`
+
+                        ```swift
+                        func schedulePinCorrector() {
+                            Gtk.onMain { self.pinToBottom() }
+                        }
+                        ```
+
+                        > A frozen frame is worse than a slow answer.
+
+                        See [the docs](https://docs.gtk.org/gtk4/) for `GtkViewport` details.
+                        """,
                         false)
                 case "scale":
                     Preferences.setScale((Double(argument) ?? 100) / 100, for: .prose)

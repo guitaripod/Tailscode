@@ -118,17 +118,26 @@ enum Dialogs {
             gtk_box_append(ptr(column), Gtk.hairline())
         }
 
-        let view = gtk_text_view_new()!
-        gtk_text_view_set_editable(ptr(UnsafeMutableRawPointer(view)), 0)
-        gtk_text_view_set_cursor_visible(ptr(UnsafeMutableRawPointer(view)), 0)
-        gtk_text_view_set_wrap_mode(ptr(UnsafeMutableRawPointer(view)), GTK_WRAP_WORD_CHAR)
-        gtk_text_view_set_left_margin(ptr(UnsafeMutableRawPointer(view)), 18)
-        gtk_text_view_set_right_margin(ptr(UnsafeMutableRawPointer(view)), 18)
-        gtk_text_view_set_top_margin(ptr(UnsafeMutableRawPointer(view)), 14)
-        gtk_text_view_set_bottom_margin(ptr(UnsafeMutableRawPointer(view)), 14)
-        Gtk.addClass(view, mono ? "reader-mono" : "reader-body")
-        if let buffer = gtk_text_view_get_buffer(ptr(UnsafeMutableRawPointer(view))) {
-            gtk_text_buffer_set_text(buffer, body, -1)
+        let view: UnsafeMutablePointer<GtkWidget>
+        if mono {
+            let text = gtk_text_view_new()!
+            gtk_text_view_set_editable(ptr(UnsafeMutableRawPointer(text)), 0)
+            gtk_text_view_set_cursor_visible(ptr(UnsafeMutableRawPointer(text)), 0)
+            gtk_text_view_set_wrap_mode(ptr(UnsafeMutableRawPointer(text)), GTK_WRAP_WORD_CHAR)
+            gtk_text_view_set_left_margin(ptr(UnsafeMutableRawPointer(text)), 18)
+            gtk_text_view_set_right_margin(ptr(UnsafeMutableRawPointer(text)), 18)
+            gtk_text_view_set_top_margin(ptr(UnsafeMutableRawPointer(text)), 14)
+            gtk_text_view_set_bottom_margin(ptr(UnsafeMutableRawPointer(text)), 14)
+            Gtk.addClass(text, "reader-mono")
+            if let buffer = gtk_text_view_get_buffer(ptr(UnsafeMutableRawPointer(text))) {
+                gtk_text_buffer_set_text(buffer, body, -1)
+            }
+            view = text
+        } else {
+            let rich = TranscriptRow.richBody(body)
+            Gtk.addClass(rich, "reader-prose")
+            Gtk.margins(rich, top: 14, bottom: 18, leading: 18, trailing: 18)
+            view = rich
         }
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
@@ -144,16 +153,18 @@ enum Dialogs {
             ptr(actions),
             Gtk.button(Localized.text("Copy")) { Gtk.copyToClipboard(body) })
         let windowBits = UInt(bitPattern: window)
-        gtk_box_append(
-            ptr(actions),
-            Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
-                gtk_window_destroy(ptr(raw))
-            })
+        let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+            gtk_window_destroy(ptr(raw))
+        }
+        gtk_box_append(ptr(actions), dismiss)
         gtk_box_append(ptr(column), actions)
 
         gtk_window_set_child(ptr(window), column)
         gtk_window_present(ptr(window))
+        // Focus belongs on the button, not on the first selectable label — a focused GtkLabel
+        // opens with its whole paragraph highlighted, which reads as a stuck selection.
+        gtk_widget_grab_focus(dismiss)
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an instruction
