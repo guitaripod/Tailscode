@@ -72,6 +72,7 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarPane: UnsafeMutablePointer<GtkWidget>?
     private var composerScroller: UnsafeMutablePointer<GtkWidget>?
     private var composerHeight: Int32 = 0
+    private var isMeasuringComposer = false
     private let vim = VimEngine()
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private let earlierButton = gtk_button_new()!
@@ -1819,7 +1820,20 @@ final class MainWindow: @unchecked Sendable {
     /// The prompt box is as tall as what is in it: one line when empty, taller as the text wraps
     /// or a paragraph is pasted, and it stops growing at the height the settings window sets —
     /// after which it scrolls, so the transcript is never squeezed off the screen.
+    /// Measured on the next idle, never inline: a text view that was just emptied still reports
+    /// the height it had until GTK lays it out again, which is why the box stayed tall after a
+    /// send until the next keystroke nudged it.
     private func growComposer() {
+        guard !isMeasuringComposer else { return }
+        isMeasuringComposer = true
+        Gtk.onMain { [weak self] in
+            guard let self else { return }
+            self.isMeasuringComposer = false
+            self.measureComposer()
+        }
+    }
+
+    private func measureComposer() {
         guard let composerScroller else { return }
         let line = 20.0 * Preferences.scale(.mono)
         let ceiling = Int32(line * Double(Preferences.composerLines) + 18)
@@ -1831,7 +1845,8 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_measure(
             entryView, GTK_ORIENTATION_VERTICAL, width > 0 ? width : -1, &minimum, &natural,
             nil, nil)
-        let wanted = max(floor, min(ceiling, natural + 18))
+        // An empty prompt box is one line, whatever the last layout still believes.
+        let wanted = composerText().isEmpty ? floor : max(floor, min(ceiling, natural + 18))
         guard wanted != composerHeight else { return }
         composerHeight = wanted
         gtk_widget_set_size_request(composerScroller, -1, wanted)
