@@ -75,3 +75,7 @@ void tailscode_accept_file_drops(
 /// cannot marshal, so property watching gets its own three-argument trampoline here.
 void tailscode_connect_notify(
     gpointer instance, const char *property, void (*handler)(void *), void *data);
+
+/// Runs `handler(data)` once on the GLib main context after `ms` milliseconds — the timed cousin
+/// of `tailscode_on_main`, with the same ownership rule.
+void tailscode_after(guint ms, void (*handler)(void *), void *data);

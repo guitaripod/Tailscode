@@ -169,6 +169,52 @@ final class MainWindow: @unchecked Sendable {
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }
+        installDriver()
+    }
+
+    /// `TAILSCODE_DRIVE="2000:open=1;4000:up=400;6000:jump"` — timed UI actions for headless
+    /// validation, driving the same code paths a person's clicks and wheel do. An agent cannot
+    /// operate a mouse over ssh; it can read a recording of the app driving itself.
+    private func installDriver() {
+        guard let script = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] else { return }
+        for step in script.split(separator: ";") {
+            let parts = step.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2, let delay = UInt32(parts[0]) else { continue }
+            let action = String(parts[1])
+            Gtk.after(delay) { [weak self] in
+                guard let self else { return }
+                FileHandle.standardOutput.write(Data("DRIVE \(delay) \(action)\n".utf8))
+                let pieces = action.split(separator: "=", maxSplits: 1)
+                let verb = String(pieces.first ?? "")
+                let argument = pieces.count > 1 ? String(pieces[1]) : ""
+                switch verb {
+                case "open":
+                    if let index = Int(argument), index < self.visible.count {
+                        self.open(self.visible[index].entry)
+                    }
+                case "up":
+                    self.scroll(by: -(Double(argument) ?? 200))
+                case "down":
+                    self.scroll(by: Double(argument) ?? 200)
+                case "jump":
+                    self.jumpToBottom()
+                case "state":
+                    let adjustment = self.transcriptScroller.flatMap {
+                        gtk_scrolled_window_get_vadjustment(op($0))
+                    }
+                    let value = adjustment.map { gtk_adjustment_get_value($0) } ?? -1
+                    let upper = adjustment.map {
+                        gtk_adjustment_get_upper($0) - gtk_adjustment_get_page_size($0)
+                    } ?? -1
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "STATE follows=\(self.followsBottom) rows=\(self.renderedRows.count)/\(self.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper)) unseen=\(self.unseenRows)\n"
+                            .utf8))
+                default:
+                    break
+                }
+            }
+        }
     }
 
     private func makeSidebarPane() -> UnsafeMutablePointer<GtkWidget> {
@@ -943,10 +989,32 @@ final class MainWindow: @unchecked Sendable {
         let growth = initialFill ? 0 : appended
         let chunk = 40
 
+        // Align what is on screen with the new window. The window slides forward as messages
+        // arrive, so rows fall off its front while the screen still shows them: those are trimmed
+        // from the top — their widgets removed, everything else kept — rather than treated as a
+        // reason to rebuild. Only a window that shares nothing with the screen starts over.
         var start = 0
-        if let firstKey = renderedRows.first?.key {
-            if let index = rows.firstIndex(where: { $0.key == firstKey }) {
-                start = index
+        if !renderedRows.isEmpty {
+            var indexByKey = [String: Int](minimumCapacity: rows.count)
+            for (index, row) in rows.enumerated() where indexByKey[row.key] == nil {
+                indexByKey[row.key] = index
+            }
+            var anchor: (rendered: Int, row: Int)?
+            for (rendered, row) in renderedRows.enumerated() {
+                if let index = indexByKey[row.key] {
+                    anchor = (rendered, index)
+                    break
+                }
+            }
+            if let anchor {
+                for bits in rowWidgets[..<anchor.rendered] {
+                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+                    if bits == highlightedRow { highlightedRow = 0 }
+                    gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+                }
+                rowWidgets.removeSubrange(..<anchor.rendered)
+                renderedRows.removeSubrange(..<anchor.rendered)
+                start = anchor.row
             } else {
                 tearDownAllRows()
             }

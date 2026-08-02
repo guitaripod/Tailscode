@@ -51,6 +51,17 @@ enum Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.
+    static func after(_ milliseconds: UInt32, _ work: @escaping @Sendable () -> Void) {
+        let box = Unmanaged.passRetained(Box(work)).toOpaque()
+        tailscode_after(
+            guint(milliseconds),
+            { raw in
+                guard let raw else { return }
+                Unmanaged<Box>.fromOpaque(raw).takeRetainedValue().work()
+            }, box)
+    }
+
     /// Watches a GObject property — `notify::` carries a GParamSpec the plain trampoline cannot
     /// marshal, so it goes through its own. The handler runs on the GLib main context.
     static func onNotify(

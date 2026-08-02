@@ -23,6 +23,13 @@ void tailscode_on_main(void (*handler)(void *), void *data) {
     g_idle_add(tailscode_idle_trampoline, box);
 }
 
+void tailscode_after(guint ms, void (*handler)(void *), void *data) {
+    TailscodeIdle *box = g_new0(TailscodeIdle, 1);
+    box->handler = handler;
+    box->data = data;
+    g_timeout_add(ms, tailscode_idle_trampoline, box);
+}
+
 typedef struct {
     void (*setup)(GtkListItem *, void *);
     void (*bind)(GtkListItem *, void *);
