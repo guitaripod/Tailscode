@@ -51,6 +51,21 @@ enum Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// Watches a GObject property — `notify::` carries a GParamSpec the plain trampoline cannot
+    /// marshal, so it goes through its own. The handler runs on the GLib main context.
+    static func onNotify(
+        _ instance: UnsafeMutableRawPointer, property: String,
+        _ handler: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        tailscode_connect_notify(
+            instance, property,
+            { raw in
+                guard let raw else { return }
+                Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+            }, box)
+    }
+
     /// Key presses on a widget, in the capture phase, so normal-mode letters never reach a text
     /// view that would otherwise swallow them.
     static func onKey(
@@ -182,31 +197,47 @@ enum Gtk {
         return rule
     }
 
-    /// A header you click to show or hide a body, with the state reported back so a re-render can
-    /// restore it. GtkExpander's own toggle notifies through a three-argument signal the shim does
-    /// not marshal; a plain button avoids the whole shape.
+    final class Slot: @unchecked Sendable {
+        var bits: UInt = 0
+    }
+
+    /// A disclosure whose body does not exist until the first open. A transcript row that is
+    /// collapsed — which is nearly every tool row — costs its header line and nothing else; the
+    /// diff, the output, the subagent transcript are built the moment someone asks and kept after.
     static func disclosure(
         header: UnsafeMutablePointer<GtkWidget>,
-        body: UnsafeMutablePointer<GtkWidget>,
         expanded: Bool,
-        onToggle: @escaping @Sendable (Bool) -> Void
+        onToggle: @escaping @Sendable (Bool) -> Void,
+        makeBody: @escaping @Sendable () -> UnsafeMutablePointer<GtkWidget>
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         let button = gtk_button_new()!
         addClass(button, "flat")
         addClass(button, "disclosure")
         gtk_button_set_child(ptr(button), header)
-        gtk_widget_set_visible(body, expanded ? 1 : 0)
-        let bodyBits = UInt(bitPattern: body)
+        gtk_box_append(ptr(column), button)
+        let slot = Slot()
+        if expanded {
+            let body = makeBody()
+            gtk_box_append(ptr(column), body)
+            slot.bits = UInt(bitPattern: body)
+        }
+        let columnBits = UInt(bitPattern: column)
         connect(UnsafeMutableRawPointer(button), "clicked") {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bodyBits) else { return }
+            if slot.bits == 0 {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: columnBits) else { return }
+                let body = makeBody()
+                gtk_box_append(ptr(raw), body)
+                slot.bits = UInt(bitPattern: body)
+                onToggle(true)
+                return
+            }
+            guard let raw = UnsafeMutableRawPointer(bitPattern: slot.bits) else { return }
             let body: UnsafeMutablePointer<GtkWidget> = ptr(raw)
             let showing = gtk_widget_get_visible(body) != 0
             gtk_widget_set_visible(body, showing ? 0 : 1)
             onToggle(!showing)
         }
-        gtk_box_append(ptr(column), button)
-        gtk_box_append(ptr(column), body)
         return column
     }
 

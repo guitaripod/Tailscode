@@ -70,3 +70,8 @@ GtkWidget *tailscode_focused_widget(GtkWidget *root);
 void tailscode_accept_file_drops(
     GtkWidget *widget, void (*handler)(const char *const *paths, int count, void *data),
     void *data);
+
+/// Watches a GObject property. `notify::` signals carry a GParamSpec the two-argument trampoline
+/// cannot marshal, so property watching gets its own three-argument trampoline here.
+void tailscode_connect_notify(
+    gpointer instance, const char *property, void (*handler)(void *), void *data);

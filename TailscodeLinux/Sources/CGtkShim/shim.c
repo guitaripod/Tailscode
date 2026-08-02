@@ -243,6 +243,28 @@ void tailscode_accept_file_drops(
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
 }
 
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+} TailscodeNotify;
+
+static void tailscode_notify_trampoline(GObject *object, GParamSpec *pspec, gpointer raw) {
+    (void)object;
+    (void)pspec;
+    TailscodeNotify *box = raw;
+    box->handler(box->data);
+}
+
+void tailscode_connect_notify(
+    gpointer instance, const char *property, void (*handler)(void *), void *data) {
+    TailscodeNotify *box = g_new0(TailscodeNotify, 1);
+    box->handler = handler;
+    box->data = data;
+    char *signal = g_strdup_printf("notify::%s", property);
+    g_signal_connect_data(instance, signal, G_CALLBACK(tailscode_notify_trampoline), box, NULL, 0);
+    g_free(signal);
+}
+
 void tailscode_set_text_scale(double scale) {
     GtkSettings *settings = gtk_settings_get_default();
     if (!settings) return;

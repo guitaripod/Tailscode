@@ -12,18 +12,19 @@ enum ToolRowView {
     {
         let summary = call.summary
         let header = headerLine(call, summary)
-        let body = bodyColumn(call, summary)
-        guard let body else {
+        guard hasBody(call, summary) else {
             Gtk.margins(header, leading: 6)
             return header
         }
-        Gtk.margins(body, leading: 26)
         let expanded = call.status == .error || context.isExpanded(key)
         let toggle = context.onToggle
-        let row = Gtk.disclosure(header: header, body: body, expanded: expanded) { open in
-            toggle?(key, open)
+        return Gtk.disclosure(
+            header: header, expanded: expanded, onToggle: { open in toggle?(key, open) }
+        ) {
+            let body = bodyColumn(call, summary) ?? Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.margins(body, leading: 26)
+            return body
         }
-        return row
     }
 
     /// A run of tool calls as one line: what they were, how many, and the net diff — expanding in
@@ -65,15 +66,30 @@ enum ToolRowView {
                 ptr(header), Gtk.label("−\(removed)", css: "diff-remove", selectable: false))
         }
 
-        let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        Gtk.margins(body, leading: 16)
-        for (index, call) in calls.enumerated() {
-            gtk_box_append(ptr(body), make(call, key: "\(key):\(index)", context: context))
-        }
         let toggle = context.onToggle
-        return Gtk.disclosure(header: header, body: body, expanded: context.isExpanded(key)) {
-            open in toggle?(key, open)
+        return Gtk.disclosure(
+            header: header, expanded: context.isExpanded(key),
+            onToggle: { open in toggle?(key, open) }
+        ) {
+            let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+            Gtk.margins(body, leading: 16)
+            for (index, call) in calls.enumerated() {
+                gtk_box_append(ptr(body), make(call, key: "\(key):\(index)", context: context))
+            }
+            return body
         }
+    }
+
+    /// Whether the disclosure would open onto anything — decided without building a single body
+    /// widget, because nearly every row is collapsed and its body must cost nothing until opened.
+    private static func hasBody(_ call: ToolCall, _ summary: ToolCallSummary) -> Bool {
+        if call.asksUserQuestion, !call.recordedAnswers.isEmpty { return true }
+        if summary.kind == .shell, summary.command != nil { return true }
+        if let path = summary.filePath ?? summary.detail, !path.isEmpty { return true }
+        if !summary.links.isEmpty { return true }
+        if ToolDiff.lines(for: call) != nil { return true }
+        if let output = displayableOutput(call, summary), !output.isEmpty { return true }
+        return false
     }
 
     static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary)
@@ -238,33 +254,37 @@ enum SubagentRowView {
             gtk_box_append(ptr(header), Gtk.label("done", css: "glyph-done", selectable: false))
         }
 
-        let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
-        Gtk.addClass(body, "subagent-card")
-        Gtk.margins(body, top: 4, bottom: 4, leading: 26, trailing: 4)
-        if let rows = context.subagentRows[call.id] {
-            if rows.isEmpty {
+        let toggle = context.onToggle
+        let request = context.requestSubagent
+        return Gtk.disclosure(
+            header: header, expanded: context.isExpanded(key),
+            onToggle: { open in
+                toggle?(key, open)
+                if open, context.subagentRows[call.id] == nil { request?(call) }
+            }
+        ) {
+            let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+            Gtk.addClass(body, "subagent-card")
+            Gtk.margins(body, top: 4, bottom: 4, leading: 26, trailing: 4)
+            if let rows = context.subagentRows[call.id] {
+                if rows.isEmpty {
+                    gtk_box_append(
+                        ptr(body),
+                        Gtk.label(
+                            Localized.text("No transcript for this agent."), css: "dim",
+                            selectable: false))
+                }
+                for row in rows.suffix(160) {
+                    gtk_box_append(ptr(body), row.makeWidget(context: context))
+                }
+            } else {
                 gtk_box_append(
                     ptr(body),
                     Gtk.label(
-                        Localized.text("No transcript for this agent."), css: "dim",
-                        selectable: false))
+                        Localized.text("Loading transcript…"), css: "dim", selectable: false))
+                if context.isExpanded(key) { context.requestSubagent?(call) }
             }
-            for row in rows.suffix(160) {
-                gtk_box_append(ptr(body), row.makeWidget(context: context))
-            }
-        } else {
-            gtk_box_append(
-                ptr(body), Gtk.label(Localized.text("Loading transcript…"), css: "dim", selectable: false))
-            if context.isExpanded(key) { context.requestSubagent?(call) }
-        }
-
-        let toggle = context.onToggle
-        let request = context.requestSubagent
-        let loaded = context.subagentRows[call.id] != nil
-        return Gtk.disclosure(header: header, body: body, expanded: context.isExpanded(key)) {
-            open in
-            toggle?(key, open)
-            if open, !loaded { request?(call) }
+            return body
         }
     }
 }

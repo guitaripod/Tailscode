@@ -56,6 +56,23 @@ final class TerminalPane: @unchecked Sendable {
         #endif
     }
 
+    /// VTE owns its colors the way it owns its font: CSS cannot reach the cell grid, so the
+    /// palette is handed over directly — fg, bg and the sixteen ANSI slots.
+    func applyPalette(_ palette: Palette) {
+        #if HAS_VTE
+            var fg = GdkRGBA()
+            var bg = GdkRGBA()
+            guard gdk_rgba_parse(&fg, palette.terminalFg) != 0,
+                gdk_rgba_parse(&bg, palette.terminalBg) != 0
+            else { return }
+            var slots = [GdkRGBA](repeating: GdkRGBA(), count: palette.ansi.count)
+            for (index, hex) in palette.ansi.enumerated() {
+                guard gdk_rgba_parse(&slots[index], hex) != 0 else { return }
+            }
+            vte_terminal_set_colors(ptr(terminal), &fg, &bg, &slots, gsize(slots.count))
+        #endif
+    }
+
     func setDirectory(_ path: String?) {
         guard directory != path else { return }
         directory = path

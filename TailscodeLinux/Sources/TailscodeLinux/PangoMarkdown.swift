@@ -8,14 +8,32 @@ import Foundation
 /// Fenced code never reaches here: it is split out upstream into its own block with a copy button,
 /// because code that reflows is code you cannot paste.
 enum PangoMarkdown {
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: String] = [:]
+
+    /// Rendering runs once per prose segment per streamed state, and a long conversation replays
+    /// the same three hundred segments on every token — so the answer is remembered. The colors
+    /// are part of the key: a palette change is a different rendering, not a stale hit.
     static func render(_ text: String, dim: String, code: String, accent: String) -> String {
+        let key = "\(dim)|\(code)|\(accent)|\(text)"
+        cacheLock.lock()
+        if let hit = cache[key] {
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
         var lines: [String] = []
         for raw in text.components(separatedBy: "\n") {
             lines.append(block(raw, dim: dim, code: code, accent: accent))
         }
         // Trailing blank lines add nothing but height in a bubble-less transcript.
         while let last = lines.last, last.isEmpty { lines.removeLast() }
-        return lines.joined(separator: "\n")
+        let rendered = lines.joined(separator: "\n")
+        cacheLock.lock()
+        if cache.count > 4096 { cache.removeAll(keepingCapacity: true) }
+        cache[key] = rendered
+        cacheLock.unlock()
+        return rendered
     }
 
     private static func block(_ raw: String, dim: String, code: String, accent: String) -> String {
@@ -63,16 +81,42 @@ enum PangoMarkdown {
     }
 
     /// Inline spans, resolved on the escaped text so a literal `<` in prose never becomes a tag and
-    /// a tag we emit is never re-escaped.
+    /// a tag we emit is never re-escaped. Code spans are lifted out first and restored last:
+    /// `gtk_box_append` must keep its underscores, and `2 * 3` inside a snippet is arithmetic,
+    /// not emphasis.
     static func inline(_ text: String, code: String, accent: String) -> String {
         var result = escape(text)
-        result = replacePairs(in: result, delimiter: "`", open: "<span foreground=\"\(code)\"><tt>", close: "</tt></span>")
+        var codeSpans: [String] = []
+        result = extractCodeSpans(in: result, into: &codeSpans, color: code)
         result = replaceLinks(in: result, accent: accent)
         result = replacePairs(in: result, delimiter: "**", open: "<b>", close: "</b>")
         result = replacePairs(in: result, delimiter: "__", open: "<b>", close: "</b>")
         result = replacePairs(in: result, delimiter: "~~", open: "<s>", close: "</s>")
         result = replaceSingleEmphasis(in: result)
+        for (index, span) in codeSpans.enumerated() {
+            result = result.replacingOccurrences(of: placeholder(index), with: span)
+        }
         return result
+    }
+
+    /// Private-use sentinels no agent emits, standing in for code spans while emphasis runs.
+    private static func placeholder(_ index: Int) -> String { "\u{E000}\(index)\u{E001}" }
+
+    private static func extractCodeSpans(
+        in text: String, into spans: inout [String], color: String
+    ) -> String {
+        var result = ""
+        var rest = Substring(text)
+        while let start = rest.range(of: "`") {
+            let after = rest[start.upperBound...]
+            guard let end = after.range(of: "`"), start.upperBound != end.lowerBound else { break }
+            result += rest[..<start.lowerBound]
+            spans.append(
+                "<span foreground=\"\(color)\"><tt>" + after[..<end.lowerBound] + "</tt></span>")
+            result += placeholder(spans.count - 1)
+            rest = after[end.upperBound...]
+        }
+        return result + rest
     }
 
     static func escape(_ text: String) -> String {
@@ -99,29 +143,50 @@ enum PangoMarkdown {
     }
 
     /// `*single*` and `_single_`, done after the doubled forms so `**bold**` is never mistaken for
-    /// two italics, and skipped inside words so `a_b_c` and `2 * 3 * 4` stay literal.
+    /// two italics. An opener must start a word and touch what it emphasizes; a closer must touch
+    /// what it ends — so `a_b_c` stays a name and `2 * 3 * 4` stays arithmetic.
     private static func replaceSingleEmphasis(in text: String) -> String {
         var result = ""
         var buffer = ""
         var open = false
+        var openDelimiter: Character = "*"
         var previous: Character?
-        for character in text {
+        let characters = Array(text)
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
             if character == "*" || character == "_" {
-                if open {
+                if open, character == openDelimiter, previous != " ", !buffer.isEmpty {
                     result += "<i>" + buffer + "</i>"
                     buffer = ""
                     open = false
                     previous = character
+                    index += 1
                     continue
                 }
-                open = true
+                if !open {
+                    let next: Character? =
+                        index + 1 < characters.count ? characters[index + 1] : nil
+                    let touchesContent = next != nil && next != " " && next != character
+                    let startsWord =
+                        previous == nil || !(previous!.isLetter || previous!.isNumber)
+                    if touchesContent, startsWord {
+                        open = true
+                        openDelimiter = character
+                        previous = character
+                        index += 1
+                        continue
+                    }
+                }
+                if open { buffer.append(character) } else { result.append(character) }
                 previous = character
+                index += 1
                 continue
             }
             if open {
                 buffer.append(character)
                 if buffer.count > 200 {
-                    result += String(previous ?? "*") + buffer
+                    result += String(openDelimiter) + buffer
                     buffer = ""
                     open = false
                 }
@@ -129,8 +194,9 @@ enum PangoMarkdown {
                 result.append(character)
             }
             previous = character
+            index += 1
         }
-        if open { result += "*" + buffer }
+        if open { result += String(openDelimiter) + buffer }
         return result
     }
 

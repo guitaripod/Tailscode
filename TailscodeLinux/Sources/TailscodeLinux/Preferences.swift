@@ -174,6 +174,43 @@ enum Preferences {
             write(nil, forKey: "tailscode.divider.\(divider.rawValue)")
         }
     }
+
+    /// Which palette the canvas wears: the system's own preference by default — Rosé Pine when
+    /// the desktop is dark, Solarized Light when it is light — or pinned to one.
+    enum Appearance: String, CaseIterable {
+        case system
+        case light
+        case dark
+
+        var title: String {
+            switch self {
+            case .system: return Localized.text("System")
+            case .light: return Localized.text("Light · Solarized")
+            case .dark: return Localized.text("Dark · Rosé Pine")
+            }
+        }
+    }
+
+    static var appearance: Appearance {
+        Appearance(rawValue: defaults.string(forKey: "tailscode.appearance") ?? "") ?? .system
+    }
+
+    static func setAppearance(_ value: Appearance) {
+        write(value == .system ? nil : value.rawValue, forKey: "tailscode.appearance")
+    }
+
+    /// Tells libadwaita which scheme to run, which restyles the chrome and flips
+    /// `AdwStyleManager.dark` — the one fact the canvas palette is derived from.
+    static func applyAppearance() {
+        guard let manager = adw_style_manager_get_default() else { return }
+        let scheme: AdwColorScheme
+        switch appearance {
+        case .system: scheme = ADW_COLOR_SCHEME_DEFAULT
+        case .light: scheme = ADW_COLOR_SCHEME_FORCE_LIGHT
+        case .dark: scheme = ADW_COLOR_SCHEME_FORCE_DARK
+        }
+        adw_style_manager_set_color_scheme(manager, scheme)
+    }
 }
 
 /// The settings window: every knob the app has, live. Nothing here needs an OK — a size change
@@ -186,6 +223,9 @@ enum SettingsDialog {
         let (window, content) = Dialogs.window(
             title: Localized.text("Settings"), parent: parent, width: 620)
         gtk_window_set_default_size(ptr(window), 620, 720)
+
+        section(content, Localized.text("APPEARANCE"))
+        gtk_box_append(ptr(content), appearanceRow(onLayoutChanged: onLayoutChanged))
 
         section(content, Localized.text("TYPE SIZE"))
         for area in Preferences.Area.allCases {
@@ -305,6 +345,42 @@ enum SettingsDialog {
         gtk_widget_set_halign(close, GTK_ALIGN_END)
         gtk_box_append(ptr(content), close)
         gtk_window_present(ptr(window))
+    }
+
+    /// Three choices, one highlighted: picking one restyles the running window immediately —
+    /// libadwaita flips the chrome, `notify::dark` flips the canvas palette behind it.
+    private static func appearanceRow(
+        onLayoutChanged: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(row, "settings-group")
+        var bits: [UInt] = []
+        for choice in Preferences.Appearance.allCases {
+            let button = gtk_button_new_with_label(choice.title)!
+            if choice == Preferences.appearance { Gtk.addClass(button, "suggested-action") }
+            bits.append(UInt(bitPattern: button))
+            gtk_box_append(ptr(row), button)
+        }
+        for (index, choice) in Preferences.Appearance.allCases.enumerated() {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits[index]) else { continue }
+            let all = bits
+            Gtk.connect(raw, "clicked") {
+                Preferences.setAppearance(choice)
+                Preferences.applyAppearance()
+                MatrixTheme.install()
+                for (which, other) in all.enumerated() {
+                    guard let otherRaw = UnsafeMutableRawPointer(bitPattern: other) else { continue }
+                    let widget: UnsafeMutablePointer<GtkWidget> = ptr(otherRaw)
+                    if which == index {
+                        Gtk.addClass(widget, "suggested-action")
+                    } else {
+                        gtk_widget_remove_css_class(widget, "suggested-action")
+                    }
+                }
+                onLayoutChanged()
+            }
+        }
+        return row
     }
 
     private static func section(_ content: UnsafeMutablePointer<GtkWidget>, _ title: String) {

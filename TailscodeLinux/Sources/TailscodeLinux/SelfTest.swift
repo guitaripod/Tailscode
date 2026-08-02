@@ -59,6 +59,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            try checkPalettes()
+            report("palettes: solarized light and rosé pine both style every slot")
+        } catch {
+            report("palettes: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -263,7 +271,20 @@ public enum SelfTest {
                     "\(testCase.label): \(rendered.debugDescription) lacks \(needle.debugDescription)")
             }
         }
-        return cases.count
+        let literal: [(input: String, poison: String, label: String)] = [
+            ("`gtk_box_append` per row", "<i>", "underscores inside code stay code"),
+            ("2 * 3 * 4 = 24", "<i>", "arithmetic never italicizes"),
+            ("snake_case and more_snake here", "<i>", "intra-word underscores stay literal"),
+            ("`a * b` times `c * d`", "<i>", "asterisks inside code stay code"),
+        ]
+        for testCase in literal {
+            let rendered = PangoMarkdown.render(
+                testCase.input, dim: "#777777", code: "#67e8f9", accent: "#4ade80")
+            if rendered.contains(testCase.poison) {
+                throw SelfTestFailure("\(testCase.label): \(rendered.debugDescription)")
+            }
+        }
+        return cases.count + literal.count
     }
 
     /// The durable half of the settings: written to a file, wiped from the in-memory defaults the
@@ -297,6 +318,40 @@ public enum SelfTest {
         }
         guard defaults.data(forKey: keys[3]) == Data("bytes".utf8) else {
             throw SelfTestFailure("saved chats would be lost")
+        }
+    }
+
+    /// Both appearances, checked as data: every slot a real color, the stylesheet actually
+    /// carrying it, and the markup cache returning palette-true renderings — a stale cache would
+    /// paint light-mode prose in dark-mode colors, which no compiler catches.
+    private static func checkPalettes() throws {
+        for palette in [Palette.rosePine, .solarizedLight] {
+            let slots = [
+                palette.canvas, palette.canvasRaised, palette.rule, palette.text,
+                palette.textDim, palette.accent, palette.accentDim, palette.warn,
+                palette.danger, palette.info, palette.special, palette.codeBg,
+                palette.subagentBg, palette.findHit, palette.onAccent,
+            ]
+            for slot in slots {
+                guard slot.hasPrefix("#"), slot.count == 7,
+                    slot.dropFirst().allSatisfy(\.isHexDigit)
+                else { throw SelfTestFailure("\(palette.name): \(slot) is not a color") }
+            }
+            let css = MatrixTheme.css(for: palette)
+            guard css.contains(palette.canvas), css.contains(palette.accent),
+                css.contains(palette.findHit), !css.contains("Optional(")
+            else { throw SelfTestFailure("\(palette.name): css does not carry the palette") }
+        }
+        let sample = "**bold** and `code` and *soft*"
+        func render(_ palette: Palette) -> String {
+            PangoMarkdown.render(
+                sample, dim: palette.textDim, code: palette.info, accent: palette.accent)
+        }
+        let first = render(.rosePine)
+        let again = render(.rosePine)
+        let light = render(.solarizedLight)
+        guard first == again, first != light, light.contains(Palette.solarizedLight.info) else {
+            throw SelfTestFailure("markup cache does not respect the palette")
         }
     }
 

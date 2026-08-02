@@ -27,7 +27,10 @@ final class TranscriptContext: @unchecked Sendable {
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
         case userText(String)
-        case agentProse(String)
+        /// The markup rides in the row, computed where the rows are computed — off the GLib main
+        /// context — so painting a prose row is a label set, not a markdown parse. The palette's
+        /// colors are baked into it, which is what makes a theme change a row change the diff sees.
+        case agentProse(text: String, markup: String)
         case codeBlock(language: String?, body: String)
         case reasoning(String)
         case tool(ToolCall)
@@ -65,8 +68,15 @@ struct TranscriptRow: Hashable {
                 for (index, segment) in MessageSegment.split(stripped).enumerated() {
                     switch segment {
                     case .prose(let prose):
+                        let palette = MatrixTheme.palette
                         rows.append(
-                            TranscriptRow(key: "\(key):s\(index)", kind: .agentProse(prose)))
+                            TranscriptRow(
+                                key: "\(key):s\(index)",
+                                kind: .agentProse(
+                                    text: prose,
+                                    markup: PangoMarkdown.render(
+                                        prose, dim: palette.textDim, code: palette.info,
+                                        accent: palette.accent))))
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -144,7 +154,9 @@ struct TranscriptRow: Hashable {
     /// What in-conversation search reads for this row: the words a person saw, not widget state.
     var searchText: String {
         switch kind {
-        case .userText(let text), .agentProse(let text), .reasoning(let text):
+        case .userText(let text), .reasoning(let text):
+            return text
+        case .agentProse(let text, _):
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
@@ -165,12 +177,8 @@ struct TranscriptRow: Hashable {
         switch kind {
         case .userText(let text):
             return Self.prompt(text)
-        case .agentProse(let text):
-            return Gtk.markupLabel(
-                PangoMarkdown.render(
-                    text, dim: MatrixTheme.textDim, code: MatrixTheme.cyan,
-                    accent: MatrixTheme.phosphor),
-                css: "agent-text")
+        case .agentProse(_, let markup):
+            return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body)
         case .reasoning(let text):
@@ -243,12 +251,15 @@ struct TranscriptRow: Hashable {
         let words = text.split(separator: " ").count
         let header = Gtk.label(
             Localized.text("⌄ Thought · %@ words", "\(words)"), css: "dim", selectable: false)
-        let body = Gtk.label(text, css: "reasoning-body", wrap: true)
-        Gtk.margins(body, leading: 14)
         let toggle = context.onToggle
         return Gtk.disclosure(
-            header: header, body: body, expanded: context.isExpanded(key)
-        ) { open in toggle?(key, open) }
+            header: header, expanded: context.isExpanded(key),
+            onToggle: { open in toggle?(key, open) }
+        ) {
+            let body = Gtk.label(text, css: "reasoning-body", wrap: true)
+            Gtk.margins(body, leading: 14)
+            return body
+        }
     }
 
     private static func filePart(
@@ -315,19 +326,23 @@ struct TranscriptRow: Hashable {
 
         if let summary = compaction.summary, !summary.isEmpty {
             let header = Gtk.label(title, css: "seam-text", selectable: false)
-            let body = Gtk.label(summary, css: "reasoning-body", wrap: true)
-            Gtk.margins(body, leading: 14)
-            let scroller = gtk_scrolled_window_new()!
-            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-            gtk_scrolled_window_set_max_content_height(op(scroller), 340)
-            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
-            gtk_scrolled_window_set_child(op(scroller), body)
             let toggle = context.onToggle
             gtk_box_append(
                 ptr(column),
                 Gtk.disclosure(
-                    header: header, body: scroller, expanded: context.isExpanded(key)
-                ) { open in toggle?(key, open) })
+                    header: header, expanded: context.isExpanded(key),
+                    onToggle: { open in toggle?(key, open) }
+                ) {
+                    let body = Gtk.label(summary, css: "reasoning-body", wrap: true)
+                    Gtk.margins(body, leading: 14)
+                    let scroller = gtk_scrolled_window_new()!
+                    gtk_scrolled_window_set_policy(
+                        op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+                    gtk_scrolled_window_set_max_content_height(op(scroller), 340)
+                    gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+                    gtk_scrolled_window_set_child(op(scroller), body)
+                    return scroller
+                })
         } else {
             gtk_box_append(ptr(column), Gtk.label(title, css: "seam-text", selectable: false))
         }

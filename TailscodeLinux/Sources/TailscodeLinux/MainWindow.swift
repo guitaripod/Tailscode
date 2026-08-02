@@ -62,7 +62,7 @@ final class MainWindow: @unchecked Sendable {
     private var findCursor = 0
     private var highlightedRow: UInt = 0
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
-    private var rebuildingInPlace = false
+    private var pendingSignature = "\u{0}"
 
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private var usageTask: Task<Void, Never>?
@@ -113,8 +113,18 @@ final class MainWindow: @unchecked Sendable {
     private var chosenEffort: String?
 
     func present(in app: UnsafeMutablePointer<AdwApplication>) {
+        Preferences.applyAppearance()
         MatrixTheme.install()
+        terminal.applyPalette(MatrixTheme.palette)
         UIScale.apply()
+        // The canvas follows the desktop: KDE flipping to dark at sunset restyles the chrome
+        // through libadwaita and lands here, where the palette and the markup baked into prose
+        // rows are traded for the other set.
+        if let manager = adw_style_manager_get_default() {
+            Gtk.onNotify(UnsafeMutableRawPointer(manager), property: "dark") { [weak self] in
+                Gtk.onMain { [weak self] in self?.retheme() }
+            }
+        }
         Task.detached { DesktopIntegration.ensureInstalled() }
 
         let window = adw_application_window_new(ptr(app))!
@@ -730,6 +740,7 @@ final class MainWindow: @unchecked Sendable {
         restoreDraft(for: entry.session.id)
         streamTask?.cancel()
         showPlaceholder(Localized.text("Connecting…"))
+        pendingSignature = "\u{0}"
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
         gtk_label_set_text(
@@ -907,58 +918,91 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(transcriptBox), label)
     }
 
-    /// The streaming path: everything before the first changed row keeps its widget — and its
-    /// disclosure state, its selection, its scroll cost — and only the tail is rebuilt. A token
-    /// appended to the last message rebuilds one row, not the conversation.
+    /// The rendering path, shaped around what a person is looking at. On first paint the tail —
+    /// the rows the window actually shows — goes up immediately, and everything earlier backfills
+    /// above it one chunk per idle, so a huge conversation is readable in one frame instead of
+    /// after a ten-chunk climb. While streaming, everything before the first changed row keeps its
+    /// widget — and its disclosure state, its selection, its scroll cost — and a token appended to
+    /// the last message rebuilds one row, not the conversation.
+    ///
+    /// `renderedRows` is always a contiguous slice of the applied row list that reaches its end;
+    /// where that slice starts is re-found by key on every pass, because the window slides.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
         let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
             renderedRows = []
             rowWidgets = []
+            highlightedRow = 0
             placeholderShown = false
         }
         // Whether to follow is what the person last chose, not where the scrollbar happens to be:
         // an unfocused window does not lay out, so its position is stale exactly when new rows
         // arrive.
         let stick = initialFill || followsBottom
-        let growth = initialFill || rebuildingInPlace ? 0 : appended
-
-        var prefix = 0
-        while prefix < renderedRows.count, prefix < rows.count, renderedRows[prefix] == rows[prefix] {
-            prefix += 1
-        }
-        for bits in rowWidgets[prefix...] {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
-            if bits == highlightedRow { highlightedRow = 0 }
-            gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
-        }
-        rowWidgets.removeSubrange(prefix...)
-
-        // Rows are built in chunks with the main loop free in between. Four hundred rows of
-        // widgets is a second of frozen window if they are built in one go — which is exactly
-        // what opening a long conversation used to do — and the same code streams a token
-        // without noticing, because one appended row is one chunk.
+        let growth = initialFill ? 0 : appended
         let chunk = 40
-        let end = min(rows.count, prefix + chunk)
-        for row in rows[prefix..<end] {
-            let widget = row.makeWidget(context: context)
-            gtk_box_append(ptr(transcriptBox), widget)
-            rowWidgets.append(UInt(bitPattern: widget))
-        }
-        renderedRows = Array(rows[..<end])
 
-        if end < rows.count {
-            if stick { followsBottom = true }
-            guard !isFillingInChunks else { return }
-            isFillingInChunks = true
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.isFillingInChunks = false
-                guard let state = self.lastState else { return }
-                self.apply(state: state, rows: self.lastFullRows)
+        var start = 0
+        if let firstKey = renderedRows.first?.key {
+            if let index = rows.firstIndex(where: { $0.key == firstKey }) {
+                start = index
+            } else {
+                tearDownAllRows()
             }
-            return
+        }
+
+        if renderedRows.isEmpty {
+            start = max(0, rows.count - chunk)
+            appendRowWidgets(rows[start...])
+        } else {
+            var same = 0
+            while same < renderedRows.count, start + same < rows.count,
+                renderedRows[same] == rows[start + same]
+            {
+                same += 1
+            }
+            for bits in rowWidgets[same...] {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+                if bits == highlightedRow { highlightedRow = 0 }
+                gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+            }
+            rowWidgets.removeSubrange(same...)
+            renderedRows.removeSubrange(same...)
+            let tailFrom = start + renderedRows.count
+            let tailEnd = min(rows.count, tailFrom + chunk)
+            appendRowWidgets(rows[tailFrom..<tailEnd])
+        }
+
+        // The tail is on screen; earlier rows arrive above it, newest-first, one chunk per pass.
+        let tailDone = start + renderedRows.count >= rows.count
+        if tailDone, start > 0 {
+            let from = max(0, start - chunk)
+            var previous: UnsafeMutablePointer<GtkWidget>?
+            var bits: [UInt] = []
+            for row in rows[from..<start] {
+                let widget = row.makeWidget(context: context)
+                gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
+                previous = widget
+                bits.append(UInt(bitPattern: widget))
+            }
+            renderedRows.insert(contentsOf: rows[from..<start], at: 0)
+            rowWidgets.insert(contentsOf: bits, at: 0)
+            start = from
+        }
+
+        let complete = tailDone && start == 0
+        if !complete {
+            if stick { followsBottom = true }
+            if !isFillingInChunks {
+                isFillingInChunks = true
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.isFillingInChunks = false
+                    guard let state = self.lastState else { return }
+                    self.apply(state: state, rows: self.lastFullRows)
+                }
+            }
         }
 
         if stick {
@@ -966,27 +1010,57 @@ final class MainWindow: @unchecked Sendable {
         } else {
             noteAppendedWhileScrolledUp(growth)
         }
-        if gtk_widget_get_visible(findBar) != 0 { runFind(retarget: false) }
+        if complete, gtk_widget_get_visible(findBar) != 0 { runFind(retarget: false) }
     }
 
-    /// A cache arrival (a decoded picture, a fetched subagent transcript) replays the same rows
-    /// through fresh widgets. It is not new content: the unseen counter and the find highlight
-    /// must survive it untouched — the highlight as a cleared pointer, never a dangling one.
-    private func forceRebuild() {
-        guard !placeholderShown else { return }
-        clearFindHighlight()
-        rebuildingInPlace = true
-        defer { rebuildingInPlace = false }
-        Gtk.removeChildren(of: transcriptBox)
-        let rows = renderedRows
+    private func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
+        for row in rows {
+            let widget = row.makeWidget(context: context)
+            gtk_box_append(ptr(transcriptBox), widget)
+            rowWidgets.append(UInt(bitPattern: widget))
+            renderedRows.append(row)
+        }
+    }
+
+    private func tearDownAllRows() {
+        for bits in rowWidgets {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+            gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+        }
         renderedRows = []
         rowWidgets = []
-        applyRows(rows)
+        highlightedRow = 0
+    }
+
+    /// A cache arrival (a decoded picture, a fetched subagent transcript) redraws exactly the rows
+    /// it belongs to, in place: the widget is swapped where it stands, every other row keeps its
+    /// state, and nothing scrolls. It is not new content — the unseen counter never moves.
+    private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
+        guard !placeholderShown else { return }
+        for index in renderedRows.indices where predicate(renderedRows[index]) {
+            guard index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            if rowWidgets[index] == highlightedRow { clearFindHighlight() }
+            let old: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            let previous: UnsafeMutablePointer<GtkWidget>? =
+                index > 0
+                ? UnsafeMutableRawPointer(bitPattern: rowWidgets[index - 1]).map { ptr($0) } : nil
+            gtk_box_remove(ptr(transcriptBox), old)
+            let widget = renderedRows[index].makeWidget(context: context)
+            gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
+            rowWidgets[index] = UInt(bitPattern: widget)
+        }
     }
 
     /// What the turn is waiting on, docked where the CLI's prompt would sit: approvals first,
-    /// then questions. Cards are few; rebuilding them wholesale on every state is free.
+    /// then questions. Rebuilt only when what is pending actually changes — this runs on every
+    /// streamed token, and cards that flicker under a click swallow the click.
     private func renderPendingCards(_ state: ConversationState) {
+        let signature = (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
+            .joined(separator: "|") + "|" + (state.compaction?.failure ?? "")
+        guard signature != pendingSignature else { return }
+        pendingSignature = signature
         Gtk.removeChildren(of: pendingBox)
         for permission in state.pendingPermissions {
             gtk_box_append(
@@ -1078,6 +1152,7 @@ final class MainWindow: @unchecked Sendable {
         for (index, row) in renderedRows.enumerated() {
             guard case .subagent(let call) = row.kind, call.id == id else { continue }
             context.expanded.insert(row.key)
+            replaceRows { $0.key == row.key }
             fetchSubagent(call)
             scrollToRow(at: index)
             return
@@ -1479,7 +1554,7 @@ final class MainWindow: @unchecked Sendable {
                 guard let self else { return }
                 self.context.textures[key] = bits
                 self.context.imageData[key] = data
-                self.forceRebuild()
+                self.replaceRows { $0.key == key }
             }
         }
     }
@@ -1501,10 +1576,14 @@ final class MainWindow: @unchecked Sendable {
                 messages = []
             }
             let rows = TranscriptRow.rows(for: messages)
+            let callID = call.id
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.context.subagentRows[call.id] = rows
-                self.forceRebuild()
+                self.context.subagentRows[callID] = rows
+                self.replaceRows {
+                    if case .subagent(let spawned) = $0.kind { return spawned.id == callID }
+                    return false
+                }
             }
         }
     }
@@ -1670,19 +1749,36 @@ final class MainWindow: @unchecked Sendable {
         composerHeight = 0
         growComposer()
         terminal.setFontScale(Preferences.terminalScale)
+        terminal.applyPalette(MatrixTheme.palette)
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         gtk_box_set_spacing(ptr(transcriptBox), Preferences.denseRows ? 3 : 10)
         updateVimBadge()
         // Compact and dense change what a row *is*, so the transcript is rebuilt rather than
         // restyled: the diff that keeps streaming cheap would otherwise keep the old rows.
-        renderedRows = []
-        rowWidgets = []
-        Gtk.removeChildren(of: transcriptBox)
+        tearDownAllRows()
         placeholderShown = true
-        if let state = lastState, let entry = currentEntry {
-            let rows = TranscriptRow.rows(for: state.messages)
-            _ = entry
-            apply(state: state, rows: rows)
+        rebuildTranscriptRows()
+    }
+
+    /// The desktop's dark preference flipped: reload the stylesheet for the other palette and
+    /// re-derive the rows, whose prose markup carries the palette's colors baked in. Row folding
+    /// runs off the main context; only prose rows differ, so everything else keeps its widget.
+    private func retheme() {
+        MatrixTheme.install()
+        terminal.applyPalette(MatrixTheme.palette)
+        rebuildTranscriptRows()
+    }
+
+    /// Rows for the current state, folded off the GLib main context — a ten-thousand-message
+    /// conversation must never be re-parsed where the frame clock lives.
+    private func rebuildTranscriptRows() {
+        guard let state = lastState else { return }
+        let tail = rowTailMessages
+        Task.detached { [weak self] in
+            let messages =
+                state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
+            let rows = TranscriptRow.rows(for: messages)
+            Gtk.onMain { [weak self] in self?.apply(state: state, rows: rows) }
         }
     }
 
