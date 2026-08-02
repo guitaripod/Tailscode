@@ -15,7 +15,8 @@ final class MainWindow: @unchecked Sendable {
     private var window: UnsafeMutablePointer<GtkWidget>?
     private let sidebarList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let sidebarBanner = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let transcriptBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+    private let transcriptBox = Gtk.box(
+        GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private let goalLabel = Gtk.label("", css: "goal-line", selectable: false)
@@ -238,7 +239,7 @@ final class MainWindow: @unchecked Sendable {
 
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 4 : 10)
         Gtk.addClass(canvas, "transcript")
         canvasBox = canvas
         gtk_widget_set_visible(earlierButton, 0)
@@ -342,6 +343,12 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(row), scroller)
         gtk_box_append(ptr(row), attach)
         gtk_box_append(ptr(row), sendButton)
+
+        // Dropping files on the prompt box attaches them, which is how a file gets from a file
+        // manager into a conversation without a dialog in between.
+        Gtk.acceptFileDrops(on: row) { [weak self] paths in
+            self?.attach(paths: paths)
+        }
         return row
     }
 
@@ -1489,8 +1496,19 @@ final class MainWindow: @unchecked Sendable {
         growComposer()
         terminal.setFontScale(Preferences.terminalScale)
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
+        gtk_box_set_spacing(ptr(transcriptBox), Preferences.denseRows ? 3 : 10)
         updateVimBadge()
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
+        // Compact and dense change what a row *is*, so the transcript is rebuilt rather than
+        // restyled: the diff that keeps streaming cheap would otherwise keep the old rows.
+        renderedRows = []
+        rowWidgets = []
+        Gtk.removeChildren(of: transcriptBox)
+        placeholderShown = true
+        if let state = lastState, let entry = currentEntry {
+            let rows = TranscriptRow.rows(for: state.messages)
+            _ = entry
+            apply(state: state, rows: rows)
+        }
     }
 
     /// The dividers are read back rather than watched: `notify::position` carries three arguments
@@ -1779,17 +1797,20 @@ final class MainWindow: @unchecked Sendable {
 
     private func pickAttachments() {
         Gtk.openFiles(parent: window) { [weak self] paths in
-            guard let self else { return }
-            for path in paths {
-                switch AttachmentIntake.read(path: path) {
-                case .success(let attachment):
-                    self.attachments.append(attachment)
-                case .failure(let refusal):
-                    gtk_label_set_text(op(self.statusLabel), refusal.message)
-                }
-            }
-            self.renderAttachments()
+            self?.attach(paths: paths)
         }
+    }
+
+    private func attach(paths: [String]) {
+        for path in paths {
+            switch AttachmentIntake.read(path: path) {
+            case .success(let attachment):
+                attachments.append(attachment)
+            case .failure(let refusal):
+                gtk_label_set_text(op(statusLabel), refusal.message)
+            }
+        }
+        renderAttachments()
     }
 
     private func pasteImageAttachment() {

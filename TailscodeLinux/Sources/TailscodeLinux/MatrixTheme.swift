@@ -42,7 +42,7 @@ enum MatrixTheme {
         }
         .transcript {
             background-color: \(canvas);
-            padding: 18px 26px;
+            padding: \(Preferences.denseRows ? "8px 18px" : "18px 26px");
         }
         .turn-rule {
             background-color: \(rule);

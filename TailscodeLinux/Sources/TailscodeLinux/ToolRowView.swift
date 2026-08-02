@@ -26,6 +26,56 @@ enum ToolRowView {
         return row
     }
 
+    /// A run of tool calls as one line: what they were, how many, and the net diff — expanding in
+    /// place to the same rows compact mode folded away.
+    static func makeRun(_ calls: [ToolCall], key: String, context: TranscriptContext)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let worst: ToolStatus = calls.contains { $0.status == .error }
+            ? .error : calls.contains { $0.status == .running } ? .running : .completed
+        gtk_box_append(
+            ptr(header), Gtk.label(glyph(worst), css: glyphClass(worst), selectable: false))
+        gtk_box_append(
+            ptr(header),
+            Gtk.label(
+                Localized.text("%@ tools", "\(calls.count)"), css: "tool-name", selectable: false))
+
+        var tally: [(String, Int)] = []
+        for call in calls {
+            if let index = tally.firstIndex(where: { $0.0 == call.name }) {
+                tally[index].1 += 1
+            } else {
+                tally.append((call.name, 1))
+            }
+        }
+        let names = tally.prefix(6).map { $0.1 > 1 ? "\($0.0)×\($0.1)" : $0.0 }
+            .joined(separator: " ")
+        let label = Gtk.label(names, css: "tool-detail", selectable: false)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(header), label)
+
+        let added = calls.compactMap { $0.summary.diffStats?.added }.reduce(0, +)
+        let removed = calls.compactMap { $0.summary.diffStats?.removed }.reduce(0, +)
+        if added > 0 {
+            gtk_box_append(ptr(header), Gtk.label("+\(added)", css: "diff-add", selectable: false))
+        }
+        if removed > 0 {
+            gtk_box_append(
+                ptr(header), Gtk.label("−\(removed)", css: "diff-remove", selectable: false))
+        }
+
+        let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.margins(body, leading: 16)
+        for (index, call) in calls.enumerated() {
+            gtk_box_append(ptr(body), make(call, key: "\(key):\(index)", context: context))
+        }
+        let toggle = context.onToggle
+        return Gtk.disclosure(header: header, body: body, expanded: context.isExpanded(key)) {
+            open in toggle?(key, open)
+        }
+    }
+
     static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary)
         -> UnsafeMutablePointer<GtkWidget>
     {

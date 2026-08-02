@@ -30,6 +30,13 @@ enum Preferences {
 
     private static var defaults: UserDefaults { .standard }
 
+    /// Settings are flushed as they change rather than at exit: this app is routinely killed by a
+    /// window manager or a session logout, and a preference that only survives a graceful quit is
+    /// a preference that appears not to stick.
+    private static func flush() {
+        defaults.synchronize()
+    }
+
     static func scale(_ area: Area) -> Double {
         let stored = defaults.double(forKey: "tailscode.scale.\(area.rawValue)")
         return stored == 0 ? 1.0 : stored
@@ -37,6 +44,7 @@ enum Preferences {
 
     static func setScale(_ value: Double, for area: Area) {
         defaults.set(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.\(area.rawValue)")
+        flush()
     }
 
     static func stepScale(_ delta: Double, for area: Area) {
@@ -55,6 +63,7 @@ enum Preferences {
 
     static func setTerminalScale(_ value: Double) {
         defaults.set(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.terminal")
+        flush()
     }
 
     static var sendOnReturn: Bool {
@@ -63,6 +72,34 @@ enum Preferences {
 
     static func setSendOnReturn(_ value: Bool) {
         defaults.set(value, forKey: "tailscode.sendOnReturn")
+        flush()
+    }
+
+    /// An environment override for a switch, so a setting can be tried — or screenshotted, or
+    /// asserted in a headless run — without a click.
+    private static func flag(_ key: String, environment: String) -> Bool {
+        if let raw = ProcessInfo.processInfo.environment[environment] { return raw == "1" }
+        return defaults.bool(forKey: key)
+    }
+
+    /// Whether a run of tool calls collapses to one line instead of taking one line each.
+    static var compactTools: Bool {
+        flag("tailscode.compactTools", environment: "TAILSCODE_COMPACT")
+    }
+
+    static func setCompactTools(_ value: Bool) {
+        defaults.set(value, forKey: "tailscode.compactTools")
+        flush()
+    }
+
+    /// Tighter vertical rhythm everywhere in the canvas.
+    static var denseRows: Bool {
+        flag("tailscode.denseRows", environment: "TAILSCODE_DENSE")
+    }
+
+    static func setDenseRows(_ value: Bool) {
+        defaults.set(value, forKey: "tailscode.denseRows")
+        flush()
     }
 
     static var vimComposer: Bool {
@@ -71,6 +108,7 @@ enum Preferences {
 
     static func setVimComposer(_ value: Bool) {
         defaults.set(value, forKey: "tailscode.vimComposer")
+        flush()
     }
 
     /// How tall the prompt box is allowed to get before it scrolls instead of growing.
@@ -81,6 +119,7 @@ enum Preferences {
 
     static func setComposerLines(_ value: Int) {
         defaults.set(min(20, max(1, value)), forKey: "tailscode.composerLines")
+        flush()
     }
 
     static var transcriptWindow: Int {
@@ -90,6 +129,7 @@ enum Preferences {
 
     static func setTranscriptWindow(_ value: Int) {
         defaults.set(min(5000, max(50, value)), forKey: "tailscode.transcriptWindow")
+        flush()
     }
 
     static func divider(_ divider: Divider) -> Int32? {
@@ -100,11 +140,13 @@ enum Preferences {
     static func setDivider(_ divider: Divider, position: Int32) {
         guard position > 0 else { return }
         defaults.set(Int(position), forKey: "tailscode.divider.\(divider.rawValue)")
+        flush()
     }
 
     static func resetDividers() {
         for divider in [Divider.sidebar, .project, .terminal] {
             defaults.removeObject(forKey: "tailscode.divider.\(divider.rawValue)")
+            flush()
         }
     }
 }
@@ -182,6 +224,28 @@ enum SettingsDialog {
             })
 
         section(content, Localized.text("TRANSCRIPT"))
+        gtk_box_append(
+            ptr(content),
+            toggle(
+                title: Localized.text("Compact tool calls"),
+                detail: Localized.text(
+                    "A run of tool calls becomes one line you can open, instead of one line each"),
+                value: Preferences.compactTools
+            ) { value in
+                Preferences.setCompactTools(value)
+                onLayoutChanged()
+            })
+        gtk_box_append(
+            ptr(content),
+            toggle(
+                title: Localized.text("Tighter rows"),
+                detail: Localized.text("Less air between parts and turns"),
+                value: Preferences.denseRows
+            ) { value in
+                Preferences.setDenseRows(value)
+                MatrixTheme.install()
+                onLayoutChanged()
+            })
         gtk_box_append(
             ptr(content),
             slider(

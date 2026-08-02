@@ -35,6 +35,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkMarkup()
+            report("markup: \(checks) shapes render")
+        } catch {
+            report("markup: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -212,6 +220,34 @@ public enum SelfTest {
             checked += 1
         }
         return checked
+    }
+
+    /// The transcript's markdown, checked as text rather than as pixels: a mis-escaped `<` is a
+    /// Pango parse error that blanks a whole message, which is the failure worth catching early.
+    private static func checkMarkup() throws -> Int {
+        let cases: [(input: String, contains: [String], label: String)] = [
+            ("**bold** here", ["<b>bold</b>"], "bold"),
+            ("some *italic* text", ["<i>italic</i>"], "italic"),
+            ("a `snippet` inline", ["<tt>snippet</tt>"], "inline code"),
+            ("~~gone~~", ["<s>gone</s>"], "strikethrough"),
+            ("## Heading", ["weight=\"bold\"", "Heading"], "heading"),
+            ("- first\n- second", ["•", "first", "second"], "bullets"),
+            ("1. one", ["1.", "one"], "numbered"),
+            ("> quoted", ["<i>quoted</i>"], "quote"),
+            ("[docs](https://x.dev)", ["<a href=\"https://x.dev\">"], "link"),
+            ("a < b && c > d", ["&lt;", "&amp;&amp;", "&gt;"], "escaping"),
+            ("`<div>`", ["&lt;div&gt;"], "escaped code"),
+            ("2 * 3 * 4 = 24", ["24"], "bare asterisks survive"),
+        ]
+        for testCase in cases {
+            let rendered = PangoMarkdown.render(
+                testCase.input, dim: "#777777", code: "#67e8f9", accent: "#4ade80")
+            for needle in testCase.contains where !rendered.contains(needle) {
+                throw SelfTestFailure(
+                    "\(testCase.label): \(rendered.debugDescription) lacks \(needle.debugDescription)")
+            }
+        }
+        return cases.count
     }
 
     /// Two observers on one conversation, which is the whole point of a desktop client that is a

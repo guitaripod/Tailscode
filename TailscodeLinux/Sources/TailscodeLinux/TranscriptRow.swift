@@ -31,6 +31,7 @@ struct TranscriptRow: Hashable {
         case codeBlock(language: String?, body: String)
         case reasoning(String)
         case tool(ToolCall)
+        case toolRun([ToolCall])
         case subagent(ToolCall)
         case file(FileReference)
         case compaction(Compaction)
@@ -39,6 +40,14 @@ struct TranscriptRow: Hashable {
 
     let key: String
     let kind: Kind
+
+    static func searchText(for call: ToolCall) -> String {
+        let summary = call.summary
+        return [
+            call.name, summary.title, call.title, summary.detail, summary.command,
+            summary.filePath, summary.displayOutput.map { String($0.prefix(4000)) },
+        ].compactMap { $0 }.joined(separator: " ")
+    }
 
     static func rows(for message: ChatMessage) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
@@ -97,7 +106,39 @@ struct TranscriptRow: Hashable {
             }
             all += rows
         }
-        return all
+        return Preferences.compactTools ? fuse(all) : all
+    }
+
+    /// Compact mode: a run of ordinary tool calls collapses to one line. Twelve greps in a row are
+    /// one fact — "it searched" — and spending twelve lines on them pushes the answer off the
+    /// screen. The run keeps every call inside it, one tap away, and anything that is not an
+    /// ordinary tool call (an error, a subagent, a picture) never joins a run.
+    private static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        var fused: [TranscriptRow] = []
+        var run: [ToolCall] = []
+        var runKey = ""
+
+        func flush() {
+            guard !run.isEmpty else { return }
+            if run.count == 1 {
+                fused.append(TranscriptRow(key: runKey, kind: .tool(run[0])))
+            } else {
+                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .toolRun(run)))
+            }
+            run = []
+        }
+
+        for row in rows {
+            if case .tool(let call) = row.kind, call.status != .error, !call.asksUserQuestion {
+                if run.isEmpty { runKey = row.key }
+                run.append(call)
+                continue
+            }
+            flush()
+            fused.append(row)
+        }
+        flush()
+        return fused
     }
 
     /// What in-conversation search reads for this row: the words a person saw, not widget state.
@@ -108,11 +149,9 @@ struct TranscriptRow: Hashable {
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
         case .tool(let call), .subagent(let call):
-            let summary = call.summary
-            return [
-                call.name, summary.title, call.title, summary.detail, summary.command,
-                summary.filePath, summary.displayOutput.map { String($0.prefix(4000)) },
-            ].compactMap { $0 }.joined(separator: " ")
+            return Self.searchText(for: call)
+        case .toolRun(let calls):
+            return calls.map(Self.searchText(for:)).joined(separator: " ")
         case .file(let reference):
             return reference.filename ?? reference.path ?? ""
         case .compaction(let compaction):
@@ -127,13 +166,19 @@ struct TranscriptRow: Hashable {
         case .userText(let text):
             return Self.prompt(text)
         case .agentProse(let text):
-            return Gtk.label(text, css: "agent-text", wrap: true)
+            return Gtk.markupLabel(
+                PangoMarkdown.render(
+                    text, dim: MatrixTheme.textDim, code: MatrixTheme.cyan,
+                    accent: MatrixTheme.phosphor),
+                css: "agent-text")
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body)
         case .reasoning(let text):
             return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
             return ToolRowView.make(call, key: key, context: context)
+        case .toolRun(let calls):
+            return ToolRowView.makeRun(calls, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
         case .file(let reference):

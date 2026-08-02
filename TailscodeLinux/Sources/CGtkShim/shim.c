@@ -206,6 +206,43 @@ GtkWidget *tailscode_focused_widget(GtkWidget *root) {
     return gtk_root_get_focus(window);
 }
 
+typedef struct {
+    void (*handler)(const char *const *paths, int count, void *data);
+    void *data;
+} TailscodeDrop;
+
+static gboolean tailscode_drop_received(
+    GtkDropTarget *target, const GValue *value, double x, double y, gpointer raw) {
+    (void)target;
+    (void)x;
+    (void)y;
+    TailscodeDrop *box = raw;
+    if (!G_VALUE_HOLDS(value, GDK_TYPE_FILE_LIST)) return FALSE;
+    GSList *files = g_value_get_boxed(value);
+    guint total = g_slist_length(files);
+    char **paths = g_new0(char *, total ? total : 1);
+    int count = 0;
+    for (GSList *item = files; item; item = item->next) {
+        char *path = g_file_get_path(item->data);
+        if (path) paths[count++] = path;
+    }
+    box->handler((const char *const *)paths, count, box->data);
+    for (int i = 0; i < count; i++) g_free(paths[i]);
+    g_free(paths);
+    return count > 0;
+}
+
+void tailscode_accept_file_drops(
+    GtkWidget *widget, void (*handler)(const char *const *paths, int count, void *data),
+    void *data) {
+    TailscodeDrop *box = g_new0(TailscodeDrop, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkDropTarget *target = gtk_drop_target_new(GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
+    g_signal_connect_data(target, "drop", G_CALLBACK(tailscode_drop_received), box, NULL, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
+}
+
 void tailscode_set_text_scale(double scale) {
     GtkSettings *settings = gtk_settings_get_default();
     if (!settings) return;

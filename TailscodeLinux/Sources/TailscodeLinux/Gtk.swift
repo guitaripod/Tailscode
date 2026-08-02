@@ -92,8 +92,47 @@ enum Gtk {
         return widget
     }
 
+    /// A label whose text is Pango markup rather than plain text — the transcript's prose, with the
+    /// markdown resolved into emphasis instead of shown as punctuation.
+    static func markupLabel(_ markup: String, css: String? = nil)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let widget = gtk_label_new(nil)!
+        let label: OpaquePointer = op(widget)
+        gtk_label_set_markup(label, markup)
+        gtk_label_set_xalign(label, 0)
+        gtk_label_set_wrap(label, 1)
+        gtk_label_set_selectable(label, 1)
+        gtk_label_set_wrap_mode(label, PANGO_WRAP_WORD_CHAR)
+        gtk_label_set_ellipsize(label, PANGO_ELLIPSIZE_NONE)
+        if let css { addClass(widget, css) }
+        return widget
+    }
+
     static func addClass(_ widget: UnsafeMutablePointer<GtkWidget>, _ name: String) {
         gtk_widget_add_css_class(widget, name)
+    }
+
+    /// Files dropped anywhere on `widget` arrive as absolute paths.
+    static func acceptFileDrops(
+        on widget: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping ([String]) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PathListBox(handler)).toOpaque()
+        let callback:
+            @convention(c) (
+                UnsafePointer<UnsafePointer<CChar>?>?, Int32, UnsafeMutableRawPointer?
+            ) -> Void = { paths, count, raw in
+                guard let raw else { return }
+                let box = Unmanaged<PathListBox>.fromOpaque(raw).takeUnretainedValue()
+                var result: [String] = []
+                if let paths {
+                    for index in 0..<Int(count) {
+                        if let path = paths[index] { result.append(String(cString: path)) }
+                    }
+                }
+                box.handler(result)
+            }
+        tailscode_accept_file_drops(widget, callback, box)
     }
 
     static func box(_ orientation: GtkOrientation, spacing: Int32) -> UnsafeMutablePointer<GtkWidget> {

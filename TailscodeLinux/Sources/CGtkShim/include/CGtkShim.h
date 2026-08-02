@@ -64,3 +64,9 @@ void tailscode_set_text_scale(double scale);
 /// The widget that currently holds focus inside `root`, or NULL — how a key handler tells the
 /// prompt box apart from the search field without guessing from the event.
 GtkWidget *tailscode_focused_widget(GtkWidget *root);
+
+/// Accepts files dropped on `widget` and calls back with their paths. The drop payload is a
+/// `GdkFileList` inside a `GValue`, neither of which Swift can unbox, so the whole exchange is C.
+void tailscode_accept_file_drops(
+    GtkWidget *widget, void (*handler)(const char *const *paths, int count, void *data),
+    void *data);
