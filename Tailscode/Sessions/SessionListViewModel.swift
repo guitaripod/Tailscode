@@ -168,6 +168,7 @@ final class SessionListViewModel {
                 switch result {
                 case .success(let list):
                     failureStreaks[source.profile.id] = 0
+                    healthilySlow.remove(source.profile.id)
                     fresh[source.profile.id] = list.filter { $0.parentID == nil }.map {
                         SessionEntry(
                             profileID: source.profile.id,
@@ -185,19 +186,61 @@ final class SessionListViewModel {
                 }
             }
         }
-        publish(fresh)
+        await publish(fresh)
+    }
+
+    /// Servers whose listing keeps missing the deadline while their `/status` answers instantly:
+    /// busy, not down. They keep their last-known sessions and never raise the banner.
+    private var healthilySlow: Set<String> = []
+
+    /// The listing route can take longer than any reasonable deadline while the bridge folds a
+    /// live turn — and a slow answer is not a dead server. Before a server is pronounced
+    /// unreachable, it gets asked the cheap question directly; only silence there too earns the
+    /// banner.
+    private func confirmedDown(_ ids: [String]) async -> Set<String> {
+        guard !ids.isEmpty else { return [] }
+        return await withTaskGroup(of: (String, Bool).self) { group in
+            for id in ids {
+                guard let source = sources.first(where: { $0.profile.id == id }) else { continue }
+                group.addTask {
+                    let healthy: Bool = await {
+                        do {
+                            return try await withThrowingTaskGroup(of: Bool.self) { probe in
+                                probe.addTask { try await source.backend.health().healthy }
+                                probe.addTask {
+                                    try await Task.sleep(for: .seconds(4))
+                                    throw SourceTimeout()
+                                }
+                                guard let first = try await probe.next() else { return false }
+                                probe.cancelAll()
+                                return first
+                            }
+                        } catch {
+                            return false
+                        }
+                    }()
+                    return (id, healthy)
+                }
+            }
+            var down = Set(ids)
+            for await (id, healthy) in group where healthy { down.remove(id) }
+            return down
+        }
     }
 
     /// Merged onto whatever is on screen at this moment rather than onto a
     /// snapshot taken before the fan-out: the confirmation pass and the cadence
     /// can be in flight together, and neither may republish the other's servers
     /// from a list it read minutes ago.
-    private func publish(_ fresh: [String: [SessionEntry]]) {
+    private func publish(_ fresh: [String: [SessionEntry]]) async {
         let byProfile = Dictionary(grouping: entries, by: \.profileID)
             .merging(fresh) { _, new in new }
         let live = sources.map(\.profile.id)
         let collected = live.flatMap { byProfile[$0] ?? [] }
-        let verdicts = live.filter { (failureStreaks[$0] ?? 0) >= Self.failuresBeforeVerdict }
+        let candidates = live.filter { (failureStreaks[$0] ?? 0) >= Self.failuresBeforeVerdict }
+        let down = await confirmedDown(candidates.filter { !healthilySlow.contains($0) })
+        for id in candidates where !down.contains(id) { healthilySlow.insert(id) }
+        let verdicts = candidates.filter { down.contains($0) || !healthilySlow.contains($0) }
         let changed = collected.count != entries.count || verdicts != unreachable
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = verdicts

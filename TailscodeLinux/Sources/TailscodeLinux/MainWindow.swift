@@ -608,17 +608,20 @@ final class MainWindow: @unchecked Sendable {
         guard let bits = context.textures[key], bits != 0 else { return }
         let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
         let data = context.imageData[key]
-        let (viewer, content) = Dialogs.window(title: name, parent: window, width: 960)
-        gtk_window_set_default_size(ptr(viewer), 960, 720)
+        // As big as the window allows, with the picture scaled to fit it whole — reading a
+        // screenshot should not start with scrollbars around a 1:1 crop.
+        let hostWidth = window.map { gtk_widget_get_width($0) } ?? 0
+        let hostHeight = window.map { gtk_widget_get_height($0) } ?? 0
+        let width = max(960, hostWidth - 120)
+        let height = max(700, hostHeight - 100)
+        let (viewer, content) = Dialogs.window(title: name, parent: window, width: width)
+        gtk_window_set_default_size(ptr(viewer), width, height)
 
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
         let picture = tailscode_picture_for_texture(texture)!
-        gtk_widget_set_size_request(
-            picture, tailscode_texture_width(texture), tailscode_texture_height(texture))
-        gtk_scrolled_window_set_child(op(scroller), picture)
-        gtk_widget_set_vexpand(scroller, 1)
-        gtk_box_append(ptr(content), scroller)
+        gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_CONTAIN)
+        gtk_widget_set_hexpand(picture, 1)
+        gtk_widget_set_vexpand(picture, 1)
+        gtk_box_append(ptr(content), picture)
 
         let bar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_box_append(
