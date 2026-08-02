@@ -8,7 +8,14 @@ import TailscodeCore
 /// The servers this machine knows, editable in place. Adding one probes it before saving — a typo
 /// fails here, named, rather than becoming a row that never loads — and the failure names its
 /// cause: the address didn't parse, the port didn't answer, the password was refused.
+///
+/// Keeping each server current is also this screen's job: every claude-bridge row carries a
+/// Software line that reads `/update`, offers the update with the commits it would bring, and
+/// follows it through the server's own restart. A bridge too old to have the route says so and
+/// hands over the one-line install command instead.
 final class ServerManager: @unchecked Sendable {
+    static let installCommand =
+        "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
     private var window: UnsafeMutablePointer<GtkWidget>?
     private let listBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private let statusLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
@@ -104,6 +111,12 @@ final class ServerManager: @unchecked Sendable {
                 Gtk.label(
                     "\(profile.backend == .openCode ? "opencode" : "claude") · \(profile.baseURL.absoluteString)",
                     css: "row-detail", selectable: false))
+            if profile.backend == .claudeCode {
+                let software = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+                Gtk.margins(software, top: 4)
+                gtk_box_append(ptr(lines), software)
+                checkSoftware(profile, into: UInt(bitPattern: software))
+            }
             gtk_widget_set_hexpand(lines, 1)
             gtk_box_append(ptr(row), lines)
             let id = profile.id
@@ -177,6 +190,160 @@ final class ServerManager: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.setStatus(cause) }
             }
         }
+    }
+
+    /// An unanswered `/update` has two very different causes, and only one deserves the install
+    /// command: a bridge old enough to lack the route still answers `/health`, while a machine
+    /// that answers neither is unreachable — telling someone to reinstall a server that is merely
+    /// asleep would be worse than saying nothing.
+    private func checkSoftware(_ profile: ConnectionProfile, into bits: UInt) {
+        setSoftwareText(bits, Localized.text("Checking for updates…"))
+        Task { [weak self] in
+            guard
+                let backend = await ServerDirectory.shared.backend(for: profile)
+                    as? any SelfUpdatingBackend
+            else { return }
+            if let update = try? await backend.updateStatus(checkingRemote: true) {
+                Gtk.onMain { [weak self] in
+                    self?.renderSoftware(update, profile: profile, into: bits)
+                }
+            } else if (try? await backend.health()) != nil {
+                Gtk.onMain { [weak self] in
+                    self?.renderSoftware(nil, profile: profile, into: bits)
+                }
+            } else {
+                Gtk.onMain { [weak self] in
+                    self?.setSoftwareText(
+                        bits,
+                        Localized.text("Could not check for updates — the server is unreachable."))
+                }
+            }
+        }
+    }
+
+    private func renderSoftware(_ update: ServerUpdate?, profile: ConnectionProfile, into bits: UInt) {
+        guard let box = Self.widget(from: bits) else { return }
+        Gtk.removeChildren(of: box)
+        guard let update else {
+            gtk_box_append(
+                ptr(box),
+                Gtk.label(
+                    Localized.text(
+                        "This bridge is too old to report its software. Update it by hand:"),
+                    css: "row-detail", wrap: true, selectable: false))
+            gtk_box_append(
+                ptr(box),
+                softwareButton(Localized.text("Copy the install command"), css: ["flat"]) {
+                    Gtk.copyToClipboard(Self.installCommand)
+                })
+            return
+        }
+        if update.phase == .failed {
+            let detail = update.reason ?? update.log.map { String($0.suffix(300)) } ?? ""
+            gtk_box_append(
+                ptr(box),
+                Gtk.label(
+                    Localized.text("The last update failed. %@", detail), css: "glyph-error",
+                    wrap: true))
+        }
+        guard update.updateAvailable else {
+            gtk_box_append(
+                ptr(box),
+                Gtk.label(
+                    Localized.text("%@ · up to date", update.version), css: "row-detail",
+                    selectable: false))
+            return
+        }
+        let target = update.latestVersion
+            ?? update.latestCommit.map { String($0.prefix(7)) }
+            ?? Localized.text("latest")
+        var headline = "\(update.version) → \(target)"
+        if let behind = update.behind, behind > 0 {
+            headline += " · " + Localized.text("%@ commits behind", "\(behind)")
+        }
+        gtk_box_append(ptr(box), Gtk.label(headline, css: "row-title", selectable: false))
+        for change in update.changes.prefix(5) {
+            gtk_box_append(
+                ptr(box), Gtk.label("· \(change)", css: "row-detail", wrap: true, selectable: false))
+        }
+        if update.canUpdate {
+            gtk_box_append(
+                ptr(box),
+                softwareButton(Localized.text("Update the server"), css: ["suggested-action"]) {
+                    [weak self] in
+                    Gtk.onMain { [weak self] in self?.runUpdate(profile, into: bits) }
+                })
+        } else if let reason = update.reason {
+            gtk_box_append(ptr(box), Gtk.label(reason, css: "row-detail", wrap: true, selectable: false))
+        }
+    }
+
+    /// The update is followed to the end, not to the first heartbeat: the old process keeps
+    /// answering `/health` through the whole fetch and build, so the loop watches the update's own
+    /// phase and treats a refused connection as the restart doing its job. Only a settled phase —
+    /// or ten minutes of silence — ends it.
+    private func runUpdate(_ profile: ConnectionProfile, into bits: UInt) {
+        setSoftwareText(bits, Localized.text("Updating — asking the server to fetch and build…"))
+        Task { [weak self] in
+            guard
+                let backend = await ServerDirectory.shared.backend(for: profile)
+                    as? any SelfUpdatingBackend
+            else { return }
+            _ = try? await backend.startUpdate()
+            let deadline = Date().addingTimeInterval(600)
+            while Date() < deadline {
+                try? await Task.sleep(for: .seconds(3))
+                guard let update = try? await backend.updateStatus(checkingRemote: false) else {
+                    Gtk.onMain { [weak self] in
+                        self?.setSoftwareText(
+                            bits,
+                            Localized.text("Updating — the server is restarting…"))
+                    }
+                    continue
+                }
+                if update.isRunning {
+                    let phase =
+                        update.phase == .building
+                        ? Localized.text("Updating — building…")
+                        : update.phase == .restarting
+                            ? Localized.text("Updating — restarting…")
+                            : Localized.text("Updating — fetching…")
+                    Gtk.onMain { [weak self] in self?.setSoftwareText(bits, phase) }
+                    continue
+                }
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.renderSoftware(update, profile: profile, into: bits)
+                    self.setStatus(
+                        Localized.text("%@ is back — %@", profile.name, update.version))
+                }
+                return
+            }
+            Gtk.onMain { [weak self] in
+                self?.setSoftwareText(
+                    bits,
+                    Localized.text(
+                        "The update did not settle within ten minutes — check the server over ssh."))
+            }
+        }
+    }
+
+    private func setSoftwareText(_ bits: UInt, _ text: String) {
+        guard let box = Self.widget(from: bits) else { return }
+        Gtk.removeChildren(of: box)
+        gtk_box_append(ptr(box), Gtk.label(text, css: "row-detail", wrap: true, selectable: false))
+    }
+
+    private func softwareButton(
+        _ title: String, css: [String], onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = Gtk.button(title, css: css, onClick: onClick)
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        return button
+    }
+
+    private static func widget(from bits: UInt) -> UnsafeMutablePointer<GtkWidget>? {
+        UnsafeMutableRawPointer(bitPattern: bits).map { ptr($0) }
     }
 
     /// A failed probe names its cause rather than surfacing a raw error: the port not answering,

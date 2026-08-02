@@ -115,3 +115,87 @@ int tailscode_texture_width(GdkTexture *texture) {
 int tailscode_texture_height(GdkTexture *texture) {
     return gdk_texture_get_height(texture);
 }
+
+typedef struct {
+    void (*handler)(const char *const *paths, int count, void *data);
+    void *data;
+} TailscodeFileOpen;
+
+static void tailscode_file_open_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeFileOpen *box = raw;
+    GListModel *files =
+        gtk_file_dialog_open_multiple_finish(GTK_FILE_DIALOG(source), result, NULL);
+    if (!files) {
+        box->handler(NULL, 0, box->data);
+        g_free(box);
+        return;
+    }
+    guint total = g_list_model_get_n_items(files);
+    char **paths = g_new0(char *, total ? total : 1);
+    int count = 0;
+    for (guint i = 0; i < total; i++) {
+        GFile *file = g_list_model_get_item(files, i);
+        char *path = g_file_get_path(file);
+        if (path) paths[count++] = path;
+        g_object_unref(file);
+    }
+    g_object_unref(files);
+    box->handler((const char *const *)paths, count, box->data);
+    for (int i = 0; i < count; i++) g_free(paths[i]);
+    g_free(paths);
+    g_free(box);
+}
+
+void tailscode_file_open(
+    GtkWindow *parent, void (*handler)(const char *const *paths, int count, void *data),
+    void *data) {
+    TailscodeFileOpen *box = g_new0(TailscodeFileOpen, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkFileDialog *dialog = gtk_file_dialog_new();
+    gtk_file_dialog_open_multiple(dialog, parent, NULL, tailscode_file_open_done, box);
+    g_object_unref(dialog);
+}
+
+typedef struct {
+    void (*handler)(const void *bytes, gsize len, void *data);
+    void *data;
+} TailscodeClipboardRead;
+
+static void tailscode_clipboard_read_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeClipboardRead *box = raw;
+    GdkTexture *texture =
+        gdk_clipboard_read_texture_finish(GDK_CLIPBOARD(source), result, NULL);
+    if (!texture) {
+        box->handler(NULL, 0, box->data);
+        g_free(box);
+        return;
+    }
+    GBytes *png = gdk_texture_save_to_png_bytes(texture);
+    gsize len = 0;
+    const void *bytes = g_bytes_get_data(png, &len);
+    box->handler(bytes, len, box->data);
+    g_bytes_unref(png);
+    g_object_unref(texture);
+    g_free(box);
+}
+
+void tailscode_clipboard_read_image(
+    void (*handler)(const void *bytes, gsize len, void *data), void *data) {
+    GdkDisplay *display = gdk_display_get_default();
+    GdkClipboard *clipboard = display ? gdk_display_get_clipboard(display) : NULL;
+    if (!clipboard) {
+        handler(NULL, 0, data);
+        return;
+    }
+    TailscodeClipboardRead *box = g_new0(TailscodeClipboardRead, 1);
+    box->handler = handler;
+    box->data = data;
+    gdk_clipboard_read_texture_async(clipboard, NULL, tailscode_clipboard_read_done, box);
+}
+
+double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor) {
+    graphene_rect_t bounds;
+    if (!gtk_widget_compute_bounds(widget, ancestor, &bounds)) return -1;
+    return bounds.origin.y;
+}

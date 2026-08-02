@@ -35,6 +35,25 @@ final class MainWindow: @unchecked Sendable {
     private let searchEntry = gtk_search_entry_new()!
     private let helpOverlay = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
 
+    private let attachmentsBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    private var attachments: [PendingAttachment] = []
+    private var pastedImageCount = 0
+
+    private let jumpButton = gtk_button_new()!
+    private var unseenRows = 0
+
+    private let findBar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let findEntry = gtk_search_entry_new()!
+    private let findCountLabel = Gtk.label("", css: "row-detail", selectable: false)
+    private var findMatches: [Int] = []
+    private var findCursor = 0
+    private var highlightedRow: UInt = 0
+    private var canvasBox: UnsafeMutablePointer<GtkWidget>?
+    private var rebuildingInPlace = false
+
+    private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    private var usageTask: Task<Void, Never>?
+
     private let context = TranscriptContext()
     private var renderedRows: [TranscriptRow] = []
     private var rowWidgets: [UInt] = []
@@ -94,6 +113,7 @@ final class MainWindow: @unchecked Sendable {
         wireContext()
         installKeymap(on: window)
         startRefreshing()
+        startUsagePolling()
     }
 
     private func makeSidebarPage() -> UnsafeMutablePointer<AdwNavigationPage> {
@@ -124,6 +144,11 @@ final class MainWindow: @unchecked Sendable {
         gtk_scrolled_window_set_child(op(scroller), sidebarList)
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(column), scroller)
+
+        gtk_widget_set_visible(usageBox, 0)
+        Gtk.addClass(usageBox, "usage-footer")
+        Gtk.margins(usageBox, top: 6, bottom: 8, leading: 10, trailing: 10)
+        gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
         return adw_navigation_page_new(toolbar, "Chats")!
@@ -159,17 +184,40 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_visible(authBanner, 0)
         gtk_box_append(ptr(column), authBanner)
 
+        gtk_box_append(ptr(column), makeFindBar())
+
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
         let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(canvas, "transcript")
+        canvasBox = canvas
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
         gtk_scrolled_window_set_child(op(scroller), canvas)
         gtk_widget_set_vexpand(scroller, 1)
         transcriptScroller = scroller
-        gtk_box_append(ptr(column), scroller)
+
+        let overlay = gtk_overlay_new()!
+        gtk_overlay_set_child(op(overlay), scroller)
+        gtk_widget_set_vexpand(overlay, 1)
+        Gtk.addClass(jumpButton, "jump-pill")
+        gtk_widget_set_halign(jumpButton, GTK_ALIGN_END)
+        gtk_widget_set_valign(jumpButton, GTK_ALIGN_END)
+        Gtk.margins(jumpButton, bottom: 14, trailing: 22)
+        gtk_widget_set_visible(jumpButton, 0)
+        Gtk.connect(UnsafeMutableRawPointer(jumpButton), "clicked") { [weak self] in
+            self?.jumpToBottom()
+        }
+        gtk_overlay_add_overlay(op(overlay), jumpButton)
+        gtk_box_append(ptr(column), overlay)
+
+        if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
+            Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
+                guard let self, self.isNearBottom() else { return }
+                self.clearUnseen()
+            }
+        }
 
         gtk_widget_set_visible(helpOverlay, 0)
         Gtk.addClass(helpOverlay, "canvas")
@@ -187,6 +235,9 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_visible(goalLabel, 0)
         gtk_box_append(ptr(column), goalLabel)
         gtk_box_append(ptr(column), statusLabel)
+        gtk_widget_set_visible(attachmentsBox, 0)
+        Gtk.margins(attachmentsBox, top: 4, leading: 26, trailing: 26)
+        gtk_box_append(ptr(column), attachmentsBox)
         gtk_box_append(ptr(column), makeComposer())
         gtk_box_append(ptr(column), makePillRow())
         return column
@@ -219,9 +270,46 @@ final class MainWindow: @unchecked Sendable {
             self?.sendFromComposer()
         }
 
+        let attach = Gtk.menuButton("📎", css: ["flat"]) { [weak self] in
+            self?.attachRows() ?? []
+        }
+        gtk_widget_set_valign(attach, GTK_ALIGN_END)
+
         gtk_box_append(ptr(row), scroller)
+        gtk_box_append(ptr(row), attach)
         gtk_box_append(ptr(row), sendButton)
         return row
+    }
+
+    /// The transcript's own search, over what the rows say rather than what the server indexes:
+    /// it works offline, on a saved copy, and mid-turn.
+    private func makeFindBar() -> UnsafeMutablePointer<GtkWidget> {
+        Gtk.addClass(findBar, "find-bar")
+        gtk_widget_set_visible(findBar, 0)
+        Gtk.margins(findBar, top: 4, bottom: 4, leading: 26, trailing: 26)
+
+        gtk_search_entry_set_placeholder_text(
+            op(findEntry), Localized.text("Find in this conversation"))
+        gtk_widget_set_hexpand(findEntry, 1)
+        Gtk.connect(UnsafeMutableRawPointer(findEntry), "search-changed") { [weak self] in
+            self?.runFind(retarget: true)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(findEntry), "activate") { [weak self] in
+            self?.stepFind(by: 1)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(findEntry), "stop-search") { [weak self] in
+            self?.setFindShown(false)
+        }
+        gtk_box_append(ptr(findBar), findEntry)
+        gtk_box_append(ptr(findBar), findCountLabel)
+        gtk_box_append(
+            ptr(findBar), Gtk.button("↑", css: ["flat"]) { [weak self] in self?.stepFind(by: -1) })
+        gtk_box_append(
+            ptr(findBar), Gtk.button("↓", css: ["flat"]) { [weak self] in self?.stepFind(by: 1) })
+        gtk_box_append(
+            ptr(findBar),
+            Gtk.button("✕", css: ["flat"]) { [weak self] in self?.setFindShown(false) })
+        return findBar
     }
 
     /// The line under the composer that says where the next prompt goes and how: destination,
@@ -466,6 +554,11 @@ final class MainWindow: @unchecked Sendable {
         context.subagentRows = [:]
         inFlightImages = []
         inFlightSubagents = []
+        attachments = []
+        pastedImageCount = 0
+        renderAttachments()
+        clearUnseen()
+        if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry.session.id)
         streamTask?.cancel()
         showPlaceholder(Localized.text("Connecting…"))
@@ -585,6 +678,7 @@ final class MainWindow: @unchecked Sendable {
         Gtk.removeChildren(of: transcriptBox)
         renderedRows = []
         rowWidgets = []
+        highlightedRow = 0
         placeholderShown = true
         let label = Gtk.label(text, css: "dim", selectable: false)
         Gtk.margins(label, top: 24, bottom: 24, leading: 4, trailing: 4)
@@ -595,13 +689,15 @@ final class MainWindow: @unchecked Sendable {
     /// disclosure state, its selection, its scroll cost — and only the tail is rebuilt. A token
     /// appended to the last message rebuilds one row, not the conversation.
     private func applyRows(_ rows: [TranscriptRow]) {
+        let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
             renderedRows = []
             rowWidgets = []
             placeholderShown = false
         }
-        let stick = isNearBottom()
+        let stick = initialFill || isNearBottom()
+        let growth = initialFill || rebuildingInPlace ? 0 : rows.count - renderedRows.count
 
         var prefix = 0
         while prefix < renderedRows.count, prefix < rows.count, renderedRows[prefix] == rows[prefix] {
@@ -609,6 +705,7 @@ final class MainWindow: @unchecked Sendable {
         }
         for bits in rowWidgets[prefix...] {
             guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+            if bits == highlightedRow { highlightedRow = 0 }
             gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
         }
         rowWidgets.removeSubrange(prefix...)
@@ -619,11 +716,22 @@ final class MainWindow: @unchecked Sendable {
         }
         renderedRows = rows
 
-        if stick { scrollToBottom() }
+        if stick {
+            scrollToBottom()
+        } else {
+            noteAppendedWhileScrolledUp(growth)
+        }
+        if gtk_widget_get_visible(findBar) != 0 { runFind(retarget: false) }
     }
 
+    /// A cache arrival (a decoded picture, a fetched subagent transcript) replays the same rows
+    /// through fresh widgets. It is not new content: the unseen counter and the find highlight
+    /// must survive it untouched — the highlight as a cleared pointer, never a dangling one.
     private func forceRebuild() {
         guard !placeholderShown else { return }
+        clearFindHighlight()
+        rebuildingInPlace = true
+        defer { rebuildingInPlace = false }
         Gtk.removeChildren(of: transcriptBox)
         let rows = renderedRows
         renderedRows = []
@@ -1109,7 +1217,10 @@ final class MainWindow: @unchecked Sendable {
         case .scrollTop: scroll(toEnd: false)
         case .scrollBottom: scroll(toEnd: true)
         case .insert: focus(.transcript); gtk_widget_grab_focus(entryView)
-        case .leaveInsert: gtk_widget_grab_focus(sidebarList); setHelp(false)
+        case .leaveInsert:
+            if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
+            gtk_widget_grab_focus(sidebarList)
+            setHelp(false)
         case .search: gtk_widget_grab_focus(searchEntry)
         case .send: sendFromComposer()
         case .stop: stopTurn()
@@ -1120,6 +1231,7 @@ final class MainWindow: @unchecked Sendable {
         case .deny: respondToFirstPermission(.reject)
         case .newChat: presentNewChat()
         case .toggleSaved: toggleSaved()
+        case .findInConversation: setFindShown(true)
         case .commandPalette:
             if let commandButton { gtk_menu_button_popup(op(commandButton)) }
         }
@@ -1265,16 +1377,249 @@ final class MainWindow: @unchecked Sendable {
 
     private func sendFromComposer() {
         let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let conversation else { return }
+        let outgoing = attachments
+        guard !text.isEmpty || !outgoing.isEmpty, let conversation else { return }
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
         if let selectedID {
             UserDefaults.standard.removeObject(forKey: "tailscode.draft.\(selectedID)")
         }
         if handleSlashCommand(text) { return }
+        attachments = []
+        renderAttachments()
         let model = chosenModel
         let effort = chosenEffort
-        Task { try? await conversation.send(text, model: model, reasoningEffort: effort) }
+        Task {
+            try? await conversation.send(
+                text, model: model, reasoningEffort: effort,
+                attachments: outgoing.map(\.prompt))
+        }
+    }
+
+    private func attachRows() -> [(String, String?, @Sendable () -> Void)] {
+        guard currentBackend?.capabilities.supportsAttachments != false else {
+            return [(Localized.text("This server does not take attachments"), nil, {})]
+        }
+        return [
+            (Localized.text("Attach files…"), Localized.text("Up to 8 MB each"),
+             { [weak self] in Gtk.onMain { [weak self] in self?.pickAttachments() } }),
+            (Localized.text("Paste image"), Localized.text("From the clipboard, as PNG"),
+             { [weak self] in Gtk.onMain { [weak self] in self?.pasteImageAttachment() } }),
+        ]
+    }
+
+    private func pickAttachments() {
+        Gtk.openFiles(parent: window) { [weak self] paths in
+            guard let self else { return }
+            for path in paths {
+                switch AttachmentIntake.read(path: path) {
+                case .success(let attachment):
+                    self.attachments.append(attachment)
+                case .failure(let refusal):
+                    gtk_label_set_text(op(self.statusLabel), refusal.message)
+                }
+            }
+            self.renderAttachments()
+        }
+    }
+
+    private func pasteImageAttachment() {
+        Gtk.readClipboardImage { [weak self] data in
+            guard let self else { return }
+            guard let data else {
+                gtk_label_set_text(
+                    op(self.statusLabel), Localized.text("The clipboard holds no picture."))
+                return
+            }
+            guard data.count <= AttachmentIntake.byteCap else {
+                gtk_label_set_text(
+                    op(self.statusLabel),
+                    Localized.text(
+                        "That picture is %@ — the cap is 8 MB",
+                        AttachmentIntake.sizeText(data.count)))
+                return
+            }
+            self.pastedImageCount += 1
+            self.attachments.append(
+                PendingAttachment(
+                    name: "pasted-\(self.pastedImageCount).png", mime: "image/png", data: data))
+            self.renderAttachments()
+        }
+    }
+
+    private func renderAttachments() {
+        Gtk.removeChildren(of: attachmentsBox)
+        gtk_widget_set_visible(attachmentsBox, attachments.isEmpty ? 0 : 1)
+        for attachment in attachments {
+            let title = "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))  ✕"
+            let id = attachment.id
+            gtk_box_append(
+                ptr(attachmentsBox),
+                Gtk.button(title, css: ["chip"]) { [weak self] in
+                    guard let self else { return }
+                    self.attachments.removeAll { $0.id == id }
+                    self.renderAttachments()
+                })
+        }
+    }
+
+    private func jumpToBottom() {
+        scrollToBottom()
+        clearUnseen()
+    }
+
+    private func clearUnseen() {
+        unseenRows = 0
+        gtk_widget_set_visible(jumpButton, 0)
+    }
+
+    private func noteAppendedWhileScrolledUp(_ count: Int) {
+        guard count > 0 else { return }
+        unseenRows += count
+        gtk_button_set_label(ptr(jumpButton), "↓ \(unseenRows)")
+        gtk_widget_set_visible(jumpButton, 1)
+    }
+
+    private func setFindShown(_ shown: Bool) {
+        gtk_widget_set_visible(findBar, shown ? 1 : 0)
+        if shown {
+            gtk_widget_grab_focus(findEntry)
+            runFind(retarget: false)
+        } else {
+            gtk_editable_set_text(op(findEntry), "")
+            clearFindHighlight()
+            findMatches = []
+            gtk_label_set_text(op(findCountLabel), "")
+            gtk_widget_grab_focus(transcriptBox)
+        }
+    }
+
+    private func findQuery() -> String {
+        guard let raw = gtk_editable_get_text(op(findEntry)) else { return "" }
+        return String(cString: raw)
+    }
+
+    private func runFind(retarget: Bool) {
+        let needle = findQuery().lowercased()
+        clearFindHighlight()
+        guard !needle.isEmpty else {
+            findMatches = []
+            gtk_label_set_text(op(findCountLabel), "")
+            return
+        }
+        findMatches = renderedRows.indices.filter {
+            renderedRows[$0].searchText.lowercased().contains(needle)
+        }
+        if retarget { findCursor = 0 }
+        if findCursor >= findMatches.count { findCursor = max(0, findMatches.count - 1) }
+        updateFindCount()
+        guard !findMatches.isEmpty else { return }
+        applyFindHighlight(scroll: retarget)
+    }
+
+    private func stepFind(by delta: Int) {
+        guard !findMatches.isEmpty else { return }
+        let count = findMatches.count
+        findCursor = ((findCursor + delta) % count + count) % count
+        updateFindCount()
+        applyFindHighlight(scroll: true)
+    }
+
+    private func updateFindCount() {
+        gtk_label_set_text(
+            op(findCountLabel),
+            findMatches.isEmpty
+                ? Localized.text("No matches") : "\(findCursor + 1)/\(findMatches.count)")
+    }
+
+    /// Marks the current match, and on an explicit jump scrolls it to the upper third so the eye
+    /// lands on the hit rather than hunting for it. The offset is measured against the widget the
+    /// adjustment actually scrolls — the padded canvas — not the transcript box inside it.
+    private func applyFindHighlight(scroll: Bool) {
+        guard findMatches.indices.contains(findCursor) else { return }
+        let index = findMatches[findCursor]
+        guard index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+        else { return }
+        clearFindHighlight()
+        let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        Gtk.addClass(widget, "find-hit")
+        highlightedRow = rowWidgets[index]
+        guard scroll else { return }
+        let offset = tailscode_widget_offset_y(widget, canvasBox ?? transcriptBox)
+        guard offset >= 0, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        let ceiling = max(0, gtk_adjustment_get_upper(adjustment) - page)
+        gtk_adjustment_set_value(adjustment, min(max(0, offset - page * 0.3), ceiling))
+    }
+
+    private func clearFindHighlight() {
+        guard highlightedRow != 0,
+            let raw = UnsafeMutableRawPointer(bitPattern: highlightedRow)
+        else { return }
+        gtk_widget_remove_css_class(ptr(raw) as UnsafeMutablePointer<GtkWidget>, "find-hit")
+        highlightedRow = 0
+    }
+
+    /// Quota is account state, not session state: polled on its own slow cadence and rendered in
+    /// the sidebar footer, the way the phone keeps it on the Home board.
+    private func startUsagePolling() {
+        usageTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let settled = await self?.refreshUsage() ?? true
+                try? await Task.sleep(for: .seconds(settled ? 120 : 15))
+            }
+        }
+    }
+
+    /// False while the profile list has not been seeded yet — the poll retries quickly then,
+    /// rather than leaving the footer empty for its whole slow cadence after a cold start.
+    private func refreshUsage() async -> Bool {
+        let profiles = await ServerDirectory.shared.profiles()
+        guard !profiles.isEmpty else { return false }
+        var quotas: [(String, UsageQuota)] = []
+        for profile in profiles {
+            guard let backend = await ServerDirectory.shared.backend(for: profile),
+                let quota = (try? await backend.usageQuota()) ?? nil
+            else { continue }
+            quotas.append((profile.name, quota))
+        }
+        let snapshot = quotas
+        Gtk.onMain { [weak self] in self?.renderUsage(snapshot) }
+        return true
+    }
+
+    private func renderUsage(_ quotas: [(String, UsageQuota)]) {
+        Gtk.removeChildren(of: usageBox)
+        gtk_widget_set_visible(usageBox, quotas.isEmpty ? 0 : 1)
+        for (name, quota) in quotas {
+            gtk_box_append(
+                ptr(usageBox),
+                Gtk.label(
+                    "\(name) · \(quota.providerName)", css: "section-header", selectable: false))
+            for gauge in quota.gauges {
+                let fraction = min(max(gauge.fraction, 0), 1)
+                let filled = Int((fraction * 10).rounded())
+                let bar = String(repeating: "▰", count: filled)
+                    + String(repeating: "▱", count: 10 - filled)
+                var line = "\(gauge.label)  \(bar) \(Int((fraction * 100).rounded()))%"
+                if let resets = gauge.resetsAt, gauge.trustedReset {
+                    line += " · " + Localized.text("resets in %@", Self.countdown(to: resets))
+                }
+                let css = fraction > 0.85 ? "gauge-danger" : fraction >= 0.6 ? "gauge-warn" : "gauge-ok"
+                gtk_box_append(ptr(usageBox), Gtk.label(line, css: css, selectable: false))
+            }
+        }
+    }
+
+    private static func countdown(to date: Date) -> String {
+        let interval = date.timeIntervalSinceNow
+        guard interval > 0 else { return Localized.text("moments") }
+        let hours = Int(interval) / 3600
+        let minutes = (Int(interval) % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
     /// A typed slash command goes where the palette would send it: `/compact` to its preflight,

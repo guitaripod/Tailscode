@@ -38,3 +38,21 @@ GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
 /// The texture's pixel size, for captioning a picture with what it actually is.
 int tailscode_texture_width(GdkTexture *texture);
 int tailscode_texture_height(GdkTexture *texture);
+
+/// Opens the file chooser and calls back with the chosen absolute paths — an empty call when the
+/// person cancelled. `GtkFileDialog` is GAsyncResult-shaped, which Swift cannot complete without
+/// the `GTK_FILE_DIALOG` macro cast; the whole exchange lives here and the callback runs on the
+/// GLib main context.
+void tailscode_file_open(
+    GtkWindow *parent, void (*handler)(const char *const *paths, int count, void *data),
+    void *data);
+
+/// Reads the clipboard as an image and calls back with PNG bytes, or with NULL when the clipboard
+/// holds no picture. Same GAsyncResult shape, same rule: the callback runs on the main context and
+/// the bytes are only valid inside it.
+void tailscode_clipboard_read_image(
+    void (*handler)(const void *bytes, gsize len, void *data), void *data);
+
+/// The widget's vertical offset inside `ancestor`, or -1 when the two are not connected — what a
+/// scroll-to-row needs from graphene without importing it.
+double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);

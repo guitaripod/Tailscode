@@ -205,6 +205,45 @@ enum MatrixTheme {
         }
         .pill-row button:hover { border-color: \(phosphor); color: \(text); }
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
+
+        .chip {
+            font-family: monospace;
+            font-size: 0.78rem;
+            min-height: 0;
+            padding: 2px 10px;
+            background-color: \(canvasRaised);
+            border: 1px solid \(cyan);
+            border-radius: 0;
+            color: \(cyan);
+        }
+        .chip:hover { border-color: \(danger); color: \(danger); }
+        .jump-pill {
+            font-family: monospace;
+            font-size: 0.82rem;
+            padding: 4px 14px;
+            border-radius: 14px;
+            color: \(canvas);
+            background-color: \(phosphor);
+            border: none;
+        }
+        .jump-pill:hover { background-color: \(phosphorDim); }
+        .find-bar {
+            background-color: \(canvasRaised);
+            border-bottom: 1px solid \(rule);
+            padding: 2px 4px;
+        }
+        .find-hit {
+            background-color: #17240f;
+            box-shadow: inset 2px 0 0 \(amber);
+        }
+        .usage-footer { border-top: 1px solid alpha(currentColor, 0.15); }
+        .gauge-ok, .gauge-warn, .gauge-danger {
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+        .gauge-ok { color: \(textDim); }
+        .gauge-warn { color: \(amber); }
+        .gauge-danger { color: \(danger); }
         """
     }
 

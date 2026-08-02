@@ -100,6 +100,28 @@ struct TranscriptRow: Hashable {
         return all
     }
 
+    /// What in-conversation search reads for this row: the words a person saw, not widget state.
+    var searchText: String {
+        switch kind {
+        case .userText(let text), .agentProse(let text), .reasoning(let text):
+            return text
+        case .codeBlock(let language, let body):
+            return "\(language ?? "") \(body)"
+        case .tool(let call), .subagent(let call):
+            let summary = call.summary
+            return [
+                call.name, summary.title, call.title, summary.detail, summary.command,
+                summary.filePath, summary.displayOutput.map { String($0.prefix(4000)) },
+            ].compactMap { $0 }.joined(separator: " ")
+        case .file(let reference):
+            return reference.filename ?? reference.path ?? ""
+        case .compaction(let compaction):
+            return compaction.summary ?? ""
+        case .turnBreak:
+            return ""
+        }
+    }
+
     func makeWidget(context: TranscriptContext) -> UnsafeMutablePointer<GtkWidget> {
         switch kind {
         case .userText(let text):

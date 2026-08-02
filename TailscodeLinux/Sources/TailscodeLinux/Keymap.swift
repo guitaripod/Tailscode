@@ -43,6 +43,7 @@ enum KeyAction: Equatable {
     case newChat
     case toggleSaved
     case commandPalette
+    case findInConversation
 }
 
 enum Keymap {
@@ -87,6 +88,7 @@ enum Keymap {
             case "k": return .focus(.transcript)
             case "l": return .focus(.files)
             case "r": return .reload
+            case "f": return .findInConversation
             default: return nil
             }
         }
@@ -110,6 +112,7 @@ enum Keymap {
         case "q": return .stop
         case "n": return .newChat
         case "b": return .toggleSaved
+        case "f": return .findInConversation
         case ":": return .commandPalette
         default: return nil
         }
@@ -120,6 +123,7 @@ enum Keymap {
     static func insert(keyval: UInt32, state: UInt32) -> KeyAction? {
         if keyval == escape { return .leaveInsert }
         if state & control != 0, keyval == enter || keyval == keypadEnter { return .send }
+        if state & control != 0, scalar(keyval) == "f" { return .findInConversation }
         return nil
     }
 
@@ -142,6 +146,7 @@ enum Keymap {
             ("^h ^k ^l ^j", Localized.text("Focus chats / transcript / files / terminal")),
             ("tab", Localized.text("Cycle panes")),
             ("/", Localized.text("Filter chats")),
+            ("f / ^f", Localized.text("Find in the conversation")),
             (":", Localized.text("Slash commands")),
             ("n", Localized.text("New conversation")),
             ("b", Localized.text("Save / unsave this chat")),
