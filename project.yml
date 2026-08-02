@@ -76,8 +76,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.3"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.4"
+        CURRENT_PROJECT_VERSION: "13"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1"
@@ -142,8 +142,8 @@ targets:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "1.3"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.4"
+        CURRENT_PROJECT_VERSION: "13"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
@@ -186,8 +186,8 @@ targets:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "1.3"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.4"
+        CURRENT_PROJECT_VERSION: "13"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
@@ -229,8 +229,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.3"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.4"
+        CURRENT_PROJECT_VERSION: "13"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
