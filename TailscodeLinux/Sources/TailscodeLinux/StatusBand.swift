@@ -123,6 +123,7 @@ struct StatusFacts {
             let action: Action?
         }
 
+        let id: String
         let text: String
         let css: String
         let kind: Kind
@@ -143,35 +144,36 @@ struct StatusFacts {
 
         switch phase {
         case .idle:
-            result.append(Segment(text: Localized.text("ready"), css: "seg-idle", kind: .plain))
+            result.append(Segment(id: "phase", text: Localized.text("ready"), css: "seg-idle", kind: .plain))
         case .working:
             var text = "◐"
             if let elapsed { text += " " + TranscriptRow.clock(elapsed) }
             if let runningTool { text += " · " + runningTool }
-            result.append(Segment(text: text, css: "seg-live", kind: .act(.stop)))
+            result.append(Segment(id: "phase", text: text, css: "seg-live", kind: .act(.stop)))
         case .compacting:
             result.append(
-                Segment(text: Localized.text("◐ compacting"), css: "seg-warn", kind: .plain))
+                Segment(id: "phase", text: Localized.text("◐ compacting"), css: "seg-warn", kind: .plain))
         case .awaitingApproval:
             result.append(
                 Segment(
-                    text: Localized.text("⏸ y / a / n"), css: "seg-warn",
+                    id: "phase", text: Localized.text("⏸ y / a / n"), css: "seg-warn",
                     kind: .act(.scrollToPending)))
         case .awaitingAnswer:
             result.append(
                 Segment(
-                    text: Localized.text("⏸ answer"), css: "seg-warn",
+                    id: "phase", text: Localized.text("⏸ answer"), css: "seg-warn",
                     kind: .act(.scrollToPending)))
         case .reconnecting:
             result.append(
-                Segment(text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))
+                Segment(id: "phase", text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))
         case .offline:
             result.append(
-                Segment(text: Localized.text("✗ offline"), css: "seg-error", kind: .act(.reconnect)))
+                Segment(id: "phase", text: Localized.text("✗ offline"), css: "seg-error", kind: .act(.reconnect)))
         case .failed(let message):
             result.append(
                 Segment(
-                    text: "✗ " + String(message.prefix(60)), css: "seg-error", kind: .plain))
+                    id: "phase", text: "✗ " + String(message.prefix(60)), css: "seg-error",
+                    kind: .plain))
         }
 
         if !agents.isEmpty {
@@ -180,14 +182,14 @@ struct StatusFacts {
                 : "▸ \(finishedAgents)✓"
             result.append(
                 Segment(
-                    text: text, css: activeAgents > 0 ? "seg-agents" : "seg-dim",
+                    id: "agents", text: text, css: activeAgents > 0 ? "seg-agents" : "seg-dim",
                     kind: .menu(agentRows)))
         }
 
         if let contextTokens {
             result.append(
                 Segment(
-                    text: "~" + TranscriptRow.tokens(contextTokens),
+                    id: "context", text: "~" + TranscriptRow.tokens(contextTokens),
                     css: contextTokens > 300_000 ? "seg-warn" : "seg-dim",
                     kind: .menu([
                         Segment.Row(
@@ -204,7 +206,7 @@ struct StatusFacts {
         if let lastCostUSD, lastCostUSD > 0 {
             result.append(
                 Segment(
-                    text: String(format: "$%.2f", lastCostUSD), css: "seg-dim",
+                    id: "cost", text: String(format: "$%.2f", lastCostUSD), css: "seg-dim",
                     kind: .menu([
                         Segment.Row(
                             title: Localized.text("Last turn cost %@", String(format: "$%.2f", lastCostUSD)),
@@ -216,7 +218,8 @@ struct StatusFacts {
         } else if let lastTurnTokens, lastTurnTokens > 0 {
             result.append(
                 Segment(
-                    text: TranscriptRow.tokens(lastTurnTokens), css: "seg-dim", kind: .plain))
+                    id: "cost", text: TranscriptRow.tokens(lastTurnTokens), css: "seg-dim",
+                    kind: .plain))
         }
 
         if let goal {
@@ -226,7 +229,7 @@ struct StatusFacts {
                 ? Localized.text("met") : goalFailed ? Localized.text("failed") : Localized.text("being pursued")
             result.append(
                 Segment(
-                    text: glyph, css: css,
+                    id: "goal", text: glyph, css: css,
                     kind: .menu([
                         Segment.Row(title: goal, detail: state, action: nil),
                         Segment.Row(
@@ -234,7 +237,7 @@ struct StatusFacts {
                     ])))
         }
         if attachments > 0 {
-            result.append(Segment(text: "📎 \(attachments)", css: "seg-dim", kind: .plain))
+            result.append(Segment(id: "attach", text: "📎 \(attachments)", css: "seg-dim", kind: .plain))
         }
         return result
     }
@@ -242,8 +245,11 @@ struct StatusFacts {
     /// One row per subagent, newest first: what it is, whether it is still working, and how long
     /// ago it last said anything. Clicking one jumps to its card in the transcript.
     private var agentRows: [Segment.Row] {
+        // Working first, then whatever has not finished, then the done ones newest-first: the
+        // list is read while a fan-out is running, and what is running is the point.
         agents.sorted { lhs, rhs in
             if lhs.isActive != rhs.isActive { return lhs.isActive }
+            if lhs.isCompleted != rhs.isCompleted { return !lhs.isCompleted }
             return lhs.updatedAt > rhs.updatedAt
         }.prefix(20).map { agent in
             let glyph = agent.isActive ? "◐" : agent.isCompleted ? "✓" : "·"
@@ -281,41 +287,126 @@ enum StatusBand {
         gtk_widget_set_hexpand(widget, 0)
     }
 
+    /// What the band keeps between renders: the widget for each fact, and the latest facts the
+    /// popovers read from. A rebuilt widget is a closed popover, and this band redraws every
+    /// second while a turn runs — so a segment that is still on screen is updated in place, and
+    /// its list reads the newest facts at the moment it is opened.
+    final class State: @unchecked Sendable {
+        var facts = StatusFacts()
+        fileprivate var widgets: [String: UInt] = [:]
+        fileprivate var kinds: [String: String] = [:]
+        fileprivate var notice: UInt = 0
+        fileprivate var spacer: UInt = 0
+    }
+
+    private static func kindTag(_ segment: StatusFacts.Segment) -> String {
+        switch segment.kind {
+        case .plain: return "plain"
+        case .act: return "act"
+        case .menu: return "menu"
+        }
+    }
+
     static func render(
-        into box: UnsafeMutablePointer<GtkWidget>, facts: StatusFacts,
+        into box: UnsafeMutablePointer<GtkWidget>, state: State, facts: StatusFacts,
         notice: String?, perform: @escaping @Sendable (StatusFacts.Action) -> Void
     ) {
-        Gtk.removeChildren(of: box)
-        for segment in facts.segments {
-            switch segment.kind {
-            case .plain:
-                let label = Gtk.label(segment.text, css: segment.css, selectable: false)
-                Gtk.addClass(label, "seg")
-                gtk_label_set_max_width_chars(op(label), 48)
-                gtk_box_append(ptr(box), label)
-            case .act(let action):
-                let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
-                    perform(action)
-                }
-                clamp(button)
-                gtk_box_append(ptr(box), button)
-            case .menu(let rows):
-                let button = Gtk.menuButton(segment.text, css: ["flat", "seg", segment.css]) {
-                    rows.map { row in
-                        (row.title, row.detail, { if let action = row.action { perform(action) } })
-                    }
-                }
-                clamp(button)
-                gtk_box_append(ptr(box), button)
+        state.facts = facts
+        let segments = facts.segments
+        let wanted = Set(segments.map(\.id))
+
+        for (id, bits) in state.widgets where !wanted.contains(id) {
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) {
+                gtk_box_remove(ptr(box), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
             }
+            state.widgets[id] = nil
+            state.kinds[id] = nil
         }
-        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        gtk_widget_set_hexpand(spacer, 1)
-        gtk_box_append(ptr(box), spacer)
-        if let notice, !notice.isEmpty {
-            let label = Gtk.label(notice, css: "seg-notice", selectable: false)
+
+        var previous: UnsafeMutablePointer<GtkWidget>?
+        for segment in segments {
+            let tag = kindTag(segment)
+            if let bits = state.widgets[segment.id], state.kinds[segment.id] == tag,
+                let raw = UnsafeMutableRawPointer(bitPattern: bits)
+            {
+                let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                update(widget, segment: segment)
+                previous = widget
+                continue
+            }
+            if let bits = state.widgets[segment.id],
+                let raw = UnsafeMutableRawPointer(bitPattern: bits)
+            {
+                gtk_box_remove(ptr(box), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+            }
+            let widget = make(segment, state: state, perform: perform)
+            gtk_box_insert_child_after(ptr(box), widget, previous)
+            state.widgets[segment.id] = UInt(bitPattern: widget)
+            state.kinds[segment.id] = tag
+            previous = widget
+        }
+
+        if state.spacer == 0 {
+            let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            gtk_widget_set_hexpand(spacer, 1)
+            gtk_box_append(ptr(box), spacer)
+            state.spacer = UInt(bitPattern: spacer)
+        }
+        if state.notice == 0 {
+            let label = Gtk.label("", css: "seg-notice", selectable: false)
             Gtk.addClass(label, "seg")
             gtk_box_append(ptr(box), label)
+            state.notice = UInt(bitPattern: label)
+        }
+        if let raw = UnsafeMutableRawPointer(bitPattern: state.notice) {
+            let label: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            gtk_label_set_text(op(label), notice ?? "")
+            gtk_widget_set_visible(label, (notice?.isEmpty == false) ? 1 : 0)
+        }
+    }
+
+    private static func update(
+        _ widget: UnsafeMutablePointer<GtkWidget>, segment: StatusFacts.Segment
+    ) {
+        switch segment.kind {
+        case .plain: gtk_label_set_text(op(widget), segment.text)
+        case .act: gtk_button_set_label(ptr(widget), segment.text)
+        case .menu: gtk_menu_button_set_label(op(widget), segment.text)
+        }
+        for css in ["seg-idle", "seg-dim", "seg-live", "seg-warn", "seg-error", "seg-agents", "seg-goal"]
+        where css != segment.css {
+            gtk_widget_remove_css_class(widget, css)
+        }
+        Gtk.addClass(widget, segment.css)
+    }
+
+    private static func make(
+        _ segment: StatusFacts.Segment, state: State,
+        perform: @escaping @Sendable (StatusFacts.Action) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        switch segment.kind {
+        case .plain:
+            let label = Gtk.label(segment.text, css: segment.css, selectable: false)
+            Gtk.addClass(label, "seg")
+            gtk_label_set_max_width_chars(op(label), 48)
+            return label
+        case .act(let action):
+            let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
+                perform(action)
+            }
+            clamp(button)
+            return button
+        case .menu:
+            let id = segment.id
+            let button = Gtk.menuButton(segment.text, css: ["flat", "seg", segment.css]) {
+                // Read at open time, so a list opened mid-turn is the list as it is now.
+                let rows = state.facts.segments.first { $0.id == id }?.rows ?? []
+                return rows.map { row in
+                    (row.title, row.detail, { if let action = row.action { perform(action) } })
+                }
+            }
+            clamp(button)
+            return button
         }
     }
 }

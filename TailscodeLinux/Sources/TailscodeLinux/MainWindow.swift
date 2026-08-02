@@ -20,6 +20,7 @@ final class MainWindow: @unchecked Sendable {
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
     private var contextEstimate: Int?
@@ -1048,7 +1049,8 @@ final class MainWindow: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate)
-        StatusBand.render(into: statusBand, facts: facts, notice: notice) { [weak self] action in
+        StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: notice) {
+            [weak self] action in
             Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
         }
         gtk_button_set_label(
