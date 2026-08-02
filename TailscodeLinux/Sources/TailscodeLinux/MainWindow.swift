@@ -59,6 +59,7 @@ final class MainWindow: @unchecked Sendable {
     private var terminalPaned: UnsafeMutablePointer<GtkWidget>?
     private var sidebarPane: UnsafeMutablePointer<GtkWidget>?
     private var composerScroller: UnsafeMutablePointer<GtkWidget>?
+    private var composerHeight: Int32 = 0
     private let vim = VimEngine()
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private let earlierButton = gtk_button_new()!
@@ -134,6 +135,9 @@ final class MainWindow: @unchecked Sendable {
         applyPanePreferences()
         startRefreshing()
         startUsagePolling()
+        if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
+            insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
+        }
     }
 
     private func makeSidebarPane() -> UnsafeMutablePointer<GtkWidget> {
@@ -318,6 +322,11 @@ final class MainWindow: @unchecked Sendable {
         gtk_text_view_set_right_margin(ptr(entryView), 10)
         gtk_scrolled_window_set_child(op(scroller), entryView)
         Gtk.addClass(scroller, "composer")
+        Gtk.connect(
+            UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(entryView))), "changed"
+        ) { [weak self] in
+            self?.growComposer()
+        }
 
         Gtk.addClass(sendButton, "suggested-action")
         gtk_widget_set_valign(sendButton, GTK_ALIGN_END)
@@ -1476,11 +1485,8 @@ final class MainWindow: @unchecked Sendable {
         if let terminalPaned {
             gtk_paned_set_position(op(terminalPaned), Preferences.divider(.terminal) ?? 600)
         }
-        if let composerScroller {
-            let line = 20.0 * Preferences.scale(.mono)
-            gtk_widget_set_size_request(
-                composerScroller, -1, Int32(line * Double(Preferences.composerLines) + 16))
-        }
+        composerHeight = 0
+        growComposer()
         terminal.setFontScale(Preferences.terminalScale)
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         updateVimBadge()
@@ -1585,6 +1591,27 @@ final class MainWindow: @unchecked Sendable {
             sendFromComposer()
         }
         updateVimBadge()
+    }
+
+    /// The prompt box is as tall as what is in it: one line when empty, taller as the text wraps
+    /// or a paragraph is pasted, and it stops growing at the height the settings window sets —
+    /// after which it scrolls, so the transcript is never squeezed off the screen.
+    private func growComposer() {
+        guard let composerScroller else { return }
+        let line = 20.0 * Preferences.scale(.mono)
+        let ceiling = Int32(line * Double(Preferences.composerLines) + 18)
+        let floor = Int32(line + 18)
+
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        let width = gtk_widget_get_width(entryView)
+        gtk_widget_measure(
+            entryView, GTK_ORIENTATION_VERTICAL, width > 0 ? width : -1, &minimum, &natural,
+            nil, nil)
+        let wanted = max(floor, min(ceiling, natural + 18))
+        guard wanted != composerHeight else { return }
+        composerHeight = wanted
+        gtk_widget_set_size_request(composerScroller, -1, wanted)
     }
 
     private func composerCursor() -> Int {

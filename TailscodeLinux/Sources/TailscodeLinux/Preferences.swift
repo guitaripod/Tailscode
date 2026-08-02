@@ -73,9 +73,10 @@ enum Preferences {
         defaults.set(value, forKey: "tailscode.vimComposer")
     }
 
+    /// How tall the prompt box is allowed to get before it scrolls instead of growing.
     static var composerLines: Int {
         let stored = defaults.integer(forKey: "tailscode.composerLines")
-        return stored == 0 ? 3 : min(20, max(1, stored))
+        return stored == 0 ? 12 : min(20, max(1, stored))
     }
 
     static func setComposerLines(_ value: Int) {
@@ -171,7 +172,8 @@ enum SettingsDialog {
         gtk_box_append(
             ptr(content),
             slider(
-                title: Localized.text("Prompt box height (lines)"),
+                title: Localized.text("Prompt box grows to (lines)"),
+                detail: Localized.text("It starts one line tall and grows with what you type"),
                 value: Double(Preferences.composerLines), lower: 1, upper: 20, step: 1,
                 format: { String(format: "%.0f", $0) }
             ) { value in
