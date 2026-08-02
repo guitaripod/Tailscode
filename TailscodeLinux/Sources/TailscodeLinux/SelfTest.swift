@@ -43,6 +43,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkStatusBand()
+            report("status band: \(checks) states say the right thing")
+        } catch {
+            report("status band: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -248,6 +256,57 @@ public enum SelfTest {
             }
         }
         return cases.count
+    }
+
+    /// The band over the prompt box: a status that shows every field always is a status nobody
+    /// reads, so what is asserted here is mostly what is *absent*.
+    private static func checkStatusBand() throws -> Int {
+        func text(_ facts: StatusFacts) -> String {
+            facts.segments.map(\.text).joined(separator: " | ")
+        }
+
+        var idle = StatusFacts()
+        guard text(idle) == "ready" else { throw SelfTestFailure("idle band: \(text(idle))") }
+
+        idle.phase = .working
+        idle.elapsed = 72
+        idle.runningTool = "Bash"
+        guard text(idle).contains("1m 12s"), text(idle).contains("Bash") else {
+            throw SelfTestFailure("working band: \(text(idle))")
+        }
+
+        idle.activeAgents = 3
+        idle.agentTitles = ["explore", "review", "verify"]
+        idle.finishedAgents = 1
+        guard text(idle).contains("3 agents"), text(idle).contains("explore, review"),
+            text(idle).contains("1 done")
+        else { throw SelfTestFailure("agents band: \(text(idle))") }
+
+        idle.contextTokens = 320_000
+        guard text(idle).contains("~320.0k"),
+            idle.segments.contains(where: { $0.css == "seg-warn" })
+        else { throw SelfTestFailure("context band: \(text(idle))") }
+
+        idle.lastCostUSD = 0.38
+        guard text(idle).contains("$0.38") else { throw SelfTestFailure("cost: \(text(idle))") }
+
+        idle.goal = "ship it"
+        guard text(idle).contains("⦿ ship it") else { throw SelfTestFailure("goal: \(text(idle))") }
+        idle.goalMet = true
+        guard text(idle).contains("✓ ship it") else { throw SelfTestFailure("goal met: \(text(idle))") }
+
+        var failed = StatusFacts()
+        failed.phase = .failed("the bridge said no")
+        guard text(failed).contains("the bridge said no"), failed.segments.count == 1 else {
+            throw SelfTestFailure("failure band: \(text(failed))")
+        }
+
+        var approval = StatusFacts()
+        approval.phase = .awaitingApproval
+        guard approval.segments.first?.action == .scrollToPending else {
+            throw SelfTestFailure("approval segment is not actionable")
+        }
+        return 8
     }
 
     /// Two observers on one conversation, which is the whole point of a desktop client that is a

@@ -19,8 +19,10 @@ final class MainWindow: @unchecked Sendable {
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-    private let goalLabel = Gtk.label("", css: "goal-line", selectable: false)
-    private let statusLabel = Gtk.label("", css: "status-line")
+    private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+    private var agents: [SubagentSummary] = []
+    private var usage: AgentUsage?
+    private var notice: String?
     private let entryView = gtk_text_view_new()!
     private let sendButton = gtk_button_new_with_label("Send")!
     private let stopButton = gtk_button_new_with_label("⏹")!
@@ -292,9 +294,8 @@ final class MainWindow: @unchecked Sendable {
         }
         gtk_box_append(ptr(column), helpOverlay)
 
-        gtk_widget_set_visible(goalLabel, 0)
-        gtk_box_append(ptr(column), goalLabel)
-        gtk_box_append(ptr(column), statusLabel)
+        Gtk.addClass(statusBand, "status-band")
+        gtk_box_append(ptr(column), statusBand)
         gtk_widget_set_visible(attachmentsBox, 0)
         Gtk.margins(attachmentsBox, top: 4, leading: 26, trailing: 26)
         gtk_box_append(ptr(column), attachmentsBox)
@@ -492,8 +493,7 @@ final class MainWindow: @unchecked Sendable {
                     let wrote = (try? data.write(to: target)) != nil
                     Gtk.onMain { [weak self] in
                         guard let self else { return }
-                        gtk_label_set_text(
-                            op(self.statusLabel),
+                        self.setNotice(
                             wrote
                                 ? Localized.text("Saved %@", target.path)
                                 : Localized.text("Could not write %@", target.path))
@@ -671,6 +671,9 @@ final class MainWindow: @unchecked Sendable {
         refreshPills()
         SessionSeenStore.markSeen(entry.session.id)
         terminal.setDirectory(entry.session.directory)
+        agents = []
+        usage = nil
+        notice = nil
         Gtk.onMain { [weak self] in self?.renderSidebar() }
 
         streamTask = Task { [weak self] in
@@ -714,6 +717,7 @@ final class MainWindow: @unchecked Sendable {
                 self.models = models
                 self.commands = commands
                 self.refreshPills()
+                self.refreshTurnFacts()
             }
         }
         if let authenticating = backend as? any AuthenticatingBackend {
@@ -785,7 +789,6 @@ final class MainWindow: @unchecked Sendable {
             applyRows(windowed, appended: appended)
         }
         renderPendingCards(state)
-        renderGoal(state.goal)
         refreshPills()
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
@@ -886,23 +889,6 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    private func renderGoal(_ goal: SessionGoal?) {
-        guard let goal else {
-            gtk_widget_set_visible(goalLabel, 0)
-            return
-        }
-        let text: String
-        if goal.isMet {
-            text = Localized.text("goal met · %@", goal.condition)
-        } else if goal.didFail {
-            text = Localized.text("goal failed · %@", goal.condition)
-        } else {
-            text = Localized.text("goal · %@", goal.condition)
-        }
-        gtk_label_set_text(op(goalLabel), text)
-        gtk_widget_set_visible(goalLabel, goal.isActive || goal.didFail ? 1 : 0)
-    }
-
     private func respond(to permission: PermissionRequest, decision: PermissionDecision) {
         guard let conversation else { return }
         Task { try? await conversation.respond(to: permission, decision: decision) }
@@ -924,65 +910,97 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// What the line under the transcript says. Every distinguishable condition gets its own
-    /// sentence — a failure, a reconnect and a running turn must not all read as silence.
-    private static func statusText(for state: ConversationState) -> String {
-        if let failure = state.lastFailure { return "! \(failure.message)" }
-        switch state.connection {
-        case .offline: return Localized.text("Offline — the server stopped answering")
-        case .reconnecting: return Localized.text("Reconnecting…")
-        case .connecting: return Localized.text("Connecting…")
-        case .live: break
-        }
-        if let compaction = state.compaction, compaction.isRunning {
-            return Localized.text("Compacting — this takes minutes…")
-        }
-        if !state.pendingPermissions.isEmpty { return Localized.text("Waiting for your approval — y / a / n") }
-        if !state.pendingQuestions.isEmpty { return Localized.text("Waiting for your answer") }
-        if state.status == .running { return Localized.text("Working…") }
-        return Localized.text("Idle")
-    }
-
+    /// The band above the prompt box: what the turn is doing, which agents are out, how much of
+    /// the context is spent, what the goal is — every fact clickable, so reading the status and
+    /// steering the turn are one gesture rather than two.
     private func updateStatus() {
         guard let state = lastState else { return }
-        var text = Self.statusText(for: state)
         let running = state.status == .running || state.compaction?.isRunning == true
         if running {
             if turnStartedAt == nil { turnStartedAt = Date() }
-            if let started = turnStartedAt {
-                text += " · \(TranscriptRow.clock(Date().timeIntervalSince(started)))"
-            }
         } else {
             turnStartedAt = nil
         }
-        if running, let tool = runningTool(state) {
-            text += " · \(tool)"
+        let facts = StatusFacts.from(
+            state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
+            attachments: attachments.count)
+        StatusBand.render(into: statusBand, facts: facts, notice: notice) { [weak self] action in
+            Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
         }
-        gtk_label_set_text(op(statusLabel), text)
         gtk_button_set_label(
             ptr(sendButton), running ? Localized.text("Queue") : Localized.text("Send"))
         gtk_widget_set_visible(stopButton, running ? 1 : 0)
     }
 
-    private func runningTool(_ state: ConversationState) -> String? {
-        for message in state.messages.reversed() {
-            for part in message.parts.reversed() {
-                if case .tool(let call) = part.kind, call.status == .running {
-                    return call.name
-                }
-            }
-            if message.role == .user { break }
+    private func perform(bandAction action: StatusFacts.Action) {
+        switch action {
+        case .stop: stopTurn()
+        case .compact: presentCompactPreflight()
+        case .goal: insertIntoComposer("/goal ")
+        case .scrollToPending: scroll(toEnd: true)
+        case .scrollToAgents: scrollToNewestAgent()
+        case .reconnect:
+            guard let conversation else { return }
+            Task { await conversation.reconnect() }
         }
-        return nil
+    }
+
+    private func scrollToNewestAgent() {
+        for (index, row) in renderedRows.enumerated().reversed() {
+            guard case .subagent = row.kind, index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            let offset = tailscode_widget_offset_y(widget, canvasBox ?? transcriptBox)
+            guard offset >= 0, let scroller = transcriptScroller,
+                let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+            else { return }
+            let page = gtk_adjustment_get_page_size(adjustment)
+            gtk_adjustment_set_value(
+                adjustment,
+                min(max(0, offset - page * 0.3), max(0, gtk_adjustment_get_upper(adjustment) - page)))
+            return
+        }
+        scroll(toEnd: true)
+    }
+
+    /// A notice is transient — the last thing the app did on your behalf — and it lives at the far
+    /// end of the band so it never pushes a live fact off it.
+    private func setNotice(_ text: String) {
+        notice = text
+        updateStatus()
+    }
+
+    /// Subagents and cost are polled rather than streamed: the bridge reports both on request
+    /// only, and a fan-out is worth watching while it runs.
+    private func refreshTurnFacts() {
+        guard let backend = currentBackend, let entry = currentEntry else { return }
+        let sessionID = entry.session.id
+        Task { [weak self] in
+            let agents = (try? await backend.subagents(for: sessionID)) ?? []
+            let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.agents = agents
+                self.usage = usage
+                self.updateStatus()
+            }
+        }
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event.
     private func updateTicker(running: Bool) {
         if running, tickerTask == nil {
             tickerTask = Task { [weak self] in
+                var tick = 0
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
-                    Gtk.onMain { [weak self] in self?.updateStatus() }
+                    tick += 1
+                    let facts = tick % 5 == 0
+                    Gtk.onMain { [weak self] in
+                        self?.updateStatus()
+                        if facts { self?.refreshTurnFacts() }
+                    }
                 }
             }
         } else if !running {
@@ -1185,9 +1203,8 @@ final class MainWindow: @unchecked Sendable {
             } catch {
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
-                    gtk_label_set_text(
-                        op(self.statusLabel),
-                        Localized.text("Could not start a session: %@", "\(error)"))
+                    self.setNotice(
+                            Localized.text("Could not start a session: %@", "\(error)"))
                 }
             }
         }
@@ -1807,7 +1824,7 @@ final class MainWindow: @unchecked Sendable {
             case .success(let attachment):
                 attachments.append(attachment)
             case .failure(let refusal):
-                gtk_label_set_text(op(statusLabel), refusal.message)
+                setNotice(refusal.message)
             }
         }
         renderAttachments()
@@ -1817,14 +1834,13 @@ final class MainWindow: @unchecked Sendable {
         Gtk.readClipboardImage { [weak self] data in
             guard let self else { return }
             guard let data else {
-                gtk_label_set_text(
-                    op(self.statusLabel), Localized.text("The clipboard holds no picture."))
+                self.setNotice(
+                            Localized.text("The clipboard holds no picture."))
                 return
             }
             guard data.count <= AttachmentIntake.byteCap else {
-                gtk_label_set_text(
-                    op(self.statusLabel),
-                    Localized.text(
+                self.setNotice(
+                            Localized.text(
                         "That picture is %@ — the cap is 8 MB",
                         AttachmentIntake.sizeText(data.count)))
                 return

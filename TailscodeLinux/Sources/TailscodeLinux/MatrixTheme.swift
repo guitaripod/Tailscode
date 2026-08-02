@@ -86,6 +86,29 @@ enum MatrixTheme {
             background-color: \(canvasRaised);
             border-top: 1px solid \(rule);
         }
+        .status-band {
+            background-color: \(canvasRaised);
+            border-top: 1px solid \(rule);
+            padding: 3px 22px;
+        }
+        .seg {
+            font-family: monospace;
+            font-size: \(m(0.78));
+            min-height: 0;
+            padding: 1px 8px;
+            border: none;
+            border-radius: 3px;
+            background-color: transparent;
+        }
+        .seg:hover { background-color: \(canvas); }
+        .seg-idle { color: \(textDim); }
+        .seg-dim { color: \(textDim); }
+        .seg-live { color: \(phosphor); }
+        .seg-warn { color: \(amber); }
+        .seg-error { color: \(danger); }
+        .seg-agents { color: \(cyan); }
+        .seg-goal { color: \(cyan); }
+        .seg-notice { color: \(phosphorDim); }
         .composer {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
