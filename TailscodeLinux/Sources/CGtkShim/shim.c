@@ -200,6 +200,12 @@ double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor) {
     return bounds.origin.y;
 }
 
+GtkWidget *tailscode_focused_widget(GtkWidget *root) {
+    GtkRoot *window = gtk_widget_get_root(root);
+    if (!window) return NULL;
+    return gtk_root_get_focus(window);
+}
+
 void tailscode_set_text_scale(double scale) {
     GtkSettings *settings = gtk_settings_get_default();
     if (!settings) return;

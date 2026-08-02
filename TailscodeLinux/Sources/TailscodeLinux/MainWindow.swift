@@ -55,6 +55,12 @@ final class MainWindow: @unchecked Sendable {
     private var usageTask: Task<Void, Never>?
 
     private var splitWidget: UnsafeMutablePointer<GtkWidget>?
+    private var projectPaned: UnsafeMutablePointer<GtkWidget>?
+    private var terminalPaned: UnsafeMutablePointer<GtkWidget>?
+    private var sidebarPane: UnsafeMutablePointer<GtkWidget>?
+    private var composerScroller: UnsafeMutablePointer<GtkWidget>?
+    private let vim = VimEngine()
+    private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private let earlierButton = gtk_button_new()!
     private var windowLimit = 400
     private var lastFullRows: [TranscriptRow] = []
@@ -102,19 +108,22 @@ final class MainWindow: @unchecked Sendable {
         gtk_window_set_icon_name(ptr(window), DesktopIntegration.appID)
         self.window = window
 
-        let split = adw_navigation_split_view_new()!
-        adw_navigation_split_view_set_sidebar(op(split), makeSidebarPage())
-        adw_navigation_split_view_set_content(op(split), makeContentPage())
-        adw_navigation_split_view_set_min_sidebar_width(op(split), 260)
-        adw_navigation_split_view_set_max_sidebar_width(op(split), 400)
+        let split = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL)!
+        gtk_paned_set_start_child(op(split), makeSidebarPane())
+        gtk_paned_set_end_child(op(split), makeContentPane())
+        gtk_paned_set_position(op(split), Preferences.divider(.sidebar) ?? 300)
+        gtk_paned_set_resize_start_child(op(split), 0)
+        gtk_paned_set_shrink_start_child(op(split), 0)
+        gtk_paned_set_resize_end_child(op(split), 1)
         splitWidget = split
 
         let stack = gtk_paned_new(GTK_ORIENTATION_VERTICAL)!
         gtk_paned_set_start_child(op(stack), split)
         gtk_paned_set_end_child(op(stack), terminal.widget)
-        gtk_paned_set_position(op(stack), 600)
+        gtk_paned_set_position(op(stack), Preferences.divider(.terminal) ?? 600)
         gtk_paned_set_resize_start_child(op(stack), 1)
         gtk_paned_set_shrink_end_child(op(stack), 0)
+        terminalPaned = stack
 
         adw_application_window_set_content(ptr(window), stack)
         gtk_window_present(ptr(window))
@@ -127,9 +136,10 @@ final class MainWindow: @unchecked Sendable {
         startUsagePolling()
     }
 
-    private func makeSidebarPage() -> UnsafeMutablePointer<AdwNavigationPage> {
+    private func makeSidebarPane() -> UnsafeMutablePointer<GtkWidget> {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
+        adw_header_bar_set_show_end_title_buttons(op(header), 0)
         adw_header_bar_set_title_widget(
             op(header), Gtk.label("TAILSCODE", css: "section-header", selectable: false))
         adw_header_bar_pack_start(
@@ -137,7 +147,20 @@ final class MainWindow: @unchecked Sendable {
             Gtk.button("+", css: ["flat"]) { [weak self] in self?.presentNewChat() })
         adw_header_bar_pack_end(
             op(header),
-            Gtk.button("⚙", css: ["flat"]) { [weak self] in self?.presentServers() })
+            Gtk.menuButton("⚙", css: ["flat"]) { [weak self] in
+                let settings: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentSettings() }
+                }
+                let servers: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentServers() }
+                }
+                return [
+                    (Localized.text("Settings…"),
+                     Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
+                    (Localized.text("Servers…"),
+                     Localized.text("Add, probe, update or remove a server"), servers),
+                ]
+            })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
@@ -162,16 +185,18 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
-        return adw_navigation_page_new(toolbar, "Chats")!
+        sidebarPane = toolbar
+        return toolbar
     }
 
     /// Conversation on the left of the content area, the project it works in on the right: the
     /// files the agent is editing and a shell in the same directory, because reading what it just
     /// changed and running the thing it just built are the two moves that otherwise send you back
     /// to a terminal.
-    private func makeContentPage() -> UnsafeMutablePointer<AdwNavigationPage> {
+    private func makeContentPane() -> UnsafeMutablePointer<GtkWidget> {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
+        adw_header_bar_set_show_start_title_buttons(op(header), 0)
         adw_header_bar_set_title_widget(op(header), titleLabel)
         adw_header_bar_pack_start(
             op(header),
@@ -188,12 +213,13 @@ final class MainWindow: @unchecked Sendable {
         let panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL)!
         gtk_paned_set_start_child(op(panes), makeConversationColumn())
         gtk_paned_set_end_child(op(panes), makeProjectColumn())
-        gtk_paned_set_position(op(panes), 800)
+        gtk_paned_set_position(op(panes), Preferences.divider(.project) ?? 800)
         gtk_paned_set_resize_start_child(op(panes), 1)
         gtk_paned_set_shrink_end_child(op(panes), 0)
+        projectPaned = panes
 
         adw_toolbar_view_set_content(op(toolbar), panes)
-        return adw_navigation_page_new(toolbar, "Conversation")!
+        return toolbar
     }
 
     private func makeConversationColumn() -> UnsafeMutablePointer<GtkWidget> {
@@ -283,8 +309,8 @@ final class MainWindow: @unchecked Sendable {
 
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        gtk_widget_set_size_request(scroller, -1, 64)
         gtk_widget_set_hexpand(scroller, 1)
+        composerScroller = scroller
         gtk_text_view_set_wrap_mode(ptr(entryView), GTK_WRAP_WORD_CHAR)
         gtk_text_view_set_monospace(ptr(entryView), 1)
         gtk_text_view_set_top_margin(ptr(entryView), 8)
@@ -347,6 +373,8 @@ final class MainWindow: @unchecked Sendable {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.addClass(row, "pill-row")
 
+        gtk_widget_set_visible(vimBadge, 0)
+        gtk_box_append(ptr(row), vimBadge)
         gtk_box_append(ptr(row), destinationLabel)
 
         let model = Gtk.menuButton(Localized.text("model")) { [weak self] in
@@ -473,6 +501,7 @@ final class MainWindow: @unchecked Sendable {
         await ServerDirectory.shared.reload()
         let (entries, unreachable) = await ServerDirectory.shared.entries()
         Gtk.onMain { [weak self] in
+            self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
         }
     }
@@ -720,7 +749,8 @@ final class MainWindow: @unchecked Sendable {
         lastFullRows = rows
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
-        let windowed = rows.count > windowLimit ? Array(rows.suffix(windowLimit)) : rows
+        let limit = max(windowLimit, Preferences.transcriptWindow)
+        let windowed = rows.count > limit ? Array(rows.suffix(limit)) : rows
         let hiddenCount = rows.count - windowed.count
         gtk_widget_set_visible(earlierButton, hiddenCount > 0 ? 1 : 0)
         if hiddenCount > 0 {
@@ -740,6 +770,7 @@ final class MainWindow: @unchecked Sendable {
         }
         renderPendingCards(state)
         renderGoal(state.goal)
+        refreshPills()
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
     }
@@ -952,10 +983,45 @@ final class MainWindow: @unchecked Sendable {
         ].compactMap { $0 }.joined(separator: " · ")
         gtk_label_set_text(op(destinationLabel), destination)
 
-        let modelText = chosenModel?.modelID ?? entry?.session.model ?? Localized.text("model")
-        if let modelButton { gtk_menu_button_set_label(op(modelButton), modelText) }
-        let effortText = chosenEffort ?? entry?.session.reasoningEffort ?? Localized.text("effort")
-        if let effortButton { gtk_menu_button_set_label(op(effortButton), effortText) }
+        if let modelButton {
+            gtk_menu_button_set_label(op(modelButton), modelPillText())
+        }
+        if let effortButton {
+            gtk_menu_button_set_label(op(effortButton), effortPillText())
+        }
+    }
+
+    /// What the chat is actually being answered by, which is not always what the session record
+    /// says: a `/model` typed into the CLI changes the model for every later turn without the
+    /// server's stored session ever hearing about it. The transcript is the authority — the last
+    /// assistant message names the model that wrote it — and the session record is the fallback
+    /// for a chat that has no answer in it yet.
+    private func modelPillText() -> String {
+        if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
+        if let observed = observedModelID() {
+            return ModelBadge.label(model: ModelSelection(providerID: "server", modelID: observed), effort: nil)
+        }
+        if let stored = currentEntry?.session.model {
+            return ModelBadge.label(model: ModelSelection(providerID: "server", modelID: stored), effort: nil)
+        }
+        return Localized.text("model")
+    }
+
+    private func observedModelID() -> String? {
+        guard let messages = lastState?.messages else { return nil }
+        for message in messages.reversed() where message.role == .assistant {
+            if let id = message.modelID, !id.isEmpty { return id }
+        }
+        return nil
+    }
+
+    private func effortPillText() -> String {
+        if let chosenEffort { return chosenEffort }
+        if let stored = currentEntry?.session.reasoningEffort, !stored.isEmpty { return stored }
+        guard let options = currentBackend?.reasoningEffortOptions, !options.isEmpty else {
+            return Localized.text("no effort control")
+        }
+        return Localized.text("server effort")
     }
 
     private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
@@ -1263,6 +1329,9 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            if let handled = self.handleComposerKey(keyval: keyval, state: state) {
+                return handled
+            }
             if Gtk.focusTakesText(window) {
                 guard let action = Keymap.insert(keyval: keyval, state: state) else { return false }
                 return self.perform(action)
@@ -1381,9 +1450,8 @@ final class MainWindow: @unchecked Sendable {
         let shown = paneShown(pane)
         switch pane {
         case .sidebar:
-            guard let splitWidget else { return }
-            adw_navigation_split_view_set_collapsed(op(splitWidget), shown ? 0 : 1)
-            if !shown { adw_navigation_split_view_set_show_content(op(splitWidget), 1) }
+            guard let sidebarPane else { return }
+            gtk_widget_set_visible(sidebarPane, shown ? 1 : 0)
         case .files:
             gtk_widget_set_visible(fileTree.widget, shown ? 1 : 0)
         case .terminal:
@@ -1393,6 +1461,157 @@ final class MainWindow: @unchecked Sendable {
 
     private func applyPanePreferences() {
         for pane in ClosablePane.allCases { applyPane(pane) }
+        applyLayoutPreferences()
+    }
+
+    /// Everything the settings window can change that is not a colour: pane sizes, the prompt
+    /// box's height, the terminal's own font, and how much transcript is kept on screen.
+    private func applyLayoutPreferences() {
+        if let splitWidget {
+            gtk_paned_set_position(op(splitWidget), Preferences.divider(.sidebar) ?? 300)
+        }
+        if let projectPaned {
+            gtk_paned_set_position(op(projectPaned), Preferences.divider(.project) ?? 800)
+        }
+        if let terminalPaned {
+            gtk_paned_set_position(op(terminalPaned), Preferences.divider(.terminal) ?? 600)
+        }
+        if let composerScroller {
+            let line = 20.0 * Preferences.scale(.mono)
+            gtk_widget_set_size_request(
+                composerScroller, -1, Int32(line * Double(Preferences.composerLines) + 16))
+        }
+        terminal.setFontScale(Preferences.terminalScale)
+        windowLimit = max(windowLimit, Preferences.transcriptWindow)
+        updateVimBadge()
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+    }
+
+    /// The dividers are read back rather than watched: `notify::position` carries three arguments
+    /// the shim's trampoline cannot marshal, and a size that is saved a few seconds after the drag
+    /// is indistinguishable from one saved during it.
+    private func rememberDividers() {
+        if let splitWidget, gtk_widget_get_visible(sidebarPane ?? splitWidget) != 0 {
+            Preferences.setDivider(.sidebar, position: gtk_paned_get_position(op(splitWidget)))
+        }
+        if let projectPaned, gtk_widget_get_visible(fileTree.widget) != 0 {
+            Preferences.setDivider(.project, position: gtk_paned_get_position(op(projectPaned)))
+        }
+        if let terminalPaned, gtk_widget_get_visible(terminal.widget) != 0 {
+            Preferences.setDivider(.terminal, position: gtk_paned_get_position(op(terminalPaned)))
+        }
+    }
+
+    private func presentSettings() {
+        SettingsDialog.present(parent: window) { [weak self] in
+            Gtk.onMain { [weak self] in self?.applyLayoutPreferences() }
+        }
+    }
+
+    private func updateVimBadge() {
+        guard Preferences.vimComposer else {
+            gtk_widget_set_visible(vimBadge, 0)
+            if let composerScroller {
+                gtk_widget_remove_css_class(composerScroller, "composer-normal")
+                gtk_widget_remove_css_class(composerScroller, "composer-visual")
+            }
+            return
+        }
+        gtk_widget_set_visible(vimBadge, 1)
+        gtk_label_set_text(op(vimBadge), vim.mode.label)
+        gtk_widget_remove_css_class(vimBadge, "vim-badge-visual")
+        gtk_widget_remove_css_class(vimBadge, "vim-badge-insert")
+        switch vim.mode {
+        case .insert: Gtk.addClass(vimBadge, "vim-badge-insert")
+        case .visual, .visualLine: Gtk.addClass(vimBadge, "vim-badge-visual")
+        case .normal: break
+        }
+        guard let composerScroller else { return }
+        gtk_widget_remove_css_class(composerScroller, "composer-normal")
+        gtk_widget_remove_css_class(composerScroller, "composer-visual")
+        switch vim.mode {
+        case .normal: Gtk.addClass(composerScroller, "composer-normal")
+        case .visual, .visualLine: Gtk.addClass(composerScroller, "composer-visual")
+        case .insert: break
+        }
+    }
+
+    private func composerHasFocus() -> Bool {
+        guard let window, let focused = tailscode_focused_widget(window) else { return false }
+        return focused == entryView
+    }
+
+    /// The prompt box's own key handling: vim first when it is on, then Return-to-send. Both are
+    /// decided here rather than in the text view so the same keystroke means the same thing
+    /// whether a person typed it or a binding sent it.
+    private func handleComposerKey(keyval: UInt32, state: UInt32) -> Bool? {
+        guard composerHasFocus() else { return nil }
+        let control = state & Keymap.control != 0
+        let shift = state & Keymap.shift != 0
+
+        if Preferences.vimComposer {
+            let key = VimKey(
+                character: Keymap.scalar(keyval),
+                isEscape: keyval == Keymap.escape,
+                isEnter: keyval == Keymap.enter || keyval == Keymap.keypadEnter,
+                isBackspace: keyval == 0xFF08,
+                control: control)
+            if vim.mode == .insert, key.isEscape || (control && Keymap.scalar(keyval) == "[") {
+                applyVim(vim.handle(VimKey(isEscape: true), text: composerText(), cursor: composerCursor()))
+                return true
+            }
+            if vim.mode != .insert {
+                if control, Keymap.scalar(keyval) == "c" { return nil }
+                let outcome = vim.handle(key, text: composerText(), cursor: composerCursor())
+                applyVim(outcome)
+                return true
+            }
+        }
+
+        let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
+        if isReturn, !shift, Preferences.sendOnReturn || control {
+            sendFromComposer()
+            return true
+        }
+        if isReturn, shift || !Preferences.sendOnReturn { return false }
+        return nil
+    }
+
+    private func applyVim(_ outcome: VimOutcome) {
+        switch outcome {
+        case .passThrough, .handled:
+            if case .handled = outcome { writeComposer(vim.document, selection: vim.selection) }
+        case .send:
+            sendFromComposer()
+        }
+        updateVimBadge()
+    }
+
+    private func composerCursor() -> Int {
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
+        var iter = GtkTextIter()
+        gtk_text_buffer_get_iter_at_mark(buffer, &iter, gtk_text_buffer_get_insert(buffer))
+        return Int(gtk_text_iter_get_offset(&iter))
+    }
+
+    private func writeComposer(_ document: VimDocument, selection: Range<Int>?) {
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
+        if composerText() != document.text {
+            gtk_text_buffer_set_text(buffer, document.text, -1)
+        }
+        var caret = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &caret, Int32(document.cursor))
+        if let selection {
+            var start = GtkTextIter()
+            var end = GtkTextIter()
+            gtk_text_buffer_get_iter_at_offset(buffer, &start, Int32(selection.lowerBound))
+            gtk_text_buffer_get_iter_at_offset(buffer, &end, Int32(selection.upperBound))
+            gtk_text_buffer_select_range(buffer, &end, &start)
+        } else {
+            gtk_text_buffer_place_cursor(buffer, &caret)
+        }
+        gtk_text_view_scroll_to_mark(
+            ptr(entryView), gtk_text_buffer_get_insert(buffer), 0, 0, 0, 0)
     }
 
     private func stopTurn() {
@@ -1492,6 +1711,8 @@ final class MainWindow: @unchecked Sendable {
     private func restoreDraft(for sessionID: String) {
         let draft = UserDefaults.standard.string(forKey: "tailscode.draft.\(sessionID)") ?? ""
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), draft, -1)
+        vim.reset(to: draft, cursor: draft.count, mode: .insert)
+        updateVimBadge()
     }
 
     private func sendFromComposer() {
@@ -1503,6 +1724,8 @@ final class MainWindow: @unchecked Sendable {
         if let selectedID {
             UserDefaults.standard.removeObject(forKey: "tailscode.draft.\(selectedID)")
         }
+        vim.reset(to: "", cursor: 0, mode: .insert)
+        updateVimBadge()
         if handleSlashCommand(text) { return }
         attachments = []
         renderAttachments()

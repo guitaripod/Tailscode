@@ -48,6 +48,14 @@ final class TerminalPane: @unchecked Sendable {
         #endif
     }
 
+    /// The terminal sizes its own type: VTE owns the font, so a CSS rule aimed at the rest of the
+    /// canvas would leave this pane alone.
+    func setFontScale(_ scale: Double) {
+        #if HAS_VTE
+            vte_terminal_set_font_scale(ptr(terminal), scale)
+        #endif
+    }
+
     func setDirectory(_ path: String?) {
         guard directory != path else { return }
         directory = path

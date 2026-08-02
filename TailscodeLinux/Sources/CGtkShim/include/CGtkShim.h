@@ -60,3 +60,7 @@ double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);
 /// Scales every font in the app by setting `gtk-xft-dpi` (which is 1024ths of a DPI, hence the
 /// shim: the property write is a varargs `g_object_set`).
 void tailscode_set_text_scale(double scale);
+
+/// The widget that currently holds focus inside `root`, or NULL — how a key handler tells the
+/// prompt box apart from the search field without guessing from the event.
+GtkWidget *tailscode_focused_widget(GtkWidget *root);

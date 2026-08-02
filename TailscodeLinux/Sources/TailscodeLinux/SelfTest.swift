@@ -27,6 +27,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkVim()
+            report("vim: \(checks) commands behave")
+        } catch {
+            report("vim: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -134,6 +142,76 @@ public enum SelfTest {
         guard try store.profiles().isEmpty else {
             throw SelfTestFailure("profile survived deletion")
         }
+    }
+
+    /// The composer's vim mode, driven the way a person drives it: a starting buffer, a string of
+    /// keys, and the text that must come out. It runs in the same `--selftest` as everything else
+    /// because a headless box can check an editor perfectly well, and an editor that quietly eats
+    /// the wrong word is worse than no editor.
+    private static func checkVim() throws -> Int {
+        let cases: [(text: String, keys: String, expected: String, label: String)] = [
+            ("hello world", "dw", "world", "dw"),
+            ("hello world", "wdw", "hello ", "wdw"),
+            ("hello world", "x", "ello world", "x"),
+            ("hello world", "wciwthere", "hello there", "ciw"),
+            ("say \"a thing\" now", "f\"ci\"other", "say \"other\" now", "ci\""),
+            ("call(one, two)", "f(di(", "call()", "di("),
+            ("alpha\nbeta\ngamma", "jdd", "alpha\ngamma", "dd"),
+            ("alpha\nbeta", "yyp", "alpha\nalpha\nbeta", "yy then p"),
+            ("alpha beta", "vey", "alpha beta", "visual yank leaves text"),
+            ("alpha beta", "vlld", "ha beta", "visual delete"),
+            ("alpha", "A!", "alpha!", "A"),
+            ("alpha", "ohi", "alpha\nhi", "o"),
+            ("alpha", "Ihi ", "hi alpha", "I"),
+            ("one two three", "d2w", "three", "count with operator"),
+            ("indent", ">>", "    indent", ">>"),
+            ("    indent", "<<", "indent", "<<"),
+            ("alpha", "xu", "alpha", "undo"),
+            ("alpha beta", "wD", "alpha ", "D"),
+            ("alpha", "~", "Alpha", "~"),
+            ("one\ntwo", "J", "one two", "J"),
+            ("abc", "ra", "abc", "r same character"),
+            ("abc", "rz", "zbc", "r"),
+            ("first\nsecond\nthird", "Gdd", "first\nsecond\n", "G then dd"),
+            ("hello", "$x", "hell", "$x"),
+            ("alpha bravo charlie", "2dw", "charlie", "count before operator"),
+            ("one, two", "dt,", ", two", "dt"),
+            ("one, two", "df,", " two", "df"),
+            ("alpha bravo", "wyiwP", "alpha bravobravo", "yiw then P"),
+            ("keep {this} out", "f{da{", "keep  out", "da{"),
+            ("first\nsecond", "Vd", "second", "visual-line delete"),
+            ("first\nsecond", "jVd", "first\n", "visual-line delete of last line"),
+            ("alpha", "veU", "ALPHA", "visual gU shortcut via U"),
+            ("a b c d", "2x", "b c d", "count with x"),
+            ("hello", "ggx", "ello", "gg"),
+            ("word here", "ebx", "ord here", "b"),
+        ]
+        var checked = 0
+        for testCase in cases {
+            let engine = VimEngine()
+            engine.reset(to: testCase.text, cursor: 0, mode: .normal)
+            var text = testCase.text
+            var cursor = 0
+            for character in testCase.keys {
+                let outcome = engine.handle(VimKey(character: character), text: text, cursor: cursor)
+                if case .passThrough = outcome {
+                    var characters = Array(text)
+                    characters.insert(character, at: min(cursor, characters.count))
+                    text = String(characters)
+                    cursor += 1
+                    engine.syncFromEditor(text: text, cursor: cursor)
+                } else {
+                    text = engine.document.text
+                    cursor = engine.document.cursor
+                }
+            }
+            guard text == testCase.expected else {
+                throw SelfTestFailure(
+                    "\(testCase.label): expected \(testCase.expected.debugDescription), got \(text.debugDescription)")
+            }
+            checked += 1
+        }
+        return checked
     }
 
     /// Two observers on one conversation, which is the whole point of a desktop client that is a

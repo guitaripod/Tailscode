@@ -8,6 +8,11 @@ import Foundation
 /// its own rules — near-black, monospace throughout, hairline rules, square corners, and a single
 /// green that carries every live signal. Nothing in the canvas is rounded and nothing in it is
 /// translucent; that is what keeps it reading as a terminal rather than as a chat app wearing one.
+///
+/// Type size is not one number. Three areas scale independently — the chat list, the prose in the
+/// transcript, and everything monospace — because the reason to enlarge a transcript (reading) is
+/// not the reason to enlarge a sidebar (glancing), and code that rewraps is worse than code that
+/// stays put.
 enum MatrixTheme {
     static let phosphor = "#4ade80"
     static let phosphorDim = "#22c55e"
@@ -20,8 +25,17 @@ enum MatrixTheme {
     static let danger = "#f87171"
     static let cyan = "#67e8f9"
 
+    private nonisolated(unsafe) static var provider: UnsafeMutablePointer<GtkCssProvider>?
+
     static var css: String {
-        """
+        let chrome = Preferences.scale(.chrome)
+        let prose = Preferences.scale(.prose)
+        let mono = Preferences.scale(.mono)
+        func c(_ value: Double) -> String { String(format: "%.3frem", value * chrome) }
+        func p(_ value: Double) -> String { String(format: "%.3frem", value * prose) }
+        func m(_ value: Double) -> String { String(format: "%.3frem", value * mono) }
+
+        return """
         .canvas {
             background-color: \(canvas);
             color: \(text);
@@ -46,28 +60,28 @@ enum MatrixTheme {
         .prompt-text {
             color: \(text);
             font-family: monospace;
-            font-size: 0.95rem;
+            font-size: \(p(0.95));
         }
         .agent-text {
             color: \(text);
-            font-size: 0.95rem;
+            font-size: \(p(0.95));
         }
         .tool-line, .mono {
             font-family: monospace;
-            font-size: 0.88rem;
+            font-size: \(m(0.88));
         }
-        .tool-name { color: \(cyan); font-family: monospace; font-size: 0.88rem; }
-        .tool-detail { color: \(textDim); font-family: monospace; font-size: 0.88rem; }
+        .tool-name { color: \(cyan); font-family: monospace; font-size: \(m(0.88)); }
+        .tool-detail { color: \(textDim); font-family: monospace; font-size: \(m(0.88)); }
         .glyph-done { color: \(phosphor); }
         .glyph-running { color: \(amber); }
         .glyph-error { color: \(danger); }
         .glyph-pending { color: \(textDim); }
         .dim { color: \(textDim); }
-        .attachment { color: \(cyan); font-family: monospace; font-size: 0.88rem; }
+        .attachment { color: \(cyan); font-family: monospace; font-size: \(m(0.88)); }
         .status-line {
             color: \(phosphorDim);
             font-family: monospace;
-            font-size: 0.82rem;
+            font-size: \(m(0.82));
             padding: 4px 26px;
             background-color: \(canvasRaised);
             border-top: 1px solid \(rule);
@@ -81,21 +95,33 @@ enum MatrixTheme {
             background-color: transparent;
             color: \(text);
             font-family: monospace;
+            font-size: \(m(0.92));
         }
+        .composer-normal { border-color: \(phosphor); }
+        .composer-visual { border-color: \(amber); }
+        .vim-badge {
+            font-family: monospace;
+            font-size: \(m(0.72));
+            padding: 1px 6px;
+            color: \(canvas);
+            background-color: \(phosphor);
+        }
+        .vim-badge-visual { background-color: \(amber); }
+        .vim-badge-insert { background-color: \(cyan); }
         .code-block {
             background-color: #080c09;
             border-left: 2px solid \(rule);
             padding: 8px 12px;
             font-family: monospace;
-            font-size: 0.85rem;
+            font-size: \(m(0.85));
             color: \(text);
         }
-        .diff-add { color: \(phosphor); font-family: monospace; font-size: 0.85rem; }
-        .diff-remove { color: \(danger); font-family: monospace; font-size: 0.85rem; }
+        .diff-add { color: \(phosphor); font-family: monospace; font-size: \(m(0.85)); }
+        .diff-remove { color: \(danger); font-family: monospace; font-size: \(m(0.85)); }
 
         .pill {
             font-family: monospace;
-            font-size: 0.72rem;
+            font-size: \(c(0.72));
             padding: 1px 6px;
             border-radius: 2px;
         }
@@ -109,38 +135,38 @@ enum MatrixTheme {
             background-color: \(canvasRaised);
             box-shadow: inset 2px 0 0 \(phosphor);
         }
-        .row-title { font-size: 0.92rem; }
-        .row-title-unread { font-size: 0.92rem; font-weight: 700; }
-        .row-detail { font-size: 0.78rem; opacity: 0.65; font-family: monospace; }
+        .row-title { font-size: \(c(0.92)); }
+        .row-title-unread { font-size: \(c(0.92)); font-weight: 700; }
+        .row-detail { font-size: \(c(0.78)); opacity: 0.65; font-family: monospace; }
         .section-header {
-            font-size: 0.72rem;
+            font-size: \(c(0.72));
             font-weight: 700;
             letter-spacing: 0.08em;
             opacity: 0.5;
             padding: 10px 8px 2px 8px;
         }
-        .unread-dot { color: \(phosphor); font-size: 0.7rem; }
+        .unread-dot { color: \(phosphor); font-size: \(c(0.7)); }
 
-        .tree-row { font-family: monospace; font-size: 0.85rem; color: \(text); }
-        .tree-dir { color: \(cyan); font-family: monospace; font-size: 0.85rem; }
-        .tree-path { color: \(textDim); font-family: monospace; font-size: 0.78rem; }
+        .tree-row { font-family: monospace; font-size: \(m(0.85)); color: \(text); }
+        .tree-dir { color: \(cyan); font-family: monospace; font-size: \(m(0.85)); }
+        .tree-path { color: \(textDim); font-family: monospace; font-size: \(m(0.78)); }
 
         .code-header {
             color: \(textDim);
             font-family: monospace;
-            font-size: 0.75rem;
+            font-size: \(m(0.75));
             letter-spacing: 0.06em;
         }
-        .code-copy { color: \(cyan); font-family: monospace; font-size: 0.75rem; padding: 0 6px; }
-        .code-body { font-family: monospace; font-size: 0.85rem; color: \(text); }
+        .code-copy { color: \(cyan); font-family: monospace; font-size: \(m(0.75)); padding: 0 6px; }
+        .code-body { font-family: monospace; font-size: \(m(0.85)); color: \(text); }
         .tool-output {
             font-family: monospace;
-            font-size: 0.82rem;
+            font-size: \(m(0.82));
             color: \(textDim);
         }
         .reasoning-body {
             color: \(textDim);
-            font-size: 0.9rem;
+            font-size: \(p(0.9));
             font-style: italic;
         }
         .disclosure { padding: 0; min-height: 0; }
@@ -153,10 +179,10 @@ enum MatrixTheme {
         }
         .card-permission { border-left: 2px solid \(amber); }
         .card-question { border-left: 2px solid \(cyan); }
-        .card-title { font-size: 0.95rem; font-weight: 600; color: \(text); }
+        .card-title { font-size: \(p(0.95)); font-weight: 600; color: \(text); }
         .answer-option {
             font-family: monospace;
-            font-size: 0.88rem;
+            font-size: \(m(0.88));
             color: \(cyan);
             background-color: transparent;
             border: 1px solid \(rule);
@@ -169,7 +195,7 @@ enum MatrixTheme {
         .seam-text {
             color: \(amber);
             font-family: monospace;
-            font-size: 0.78rem;
+            font-size: \(p(0.78));
             letter-spacing: 0.08em;
         }
         .subagent-card {
@@ -182,20 +208,20 @@ enum MatrixTheme {
         .goal-line {
             color: \(cyan);
             font-family: monospace;
-            font-size: 0.8rem;
+            font-size: \(p(0.8));
             padding: 2px 26px;
         }
         .banner-auth {
             color: \(canvas);
             background-color: \(amber);
             font-family: monospace;
-            font-size: 0.85rem;
+            font-size: \(m(0.85));
             padding: 4px 12px;
         }
         .pill-row { padding: 0px 22px 10px 22px; }
         .pill-row button {
             font-family: monospace;
-            font-size: 0.78rem;
+            font-size: \(m(0.78));
             min-height: 0;
             padding: 2px 10px;
             background-color: \(canvasRaised);
@@ -208,7 +234,7 @@ enum MatrixTheme {
 
         .chip {
             font-family: monospace;
-            font-size: 0.78rem;
+            font-size: \(m(0.78));
             min-height: 0;
             padding: 2px 10px;
             background-color: \(canvasRaised);
@@ -219,7 +245,7 @@ enum MatrixTheme {
         .chip:hover { border-color: \(danger); color: \(danger); }
         .jump-pill {
             font-family: monospace;
-            font-size: 0.82rem;
+            font-size: \(m(0.82));
             padding: 4px 14px;
             border-radius: 14px;
             color: \(canvas);
@@ -239,20 +265,24 @@ enum MatrixTheme {
         .usage-footer { border-top: 1px solid alpha(currentColor, 0.15); }
         .gauge-ok, .gauge-warn, .gauge-danger {
             font-family: monospace;
-            font-size: 0.75rem;
+            font-size: \(c(0.75));
         }
         .gauge-ok { color: \(textDim); }
         .gauge-warn { color: \(amber); }
         .gauge-danger { color: \(danger); }
+        .settings-group { padding: 6px 0px; }
         """
     }
 
+    /// Loading into the same provider restyles every widget already on screen, so a size change
+    /// lands live rather than at the next launch.
     static func install() {
-        let provider = gtk_css_provider_new()
+        if provider == nil { provider = gtk_css_provider_new() }
+        guard let provider else { return }
         gtk_css_provider_load_from_string(provider, css)
         if let display = gdk_display_get_default() {
             gtk_style_context_add_provider_for_display(
-                display, op(provider!), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
+                display, op(provider), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
         }
     }
 }
