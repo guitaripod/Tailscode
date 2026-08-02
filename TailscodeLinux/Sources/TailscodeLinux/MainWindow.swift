@@ -50,6 +50,8 @@ final class MainWindow: @unchecked Sendable {
     private var followsBottom = true
     private var isAutoScrolling = false
     private var isFillingInChunks = false
+    private var pinCorrectorScheduled = false
+    private var pendingReveal = false
     private var sidebarLimit = 60
     /// How much of a transcript is folded into rows at all — read from the streaming task, so it
     /// is a plain value rather than anything that needs the main context.
@@ -205,6 +207,11 @@ final class MainWindow: @unchecked Sendable {
                     self.jumpToBottom()
                 case "settings":
                     self.presentSettings()
+                case "scale":
+                    Preferences.setScale((Double(argument) ?? 100) / 100, for: .prose)
+                    Preferences.setScale((Double(argument) ?? 100) / 100, for: .mono)
+                    MatrixTheme.install()
+                    self.applyLayoutPreferences()
                 case "state":
                     let adjustment = self.transcriptScroller.flatMap {
                         gtk_scrolled_window_get_vadjustment(op($0))
@@ -369,7 +376,13 @@ final class MainWindow: @unchecked Sendable {
             // bottom" can be honoured correctly.
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "changed") { [weak self] in
                 guard let self, self.followsBottom else { return }
+                // Twice, deliberately. The synchronous pin keeps the frame being laid out at the
+                // bottom; but a value written during layout can leave the viewport's pixels where
+                // they were — correct value, stale render, fixed only by the next damage. The
+                // corrector runs after layout and paint, re-asserts the value, and queues an
+                // allocation so the render always catches up within a frame.
                 self.pinToBottom()
+                self.schedulePinCorrector()
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
                 guard let self, !self.isAutoScrolling else { return }
@@ -986,6 +999,8 @@ final class MainWindow: @unchecked Sendable {
         rowWidgets = []
         highlightedRow = 0
         placeholderShown = true
+        pendingReveal = false
+        gtk_widget_set_opacity(transcriptBox, 1)
         let label = Gtk.label(text, css: "dim", selectable: false)
         Gtk.margins(label, top: 24, bottom: 24, leading: 4, trailing: 4)
         gtk_box_append(ptr(transcriptBox), label)
@@ -1008,6 +1023,10 @@ final class MainWindow: @unchecked Sendable {
             rowWidgets = []
             highlightedRow = 0
             placeholderShown = false
+            // Built invisible: the first frame anyone sees is the settled bottom of the
+            // conversation, never the top of it sliding down into place.
+            gtk_widget_set_opacity(transcriptBox, 0)
+            pendingReveal = true
         }
         // Whether to follow is what the person last chose, not where the scrollbar happens to be:
         // an unfocused window does not lay out, so its position is stale exactly when new rows
@@ -2133,10 +2152,26 @@ final class MainWindow: @unchecked Sendable {
 
     private func scrollToBottom() {
         setFollowing(true)
-        let raw = transcriptScroller.map { UInt(bitPattern: $0) } ?? 0
+        schedulePinCorrector()
+    }
+
+    /// Runs once the current layout and paint are done: re-pins, then forces one allocation pass
+    /// so the pixels always match the adjustment — the difference between "at the bottom" and
+    /// "says it is at the bottom until the window moves". Also the moment a freshly-filled
+    /// transcript is revealed: it was built invisible so its first paint is the settled bottom,
+    /// not a scroll-into-place.
+    private func schedulePinCorrector() {
+        guard !pinCorrectorScheduled else { return }
+        pinCorrectorScheduled = true
         Gtk.onMain { [weak self] in
-            guard let self, raw != 0 else { return }
-            self.pinToBottom()
+            guard let self else { return }
+            self.pinCorrectorScheduled = false
+            if self.followsBottom { self.pinToBottom() }
+            if let scroller = self.transcriptScroller { gtk_widget_queue_allocate(scroller) }
+            if self.pendingReveal {
+                self.pendingReveal = false
+                gtk_widget_set_opacity(self.transcriptBox, 1)
+            }
         }
     }
 
@@ -2433,6 +2468,10 @@ final class MainWindow: @unchecked Sendable {
         return true
     }
 
+    /// Quota as a glance, not a paragraph: one thin bar per gauge, the number beside it, and the
+    /// reset countdown tucked under the row that actually resets. The bar carries the severity —
+    /// quiet until 60%, amber past it, red near the wall — so a full sidebar footer still reads
+    /// in half a second.
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
         Gtk.removeChildren(of: usageBox)
         gtk_widget_set_visible(usageBox, quotas.isEmpty ? 0 : 1)
@@ -2443,15 +2482,39 @@ final class MainWindow: @unchecked Sendable {
                     "\(name) · \(quota.providerName)", css: "section-header", selectable: false))
             for gauge in quota.gauges {
                 let fraction = min(max(gauge.fraction, 0), 1)
-                let filled = Int((fraction * 10).rounded())
-                let bar = String(repeating: "▰", count: filled)
-                    + String(repeating: "▱", count: 10 - filled)
-                var line = "\(gauge.label)  \(bar) \(Int((fraction * 100).rounded()))%"
+                let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
+
+                let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+                let title = Gtk.label(gauge.label, css: "gauge-\(severity)", selectable: false)
+                gtk_widget_set_hexpand(title, 1)
+                gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+                gtk_box_append(ptr(row), title)
+
+                let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+                Gtk.addClass(track, "gauge-track")
+                gtk_widget_set_size_request(track, 72, 5)
+                gtk_widget_set_valign(track, GTK_ALIGN_CENTER)
+                gtk_widget_set_hexpand(track, 0)
+                let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+                Gtk.addClass(fill, "gauge-fill-\(severity)")
+                gtk_widget_set_size_request(fill, Int32((fraction * 72).rounded()), 5)
+                gtk_box_append(ptr(track), fill)
+                gtk_box_append(ptr(row), track)
+
+                let percent = Gtk.label(
+                    "\(Int((fraction * 100).rounded()))%", css: "gauge-\(severity)",
+                    selectable: false)
+                gtk_widget_set_size_request(percent, 34, -1)
+                gtk_label_set_xalign(op(percent), 1)
+                gtk_box_append(ptr(row), percent)
+                gtk_box_append(ptr(usageBox), row)
+
                 if let resets = gauge.resetsAt, gauge.trustedReset {
-                    line += " · " + Localized.text("resets in %@", Self.countdown(to: resets))
+                    let detail = Gtk.label(
+                        Localized.text("resets in %@", Self.countdown(to: resets)),
+                        css: "gauge-reset", selectable: false)
+                    gtk_box_append(ptr(usageBox), detail)
                 }
-                let css = fraction > 0.85 ? "gauge-danger" : fraction >= 0.6 ? "gauge-warn" : "gauge-ok"
-                gtk_box_append(ptr(usageBox), Gtk.label(line, css: css, selectable: false))
             }
         }
     }

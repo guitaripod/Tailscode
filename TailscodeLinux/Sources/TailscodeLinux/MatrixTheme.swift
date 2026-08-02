@@ -380,6 +380,20 @@ enum MatrixTheme {
         .gauge-ok { color: \(textDim); }
         .gauge-warn { color: \(warn); }
         .gauge-danger { color: \(danger); }
+        .gauge-reset {
+            font-family: monospace;
+            font-size: \(c(0.68));
+            color: \(textDim);
+            opacity: 0.8;
+            margin-bottom: 2px;
+        }
+        .gauge-track {
+            background-color: alpha(currentColor, 0.12);
+            border-radius: 3px;
+        }
+        .gauge-fill-ok { background-color: \(accentDim); border-radius: 3px; }
+        .gauge-fill-warn { background-color: \(warn); border-radius: 3px; }
+        .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
         .settings-group { padding: 6px 0px; }
         """
     }
