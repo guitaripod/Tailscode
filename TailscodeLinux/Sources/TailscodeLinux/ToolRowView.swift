@@ -1,4 +1,5 @@
 import CAdw
+import CGtkShim
 import CodingAgentKit
 import Foundation
 import TailscodeCore
@@ -147,7 +148,20 @@ enum ToolRowView {
         }
 
         if summary.kind == .shell, let command = summary.command {
-            gtk_box_append(ptr(column), Gtk.label("$ \(command)", css: "code-body", wrap: true))
+            let line = Gtk.label("$ \(command)", css: "code-body", wrap: true)
+            Gtk.addClass(line, "command-line")
+            let toast = context.toast
+            // A plain click copies; a drag still selects — the release only copies when nothing
+            // ended up selected, so both gestures keep their meaning.
+            let lineBits = UInt(bitPattern: line)
+            Gtk.onRelease(line) {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: lineBits) else { return }
+                let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                guard tailscode_label_has_selection(widget) == 0 else { return }
+                Gtk.copyToClipboard(command)
+                toast?(Localized.text("Command copied"))
+            }
+            gtk_box_append(ptr(column), line)
             hasContent = true
         }
 

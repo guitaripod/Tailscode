@@ -380,6 +380,12 @@ enum MatrixTheme {
         .answer-option:hover { border-color: \(info); }
         .answer-selected { border-color: \(accent); color: \(accent); }
 
+        .command-line:hover { background-color: alpha(\(info), 0.10); border-radius: 4px; }
+        toast {
+            background-color: \(canvasRaised);
+            color: \(text);
+            border: 1px solid \(rule);
+        }
         .agent-live {
             color: \(warn);
             font-family: monospace;

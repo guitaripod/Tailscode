@@ -51,6 +51,20 @@ enum Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// A plain click (release with nothing selected) on any widget. The shim owns the gesture;
+    /// the box leaks by design, like every other signal closure here — rows live as long as the
+    /// transcript does.
+    static func onRelease(
+        _ widget: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+        }
+        tailscode_on_release(widget, unsafeBitCast(callback, to: (@convention(c) (UnsafeMutableRawPointer?) -> Void).self), box)
+    }
+
     /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.
     static func after(_ milliseconds: UInt32, _ work: @escaping @Sendable () -> Void) {
         let box = Unmanaged.passRetained(Box(work)).toOpaque()

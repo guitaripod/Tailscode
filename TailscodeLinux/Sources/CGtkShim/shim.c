@@ -277,3 +277,40 @@ void tailscode_set_text_scale(double scale) {
     if (!settings) return;
     g_object_set(settings, "gtk-xft-dpi", (gint)(96.0 * 1024.0 * scale), NULL);
 }
+
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+} TailscodeClick;
+
+static void tailscode_click_released(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)gesture; (void)n_press; (void)x; (void)y;
+    TailscodeClick *box = raw;
+    box->handler(box->data);
+}
+
+void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data) {
+    TailscodeClick *box = g_new0(TailscodeClick, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    g_signal_connect_data(click, "released", G_CALLBACK(tailscode_click_released), box,
+                          (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
+char *tailscode_label_selection(GtkWidget *widget) {
+    if (!widget || !GTK_IS_LABEL(widget)) return NULL;
+    int start = 0, end = 0;
+    if (!gtk_label_get_selection_bounds(GTK_LABEL(widget), &start, &end)) return NULL;
+    const char *text = gtk_label_get_text(GTK_LABEL(widget));
+    if (!text) return NULL;
+    return g_utf8_substring(text, start, end);
+}
+
+gboolean tailscode_label_has_selection(GtkWidget *widget) {
+    if (!widget || !GTK_IS_LABEL(widget)) return FALSE;
+    int start = 0, end = 0;
+    return gtk_label_get_selection_bounds(GTK_LABEL(widget), &start, &end);
+}

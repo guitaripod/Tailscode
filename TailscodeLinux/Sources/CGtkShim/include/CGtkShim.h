@@ -79,3 +79,6 @@ void tailscode_connect_notify(
 /// Runs `handler(data)` once on the GLib main context after `ms` milliseconds — the timed cousin
 /// of `tailscode_on_main`, with the same ownership rule.
 void tailscode_after(guint ms, void (*handler)(void *), void *data);
+void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data);
+char *tailscode_label_selection(GtkWidget *widget);
+gboolean tailscode_label_has_selection(GtkWidget *widget);

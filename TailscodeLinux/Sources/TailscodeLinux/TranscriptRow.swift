@@ -21,6 +21,8 @@ final class TranscriptContext: @unchecked Sendable {
     var openImage: (@Sendable (String, String) -> Void)?
     var presentText:
         (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
+    /// A short confirmation the window floats over everything — "Command copied".
+    var toast: (@Sendable (String) -> Void)?
     private var textureOrder: [String] = []
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
@@ -276,7 +278,7 @@ struct TranscriptRow: Hashable {
         case .agentProse(_, let markup):
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
-            return Self.codeBlock(language: language, body: body)
+            return Self.codeBlock(language: language, body: body, context: context)
         case .reasoning(let text):
             return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
@@ -323,7 +325,7 @@ struct TranscriptRow: Hashable {
                     gtk_box_append(ptr(column), Gtk.markupLabel(markup, css: "agent-text"))
                 }
             case .code(let language, let body):
-                gtk_box_append(ptr(column), codeBlock(language: language, body: body))
+                gtk_box_append(ptr(column), codeBlock(language: language, body: body, context: nil))
             }
         }
         return column
@@ -350,9 +352,9 @@ struct TranscriptRow: Hashable {
         return chunks
     }
 
-    private static func codeBlock(language: String?, body: String)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
+    private static func codeBlock(
+        language: String?, body: String, context: TranscriptContext?
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(column, "code-block")
 
@@ -361,10 +363,12 @@ struct TranscriptRow: Hashable {
         gtk_widget_set_hexpand(tag, 1)
         gtk_box_append(ptr(header), tag)
         let bytes = body
+        let toast = context?.toast
         gtk_box_append(
             ptr(header),
             Gtk.button(Localized.text("copy"), css: ["flat", "code-copy"]) {
                 Gtk.copyToClipboard(bytes)
+                toast?(Localized.text("Code copied"))
             })
         gtk_box_append(ptr(column), header)
 

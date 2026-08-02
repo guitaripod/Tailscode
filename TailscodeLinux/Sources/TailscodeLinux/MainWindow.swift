@@ -112,6 +112,7 @@ final class MainWindow: @unchecked Sendable {
     private var lastState: ConversationState?
     private var streamTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var toastOverlay: UnsafeMutablePointer<GtkWidget>?
     private var listStreamTasks: [Task<Void, Never>] = []
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
@@ -163,7 +164,10 @@ final class MainWindow: @unchecked Sendable {
         gtk_paned_set_shrink_end_child(op(stack), 0)
         terminalPaned = stack
 
-        adw_application_window_set_content(ptr(window), stack)
+        let overlay = adw_toast_overlay_new()!
+        adw_toast_overlay_set_child(op(overlay), stack)
+        toastOverlay = overlay
+        adw_application_window_set_content(ptr(window), overlay)
         gtk_window_present(ptr(window))
 
         fileTree.onOpen = { [weak self] path in self?.insertIntoComposer("@\(path) ") }
@@ -213,6 +217,8 @@ final class MainWindow: @unchecked Sendable {
                     self.presentSettings()
                 case "agents":
                     self.bandState.openMenu(id: "agents")
+                case "toast":
+                    self.toast(Localized.text("Command copied"))
                 case "reader":
                     self.context.presentText?(
                         "Compaction summary", "COMPACTED · 527.8k → 24.8k · 2m 4s",
@@ -593,6 +599,9 @@ final class MainWindow: @unchecked Sendable {
         context.openImage = { [weak self] key, name in
             Gtk.onMain { [weak self] in self?.presentImage(key: key, name: name) }
         }
+        context.toast = { [weak self] text in
+            Gtk.onMain { [weak self] in self?.toast(text) }
+        }
         context.presentText = { [weak self] title, subtitle, body, mono in
             Gtk.onMain { [weak self] in
                 Dialogs.reader(
@@ -600,6 +609,14 @@ final class MainWindow: @unchecked Sendable {
                     parent: self?.window)
             }
         }
+    }
+
+    /// A two-second floating confirmation — the answer to "did my click do anything".
+    func toast(_ text: String) {
+        guard let toastOverlay else { return }
+        let toast = adw_toast_new(text)
+        adw_toast_set_timeout(toast, 2)
+        adw_toast_overlay_add_toast(op(toastOverlay), toast)
     }
 
     /// The picture at full size in its own window, and a save that hands over the bytes the
@@ -1923,7 +1940,18 @@ final class MainWindow: @unchecked Sendable {
             setHelp(false)
         case .search: gtk_widget_grab_focus(searchEntry)
         case .send: sendFromComposer()
-        case .stop: stopTurn()
+        case .stop:
+            // Ctrl+C over a selection means copy everywhere else on the desktop; only with
+            // nothing selected does it mean "stop the turn".
+            if let window, let focused = tailscode_focused_widget(window),
+                let selection = tailscode_label_selection(focused)
+            {
+                Gtk.copyToClipboard(String(cString: selection))
+                g_free(selection)
+                toast(Localized.text("Copied"))
+            } else {
+                stopTurn()
+            }
         case .toggleHelp: setHelp(!helpShown)
         case .reload: Task { [weak self] in await self?.refresh() }
         case .allowOnce: respondToFirstPermission(.once)
