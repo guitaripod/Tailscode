@@ -100,6 +100,7 @@ final class MainWindow: @unchecked Sendable {
     private var entries: [SessionEntry] = []
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
+    private var lastQuotas: [(String, UsageQuota)] = []
     private var cursor = 0
     private var filter = ""
     private var pending = ""
@@ -215,6 +216,8 @@ final class MainWindow: @unchecked Sendable {
                     self.jumpToBottom()
                 case "settings":
                     self.presentSettings()
+                case "usage":
+                    self.presentUsage()
                 case "agents":
                     self.bandState.openMenu(id: "agents")
                 case "toast":
@@ -313,6 +316,9 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_visible(usageBox, 0)
         Gtk.addClass(usageBox, "usage-footer")
         Gtk.margins(usageBox, top: 6, bottom: 8, leading: 10, trailing: 10)
+        gtk_widget_set_cursor_from_name(usageBox, "pointer")
+        gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
+        Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
         gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
@@ -2645,16 +2651,37 @@ final class MainWindow: @unchecked Sendable {
     private func refreshUsage() async -> Bool {
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else { return false }
-        var quotas: [(String, UsageQuota)] = []
-        for profile in profiles {
-            guard let backend = await ServerDirectory.shared.backend(for: profile),
-                let quota = (try? await backend.usageQuota()) ?? nil
-            else { continue }
-            quotas.append((ServerLabel.display(profile), quota))
+        let snapshot = await Self.collectQuotas(profiles: profiles)
+        Gtk.onMain { [weak self] in
+            self?.lastQuotas = snapshot
+            self?.renderUsage(snapshot)
         }
-        let snapshot = quotas
-        Gtk.onMain { [weak self] in self?.renderUsage(snapshot) }
         return true
+    }
+
+    /// Every quota every server can speak for: the agent's own, plus whatever other providers
+    /// the machine holds accounts for (a bridge also reports Grok). One machine answering for a
+    /// provider is enough — a second profile on the same host must not double the card.
+    private static func collectQuotas(profiles: [ConnectionProfile]) async -> [(String, UsageQuota)]
+    {
+        var quotas: [(String, UsageQuota)] = []
+        var seen = Set<String>()
+        for profile in profiles {
+            guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
+            var collected: [UsageQuota] = []
+            if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
+            collected += (try? await backend.additionalUsageQuotas()) ?? []
+            for quota in collected where seen.insert("\(quota.providerName)|\(quota.source)").inserted {
+                quotas.append((profile.name, quota))
+            }
+        }
+        return quotas
+    }
+
+    private func presentUsage() {
+        UsagePanel.present(parent: sidebarPane, initial: lastQuotas) {
+            await Self.collectQuotas(profiles: await ServerDirectory.shared.profiles())
+        }
     }
 
     /// Quota as a glance, not a paragraph: one thin bar per gauge, the number beside it, and the
@@ -2668,7 +2695,7 @@ final class MainWindow: @unchecked Sendable {
             gtk_box_append(
                 ptr(usageBox),
                 Gtk.label(
-                    "\(name) · \(quota.providerName)", css: "section-header", selectable: false))
+                    "\(quota.providerName) · \(name)", css: "section-header", selectable: false))
             for gauge in quota.gauges {
                 let fraction = min(max(gauge.fraction, 0), 1)
                 let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
@@ -2698,7 +2725,7 @@ final class MainWindow: @unchecked Sendable {
                 gtk_box_append(ptr(row), percent)
                 gtk_box_append(ptr(usageBox), row)
 
-                if let resets = gauge.resetsAt, gauge.trustedReset {
+                if let resets = gauge.resetsAt, gauge.trustedReset, fraction >= 0.6 {
                     let detail = Gtk.label(
                         Localized.text("resets in %@", Self.countdown(to: resets)),
                         css: "gauge-reset", selectable: false)
@@ -2711,8 +2738,10 @@ final class MainWindow: @unchecked Sendable {
     private static func countdown(to date: Date) -> String {
         let interval = date.timeIntervalSinceNow
         guard interval > 0 else { return Localized.text("moments") }
-        let hours = Int(interval) / 3600
+        let days = Int(interval) / 86400
+        let hours = (Int(interval) % 86400) / 3600
         let minutes = (Int(interval) % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 

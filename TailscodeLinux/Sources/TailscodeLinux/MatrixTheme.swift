@@ -513,6 +513,38 @@ enum MatrixTheme {
         .gauge-fill-ok { background-color: \(accentDim); border-radius: 3px; }
         .gauge-fill-warn { background-color: \(warn); border-radius: 3px; }
         .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
+        .usage-card {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+        .usage-provider { color: \(text); font-weight: 700; font-size: 1.05rem; }
+        .usage-plan { color: \(textDim); font-size: 0.85rem; }
+        .usage-live {
+            color: \(accent);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            border: 1px solid alpha(\(accent), 0.4);
+            border-radius: 99px;
+            padding: 1px 8px;
+        }
+        .usage-stale {
+            color: \(textDim);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            border: 1px solid alpha(currentColor, 0.4);
+            border-radius: 99px;
+            padding: 1px 8px;
+        }
+        .usage-gauge-label { color: \(text); font-size: 0.9rem; }
+        .usage-rule { background-color: \(rule); min-height: 1px; margin: 2px 0px; }
+        .usage-detail-key { color: \(textDim); font-size: 0.85rem; }
+        .usage-detail-value { color: \(text); font-size: 0.85rem; }
+        .usage-source { color: \(textDim); font-size: 0.75rem; }
+        .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """
     }
