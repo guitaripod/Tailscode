@@ -215,245 +215,222 @@ enum Preferences {
 
 /// The settings window: every knob the app has, live. Nothing here needs an OK — a size change
 /// restyles the running window as the slider moves, which is the only honest way to pick one.
+/// The settings window, in the desktop's own furniture: an Adwaita preferences window of grouped
+/// rows — a theme picker, spin rows for every size, switches for every mode — every one applying
+/// live, because the only honest way to pick a size is to watch it change.
 enum SettingsDialog {
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?,
         onLayoutChanged: @escaping @Sendable () -> Void
     ) {
-        let (window, content) = Dialogs.window(
-            title: Localized.text("Settings"), parent: parent, width: 620)
-        gtk_window_set_default_size(ptr(window), 620, 720)
+        let window = adw_preferences_window_new()!
+        gtk_window_set_title(ptr(window), Localized.text("Settings"))
+        gtk_window_set_default_size(ptr(window), 560, 720)
+        if let parent { gtk_window_set_transient_for(ptr(window), ptr(parent)) }
+        gtk_window_set_modal(ptr(window), 0)
 
-        section(content, Localized.text("APPEARANCE"))
-        gtk_box_append(ptr(content), appearanceRow(onLayoutChanged: onLayoutChanged))
+        let page = adw_preferences_page_new()!
+        adw_preferences_window_add(ptr(window), ptr(page))
 
-        section(content, Localized.text("TYPE SIZE"))
-        for area in Preferences.Area.allCases {
-            gtk_box_append(
-                ptr(content),
-                slider(
-                    title: area.title, value: Preferences.scale(area), lower: 0.6, upper: 2.5,
-                    step: 0.05, format: { String(format: "%.0f%%", $0 * 100) }
-                ) { value in
-                    Preferences.setScale(value, for: area)
-                    MatrixTheme.install()
-                })
-        }
-        gtk_box_append(
-            ptr(content),
-            slider(
-                title: Localized.text("Terminal"), value: Preferences.terminalScale, lower: 0.6,
-                upper: 2.5, step: 0.05, format: { String(format: "%.0f%%", $0 * 100) }
-            ) { value in
-                Preferences.setTerminalScale(value)
-                onLayoutChanged()
-            })
-        gtk_box_append(
-            ptr(content),
-            Gtk.button(Localized.text("Reset every size")) {
-                Preferences.resetScales()
-                Preferences.setTerminalScale(1.0)
+        let appearance = group(Localized.text("Appearance"), on: page)
+        let themes: [(Preferences.Appearance, String)] = [
+            (.system, Localized.text("Follow the system")),
+            (.light, Localized.text("Solarized Light")),
+            (.dark, Localized.text("Rosé Pine")),
+        ]
+        adw_preferences_group_add(
+            ptr(appearance),
+            comboRow(
+                title: Localized.text("Theme"),
+                subtitle: Localized.text("The canvas, the terminal and the chrome, together"),
+                options: themes.map(\.1),
+                selected: themes.firstIndex { $0.0 == Preferences.appearance } ?? 0
+            ) { index in
+                Preferences.setAppearance(themes[index].0)
+                Preferences.applyAppearance()
                 MatrixTheme.install()
                 onLayoutChanged()
             })
 
-        section(content, Localized.text("COMPOSER"))
-        gtk_box_append(
-            ptr(content),
-            toggle(
+        let type = group(
+            Localized.text("Type size"), on: page,
+            description: Localized.text("Percent of the normal size, applied as you change it"))
+        for area in Preferences.Area.allCases {
+            adw_preferences_group_add(
+                ptr(type),
+                spinRow(
+                    title: area.title, value: Preferences.scale(area) * 100, lower: 60,
+                    upper: 250, step: 5
+                ) { value in
+                    Preferences.setScale(value / 100, for: area)
+                    MatrixTheme.install()
+                })
+        }
+        adw_preferences_group_add(
+            ptr(type),
+            spinRow(
+                title: Localized.text("Terminal"), value: Preferences.terminalScale * 100,
+                lower: 60, upper: 250, step: 5
+            ) { value in
+                Preferences.setTerminalScale(value / 100)
+                onLayoutChanged()
+            })
+
+        let composer = group(Localized.text("Prompt box"), on: page)
+        adw_preferences_group_add(
+            ptr(composer),
+            switchRow(
                 title: Localized.text("Return sends the message"),
-                detail: Localized.text("Shift+Return writes a new line either way"),
+                subtitle: Localized.text("Shift+Return writes a new line either way"),
                 value: Preferences.sendOnReturn
             ) { Preferences.setSendOnReturn($0) })
-        gtk_box_append(
-            ptr(content),
-            toggle(
-                title: Localized.text("Vim mode in the prompt box"),
-                detail: Localized.text(
-                    "Normal, visual and visual-line modes: motions, operators, text objects, registers, undo"),
+        adw_preferences_group_add(
+            ptr(composer),
+            switchRow(
+                title: Localized.text("Vim mode"),
+                subtitle: Localized.text(
+                    "Normal, visual and visual-line: motions, operators, text objects, registers, undo"),
                 value: Preferences.vimComposer
             ) { value in
                 Preferences.setVimComposer(value)
                 onLayoutChanged()
             })
-        gtk_box_append(
-            ptr(content),
-            slider(
-                title: Localized.text("Prompt box grows to (lines)"),
-                detail: Localized.text("It starts one line tall and grows with what you type"),
-                value: Double(Preferences.composerLines), lower: 1, upper: 20, step: 1,
-                format: { String(format: "%.0f", $0) }
+        adw_preferences_group_add(
+            ptr(composer),
+            spinRow(
+                title: Localized.text("Grows to (lines)"),
+                subtitle: Localized.text("Starts one line tall; scrolls past this height"),
+                value: Double(Preferences.composerLines), lower: 1, upper: 20, step: 1
             ) { value in
                 Preferences.setComposerLines(Int(value))
                 onLayoutChanged()
             })
 
-        section(content, Localized.text("TRANSCRIPT"))
-        gtk_box_append(
-            ptr(content),
-            toggle(
+        let transcript = group(Localized.text("Transcript"), on: page)
+        adw_preferences_group_add(
+            ptr(transcript),
+            switchRow(
                 title: Localized.text("Compact tool calls"),
-                detail: Localized.text(
-                    "A run of tool calls becomes one line you can open, instead of one line each"),
+                subtitle: Localized.text("A run of tool calls becomes one line you can open"),
                 value: Preferences.compactTools
             ) { value in
                 Preferences.setCompactTools(value)
                 onLayoutChanged()
             })
-        gtk_box_append(
-            ptr(content),
-            toggle(
+        adw_preferences_group_add(
+            ptr(transcript),
+            switchRow(
                 title: Localized.text("Tighter rows"),
-                detail: Localized.text("Less air between parts and turns"),
+                subtitle: Localized.text("Less air between parts and turns"),
                 value: Preferences.denseRows
             ) { value in
                 Preferences.setDenseRows(value)
                 MatrixTheme.install()
                 onLayoutChanged()
             })
-        gtk_box_append(
-            ptr(content),
-            slider(
+        adw_preferences_group_add(
+            ptr(transcript),
+            spinRow(
                 title: Localized.text("Rows kept on screen"),
-                detail: Localized.text("Older rows wait behind one button — this is what keeps a huge chat fast"),
-                value: Double(Preferences.transcriptWindow), lower: 50, upper: 5000, step: 50,
-                format: { String(format: "%.0f", $0) }
+                subtitle: Localized.text(
+                    "Older rows wait behind one button — this keeps a huge chat fast"),
+                value: Double(Preferences.transcriptWindow), lower: 50, upper: 5000, step: 50
             ) { value in
                 Preferences.setTranscriptWindow(Int(value))
                 onLayoutChanged()
             })
 
-        section(content, Localized.text("LAYOUT"))
-        gtk_box_append(
-            ptr(content),
-            Gtk.label(
-                Localized.text(
-                    "Drag any divider to size a pane; the position is remembered. ^b ^e ^t show or hide the chat list, the file tree and the terminal."),
-                css: "row-detail", wrap: true, selectable: false))
-        gtk_box_append(
-            ptr(content),
-            Gtk.button(Localized.text("Reset the pane sizes")) {
+        let layout = group(
+            Localized.text("Layout"), on: page,
+            description: Localized.text(
+                "Drag any divider to size a pane — positions are remembered. ^b ^e ^t show or hide the chat list, the file tree and the terminal."))
+        adw_preferences_group_add(
+            ptr(layout),
+            buttonRow(Localized.text("Reset the pane sizes")) {
                 Preferences.resetDividers()
                 onLayoutChanged()
             })
+        adw_preferences_group_add(
+            ptr(layout),
+            buttonRow(Localized.text("Reset every type size")) {
+                Preferences.resetScales()
+                Preferences.setTerminalScale(1.0)
+                MatrixTheme.install()
+                onLayoutChanged()
+            })
 
-        let windowBits = UInt(bitPattern: window)
-        let close = Gtk.button(Localized.text("Done"), css: ["suggested-action"]) {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
-            gtk_window_destroy(ptr(raw))
-        }
-        gtk_widget_set_halign(close, GTK_ALIGN_END)
-        gtk_box_append(ptr(content), close)
         gtk_window_present(ptr(window))
     }
 
-    /// Three choices, one highlighted: picking one restyles the running window immediately —
-    /// libadwaita flips the chrome, `notify::dark` flips the canvas palette behind it.
-    private static func appearanceRow(
-        onLayoutChanged: @escaping @Sendable () -> Void
+    private static func group(
+        _ title: String, on page: UnsafeMutablePointer<GtkWidget>, description: String? = nil
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.addClass(row, "settings-group")
-        var bits: [UInt] = []
-        for choice in Preferences.Appearance.allCases {
-            let button = gtk_button_new_with_label(choice.title)!
-            if choice == Preferences.appearance { Gtk.addClass(button, "suggested-action") }
-            bits.append(UInt(bitPattern: button))
-            gtk_box_append(ptr(row), button)
-        }
-        for (index, choice) in Preferences.Appearance.allCases.enumerated() {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits[index]) else { continue }
-            let all = bits
-            Gtk.connect(raw, "clicked") {
-                Preferences.setAppearance(choice)
-                Preferences.applyAppearance()
-                MatrixTheme.install()
-                for (which, other) in all.enumerated() {
-                    guard let otherRaw = UnsafeMutableRawPointer(bitPattern: other) else { continue }
-                    let widget: UnsafeMutablePointer<GtkWidget> = ptr(otherRaw)
-                    if which == index {
-                        Gtk.addClass(widget, "suggested-action")
-                    } else {
-                        gtk_widget_remove_css_class(widget, "suggested-action")
-                    }
-                }
-                onLayoutChanged()
-            }
+        let group = adw_preferences_group_new()!
+        adw_preferences_group_set_title(ptr(group), title)
+        if let description { adw_preferences_group_set_description(ptr(group), description) }
+        adw_preferences_page_add(ptr(page), ptr(group))
+        return group
+    }
+
+    private static func comboRow(
+        title: String, subtitle: String?, options: [String], selected: Int,
+        onChange: @escaping @Sendable (Int) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = adw_combo_row_new()!
+        adw_preferences_row_set_title(ptr(row), title)
+        if let subtitle { adw_action_row_set_subtitle(ptr(row), subtitle) }
+        let model = gtk_string_list_new(nil)!
+        for option in options { gtk_string_list_append(model, option) }
+        adw_combo_row_set_model(ptr(UnsafeMutableRawPointer(row)), OpaquePointer(UnsafeMutableRawPointer(model)))
+        adw_combo_row_set_selected(ptr(UnsafeMutableRawPointer(row)), guint(selected))
+        let bits = UInt(bitPattern: row)
+        Gtk.onNotify(UnsafeMutableRawPointer(row), property: "selected") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            onChange(Int(adw_combo_row_get_selected(ptr(raw))))
         }
         return row
     }
 
-    private static func section(_ content: UnsafeMutablePointer<GtkWidget>, _ title: String) {
-        let label = Gtk.label(title, css: "section-header", selectable: false)
-        gtk_widget_set_halign(label, GTK_ALIGN_START)
-        gtk_box_append(ptr(content), label)
-    }
-
-    private static func slider(
-        title: String, detail: String? = nil, value: Double, lower: Double, upper: Double,
-        step: Double, format: @escaping @Sendable (Double) -> String,
-        onChange: @escaping @Sendable (Double) -> Void
+    private static func switchRow(
+        title: String, subtitle: String?, value: Bool,
+        onChange: @escaping @Sendable (Bool) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        Gtk.addClass(column, "settings-group")
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let label = Gtk.label(title, css: "row-title", selectable: false)
-        gtk_widget_set_hexpand(label, 1)
-        gtk_widget_set_halign(label, GTK_ALIGN_START)
-        let readout = Gtk.label(format(value), css: "row-detail", selectable: false)
-        gtk_box_append(ptr(header), label)
-        gtk_box_append(ptr(header), readout)
-        gtk_box_append(ptr(column), header)
-        if let detail {
-            let hint = Gtk.label(detail, css: "row-detail", wrap: true, selectable: false)
-            gtk_widget_set_halign(hint, GTK_ALIGN_START)
-            gtk_box_append(ptr(column), hint)
-        }
-
-        let scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, lower, upper, step)!
-        gtk_range_set_value(ptr(scale), value)
-        gtk_scale_set_draw_value(ptr(scale), 0)
-        gtk_widget_set_hexpand(scale, 1)
-        let readoutBits = UInt(bitPattern: readout)
-        let scaleBits = UInt(bitPattern: scale)
-        Gtk.connect(UnsafeMutableRawPointer(scale), "value-changed") {
-            guard let scaleRaw = UnsafeMutableRawPointer(bitPattern: scaleBits),
-                let readoutRaw = UnsafeMutableRawPointer(bitPattern: readoutBits)
-            else { return }
-            let current = gtk_range_get_value(ptr(scaleRaw) as UnsafeMutablePointer<GtkRange>)
-            gtk_label_set_text(op(readoutRaw), format(current))
-            onChange(current)
-        }
-        gtk_box_append(ptr(column), scale)
-        return column
-    }
-
-    private static func toggle(
-        title: String, detail: String?, value: Bool, onChange: @escaping @Sendable (Bool) -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-        Gtk.addClass(row, "settings-group")
-        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        let label = Gtk.label(title, css: "row-title", selectable: false)
-        gtk_widget_set_halign(label, GTK_ALIGN_START)
-        gtk_box_append(ptr(lines), label)
-        if let detail {
-            let hint = Gtk.label(detail, css: "row-detail", wrap: true, selectable: false)
-            gtk_widget_set_halign(hint, GTK_ALIGN_START)
-            gtk_box_append(ptr(lines), hint)
-        }
-        gtk_widget_set_hexpand(lines, 1)
-        gtk_box_append(ptr(row), lines)
-
-        let toggle = gtk_check_button_new()!
-        gtk_check_button_set_active(ptr(toggle), value ? 1 : 0)
-        gtk_widget_set_valign(toggle, GTK_ALIGN_CENTER)
-        let bits = UInt(bitPattern: toggle)
-        Gtk.connect(UnsafeMutableRawPointer(toggle), "toggled") {
+        let row = adw_switch_row_new()!
+        adw_preferences_row_set_title(ptr(row), title)
+        if let subtitle { adw_action_row_set_subtitle(ptr(row), subtitle) }
+        adw_switch_row_set_active(OpaquePointer(row), value ? 1 : 0)
+        let bits = UInt(bitPattern: row)
+        Gtk.onNotify(UnsafeMutableRawPointer(row), property: "active") {
             guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-            onChange(gtk_check_button_get_active(ptr(raw) as UnsafeMutablePointer<GtkCheckButton>) != 0)
+            onChange(adw_switch_row_get_active(op(raw)) != 0)
         }
-        gtk_box_append(ptr(row), toggle)
+        return row
+    }
+
+    private static func spinRow(
+        title: String, subtitle: String? = nil, value: Double, lower: Double, upper: Double,
+        step: Double, onChange: @escaping @Sendable (Double) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = adw_spin_row_new_with_range(lower, upper, step)!
+        adw_preferences_row_set_title(ptr(row), title)
+        if let subtitle { adw_action_row_set_subtitle(ptr(row), subtitle) }
+        adw_spin_row_set_value(OpaquePointer(row), value)
+        let bits = UInt(bitPattern: row)
+        Gtk.onNotify(UnsafeMutableRawPointer(row), property: "value") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            onChange(adw_spin_row_get_value(op(raw)))
+        }
+        return row
+    }
+
+    private static func buttonRow(
+        _ title: String, onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = adw_action_row_new()!
+        adw_preferences_row_set_title(ptr(row), title)
+        let button = Gtk.button(Localized.text("Reset"), css: ["flat"], onClick: onClick)
+        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(ptr(row), button)
         return row
     }
 }

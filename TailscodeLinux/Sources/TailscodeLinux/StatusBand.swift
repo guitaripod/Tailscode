@@ -12,6 +12,7 @@ struct StatusFacts {
         case compacting
         case awaitingApproval
         case awaitingAnswer
+        case connecting
         case reconnecting
         case offline
         case failed(String)
@@ -34,7 +35,9 @@ struct StatusFacts {
 
     /// The transcript's own size in tokens, near enough to act on. No server reports context fill,
     /// and "you are near a compaction" is worth knowing even approximately — so this is derived
-    /// from the characters actually in the conversation and always shown with a `~`.
+    /// from the characters actually in the conversation and always shown with a `~`. Raw fields
+    /// only: parsing every tool call's structured summary for a one-significant-digit estimate
+    /// was most of the delay between a transcript arriving and the transcript appearing.
     static func estimateContextTokens(_ messages: [ChatMessage]) -> Int? {
         var characters = 0
         for message in messages {
@@ -43,8 +46,7 @@ struct StatusFacts {
                 case .text(let text), .reasoning(let text):
                     characters += text.count
                 case .tool(let call):
-                    characters += (call.summary.displayOutput?.count ?? 0) + call.name.count
-                        + (call.summary.command?.count ?? 0)
+                    characters += (call.output?.count ?? 0) + call.name.count + 120
                 case .compaction(let compaction):
                     // Everything before a compaction left the context; only its summary survives.
                     characters = compaction.summary?.count ?? 0
@@ -67,7 +69,8 @@ struct StatusFacts {
         } else {
             switch state.connection {
             case .offline: facts.phase = .offline
-            case .reconnecting, .connecting: facts.phase = .reconnecting
+            case .connecting: facts.phase = .connecting
+            case .reconnecting: facts.phase = .reconnecting
             case .live:
                 if state.compaction?.isRunning == true {
                     facts.phase = .compacting
@@ -163,6 +166,9 @@ struct StatusFacts {
                 Segment(
                     id: "phase", text: Localized.text("⏸ answer"), css: "seg-warn",
                     kind: .act(.scrollToPending)))
+        case .connecting:
+            result.append(
+                Segment(id: "phase", text: Localized.text("· connecting"), css: "seg-dim", kind: .plain))
         case .reconnecting:
             result.append(
                 Segment(id: "phase", text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))

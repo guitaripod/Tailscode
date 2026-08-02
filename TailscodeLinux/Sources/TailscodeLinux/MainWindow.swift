@@ -83,6 +83,11 @@ final class MainWindow: @unchecked Sendable {
     private var lastSidebar: ([SessionRowModel], [String], String, String)?
 
     private let context = TranscriptContext()
+    private let rowBuilder = TranscriptRowBuilder()
+    /// The last full row list per session, so returning to a chat paints it in the first frame —
+    /// the network's newer truth then lands as a quiet diff instead of a blank-and-rebuild.
+    private var sessionRows: [String: [TranscriptRow]] = [:]
+    private var sessionRowOrder: [String] = []
     private var renderedRows: [TranscriptRow] = []
     private var rowWidgets: [UInt] = []
     private var placeholderShown = false
@@ -198,6 +203,8 @@ final class MainWindow: @unchecked Sendable {
                     self.scroll(by: Double(argument) ?? 200)
                 case "jump":
                     self.jumpToBottom()
+                case "settings":
+                    self.presentSettings()
                 case "state":
                     let adjustment = self.transcriptScroller.flatMap {
                         gtk_scrolled_window_get_vadjustment(op($0))
@@ -785,7 +792,17 @@ final class MainWindow: @unchecked Sendable {
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry.session.id)
         streamTask?.cancel()
-        showPlaceholder(Localized.text("Connecting…"))
+        if let remembered = sessionRows[entry.session.id] {
+            placeholderShown = true
+            lastFullRows = remembered
+            lastFullCount = remembered.count
+            let limit = max(windowLimit, Preferences.transcriptWindow)
+            let windowed =
+                remembered.count > limit ? Array(remembered.suffix(limit)) : remembered
+            applyRows(windowed)
+        } else {
+            showPlaceholder(Localized.text("Connecting…"))
+        }
         pendingSignature = "\u{0}"
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
@@ -826,26 +843,35 @@ final class MainWindow: @unchecked Sendable {
             let conversation = AgentConversation(
                 backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
             self.conversation = conversation
-            // Rows are built only for the tail the window can show, and only off the GLib main
-            // context. A conversation of ten thousand messages costs the same as a short one:
-            // the rest is not folded into widgets until someone asks for it. The context
-            // estimate walks everything, so it is recomputed only when the message count moves.
+            // Rows are built only for the tail the window can show, only off the GLib main
+            // context, and only for messages that changed — the builder remembers the rest. The
+            // paint goes out before the context estimate is computed: the transcript appearing
+            // must never wait on a statistic about it.
             var countedMessages = -1
-            var context: Int?
+            let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
             for await state in await conversation.states() {
                 if Task.isCancelled { return }
                 let tail = self.rowTailMessages
                 let messages = state.messages.count > tail
                     ? Array(state.messages.suffix(tail)) : state.messages
-                let rows = TranscriptRow.rows(for: messages)
+                let started = Date()
+                let rows = self.rowBuilder.rows(for: messages)
+                if tracing {
+                    let ms = Int(Date().timeIntervalSince(started) * 1000)
+                    FileHandle.standardOutput.write(
+                        Data("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms\n".utf8))
+                }
+                Gtk.onMain { [weak self] in
+                    self?.apply(state: state, rows: rows)
+                }
                 if state.messages.count != countedMessages {
                     countedMessages = state.messages.count
-                    context = StatusFacts.estimateContextTokens(state.messages)
-                }
-                let estimate = context
-                Gtk.onMain { [weak self] in
-                    self?.contextEstimate = estimate
-                    self?.apply(state: state, rows: rows)
+                    let estimate = StatusFacts.estimateContextTokens(state.messages)
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        self.contextEstimate = estimate
+                        self.updateStatus()
+                    }
                 }
             }
         }
@@ -926,6 +952,7 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         lastFullRows = rows
+        if let selectedID { rememberRows(rows, for: selectedID) }
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
         let limit = max(windowLimit, Preferences.transcriptWindow)
@@ -1067,8 +1094,14 @@ final class MainWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
                     self.isFillingInChunks = false
-                    guard let state = self.lastState else { return }
-                    self.apply(state: state, rows: self.lastFullRows)
+                    if let state = self.lastState {
+                        self.apply(state: state, rows: self.lastFullRows)
+                    } else {
+                        // A remembered transcript backfilling before the server has said a word.
+                        let limit = max(self.windowLimit, Preferences.transcriptWindow)
+                        let rows = self.lastFullRows
+                        self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
+                    }
                 }
             }
         }
@@ -1088,6 +1121,19 @@ final class MainWindow: @unchecked Sendable {
             rowWidgets.append(UInt(bitPattern: widget))
             renderedRows.append(row)
         }
+    }
+
+    /// At most a handful of transcripts are kept renderable; the oldest falls out so a long day
+    /// of chats does not become a memory of every one of them.
+    private func rememberRows(_ rows: [TranscriptRow], for sessionID: String) {
+        if sessionRows[sessionID] == nil {
+            sessionRowOrder.append(sessionID)
+            if sessionRowOrder.count > 6 {
+                let evicted = sessionRowOrder.removeFirst()
+                sessionRows[evicted] = nil
+            }
+        }
+        sessionRows[sessionID] = rows
     }
 
     private func tearDownAllRows() {
@@ -1843,9 +1889,10 @@ final class MainWindow: @unchecked Sendable {
         guard let state = lastState else { return }
         let tail = rowTailMessages
         Task.detached { [weak self] in
+            guard let self else { return }
             let messages =
                 state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-            let rows = TranscriptRow.rows(for: messages)
+            let rows = self.rowBuilder.rows(for: messages)
             Gtk.onMain { [weak self] in self?.apply(state: state, rows: rows) }
         }
     }

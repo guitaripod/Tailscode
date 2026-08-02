@@ -20,6 +20,46 @@ final class TranscriptContext: @unchecked Sendable {
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
 }
 
+/// Folds messages into rows with a per-message memo: a streamed token changes one message, so
+/// re-deriving the other two hundred and ninety-nine — markdown and all — on every state was the
+/// seconds-long silence between "Loading…" and the transcript. Only messages whose value actually
+/// changed are re-folded; a palette change invalidates everything, because the markup carries the
+/// palette's colors baked in.
+final class TranscriptRowBuilder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cache: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+    private var paletteName = ""
+
+    func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+        lock.lock()
+        defer { lock.unlock() }
+        let palette = MatrixTheme.palette.name
+        if palette != paletteName {
+            cache.removeAll(keepingCapacity: true)
+            paletteName = palette
+        }
+        var all: [TranscriptRow] = []
+        var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+        next.reserveCapacity(messages.count)
+        for message in messages {
+            let rows: [TranscriptRow]
+            if let hit = cache[message.id], hit.message == message {
+                rows = hit.rows
+            } else {
+                rows = TranscriptRow.rows(for: message)
+            }
+            next[message.id] = (message, rows)
+            guard !rows.isEmpty else { continue }
+            if message.role == .user, !all.isEmpty {
+                all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
+            }
+            all += rows
+        }
+        cache = next
+        return Preferences.compactTools ? TranscriptRow.fuse(all) : all
+    }
+}
+
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
 /// agent's answer as prose at full measure, code as blocks that copy byte-exactly, edits as
 /// diffs, reasoning and tool output behind a disclosure, a compaction as a seam, a picture as
@@ -123,7 +163,7 @@ struct TranscriptRow: Hashable {
     /// one fact — "it searched" — and spending twelve lines on them pushes the answer off the
     /// screen. The run keeps every call inside it, one tap away, and anything that is not an
     /// ordinary tool call (an error, a subagent, a picture) never joins a run.
-    private static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+    static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
         var run: [ToolCall] = []
         var runKey = ""
