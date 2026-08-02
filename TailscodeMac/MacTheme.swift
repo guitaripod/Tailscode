@@ -51,15 +51,31 @@ enum MacTheme {
         }
     }
 
-    /// Glass where the system has it, and a correctly-configured visual effect view where it does
-    /// not. `blendingMode` and `state` are set explicitly on purpose: the defaults blur the desktop
-    /// through the window rather than the content behind the bar, and desaturate the moment the
-    /// window stops being key.
-    static func chromeBackdrop() -> NSView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .withinWindow
-        view.state = .active
+    /// Liquid Glass, used the way the system uses it: floating controls above content — the
+    /// composer, the status capsule, the jump button — are glass; the content they float over is
+    /// flat and opaque. Glass never sits on glass, and prose never sits on glass.
+    static func glass(around content: NSView, cornerRadius: CGFloat = Radius.card) -> NSGlassEffectView {
+        let view = NSGlassEffectView()
+        view.cornerRadius = cornerRadius
+        view.contentView = content
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }
+
+    static func tintedGlass(
+        around content: NSView, tint: NSColor, cornerRadius: CGFloat = Radius.card
+    ) -> NSGlassEffectView {
+        let view = glass(around: content, cornerRadius: cornerRadius)
+        view.tintColor = tint.withAlphaComponent(0.35)
+        return view
+    }
+
+    /// Neighbouring glass shapes that should read as one wet surface — the composer row's field
+    /// and buttons — go in a container, which also lets the system merge them when they touch.
+    static func glassGroup(spacing: CGFloat = Spacing.s) -> NSGlassEffectContainerView {
+        let view = NSGlassEffectContainerView()
+        view.spacing = spacing
+        view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }
 }

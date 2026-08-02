@@ -7,7 +7,7 @@ import TailscodeCore
 /// Every state a session can be in has a component here rather than being inferred at the call
 /// site: a list that silently renders "nothing is happening" for four different reasons is the
 /// thing this app most needs not to do.
-enum SessionRowState: Equatable {
+public enum SessionRowState: Equatable, Sendable {
     /// A turn is running and it needs an answer before it can go on.
     case awaitingApproval
     /// A turn is running.
@@ -19,7 +19,7 @@ enum SessionRowState: Equatable {
     /// The last turn ended in an error.
     case failed
 
-    var pill: (text: String, css: String)? {
+    public var pill: (text: String, css: String)? {
         switch self {
         case .awaitingApproval: return (Localized.text("NEEDS YOU"), "pill-needs")
         case .live: return (Localized.text("LIVE"), "pill-live")
@@ -29,7 +29,7 @@ enum SessionRowState: Equatable {
         }
     }
 
-    var glyph: (text: String, css: String) {
+    public var glyph: (text: String, css: String) {
         switch self {
         case .awaitingApproval: return ("⏸", "glyph-running")
         case .live: return ("◐", "glyph-running")
@@ -41,15 +41,15 @@ enum SessionRowState: Equatable {
 }
 
 /// Everything one row needs, derived once so the widget builder has no logic in it.
-struct SessionRowModel: Equatable {
-    let entry: SessionEntry
-    let state: SessionRowState
-    let title: String
-    let detail: String
-    let unread: Bool
-    let saved: Bool
+public struct SessionRowModel: Equatable, Sendable {
+    public let entry: SessionEntry
+    public let state: SessionRowState
+    public let title: String
+    public let detail: String
+    public let unread: Bool
+    public let saved: Bool
 
-    init(entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool) {
+    public init(entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool) {
         self.entry = entry
         self.unread = unread
         self.saved = saved
@@ -71,7 +71,7 @@ struct SessionRowModel: Equatable {
     }
 
     /// Compact and monospace-friendly, so a column of them lines up: seconds, minutes, hours, days.
-    static func age(of date: Date) -> String {
+    public static func age(of date: Date) -> String {
         let seconds = max(0, Int(Date().timeIntervalSince(date)))
         switch seconds {
         case ..<60: return "\(seconds)s"
@@ -83,12 +83,12 @@ struct SessionRowModel: Equatable {
 }
 
 /// The sections the chat list is grouped into, in the order the phone's board uses.
-enum SessionSection: String, CaseIterable {
+public enum SessionSection: String, CaseIterable, Sendable {
     case live
     case saved
     case recent
 
-    var title: String {
+    public var title: String {
         switch self {
         case .live: return Localized.text("LIVE NOW")
         case .saved: return Localized.text("SAVED")
@@ -99,7 +99,7 @@ enum SessionSection: String, CaseIterable {
 
 /// Splits a flat listing into the sections the sidebar draws, dropping empty ones so the list
 /// never shows a heading with nothing under it.
-func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
+public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
     let live = rows.filter { $0.state == .live || $0.state == .awaitingApproval }
     let saved = rows.filter { $0.saved && !live.contains($0) }
     let seen = Set((live + saved).map(\.entry.session.id))

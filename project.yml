@@ -203,6 +203,7 @@ targets:
   TailscodeMac:
     type: application
     platform: macOS
+    deploymentTarget: "26.0"
     sources:
       - path: TailscodeMac
     dependencies:
