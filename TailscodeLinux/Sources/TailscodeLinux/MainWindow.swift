@@ -112,6 +112,9 @@ final class MainWindow: @unchecked Sendable {
     private var lastState: ConversationState?
     private var streamTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var listStreamTasks: [Task<Void, Never>] = []
+    private var agentStreamTask: Task<Void, Never>?
+    private var agentStreamSessionID: String?
     private var tickerTask: Task<Void, Never>?
     private var turnStartedAt: Date?
 
@@ -659,6 +662,52 @@ final class MainWindow: @unchecked Sendable {
                 try? await Task.sleep(for: .seconds(10))
             }
         }
+        startListStreams()
+    }
+
+    /// A proto-2 bridge pushes list changes the moment they happen; the 10-second poll survives
+    /// only as reachability detection and as the whole story for older servers.
+    private func startListStreams() {
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            for profile in profiles {
+                guard let backend = await ServerDirectory.shared.backend(for: profile),
+                    let streaming = backend as? SessionListStreaming,
+                    let changes = await streaming.sessionListChanges()
+                else { continue }
+                let task = Task { [weak self] in
+                    for await change in changes {
+                        guard let self else { return }
+                        Gtk.onMain { [weak self] in self?.applyListChange(change, profile: profile) }
+                    }
+                }
+                Gtk.onMain { [weak self] in self?.listStreamTasks.append(task) }
+            }
+        }
+    }
+
+    private func applyListChange(_ change: SessionListChange, profile: ConnectionProfile) {
+        switch change {
+        case .upsert(let session):
+            let entry = SessionEntry(
+                profileID: profile.id, profileName: profile.name,
+                host: profile.baseURL.host ?? profile.name,
+                backendType: profile.backend, session: session)
+            var next = entries.filter {
+                !($0.profileID == profile.id && $0.session.id == session.id)
+            }
+            next.append(entry)
+            next.sort { $0.session.updatedAt > $1.session.updatedAt }
+            entries = next
+            if !next.isEmpty { SessionListCache.save(next) }
+            renderSidebar()
+            if session.id == selectedID { refreshPills() }
+        case .remove(let id):
+            entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
+            renderSidebar()
+        case .invalidated:
+            Task { [weak self] in await self?.refresh() }
+        }
     }
 
     func refresh() async {
@@ -866,6 +915,9 @@ final class MainWindow: @unchecked Sendable {
         agents = []
         usage = nil
         notice = nil
+        agentStreamTask?.cancel()
+        agentStreamTask = nil
+        agentStreamSessionID = nil
         Gtk.onMain { [weak self] in self?.renderSidebar() }
 
         streamTask = Task { [weak self] in
@@ -1373,33 +1425,67 @@ final class MainWindow: @unchecked Sendable {
         updateStatus()
     }
 
+    /// A proto-2 bridge pushes each fan-out's live facts as they change; older servers are
+    /// polled. Started lazily on the first turn tick after a chat opens.
+    private func startAgentStreamIfAvailable() {
+        guard agentStreamSessionID != currentEntry?.session.id else { return }
+        guard let backend = currentBackend, let entry = currentEntry else { return }
+        agentStreamSessionID = entry.session.id
+        let sessionID = entry.session.id
+        agentStreamTask?.cancel()
+        agentStreamTask = Task { [weak self] in
+            guard let streaming = backend as? SubagentStreaming,
+                let changes = await streaming.subagentChanges(for: sessionID)
+            else {
+                Gtk.onMain { [weak self] in self?.agentStreamSessionID = nil }
+                return
+            }
+            for await agents in changes {
+                Gtk.onMain { [weak self] in
+                    guard let self, self.currentEntry?.session.id == sessionID else { return }
+                    self.applyAgentFacts(agents)
+                }
+            }
+        }
+    }
+
+    private func applyAgentFacts(_ agents: [SubagentSummary]) {
+        self.agents = agents
+        var facts: [String: SubagentSummary] = [:]
+        for agent in agents {
+            if let toolUseID = agent.toolUseID { facts[toolUseID] = agent }
+        }
+        let changed = facts.keys.filter { context.agentFacts[$0] != facts[$0] }
+        let vanished = context.agentFacts.keys.filter { facts[$0] == nil }
+        context.agentFacts = facts
+        let stale = Set(changed + vanished)
+        if !stale.isEmpty {
+            replaceRows {
+                if case .subagent(let call) = $0.kind { return stale.contains(call.id) }
+                return false
+            }
+        }
+        updateStatus()
+    }
+
     /// Subagents and cost are polled rather than streamed: the bridge reports both on request
     /// only, and a fan-out is worth watching while it runs.
     private func refreshTurnFacts() {
         guard let backend = currentBackend, let entry = currentEntry else { return }
+        startAgentStreamIfAvailable()
         let sessionID = entry.session.id
+        let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
         Task { [weak self] in
-            let agents = (try? await backend.subagents(for: sessionID)) ?? []
+            let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.agents = agents
                 self.usage = usage
-                var facts: [String: SubagentSummary] = [:]
-                for agent in agents {
-                    if let toolUseID = agent.toolUseID { facts[toolUseID] = agent }
+                if let agents {
+                    self.applyAgentFacts(agents)
+                } else {
+                    self.updateStatus()
                 }
-                let changed = facts.keys.filter { self.context.agentFacts[$0] != facts[$0] }
-                let vanished = self.context.agentFacts.keys.filter { facts[$0] == nil }
-                self.context.agentFacts = facts
-                let stale = Set(changed + vanished)
-                if !stale.isEmpty {
-                    self.replaceRows {
-                        if case .subagent(let call) = $0.kind { return stale.contains(call.id) }
-                        return false
-                    }
-                }
-                self.updateStatus()
             }
         }
     }
