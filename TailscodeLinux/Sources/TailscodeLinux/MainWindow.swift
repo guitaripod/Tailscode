@@ -59,7 +59,7 @@ final class MainWindow: @unchecked Sendable {
     private var windowLimit = 400
     private var lastFullRows: [TranscriptRow] = []
     private var lastFullCount = 0
-    private var lastSidebar: ([SessionRowModel], [String], String, Int)?
+    private var lastSidebar: ([SessionRowModel], [String], String, String)?
 
     private let context = TranscriptContext()
     private var renderedRows: [TranscriptRow] = []
@@ -499,13 +499,15 @@ final class MainWindow: @unchecked Sendable {
                 saved: saved.contains($0.session.id))
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
-        visible = rows.filter {
+        let matching = rows.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
         }
-        if !visible.isEmpty { cursor = min(cursor, visible.count - 1) }
+        let sections = groupIntoSections(matching)
+        visible = sections.flatMap(\.1)
+        syncCursorToSelection()
 
-        let snapshot = (visible, unreachable, filter, cursor)
+        let snapshot = (visible, unreachable, filter, selectedID ?? "")
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
 
@@ -529,20 +531,33 @@ final class MainWindow: @unchecked Sendable {
             return
         }
 
-        var index = 0
-        for (section, members) in groupIntoSections(visible) {
+        for (section, members) in sections {
             gtk_box_append(
                 ptr(sidebarList), SidebarRow.header(section.title, count: members.count))
             for row in members {
-                let position = index
                 gtk_box_append(
                     ptr(sidebarList),
-                    SidebarRow.make(row, focused: position == cursor) { [weak self] in
-                        self?.cursor = position
+                    SidebarRow.make(row, focused: row.entry.session.id == selectedID) {
+                        [weak self] in
                         self?.open(row.entry)
                     })
-                index += 1
             }
+        }
+    }
+
+    /// The highlight follows the conversation that is open, never a position: the list re-sorts on
+    /// every refresh — a chat going live jumps to the top — so a row index means something
+    /// different a second later. The keyboard cursor is re-derived from the open chat here so J/K
+    /// continues from where the eye is, in the order the list is actually drawn.
+    private func syncCursorToSelection() {
+        guard !visible.isEmpty else {
+            cursor = 0
+            return
+        }
+        if let selectedID, let index = visible.firstIndex(where: { $0.entry.session.id == selectedID }) {
+            cursor = index
+        } else {
+            cursor = min(cursor, visible.count - 1)
         }
     }
 
@@ -611,6 +626,7 @@ final class MainWindow: @unchecked Sendable {
         refreshPills()
         SessionSeenStore.markSeen(entry.session.id)
         terminal.setDirectory(entry.session.directory)
+        Gtk.onMain { [weak self] in self?.renderSidebar() }
 
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -1267,8 +1283,8 @@ final class MainWindow: @unchecked Sendable {
         case .cycleBackward: focus(nextPane(after: focused, by: -1))
         case .selectNext: move(by: 1)
         case .selectPrevious: move(by: -1)
-        case .selectFirst: cursor = 0; renderSidebar(); openCursor()
-        case .selectLast: cursor = max(0, visible.count - 1); renderSidebar(); openCursor()
+        case .selectFirst: cursor = 0; openCursor()
+        case .selectLast: cursor = max(0, visible.count - 1); openCursor()
         case .openSelected: openCursor()
         case .scrollDown: scroll(by: 60)
         case .scrollUp: scroll(by: -60)
@@ -1328,7 +1344,6 @@ final class MainWindow: @unchecked Sendable {
     private func move(by delta: Int) {
         guard !visible.isEmpty else { return }
         cursor = max(0, min(visible.count - 1, cursor + delta))
-        renderSidebar()
         openCursor()
     }
 
