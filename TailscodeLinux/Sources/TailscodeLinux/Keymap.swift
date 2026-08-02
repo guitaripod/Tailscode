@@ -2,12 +2,11 @@ import CAdw
 import Foundation
 import TailscodeCore
 
-/// What a key means, given where you are.
-///
 /// The app is modal the way vim is: normal mode owns the letters, insert mode gives them back.
-/// Focusing anything that takes text — the composer, the terminal, a search field — enters insert
-/// implicitly, and Escape leaves it; nothing here fights the pointer, so every binding has a thing
-/// you can also click.
+/// Focusing anything that takes text enters insert implicitly and Escape leaves it; the terminal
+/// keeps almost everything, because a shell's own chords are not the app's to take. What each key
+/// does in each mode lives in `ShortcutRegistry`; nothing here fights the pointer, so every
+/// binding has a thing you can also click.
 enum Pane: CaseIterable {
     case chats
     case transcript
@@ -50,6 +49,14 @@ enum KeyAction: Equatable {
     case toggleSidebar
     case toggleFiles
     case toggleTerminal
+    case archiveSelected
+    case toggleArchiveView
+    case toggleUnreadSelected
+    case renameSelected
+    case forkSelected
+    case deleteSelected
+    case copySessionID
+    case copyProjectPath
 }
 
 enum Keymap {
@@ -63,126 +70,14 @@ enum Keymap {
     static let colon: UInt32 = 0x003A
     static let tab: UInt32 = 0xFF09
     static let shiftTab: UInt32 = 0xFE20
+    static let up: UInt32 = 0xFF52
+    static let down: UInt32 = 0xFF54
 
     static let control: UInt32 = 1 << 2
     static let shift: UInt32 = 1 << 0
 
-    /// The binding for a key in normal mode, or nil if the key should be left alone. When an
-    /// approval is waiting, y/a/n answer it — the same letters the CLI takes — and win over
-    /// whatever else those letters do.
-    static func normal(
-        keyval: UInt32, state: UInt32, pending: String, awaitingApproval: Bool = false
-    ) -> KeyAction? {
-        if awaitingApproval, state & control == 0 {
-            switch scalar(keyval) {
-            case "y": return .allowOnce
-            case "a": return .allowAlways
-            case "n": return .deny
-            default: break
-            }
-        }
-        let isControl = state & control != 0
-        if isControl {
-            if let chord = controlChord(keyval) { return chord }
-            switch scalar(keyval) {
-            case "d": return .halfPageDown
-            case "u": return .halfPageUp
-            case "n": return .selectNext
-            case "p": return .selectPrevious
-            case "c": return .stop
-            case "h": return .focus(.chats)
-            case "j": return .focus(.terminal)
-            case "k": return .focus(.transcript)
-            case "l": return .focus(.files)
-            case "r": return .reload
-            case "f": return .findInConversation
-            default: return nil
-            }
-        }
-        switch keyval {
-        case escape: return .leaveInsert
-        case enter, keypadEnter: return .openSelected
-        case tab: return .cycleForward
-        case shiftTab: return .cycleBackward
-        case slash: return .search
-        case question: return .toggleHelp
-        default: break
-        }
-        switch scalar(keyval) {
-        case "j": return .scrollDown
-        case "k": return .scrollUp
-        case "J": return .selectNext
-        case "K": return .selectPrevious
-        case "g": return pending == "g" ? .scrollTop : nil
-        case "G": return .scrollBottom
-        case "i", "a", "o": return .insert
-        case "q": return .stop
-        case "n": return .newChat
-        case "b": return .toggleSaved
-        case "f": return .findInConversation
-        case ":": return .commandPalette
-        default: return nil
-        }
-    }
-
-    /// In insert mode only the leaving keys and the deliberate chords are ours; everything else
-    /// belongs to whatever is being typed into.
-    static func insert(keyval: UInt32, state: UInt32) -> KeyAction? {
-        if keyval == escape { return .leaveInsert }
-        if state & control != 0, keyval == enter || keyval == keypadEnter { return .send }
-        if state & control != 0, scalar(keyval) == "f" { return .findInConversation }
-        if state & control != 0 { return controlChord(keyval) }
-        return nil
-    }
-
-    /// Chords that mean the same thing whether or not something has focus: zoom and the pane
-    /// toggles. Insert mode keeps them because a person mid-sentence still wants a bigger font.
-    private static func controlChord(_ keyval: UInt32) -> KeyAction? {
-        switch keyval {
-        case 0xFFAB: return .zoomIn
-        case 0xFFAD: return .zoomOut
-        default: break
-        }
-        switch scalar(keyval) {
-        case "=", "+": return .zoomIn
-        case "-": return .zoomOut
-        case "0": return .zoomReset
-        case "b": return .toggleSidebar
-        case "e": return .toggleFiles
-        case "t": return .toggleTerminal
-        default: return nil
-        }
-    }
-
     static func scalar(_ keyval: UInt32) -> Character? {
         guard let scalar = Unicode.Scalar(keyval), keyval < 0x110000 else { return nil }
         return Character(scalar)
-    }
-
-    static var help: [(keys: String, what: String)] {
-        [
-            ("j / k", Localized.text("Scroll the transcript")),
-            ("gg / G", Localized.text("Top / bottom")),
-            ("^d / ^u", Localized.text("Half page down / up")),
-            ("J / K", Localized.text("Next / previous chat")),
-            ("^n / ^p", Localized.text("Next / previous chat")),
-            ("⏎", Localized.text("Open the selected chat")),
-            ("i", Localized.text("Write a message")),
-            ("^⏎", Localized.text("Send")),
-            ("esc", Localized.text("Back to normal mode")),
-            ("^h ^k ^l ^j", Localized.text("Focus chats / transcript / files / terminal")),
-            ("tab", Localized.text("Cycle panes")),
-            ("/", Localized.text("Filter chats")),
-            ("f / ^f", Localized.text("Find in the conversation")),
-            ("^= / ^- / ^0", Localized.text("Zoom in / out / reset")),
-            ("^b ^e ^t", Localized.text("Show or hide chats / files / terminal")),
-            (":", Localized.text("Slash commands")),
-            ("n", Localized.text("New conversation")),
-            ("b", Localized.text("Save / unsave this chat")),
-            ("y / a / n", Localized.text("Answer a waiting approval")),
-            ("^r", Localized.text("Refresh now")),
-            ("q / ^c", Localized.text("Stop the running turn")),
-            ("?", Localized.text("This list")),
-        ]
     }
 }

@@ -65,6 +65,26 @@ enum Gtk {
         tailscode_on_release(widget, unsafeBitCast(callback, to: (@convention(c) (UnsafeMutableRawPointer?) -> Void).self), box)
     }
 
+    /// A right click (or long-press equivalent the desktop maps to it) on any widget, with where
+    /// it landed, so a context menu can open under the pointer rather than at a corner.
+    static func onRightClick(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (Double, Double) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PointBox(handler)).toOpaque()
+        let callback: @convention(c) (Double, Double, UnsafeMutableRawPointer?) -> Void = {
+            x, y, raw in
+            guard let raw else { return }
+            Unmanaged<PointBox>.fromOpaque(raw).takeUnretainedValue().handler(x, y)
+        }
+        tailscode_on_right_click(widget, callback, box)
+    }
+
+    final class PointBox: @unchecked Sendable {
+        let handler: @Sendable (Double, Double) -> Void
+        init(_ handler: @escaping @Sendable (Double, Double) -> Void) { self.handler = handler }
+    }
+
     /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.
     static func after(_ milliseconds: UInt32, _ work: @escaping @Sendable () -> Void) {
         let box = Unmanaged.passRetained(Box(work)).toOpaque()
@@ -293,8 +313,9 @@ enum Gtk {
                 let lines = box(GTK_ORIENTATION_VERTICAL, spacing: 0)
                 gtk_box_append(ptr(lines), label(row.title, css: "row-title", selectable: false))
                 if let detail = row.detail, !detail.isEmpty {
-                    gtk_box_append(
-                        ptr(lines), label(detail, css: "row-detail", selectable: false))
+                    let subtitle = label(detail, css: "row-detail", selectable: false)
+                    gtk_label_set_max_width_chars(op(subtitle), 72)
+                    gtk_box_append(ptr(lines), subtitle)
                 }
                 gtk_button_set_child(ptr(item), lines)
                 let action = row.action
@@ -309,6 +330,52 @@ enum Gtk {
             gtk_popover_set_child(ptr(raw), scroller)
         }
         return button
+    }
+
+    /// A menu popped up at a point inside `widget` — the right-click cousin of ``menuButton``:
+    /// the same row shape, built once for this opening, unparented again when it closes. The
+    /// anchor must be a widget that outlives the menu, not a row a re-render may remove.
+    static func contextMenu(
+        on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double,
+        rows: [(title: String, detail: String?, action: @Sendable () -> Void)]
+    ) {
+        guard !rows.isEmpty else { return }
+        let popover = gtk_popover_new()!
+        gtk_widget_set_parent(popover, widget)
+        gtk_popover_set_has_arrow(ptr(popover), 0)
+        var rect = GdkRectangle(x: gint(x), y: gint(y), width: 1, height: 1)
+        gtk_popover_set_pointing_to(ptr(popover), &rect)
+        let popoverBits = UInt(bitPattern: popover)
+        let column = box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        for row in rows {
+            let item = gtk_button_new()!
+            addClass(item, "flat")
+            let lines = box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            gtk_box_append(ptr(lines), label(row.title, css: "row-title", selectable: false))
+            if let detail = row.detail, !detail.isEmpty {
+                let subtitle = label(detail, css: "row-detail", selectable: false)
+                gtk_label_set_max_width_chars(op(subtitle), 56)
+                gtk_box_append(ptr(lines), subtitle)
+            }
+            gtk_button_set_child(ptr(item), lines)
+            let action = row.action
+            connect(UnsafeMutableRawPointer(item), "clicked") {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+                gtk_popover_popdown(ptr(raw))
+                action()
+            }
+            gtk_box_append(ptr(column), item)
+        }
+        gtk_popover_set_child(ptr(popover), column)
+        connect(UnsafeMutableRawPointer(popover), "closed") {
+            onMain {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits),
+                    gtk_widget_get_parent(ptr(raw)) != nil
+                else { return }
+                gtk_widget_unparent(ptr(raw))
+            }
+        }
+        gtk_popover_popup(ptr(popover))
     }
 
     /// The app's own style. Chrome is left to libadwaita; this only sets the transcript's rhythm

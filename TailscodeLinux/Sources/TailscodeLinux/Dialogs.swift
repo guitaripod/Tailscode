@@ -203,15 +203,38 @@ enum Dialogs {
     }
 
     /// A new conversation needs a server and a directory; everything else the agent works out.
+    /// The entry opens focused and pre-filled with the last directory, so + then Enter starts a
+    /// chat where the last one worked. When the chosen server is this same machine, Browse… opens
+    /// the desktop's own folder chooser — the one place a native picker tells the truth; for a
+    /// remote server it stays hidden rather than offering the wrong disk.
     static func newChat(
         parent: UnsafeMutablePointer<GtkWidget>?,
         profiles: [ConnectionProfile],
         recentDirectories: [String],
+        localAddresses: Set<String>,
         onCreate: @escaping @Sendable (ConnectionProfile, String?) -> Void
     ) {
         guard !profiles.isEmpty else { return }
         let (window, content) = Self.window(
             title: Localized.text("New conversation"), parent: parent, width: 520)
+
+        let entry = gtk_entry_new()!
+        let entryBits = UInt(bitPattern: entry)
+        let windowBits = UInt(bitPattern: window)
+        let browse = Gtk.button(Localized.text("Browse…")) {
+            guard let entryRaw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
+            let entry: UnsafeMutablePointer<GtkWidget> = ptr(entryRaw)
+            let parent = UnsafeMutableRawPointer(bitPattern: windowBits).map {
+                raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
+            }
+            Gtk.selectFolder(parent: parent, initial: browseSeed(entryText(entry))) { picked in
+                guard let picked,
+                    let raw = UnsafeMutableRawPointer(bitPattern: entryBits)
+                else { return }
+                gtk_editable_set_text(op(raw), picked)
+            }
+        }
+        let browseBits = UInt(bitPattern: browse)
 
         let chosen = Selection<ConnectionProfile>(profiles[0])
         if profiles.count > 1 {
@@ -225,8 +248,12 @@ enum Dialogs {
             }
             let serverButtonBits = UInt(bitPattern: serverButton)
             chosen.onChange = { profile in
-                guard let raw = UnsafeMutableRawPointer(bitPattern: serverButtonBits) else { return }
-                gtk_menu_button_set_label(op(raw), ServerLabel.display(profile))
+                guard let server = UnsafeMutableRawPointer(bitPattern: serverButtonBits),
+                    let browseRaw = UnsafeMutableRawPointer(bitPattern: browseBits)
+                else { return }
+                gtk_menu_button_set_label(op(server), ServerLabel.display(profile))
+                gtk_widget_set_visible(
+                    ptr(browseRaw), isLocal(profile, localAddresses: localAddresses) ? 1 : 0)
             }
             gtk_box_append(ptr(content), serverButton)
         }
@@ -234,13 +261,28 @@ enum Dialogs {
         gtk_box_append(
             ptr(content),
             Gtk.label(Localized.text("DIRECTORY"), css: "section-header", selectable: false))
-        let entry = gtk_entry_new()!
         gtk_entry_set_placeholder_text(
             ptr(entry), Localized.text("Where the agent works, e.g. ~/Dev/thing"))
         if let first = recentDirectories.first { gtk_editable_set_text(op(entry), first) }
-        gtk_box_append(ptr(content), entry)
+        gtk_widget_set_hexpand(entry, 1)
+
+        let start: @Sendable () -> Void = {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
+            let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            let directory = entryText(entry)
+            close(entry)
+            onCreate(chosen.value, directory.isEmpty ? nil : directory)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(entry), "activate", start)
+
+        let directoryRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(directoryRow), entry)
+        gtk_box_append(ptr(directoryRow), browse)
+        gtk_box_append(ptr(content), directoryRow)
+        gtk_widget_set_visible(
+            browse, isLocal(profiles[0], localAddresses: localAddresses) ? 1 : 0)
+
         for directory in recentDirectories.prefix(6) {
-            let entryBits = UInt(bitPattern: entry)
             let row = Gtk.button(directory, css: ["flat", "answer-option"]) {
                 guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
                 gtk_editable_set_text(op(raw), directory)
@@ -249,19 +291,41 @@ enum Dialogs {
             gtk_box_append(ptr(content), row)
         }
 
-        let entryBits = UInt(bitPattern: entry)
         gtk_box_append(
             ptr(content),
             buttonRow(
                 window: window,
-                confirm: Gtk.button(Localized.text("Start"), css: ["suggested-action"]) {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-                    let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-                    let directory = entryText(entry)
-                    close(entry)
-                    onCreate(chosen.value, directory.isEmpty ? nil : directory)
-                }))
+                confirm: Gtk.button(Localized.text("Start"), css: ["suggested-action"], onClick: start)))
         gtk_window_present(ptr(window))
+        gtk_widget_grab_focus(entry)
+        gtk_editable_select_region(op(entry), 0, -1)
+    }
+
+    /// This machine answering its own tailnet address is still this machine: a profile is local
+    /// when its host is a loopback, the hostname, or the address Tailscale gives this box.
+    private static func isLocal(
+        _ profile: ConnectionProfile, localAddresses: Set<String>
+    ) -> Bool {
+        guard let host = profile.baseURL.host?.lowercased() else { return false }
+        if localAddresses.contains(host) { return true }
+        return localAddresses.contains(String(host.split(separator: ".").first ?? ""))
+    }
+
+    /// The picker opens where the entry points when that is a real folder here, expanding a
+    /// leading `~`; anywhere else it falls back to the chooser's own default.
+    private static func browseSeed(_ text: String) -> String? {
+        guard !text.isEmpty else { return nil }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let expanded =
+            text == "~"
+            ? home
+            : text.hasPrefix("~/") ? home + text.dropFirst() : text
+        var isDirectory: ObjCBool = false
+        guard expanded.hasPrefix("/"),
+            FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        else { return nil }
+        return expanded
     }
 
     private static func buttonRow(

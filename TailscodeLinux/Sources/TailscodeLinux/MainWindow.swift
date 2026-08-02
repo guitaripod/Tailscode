@@ -94,16 +94,32 @@ final class MainWindow: @unchecked Sendable {
     private var renderedRows: [TranscriptRow] = []
     private var rowWidgets: [UInt] = []
     private var placeholderShown = false
+    private var currentPlaceholder: String?
+    /// The chat the person just started from the + button: known-empty, so it renders ready
+    /// instead of "Connecting…" while its stream catches up — and kept in the list by hand until
+    /// the server's own listing carries it, because a bridge that answers `GET /sessions` from a
+    /// sweep a second old would otherwise blink the row away.
+    private var freshlyCreated: SessionEntry?
     private var inFlightImages: Set<String> = []
     private var inFlightSubagents: Set<String> = []
 
     private var entries: [SessionEntry] = []
+    /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing —
+    /// the 10-second refresh, the session-list stream, a stale request already in flight — keeps
+    /// reporting the session until the delete lands, and each report would resurrect the row; the
+    /// tombstone outlives them all and is lifted only once the app's own post-delete refresh has
+    /// reconciled, or the delete failed and the row should genuinely return.
+    private var pendingDeletes: Set<String> = []
+    private var showingArchive = false
+    private var sidebarScroller: UnsafeMutablePointer<GtkWidget>?
+    private var sidebarScrollTarget: Double?
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
     private var lastQuotas: [(String, UsageQuota)] = []
     private var cursor = 0
     private var filter = ""
-    private var pending = ""
+    private var pendingChords: [KeyChord] = []
+    private var shortcuts = ShortcutSet.load()
     private var helpShown = false
     private var focused: Pane = .chats
     private var selectedID: String?
@@ -122,6 +138,9 @@ final class MainWindow: @unchecked Sendable {
 
     private var models: [ModelInfo] = []
     private var commands: [AgentCommand] = []
+    private var completionPopover: UnsafeMutablePointer<GtkWidget>?
+    private var completionMatches: [AgentCommand] = []
+    private var completionCursor = 0
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
 
@@ -208,6 +227,15 @@ final class MainWindow: @unchecked Sendable {
                     if let index = Int(argument), index < self.visible.count {
                         self.open(self.visible[index].entry)
                     }
+                case "newchat":
+                    Task { [weak self] in
+                        let profiles = await ServerDirectory.shared.profiles()
+                        guard let profile = profiles.first else { return }
+                        Gtk.onMain { [weak self] in
+                            self?.createChat(
+                                on: profile, directory: argument.isEmpty ? nil : argument)
+                        }
+                    }
                 case "up":
                     self.scroll(by: -(Double(argument) ?? 200))
                 case "down":
@@ -218,6 +246,27 @@ final class MainWindow: @unchecked Sendable {
                     self.presentSettings()
                 case "usage":
                     self.presentUsage()
+                case "type":
+                    gtk_widget_grab_focus(self.entryView)
+                    self.vim.reset(to: argument, cursor: argument.count, mode: .insert)
+                    gtk_text_buffer_set_text(
+                        gtk_text_view_get_buffer(ptr(self.entryView)), argument, -1)
+                    let names = self.completionMatches.prefix(5).map(\.name)
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "COMPLETION \(self.completionMatches.count) [\(names.joined(separator: ","))] shown=\(self.completionShown)\n"
+                                .utf8))
+                case "tab":
+                    _ = self.handleComposerKey(keyval: Keymap.tab, state: 0)
+                    FileHandle.standardOutput.write(
+                        Data("COMPOSER \"\(self.composerText())\"\n".utf8))
+                case "term":
+                    _ = self.perform(.toggleTerminal)
+                    Gtk.after(300) { [weak self] in
+                        guard let self, let window = self.window else { return }
+                        FileHandle.standardOutput.write(
+                            Data("TERMFOCUS \(self.terminal.ownsFocus(in: window))\n".utf8))
+                    }
                 case "agents":
                     self.bandState.openMenu(id: "agents")
                 case "toast":
@@ -312,6 +361,7 @@ final class MainWindow: @unchecked Sendable {
         gtk_scrolled_window_set_child(op(scroller), sidebarList)
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(column), scroller)
+        sidebarScroller = scroller
 
         gtk_widget_set_visible(usageBox, 0)
         Gtk.addClass(usageBox, "usage-footer")
@@ -437,14 +487,7 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_visible(helpOverlay, 0)
         Gtk.addClass(helpOverlay, "canvas")
         Gtk.margins(helpOverlay, top: 8, bottom: 8, leading: 26, trailing: 26)
-        for entry in Keymap.help {
-            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-            let keys = Gtk.label(entry.keys, css: "tool-name", selectable: false)
-            gtk_widget_set_size_request(keys, 130, -1)
-            gtk_box_append(ptr(row), keys)
-            gtk_box_append(ptr(row), Gtk.label(entry.what, css: "row-detail", selectable: false))
-            gtk_box_append(ptr(helpOverlay), row)
-        }
+        rebuildHelpOverlay()
         gtk_box_append(ptr(column), helpOverlay)
 
         Gtk.addClass(statusBand, "status-band")
@@ -481,6 +524,7 @@ final class MainWindow: @unchecked Sendable {
             UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(entryView))), "changed"
         ) { [weak self] in
             self?.growComposer()
+            self?.updateSlashCompletion()
         }
 
         Gtk.addClass(sendButton, "suggested-action")
@@ -752,6 +796,13 @@ final class MainWindow: @unchecked Sendable {
     private func applyEntries(_ entries: [SessionEntry], unreachable: [String]) {
         self.entries = entries
         self.unreachable = unreachable
+        if let fresh = freshlyCreated {
+            if entries.contains(where: { $0.session.id == fresh.session.id }) {
+                freshlyCreated = nil
+            } else {
+                self.entries.insert(fresh, at: 0)
+            }
+        }
         renderSidebar()
         guard selectedID == nil, !entries.isEmpty else { return }
         let remembered = Preferences.lastSession.flatMap { id in
@@ -764,11 +815,13 @@ final class MainWindow: @unchecked Sendable {
     /// would do it whether or not anything changed — so nothing is touched unless what the list
     /// would say actually differs from what it says now.
     private func renderSidebar() {
+        Trace.mark("renderSidebar begin \(entries.count) entries")
+        defer { Trace.mark("renderSidebar end") }
         let savedChats = SavedChatStore.all()
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
         let needle = filter.lowercased()
-        var rows = entries.map {
+        var rows = entries.filter { !pendingDeletes.contains($0.session.id) }.map {
             SessionRowModel(
                 entry: $0,
                 unreachable: unreachable.contains(
@@ -777,17 +830,35 @@ final class MainWindow: @unchecked Sendable {
                 saved: saved.contains($0.session.id))
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        let archivedKeys = ArchivedChatStore.all()
+        let isArchived: (SessionRowModel) -> Bool = {
+            archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
+        }
+        let archivedTotal = rows.filter(isArchived).count
         let matching = rows.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
         }
-        let sections = groupIntoSections(matching)
+        let active = matching.filter {
+            !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
+        }
+        let sections: [(String, [SessionRowModel])] =
+            showingArchive
+            ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
+            : groupIntoSections(active).map { ($0.0.title, $0.1) }
         visible = sections.flatMap(\.1)
         syncCursorToSelection()
 
-        let snapshot = (visible, unreachable, filter, "\(selectedID ?? "")|\(sidebarLimit)")
+        let snapshot = (
+            visible, unreachable, filter,
+            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
+        )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
+
+        let scrollTarget = sidebarScrollTarget ?? sidebarScrollValue()
+        sidebarScrollTarget = nil
+        defer { restoreSidebarScroll(scrollTarget) }
 
         Gtk.removeChildren(of: sidebarBanner)
         if !unreachable.isEmpty {
@@ -799,13 +870,23 @@ final class MainWindow: @unchecked Sendable {
         }
 
         Gtk.removeChildren(of: sidebarList)
+        if showingArchive {
+            gtk_box_append(
+                ptr(sidebarList),
+                Gtk.button(Localized.text("← All chats"), css: ["flat", "dim"]) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.setArchiveShown(false) }
+                })
+        }
         guard !visible.isEmpty else {
             gtk_box_append(
                 ptr(sidebarList),
                 SidebarRow.empty(
-                    filter.isEmpty
-                        ? Localized.text("No conversations yet")
-                        : Localized.text("Nothing matches “%@”", filter)))
+                    showingArchive
+                        ? Localized.text("Nothing archived")
+                        : filter.isEmpty
+                            ? Localized.text("No conversations yet")
+                            : Localized.text("Nothing matches “%@”", filter)))
+            appendArchiveFooter(archivedTotal)
             return
         }
 
@@ -813,18 +894,22 @@ final class MainWindow: @unchecked Sendable {
         // you feel at launch. Only the first screenful or two are built; the rest arrive when
         // asked for, and the filter above still searches every chat.
         var built = 0
-        for (section, members) in sections {
+        for (title, members) in sections {
             guard built < sidebarLimit else { break }
             gtk_box_append(
-                ptr(sidebarList), SidebarRow.header(section.title, count: members.count))
+                ptr(sidebarList), SidebarRow.header(title, count: members.count))
             for row in members {
                 guard built < sidebarLimit else { break }
                 gtk_box_append(
                     ptr(sidebarList),
-                    SidebarRow.make(row, focused: row.entry.session.id == selectedID) {
-                        [weak self] in
-                        self?.open(row.entry)
-                    })
+                    SidebarRow.make(
+                        row, focused: row.entry.session.id == selectedID,
+                        onOpen: { [weak self] in
+                            self?.open(row.entry)
+                        },
+                        onMenu: { [weak self] bits, x, y in
+                            self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
+                        }))
                 built += 1
             }
         }
@@ -842,6 +927,52 @@ final class MainWindow: @unchecked Sendable {
             }
             Gtk.margins(more, top: 6, bottom: 10)
             gtk_box_append(ptr(sidebarList), more)
+        }
+        appendArchiveFooter(archivedTotal)
+    }
+
+    /// The archive's one entry point: a quiet count at the foot of the list. Absent while
+    /// nothing is archived, so the feature costs no room until it is used.
+    private func appendArchiveFooter(_ archivedTotal: Int) {
+        guard !showingArchive, archivedTotal > 0 else { return }
+        let button = Gtk.button(
+            Localized.text("%@ archived", "\(archivedTotal)"), css: ["flat", "dim"]
+        ) { [weak self] in
+            Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
+        }
+        Gtk.margins(button, top: 6, bottom: 10)
+        gtk_box_append(ptr(sidebarList), button)
+    }
+
+    private func toggleArchived(_ entry: SessionEntry) {
+        ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+        SettingsFile.capture()
+        renderSidebar()
+    }
+
+    private func setArchiveShown(_ shown: Bool) {
+        guard showingArchive != shown else { return }
+        showingArchive = shown
+        cursor = 0
+        lastSidebar = nil
+        sidebarScrollTarget = 0
+        renderSidebar()
+    }
+
+    private func sidebarScrollValue() -> Double {
+        guard let sidebarScroller else { return 0 }
+        return gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(op(sidebarScroller)))
+    }
+
+    /// Rebuilding the list resets the scroll to the top, which turns every click deep in a long
+    /// list into a lost place. The old offset is put back from an idle callback — after GTK's
+    /// resize pass, so the fresh rows have a height for the adjustment to clamp against.
+    private func restoreSidebarScroll(_ value: Double) {
+        guard value > 0, let sidebarScroller else { return }
+        let bits = UInt(bitPattern: sidebarScroller)
+        Gtk.onMain {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(op(raw)), value)
         }
     }
 
@@ -886,8 +1017,10 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    private func open(_ entry: SessionEntry) {
+    private func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard selectedID != entry.session.id else { return }
+        Trace.mark("open begin \(entry.session.id.prefix(8))")
+        self.freshlyCreated = freshlyCreated ? entry : nil
         stashDraft()
         selectedID = entry.session.id
         currentEntry = entry
@@ -927,6 +1060,11 @@ final class MainWindow: @unchecked Sendable {
             let windowed =
                 remembered.count > limit ? Array(remembered.suffix(limit)) : remembered
             applyRows(windowed)
+        } else if freshlyCreated {
+            // A session created a heartbeat ago is empty by definition: the ready state paints
+            // now and the composer takes focus, while the stream settles in behind it.
+            showPlaceholder(Localized.text("Nothing here yet. Say something."))
+            gtk_widget_grab_focus(entryView)
         } else {
             showPlaceholder(Localized.text("Connecting…"))
         }
@@ -946,6 +1084,7 @@ final class MainWindow: @unchecked Sendable {
         agentStreamTask?.cancel()
         agentStreamTask = nil
         agentStreamSessionID = nil
+        Trace.mark("open pane ready")
         Gtk.onMain { [weak self] in self?.renderSidebar() }
 
         streamTask = Task { [weak self] in
@@ -1066,6 +1205,8 @@ final class MainWindow: @unchecked Sendable {
     /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
     /// button that widens the window — the full rows are kept, so nothing is refetched.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
+        Trace.mark(
+            "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
         var rows = rows
         // The echo stands only until the transcript carries the same words back.
@@ -1096,7 +1237,7 @@ final class MainWindow: @unchecked Sendable {
         }
         let placeholder: String? =
             rows.isEmpty
-            ? (state.hasLoadedTranscript
+            ? (state.hasLoadedTranscript || selectedID == freshlyCreated?.session.id
                 ? Localized.text("Nothing here yet. Say something.") : Localized.text("Loading…"))
             : nil
         if let placeholder {
@@ -1111,6 +1252,8 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func showPlaceholder(_ text: String) {
+        if placeholderShown, currentPlaceholder == text { return }
+        currentPlaceholder = text
         Gtk.removeChildren(of: transcriptBox)
         renderedRows = []
         rowWidgets = []
@@ -1140,6 +1283,7 @@ final class MainWindow: @unchecked Sendable {
             rowWidgets = []
             highlightedRow = 0
             placeholderShown = false
+            currentPlaceholder = nil
             // Built invisible: the first frame anyone sees is the settled bottom of the
             // conversation, never the top of it sliding down into place.
             gtk_widget_set_opacity(transcriptBox, 0)
@@ -1725,6 +1869,7 @@ final class MainWindow: @unchecked Sendable {
     private func presentNewChat() {
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
+            let localAddresses = Self.localAddresses
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 guard !profiles.isEmpty else {
@@ -1736,7 +1881,8 @@ final class MainWindow: @unchecked Sendable {
                     seen.insert($0).inserted
                 }
                 Dialogs.newChat(
-                    parent: self.window, profiles: profiles, recentDirectories: recents
+                    parent: self.window, profiles: profiles, recentDirectories: recents,
+                    localAddresses: localAddresses
                 ) { [weak self] profile, directory in
                     self?.createChat(on: profile, directory: directory)
                 }
@@ -1744,17 +1890,42 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// Read once, off the main context: `tailscale status` is a subprocess, and the answer —
+    /// which addresses mean "this machine" — does not change within a run.
+    private static let localAddresses: Set<String> = {
+        var hosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
+        var name = [CChar](repeating: 0, count: 256)
+        if gethostname(&name, 255) == 0 { hosts.insert(String(cString: name).lowercased()) }
+        if let address = TailnetStatusLinux.read().address { hosts.insert(address) }
+        return hosts
+    }()
+
+    /// The one round trip that mints the session id is all the new chat waits for. The sidebar
+    /// row is seeded from the answer and the conversation opens on the spot; the full list
+    /// refresh reconciles behind it, because a person who just started a chat is looking at the
+    /// composer, not at the list.
     private func createChat(on profile: ConnectionProfile, directory: String?) {
+        Trace.mark("createChat begin")
         Task { [weak self] in
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { return }
             do {
                 let session = try await backend.createSession(title: nil, directory: directory)
+                Trace.mark("createChat session created")
                 let entry = SessionEntry(
                     profileID: profile.id, profileName: profile.name,
                     host: profile.baseURL.host ?? profile.name,
                     backendType: profile.backend, session: session)
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    if !self.entries.contains(where: { $0.session.id == entry.session.id }) {
+                        self.entries.insert(entry, at: 0)
+                    }
+                    self.lastSidebar = nil
+                    self.renderSidebar()
+                    self.open(entry, freshlyCreated: true)
+                }
                 await self?.refresh()
-                Gtk.onMain { [weak self] in self?.open(entry) }
+                Trace.mark("createChat refresh done")
             } catch {
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
@@ -1774,6 +1945,10 @@ final class MainWindow: @unchecked Sendable {
 
     private func presentRename() {
         guard let entry = currentEntry, let backend = currentBackend else { return }
+        presentRename(entry: entry, backend: backend)
+    }
+
+    private func presentRename(entry: SessionEntry, backend: any CodingAgentBackend) {
         let sessionID = entry.session.id
         Dialogs.prompt(
             title: Localized.text("Rename this conversation"), body: nil,
@@ -1786,7 +1961,7 @@ final class MainWindow: @unchecked Sendable {
                 try? await backend.renameSession(sessionID, title: title)
                 await self?.refresh()
                 Gtk.onMain { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.selectedID == sessionID else { return }
                     gtk_label_set_text(op(self.titleLabel), title)
                 }
             }
@@ -1795,6 +1970,10 @@ final class MainWindow: @unchecked Sendable {
 
     private func forkCurrent() {
         guard let entry = currentEntry, let backend = currentBackend else { return }
+        fork(entry: entry, backend: backend)
+    }
+
+    private func fork(entry: SessionEntry, backend: any CodingAgentBackend) {
         let sessionID = entry.session.id
         Task { [weak self] in
             guard let session = try? await backend.forkSession(sessionID) else { return }
@@ -1832,6 +2011,14 @@ final class MainWindow: @unchecked Sendable {
 
     private func presentDelete() {
         guard let entry = currentEntry, let backend = currentBackend else { return }
+        presentDelete(entry: entry, backend: backend)
+    }
+
+    /// Optimistic on confirm: the row disappears and the next chat opens before the server has
+    /// answered — the person already decided, and the round trip is not theirs to wait for. The
+    /// refresh behind the request reconciles either way, so a delete the server refused simply
+    /// puts the row back, with a notice saying why.
+    private func presentDelete(entry: SessionEntry, backend: any CodingAgentBackend) {
         let sessionID = entry.session.id
         Dialogs.confirm(
             title: Localized.text("Delete this conversation?"),
@@ -1840,23 +2027,153 @@ final class MainWindow: @unchecked Sendable {
                 entry.profileName),
             confirmLabel: Localized.text("Delete"), parent: window
         ) { [weak self] in
-            Task { [weak self] in
-                try? await backend.deleteSession(sessionID)
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.pendingDeletes.insert(sessionID)
+                self.entries.removeAll {
+                    $0.profileID == entry.profileID && $0.session.id == sessionID
+                }
+                if self.freshlyCreated?.session.id == sessionID { self.freshlyCreated = nil }
+                if self.selectedID == sessionID {
                     self.selectedID = nil
                     self.currentEntry = nil
+                    if let next = self.entries.first { self.open(next) }
                 }
-                await self?.refresh()
+                self.renderSidebar()
+            }
+            Task { [weak self] in
+                let failure: String?
+                do {
+                    try await backend.deleteSession(sessionID)
+                    failure = nil
+                } catch {
+                    failure = "\(error)"
+                }
+                if failure == nil { await self?.refresh() }
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.pendingDeletes.remove(sessionID)
+                    if let failure {
+                        self.setNotice(Localized.text("Could not delete: %@", failure))
+                        self.renderSidebar()
+                    }
+                }
+                if failure != nil { await self?.refresh() }
             }
         }
     }
 
     private func toggleSaved() {
         guard let entry = currentEntry else { return }
+        toggleSaved(entry)
+    }
+
+    private func toggleSaved(_ entry: SessionEntry) {
         _ = SavedChatStore.toggle(entry)
         SettingsFile.capture()
         renderSidebar()
+    }
+
+    /// The right-click menu on a chat row. The menu anchors to the sidebar's own box — a widget
+    /// that outlives any re-render — with the click's position translated at press time, while
+    /// the row it happened on is still alive; the backend lookup that gates rename, fork and
+    /// delete happens on the way, so an unreachable server's row still offers what works offline.
+    private func presentRowMenu(_ row: SessionRowModel, rowBits: UInt, x: Double, y: Double) {
+        guard let raw = UnsafeMutableRawPointer(bitPattern: rowBits) else { return }
+        let offsetY = tailscode_widget_offset_y(ptr(raw), sidebarList)
+        guard offsetY >= 0 else { return }
+        let anchorX = x + 4
+        let anchorY = offsetY + y
+        let entry = row.entry
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            var backend: (any CodingAgentBackend)?
+            if let profile = profiles.first(where: { $0.id == entry.profileID }) {
+                backend = await ServerDirectory.shared.backend(for: profile)
+            }
+            let resolved = backend
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                Gtk.contextMenu(
+                    on: self.sidebarList, x: anchorX, y: anchorY,
+                    rows: self.rowMenuRows(row, backend: resolved))
+            }
+        }
+    }
+
+    private func rowMenuRows(
+        _ row: SessionRowModel, backend: (any CodingAgentBackend)?
+    ) -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
+        let entry = row.entry
+        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
+        if entry.session.id != selectedID {
+            rows.append(
+                (Localized.text("Open"), nil,
+                 { [weak self] in Gtk.onMain { [weak self] in self?.open(entry) } }))
+        }
+        let saved = SavedChatStore.contains(entry)
+        rows.append(
+            (saved ? Localized.text("Unsave") : Localized.text("Save"),
+             Localized.text("A saved chat lists itself even when its server is unreachable"),
+             { [weak self] in Gtk.onMain { [weak self] in self?.toggleSaved(entry) } }))
+        let archived = ArchivedChatStore.contains(
+            profileID: entry.profileID, sessionID: entry.session.id)
+        rows.append(
+            (archived ? Localized.text("Unarchive") : Localized.text("Archive"),
+             archived
+                 ? Localized.text("Back into the chat list")
+                 : Localized.text("Out of the list, kept on the server"),
+             { [weak self] in Gtk.onMain { [weak self] in self?.toggleArchived(entry) } }))
+        rows.append(
+            (row.unread ? Localized.text("Mark as read") : Localized.text("Mark as unread"), nil,
+             { [weak self] in
+                 Gtk.onMain { [weak self] in
+                     if row.unread {
+                         SessionSeenStore.markSeen(entry.session.id)
+                     } else {
+                         SessionSeenStore.markUnread(
+                             entry.session.id, updatedAt: entry.session.updatedAt)
+                     }
+                     self?.renderSidebar()
+                 }
+             }))
+        if let backend {
+            if backend.capabilities.supportsRenaming {
+                rows.append(
+                    (Localized.text("Rename…"), nil,
+                     { [weak self] in
+                         Gtk.onMain { [weak self] in
+                             self?.presentRename(entry: entry, backend: backend)
+                         }
+                     }))
+            }
+            if backend.capabilities.supportsForking {
+                rows.append(
+                    (Localized.text("Fork"),
+                     Localized.text("A new session with this history, for a different direction"),
+                     { [weak self] in
+                         Gtk.onMain { [weak self] in self?.fork(entry: entry, backend: backend) }
+                     }))
+            }
+        }
+        rows.append(
+            (Localized.text("Copy session ID"), entry.session.id,
+             { Gtk.onMain { Gtk.copyToClipboard(entry.session.id) } }))
+        if let directory = entry.session.directory {
+            rows.append(
+                (Localized.text("Copy project path"), directory,
+                 { Gtk.onMain { Gtk.copyToClipboard(directory) } }))
+        }
+        if let backend {
+            rows.append(
+                (Localized.text("Delete…"), Localized.text("Remove the session from its server"),
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in
+                         self?.presentDelete(entry: entry, backend: backend)
+                     }
+                 }))
+        }
+        return rows
     }
 
     /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame,
@@ -1919,9 +2236,10 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// Normal mode owns the letters; focusing anything that takes text hands them back. Every
-    /// binding has a thing you can also click, so the keyboard is a shortcut rather than the only
-    /// way in.
+    /// Normal mode owns the letters; focusing anything that takes text hands them back, and the
+    /// terminal keeps everything but Ctrl+Shift and zoom — a shell's own Ctrl+B or Ctrl+E is not
+    /// the app's to take. Every binding has a thing you can also click, so the keyboard is a
+    /// shortcut rather than the only way in.
     private func installKeymap(on window: UnsafeMutablePointer<GtkWidget>) {
         let root = UInt(bitPattern: window)
         Gtk.onKey(window) { [weak self] keyval, state in
@@ -1932,17 +2250,89 @@ final class MainWindow: @unchecked Sendable {
             if let handled = self.handleComposerKey(keyval: keyval, state: state) {
                 return handled
             }
-            if Gtk.focusTakesText(window) {
-                guard let action = Keymap.insert(keyval: keyval, state: state) else { return false }
-                return self.perform(action)
+            guard let chord = KeyChord.canonical(keyval: keyval, state: state) else {
+                return false
             }
-            let awaiting = !(self.lastState?.pendingPermissions.isEmpty ?? true)
-            let action = Keymap.normal(
-                keyval: keyval, state: state, pending: self.pending, awaitingApproval: awaiting)
-            self.pending = Keymap.scalar(keyval) == "g" && action == nil ? "g" : ""
-            guard let action else { return false }
-            return self.perform(action)
+            let context: KeyContext =
+                self.terminal.ownsFocus(in: window)
+                ? .terminal : Gtk.focusTakesText(window) ? .insert : .normal
+            let awaiting =
+                context == .normal && !(self.lastState?.pendingPermissions.isEmpty ?? true)
+            let resolution = self.shortcuts.resolve(
+                chord, context: context, pending: self.pendingChords, awaitingApproval: awaiting)
+            switch resolution {
+            case .run(let action):
+                self.pendingChords = []
+                return self.perform(action)
+            case .pending(let chords):
+                self.pendingChords = chords
+                return true
+            case .unbound:
+                self.pendingChords = []
+                return false
+            }
         }
+        if !shortcuts.issues.isEmpty {
+            setNotice(
+                Localized.text(
+                    "Keybindings: %@", shortcuts.issues.joined(separator: " · ")))
+        }
+    }
+
+    /// Re-reads the rebinding file and rebuilds everything derived from it, live: the resolver,
+    /// the cheatsheet, and the notice line if the file has something wrong in it.
+    func reloadShortcuts() {
+        shortcuts = ShortcutSet.load()
+        pendingChords = []
+        rebuildHelpOverlay()
+        if shortcuts.issues.isEmpty {
+            toast(Localized.text("Shortcuts reloaded"))
+        } else {
+            setNotice(
+                Localized.text(
+                    "Keybindings: %@", shortcuts.issues.joined(separator: " · ")))
+        }
+    }
+
+    /// The cheatsheet is generated from the registry, so it always tells the truth — overrides
+    /// included. Two columns, because forty rows in one column is a scroll, not a glance.
+    private func rebuildHelpOverlay() {
+        Gtk.removeChildren(of: helpOverlay)
+        let sections = shortcuts.helpSections()
+        let columns = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 44)
+        let left = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        let right = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_widget_set_hexpand(left, 1)
+        gtk_widget_set_hexpand(right, 1)
+        gtk_widget_set_valign(left, GTK_ALIGN_START)
+        gtk_widget_set_valign(right, GTK_ALIGN_START)
+        let total = sections.reduce(0) { $0 + $1.rows.count + 2 }
+        var used = 0
+        for section in sections {
+            let target = used < (total + 1) / 2 ? left : right
+            used += section.rows.count + 2
+            let header = Gtk.label(section.title, css: "section-header", selectable: false)
+            Gtk.margins(header, top: 8, bottom: 2)
+            gtk_box_append(ptr(target), header)
+            for row in section.rows {
+                let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+                let keys = Gtk.label(row.keys, css: "tool-name", selectable: false)
+                gtk_widget_set_size_request(keys, 150, -1)
+                gtk_box_append(ptr(line), keys)
+                gtk_box_append(
+                    ptr(line), Gtk.label(row.what, css: "row-detail", selectable: false))
+                gtk_box_append(ptr(target), line)
+            }
+        }
+        gtk_box_append(ptr(columns), left)
+        gtk_box_append(ptr(columns), right)
+        gtk_box_append(ptr(helpOverlay), columns)
+        let hint = Gtk.label(
+            Localized.text(
+                "Rebind any of these: %@ · Settings → Keyboard", ShortcutSet.configURL.path),
+            css: "dim", selectable: false)
+        Gtk.margins(hint, top: 10)
+        gtk_box_append(ptr(helpOverlay), hint)
     }
 
     private func perform(_ action: KeyAction) -> Bool {
@@ -1964,6 +2354,7 @@ final class MainWindow: @unchecked Sendable {
         case .insert: focus(.transcript); gtk_widget_grab_focus(entryView)
         case .leaveInsert:
             if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
+            dismissCompletion()
             gtk_widget_grab_focus(sidebarList)
             setHelp(false)
         case .search: gtk_widget_grab_focus(searchEntry)
@@ -1996,8 +2387,38 @@ final class MainWindow: @unchecked Sendable {
         case .toggleTerminal: togglePane(.terminal)
         case .commandPalette:
             if let commandButton { gtk_menu_button_popup(op(commandButton)) }
+        case .archiveSelected:
+            if let entry = currentEntry { toggleArchived(entry) }
+        case .toggleArchiveView: setArchiveShown(!showingArchive)
+        case .toggleUnreadSelected: toggleUnreadSelected()
+        case .renameSelected:
+            if currentBackend?.capabilities.supportsRenaming == true { presentRename() }
+        case .forkSelected:
+            if currentBackend?.capabilities.supportsForking == true { forkCurrent() }
+        case .deleteSelected: presentDelete()
+        case .copySessionID:
+            if let entry = currentEntry {
+                Gtk.copyToClipboard(entry.session.id)
+                toast(Localized.text("Copied"))
+            }
+        case .copyProjectPath:
+            if let directory = currentEntry?.session.directory {
+                Gtk.copyToClipboard(directory)
+                toast(Localized.text("Copied"))
+            }
         }
         return true
+    }
+
+    private func toggleUnreadSelected() {
+        guard let entry = currentEntry else { return }
+        let unread = SessionSeenStore.unreadEvaluator()(entry.session.id, entry.session.updatedAt)
+        if unread {
+            SessionSeenStore.markSeen(entry.session.id)
+        } else {
+            SessionSeenStore.markUnread(entry.session.id, updatedAt: entry.session.updatedAt)
+        }
+        renderSidebar()
     }
 
     private func respondToFirstPermission(_ decision: PermissionDecision) {
@@ -2013,6 +2434,7 @@ final class MainWindow: @unchecked Sendable {
 
     private func focus(_ pane: Pane) {
         focused = pane
+        if pane != .transcript { dismissCompletion() }
         switch pane {
         case .chats: gtk_widget_grab_focus(sidebarList)
         case .transcript: gtk_widget_grab_focus(transcriptBox)
@@ -2056,6 +2478,11 @@ final class MainWindow: @unchecked Sendable {
     private func togglePane(_ pane: ClosablePane) {
         SettingsFile.set(!paneShown(pane), forKey: pane.key)
         applyPane(pane)
+        // A terminal someone just opened is a terminal they want to type into; focus follows the
+        // reveal, on idle so the widget is on screen by the time focus lands.
+        if pane == .terminal, paneShown(.terminal) {
+            Gtk.onMain { [weak self] in self?.focus(.terminal) }
+        }
     }
 
     private func applyPane(_ pane: ClosablePane) {
@@ -2174,13 +2601,22 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func presentSettings() {
-        SettingsDialog.present(parent: window) { [weak self] in
-            Gtk.onMain { [weak self] in self?.applyLayoutPreferences() }
-        }
+        SettingsDialog.present(
+            parent: window,
+            onLayoutChanged: { [weak self] in
+                Gtk.onMain { [weak self] in self?.applyLayoutPreferences() }
+            },
+            onReloadShortcuts: { [weak self] in
+                Gtk.onMain { [weak self] in self?.reloadShortcuts() }
+            })
     }
 
+    /// Alongside the badge, the caret itself says which mode this is: it blinks only in insert.
+    /// In normal and visual it is hidden — the letters belong to commands, and a blinking beam
+    /// would promise typing the composer will not do.
     private func updateVimBadge() {
         guard Preferences.vimComposer else {
+            gtk_text_view_set_cursor_visible(ptr(entryView), 1)
             gtk_widget_set_visible(vimBadge, 0)
             if let composerScroller {
                 gtk_widget_remove_css_class(composerScroller, "composer-normal")
@@ -2188,6 +2624,7 @@ final class MainWindow: @unchecked Sendable {
             }
             return
         }
+        gtk_text_view_set_cursor_visible(ptr(entryView), vim.mode == .insert ? 1 : 0)
         gtk_widget_set_visible(vimBadge, 1)
         gtk_label_set_text(op(vimBadge), vim.mode.label)
         gtk_widget_remove_css_class(vimBadge, "vim-badge-visual")
@@ -2220,6 +2657,19 @@ final class MainWindow: @unchecked Sendable {
         let control = state & Keymap.control != 0
         let shift = state & Keymap.shift != 0
 
+        if completionShown {
+            switch keyval {
+            case Keymap.tab: acceptCompletion(at: completionCursor); return true
+            case Keymap.shiftTab: moveCompletion(by: -1); return true
+            case Keymap.down: moveCompletion(by: 1); return true
+            case Keymap.up: moveCompletion(by: -1); return true
+            case Keymap.escape: dismissCompletion(); return true
+            default:
+                if control, Keymap.scalar(keyval) == "n" { moveCompletion(by: 1); return true }
+                if control, Keymap.scalar(keyval) == "p" { moveCompletion(by: -1); return true }
+            }
+        }
+
         if Preferences.vimComposer {
             let key = VimKey(
                 character: Keymap.scalar(keyval),
@@ -2232,10 +2682,7 @@ final class MainWindow: @unchecked Sendable {
                 return true
             }
             if vim.mode != .insert {
-                if control, Keymap.scalar(keyval) == "c" { return nil }
-                let outcome = vim.handle(key, text: composerText(), cursor: composerCursor())
-                applyVim(outcome)
-                return true
+                return composerNormalKey(key, keyval: keyval, state: state)
             }
         }
 
@@ -2246,6 +2693,66 @@ final class MainWindow: @unchecked Sendable {
         }
         if isReturn, shift || !Preferences.sendOnReturn { return false }
         return nil
+    }
+
+    /// The composer's normal mode is the app's normal mode: every key answers to the shortcut
+    /// table first — j scrolls, J switches chats, ? opens the cheatsheet — while vim keeps what
+    /// makes it vim: the visual modes whole, insert and visual entries, Enter to send, and every
+    /// key of a command already in flight, so `3x`, `diw` and `ct)` still land. A key neither
+    /// side binds goes back to vim rather than to the text view, so no stray letter types itself
+    /// into the draft.
+    private func composerNormalKey(
+        _ key: VimKey, keyval: UInt32, state: UInt32
+    ) -> Bool? {
+        if key.control, Keymap.scalar(keyval) == "c", copyComposerSelection() { return true }
+        guard let chord = KeyChord.canonical(keyval: keyval, state: state) else { return nil }
+        let awaiting = !(lastState?.pendingPermissions.isEmpty ?? true)
+        if awaiting, !chord.control, !chord.alt, pendingChords.isEmpty,
+            let action = shortcuts.approval[chord.token]
+        {
+            pendingChords = []
+            return perform(action)
+        }
+        if key.isEnter, chord.control {
+            pendingChords = []
+            sendFromComposer()
+            return true
+        }
+        let plain = !chord.control && !chord.alt
+        let entries: Set<Character> = ["i", "a", "o", "v", "V"]
+        let entersVimMode = plain && (Keymap.scalar(keyval).map { entries.contains($0) } ?? false)
+        if vim.mode != .normal || vim.awaitsMore || entersVimMode || (plain && key.isEnter) {
+            pendingChords = []
+            applyVim(vim.handle(key, text: composerText(), cursor: composerCursor()))
+            return true
+        }
+        let resolution = shortcuts.resolve(
+            chord, context: .normal, pending: pendingChords, awaitingApproval: false)
+        switch resolution {
+        case .run(let action):
+            pendingChords = []
+            return perform(action)
+        case .pending(let chords):
+            pendingChords = chords
+            return true
+        case .unbound:
+            pendingChords = []
+            applyVim(vim.handle(key, text: composerText(), cursor: composerCursor()))
+            return true
+        }
+    }
+
+    private func copyComposerSelection() -> Bool {
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
+        var start = GtkTextIter()
+        var end = GtkTextIter()
+        guard gtk_text_buffer_get_selection_bounds(buffer, &start, &end) != 0,
+            let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0)
+        else { return false }
+        Gtk.copyToClipboard(String(cString: raw))
+        g_free(raw)
+        toast(Localized.text("Copied"))
+        return true
     }
 
     private func applyVim(_ outcome: VimOutcome) {
@@ -2422,6 +2929,107 @@ final class MainWindow: @unchecked Sendable {
         let next = min(max(gtk_adjustment_get_lower(adjustment),
             transform(gtk_adjustment_get_value(adjustment))), max(0, ceiling))
         gtk_adjustment_set_value(adjustment, next)
+    }
+
+    /// Typing `/word` offers what it could become, right above the prompt box: filtered as
+    /// letters arrive, stepped with the arrows or Ctrl+N/P, taken with Tab, dismissed with
+    /// Escape. The popover never takes focus — it is a suggestion, not a dialog — so typing
+    /// simply continues underneath it.
+    private var completionShown: Bool {
+        completionPopover.map { gtk_widget_get_visible($0) != 0 } ?? false
+    }
+
+    private func updateSlashCompletion() {
+        let typing = !Preferences.vimComposer || vim.mode == .insert
+        guard typing, let query = SlashCompletion.query(in: composerText()) else {
+            dismissCompletion()
+            return
+        }
+        var matches = SlashCompletion.matches(commands, query: query)
+        if matches.count == 1, matches[0].name.lowercased() == query.lowercased() {
+            matches = []
+        }
+        completionMatches = matches
+        completionCursor = 0
+        guard !matches.isEmpty else {
+            dismissCompletion()
+            return
+        }
+        renderCompletion()
+    }
+
+    private func moveCompletion(by delta: Int) {
+        let count = completionMatches.count
+        guard count > 0 else { return }
+        completionCursor = ((completionCursor + delta) % count + count) % count
+        renderCompletion()
+    }
+
+    private func acceptCompletion(at index: Int) {
+        guard index < completionMatches.count else { return }
+        let command = completionMatches[index]
+        let text = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
+        gtk_text_buffer_set_text(buffer, text, -1)
+        var end = GtkTextIter()
+        gtk_text_buffer_get_end_iter(buffer, &end)
+        gtk_text_buffer_place_cursor(buffer, &end)
+        vim.reset(to: text, cursor: text.count, mode: .insert)
+        updateVimBadge()
+        gtk_widget_grab_focus(entryView)
+    }
+
+    private func dismissCompletion() {
+        guard let completionPopover, gtk_widget_get_visible(completionPopover) != 0 else {
+            return
+        }
+        gtk_popover_popdown(ptr(completionPopover))
+    }
+
+    /// At most eight rows, windowed around the selection so the highlight can never scroll off,
+    /// with a count for what the window hides.
+    private func renderCompletion() {
+        guard let anchor = composerScroller else { return }
+        let popover: UnsafeMutablePointer<GtkWidget>
+        if let existing = completionPopover {
+            popover = existing
+        } else {
+            popover = gtk_popover_new()!
+            gtk_widget_set_parent(popover, anchor)
+            gtk_popover_set_autohide(ptr(popover), 0)
+            gtk_popover_set_has_arrow(ptr(popover), 0)
+            gtk_popover_set_position(ptr(popover), GTK_POS_TOP)
+            completionPopover = popover
+        }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        let start = max(0, min(completionCursor - 3, completionMatches.count - 8))
+        let end = min(completionMatches.count, start + 8)
+        for index in start..<end {
+            let command = completionMatches[index]
+            let item = gtk_button_new()!
+            Gtk.addClass(item, "flat")
+            if index == completionCursor { Gtk.addClass(item, "completion-selected") }
+            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            gtk_box_append(
+                ptr(lines), Gtk.label("/\(command.name)", css: "row-title", selectable: false))
+            if !command.details.isEmpty {
+                let detail = Gtk.label(command.details, css: "row-detail", selectable: false)
+                gtk_label_set_max_width_chars(op(detail), 64)
+                gtk_box_append(ptr(lines), detail)
+            }
+            gtk_button_set_child(ptr(item), lines)
+            Gtk.connect(UnsafeMutableRawPointer(item), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in self?.acceptCompletion(at: index) }
+            }
+            gtk_box_append(ptr(column), item)
+        }
+        if start > 0 || end < completionMatches.count {
+            let hidden = completionMatches.count - (end - start)
+            gtk_box_append(
+                ptr(column), Gtk.label("… \(hidden) more", css: "row-detail", selectable: false))
+        }
+        gtk_popover_set_child(ptr(popover), column)
+        gtk_popover_popup(ptr(popover))
     }
 
     private func insertIntoComposer(_ text: String) {
@@ -2712,10 +3320,11 @@ final class MainWindow: @unchecked Sendable {
         Gtk.removeChildren(of: usageBox)
         gtk_widget_set_visible(usageBox, quotas.isEmpty ? 0 : 1)
         for (name, quota) in quotas {
-            gtk_box_append(
-                ptr(usageBox),
-                Gtk.label(
-                    "\(quota.providerName) · \(name)", css: "section-header", selectable: false))
+            let slug = ProviderBrand.slug(quota.providerName)
+            let header = Gtk.label(
+                "\(quota.providerName) · \(name)", css: "section-header", selectable: false)
+            if let slug { Gtk.addClass(header, "brand-\(slug)") }
+            gtk_box_append(ptr(usageBox), header)
             for gauge in quota.gauges {
                 let fraction = min(max(gauge.fraction, 0), 1)
                 let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
@@ -2732,7 +3341,7 @@ final class MainWindow: @unchecked Sendable {
                 gtk_widget_set_valign(track, GTK_ALIGN_CENTER)
                 gtk_widget_set_hexpand(track, 0)
                 let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-                Gtk.addClass(fill, "gauge-fill-\(severity)")
+                Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
                 gtk_widget_set_size_request(fill, Int32((fraction * 72).rounded()), 5)
                 gtk_box_append(ptr(track), fill)
                 gtk_box_append(ptr(row), track)

@@ -1,4 +1,5 @@
 import CAdw
+import CGtkShim
 import Foundation
 import TailscodeCore
 
@@ -45,6 +46,15 @@ final class TerminalPane: @unchecked Sendable {
             gtk_widget_grab_focus(terminal)
         #else
             gtk_widget_grab_focus(entry)
+        #endif
+    }
+
+    func ownsFocus(in window: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        guard let focused = tailscode_focused_widget(window) else { return false }
+        #if HAS_VTE
+            return focused == terminal
+        #else
+            return focused == entry
         #endif
     }
 

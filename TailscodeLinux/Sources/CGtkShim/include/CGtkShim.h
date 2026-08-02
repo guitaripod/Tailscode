@@ -47,6 +47,13 @@ void tailscode_file_open(
     GtkWindow *parent, void (*handler)(const char *const *paths, int count, void *data),
     void *data);
 
+/// Opens the desktop's own folder chooser — the portal decides what "native" means — and calls
+/// back with the chosen absolute path, or NULL when the person cancelled. Same GAsyncResult
+/// shape as `tailscode_file_open`, same rule: the callback runs on the GLib main context.
+void tailscode_select_folder(
+    GtkWindow *parent, const char *initial,
+    void (*handler)(const char *path, void *data), void *data);
+
 /// Reads the clipboard as an image and calls back with PNG bytes, or with NULL when the clipboard
 /// holds no picture. Same GAsyncResult shape, same rule: the callback runs on the main context and
 /// the bytes are only valid inside it.
@@ -80,5 +87,13 @@ void tailscode_connect_notify(
 /// of `tailscode_on_main`, with the same ownership rule.
 void tailscode_after(guint ms, void (*handler)(void *), void *data);
 void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data);
+
+/// A right click on `widget`, with where it landed in the widget's own coordinates. The gesture
+/// claims the sequence on press so the widget underneath does not also treat it as a click, but
+/// the handler fires on release: a popover popped up mid-press grabs the pointer, and the release
+/// would land on whichever menu item the popover placed under it — a visible flash of a button
+/// nobody chose.
+void tailscode_on_right_click(
+    GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
 char *tailscode_label_selection(GtkWidget *widget);
 gboolean tailscode_label_has_selection(GtkWidget *widget);

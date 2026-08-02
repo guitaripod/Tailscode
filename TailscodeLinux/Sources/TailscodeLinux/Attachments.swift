@@ -92,6 +92,25 @@ extension Gtk {
         tailscode_file_open(window, callback, box)
     }
 
+    /// The desktop's own folder chooser, completed back into Swift on the GLib main context —
+    /// nil when the person cancelled.
+    static func selectFolder(
+        parent: UnsafeMutablePointer<GtkWidget>?, initial: String? = nil,
+        _ handler: @escaping (String?) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PathBox(handler)).toOpaque()
+        let callback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = {
+            path, raw in
+            guard let raw else { return }
+            let box = Unmanaged<PathBox>.fromOpaque(raw).takeRetainedValue()
+            box.handler(path.map { String(cString: $0) })
+        }
+        let window: UnsafeMutablePointer<GtkWindow>? = parent.map {
+            ptr(UnsafeMutableRawPointer($0))
+        }
+        tailscode_select_folder(window, initial, callback, box)
+    }
+
     /// The clipboard as PNG bytes, or nil when it holds no picture.
     static func readClipboardImage(_ handler: @escaping (Data?) -> Void) {
         let box = Unmanaged.passRetained(ImageBox(handler)).toOpaque()
@@ -111,6 +130,11 @@ extension Gtk {
     final class PathListBox {
         let handler: ([String]) -> Void
         init(_ handler: @escaping ([String]) -> Void) { self.handler = handler }
+    }
+
+    final class PathBox {
+        let handler: (String?) -> Void
+        init(_ handler: @escaping (String?) -> Void) { self.handler = handler }
     }
 
     final class ImageBox {

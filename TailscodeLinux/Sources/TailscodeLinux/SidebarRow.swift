@@ -32,8 +32,12 @@ enum SidebarRow {
 
     /// One conversation. Three registers on two lines — what it is, where it lives, and what it is
     /// doing — with the state carried by a pill rather than by a colour a reader has to decode.
+    /// A right click hands back the row widget (as bits, for the sendable hop) and where inside it
+    /// the click landed, so the caller can open a menu under the pointer.
     static func make(
-        _ model: SessionRowModel, focused: Bool, onOpen: @escaping @Sendable () -> Void
+        _ model: SessionRowModel, focused: Bool,
+        onOpen: @escaping @Sendable () -> Void,
+        onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
@@ -72,6 +76,8 @@ enum SidebarRow {
         gtk_button_set_child(ptr(button), row)
 
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
+        let buttonBits = UInt(bitPattern: button)
+        Gtk.onRightClick(button) { x, y in onMenu(buttonBits, x, y) }
         return button
     }
 

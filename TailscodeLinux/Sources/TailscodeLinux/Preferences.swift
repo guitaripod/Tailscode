@@ -221,7 +221,8 @@ enum Preferences {
 enum SettingsDialog {
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?,
-        onLayoutChanged: @escaping @Sendable () -> Void
+        onLayoutChanged: @escaping @Sendable () -> Void,
+        onReloadShortcuts: @escaping @Sendable () -> Void
     ) {
         let window = adw_preferences_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Settings"))
@@ -359,6 +360,31 @@ enum SettingsDialog {
                 onLayoutChanged()
             })
 
+        let keyboard = group(
+            Localized.text("Keyboard"), on: page,
+            description: Localized.text(
+                "? shows every shortcut. Rebind any of them by id in the file below; unknown keys and conflicts are reported rather than guessed at."))
+        adw_preferences_group_add(
+            ptr(keyboard),
+            buttonRow(
+                Localized.text("Shortcuts file"), subtitle: ShortcutSet.configURL.path,
+                label: Localized.text("Edit")
+            ) {
+                ShortcutSet.ensureConfigFile()
+                let editor = Process()
+                editor.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+                editor.arguments = [ShortcutSet.configURL.path]
+                try? editor.run()
+            })
+        adw_preferences_group_add(
+            ptr(keyboard),
+            buttonRow(
+                Localized.text("Apply changes from the file"),
+                label: Localized.text("Reload")
+            ) {
+                onReloadShortcuts()
+            })
+
         gtk_window_present(ptr(window))
     }
 
@@ -424,11 +450,13 @@ enum SettingsDialog {
     }
 
     private static func buttonRow(
-        _ title: String, onClick: @escaping @Sendable () -> Void
+        _ title: String, subtitle: String? = nil, label: String? = nil,
+        onClick: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let row = adw_action_row_new()!
         adw_preferences_row_set_title(ptr(row), title)
-        let button = Gtk.button(Localized.text("Reset"), css: ["flat"], onClick: onClick)
+        if let subtitle { adw_action_row_set_subtitle(ptr(row), subtitle) }
+        let button = Gtk.button(label ?? Localized.text("Reset"), css: ["flat"], onClick: onClick)
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
         adw_action_row_add_suffix(ptr(row), button)
         return row

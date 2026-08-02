@@ -381,6 +381,7 @@ enum MatrixTheme {
         .answer-selected { border-color: \(accent); color: \(accent); }
 
         .command-line:hover { background-color: alpha(\(info), 0.10); border-radius: 4px; }
+        .completion-selected { background-color: alpha(\(accent), 0.16); border-radius: 6px; }
         toast {
             background-color: \(canvasRaised);
             color: \(text);
@@ -513,6 +514,12 @@ enum MatrixTheme {
         .gauge-fill-ok { background-color: \(accentDim); border-radius: 3px; }
         .gauge-fill-warn { background-color: \(warn); border-radius: 3px; }
         .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
+        .brand-claude { color: #D97757; }
+        .brand-opencode { color: \(palette.isDark ? "#4ADE47" : "#038000"); }
+        .brand-grok { color: \(palette.isDark ? "#E8E8EB" : "#1F1F1F"); }
+        .gauge-fill-claude { background-color: #D97757; border-radius: 3px; }
+        .gauge-fill-opencode { background-color: #03B000; border-radius: 3px; }
+        .gauge-fill-grok { background-color: \(palette.isDark ? "#E8E8EB" : "#1F1F1F"); border-radius: 3px; }
         .usage-card {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);

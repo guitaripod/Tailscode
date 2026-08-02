@@ -7,6 +7,25 @@ import TailscodeCore
 /// The full quota picture behind the sidebar footer: one card per provider, every gauge as a
 /// wide bar with its reset, spend windows in money, and the account facts the provider reports.
 /// Opens on what the footer already knows, then refetches so the numbers are current.
+/// Which brand a quota card belongs to, for the accent its name and bars wear. Grok's slug also
+/// tints by appearance — xAI is monochrome, silver on dark and ink on light — which the theme's
+/// CSS handles; this only names the slug.
+enum ProviderBrand {
+    static func slug(_ providerName: String) -> String? {
+        switch providerName.lowercased() {
+        case "claude", "anthropic": return "claude"
+        case "grok", "xai": return "grok"
+        case "opencode": return "opencode"
+        default: return nil
+        }
+    }
+
+    static func fillClass(severity: String, slug: String?) -> String {
+        guard severity == "ok", let slug else { return "gauge-fill-\(severity)" }
+        return "gauge-fill-\(slug)"
+    }
+}
+
 enum UsagePanel {
     static let trackWidth = 300
 
@@ -80,6 +99,9 @@ enum UsagePanel {
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let name = Gtk.label(quota.providerName, css: "usage-provider", selectable: false)
+        if let slug = ProviderBrand.slug(quota.providerName) {
+            Gtk.addClass(name, "brand-\(slug)")
+        }
         gtk_box_append(ptr(header), name)
         if !quota.subtitle.isEmpty {
             gtk_box_append(ptr(header), Gtk.label(quota.subtitle, css: "usage-plan", selectable: false))
@@ -94,8 +116,9 @@ enum UsagePanel {
         gtk_box_append(ptr(header), badge)
         gtk_box_append(ptr(card), header)
 
+        let slug = ProviderBrand.slug(quota.providerName)
         for gauge in quota.gauges {
-            gtk_box_append(ptr(card), gaugeRows(gauge))
+            gtk_box_append(ptr(card), gaugeRows(gauge, slug: slug))
         }
 
         if !quota.details.isEmpty {
@@ -120,7 +143,9 @@ enum UsagePanel {
         return card
     }
 
-    private static func gaugeRows(_ gauge: UsageQuota.Gauge) -> UnsafeMutablePointer<GtkWidget> {
+    private static func gaugeRows(
+        _ gauge: UsageQuota.Gauge, slug: String?
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
@@ -141,7 +166,7 @@ enum UsagePanel {
         gtk_widget_set_size_request(track, Int32(trackWidth), 6)
         gtk_widget_set_halign(track, GTK_ALIGN_START)
         let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(fill, "gauge-fill-\(severity)")
+        Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
         gtk_widget_set_size_request(fill, Int32((fraction * Double(trackWidth)).rounded()), 6)
         gtk_box_append(ptr(track), fill)
         gtk_box_append(ptr(block), track)

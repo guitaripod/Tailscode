@@ -60,6 +60,22 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkCompletion()
+            report("completion: \(checks) queries rank and gate")
+        } catch {
+            report("completion: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkShortcuts()
+            report("shortcuts: \(checks) keys resolve, rebind and stay conflict-free")
+        } catch {
+            report("shortcuts: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkSettingsFile()
             report("settings file: survives a reinstall")
         } catch {
@@ -91,6 +107,7 @@ public enum SelfTest {
         }
 
         var warmed: (backend: any CodingAgentBackend, session: AgentSession)?
+        var warmedIsEmpty = true
         for profile in profiles {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else {
                 report("\(profile.name): no backend")
@@ -109,7 +126,12 @@ public enum SelfTest {
                     failures += 1
                     continue
                 }
-                if warmed == nil { warmed = (backend, newest) }
+                // A conversation with words in it makes the stronger two-observer subject; an
+                // empty one only stands in when every server's newest chat is empty.
+                if warmed == nil || (warmedIsEmpty && !state.messages.isEmpty) {
+                    warmed = (backend, newest)
+                    warmedIsEmpty = state.messages.isEmpty
+                }
             } catch {
                 report("\(profile.name): \(error)")
                 failures += 1
@@ -196,6 +218,170 @@ public enum SelfTest {
     /// keys, and the text that must come out. It runs in the same `--selftest` as everything else
     /// because a headless box can check an editor perfectly well, and an editor that quietly eats
     /// the wrong word is worse than no editor.
+    private static func checkCompletion() throws -> Int {
+        let commands = ["steam-add-game", "usage", "update-zeroclaw", "flyr", "compact"].map {
+            AgentCommand(name: $0, details: "", source: .skill)
+        }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("completion case failed: \(label)") }
+            checks += 1
+        }
+        try expect(SlashCompletion.query(in: "/st") == "st", "query reads the word")
+        try expect(SlashCompletion.query(in: "/") == "", "bare slash asks for everything")
+        try expect(SlashCompletion.query(in: "/goal clear") == nil, "arguments end the query")
+        try expect(SlashCompletion.query(in: "plain text") == nil, "prose is not a query")
+        try expect(
+            SlashCompletion.matches(commands, query: "u").map(\.name) == [
+                "update-zeroclaw", "usage",
+            ], "prefix matches sort alphabetically")
+        try expect(
+            SlashCompletion.matches(commands, query: "add").map(\.name) == ["steam-add-game"],
+            "a match inside the name still surfaces")
+        try expect(
+            SlashCompletion.matches(commands, query: "").first?.name == "compact",
+            "everything, alphabetically, for a bare slash")
+        try expect(
+            SlashCompletion.matches(commands, query: "zzz").isEmpty, "no match means no list")
+        return checks
+    }
+
+    /// The whole keyboard system without a window: the shipped table resolves, canonicalisation
+    /// folds keypad and shifted keys, sequences pend and land, the terminal keeps the shell's
+    /// chords, approvals win only while one waits, and the rebinding file's grammar applies,
+    /// unbinds and reports nonsense.
+    private static func checkShortcuts() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("shortcut case failed: \(label)") }
+            checks += 1
+        }
+        func chord(
+            _ character: Character, control: Bool = false, shift: Bool = false
+        ) -> KeyChord? {
+            var state: UInt32 = 0
+            if control { state |= KeyChord.controlMask }
+            if shift { state |= KeyChord.shiftMask }
+            guard let scalar = character.unicodeScalars.first else { return nil }
+            return KeyChord.canonical(keyval: UInt32(scalar.value), state: state)
+        }
+        func action(
+            _ set: ShortcutSet, _ chord: KeyChord?, _ context: KeyContext,
+            pending: [KeyChord] = [], awaiting: Bool = false
+        ) -> KeyAction? {
+            guard let chord else { return nil }
+            let outcome = set.resolve(
+                chord, context: context, pending: pending, awaitingApproval: awaiting)
+            if case .run(let found) = outcome { return found }
+            return nil
+        }
+        func pends(_ set: ShortcutSet, _ chord: KeyChord?, _ context: KeyContext) -> Bool {
+            guard let chord else { return false }
+            let outcome = set.resolve(
+                chord, context: context, pending: [], awaitingApproval: false)
+            if case .pending = outcome { return true }
+            return false
+        }
+
+        let set = ShortcutSet.build(overrides: [:])
+        try expect(
+            set.issues.isEmpty, "shipped defaults carry no conflicts: \(set.issues)")
+
+        let parsed = KeySpec.parse("ctrl+shift+h")
+        try expect(
+            parsed?.chords == [chord("h", control: true, shift: true)].compactMap { $0 },
+            "ctrl+shift+h parses to one canonical chord")
+        try expect(parsed?.chords.first?.display == "^H", "^H displays as itself")
+        try expect(
+            KeySpec.parse("normal,insert:ctrl+b")?.contexts == [.normal, .insert],
+            "a context prefix limits a spec")
+        try expect(
+            KeySpec.parse("J")?.chords.first == chord("j", shift: true),
+            "an uppercase letter folds to shift plus lowercase")
+        try expect(KeySpec.parse("g g")?.chords.count == 2, "a sequence is two chords")
+        try expect(KeySpec.parse("bogus+key") == nil, "nonsense refuses to parse")
+
+        try expect(action(set, chord("j"), .normal) == .scrollDown, "j scrolls")
+        try expect(action(set, chord("J", shift: true), .normal) == .selectNext, "J selects")
+        try expect(action(set, chord("e"), .normal) == .archiveSelected, "e archives")
+        try expect(action(set, chord("x"), .normal) == .deleteSelected, "x deletes")
+        try expect(
+            action(set, KeyChord.canonical(keyval: Keymap.enter, state: 0), .normal)
+                == .openSelected, "enter opens")
+        try expect(
+            action(
+                set, KeyChord.canonical(keyval: Keymap.keypadEnter, state: Keymap.control),
+                .insert) == .send, "keypad enter folds into enter for ^⏎")
+        try expect(
+            action(
+                set, KeyChord.canonical(keyval: Keymap.shiftTab, state: Keymap.shift), .normal)
+                == .cycleBackward, "shift+tab cycles backwards")
+
+        try expect(pends(set, chord("g"), .normal), "g waits for a second key")
+        let g = chord("g")
+        try expect(
+            action(set, g, .normal, pending: [g].compactMap { $0 }) == .scrollTop,
+            "g g reaches the top")
+        try expect(pends(set, chord("y"), .normal), "y waits for a second key")
+        let y = chord("y")
+        try expect(
+            action(set, y, .normal, pending: [y].compactMap { $0 }) == .copySessionID,
+            "y y copies the session id")
+        try expect(
+            action(set, chord("p"), .normal, pending: [y].compactMap { $0 })
+                == .copyProjectPath, "y p copies the project path")
+
+        try expect(action(set, chord("f"), .normal) == .findInConversation, "f finds")
+        try expect(action(set, chord("f"), .insert) == nil, "bare f types in insert")
+        try expect(
+            action(set, chord("f", control: true), .insert) == .findInConversation,
+            "^f finds while typing")
+        try expect(
+            action(set, chord("b", control: true), .terminal) == nil,
+            "the terminal keeps ^b for the shell")
+        try expect(
+            action(set, chord("f", control: true), .terminal) == nil,
+            "the terminal keeps ^f for the shell")
+        try expect(
+            action(set, chord("b", control: true, shift: true), .terminal) == .toggleSidebar,
+            "^⇧B still toggles the chat list over a shell")
+        try expect(
+            action(set, chord("j", control: true, shift: true), .terminal)
+                == .focus(.terminal), "^⇧J focuses panes from the terminal")
+        try expect(
+            action(set, KeyChord.canonical(keyval: 0xFFAD, state: Keymap.control), .terminal)
+                == .zoomOut, "keypad minus folds into ^- zoom")
+
+        try expect(
+            action(set, chord("y"), .normal, awaiting: true) == .allowOnce,
+            "y answers a waiting approval")
+        try expect(
+            action(set, chord("n"), .normal, awaiting: true) == .deny,
+            "n denies a waiting approval")
+        try expect(
+            action(set, chord("n"), .normal) == .newChat,
+            "n means a new chat once nothing waits")
+
+        let rebound = ShortcutSet.build(overrides: ["chat.new": ["c"]])
+        try expect(action(rebound, chord("c"), .normal) == .newChat, "a rebind lands")
+        try expect(action(rebound, chord("n"), .normal) == nil, "a rebind frees the old key")
+        let unbound = ShortcutSet.build(overrides: ["chat.new": []])
+        try expect(
+            action(unbound, chord("n"), .normal) == nil && unbound.issues.isEmpty,
+            "an empty rebind unbinds cleanly")
+        try expect(
+            !ShortcutSet.build(overrides: ["chat.new": ["bogus+key"]]).issues.isEmpty,
+            "an unreadable rebind is reported")
+        try expect(
+            !ShortcutSet.build(overrides: ["chat.filter": ["g"]]).issues.isEmpty,
+            "shadowing a sequence's first key is reported")
+        try expect(
+            ShortcutSet.build(overrides: [:]).helpSections().contains {
+                $0.rows.contains { $0.keys.contains("^⏎") }
+            }, "the cheatsheet lists effective keys")
+        return checks
+    }
+
     private static func checkVim() throws -> Int {
         let cases: [(text: String, keys: String, expected: String, label: String)] = [
             ("hello world", "dw", "world", "dw"),
@@ -256,6 +442,29 @@ public enum SelfTest {
             guard text == testCase.expected else {
                 throw SelfTestFailure(
                     "\(testCase.label): expected \(testCase.expected.debugDescription), got \(text.debugDescription)")
+            }
+            checked += 1
+        }
+
+        let engine = VimEngine()
+        engine.reset(to: "alpha beta", cursor: 0, mode: .normal)
+        let midCommand: [(Character, Bool, String)] = [
+            ("d", true, "an operator waits"),
+            ("i", true, "a text object waits"),
+            ("w", false, "diw completes"),
+            ("3", true, "a count waits"),
+            ("x", false, "the count is spent"),
+            ("f", true, "f waits for its key"),
+            ("z", false, "f lands"),
+            ("g", true, "g waits for its key"),
+            ("g", false, "gg completes"),
+        ]
+        for (character, expected, label) in midCommand {
+            _ = engine.handle(
+                VimKey(character: character), text: engine.document.text,
+                cursor: engine.document.cursor)
+            guard engine.awaitsMore == expected else {
+                throw SelfTestFailure("awaitsMore: \(label)")
             }
             checked += 1
         }
@@ -549,7 +758,6 @@ public enum SelfTest {
         async let second = settled(conversation)
         let (a, b) = try await (first, second)
 
-        guard !a.isEmpty else { throw SelfTestFailure("first observer saw nothing") }
         guard a == b else {
             throw SelfTestFailure("observers diverged: \(a.count) vs \(b.count) messages")
         }

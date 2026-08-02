@@ -13,6 +13,11 @@ if SelfTest.isRequested {
     dispatchMain()
 }
 
+if ProbeNewChat.isRequested {
+    Task { await ProbeNewChat.run() }
+    dispatchMain()
+}
+
 /// Anything that is not a request to open a window is answered before GApplication registers on
 /// the session bus. An unrecognised flag that reaches `g_application_run` starts a headless
 /// instance that owns the name forever, and every launch after it remote-activates that zombie and
@@ -28,7 +33,8 @@ if CommandLine.arguments.contains("--help") || CommandLine.arguments.contains("-
 }
 
 let knownOptions: Set<String> = [
-    "--selftest", "--connect", "--password", "--name", "--opencode", "--version", "--help", "-h",
+    "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode",
+    "--version", "--help", "-h",
 ]
 if let stray = CommandLine.arguments.dropFirst().first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)

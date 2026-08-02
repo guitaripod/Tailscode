@@ -35,6 +35,14 @@ public enum SessionSeenStore {
         defaults.set(seen, forKey: seenKey)
     }
 
+    /// Rewinds the "last looked" mark to just before the session's latest change, so the row
+    /// badges as unread again — the inverse of ``markSeen(_:)``, for a chat set aside for later.
+    public static func markUnread(_ sessionID: String, updatedAt: Date) {
+        var seen = defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
+        seen[sessionID] = updatedAt.timeIntervalSince1970 - 2
+        defaults.set(seen, forKey: seenKey)
+    }
+
     /// One snapshot of the store per list render: returns a closure judging
     /// `(sessionID, updatedAt)` so callers don't hit `UserDefaults` per row.
     public static func unreadEvaluator() -> (String, Date) -> Bool {

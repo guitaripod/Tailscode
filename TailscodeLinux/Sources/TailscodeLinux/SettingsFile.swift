@@ -19,6 +19,7 @@ enum SettingsFile {
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.draft.",
+        "tailscode.archived.",
     ]
 
     private nonisolated(unsafe) static var state: [String: Any] = [:]

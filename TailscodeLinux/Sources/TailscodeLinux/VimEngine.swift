@@ -81,6 +81,13 @@ final class VimEngine {
     private var undoStack: [VimDocument] = []
     private var redoStack: [VimDocument] = []
 
+    /// True while a command is half-typed — an operator, a count, `f`/`r`/`g` waiting for their
+    /// key — which is when the next keystroke belongs to vim no matter what else wants it.
+    var awaitsMore: Bool {
+        pendingOperator != nil || pendingFind != nil || pendingReplace
+            || awaitingTextObject != nil || pendingG || !count.isEmpty
+    }
+
     /// The visual selection as a buffer range, or nil outside visual modes — the composer paints
     /// it as the text view's own selection so it looks like every other selection on the desktop.
     var selection: Range<Int>? {

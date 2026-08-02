@@ -165,6 +165,42 @@ void tailscode_file_open(
 }
 
 typedef struct {
+    void (*handler)(const char *path, void *data);
+    void *data;
+} TailscodeFolderPick;
+
+static void tailscode_folder_pick_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeFolderPick *box = raw;
+    GFile *folder = gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), result, NULL);
+    if (!folder) {
+        box->handler(NULL, box->data);
+        g_free(box);
+        return;
+    }
+    char *path = g_file_get_path(folder);
+    box->handler(path, box->data);
+    g_free(path);
+    g_object_unref(folder);
+    g_free(box);
+}
+
+void tailscode_select_folder(
+    GtkWindow *parent, const char *initial,
+    void (*handler)(const char *path, void *data), void *data) {
+    TailscodeFolderPick *box = g_new0(TailscodeFolderPick, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkFileDialog *dialog = gtk_file_dialog_new();
+    if (initial && *initial) {
+        GFile *folder = g_file_new_for_path(initial);
+        gtk_file_dialog_set_initial_folder(dialog, folder);
+        g_object_unref(folder);
+    }
+    gtk_file_dialog_select_folder(dialog, parent, NULL, tailscode_folder_pick_done, box);
+    g_object_unref(dialog);
+}
+
+typedef struct {
     void (*handler)(const void *bytes, gsize len, void *data);
     void *data;
 } TailscodeClipboardRead;
@@ -296,6 +332,38 @@ void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data
     box->data = data;
     GtkGesture *click = gtk_gesture_click_new();
     g_signal_connect_data(click, "released", G_CALLBACK(tailscode_click_released), box,
+                          (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
+typedef struct {
+    void (*handler)(double x, double y, void *);
+    void *data;
+} TailscodePress;
+
+static void tailscode_right_click_pressed(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)n_press; (void)x; (void)y; (void)raw;
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+}
+
+static void tailscode_right_click_released(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)gesture; (void)n_press;
+    TailscodePress *box = raw;
+    box->handler(x, y, box->data);
+}
+
+void tailscode_on_right_click(
+    GtkWidget *widget, void (*handler)(double x, double y, void *), void *data) {
+    TailscodePress *box = g_new0(TailscodePress, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
+    g_signal_connect_data(click, "pressed", G_CALLBACK(tailscode_right_click_pressed), NULL,
+                          NULL, 0);
+    g_signal_connect_data(click, "released", G_CALLBACK(tailscode_right_click_released), box,
                           (GClosureNotify)(void (*)(void))g_free, 0);
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
 }
