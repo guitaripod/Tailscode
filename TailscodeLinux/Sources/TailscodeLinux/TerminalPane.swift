@@ -103,7 +103,33 @@ final class TerminalPane: @unchecked Sendable {
             gtk_scrolled_window_set_child(op(scroller), terminal)
             gtk_widget_set_vexpand(scroller, 1)
             gtk_box_append(ptr(widget), scroller)
+            installClipboardKeys()
             respawn()
+        }
+
+        /// A raw VteTerminal ships with no copy/paste bindings at all — GNOME Terminal's
+        /// Ctrl+Shift+C/V live in GNOME Terminal, not in the widget. Plain Ctrl+V stays with the
+        /// shell (literal-next); the terminal convention gets wired here.
+        private func installClipboardKeys() {
+            let terminalBits = UInt(bitPattern: terminal)
+            Gtk.onKey(terminal) { keyval, state in
+                let control = state & 4 != 0
+                let shift = state & 1 != 0
+                guard control, shift,
+                    let raw = UnsafeMutableRawPointer(bitPattern: terminalBits)
+                else { return false }
+                let terminal: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                switch keyval {
+                case UInt32(UnicodeScalar("V").value), UInt32(UnicodeScalar("v").value):
+                    vte_terminal_paste_clipboard(ptr(terminal))
+                    return true
+                case UInt32(UnicodeScalar("C").value), UInt32(UnicodeScalar("c").value):
+                    vte_terminal_copy_clipboard_format(ptr(terminal), VTE_FORMAT_TEXT)
+                    return true
+                default:
+                    return false
+                }
+            }
         }
 
         /// Spawns the user's own login shell so every alias, function and completion they have is
