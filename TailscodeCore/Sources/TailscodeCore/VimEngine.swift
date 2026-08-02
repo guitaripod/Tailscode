@@ -3,13 +3,13 @@ import Foundation
 /// A vim editor over a plain string, with no toolkit in it at all: the composer hands it the text
 /// and the caret, it answers with the text and the caret. Everything vim-shaped lives here so it
 /// can be reasoned about — and tested — without a window.
-enum VimMode: String {
+public enum VimMode: String {
     case insert
     case normal
     case visual
     case visualLine
 
-    var label: String {
+    public var label: String {
         switch self {
         case .insert: return "INSERT"
         case .normal: return "NORMAL"
@@ -22,14 +22,14 @@ enum VimMode: String {
 /// One keystroke as the engine wants it: a character, or one of the few keys that have no
 /// character. Modifiers other than shift arrive as `control`, because vim's own chords are the
 /// only ones the composer intercepts.
-struct VimKey {
-    let character: Character?
-    let isEscape: Bool
-    let isEnter: Bool
-    let isBackspace: Bool
-    let control: Bool
+public struct VimKey {
+    public let character: Character?
+    public let isEscape: Bool
+    public let isEnter: Bool
+    public let isBackspace: Bool
+    public let control: Bool
 
-    init(
+    public init(
         character: Character? = nil, isEscape: Bool = false, isEnter: Bool = false,
         isBackspace: Bool = false, control: Bool = false
     ) {
@@ -42,7 +42,7 @@ struct VimKey {
 }
 
 /// What the composer must do after a keystroke.
-enum VimOutcome {
+public enum VimOutcome {
     /// The engine consumed the key; the buffer and caret are whatever the document now says.
     case handled
     /// The key belongs to the text view — ordinary typing in insert mode.
@@ -51,21 +51,23 @@ enum VimOutcome {
     case send
 }
 
-struct VimDocument {
-    var characters: [Character]
-    var cursor: Int
+public struct VimDocument {
+    public var characters: [Character]
+    public var cursor: Int
 
-    init(text: String, cursor: Int) {
+    public init(text: String, cursor: Int) {
         characters = Array(text)
         self.cursor = max(0, min(cursor, characters.count))
     }
 
-    var text: String { String(characters) }
+    public var text: String { String(characters) }
 }
 
-final class VimEngine {
-    private(set) var mode: VimMode = .insert
-    private(set) var document = VimDocument(text: "", cursor: 0)
+public final class VimEngine {
+    public private(set) var mode: VimMode = .insert
+    public private(set) var document = VimDocument(text: "", cursor: 0)
+
+    public init() {}
 
     private var count = ""
     private var pendingOperator: Character?
@@ -83,14 +85,14 @@ final class VimEngine {
 
     /// True while a command is half-typed — an operator, a count, `f`/`r`/`g` waiting for their
     /// key — which is when the next keystroke belongs to vim no matter what else wants it.
-    var awaitsMore: Bool {
+    public var awaitsMore: Bool {
         pendingOperator != nil || pendingFind != nil || pendingReplace
             || awaitingTextObject != nil || pendingG || !count.isEmpty
     }
 
     /// The visual selection as a buffer range, or nil outside visual modes — the composer paints
     /// it as the text view's own selection so it looks like every other selection on the desktop.
-    var selection: Range<Int>? {
+    public var selection: Range<Int>? {
         switch mode {
         case .visual:
             let lower = min(anchor, document.cursor)
@@ -105,7 +107,7 @@ final class VimEngine {
         }
     }
 
-    func reset(to text: String, cursor: Int, mode: VimMode) {
+    public func reset(to text: String, cursor: Int, mode: VimMode) {
         document = VimDocument(text: text, cursor: cursor)
         self.mode = mode
         clearPending()
@@ -113,11 +115,11 @@ final class VimEngine {
         redoStack = []
     }
 
-    func syncFromEditor(text: String, cursor: Int) {
+    public func syncFromEditor(text: String, cursor: Int) {
         document = VimDocument(text: text, cursor: cursor)
     }
 
-    func handle(_ key: VimKey, text: String, cursor: Int) -> VimOutcome {
+    public func handle(_ key: VimKey, text: String, cursor: Int) -> VimOutcome {
         document = VimDocument(text: text, cursor: cursor)
 
         if key.isEscape {
