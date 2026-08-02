@@ -56,3 +56,7 @@ void tailscode_clipboard_read_image(
 /// The widget's vertical offset inside `ancestor`, or -1 when the two are not connected — what a
 /// scroll-to-row needs from graphene without importing it.
 double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);
+
+/// Scales every font in the app by setting `gtk-xft-dpi` (which is 1024ths of a DPI, hence the
+/// shim: the property write is a varargs `g_object_set`).
+void tailscode_set_text_scale(double scale);

@@ -199,3 +199,9 @@ double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor) {
     if (!gtk_widget_compute_bounds(widget, ancestor, &bounds)) return -1;
     return bounds.origin.y;
 }
+
+void tailscode_set_text_scale(double scale) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!settings) return;
+    g_object_set(settings, "gtk-xft-dpi", (gint)(96.0 * 1024.0 * scale), NULL);
+}

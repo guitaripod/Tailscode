@@ -44,6 +44,12 @@ enum KeyAction: Equatable {
     case toggleSaved
     case commandPalette
     case findInConversation
+    case zoomIn
+    case zoomOut
+    case zoomReset
+    case toggleSidebar
+    case toggleFiles
+    case toggleTerminal
 }
 
 enum Keymap {
@@ -77,6 +83,7 @@ enum Keymap {
         }
         let isControl = state & control != 0
         if isControl {
+            if let chord = controlChord(keyval) { return chord }
             switch scalar(keyval) {
             case "d": return .halfPageDown
             case "u": return .halfPageUp
@@ -124,7 +131,27 @@ enum Keymap {
         if keyval == escape { return .leaveInsert }
         if state & control != 0, keyval == enter || keyval == keypadEnter { return .send }
         if state & control != 0, scalar(keyval) == "f" { return .findInConversation }
+        if state & control != 0 { return controlChord(keyval) }
         return nil
+    }
+
+    /// Chords that mean the same thing whether or not something has focus: zoom and the pane
+    /// toggles. Insert mode keeps them because a person mid-sentence still wants a bigger font.
+    private static func controlChord(_ keyval: UInt32) -> KeyAction? {
+        switch keyval {
+        case 0xFFAB: return .zoomIn
+        case 0xFFAD: return .zoomOut
+        default: break
+        }
+        switch scalar(keyval) {
+        case "=", "+": return .zoomIn
+        case "-": return .zoomOut
+        case "0": return .zoomReset
+        case "b": return .toggleSidebar
+        case "e": return .toggleFiles
+        case "t": return .toggleTerminal
+        default: return nil
+        }
     }
 
     static func scalar(_ keyval: UInt32) -> Character? {
@@ -147,6 +174,8 @@ enum Keymap {
             ("tab", Localized.text("Cycle panes")),
             ("/", Localized.text("Filter chats")),
             ("f / ^f", Localized.text("Find in the conversation")),
+            ("^= / ^- / ^0", Localized.text("Zoom in / out / reset")),
+            ("^b ^e ^t", Localized.text("Show or hide chats / files / terminal")),
             (":", Localized.text("Slash commands")),
             ("n", Localized.text("New conversation")),
             ("b", Localized.text("Save / unsave this chat")),

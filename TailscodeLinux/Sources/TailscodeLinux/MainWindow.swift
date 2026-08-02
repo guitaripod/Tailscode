@@ -54,6 +54,13 @@ final class MainWindow: @unchecked Sendable {
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private var usageTask: Task<Void, Never>?
 
+    private var splitWidget: UnsafeMutablePointer<GtkWidget>?
+    private let earlierButton = gtk_button_new()!
+    private var windowLimit = 400
+    private var lastFullRows: [TranscriptRow] = []
+    private var lastFullCount = 0
+    private var lastSidebar: ([SessionRowModel], [String], String, Int)?
+
     private let context = TranscriptContext()
     private var renderedRows: [TranscriptRow] = []
     private var rowWidgets: [UInt] = []
@@ -86,11 +93,13 @@ final class MainWindow: @unchecked Sendable {
 
     func present(in app: UnsafeMutablePointer<AdwApplication>) {
         MatrixTheme.install()
+        UIScale.apply()
+        Task.detached { DesktopIntegration.ensureInstalled() }
 
         let window = adw_application_window_new(ptr(app))!
         gtk_window_set_title(ptr(window), "Tailscode")
         gtk_window_set_default_size(ptr(window), 1400, 900)
-        gtk_window_set_icon_name(ptr(window), "tailscode")
+        gtk_window_set_icon_name(ptr(window), DesktopIntegration.appID)
         self.window = window
 
         let split = adw_navigation_split_view_new()!
@@ -98,6 +107,7 @@ final class MainWindow: @unchecked Sendable {
         adw_navigation_split_view_set_content(op(split), makeContentPage())
         adw_navigation_split_view_set_min_sidebar_width(op(split), 260)
         adw_navigation_split_view_set_max_sidebar_width(op(split), 400)
+        splitWidget = split
 
         let stack = gtk_paned_new(GTK_ORIENTATION_VERTICAL)!
         gtk_paned_set_start_child(op(stack), split)
@@ -112,6 +122,7 @@ final class MainWindow: @unchecked Sendable {
         fileTree.onOpen = { [weak self] path in self?.insertIntoComposer("@\(path) ") }
         wireContext()
         installKeymap(on: window)
+        applyPanePreferences()
         startRefreshing()
         startUsagePolling()
     }
@@ -162,7 +173,16 @@ final class MainWindow: @unchecked Sendable {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
         adw_header_bar_set_title_widget(op(header), titleLabel)
+        adw_header_bar_pack_start(
+            op(header),
+            Gtk.button("☰", css: ["flat"]) { [weak self] in self?.togglePane(.sidebar) })
         adw_header_bar_pack_end(op(header), makeActionsButton())
+        adw_header_bar_pack_end(
+            op(header),
+            Gtk.button("▥", css: ["flat"]) { [weak self] in self?.togglePane(.files) })
+        adw_header_bar_pack_end(
+            op(header),
+            Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL)!
@@ -191,6 +211,15 @@ final class MainWindow: @unchecked Sendable {
         let canvas = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(canvas, "transcript")
         canvasBox = canvas
+        gtk_widget_set_visible(earlierButton, 0)
+        Gtk.addClass(earlierButton, "flat")
+        Gtk.addClass(earlierButton, "dim")
+        Gtk.connect(UnsafeMutableRawPointer(earlierButton), "clicked") { [weak self] in
+            guard let self, let state = self.lastState else { return }
+            self.windowLimit += 400
+            self.apply(state: state, rows: self.lastFullRows)
+        }
+        gtk_box_append(ptr(canvas), earlierButton)
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
@@ -455,17 +484,10 @@ final class MainWindow: @unchecked Sendable {
         if selectedID == nil, !entries.isEmpty { open(entries[0]) }
     }
 
+    /// Rebuilding two hundred rows of widgets is a visible stutter, and the 10-second refresh
+    /// would do it whether or not anything changed — so nothing is touched unless what the list
+    /// would say actually differs from what it says now.
     private func renderSidebar() {
-        Gtk.removeChildren(of: sidebarBanner)
-        if !unreachable.isEmpty {
-            gtk_box_append(
-                ptr(sidebarBanner),
-                SidebarRow.banner(
-                    Localized.text("%@ unreachable — showing what was last seen",
-                        unreachable.joined(separator: ", "))))
-        }
-
-        Gtk.removeChildren(of: sidebarList)
         let savedChats = SavedChatStore.all()
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
@@ -481,7 +503,22 @@ final class MainWindow: @unchecked Sendable {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
         }
+        if !visible.isEmpty { cursor = min(cursor, visible.count - 1) }
 
+        let snapshot = (visible, unreachable, filter, cursor)
+        if let last = lastSidebar, last == snapshot { return }
+        lastSidebar = snapshot
+
+        Gtk.removeChildren(of: sidebarBanner)
+        if !unreachable.isEmpty {
+            gtk_box_append(
+                ptr(sidebarBanner),
+                SidebarRow.banner(
+                    Localized.text("%@ unreachable — showing what was last seen",
+                        unreachable.joined(separator: ", "))))
+        }
+
+        Gtk.removeChildren(of: sidebarList)
         guard !visible.isEmpty else {
             gtk_box_append(
                 ptr(sidebarList),
@@ -491,7 +528,6 @@ final class MainWindow: @unchecked Sendable {
                         : Localized.text("Nothing matches “%@”", filter)))
             return
         }
-        cursor = min(cursor, visible.count - 1)
 
         var index = 0
         for (section, members) in groupIntoSections(visible) {
@@ -558,6 +594,10 @@ final class MainWindow: @unchecked Sendable {
         pastedImageCount = 0
         renderAttachments()
         clearUnseen()
+        windowLimit = 400
+        lastFullRows = []
+        lastFullCount = 0
+        gtk_widget_set_visible(earlierButton, 0)
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry.session.id)
         streamTask?.cancel()
@@ -656,8 +696,22 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_visible(authBanner, 1)
     }
 
+    /// The transcript renders a tail window, not the whole history: a widget per row is fine for
+    /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
+    /// button that widens the window — the full rows are kept, so nothing is refetched.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         lastState = state
+        lastFullRows = rows
+        let appended = max(0, rows.count - lastFullCount)
+        lastFullCount = rows.count
+        let windowed = rows.count > windowLimit ? Array(rows.suffix(windowLimit)) : rows
+        let hiddenCount = rows.count - windowed.count
+        gtk_widget_set_visible(earlierButton, hiddenCount > 0 ? 1 : 0)
+        if hiddenCount > 0 {
+            gtk_button_set_label(
+                ptr(earlierButton),
+                Localized.text("… %@ earlier rows — show more", "\(hiddenCount)"))
+        }
         let placeholder: String? =
             rows.isEmpty
             ? (state.hasLoadedTranscript
@@ -666,7 +720,7 @@ final class MainWindow: @unchecked Sendable {
         if let placeholder {
             showPlaceholder(placeholder)
         } else {
-            applyRows(rows)
+            applyRows(windowed, appended: appended)
         }
         renderPendingCards(state)
         renderGoal(state.goal)
@@ -688,7 +742,7 @@ final class MainWindow: @unchecked Sendable {
     /// The streaming path: everything before the first changed row keeps its widget — and its
     /// disclosure state, its selection, its scroll cost — and only the tail is rebuilt. A token
     /// appended to the last message rebuilds one row, not the conversation.
-    private func applyRows(_ rows: [TranscriptRow]) {
+    private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
         let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
@@ -697,7 +751,7 @@ final class MainWindow: @unchecked Sendable {
             placeholderShown = false
         }
         let stick = initialFill || isNearBottom()
-        let growth = initialFill || rebuildingInPlace ? 0 : rows.count - renderedRows.count
+        let growth = initialFill || rebuildingInPlace ? 0 : appended
 
         var prefix = 0
         while prefix < renderedRows.count, prefix < rows.count, renderedRows[prefix] == rows[prefix] {
@@ -1134,18 +1188,24 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
+    /// The decode happens off the main context — `GdkTexture` is immutable and thread-safe to
+    /// create, and a large PNG decoded on the UI loop is a visible freeze.
     private func fetchImage(_ reference: FileReference, key: String) {
         guard let backend = currentBackend, !inFlightImages.contains(key) else { return }
         inFlightImages.insert(key)
         Task { [weak self] in
             guard let data = try? await backend.attachmentData(reference) else { return }
+            let bits: UInt = data.withUnsafeBytes { buffer in
+                guard
+                    let texture = tailscode_texture_from_bytes(
+                        buffer.baseAddress, gsize(buffer.count))
+                else { return UInt(0) }
+                return UInt(bitPattern: texture)
+            }
+            guard bits != 0 else { return }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                let texture = data.withUnsafeBytes { buffer in
-                    tailscode_texture_from_bytes(buffer.baseAddress, gsize(buffer.count))
-                }
-                guard let texture else { return }
-                self.context.textures[key] = UInt(bitPattern: texture)
+                self.context.textures[key] = bits
                 self.context.imageData[key] = data
                 self.forceRebuild()
             }
@@ -1232,6 +1292,12 @@ final class MainWindow: @unchecked Sendable {
         case .newChat: presentNewChat()
         case .toggleSaved: toggleSaved()
         case .findInConversation: setFindShown(true)
+        case .zoomIn: UIScale.step(0.1)
+        case .zoomOut: UIScale.step(-0.1)
+        case .zoomReset: UIScale.reset()
+        case .toggleSidebar: togglePane(.sidebar)
+        case .toggleFiles: togglePane(.files)
+        case .toggleTerminal: togglePane(.terminal)
         case .commandPalette:
             if let commandButton { gtk_menu_button_popup(op(commandButton)) }
         }
@@ -1274,6 +1340,44 @@ final class MainWindow: @unchecked Sendable {
     private func setHelp(_ shown: Bool) {
         helpShown = shown
         gtk_widget_set_visible(helpOverlay, shown ? 1 : 0)
+    }
+
+    /// Every pane closes: the chat list collapses into the split view, the file tree and the
+    /// terminal give their space back to the conversation. The choice survives relaunch — a
+    /// window someone shaped once should open shaped that way.
+    private enum ClosablePane: String, CaseIterable {
+        case sidebar
+        case files
+        case terminal
+
+        var key: String { "tailscode.pane.\(rawValue)" }
+    }
+
+    private func paneShown(_ pane: ClosablePane) -> Bool {
+        UserDefaults.standard.object(forKey: pane.key) as? Bool ?? true
+    }
+
+    private func togglePane(_ pane: ClosablePane) {
+        UserDefaults.standard.set(!paneShown(pane), forKey: pane.key)
+        applyPane(pane)
+    }
+
+    private func applyPane(_ pane: ClosablePane) {
+        let shown = paneShown(pane)
+        switch pane {
+        case .sidebar:
+            guard let splitWidget else { return }
+            adw_navigation_split_view_set_collapsed(op(splitWidget), shown ? 0 : 1)
+            if !shown { adw_navigation_split_view_set_show_content(op(splitWidget), 1) }
+        case .files:
+            gtk_widget_set_visible(fileTree.widget, shown ? 1 : 0)
+        case .terminal:
+            gtk_widget_set_visible(terminal.widget, shown ? 1 : 0)
+        }
+    }
+
+    private func applyPanePreferences() {
+        for pane in ClosablePane.allCases { applyPane(pane) }
     }
 
     private func stopTurn() {
