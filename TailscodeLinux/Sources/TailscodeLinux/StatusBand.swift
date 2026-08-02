@@ -59,7 +59,7 @@ struct StatusFacts {
 
     static func from(
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
-        usage: AgentUsage?, attachments: Int
+        usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
@@ -85,7 +85,7 @@ struct StatusFacts {
         if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
         facts.runningTool = Self.runningTool(in: state)
         facts.agents = agents
-        facts.contextTokens = estimateContextTokens(state.messages)
+        facts.contextTokens = contextTokens
         facts.lastCostUSD = usage?.costUSD
         facts.lastTurnTokens = usage?.tokens
         if let goal = state.goal {

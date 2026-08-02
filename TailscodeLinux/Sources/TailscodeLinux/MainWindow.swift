@@ -22,6 +22,7 @@ final class MainWindow: @unchecked Sendable {
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
+    private var contextEstimate: Int?
     private var notice: String?
     private let entryView = gtk_text_view_new()!
     private let sendButton = gtk_button_new_with_label("Send")!
@@ -46,6 +47,11 @@ final class MainWindow: @unchecked Sendable {
     private var unseenRows = 0
     private var followsBottom = true
     private var isAutoScrolling = false
+    private var isFillingInChunks = false
+    private var sidebarLimit = 60
+    /// How much of a transcript is folded into rows at all — read from the streaming task, so it
+    /// is a plain value rather than anything that needs the main context.
+    private nonisolated(unsafe) var rowTailMessages = 300
 
     private let findBar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let findEntry = gtk_search_entry_new()!
@@ -140,6 +146,11 @@ final class MainWindow: @unchecked Sendable {
         wireContext()
         installKeymap(on: window)
         applyPanePreferences()
+        // The chats you had are on screen before the first byte crosses the tailnet: a server
+        // that takes fifteen seconds to list its sessions must not mean fifteen seconds of empty
+        // window. Liveness is stripped from the cache, so nothing here can claim to be running.
+        let cachedEntries = SessionListCache.load()
+        if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: []) }
         startRefreshing()
         startUsagePolling()
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
@@ -260,7 +271,9 @@ final class MainWindow: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(earlierButton), "clicked") { [weak self] in
             guard let self, let state = self.lastState else { return }
             self.windowLimit += 400
+            self.rowTailMessages += 600
             self.apply(state: state, rows: self.lastFullRows)
+            Task { [weak self] in await self?.conversation?.reconnect() }
         }
         gtk_box_append(ptr(canvas), earlierButton)
         gtk_box_append(ptr(canvas), transcriptBox)
@@ -535,6 +548,7 @@ final class MainWindow: @unchecked Sendable {
     func refresh() async {
         await ServerDirectory.shared.reload()
         let (entries, unreachable) = await ServerDirectory.shared.entries()
+        if !entries.isEmpty { SessionListCache.save(entries) }
         Gtk.onMain { [weak self] in
             self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
@@ -578,7 +592,7 @@ final class MainWindow: @unchecked Sendable {
         visible = sections.flatMap(\.1)
         syncCursorToSelection()
 
-        let snapshot = (visible, unreachable, filter, selectedID ?? "")
+        let snapshot = (visible, unreachable, filter, "\(selectedID ?? "")|\(sidebarLimit)")
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
 
@@ -602,17 +616,39 @@ final class MainWindow: @unchecked Sendable {
             return
         }
 
+        // Two hundred chats is two hundred rows of widgets, and building them all is the freeze
+        // you feel at launch. Only the first screenful or two are built; the rest arrive when
+        // asked for, and the filter above still searches every chat.
+        var built = 0
         for (section, members) in sections {
+            guard built < sidebarLimit else { break }
             gtk_box_append(
                 ptr(sidebarList), SidebarRow.header(section.title, count: members.count))
             for row in members {
+                guard built < sidebarLimit else { break }
                 gtk_box_append(
                     ptr(sidebarList),
                     SidebarRow.make(row, focused: row.entry.session.id == selectedID) {
                         [weak self] in
                         self?.open(row.entry)
                     })
+                built += 1
             }
+        }
+        let remaining = visible.count - built
+        if remaining > 0 {
+            let more = Gtk.button(
+                Localized.text("%@ more chats", "\(remaining)"), css: ["flat", "dim"]
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.sidebarLimit += 200
+                    self.lastSidebar = nil
+                    self.renderSidebar()
+                }
+            }
+            Gtk.margins(more, top: 6, bottom: 10)
+            gtk_box_append(ptr(sidebarList), more)
         }
     }
 
@@ -681,6 +717,7 @@ final class MainWindow: @unchecked Sendable {
         renderAttachments()
         clearUnseen()
         windowLimit = 400
+        rowTailMessages = 300
         lastFullRows = []
         lastFullCount = 0
         followsBottom = true
@@ -705,6 +742,11 @@ final class MainWindow: @unchecked Sendable {
 
         streamTask = Task { [weak self] in
             guard let self else { return }
+            // A chat opened straight from the cache can arrive before the profile list has been
+            // read off disk, so the store is loaded on demand rather than assumed.
+            if await ServerDirectory.shared.profiles().isEmpty {
+                await ServerDirectory.shared.reload()
+            }
             guard
                 let profile = await ServerDirectory.shared.profiles().first(where: {
                     $0.id == entry.profileID
@@ -723,10 +765,25 @@ final class MainWindow: @unchecked Sendable {
             let conversation = AgentConversation(
                 backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
             self.conversation = conversation
+            // Rows are built only for the tail the window can show, and only off the GLib main
+            // context. A conversation of ten thousand messages costs the same as a short one:
+            // the rest is not folded into widgets until someone asks for it. The context
+            // estimate walks everything, so it is recomputed only when the message count moves.
+            var countedMessages = -1
+            var context: Int?
             for await state in await conversation.states() {
                 if Task.isCancelled { return }
-                let rows = TranscriptRow.rows(for: state.messages)
+                let tail = self.rowTailMessages
+                let messages = state.messages.count > tail
+                    ? Array(state.messages.suffix(tail)) : state.messages
+                let rows = TranscriptRow.rows(for: messages)
+                if state.messages.count != countedMessages {
+                    countedMessages = state.messages.count
+                    context = StatusFacts.estimateContextTokens(state.messages)
+                }
+                let estimate = context
                 Gtk.onMain { [weak self] in
+                    self?.contextEstimate = estimate
                     self?.apply(state: state, rows: rows)
                 }
             }
@@ -859,12 +916,32 @@ final class MainWindow: @unchecked Sendable {
             gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
         }
         rowWidgets.removeSubrange(prefix...)
-        for row in rows[prefix...] {
+
+        // Rows are built in chunks with the main loop free in between. Four hundred rows of
+        // widgets is a second of frozen window if they are built in one go — which is exactly
+        // what opening a long conversation used to do — and the same code streams a token
+        // without noticing, because one appended row is one chunk.
+        let chunk = 40
+        let end = min(rows.count, prefix + chunk)
+        for row in rows[prefix..<end] {
             let widget = row.makeWidget(context: context)
             gtk_box_append(ptr(transcriptBox), widget)
             rowWidgets.append(UInt(bitPattern: widget))
         }
-        renderedRows = rows
+        renderedRows = Array(rows[..<end])
+
+        if end < rows.count {
+            if stick { followsBottom = true }
+            guard !isFillingInChunks else { return }
+            isFillingInChunks = true
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.isFillingInChunks = false
+                guard let state = self.lastState else { return }
+                self.apply(state: state, rows: self.lastFullRows)
+            }
+            return
+        }
 
         if stick {
             scrollToBottom()
@@ -953,7 +1030,7 @@ final class MainWindow: @unchecked Sendable {
         }
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
-            attachments: attachments.count)
+            attachments: attachments.count, contextTokens: contextEstimate)
         StatusBand.render(into: statusBand, facts: facts, notice: notice) { [weak self] action in
             Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
         }
@@ -1507,6 +1584,7 @@ final class MainWindow: @unchecked Sendable {
     private func move(by delta: Int) {
         guard !visible.isEmpty else { return }
         cursor = max(0, min(visible.count - 1, cursor + delta))
+        if cursor >= sidebarLimit { sidebarLimit = cursor + 60 }
         openCursor()
     }
 
@@ -1798,10 +1876,14 @@ final class MainWindow: @unchecked Sendable {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
-        isAutoScrolling = true
-        gtk_adjustment_set_value(
-            adjustment,
+        // Setting a value the adjustment already has still emits `changed`, and this is the
+        // handler for `changed` — writing unconditionally spins the main loop at full tilt.
+        let target = max(
+            gtk_adjustment_get_lower(adjustment),
             gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        guard abs(gtk_adjustment_get_value(adjustment) - target) > 0.5 else { return }
+        isAutoScrolling = true
+        gtk_adjustment_set_value(adjustment, target)
         isAutoScrolling = false
     }
 
