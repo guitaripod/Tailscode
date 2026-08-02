@@ -150,6 +150,8 @@ enum ToolRowView {
         if summary.kind == .shell, let command = summary.command {
             let line = Gtk.label("$ \(command)", css: "code-body", wrap: true)
             Gtk.addClass(line, "command-line")
+            gtk_widget_set_cursor_from_name(line, "copy")
+            gtk_widget_set_tooltip_text(line, Localized.text("Click to copy"))
             let toast = context.toast
             // A plain click copies; a drag still selects — the release only copies when nothing
             // ended up selected, so both gestures keep their meaning.
