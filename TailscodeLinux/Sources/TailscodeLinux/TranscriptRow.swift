@@ -410,14 +410,23 @@ struct TranscriptRow: Hashable {
         guard isImage else {
             return Gtk.label("📎 \(name)", css: "attachment")
         }
+        // A thumbnail, not a poster: the transcript is for reading, and a picture in it is a
+        // reference — small, scaled to fit, one click from the full-window viewer.
+        let thumbWidth: Int32 = 220
+        let thumbHeight: Int32 = 140
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         if let bits = context.textures[key], bits != 0 {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
             let picture = tailscode_picture_for_texture(texture)!
-            gtk_widget_set_size_request(picture, -1, min(420, tailscode_texture_height(texture)))
-            Gtk.addClass(picture, "image-part")
             let width = tailscode_texture_width(texture)
             let height = tailscode_texture_height(texture)
+            let scale = min(
+                Double(thumbWidth) / Double(max(1, width)),
+                Double(thumbHeight) / Double(max(1, height)), 1)
+            gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_CONTAIN)
+            gtk_widget_set_size_request(
+                picture, Int32(Double(width) * scale), Int32(Double(height) * scale))
+            Gtk.addClass(picture, "image-part")
             let opener = gtk_button_new()!
             Gtk.addClass(opener, "flat")
             gtk_widget_set_halign(opener, GTK_ALIGN_START)
@@ -431,12 +440,12 @@ struct TranscriptRow: Hashable {
                 ptr(column),
                 Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
         } else {
-            // The placeholder holds a picture-sized space so the arrival replaces it instead of
+            // The placeholder holds a thumbnail-sized space so the arrival replaces it instead of
             // shoving everything below it down — the difference between a photo developing and a
             // transcript twitching.
             let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(frame, "image-part")
-            gtk_widget_set_size_request(frame, 320, 180)
+            gtk_widget_set_size_request(frame, thumbWidth, thumbHeight)
             gtk_widget_set_halign(frame, GTK_ALIGN_START)
             let label = Gtk.label(
                 Localized.text("🖼 %@ — loading…", name), css: "dim", selectable: false)
