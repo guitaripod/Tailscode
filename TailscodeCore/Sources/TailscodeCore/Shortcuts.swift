@@ -1,11 +1,10 @@
 import Foundation
-import TailscodeCore
 
 /// Where a keystroke lands, which decides what it is allowed to mean. Normal owns the letters;
 /// insert is any focused text and keeps only deliberate chords; the terminal is stricter still —
 /// a shell's own Ctrl+B, Ctrl+E or Ctrl+F must reach the shell, so only Ctrl+Shift moves and zoom
 /// live there.
-enum KeyContext: String, CaseIterable {
+public enum KeyContext: String, CaseIterable, Sendable {
     case normal
     case insert
     case terminal
@@ -15,17 +14,17 @@ enum KeyContext: String, CaseIterable {
 /// Enter and plus/minus fold into their main-row selves, Shift+Tab's ISO_Left_Tab folds back into
 /// Tab, and lock or pointer modifier bits are dropped — so a binding matches the key a person
 /// meant rather than the exact bits GDK sent.
-struct KeyChord: Hashable {
-    let keyval: UInt32
-    let control: Bool
-    let shift: Bool
-    let alt: Bool
+public struct KeyChord: Hashable, Sendable {
+    public let keyval: UInt32
+    public let control: Bool
+    public let shift: Bool
+    public let alt: Bool
 
-    static let controlMask: UInt32 = 1 << 2
-    static let shiftMask: UInt32 = 1 << 0
-    static let altMask: UInt32 = 1 << 3
+    public static let controlMask: UInt32 = 1 << 2
+    public static let shiftMask: UInt32 = 1 << 0
+    public static let altMask: UInt32 = 1 << 3
 
-    static func canonical(keyval: UInt32, state: UInt32) -> KeyChord? {
+    public static func canonical(keyval: UInt32, state: UInt32) -> KeyChord? {
         guard !(0xFFE1...0xFFEE).contains(keyval) else { return nil }
         var value = keyval
         var shift = state & shiftMask != 0
@@ -54,11 +53,11 @@ struct KeyChord: Hashable {
             alt: state & altMask != 0)
     }
 
-    var token: String {
+    public var token: String {
         "\(control ? "c" : "")\(shift ? "s" : "")\(alt ? "a" : ""):\(keyval)"
     }
 
-    var display: String {
+    public var display: String {
         var out = ""
         if control { out += "^" }
         if alt { out += "M-" }
@@ -87,8 +86,8 @@ struct KeyChord: Hashable {
 /// The spec grammar for one binding: modifiers joined with `+`, sequences separated by spaces,
 /// an optional `context:` prefix limiting where it applies — `ctrl+shift+h`, `g g`, `J`,
 /// `normal,insert:ctrl+b`. This is both the defaults table's language and the rebinding file's.
-enum KeySpec {
-    static let names: [String: UInt32] = [
+public enum KeySpec {
+    public static let names: [String: UInt32] = [
         "enter": Keymap.enter, "return": Keymap.enter, "esc": Keymap.escape,
         "escape": Keymap.escape, "tab": Keymap.tab, "space": 0x20,
         "up": Keymap.up, "down": Keymap.down, "left": 0xFF51, "right": 0xFF53,
@@ -98,7 +97,7 @@ enum KeySpec {
         "comma": UInt32(UnicodeScalar(",").value), "period": UInt32(UnicodeScalar(".").value),
     ]
 
-    static func parse(_ spec: String) -> (contexts: Set<KeyContext>?, chords: [KeyChord])? {
+    public static func parse(_ spec: String) -> (contexts: Set<KeyContext>?, chords: [KeyChord])? {
         var body = spec
         var contexts: Set<KeyContext>?
         if let mark = spec.firstIndex(of: ":"), spec.index(after: mark) != spec.endIndex,
@@ -163,12 +162,12 @@ enum KeySpec {
         return KeyChord.canonical(keyval: keyval, state: state)
     }
 
-    static func display(_ chords: [KeyChord]) -> String {
+    public static func display(_ chords: [KeyChord]) -> String {
         chords.map(\.display).joined(separator: " ")
     }
 }
 
-enum ShortcutCategory: CaseIterable {
+public enum ShortcutCategory: CaseIterable, Sendable {
     case chats
     case conversation
     case composer
@@ -176,7 +175,7 @@ enum ShortcutCategory: CaseIterable {
     case view
     case approvals
 
-    var title: String {
+    public var title: String {
         switch self {
         case .chats: return Localized.text("Chats")
         case .conversation: return Localized.text("Conversation")
@@ -191,18 +190,31 @@ enum ShortcutCategory: CaseIterable {
 /// One action the keyboard can reach: a stable id the rebinding file addresses, the contexts it
 /// exists in, and the keys it ships with. The registry is the single source of truth — dispatch,
 /// the cheatsheet and the rebinding file all read this table, so they cannot drift apart.
-struct ShortcutDefinition {
-    let id: String
-    let title: String
-    let category: ShortcutCategory
-    let action: KeyAction
-    let contexts: Set<KeyContext>
-    let defaults: [String]
-    var approval = false
+public struct ShortcutDefinition: Sendable {
+    public let id: String
+    public let title: String
+    public let category: ShortcutCategory
+    public let action: KeyAction
+    public let contexts: Set<KeyContext>
+    public let defaults: [String]
+    public var approval: Bool
+
+    public init(
+        id: String, title: String, category: ShortcutCategory, action: KeyAction,
+        contexts: Set<KeyContext>, defaults: [String], approval: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.category = category
+        self.action = action
+        self.contexts = contexts
+        self.defaults = defaults
+        self.approval = approval
+    }
 }
 
-enum ShortcutRegistry {
-    static let all: [ShortcutDefinition] = [
+public enum ShortcutRegistry {
+    public static let all: [ShortcutDefinition] = [
         .init(
             id: "chat.next", title: Localized.text("Next chat"), category: .chats,
             action: .selectNext, contexts: [.normal], defaults: ["J", "ctrl+n"]),
@@ -353,20 +365,20 @@ enum ShortcutRegistry {
 /// The registry resolved into something a key press can be answered from: per-context chord maps,
 /// the prefixes that start a two-key sequence, the approval overlay, and — for the cheatsheet —
 /// what every action actually ended up bound to after the rebinding file had its say.
-struct ShortcutSet {
-    enum Resolution {
+public struct ShortcutSet: Sendable {
+    public enum Resolution: Sendable {
         case run(KeyAction)
         case pending([KeyChord])
         case unbound
     }
 
-    let actions: [KeyContext: [String: KeyAction]]
-    let prefixes: [KeyContext: Set<String>]
-    let approval: [String: KeyAction]
-    let effective: [String: [String]]
-    let issues: [String]
+    public let actions: [KeyContext: [String: KeyAction]]
+    public let prefixes: [KeyContext: Set<String>]
+    public let approval: [String: KeyAction]
+    public let effective: [String: [String]]
+    public let issues: [String]
 
-    static var configURL: URL {
+    public static var configURL: URL {
         let base = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         } ?? FileManager.default.homeDirectoryForCurrentUser
@@ -375,7 +387,7 @@ struct ShortcutSet {
             .appendingPathComponent("keybindings.json")
     }
 
-    static func load() -> ShortcutSet {
+    public static func load() -> ShortcutSet {
         var overrides: [String: [String]] = [:]
         var issues: [String] = []
         if let data = try? Data(contentsOf: configURL) {
@@ -408,7 +420,7 @@ struct ShortcutSet {
         return set
     }
 
-    static func build(overrides: [String: [String]]) -> ShortcutSet {
+    public static func build(overrides: [String: [String]]) -> ShortcutSet {
         var actions: [KeyContext: [String: KeyAction]] = [:]
         var prefixes: [KeyContext: Set<String>] = [:]
         var owners: [KeyContext: [String: String]] = [:]
@@ -469,7 +481,7 @@ struct ShortcutSet {
             issues: issues)
     }
 
-    func resolve(
+    public func resolve(
         _ chord: KeyChord, context: KeyContext, pending: [KeyChord], awaitingApproval: Bool
     ) -> Resolution {
         if awaitingApproval, context == .normal, !chord.control, !chord.alt, pending.isEmpty,
@@ -489,7 +501,7 @@ struct ShortcutSet {
 
     /// The cheatsheet's model: every bound action, grouped the way the registry groups them, with
     /// the keys it is actually on — overrides included.
-    func helpSections() -> [(title: String, rows: [(keys: String, what: String)])] {
+    public func helpSections() -> [(title: String, rows: [(keys: String, what: String)])] {
         var sections: [(title: String, rows: [(keys: String, what: String)])] = []
         for category in ShortcutCategory.allCases {
             var rows: [(keys: String, what: String)] = []
@@ -506,7 +518,7 @@ struct ShortcutSet {
     /// Writes a self-describing starter file if none exists, so "edit the shortcuts" always has
     /// a file to open. Only `_`-prefixed keys are written: the file starts as documentation, and
     /// upgrades keep shipping new defaults to people who never rebound anything.
-    static func ensureConfigFile() {
+    public static func ensureConfigFile() {
         let url = configURL
         guard !FileManager.default.fileExists(atPath: url.path) else { return }
         var defaults: [String: Any] = [:]
@@ -534,5 +546,86 @@ struct ShortcutSet {
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+
+/// The four places focus can live. Every pane has a key that reaches it and a thing to click.
+public enum Pane: CaseIterable, Sendable {
+    case chats
+    case transcript
+    case files
+    case terminal
+}
+
+/// Everything the keyboard can mean, toolkit-free: both desktops dispatch these, each through its
+/// own widgets.
+public enum KeyAction: Equatable, Sendable {
+    case focus(Pane)
+    case cycleForward
+    case cycleBackward
+    case selectNext
+    case selectPrevious
+    case selectFirst
+    case selectLast
+    case openSelected
+    case scrollDown
+    case scrollUp
+    case halfPageDown
+    case halfPageUp
+    case scrollTop
+    case scrollBottom
+    case insert
+    case leaveInsert
+    case search
+    case send
+    case stop
+    case toggleHelp
+    case reload
+    case allowOnce
+    case allowAlways
+    case deny
+    case newChat
+    case toggleSaved
+    case commandPalette
+    case findInConversation
+    case zoomIn
+    case zoomOut
+    case zoomReset
+    case toggleSidebar
+    case toggleFiles
+    case toggleTerminal
+    case archiveSelected
+    case toggleArchiveView
+    case toggleUnreadSelected
+    case renameSelected
+    case forkSelected
+    case deleteSelected
+    case copySessionID
+    case copyProjectPath
+}
+
+/// The canonical key-code space is GDK's, spelled out rather than imported: on Linux the numbers
+/// arrive this way, and on the Mac the NSEvent adapter translates into them — one space, one
+/// rebinding file, both desktops.
+public enum Keymap {
+    public static let escape: UInt32 = 0xFF1B
+    public static let enter: UInt32 = 0xFF0D
+    public static let keypadEnter: UInt32 = 0xFF8D
+    public static let slash: UInt32 = 0x002F
+    public static let question: UInt32 = 0x003F
+    public static let colon: UInt32 = 0x003A
+    public static let tab: UInt32 = 0xFF09
+    public static let shiftTab: UInt32 = 0xFE20
+    public static let up: UInt32 = 0xFF52
+    public static let down: UInt32 = 0xFF54
+    public static let backspace: UInt32 = 0xFF08
+
+    public static let control: UInt32 = 1 << 2
+    public static let shift: UInt32 = 1 << 0
+
+    public static func scalar(_ keyval: UInt32) -> Character? {
+        guard let scalar = Unicode.Scalar(keyval), keyval < 0x110000 else { return nil }
+        return Character(scalar)
     }
 }
