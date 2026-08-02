@@ -58,7 +58,9 @@ struct SessionRowModel: Equatable {
             ? Localized.text("New conversation") : entry.session.title
         let project = entry.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent }
         let age = Self.age(of: entry.session.updatedAt)
-        self.detail = [project, entry.profileName, age].compactMap { $0 }.joined(separator: " · ")
+        self.detail = [
+            project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
+        ].compactMap { $0 }.joined(separator: " · ")
         if unreachable {
             self.state = .offline
         } else if entry.session.isActive == true {

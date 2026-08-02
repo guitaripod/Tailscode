@@ -217,10 +217,16 @@ enum Dialogs {
         if profiles.count > 1 {
             gtk_box_append(
                 ptr(content), Gtk.label(Localized.text("SERVER"), css: "section-header", selectable: false))
-            let serverButton = Gtk.menuButton(profiles[0].name) {
+            let serverButton = Gtk.menuButton(ServerLabel.display(profiles[0])) {
                 profiles.map { profile in
-                    (profile.name, profile.baseURL.absoluteString, { chosen.value = profile })
+                    (ServerLabel.display(profile), ServerLabel.address(profile),
+                     { chosen.value = profile })
                 }
+            }
+            let serverButtonBits = UInt(bitPattern: serverButton)
+            chosen.onChange = { profile in
+                guard let raw = UnsafeMutableRawPointer(bitPattern: serverButtonBits) else { return }
+                gtk_menu_button_set_label(op(raw), ServerLabel.display(profile))
             }
             gtk_box_append(ptr(content), serverButton)
         }
@@ -275,7 +281,8 @@ enum Dialogs {
     }
 
     final class Selection<Value: Sendable>: @unchecked Sendable {
-        var value: Value
+        var value: Value { didSet { onChange?(value) } }
+        var onChange: (@Sendable (Value) -> Void)?
         init(_ value: Value) { self.value = value }
     }
 }

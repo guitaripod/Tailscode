@@ -764,7 +764,9 @@ final class MainWindow: @unchecked Sendable {
         let needle = filter.lowercased()
         var rows = entries.map {
             SessionRowModel(
-                entry: $0, unreachable: unreachable.contains($0.profileName),
+                entry: $0,
+                unreachable: unreachable.contains(
+                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
                 unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id))
         }
@@ -1029,7 +1031,7 @@ final class MainWindow: @unchecked Sendable {
             gtk_widget_set_visible(authBanner, 0)
             return
         }
-        let name = currentEntry?.profileName ?? "server"
+        let name = currentEntry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) } ?? "server"
         let label = Gtk.label(
             Localized.text("⚠ Claude is signed out on %@ — every turn will refuse until it signs in.", name),
             css: "banner-auth", wrap: true, selectable: false)
@@ -1539,7 +1541,7 @@ final class MainWindow: @unchecked Sendable {
     private func refreshPills() {
         let entry = currentEntry
         let destination = [
-            entry?.profileName,
+            entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
             entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
         ].compactMap { $0 }.joined(separator: " · ")
         gtk_label_set_text(op(destinationLabel), destination)
@@ -2648,7 +2650,7 @@ final class MainWindow: @unchecked Sendable {
             guard let backend = await ServerDirectory.shared.backend(for: profile),
                 let quota = (try? await backend.usageQuota()) ?? nil
             else { continue }
-            quotas.append((profile.name, quota))
+            quotas.append((ServerLabel.display(profile), quota))
         }
         let snapshot = quotas
         Gtk.onMain { [weak self] in self?.renderUsage(snapshot) }

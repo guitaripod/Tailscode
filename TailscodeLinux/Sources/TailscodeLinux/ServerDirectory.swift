@@ -60,7 +60,7 @@ public actor ServerDirectory {
         var down: [String] = []
         for profile in cached {
             guard let backend = backend(for: profile) else {
-                down.append(profile.name)
+                down.append(ServerLabel.display(profile))
                 continue
             }
             do {
@@ -72,7 +72,7 @@ public actor ServerDirectory {
                         backendType: profile.backend, session: $0)
                 }
             } catch {
-                down.append(profile.name)
+                down.append(ServerLabel.display(profile))
             }
         }
         collected.sort { $0.session.updatedAt > $1.session.updatedAt }

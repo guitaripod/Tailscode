@@ -109,7 +109,7 @@ final class ServerManager: @unchecked Sendable {
             gtk_box_append(
                 ptr(lines),
                 Gtk.label(
-                    "\(profile.backend == .openCode ? "opencode" : "claude") · \(profile.baseURL.absoluteString)",
+                    "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))",
                     css: "row-detail", selectable: false))
             if profile.backend == .claudeCode {
                 let software = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
