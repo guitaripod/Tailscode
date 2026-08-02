@@ -12,7 +12,9 @@ BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 cd TailscodeLinux
-swift build -c release --manifest-cache none 2>&1 | grep -E "error:|Build complete" || true
+# No `|| true` here: with pipefail a failed build must abort the install, or a stale binary from
+# the last good build gets installed and "installed/restarted" lies about what is running.
+swift build -c release --manifest-cache none 2>&1 | grep -E "error:|Build complete"
 BUILT=$PWD/.build/release/tailscode
 [ -x "$BUILT" ] || { echo "no binary at $BUILT"; exit 1; }
 
