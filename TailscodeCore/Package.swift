@@ -14,7 +14,8 @@ let package = Package(
         .target(
             name: "TailscodeCore",
             dependencies: [
-                .product(name: "CodingAgentKit", package: "CodingAgentKit")
+                .product(name: "CodingAgentKit", package: "CodingAgentKit"),
+                .product(name: "CodingAgentKitApple", package: "CodingAgentKit")
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

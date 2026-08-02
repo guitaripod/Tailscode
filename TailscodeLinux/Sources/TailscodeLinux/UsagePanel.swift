@@ -7,25 +7,6 @@ import TailscodeCore
 /// The full quota picture behind the sidebar footer: one card per provider, every gauge as a
 /// wide bar with its reset, spend windows in money, and the account facts the provider reports.
 /// Opens on what the footer already knows, then refetches so the numbers are current.
-/// Which brand a quota card belongs to, for the accent its name and bars wear. Grok's slug also
-/// tints by appearance — xAI is monochrome, silver on dark and ink on light — which the theme's
-/// CSS handles; this only names the slug.
-enum ProviderBrand {
-    static func slug(_ providerName: String) -> String? {
-        switch providerName.lowercased() {
-        case "claude", "anthropic": return "claude"
-        case "grok", "xai": return "grok"
-        case "opencode": return "opencode"
-        default: return nil
-        }
-    }
-
-    static func fillClass(severity: String, slug: String?) -> String {
-        guard severity == "ok", let slug else { return "gauge-fill-\(severity)" }
-        return "gauge-fill-\(slug)"
-    }
-}
-
 enum UsagePanel {
     static let trackWidth = 300
 

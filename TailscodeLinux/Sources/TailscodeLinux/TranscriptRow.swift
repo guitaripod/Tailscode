@@ -474,10 +474,10 @@ struct TranscriptRow: Hashable {
 
         var facts: [String] = []
         if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            facts.append("\(Self.tokens(before)) → \(Self.tokens(after))")
+            facts.append("\(StatusFacts.tokens(before)) → \(StatusFacts.tokens(after))")
         }
         if let duration = compaction.duration, duration > 0 {
-            facts.append(Self.clock(duration))
+            facts.append(StatusFacts.clock(duration))
         }
         if let kept = compaction.preservedMessageCount {
             facts.append(Localized.text("%@ messages kept", "\(kept)"))
@@ -502,24 +502,5 @@ struct TranscriptRow: Hashable {
         }
         gtk_box_append(ptr(column), Gtk.hairline())
         return column
-    }
-
-    static func tokens(_ count: Int) -> String {
-        count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
-    }
-
-    /// An age reads in the largest sensible unit — "2m", "3h", "2d" — where a stopwatch reading
-    /// of "1789m 34s" would be noise.
-    static func age(_ interval: TimeInterval) -> String {
-        let seconds = Int(max(0, interval))
-        if seconds < 60 { return "\(seconds)s" }
-        if seconds < 3600 { return "\(seconds / 60)m" }
-        if seconds < 86_400 { return "\(seconds / 3600)h" }
-        return "\(seconds / 86_400)d"
-    }
-
-    static func clock(_ interval: TimeInterval) -> String {
-        let seconds = Int(interval)
-        return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
     }
 }
