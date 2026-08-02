@@ -18,12 +18,58 @@ final class SessionListViewModel {
 
     var onChange: (() -> Void)?
     var onError: ((String) -> Void)?
+    private var streamTasks: [Task<Void, Never>] = []
 
     init(sources: [Source]) {
         self.sources = sources
         self.sourcesRevision = ConnectionController.shared.revision
         let profileIDs = Set(sources.map(\.profile.id))
         entries = SessionListCache.load().filter { profileIDs.contains($0.profileID) }
+        startStreams()
+    }
+
+    deinit {
+        for task in streamTasks { task.cancel() }
+    }
+
+    /// A proto-2 bridge pushes every list change the moment it happens: a row updates, moves, or
+    /// appears without a single poll. The load() path survives as the hydrate and as the whole
+    /// story for servers that cannot push.
+    private func startStreams() {
+        for task in streamTasks { task.cancel() }
+        streamTasks = []
+        for source in sources {
+            guard let streaming = source.backend as? SessionListStreaming else { continue }
+            let profile = source.profile
+            let task = Task { [weak self] in
+                guard let changes = await streaming.sessionListChanges() else { return }
+                for await change in changes {
+                    guard let self, !Task.isCancelled else { return }
+                    self.apply(change, profile: profile)
+                }
+            }
+            streamTasks.append(task)
+        }
+    }
+
+    private func apply(_ change: SessionListChange, profile: ConnectionProfile) {
+        switch change {
+        case .upsert(let session):
+            let entry = SessionEntry(
+                profileID: profile.id, profileName: profile.name,
+                host: profile.baseURL.host ?? profile.name,
+                backendType: profile.backend, session: session)
+            entries.removeAll { $0.profileID == profile.id && $0.session.id == session.id }
+            entries.append(entry)
+            entries.sort { $0.session.updatedAt > $1.session.updatedAt }
+            SessionListCache.save(entries)
+            onChange?()
+        case .remove(let id):
+            entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
+            onChange?()
+        case .invalidated:
+            Task { [weak self] in await self?.load() }
+        }
     }
 
     /// Rebuilds the backends from the saved profiles, dropping entries whose
@@ -42,6 +88,7 @@ final class SessionListViewModel {
         failureStreaks = [:]
         confirmationTask?.cancel()
         confirmationTask = nil
+        startStreams()
         onChange?()
     }
 
@@ -93,6 +140,7 @@ final class SessionListViewModel {
             sourcesRevision = ConnectionController.shared.revision
             sources = ConnectionController.shared.allBackends()
                 .map { Source(profile: $0.profile, backend: $0.backend) }
+            startStreams()
         }
         await refresh(sources, deadline: Self.sourceDeadline)
     }
