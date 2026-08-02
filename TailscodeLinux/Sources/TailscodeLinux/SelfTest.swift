@@ -67,6 +67,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            try checkImageCache()
+            report("image cache: pictures round-trip and stay keyed to their file")
+        } catch {
+            report("image cache: \(error)")
+            failures += 1
+        }
+
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else {
@@ -352,6 +360,27 @@ public enum SelfTest {
         let light = render(.solarizedLight)
         guard first == again, first != light, light.contains(Palette.solarizedLight.info) else {
             throw SelfTestFailure("markup cache does not respect the palette")
+        }
+    }
+
+    /// A picture must come back byte-identical, keyed to its server file — and two different
+    /// files must never collide into one cache slot.
+    private static func checkImageCache() throws {
+        let first = FileReference(path: "/tmp/selftest/a.png", mime: "image/png", filename: "a.png")
+        let second = FileReference(path: "/tmp/selftest/b.png", mime: "image/png", filename: "b.png")
+        guard let one = ImageCache.identity(for: first), let two = ImageCache.identity(for: second),
+            one != two
+        else { throw SelfTestFailure("two files share one identity") }
+        let bytes = Data((0..<512).map { UInt8($0 % 251) })
+        ImageCache.save(bytes, for: first)
+        guard ImageCache.load(first) == bytes else {
+            throw SelfTestFailure("bytes did not round-trip")
+        }
+        guard ImageCache.load(second) == nil else {
+            throw SelfTestFailure("an unsaved file loaded")
+        }
+        guard ImageCache.identity(for: FileReference()) == nil else {
+            throw SelfTestFailure("an unidentifiable file got an identity")
         }
     }
 

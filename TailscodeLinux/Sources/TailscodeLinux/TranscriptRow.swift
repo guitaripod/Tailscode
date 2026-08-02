@@ -16,8 +16,33 @@ final class TranscriptContext: @unchecked Sendable {
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
     var openImage: (@Sendable (String, String) -> Void)?
+    private var textureOrder: [String] = []
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
+
+    /// Decoded pictures are kept across chat switches, bounded: past the cap the least recently
+    /// decoded is released — its bytes are still on disk, one frame away.
+    func store(textureBits: UInt, data: Data, forKey key: String) {
+        if let existing = textures[key], existing != 0,
+            let stale = OpaquePointer(bitPattern: Int(bitPattern: existing))
+        {
+            g_object_unref(UnsafeMutableRawPointer(stale))
+        }
+        textures[key] = textureBits
+        imageData[key] = data
+        textureOrder.removeAll { $0 == key }
+        textureOrder.append(key)
+        while textureOrder.count > 48 {
+            let evicted = textureOrder.removeFirst()
+            if let bits = textures[evicted], bits != 0,
+                let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
+            {
+                g_object_unref(UnsafeMutableRawPointer(texture))
+            }
+            textures[evicted] = nil
+            imageData[evicted] = nil
+        }
+    }
 }
 
 /// Folds messages into rows with a per-message memo: a streamed token changes one message, so
@@ -333,9 +358,20 @@ struct TranscriptRow: Hashable {
                 ptr(column),
                 Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
         } else {
-            gtk_box_append(
-                ptr(column),
-                Gtk.label(Localized.text("🖼 %@ — loading…", name), css: "dim", selectable: false))
+            // The placeholder holds a picture-sized space so the arrival replaces it instead of
+            // shoving everything below it down — the difference between a photo developing and a
+            // transcript twitching.
+            let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(frame, "image-part")
+            gtk_widget_set_size_request(frame, 320, 180)
+            gtk_widget_set_halign(frame, GTK_ALIGN_START)
+            let label = Gtk.label(
+                Localized.text("🖼 %@ — loading…", name), css: "dim", selectable: false)
+            gtk_widget_set_halign(label, GTK_ALIGN_CENTER)
+            gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
+            gtk_widget_set_vexpand(label, 1)
+            gtk_box_append(ptr(frame), label)
+            gtk_box_append(ptr(column), frame)
             context.requestImage?(reference, key)
         }
         return column

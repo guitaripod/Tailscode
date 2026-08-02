@@ -789,8 +789,8 @@ final class MainWindow: @unchecked Sendable {
         chosenEffort = nil
         turnStartedAt = nil
         context.expanded = []
-        context.textures = [:]
-        context.imageData = [:]
+        // Textures survive a chat switch on purpose: a picture decoded once is a picture that
+        // never pops in again. The subagent transcripts do not — they can still be running.
         context.subagentRows = [:]
         inFlightImages = []
         inFlightSubagents = []
@@ -1672,13 +1672,21 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
-    /// The decode happens off the main context — `GdkTexture` is immutable and thread-safe to
-    /// create, and a large PNG decoded on the UI loop is a visible freeze.
+    /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame,
+    /// and only a genuinely new one crosses the network — then joins the cache. The decode
+    /// happens off the main context — `GdkTexture` is immutable and thread-safe to create, and a
+    /// large PNG decoded on the UI loop is a visible freeze.
     private func fetchImage(_ reference: FileReference, key: String) {
-        guard let backend = currentBackend, !inFlightImages.contains(key) else { return }
+        guard !inFlightImages.contains(key) else { return }
         inFlightImages.insert(key)
+        let backend = currentBackend
         Task { [weak self] in
-            guard let data = try? await backend.attachmentData(reference) else { return }
+            var data = ImageCache.load(reference)
+            if data == nil, let backend {
+                data = try? await backend.attachmentData(reference)
+                if let data { ImageCache.save(data, for: reference) }
+            }
+            guard let data else { return }
             let bits: UInt = data.withUnsafeBytes { buffer in
                 guard
                     let texture = tailscode_texture_from_bytes(
@@ -1689,8 +1697,7 @@ final class MainWindow: @unchecked Sendable {
             guard bits != 0 else { return }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.context.textures[key] = bits
-                self.context.imageData[key] = data
+                self.context.store(textureBits: bits, data: data, forKey: key)
                 self.replaceRows { $0.key == key }
             }
         }
