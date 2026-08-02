@@ -2483,7 +2483,32 @@ final class ChatViewController: UIViewController {
             expanded: viewModel.isSubagentExpanded(agent.id),
             isLoading: viewModel.loadingSubagents.contains(agent.id),
             steps: digest.steps,
-            report: digest.report)
+            report: digest.report,
+            progress: Self.liveProgress(agent))
+    }
+
+    /// One line saying what a live agent is doing: its todo position when it keeps a list,
+    /// otherwise its tool trail — count, the current tool, and elapsed time.
+    private static func liveProgress(_ agent: SubagentSummary) -> String? {
+        guard agent.isActive else { return nil }
+        var parts: [String] = []
+        if let done = agent.todosDone, let total = agent.todosTotal, total > 0 {
+            parts.append("\(done)/\(total)")
+            if let current = agent.currentTodo, !current.isEmpty {
+                parts.append(String(current.prefix(40)))
+            }
+        } else if let current = agent.currentTool, !current.isEmpty {
+            if let count = agent.toolCount {
+                parts.append(String(localized: "\(count) tools"))
+            }
+            parts.append(String(current.prefix(40)))
+        }
+        guard !parts.isEmpty else { return nil }
+        if let started = agent.startedAt {
+            let seconds = Int(max(0, Date().timeIntervalSince(started)))
+            parts.append(seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// A subagent transcript reads as a run of work plus one answer: its thoughts

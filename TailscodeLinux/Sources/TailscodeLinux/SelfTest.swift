@@ -435,6 +435,27 @@ public enum SelfTest {
             facts.segments.map(\.text).joined(separator: " | ")
         }
 
+        let todoAgent = SubagentSummary(
+            id: "a", title: "port the renderer", updatedAt: Date(), isActive: true,
+            startedAt: Date().addingTimeInterval(-95), toolCount: 4,
+            currentTool: "Bash swift build", todosDone: 2, todosTotal: 5,
+            currentTodo: "port the disclosure rows")
+        let todoLine = StatusFacts.liveDetail(todoAgent)
+        guard todoLine.hasPrefix("2/5 · port the disclosure rows") else {
+            throw SelfTestFailure("todo agent line: \(todoLine)")
+        }
+        let toolAgent = SubagentSummary(
+            id: "b", title: "sweep the band", updatedAt: Date(), isActive: true,
+            toolCount: 7, currentTool: "Edit StatusBand.swift")
+        let toolLine = StatusFacts.liveDetail(toolAgent)
+        guard toolLine.contains("7"), toolLine.contains("Edit StatusBand.swift") else {
+            throw SelfTestFailure("tool agent line: \(toolLine)")
+        }
+        let quietAgent = SubagentSummary(id: "c", title: "quiet", updatedAt: Date(), isActive: true)
+        guard StatusFacts.liveDetail(quietAgent) == Localized.text("working") else {
+            throw SelfTestFailure("quiet agent line")
+        }
+
         var idle = StatusFacts()
         guard text(idle) == "ready" else { throw SelfTestFailure("idle band: \(text(idle))") }
 

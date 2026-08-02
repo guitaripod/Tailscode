@@ -253,32 +253,71 @@ struct StatusFacts {
     /// spawns twenty agents whose task descriptions all open the same way; the shared preamble is
     /// trimmed so each row shows the words that make it *this* agent.
     private var agentRows: [Segment.Row] {
-        // Working first, then whatever has not finished, then the done ones newest-first: the
-        // list is read while a fan-out is running, and what is running is the point.
+        // What is running is the point. Working agents come first with what each is doing right
+        // now; recent finishes follow for context; the long tail of a session's past fan-outs —
+        // dozens of identical done rows — collapses into one count instead of drowning the list.
         let sorted = agents.sorted { lhs, rhs in
             if lhs.isActive != rhs.isActive { return lhs.isActive }
             if lhs.isCompleted != rhs.isCompleted { return !lhs.isCompleted }
             return lhs.updatedAt > rhs.updatedAt
-        }.prefix(20)
-        let shared = Self.sharedPrefixLength(of: sorted.map(\.title))
-        return sorted.map { agent in
-            let glyph = agent.isActive ? "◐" : agent.isCompleted ? "✓" : "·"
+        }
+        let working = sorted.filter(\.isActive)
+        let rest = sorted.filter { !$0.isActive }
+        let restShown = rest.prefix(working.isEmpty ? 12 : 6)
+        let buried = rest.count - restShown.count
+
+        let shared = Self.sharedPrefixLength(of: (working + restShown).map(\.title))
+        func trimmed(_ title: String) -> String {
+            guard shared > 0, title.count > shared else { return String(title.prefix(60)) }
+            return "…"
+                + String(title.dropFirst(shared)).trimmingCharacters(in: .whitespaces).prefix(60)
+        }
+
+        var rows = working.map { agent in
             let name = agent.agentType ?? SubagentSummary.untitled
-            var title = agent.title
-            if shared > 0, title.count > shared {
-                title = "…" + String(title.dropFirst(shared))
-                    .trimmingCharacters(in: .whitespaces)
-            }
-            let age = TranscriptRow.clock(max(0, Date().timeIntervalSince(agent.updatedAt)))
-            let state = agent.isActive
-                ? Localized.text("working · %@ ago", age)
-                : agent.isCompleted
-                    ? Localized.text("done · %@ ago", age) : Localized.text("idle · %@ ago", age)
             return Segment.Row(
-                title: "\(glyph) \(name) — \(String(title.prefix(60)))",
+                title: "◐ \(name) — \(trimmed(agent.title))",
+                detail: Self.liveDetail(agent),
+                action: .agent(agent.toolUseID ?? agent.id))
+        }
+        rows += restShown.map { agent in
+            let glyph = agent.isCompleted ? "✓" : "·"
+            let name = agent.agentType ?? SubagentSummary.untitled
+            let age = TranscriptRow.age(Date().timeIntervalSince(agent.updatedAt))
+            let state = agent.isCompleted
+                ? Localized.text("done · %@ ago", age) : Localized.text("idle · %@ ago", age)
+            return Segment.Row(
+                title: "\(glyph) \(name) — \(trimmed(agent.title))",
                 detail: state,
                 action: .agent(agent.toolUseID ?? agent.id))
         }
+        if buried > 0 {
+            rows.append(
+                Segment.Row(
+                    title: Localized.text("… %@ earlier agents", "\(buried)"),
+                    detail: Localized.text("finished in past fan-outs"),
+                    action: nil))
+        }
+        return rows
+    }
+
+    /// One line saying what a live agent is doing: its todo position when it keeps a list,
+    /// otherwise its tool trail — count, elapsed, and the tool running at this moment.
+    static func liveDetail(_ agent: SubagentSummary) -> String {
+        var parts: [String] = []
+        if let done = agent.todosDone, let total = agent.todosTotal, total > 0 {
+            parts.append("\(done)/\(total)")
+            if let current = agent.currentTodo, !current.isEmpty {
+                parts.append(String(current.prefix(48)))
+            }
+        } else if let current = agent.currentTool, !current.isEmpty {
+            if let count = agent.toolCount { parts.append(Localized.text("%@ tools", "\(count)")) }
+            parts.append(String(current.prefix(48)))
+        }
+        if let started = agent.startedAt {
+            parts.append(TranscriptRow.clock(max(0, Date().timeIntervalSince(started))))
+        }
+        return parts.isEmpty ? Localized.text("working") : parts.joined(separator: " · ")
     }
 
     /// The character count every title in the list opens with — worth trimming only when the list
@@ -325,6 +364,13 @@ enum StatusBand {
     final class State: @unchecked Sendable {
         var facts = StatusFacts()
         fileprivate var widgets: [String: UInt] = [:]
+
+        /// Test-driver access: pops the popover of a menu segment, the way a click would.
+        func openMenu(id: String) {
+            guard let bits = widgets[id], let raw = UnsafeMutableRawPointer(bitPattern: bits)
+            else { return }
+            gtk_menu_button_popup(op(raw))
+        }
         fileprivate var kinds: [String: String] = [:]
         fileprivate var notice: UInt = 0
         fileprivate var spacer: UInt = 0

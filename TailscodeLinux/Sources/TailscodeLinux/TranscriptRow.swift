@@ -12,6 +12,9 @@ final class TranscriptContext: @unchecked Sendable {
     var textures: [String: UInt] = [:]
     var imageData: [String: Data] = [:]
     var subagentRows: [String: [TranscriptRow]] = [:]
+    /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
+    /// inline agent card shows for progress while its transcript is still being written.
+    var agentFacts: [String: SubagentSummary] = [:]
     var onToggle: (@Sendable (String, Bool) -> Void)?
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
@@ -490,6 +493,16 @@ struct TranscriptRow: Hashable {
 
     static func tokens(_ count: Int) -> String {
         count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
+    }
+
+    /// An age reads in the largest sensible unit — "2m", "3h", "2d" — where a stopwatch reading
+    /// of "1789m 34s" would be noise.
+    static func age(_ interval: TimeInterval) -> String {
+        let seconds = Int(max(0, interval))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        if seconds < 86_400 { return "\(seconds / 3600)h" }
+        return "\(seconds / 86_400)d"
     }
 
     static func clock(_ interval: TimeInterval) -> String {

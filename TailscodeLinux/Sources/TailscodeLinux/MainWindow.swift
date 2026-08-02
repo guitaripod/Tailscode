@@ -208,6 +208,8 @@ final class MainWindow: @unchecked Sendable {
                     self.jumpToBottom()
                 case "settings":
                     self.presentSettings()
+                case "agents":
+                    self.bandState.openMenu(id: "agents")
                 case "reader":
                     self.context.presentText?(
                         "Compaction summary", "COMPACTED · 527.8k → 24.8k · 2m 4s",
@@ -1383,6 +1385,20 @@ final class MainWindow: @unchecked Sendable {
                 guard let self else { return }
                 self.agents = agents
                 self.usage = usage
+                var facts: [String: SubagentSummary] = [:]
+                for agent in agents {
+                    if let toolUseID = agent.toolUseID { facts[toolUseID] = agent }
+                }
+                let changed = facts.keys.filter { self.context.agentFacts[$0] != facts[$0] }
+                let vanished = self.context.agentFacts.keys.filter { facts[$0] == nil }
+                self.context.agentFacts = facts
+                let stale = Set(changed + vanished)
+                if !stale.isEmpty {
+                    self.replaceRows {
+                        if case .subagent(let call) = $0.kind { return stale.contains(call.id) }
+                        return false
+                    }
+                }
                 self.updateStatus()
             }
         }
@@ -1404,8 +1420,13 @@ final class MainWindow: @unchecked Sendable {
                 }
             }
         } else if !running {
-            tickerTask?.cancel()
-            tickerTask = nil
+            if tickerTask != nil {
+                tickerTask?.cancel()
+                tickerTask = nil
+                // One last look after the turn ends, so the agents list settles on "done"
+                // instead of freezing mid-flight glyphs.
+                refreshTurnFacts()
+            }
         }
     }
 

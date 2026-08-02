@@ -267,7 +267,11 @@ enum SubagentRowView {
             css: "tool-detail", selectable: false)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(header), label)
-        if call.status == .completed {
+        if let live = context.agentFacts[call.id], live.isActive {
+            gtk_box_append(
+                ptr(header),
+                Gtk.label(StatusFacts.liveDetail(live), css: "agent-live", selectable: false))
+        } else if call.status == .completed {
             gtk_box_append(ptr(header), Gtk.label("done", css: "glyph-done", selectable: false))
         }
 

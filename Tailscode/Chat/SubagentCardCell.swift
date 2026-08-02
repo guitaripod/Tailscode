@@ -16,6 +16,8 @@ struct SubagentCard: Hashable {
     let isLoading: Bool
     let steps: [ActivityStep]
     let report: String?
+    /// One line of live progress — todo position or tool trail — while the agent works.
+    var progress: String?
     /// What the spawning tool call recorded as the agent's answer. Already in
     /// the parent transcript, so a finished card can say what came back before
     /// anyone asks for the agent's own transcript.
@@ -30,7 +32,10 @@ struct SubagentCard: Hashable {
     }
 
     var statusText: String {
-        if isActive { return String(localized: "Working") }
+        if isActive {
+            if let progress, !progress.isEmpty { return progress }
+            return String(localized: "Working")
+        }
         if isCompleted {
             return String(
                 localized: "Finished \(updatedAt.formatted(.relative(presentation: .named)))")
