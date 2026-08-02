@@ -249,27 +249,52 @@ struct StatusFacts {
     }
 
     /// One row per subagent, newest first: what it is, whether it is still working, and how long
-    /// ago it last said anything. Clicking one jumps to its card in the transcript.
+    /// ago it last said anything. Clicking one jumps to its card in the transcript. A fan-out
+    /// spawns twenty agents whose task descriptions all open the same way; the shared preamble is
+    /// trimmed so each row shows the words that make it *this* agent.
     private var agentRows: [Segment.Row] {
         // Working first, then whatever has not finished, then the done ones newest-first: the
         // list is read while a fan-out is running, and what is running is the point.
-        agents.sorted { lhs, rhs in
+        let sorted = agents.sorted { lhs, rhs in
             if lhs.isActive != rhs.isActive { return lhs.isActive }
             if lhs.isCompleted != rhs.isCompleted { return !lhs.isCompleted }
             return lhs.updatedAt > rhs.updatedAt
-        }.prefix(20).map { agent in
+        }.prefix(20)
+        let shared = Self.sharedPrefixLength(of: sorted.map(\.title))
+        return sorted.map { agent in
             let glyph = agent.isActive ? "◐" : agent.isCompleted ? "✓" : "·"
             let name = agent.agentType ?? SubagentSummary.untitled
+            var title = agent.title
+            if shared > 0, title.count > shared {
+                title = "…" + String(title.dropFirst(shared))
+                    .trimmingCharacters(in: .whitespaces)
+            }
             let age = TranscriptRow.clock(max(0, Date().timeIntervalSince(agent.updatedAt)))
             let state = agent.isActive
                 ? Localized.text("working · %@ ago", age)
                 : agent.isCompleted
                     ? Localized.text("done · %@ ago", age) : Localized.text("idle · %@ ago", age)
             return Segment.Row(
-                title: "\(glyph) \(name) — \(String(agent.title.prefix(60)))",
+                title: "\(glyph) \(name) — \(String(title.prefix(60)))",
                 detail: state,
                 action: .agent(agent.toolUseID ?? agent.id))
         }
+    }
+
+    /// The character count every title in the list opens with — worth trimming only when the list
+    /// is long enough for the repetition to drown the differences, and long enough to matter.
+    static func sharedPrefixLength(of titles: [String]) -> Int {
+        guard titles.count > 2, let first = titles.first.map(Array.init) else { return 0 }
+        var shared = first.count
+        for title in titles.dropFirst() {
+            let characters = Array(title)
+            var index = 0
+            while index < min(shared, characters.count), characters[index] == first[index] {
+                index += 1
+            }
+            shared = index
+        }
+        return shared >= 24 ? shared : 0
     }
 
     enum Action: Equatable {

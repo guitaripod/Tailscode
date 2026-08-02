@@ -52,6 +52,7 @@ final class MainWindow: @unchecked Sendable {
     private var isFillingInChunks = false
     private var pinCorrectorScheduled = false
     private var pendingReveal = false
+    private var fillComplete = false
     private var sidebarLimit = 60
     /// How much of a transcript is folded into rows at all — read from the streaming task, so it
     /// is a plain value rather than anything that needs the main context.
@@ -376,12 +377,11 @@ final class MainWindow: @unchecked Sendable {
             // bottom" can be honoured correctly.
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "changed") { [weak self] in
                 guard let self, self.followsBottom else { return }
-                // Twice, deliberately. The synchronous pin keeps the frame being laid out at the
-                // bottom; but a value written during layout can leave the viewport's pixels where
-                // they were — correct value, stale render, fixed only by the next damage. The
-                // corrector runs after layout and paint, re-asserts the value, and queues an
-                // allocation so the render always catches up within a frame.
-                self.pinToBottom()
+                // Never pin from inside this signal: it fires during the viewport's own
+                // allocation, and a value written mid-layout is accepted but never drawn — the
+                // scrollbar says bottom while the pixels stay put until the window is disturbed.
+                // The pin runs on the next idle, outside layout, where the viewport reacts to it
+                // the ordinary way.
                 self.schedulePinCorrector()
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
@@ -549,6 +549,9 @@ final class MainWindow: @unchecked Sendable {
                 if open { self.context.expanded.insert(key) } else {
                     self.context.expanded.remove(key)
                 }
+                // Opening the last row grows the transcript below the fold; if the person was at
+                // the bottom, the bottom must follow them to what they just opened.
+                if open, self.followsBottom { self.schedulePinCorrector() }
             }
         }
         context.requestImage = { [weak self] reference, key in
@@ -1106,6 +1109,7 @@ final class MainWindow: @unchecked Sendable {
         }
 
         let complete = tailDone && start == 0
+        fillComplete = complete
         if !complete {
             if stick { followsBottom = true }
             if !isFillingInChunks {
@@ -2155,11 +2159,12 @@ final class MainWindow: @unchecked Sendable {
         schedulePinCorrector()
     }
 
-    /// Runs once the current layout and paint are done: re-pins, then forces one allocation pass
-    /// so the pixels always match the adjustment — the difference between "at the bottom" and
-    /// "says it is at the bottom until the window moves". Also the moment a freshly-filled
-    /// transcript is revealed: it was built invisible so its first paint is the settled bottom,
-    /// not a scroll-into-place.
+    /// Runs outside layout, after the current pass has settled: pins, then queues an allocation
+    /// on the viewport — the widget that actually applies the scroll offset to its child — so the
+    /// pixels always match the adjustment. This is the difference between "at the bottom" and
+    /// "says it is at the bottom until the window moves". It is also the moment a freshly-filled
+    /// transcript is revealed: built invisible, it first appears already settled at the bottom
+    /// rather than sliding into place.
     private func schedulePinCorrector() {
         guard !pinCorrectorScheduled else { return }
         pinCorrectorScheduled = true
@@ -2167,8 +2172,13 @@ final class MainWindow: @unchecked Sendable {
             guard let self else { return }
             self.pinCorrectorScheduled = false
             if self.followsBottom { self.pinToBottom() }
-            if let scroller = self.transcriptScroller { gtk_widget_queue_allocate(scroller) }
-            if self.pendingReveal {
+            if let scroller = self.transcriptScroller {
+                gtk_widget_queue_allocate(scroller)
+                if let viewport = gtk_widget_get_first_child(scroller) {
+                    gtk_widget_queue_allocate(viewport)
+                }
+            }
+            if self.pendingReveal, self.fillComplete {
                 self.pendingReveal = false
                 gtk_widget_set_opacity(self.transcriptBox, 1)
             }

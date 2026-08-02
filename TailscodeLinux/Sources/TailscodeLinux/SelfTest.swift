@@ -427,7 +427,21 @@ public enum SelfTest {
         guard approval.segments.first?.action == .scrollToPending else {
             throw SelfTestFailure("approval segment is not actionable")
         }
-        return 8
+
+        // Twenty agents spawned with one preamble must not read as twenty copies of the preamble.
+        var fanOut = StatusFacts()
+        fanOut.agents = (0..<4).map { index in
+            SubagentSummary(
+                id: "f\(index)", title: "In /home/marcus/Dev/iOS/Tailscode, verify claim number \(index) about the diff",
+                agentType: "workflow-subagent", toolUseID: "ft\(index)",
+                updatedAt: now.addingTimeInterval(Double(-index)), isCompleted: true)
+        }
+        guard let fanRows = fanOut.segments.first(where: { $0.id == "agents" })?.rows,
+            fanRows.allSatisfy({ $0.title.contains("…") }),
+            fanRows[0].title.contains("0"), fanRows[1].title.contains("1"),
+            !fanRows[0].title.contains("/home/marcus")
+        else { throw SelfTestFailure("fan-out titles keep their shared preamble") }
+        return 9
     }
 
     /// Two observers on one conversation, which is the whole point of a desktop client that is a
