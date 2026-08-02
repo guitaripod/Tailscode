@@ -969,10 +969,40 @@ final class MainWindow: @unchecked Sendable {
         case .goal: insertIntoComposer("/goal ")
         case .scrollToPending: scroll(toEnd: true)
         case .scrollToAgents: scrollToNewestAgent()
+        case .agent(let id): scrollToAgent(id)
         case .reconnect:
             guard let conversation else { return }
             Task { await conversation.reconnect() }
         }
+    }
+
+    /// The card for one named agent — matched to the tool call that spawned it, which is the id
+    /// the summary carries — and its transcript opened on arrival.
+    private func scrollToAgent(_ id: String) {
+        for (index, row) in renderedRows.enumerated() {
+            guard case .subagent(let call) = row.kind, call.id == id else { continue }
+            context.expanded.insert(row.key)
+            fetchSubagent(call)
+            scrollToRow(at: index)
+            return
+        }
+        scrollToNewestAgent()
+    }
+
+    private func scrollToRow(at index: Int) {
+        guard index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+        else { return }
+        let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        let offset = tailscode_widget_offset_y(widget, canvasBox ?? transcriptBox)
+        guard offset >= 0, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        followsBottom = false
+        let page = gtk_adjustment_get_page_size(adjustment)
+        gtk_adjustment_set_value(
+            adjustment,
+            min(max(0, offset - page * 0.3), max(0, gtk_adjustment_get_upper(adjustment) - page)))
     }
 
     private func scrollToNewestAgent() {

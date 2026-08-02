@@ -317,12 +317,29 @@ public enum SelfTest {
             throw SelfTestFailure("working band: \(text(idle))")
         }
 
-        idle.activeAgents = 3
-        idle.agentTitles = ["explore", "review", "verify"]
-        idle.finishedAgents = 1
-        guard text(idle).contains("3 agents"), text(idle).contains("explore, review"),
-            text(idle).contains("1 done")
-        else { throw SelfTestFailure("agents band: \(text(idle))") }
+        let now = Date()
+        idle.agents = [
+            SubagentSummary(
+                id: "a", title: "map the theme", agentType: "explore", toolUseID: "t1",
+                updatedAt: now, isActive: true),
+            SubagentSummary(
+                id: "b", title: "check the diff", agentType: "review", toolUseID: "t2",
+                updatedAt: now.addingTimeInterval(-30), isActive: true),
+            SubagentSummary(
+                id: "c", title: "verify", agentType: "verify", toolUseID: "t3",
+                updatedAt: now.addingTimeInterval(-90), isCompleted: true),
+        ]
+        // Compact by default: the band counts, the popover names.
+        guard text(idle).contains("▸ 2 · 1✓"), !text(idle).contains("explore") else {
+            throw SelfTestFailure("agents band is not compact: \(text(idle))")
+        }
+        guard let agentSegment = idle.segments.first(where: { $0.text.hasPrefix("▸") }),
+            agentSegment.rows.count == 3,
+            agentSegment.rows.first?.title.contains("explore") == true,
+            agentSegment.rows.first?.detail?.contains("working") == true,
+            agentSegment.rows.last?.detail?.contains("done") == true,
+            agentSegment.rows.first?.action == .agent("t1")
+        else { throw SelfTestFailure("agents popover does not list the agents") }
 
         idle.contextTokens = 320_000
         guard text(idle).contains("~320.0k"),
@@ -332,10 +349,17 @@ public enum SelfTest {
         idle.lastCostUSD = 0.38
         guard text(idle).contains("$0.38") else { throw SelfTestFailure("cost: \(text(idle))") }
 
+        // The goal is a glyph until it is asked about — its words live in the popover.
         idle.goal = "ship it"
-        guard text(idle).contains("⦿ ship it") else { throw SelfTestFailure("goal: \(text(idle))") }
+        guard text(idle).contains("⦿"), !text(idle).contains("ship it") else {
+            throw SelfTestFailure("goal is not compact: \(text(idle))")
+        }
+        guard let goalSegment = idle.segments.first(where: { $0.css == "seg-goal" }),
+            goalSegment.rows.first?.title == "ship it",
+            goalSegment.rows.last?.action == .goal
+        else { throw SelfTestFailure("goal popover does not carry the goal") }
         idle.goalMet = true
-        guard text(idle).contains("✓ ship it") else { throw SelfTestFailure("goal met: \(text(idle))") }
+        guard text(idle).contains("✓") else { throw SelfTestFailure("goal met: \(text(idle))") }
 
         var failed = StatusFacts()
         failed.phase = .failed("the bridge said no")

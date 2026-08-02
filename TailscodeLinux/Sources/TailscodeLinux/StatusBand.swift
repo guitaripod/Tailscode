@@ -20,9 +20,9 @@ struct StatusFacts {
     var phase: Phase = .idle
     var elapsed: TimeInterval?
     var runningTool: String?
-    var activeAgents: Int = 0
-    var finishedAgents: Int = 0
-    var agentTitles: [String] = []
+    var agents: [SubagentSummary] = []
+    var activeAgents: Int { agents.filter(\.isActive).count }
+    var finishedAgents: Int { agents.filter(\.isCompleted).count }
     var contextTokens: Int?
     var lastCostUSD: Double?
     var lastTurnTokens: Int?
@@ -84,9 +84,7 @@ struct StatusFacts {
         }
         if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
         facts.runningTool = Self.runningTool(in: state)
-        facts.activeAgents = agents.filter(\.isActive).count
-        facts.finishedAgents = agents.filter(\.isCompleted).count
-        facts.agentTitles = agents.filter(\.isActive).map { $0.agentType ?? $0.title }
+        facts.agents = agents
         facts.contextTokens = estimateContextTokens(state.messages)
         facts.lastCostUSD = usage?.costUSD
         facts.lastTurnTokens = usage?.tokens
@@ -109,77 +107,167 @@ struct StatusFacts {
         return nil
     }
 
-    /// The band as text, in the order it is drawn. One segment per fact that is true, and nothing
-    /// for the facts that are not — a status line that always shows every field is a status line
-    /// nobody reads.
-    var segments: [(text: String, css: String, action: Action?)] {
-        var result: [(String, String, Action?)] = []
+    /// What one fact on the band is: a glyph and a number, plus what happens when it is clicked —
+    /// nothing, an action, or a list that unfolds. The band stays a line of counters; the detail
+    /// lives one click away, which is the only way a status line survives a busy turn.
+    struct Segment {
+        enum Kind {
+            case plain
+            case act(Action)
+            case menu([Row])
+        }
+
+        struct Row {
+            let title: String
+            let detail: String?
+            let action: Action?
+        }
+
+        let text: String
+        let css: String
+        let kind: Kind
+
+        var action: Action? {
+            if case .act(let action) = kind { return action }
+            return nil
+        }
+
+        var rows: [Row] {
+            if case .menu(let rows) = kind { return rows }
+            return []
+        }
+    }
+
+    var segments: [Segment] {
+        var result: [Segment] = []
 
         switch phase {
         case .idle:
-            result.append((Localized.text("ready"), "seg-idle", nil))
+            result.append(Segment(text: Localized.text("ready"), css: "seg-idle", kind: .plain))
         case .working:
-            var text = "◐ " + Localized.text("working")
+            var text = "◐"
             if let elapsed { text += " " + TranscriptRow.clock(elapsed) }
             if let runningTool { text += " · " + runningTool }
-            result.append((text, "seg-live", .stop))
+            result.append(Segment(text: text, css: "seg-live", kind: .act(.stop)))
         case .compacting:
-            result.append((Localized.text("◐ compacting — minutes, not seconds"), "seg-warn", nil))
+            result.append(
+                Segment(text: Localized.text("◐ compacting"), css: "seg-warn", kind: .plain))
         case .awaitingApproval:
-            result.append((Localized.text("⏸ needs you · y / a / n"), "seg-warn", .scrollToPending))
+            result.append(
+                Segment(
+                    text: Localized.text("⏸ y / a / n"), css: "seg-warn",
+                    kind: .act(.scrollToPending)))
         case .awaitingAnswer:
-            result.append((Localized.text("⏸ waiting for your answer"), "seg-warn", .scrollToPending))
+            result.append(
+                Segment(
+                    text: Localized.text("⏸ answer"), css: "seg-warn",
+                    kind: .act(.scrollToPending)))
         case .reconnecting:
-            result.append((Localized.text("· reconnecting"), "seg-warn", nil))
+            result.append(
+                Segment(text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))
         case .offline:
-            result.append((Localized.text("✗ offline"), "seg-error", .reconnect))
+            result.append(
+                Segment(text: Localized.text("✗ offline"), css: "seg-error", kind: .act(.reconnect)))
         case .failed(let message):
-            result.append(("✗ " + message, "seg-error", nil))
+            result.append(
+                Segment(
+                    text: "✗ " + String(message.prefix(60)), css: "seg-error", kind: .plain))
         }
 
-        if activeAgents > 0 {
-            var text = "▸ " + Localized.text("%@ agents", "\(activeAgents)")
-            let named = agentTitles.prefix(2).joined(separator: ", ")
-            if !named.isEmpty { text += " · " + named }
-            if finishedAgents > 0 { text += " · \(finishedAgents) done" }
-            result.append((text, "seg-agents", .scrollToAgents))
-        } else if finishedAgents > 0 {
+        if !agents.isEmpty {
+            let text = activeAgents > 0
+                ? "▸ \(activeAgents)" + (finishedAgents > 0 ? " · \(finishedAgents)✓" : "")
+                : "▸ \(finishedAgents)✓"
             result.append(
-                ("▸ " + Localized.text("%@ agents done", "\(finishedAgents)"), "seg-dim", .scrollToAgents))
+                Segment(
+                    text: text, css: activeAgents > 0 ? "seg-agents" : "seg-dim",
+                    kind: .menu(agentRows)))
         }
 
         if let contextTokens {
-            let text = "~" + TranscriptRow.tokens(contextTokens) + " " + Localized.text("in context")
-            let css = contextTokens > 300_000 ? "seg-warn" : "seg-dim"
-            result.append((text, css, .compact))
+            result.append(
+                Segment(
+                    text: "~" + TranscriptRow.tokens(contextTokens),
+                    css: contextTokens > 300_000 ? "seg-warn" : "seg-dim",
+                    kind: .menu([
+                        Segment.Row(
+                            title: Localized.text("%@ tokens in this conversation, about",
+                                TranscriptRow.tokens(contextTokens)),
+                            detail: Localized.text("Estimated from the transcript itself"),
+                            action: nil),
+                        Segment.Row(
+                            title: Localized.text("Compact…"),
+                            detail: Localized.text("Trade the transcript for a summary"),
+                            action: .compact),
+                    ])))
         }
         if let lastCostUSD, lastCostUSD > 0 {
-            result.append((String(format: "$%.2f", lastCostUSD), "seg-dim", nil))
+            result.append(
+                Segment(
+                    text: String(format: "$%.2f", lastCostUSD), css: "seg-dim",
+                    kind: .menu([
+                        Segment.Row(
+                            title: Localized.text("Last turn cost %@", String(format: "$%.2f", lastCostUSD)),
+                            detail: lastTurnTokens.map {
+                                Localized.text("%@ tokens", TranscriptRow.tokens($0))
+                            },
+                            action: nil)
+                    ])))
         } else if let lastTurnTokens, lastTurnTokens > 0 {
             result.append(
-                (TranscriptRow.tokens(lastTurnTokens) + " " + Localized.text("last turn"),
-                 "seg-dim", nil))
+                Segment(
+                    text: TranscriptRow.tokens(lastTurnTokens), css: "seg-dim", kind: .plain))
         }
 
         if let goal {
             let glyph = goalMet ? "✓" : goalFailed ? "✗" : "⦿"
             let css = goalMet ? "seg-idle" : goalFailed ? "seg-error" : "seg-goal"
-            result.append(("\(glyph) \(goal)", css, .goal))
+            let state = goalMet
+                ? Localized.text("met") : goalFailed ? Localized.text("failed") : Localized.text("being pursued")
+            result.append(
+                Segment(
+                    text: glyph, css: css,
+                    kind: .menu([
+                        Segment.Row(title: goal, detail: state, action: nil),
+                        Segment.Row(
+                            title: Localized.text("Change the goal…"), detail: nil, action: .goal),
+                    ])))
         }
         if attachments > 0 {
-            result.append(
-                ("📎 " + Localized.text("%@ attached", "\(attachments)"), "seg-dim", nil))
+            result.append(Segment(text: "📎 \(attachments)", css: "seg-dim", kind: .plain))
         }
         return result
     }
 
-    enum Action {
+    /// One row per subagent, newest first: what it is, whether it is still working, and how long
+    /// ago it last said anything. Clicking one jumps to its card in the transcript.
+    private var agentRows: [Segment.Row] {
+        agents.sorted { lhs, rhs in
+            if lhs.isActive != rhs.isActive { return lhs.isActive }
+            return lhs.updatedAt > rhs.updatedAt
+        }.prefix(20).map { agent in
+            let glyph = agent.isActive ? "◐" : agent.isCompleted ? "✓" : "·"
+            let name = agent.agentType ?? SubagentSummary.untitled
+            let age = TranscriptRow.clock(max(0, Date().timeIntervalSince(agent.updatedAt)))
+            let state = agent.isActive
+                ? Localized.text("working · %@ ago", age)
+                : agent.isCompleted
+                    ? Localized.text("done · %@ ago", age) : Localized.text("idle · %@ ago", age)
+            return Segment.Row(
+                title: "\(glyph) \(name) — \(String(agent.title.prefix(60)))",
+                detail: state,
+                action: .agent(agent.toolUseID ?? agent.id))
+        }
+    }
+
+    enum Action: Equatable {
         case stop
         case compact
         case goal
         case scrollToPending
         case scrollToAgents
         case reconnect
+        case agent(String)
     }
 }
 
@@ -187,28 +275,38 @@ struct StatusFacts {
 /// something happening now or something you would act on — and clicking a fact does the obvious
 /// thing to it, so reading the status and steering the turn are the same gesture.
 enum StatusBand {
+    /// A segment must never widen the column it sits in: the band ellipsizes, the conversation
+    /// keeps its width.
+    private static func clamp(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        gtk_widget_set_hexpand(widget, 0)
+    }
+
     static func render(
         into box: UnsafeMutablePointer<GtkWidget>, facts: StatusFacts,
         notice: String?, perform: @escaping @Sendable (StatusFacts.Action) -> Void
     ) {
         Gtk.removeChildren(of: box)
         for segment in facts.segments {
-            if let action = segment.action {
-                let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
-                    perform(action)
-                }
-                // A segment must never widen the column it sits in: the band ellipsizes, the
-                // conversation keeps its width.
-                if let child = gtk_button_get_child(ptr(button)) {
-                    gtk_label_set_ellipsize(op(child), PANGO_ELLIPSIZE_END)
-                    gtk_label_set_max_width_chars(op(child), 48)
-                }
-                gtk_box_append(ptr(box), button)
-            } else {
+            switch segment.kind {
+            case .plain:
                 let label = Gtk.label(segment.text, css: segment.css, selectable: false)
                 Gtk.addClass(label, "seg")
                 gtk_label_set_max_width_chars(op(label), 48)
                 gtk_box_append(ptr(box), label)
+            case .act(let action):
+                let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
+                    perform(action)
+                }
+                clamp(button)
+                gtk_box_append(ptr(box), button)
+            case .menu(let rows):
+                let button = Gtk.menuButton(segment.text, css: ["flat", "seg", segment.css]) {
+                    rows.map { row in
+                        (row.title, row.detail, { if let action = row.action { perform(action) } })
+                    }
+                }
+                clamp(button)
+                gtk_box_append(ptr(box), button)
             }
         }
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
