@@ -44,6 +44,8 @@ final class MainWindow: @unchecked Sendable {
 
     private let jumpButton = gtk_button_new()!
     private var unseenRows = 0
+    private var followsBottom = true
+    private var isAutoScrolling = false
 
     private let findBar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let findEntry = gtk_search_entry_new()!
@@ -283,9 +285,18 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), overlay)
 
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
+            // `changed` fires when the content's extent moves — including while the window is
+            // unfocused and doing no other work — which is the only moment at which "stay at the
+            // bottom" can be honoured correctly.
+            Gtk.connect(UnsafeMutableRawPointer(adjustment), "changed") { [weak self] in
+                guard let self, self.followsBottom else { return }
+                self.pinToBottom()
+            }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
-                guard let self, self.isNearBottom() else { return }
-                self.clearUnseen()
+                guard let self, !self.isAutoScrolling else { return }
+                let atBottom = self.isNearBottom()
+                self.followsBottom = atBottom
+                if atBottom { self.clearUnseen() }
             }
         }
 
@@ -672,6 +683,7 @@ final class MainWindow: @unchecked Sendable {
         windowLimit = 400
         lastFullRows = []
         lastFullCount = 0
+        followsBottom = true
         gtk_widget_set_visible(earlierButton, 0)
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry.session.id)
@@ -831,7 +843,10 @@ final class MainWindow: @unchecked Sendable {
             rowWidgets = []
             placeholderShown = false
         }
-        let stick = initialFill || isNearBottom()
+        // Whether to follow is what the person last chose, not where the scrollbar happens to be:
+        // an unfocused window does not lay out, so its position is stale exactly when new rows
+        // arrive.
+        let stick = initialFill || followsBottom
         let growth = initialFill || rebuildingInPlace ? 0 : appended
 
         var prefix = 0
@@ -1740,17 +1755,32 @@ final class MainWindow: @unchecked Sendable {
         return value >= ceiling - 60
     }
 
-    private func scrollToBottom() {
+    /// Following is a decision, not a measurement. A window that is not focused stops laying out,
+    /// so the scroll extent a "go to the bottom" would read is the extent from before the new rows
+    /// — which is why an unfocused chat drifts up as it streams. Instead the intent is held here
+    /// and re-applied whenever the extent actually changes, focused or not.
+    private func setFollowing(_ following: Bool) {
+        followsBottom = following
+        if following { pinToBottom() }
+    }
+
+    private func pinToBottom() {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
-        let raw = UInt(bitPattern: adjustment)
-        Gtk.onMain {
-            guard let base = UnsafeMutableRawPointer(bitPattern: raw) else { return }
-            let adjustment: UnsafeMutablePointer<GtkAdjustment> = ptr(base)
-            gtk_adjustment_set_value(
-                adjustment,
-                gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        isAutoScrolling = true
+        gtk_adjustment_set_value(
+            adjustment,
+            gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        isAutoScrolling = false
+    }
+
+    private func scrollToBottom() {
+        setFollowing(true)
+        let raw = transcriptScroller.map { UInt(bitPattern: $0) } ?? 0
+        Gtk.onMain { [weak self] in
+            guard let self, raw != 0 else { return }
+            self.pinToBottom()
         }
     }
 
