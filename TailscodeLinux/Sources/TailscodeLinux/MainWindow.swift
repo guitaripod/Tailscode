@@ -208,6 +208,11 @@ final class MainWindow: @unchecked Sendable {
                     self.jumpToBottom()
                 case "settings":
                     self.presentSettings()
+                case "reader":
+                    self.context.presentText?(
+                        "Compaction summary", "COMPACTED · 527.8k → 24.8k · 2m 4s",
+                        String(repeating: "The summary the CLI wrote, paragraph after paragraph. ", count: 200),
+                        false)
                 case "scale":
                     Preferences.setScale((Double(argument) ?? 100) / 100, for: .prose)
                     Preferences.setScale((Double(argument) ?? 100) / 100, for: .mono)
@@ -281,6 +286,7 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
+        Gtk.addClass(toolbar, "sidebar-pane")
         sidebarPane = toolbar
         return toolbar
     }
@@ -562,6 +568,13 @@ final class MainWindow: @unchecked Sendable {
         }
         context.openImage = { [weak self] key, name in
             Gtk.onMain { [weak self] in self?.presentImage(key: key, name: name) }
+        }
+        context.presentText = { [weak self] title, subtitle, body, mono in
+            Gtk.onMain { [weak self] in
+                Dialogs.reader(
+                    title: title, subtitle: subtitle, body: body, mono: mono,
+                    parent: self?.window)
+            }
         }
     }
 

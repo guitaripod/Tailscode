@@ -16,6 +16,8 @@ final class TranscriptContext: @unchecked Sendable {
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
     var openImage: (@Sendable (String, String) -> Void)?
+    var presentText:
+        (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     private var textureOrder: [String] = []
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
@@ -378,8 +380,8 @@ struct TranscriptRow: Hashable {
     }
 
     /// A compaction is a seam, not a message: the rule says the transcript restarted here, the
-    /// card says what was traded for what, and the CLI's machine-facing summary stays behind a
-    /// disclosure rather than in the flow.
+    /// line says what was traded for what, and the CLI's machine-facing summary — tens of
+    /// thousands of words — opens in a reader window rather than cramped into the flow.
     private static func seam(
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
@@ -401,24 +403,16 @@ struct TranscriptRow: Hashable {
             ? Localized.text("COMPACTED") : "COMPACTED · " + facts.joined(separator: " · ")
 
         if let summary = compaction.summary, !summary.isEmpty {
-            let header = Gtk.label(title, css: "seam-text", selectable: false)
-            let toggle = context.onToggle
-            gtk_box_append(
-                ptr(column),
-                Gtk.disclosure(
-                    header: header, expanded: context.isExpanded(key),
-                    onToggle: { open in toggle?(key, open) }
-                ) {
-                    let body = Gtk.label(summary, css: "reasoning-body", wrap: true)
-                    Gtk.margins(body, leading: 14)
-                    let scroller = gtk_scrolled_window_new()!
-                    gtk_scrolled_window_set_policy(
-                        op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-                    gtk_scrolled_window_set_max_content_height(op(scroller), 340)
-                    gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
-                    gtk_scrolled_window_set_child(op(scroller), body)
-                    return scroller
-                })
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+            gtk_box_append(ptr(row), Gtk.label(title, css: "seam-text", selectable: false))
+            let present = context.presentText
+            let facts = title
+            let read = Gtk.button(Localized.text("read summary"), css: ["flat", "seam-read"]) {
+                present?(Localized.text("Compaction summary"), facts, summary, false)
+            }
+            gtk_widget_set_valign(read, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(row), read)
+            gtk_box_append(ptr(column), row)
         } else {
             gtk_box_append(ptr(column), Gtk.label(title, css: "seam-text", selectable: false))
         }

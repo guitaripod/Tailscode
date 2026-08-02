@@ -118,6 +118,71 @@ enum MatrixTheme {
         let special = palette.special
 
         return """
+        :root {
+            --accent-color: \(accent);
+            --accent-bg-color: \(accent);
+            --accent-fg-color: \(palette.onAccent);
+            --window-bg-color: \(canvas);
+            --window-fg-color: \(text);
+            --view-bg-color: \(canvas);
+            --view-fg-color: \(text);
+            --headerbar-bg-color: \(canvasRaised);
+            --headerbar-fg-color: \(text);
+            --headerbar-border-color: \(rule);
+            --headerbar-backdrop-color: \(canvas);
+            --headerbar-shade-color: \(rule);
+            --headerbar-darker-shade-color: \(rule);
+            --sidebar-bg-color: \(canvasRaised);
+            --sidebar-fg-color: \(text);
+            --sidebar-backdrop-color: \(canvas);
+            --sidebar-border-color: \(rule);
+            --sidebar-shade-color: \(rule);
+            --secondary-sidebar-bg-color: \(canvasRaised);
+            --secondary-sidebar-fg-color: \(text);
+            --secondary-sidebar-backdrop-color: \(canvas);
+            --secondary-sidebar-border-color: \(rule);
+            --card-bg-color: \(canvasRaised);
+            --card-fg-color: \(text);
+            --card-shade-color: \(rule);
+            --dialog-bg-color: \(canvas);
+            --dialog-fg-color: \(text);
+            --popover-bg-color: \(canvasRaised);
+            --popover-fg-color: \(text);
+            --popover-shade-color: \(rule);
+            --shade-color: alpha(\(rule), 0.6);
+            --destructive-color: \(danger);
+            --destructive-bg-color: \(danger);
+            --destructive-fg-color: \(palette.onAccent);
+            --warning-color: \(warn);
+            --warning-bg-color: \(warn);
+            --warning-fg-color: \(palette.onAccent);
+            --error-color: \(danger);
+            --error-bg-color: \(danger);
+            --error-fg-color: \(palette.onAccent);
+            --success-color: \(accent);
+            --success-bg-color: \(accent);
+            --success-fg-color: \(palette.onAccent);
+        }
+        headerbar {
+            box-shadow: none;
+            border-bottom: 1px solid \(rule);
+            min-height: 40px;
+        }
+        headerbar button.flat { color: \(textDim); }
+        headerbar button.flat:hover { color: \(text); background-color: alpha(\(accent), 0.12); }
+        paned > separator { background-color: \(rule); }
+        .sidebar-pane { background-color: \(canvasRaised); }
+        .sidebar-pane entry {
+            background-color: \(canvas);
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 6px;
+            box-shadow: none;
+            font-size: \(c(0.85));
+            min-height: 26px;
+        }
+        .sidebar-pane entry:focus-within { border-color: \(accent); }
+        .sidebar-pane entry image { color: \(textDim); }
         .canvas {
             background-color: \(canvas);
             color: \(text);
@@ -241,12 +306,25 @@ enum MatrixTheme {
         .pill-saved { color: \(info); border: 1px solid \(info); }
         .pill-offline { color: \(textDim); border: 1px solid \(rule); }
 
-        .row-focused {
-            background-color: \(canvasRaised);
+        .session-row {
+            padding: 0;
+            border: none;
+            border-radius: 6px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .session-row:hover { background-color: alpha(\(accent), 0.08); }
+        .session-row:active { background-color: alpha(\(accent), 0.16); }
+        .row-focused, .row-focused:hover, .row-focused:active {
+            background-color: alpha(\(accent), 0.14);
             box-shadow: inset 2px 0 0 \(accent);
         }
-        .row-title { font-size: \(c(0.92)); }
-        .row-title-unread { font-size: \(c(0.92)); font-weight: 700; }
+        .row-focused .row-title, .row-focused .row-title-unread { color: \(text); }
+        .row-focused .row-detail { opacity: 0.85; }
+        .row-title { font-size: \(c(0.92)); color: \(text); }
+        .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
         .row-detail { font-size: \(c(0.78)); opacity: 0.65; font-family: monospace; }
         .section-header {
             font-size: \(c(0.72));
@@ -307,6 +385,29 @@ enum MatrixTheme {
             font-family: monospace;
             font-size: \(p(0.78));
             letter-spacing: 0.08em;
+        }
+        .seam-read, .seam-read:hover {
+            font-family: monospace;
+            font-size: \(m(0.75));
+            min-height: 0;
+            padding: 1px 8px;
+            color: \(info);
+            background-color: transparent;
+            border: 1px solid \(rule);
+            border-radius: 3px;
+            box-shadow: none;
+        }
+        .seam-read:hover { border-color: \(info); background-color: alpha(\(info), 0.08); }
+        .reader-body, .reader-body text {
+            background-color: \(canvas);
+            color: \(text);
+            font-size: \(p(0.95));
+        }
+        .reader-mono, .reader-mono text {
+            background-color: \(canvas);
+            color: \(text);
+            font-family: monospace;
+            font-size: \(m(0.85));
         }
         .subagent-card {
             border-left: 2px solid \(info);

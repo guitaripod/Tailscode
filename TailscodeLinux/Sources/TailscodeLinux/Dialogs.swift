@@ -93,6 +93,69 @@ enum Dialogs {
         gtk_window_present(ptr(window))
     }
 
+    /// Long machine-facing prose — a compaction summary, a tool's full output — reads in a window
+    /// of its own: selectable, scrollable, copyable, never squeezed into a few hundred pixels of
+    /// the conversation's flow.
+    static func reader(
+        title: String, subtitle: String? = nil, body: String, mono: Bool = false,
+        parent: UnsafeMutablePointer<GtkWidget>?
+    ) {
+        let window = gtk_window_new()!
+        gtk_window_set_title(ptr(window), title)
+        gtk_window_set_modal(ptr(window), 1)
+        gtk_window_set_default_size(ptr(window), 760, 600)
+        if let parent, let root = gtk_widget_get_root(parent) {
+            gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
+        }
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(column, "canvas")
+        if let subtitle {
+            let header = Gtk.label(subtitle, css: "seam-text", selectable: false)
+            gtk_widget_set_halign(header, GTK_ALIGN_START)
+            Gtk.margins(header, top: 12, bottom: 10, leading: 18, trailing: 18)
+            gtk_box_append(ptr(column), header)
+            gtk_box_append(ptr(column), Gtk.hairline())
+        }
+
+        let view = gtk_text_view_new()!
+        gtk_text_view_set_editable(ptr(UnsafeMutableRawPointer(view)), 0)
+        gtk_text_view_set_cursor_visible(ptr(UnsafeMutableRawPointer(view)), 0)
+        gtk_text_view_set_wrap_mode(ptr(UnsafeMutableRawPointer(view)), GTK_WRAP_WORD_CHAR)
+        gtk_text_view_set_left_margin(ptr(UnsafeMutableRawPointer(view)), 18)
+        gtk_text_view_set_right_margin(ptr(UnsafeMutableRawPointer(view)), 18)
+        gtk_text_view_set_top_margin(ptr(UnsafeMutableRawPointer(view)), 14)
+        gtk_text_view_set_bottom_margin(ptr(UnsafeMutableRawPointer(view)), 14)
+        Gtk.addClass(view, mono ? "reader-mono" : "reader-body")
+        if let buffer = gtk_text_view_get_buffer(ptr(UnsafeMutableRawPointer(view))) {
+            gtk_text_buffer_set_text(buffer, body, -1)
+        }
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_widget_set_vexpand(scroller, 1)
+        gtk_scrolled_window_set_child(op(scroller), view)
+        gtk_box_append(ptr(column), scroller)
+
+        gtk_box_append(ptr(column), Gtk.hairline())
+        let actions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(actions, GTK_ALIGN_END)
+        Gtk.margins(actions, top: 10, bottom: 12, leading: 18, trailing: 18)
+        gtk_box_append(
+            ptr(actions),
+            Gtk.button(Localized.text("Copy")) { Gtk.copyToClipboard(body) })
+        let windowBits = UInt(bitPattern: window)
+        gtk_box_append(
+            ptr(actions),
+            Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+                gtk_window_destroy(ptr(raw))
+            })
+        gtk_box_append(ptr(column), actions)
+
+        gtk_window_set_child(ptr(window), column)
+        gtk_window_present(ptr(window))
+    }
+
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an instruction
     /// for what the summary must keep — so the preflight says all three.
     static func compactPreflight(

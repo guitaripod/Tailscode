@@ -21,7 +21,8 @@ enum ToolRowView {
         return Gtk.disclosure(
             header: header, expanded: expanded, onToggle: { open in toggle?(key, open) }
         ) {
-            let body = bodyColumn(call, summary) ?? Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            let body = bodyColumn(call, summary, context: context)
+                ?? Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.margins(body, leading: 26)
             return body
         }
@@ -127,9 +128,9 @@ enum ToolRowView {
     }
 
     /// What the disclosure opens onto, or nil when the line already says everything.
-    private static func bodyColumn(_ call: ToolCall, _ summary: ToolCallSummary)
-        -> UnsafeMutablePointer<GtkWidget>?
-    {
+    private static func bodyColumn(
+        _ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget>? {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         var hasContent = false
 
@@ -175,10 +176,26 @@ enum ToolRowView {
             gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
             gtk_scrolled_window_set_child(op(scroller), label)
             gtk_box_append(ptr(column), scroller)
+            if let full = fullOutput(call, summary), full.count > 1500 {
+                let present = context.presentText
+                let name = call.name
+                let detail = summary.title ?? call.title
+                let read = Gtk.button(
+                    Localized.text("open full output"), css: ["flat", "seam-read"]
+                ) {
+                    present?(name, detail, full, true)
+                }
+                gtk_widget_set_halign(read, GTK_ALIGN_START)
+                gtk_box_append(ptr(column), read)
+            }
             hasContent = true
         }
 
         return hasContent ? column : nil
+    }
+
+    private static func fullOutput(_ call: ToolCall, _ summary: ToolCallSummary) -> String? {
+        call.status == .error ? call.sanitizedOutput : summary.displayOutput
     }
 
     private static func displayableOutput(_ call: ToolCall, _ summary: ToolCallSummary) -> String? {

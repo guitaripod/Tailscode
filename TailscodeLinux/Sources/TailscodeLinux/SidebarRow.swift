@@ -37,6 +37,7 @@ enum SidebarRow {
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "session-row")
         if focused { Gtk.addClass(button, "row-focused") }
 
         let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
