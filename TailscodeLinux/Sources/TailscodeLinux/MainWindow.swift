@@ -23,6 +23,7 @@ final class MainWindow: @unchecked Sendable {
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
     private var contextEstimate: Int?
+    private var echoedPrompt: String?
     private var notice: String?
     private let entryView = gtk_text_view_new()!
     private let sendButton = gtk_button_new_with_label("Send")!
@@ -714,6 +715,7 @@ final class MainWindow: @unchecked Sendable {
         inFlightSubagents = []
         attachments = []
         pastedImageCount = 0
+        echoedPrompt = nil
         renderAttachments()
         clearUnseen()
         windowLimit = 400
@@ -850,6 +852,20 @@ final class MainWindow: @unchecked Sendable {
     /// button that widens the window — the full rows are kept, so nothing is refetched.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         lastState = state
+        var rows = rows
+        // The echo stands only until the transcript carries the same words back.
+        if let echoedPrompt {
+            if state.messages.contains(where: {
+                $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
+            }) {
+                self.echoedPrompt = nil
+            } else {
+                if !rows.isEmpty {
+                    rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
+                }
+                rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
+            }
+        }
         lastFullRows = rows
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
@@ -1977,6 +1993,10 @@ final class MainWindow: @unchecked Sendable {
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
         if handleSlashCommand(text) { return }
+        // The prompt is on screen before the server has heard of it. A busy bridge can take
+        // seconds to answer, and a composer that empties into silence reads as a hang.
+        echoedPrompt = text
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
         attachments = []
         renderAttachments()
         let model = chosenModel

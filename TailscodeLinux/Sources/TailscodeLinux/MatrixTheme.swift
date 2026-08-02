@@ -91,16 +91,21 @@ enum MatrixTheme {
             border-top: 1px solid \(rule);
             padding: 3px 22px;
         }
-        .seg {
+        .seg, .seg > button, .seg button {
             font-family: monospace;
             font-size: \(m(0.78));
             min-height: 0;
-            padding: 1px 8px;
+            padding: 1px 6px;
             border: none;
             border-radius: 3px;
+            background: none;
             background-color: transparent;
+            box-shadow: none;
+            outline: none;
+            text-shadow: none;
         }
-        .seg:hover { background-color: \(canvas); }
+        .seg:hover, .seg button:hover { background-color: \(canvas); }
+        .seg arrow { -gtk-icon-size: 10px; opacity: 0.5; }
         .seg-idle { color: \(textDim); }
         .seg-dim { color: \(textDim); }
         .seg-live { color: \(phosphor); }
