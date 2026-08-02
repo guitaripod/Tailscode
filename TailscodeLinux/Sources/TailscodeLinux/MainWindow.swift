@@ -1587,10 +1587,30 @@ final class MainWindow: @unchecked Sendable {
     private func effortPillText() -> String {
         if let chosenEffort { return chosenEffort }
         if let stored = currentEntry?.session.reasoningEffort, !stored.isEmpty { return stored }
-        guard let options = currentBackend?.reasoningEffortOptions, !options.isEmpty else {
-            return Localized.text("no effort control")
-        }
+        if let observed = observedEffort() { return observed }
+        guard !effortOptions().isEmpty else { return Localized.text("no effort control") }
         return Localized.text("server effort")
+    }
+
+    private func observedEffort() -> String? {
+        guard let messages = lastState?.messages else { return nil }
+        for message in messages.reversed() where message.role == .assistant {
+            if let effort = message.reasoningEffort, !effort.isEmpty { return effort }
+        }
+        return nil
+    }
+
+    /// Effort is a property of the model on servers whose catalog says so (opencode's variants
+    /// differ per model); the backend-wide list is the fallback for agents like Claude Code
+    /// where every model takes the same levels.
+    private func effortOptions() -> [String] {
+        let active = chosenModel?.modelID ?? observedModelID() ?? currentEntry?.session.model
+        if let active, let variants = models.first(where: { $0.id == active })?.variants,
+            !variants.isEmpty
+        {
+            return variants
+        }
+        return currentBackend?.reasoningEffortOptions ?? []
     }
 
     private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
@@ -1619,7 +1639,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
-        let options = currentBackend?.reasoningEffortOptions ?? []
+        let options = effortOptions()
         guard !options.isEmpty else {
             return [(Localized.text("This agent has no effort control"), nil, {})]
         }

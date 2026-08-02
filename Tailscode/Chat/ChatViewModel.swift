@@ -133,7 +133,26 @@ final class ChatViewModel {
 
     var supportsModelSelection: Bool { backend.capabilities.supportsModelSelection }
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
-    var reasoningEffortOptions: [String] { backend.reasoningEffortOptions }
+
+    /// Effort is a property of the model where the catalog says so (opencode's variants differ
+    /// per model); the backend-wide list serves agents whose models all take the same levels.
+    var reasoningEffortOptions: [String] {
+        if let variants = activeModelVariants, !variants.isEmpty { return variants }
+        return backend.reasoningEffortOptions
+    }
+
+    private var activeModelVariants: [String]? {
+        let active = selectedModel?.modelID ?? lastAssistantModelID
+        guard let active else { return nil }
+        return knownModels.first { $0.id == active }?.variants
+    }
+
+    private var lastAssistantModelID: String? {
+        for message in state.messages.reversed() where message.role == .assistant {
+            if let id = message.modelID, !id.isEmpty { return id }
+        }
+        return nil
+    }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
 
     /// Whether the current model can receive an image attachment. Falls back
