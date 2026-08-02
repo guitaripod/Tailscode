@@ -49,11 +49,21 @@ final class SessionListViewController: UIViewController {
         configureDataSource()
         bind()
         contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
         Task {
             await viewModel.load()
             hasLoadedOnce = true
             applySnapshot()
         }
+    }
+
+    /// Coming back to the app with this list on screen must not show the world as it was when
+    /// the app was put away — `viewWillAppear` never fires for that path, only this does.
+    @objc private func appDidBecomeActive() {
+        guard hasAppeared, viewIfLoaded?.window != nil else { return }
+        Task { await viewModel.load() }
     }
 
     override func viewWillAppear(_ animated: Bool) {

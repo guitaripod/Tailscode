@@ -2329,8 +2329,20 @@ final class ChatViewController: UIViewController {
                     flushActivity()
                     if text.isEmpty { continue }
                     if message.role == .user {
-                        rows.append(
-                            ChatRow(id: id, messageID: message.id, role: message.role, content: .text(text)))
+                        let (interrupted, remainder) = Self.strippedInterruption(text)
+                        if interrupted {
+                            rows.append(
+                                ChatRow(
+                                    id: "\(id):interrupted", messageID: message.id,
+                                    role: .system,
+                                    content: .timestamp(String(localized: "interrupted"))))
+                        }
+                        if !remainder.isEmpty {
+                            rows.append(
+                                ChatRow(
+                                    id: id, messageID: message.id, role: message.role,
+                                    content: .text(remainder)))
+                        }
                     } else {
                         let segments = MessageSegment.split(text)
                         for (index, segment) in segments.enumerated() {
@@ -2373,6 +2385,18 @@ final class ChatViewController: UIViewController {
                 pendingUnattached, groupID: "session", messageID: "agents", role: .assistant,
                 expandedGroups: agents.expandedGroups))
         return fuseActivity(rows)
+    }
+
+    /// The CLI records an Escape as a user line reading `[Request interrupted by user]` (or
+    /// `… for tool use]`, sometimes with the real next prompt appended). That is a seam in the
+    /// turn, not something the person said — it renders as a dim marker, and only the text they
+    /// actually typed gets a bubble.
+    static func strippedInterruption(_ text: String) -> (interrupted: Bool, remainder: String) {
+        guard text.hasPrefix("[Request interrupted") else { return (false, text) }
+        guard let close = text.firstIndex(of: "]") else { return (true, "") }
+        let remainder = String(text[text.index(after: close)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (true, remainder)
     }
 
     /// Above this many agents with no spawn point of their own, the cards

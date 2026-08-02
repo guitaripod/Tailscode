@@ -380,6 +380,12 @@ enum MatrixTheme {
         .answer-option:hover { border-color: \(info); }
         .answer-selected { border-color: \(accent); color: \(accent); }
 
+        .interruption {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(m(0.8));
+            font-style: italic;
+        }
         .seam-text {
             color: \(warn);
             font-family: monospace;

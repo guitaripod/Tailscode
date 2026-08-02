@@ -44,6 +44,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkInterruption()
+            report("interruption: \(checks) marker shapes")
+        } catch {
+            report("interruption: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkStatusBand()
             report("status band: \(checks) states say the right thing")
         } catch {
@@ -256,6 +264,42 @@ public enum SelfTest {
 
     /// The transcript's markdown, checked as text rather than as pixels: a mis-escaped `<` is a
     /// Pango parse error that blanks a whole message, which is the failure worth catching early.
+    /// The Escape seam: the CLI's `[Request interrupted …]` user lines become markers, the text
+    /// the person actually typed survives, and an ordinary prompt passes through untouched.
+    private static func checkInterruption() throws -> Int {
+        let cases: [(input: String, interrupted: Bool, remainder: String, label: String)] = [
+            ("[Request interrupted by user]", true, "", "bare escape"),
+            ("[Request interrupted by user for tool use]", true, "", "tool rejection"),
+            (
+                "[Request interrupted by user for tool use] Continue from where you left off.",
+                true, "Continue from where you left off.", "rejection with a prompt"
+            ),
+            ("deploy the fix", false, "deploy the fix", "an ordinary prompt"),
+            ("[Request interrupted", true, "", "truncated marker"),
+        ]
+        for (input, interrupted, remainder, label) in cases {
+            let result = TranscriptRow.strippedInterruption(input)
+            guard result.interrupted == interrupted, result.remainder == remainder else {
+                throw SelfTestFailure("interruption case failed: \(label) → \(result)")
+            }
+        }
+        let message = ChatMessage(
+            id: "m", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "p",
+                    kind: .text("[Request interrupted by user for tool use] keep going"))
+            ],
+            createdAt: Date())
+        let rows = TranscriptRow.rows(for: message)
+        guard rows.count == 2, case .interruption = rows[0].kind,
+            case .userText("keep going") = rows[1].kind
+        else {
+            throw SelfTestFailure("interruption rows wrong: \(rows.map(\.kind))")
+        }
+        return cases.count + 1
+    }
+
     private static func checkMarkup() throws -> Int {
         let cases: [(input: String, contains: [String], label: String)] = [
             ("**bold** here", ["<b>bold</b>"], "bold"),

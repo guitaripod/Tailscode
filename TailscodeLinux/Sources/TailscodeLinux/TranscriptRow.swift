@@ -94,6 +94,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
         case userText(String)
+        case interruption
         /// The markup rides in the row, computed where the rows are computed — off the GLib main
         /// context — so painting a prose row is a label set, not a markdown parse. The palette's
         /// colors are baked into it, which is what makes a theme change a row change the diff sees.
@@ -119,6 +120,18 @@ struct TranscriptRow: Hashable {
         ].compactMap { $0 }.joined(separator: " ")
     }
 
+    /// The CLI records an Escape as a user line reading `[Request interrupted by user]` (or
+    /// `… for tool use]`, sometimes with the next real prompt appended). That is a seam in the
+    /// turn, not something the person said — it renders as a dim marker, and only the text they
+    /// actually typed gets a prompt row.
+    static func strippedInterruption(_ text: String) -> (interrupted: Bool, remainder: String) {
+        guard text.hasPrefix("[Request interrupted") else { return (false, text) }
+        guard let close = text.firstIndex(of: "]") else { return (true, "") }
+        let remainder = String(text[text.index(after: close)...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (true, remainder)
+    }
+
     static func rows(for message: ChatMessage) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         for part in message.parts {
@@ -129,7 +142,13 @@ struct TranscriptRow: Hashable {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !stripped.isEmpty else { continue }
                 if message.role == .user {
-                    rows.append(TranscriptRow(key: key, kind: .userText(stripped)))
+                    let (interrupted, remainder) = Self.strippedInterruption(stripped)
+                    if interrupted {
+                        rows.append(TranscriptRow(key: "\(key):int", kind: .interruption))
+                    }
+                    if !remainder.isEmpty {
+                        rows.append(TranscriptRow(key: key, kind: .userText(remainder)))
+                    }
                     continue
                 }
                 for (index, segment) in MessageSegment.split(stripped).enumerated() {
@@ -235,6 +254,8 @@ struct TranscriptRow: Hashable {
             return reference.filename ?? reference.path ?? ""
         case .compaction(let compaction):
             return compaction.summary ?? ""
+        case .interruption:
+            return "interrupted"
         case .turnBreak:
             return ""
         }
@@ -244,6 +265,11 @@ struct TranscriptRow: Hashable {
         switch kind {
         case .userText(let text):
             return Self.prompt(text)
+        case .interruption:
+            let label = Gtk.label(
+                "⌧ " + Localized.text("interrupted"), css: "interruption", selectable: false)
+            gtk_widget_set_halign(label, GTK_ALIGN_START)
+            return label
         case .agentProse(_, let markup):
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
