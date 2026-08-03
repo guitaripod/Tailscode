@@ -2204,9 +2204,13 @@ final class ChatViewController: UIViewController {
 
     /// One chip carries both the model and the effort, and names them: which
     /// model a chat is running was previously hidden behind a bare `cpu` icon.
+    /// The title reads the displayed derivation — pick, then transcript, then
+    /// session record — while the menu's checkmarks stay on the explicit pick,
+    /// so "Auto" remains checked for a chat the server is still deciding for.
     private func modelBarButton() -> UIBarButtonItem {
         let choice = ModelChoice(model: viewModel.selectedModel, effort: viewModel.currentEffort)
-        let label = ModelBadge.label(model: choice.model, effort: choice.effort)
+        let label = ModelBadge.label(
+            model: viewModel.displayedModel, effort: viewModel.displayedEffort)
         let elements = ModelMenu.elements(
             models: viewModel.supportsModelSelection ? availableModels : [],
             choice: choice,

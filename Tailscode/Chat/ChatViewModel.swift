@@ -142,7 +142,7 @@ final class ChatViewModel {
     }
 
     private var activeModelVariants: [String]? {
-        let active = selectedModel?.modelID ?? lastAssistantModelID
+        let active = selectedModel?.modelID ?? lastAssistantModelID ?? session.model
         guard let active else { return nil }
         return knownModels.first { $0.id == active }?.variants
     }
@@ -152,6 +152,36 @@ final class ChatViewModel {
             if let id = message.modelID, !id.isEmpty { return id }
         }
         return nil
+    }
+
+    private var lastAssistantEffort: String? {
+        for message in state.messages.reversed() where message.role == .assistant {
+            if let effort = message.reasoningEffort, !effort.isEmpty { return effort }
+        }
+        return nil
+    }
+
+    /// What the chat is actually being answered by, which is not always what
+    /// the session record says: a `/model` typed into the CLI changes the model
+    /// for every later turn without the server's stored session ever hearing
+    /// about it. An explicit pick wins, then the transcript — the last
+    /// assistant message names the model that wrote it — and the session record
+    /// is the fallback for a chat that has no answer in it yet.
+    var displayedModel: ModelSelection? {
+        if let selectedModel { return selectedModel }
+        if let observed = lastAssistantModelID {
+            return ModelSelection(providerID: "server", modelID: observed)
+        }
+        if let stored = session.model, !stored.isEmpty {
+            return ModelSelection(providerID: "server", modelID: stored)
+        }
+        return nil
+    }
+
+    var displayedEffort: String? {
+        if let currentEffort { return currentEffort }
+        if let stored = session.reasoningEffort, !stored.isEmpty { return stored }
+        return lastAssistantEffort
     }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
 
@@ -365,7 +395,11 @@ final class ChatViewModel {
                     self.refreshTitleFromServer()
                     self.refreshTitleFromServer(delay: .seconds(12))
                 }
+                let displayedBefore = (self.displayedModel, self.displayedEffort)
                 self.state = state
+                if (self.displayedModel, self.displayedEffort) != displayedBefore {
+                    self.onModelChange?()
+                }
                 if state.status == .running { self.queueHeldAfterFailure = false }
                 self.onState?(state)
                 let awaiting =
