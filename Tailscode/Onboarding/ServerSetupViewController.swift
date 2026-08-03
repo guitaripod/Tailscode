@@ -59,7 +59,7 @@ final class ServerSetupViewController: UIViewController {
     private var tailnetAddress: String?
     private var verification: Verification = .idle
     private var authTarget: URL?
-    private let generatedPassword = ServerSetupViewController.makePassword()
+    private let generatedPassword = BridgeInstall.makePassword()
     private var probeTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var tailnetTicker: Task<Void, Never>?
@@ -150,7 +150,7 @@ final class ServerSetupViewController: UIViewController {
     /// The line carries the password too, so take it.
     private func apply(pasted text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let password = Self.password(in: trimmed) {
+        if let password = BridgeInstall.password(in: trimmed) {
             showPasswordField(focus: false)
             passwordField.setText(password)
             passwordNote.text = String(localized: "Password taken from what you pasted.")
@@ -164,19 +164,6 @@ final class ServerSetupViewController: UIViewController {
         }
         Theme.Haptics.tap()
         addressChanged()
-    }
-
-    private static func password(in text: String) -> String? {
-        for token in text.split(whereSeparator: { $0.isWhitespace }) {
-            guard let separator = token.range(of: "="),
-                token[token.startIndex..<separator.lowerBound].uppercased().hasSuffix("PASSWORD")
-            else { continue }
-            let value = token[separator.upperBound...].trimmingCharacters(
-                in: CharacterSet(charactersIn: "\"'"))
-            guard !value.isEmpty else { continue }
-            return value
-        }
-        return nil
     }
 
     func prefill(address: String) {
@@ -472,16 +459,7 @@ final class ServerSetupViewController: UIViewController {
     }
 
     private func command(for backend: AgentType) -> String {
-        switch backend {
-        case .openCode:
-            return "opencode serve --hostname 0.0.0.0 --port 4096"
-        case .claudeCode:
-            return """
-                git clone https://github.com/guitaripod/claude-bridge
-                cd claude-bridge && swift build -c release
-                BRIDGE_BIND=0.0.0.0 BRIDGE_PASSWORD=\(generatedPassword) .build/release/claude-bridge
-                """
-        }
+        BridgeInstall.command(for: backend, password: generatedPassword)
     }
 
     /// A password only works if both sides carry the same one, so the app mints it,
@@ -503,12 +481,6 @@ final class ServerSetupViewController: UIViewController {
             localized: "Filled in below, so this phone and the bridge carry the same password.")
         passwordNote.isHidden = false
     }
-
-    private static func makePassword() -> String {
-        let alphabet = Array("abcdefghijkmnopqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789")
-        return String((0..<16).map { _ in alphabet.randomElement() ?? "x" })
-    }
-
 
     @objc private func didBecomeActive() {
         refreshTailnet()
@@ -694,7 +666,8 @@ final class ServerSetupViewController: UIViewController {
             let diagnosis = ConnectDiagnosis.make(
                 outcome: outcome, address: address, tailnetAddress: tailnetAddress,
                 alternatePort: alternate, sentPassword: !passwordField.text.isEmpty,
-                reachability: reachability)
+                reachability: reachability, deviceName: String(localized: "This iPhone"),
+                offersLocalNetworkSettings: true)
         else { return }
         setVerification(.failed(diagnosis))
     }

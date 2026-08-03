@@ -1,0 +1,172 @@
+import CodingAgentKit
+import Foundation
+
+/// Turns a probe outcome into the one thing that is actually wrong and the one
+/// tap that fixes it. A failed connection used to read `Unreachable: <URLError>`,
+/// which blames the server for what is usually a VPN toggle on this machine.
+/// Toolkit-free: `symbol` is an SF Symbols name that desktop clients map to
+/// their own glyphs, and `fix` is an intent each client wires to its own door.
+public struct ConnectDiagnosis: Equatable, Sendable {
+    public enum Fix: Equatable, Sendable {
+        case none
+        case openTailscale
+        case openAppSettings
+        case retry
+        case retryOtherPort(URL)
+        case usePlainHTTP(URL)
+        case revealPassword
+        case seePro
+    }
+
+    public let symbol: String
+    public let title: String
+    public let detail: String
+    public let fix: Fix
+    public let actionTitle: String?
+
+    public init(symbol: String, title: String, detail: String, fix: Fix, actionTitle: String?) {
+        self.symbol = symbol
+        self.title = title
+        self.detail = detail
+        self.fix = fix
+        self.actionTitle = actionTitle
+    }
+
+    public static func make(
+        outcome: ConnectionProbe.Outcome,
+        address: HostAddress,
+        tailnetAddress: String?,
+        alternatePort: URL?,
+        sentPassword: Bool,
+        reachability: PortReachability.Verdict?,
+        deviceName: String = Localized.text("This device"),
+        offersLocalNetworkSettings: Bool = false
+    ) -> ConnectDiagnosis? {
+        switch outcome {
+        case .ok:
+            return nil
+        case .authFailed:
+            guard sentPassword else {
+                return ConnectDiagnosis(
+                    symbol: "lock",
+                    title: Localized.text("This server wants a password"),
+                    detail: Localized.text(
+                        "Good news: something is answering at %@. Enter the password it was started with — for claude-bridge that is BRIDGE_PASSWORD.",
+                        address.displayHost),
+                    fix: .revealPassword,
+                    actionTitle: nil)
+            }
+            return ConnectDiagnosis(
+                symbol: "lock.trianglebadge.exclamationmark",
+                title: Localized.text("That password was rejected"),
+                detail: Localized.text(
+                    "The server answered, so the address is right. claude-bridge wants the password you passed as BRIDGE_PASSWORD; opencode needs none unless you set one."
+                ),
+                fix: .revealPassword,
+                actionTitle: nil)
+        case .notAnAgentServer:
+            if address.url.scheme == "https", let plain = plainHTTP(for: address.url) {
+                return httpsDiagnosis(plain: plain)
+            }
+            let detail = Localized.text(
+                "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098.",
+                address.displayHost)
+            if let alternatePort, let port = alternatePort.port {
+                return ConnectDiagnosis(
+                    symbol: "questionmark.app",
+                    title: Localized.text("That isn't an agent server"),
+                    detail: detail,
+                    fix: .retryOtherPort(alternatePort),
+                    actionTitle: Localized.text("Try port %@", "\(port)"))
+            }
+            return ConnectDiagnosis(
+                symbol: "questionmark.app",
+                title: Localized.text("That isn't an agent server"),
+                detail: detail,
+                fix: .retry,
+                actionTitle: Localized.text("Try again"))
+        case .unreachable:
+            if address.url.scheme == "https", let plain = plainHTTP(for: address.url) {
+                return httpsDiagnosis(plain: plain)
+            }
+            if tailnetAddress == nil {
+                return ConnectDiagnosis(
+                    symbol: "wifi.exclamationmark",
+                    title: Localized.text("%@ isn't on your tailnet", deviceName),
+                    detail: Localized.text(
+                        "Nothing can answer until Tailscale is connected here. Open it, sign in to the same account as your other machine, then come back."
+                    ),
+                    fix: .openTailscale,
+                    actionTitle: Localized.text("Open Tailscale"))
+            }
+            switch reachability {
+            case .refused:
+                return ConnectDiagnosis(
+                    symbol: "bolt.horizontal.circle",
+                    title: Localized.text("Nothing is listening on %@", address.displayHost),
+                    detail: Localized.text(
+                        "The machine is reachable, so the address is right — but no agent is bound to that port. Start it there, and make sure it binds 0.0.0.0 rather than localhost."
+                    ),
+                    fix: .retry,
+                    actionTitle: Localized.text("Try again"))
+            case .nameNotResolved:
+                return ConnectDiagnosis(
+                    symbol: "questionmark.circle",
+                    title: Localized.text("Can't resolve that name"),
+                    detail: Localized.text(
+                        "%@ can't turn %@ into an address. MagicDNS may be off — use the machine's 100.x address instead.",
+                        deviceName, address.url.host ?? Localized.text("that name")),
+                    fix: .retry,
+                    actionTitle: Localized.text("Try again"))
+            case .listening:
+                return ConnectDiagnosis(
+                    symbol: "questionmark.app",
+                    title: Localized.text("%@ answered, but not as an agent", address.displayHost),
+                    detail: Localized.text(
+                        "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge."
+                    ),
+                    fix: alternatePort.map { .retryOtherPort($0) } ?? .retry,
+                    actionTitle: alternatePort?.port.map { Localized.text("Try port %@", "\($0)") }
+                        ?? Localized.text("Try again"))
+            case .timedOut, .none:
+                if offersLocalNetworkSettings, address.isPrivateRange {
+                    return ConnectDiagnosis(
+                        symbol: "network.slash",
+                        title: Localized.text("No answer from %@", address.displayHost),
+                        detail: Localized.text(
+                            "That is a local-network address. If Local Network access is off for Tailscode, every attempt fails as a timeout — check it in Settings, or use the machine's 100.x tailnet address instead."
+                        ),
+                        fix: .openAppSettings,
+                        actionTitle: Localized.text("Open Settings"))
+                }
+                return ConnectDiagnosis(
+                    symbol: "moon.zzz",
+                    title: Localized.text("No answer from %@", address.displayHost),
+                    detail: Localized.text(
+                        "%@ is on the tailnet but that machine never replied. It may be asleep, offline, or signed into a different tailnet.",
+                        deviceName),
+                    fix: .retry,
+                    actionTitle: Localized.text("Try again"))
+            }
+        }
+    }
+
+    private static func httpsDiagnosis(plain: URL) -> ConnectDiagnosis {
+        ConnectDiagnosis(
+            symbol: "lock.slash",
+            title: Localized.text("https can't work here"),
+            detail: Localized.text(
+                "A tailnet address can't present a certificate for itself, so TLS fails before the agent is reached. Tailscale already encrypts the link."
+            ),
+            fix: .usePlainHTTP(plain),
+            actionTitle: Localized.text("Use http instead"))
+    }
+
+    private static func plainHTTP(for url: URL) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = "http"
+        return components.url
+    }
+}

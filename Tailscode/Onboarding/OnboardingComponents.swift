@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// The phone ↔ tailnet ↔ machine hero, told as a fact rather than a decoration:
