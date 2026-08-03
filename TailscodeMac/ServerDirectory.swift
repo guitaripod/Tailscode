@@ -57,6 +57,38 @@ final class ServerDirectory {
         reload()
     }
 
+    func delete(id: String) {
+        try? store?.delete(id: id)
+        reload()
+    }
+
+    /// Every session on every configured server, as one list — the same merge the Linux desktop
+    /// and the phone speak, so all three clients agree on what a row is. A server that does not
+    /// answer is named in `unreachable` rather than silently shortening the list.
+    func entries() async -> (entries: [SessionEntry], unreachable: [String]) {
+        var collected: [SessionEntry] = []
+        var down: [String] = []
+        for profile in profiles {
+            guard let backend = backend(for: profile) else {
+                down.append(ServerLabel.display(profile))
+                continue
+            }
+            do {
+                let sessions = try await backend.listSessions()
+                collected += sessions.map {
+                    SessionEntry(
+                        profileID: profile.id, profileName: profile.name,
+                        host: profile.baseURL.host ?? profile.name,
+                        backendType: profile.backend, session: $0)
+                }
+            } catch {
+                down.append(ServerLabel.display(profile))
+            }
+        }
+        collected.sort { $0.session.updatedAt > $1.session.updatedAt }
+        return (collected, down)
+    }
+
     private static func environmentProfile() -> (ConnectionProfile, String?)? {
         let environment = ProcessInfo.processInfo.environment
         guard let raw = environment["TAILSCODE_HOST"], !raw.isEmpty else { return nil }

@@ -63,6 +63,10 @@ final class ComposerView: NSView {
         sendButton.title = value ? Localized.text("Queue") : Localized.text("Send")
     }
 
+    func takeFocus() {
+        window?.makeFirstResponder(textView)
+    }
+
     @objc private func sendTapped() {
         let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }

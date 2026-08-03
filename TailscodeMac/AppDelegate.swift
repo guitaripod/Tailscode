@@ -1,45 +1,26 @@
 import AppKit
 import TailscodeCore
 
+/// Lifecycle only: activation, the menu bar, and the one window controller that is the app.
+/// Everything the window does lives in `MainWindowController`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var window: NSWindow?
-    private let split = NSSplitViewController()
-    private let sidebar = SidebarViewController()
-    private let transcript = TranscriptViewController()
+    private var main: MainWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        SessionSeenStore.bootstrapIfNeeded()
         buildMenu()
-
-        sidebar.onSelect = { [weak self] entry, backend in
-            self?.transcript.open(entry, backend: backend)
-        }
-
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 220
-        sidebarItem.maximumThickness = 380
-        split.addSplitViewItem(sidebarItem)
-        split.addSplitViewItem(NSSplitViewItem(viewController: transcript))
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered, defer: false)
-        window.title = "Tailscode"
-        window.titlebarAppearsTransparent = false
-        window.contentViewController = split
-        window.center()
-        window.setFrameAutosaveName("TailscodeMain")
-        window.makeKeyAndOrderFront(nil)
-        self.window = window
-
+        let controller = MainWindowController()
+        controller.showWindow(nil)
+        main = controller
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// A Mac that slept holds sockets that look alive and deliver nothing; coming back to the
+    /// app is the moment to re-dial the stream and re-list the chats.
     func applicationDidBecomeActive(_ notification: Notification) {
-        transcript.reconnect()
-        Task { await sidebar.refresh() }
+        main?.handleDidBecomeActive()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

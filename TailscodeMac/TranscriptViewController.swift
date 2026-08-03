@@ -7,6 +7,10 @@ import TailscodeCore
 /// dense line. No bubbles, no cards — the chrome around this view is where material lives.
 @MainActor
 final class TranscriptViewController: NSViewController {
+    /// Every state the stream delivers, surfaced to the hub: the shortcut engine needs to know
+    /// whether an approval is waiting without owning the conversation itself.
+    var onState: ((ConversationState) -> Void)?
+
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
     private let statusLine = NSTextField(labelWithString: "")
@@ -107,6 +111,17 @@ final class TranscriptViewController: NSViewController {
         Task { await conversation.reconnect() }
     }
 
+    /// The status line doubles as the notice line until the status band phase: a delete that
+    /// failed or a broken keybindings file has to say so somewhere visible today.
+    func setNotice(_ text: String) {
+        statusLine.isHidden = false
+        statusLine.stringValue = text
+    }
+
+    func focusComposer() {
+        composer.takeFocus()
+    }
+
     private func send(_ text: String) {
         guard let conversation else { return }
         Task {
@@ -119,6 +134,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func render(_ state: ConversationState) {
+        onState?(state)
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for message in state.messages {
             for row in TranscriptRow.rows(for: message) {
