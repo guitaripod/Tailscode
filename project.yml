@@ -46,6 +46,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         CFBundleURLTypes:
           - CFBundleURLName: com.guitaripod.tailscode
             CFBundleURLSchemes: [tailscode]

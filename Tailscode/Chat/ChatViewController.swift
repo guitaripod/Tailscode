@@ -47,6 +47,15 @@ final class ChatViewController: UIViewController {
     private let fab = UIButton(type: .system)
     private let agentsChip = UIButton(type: .system)
     private let goalChip = UIButton(type: .system)
+    private let contextChip = UIButton(type: .system)
+    private let findBar = UIView()
+    private let findField = UISearchTextField()
+    private let findCountLabel = UILabel()
+    private var findMatches: [String] = []
+    private var findCursor = 0
+    private var findHighlightedID: String?
+    private var findVisible = false
+    private var lastFindRowCount = 0
     private var lastRenderedGoal: SessionGoal?
     private let composerAccessories = UIStackView()
     private var streamingActivityID: String?
@@ -84,6 +93,8 @@ final class ChatViewController: UIViewController {
         configureFAB()
         configureAgentsChip()
         configureGoalChip()
+        configureContextChip()
+        configureFindBar()
         configureNavTitleView()
         configureDataSource()
         composer.delegate = self
@@ -177,6 +188,33 @@ final class ChatViewController: UIViewController {
         super.viewWillAppear(animated)
         viewModel.isBound = true
         viewModel.startSubagentTracking()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if !composer.isEditing { becomeFirstResponder() }
+    }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard keyContext == .insert else { return nil }
+        return KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+    }
+
+    @objc private func handleInsertKeyCommand(_ command: UIKeyCommand) {
+        guard let token = command.propertyList as? String,
+            let chord = KeyBridge.chord(forToken: token)
+        else { return }
+        _ = KeyBridge.shared.handle(chord, context: .insert, awaitingApproval: false) {
+            [weak self] action in
+            self?.performKeyAction(action) ?? false
+        }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if keyContext == .normal, handleKeyPresses(presses) { return }
+        super.pressesBegan(presses, with: event)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -303,6 +341,9 @@ final class ChatViewController: UIViewController {
         composerAccessories.addArrangedSubview(attachmentStrip)
         composerAccessories.addArrangedSubview(goalChip)
         composerAccessories.addArrangedSubview(agentsChip)
+        contextChip.isHidden = true
+        contextChip.translatesAutoresizingMaskIntoConstraints = false
+        composerAccessories.addArrangedSubview(contextChip)
         view.addSubview(composerAccessories)
 
         NSLayoutConstraint.activate([
@@ -470,6 +511,192 @@ final class ChatViewController: UIViewController {
                 self?.viewModel.setGoal(condition)
             })
         present(alert, animated: true)
+    }
+
+    /// Text search within the open conversation, with the desktop find bars' semantics: one
+    /// match per row, case-insensitive, a live "n of m" count, next/previous that wrap, and the
+    /// current hit ringed and scrolled into view.
+    private func configureFindBar() {
+        findBar.backgroundColor = Theme.Color.secondaryBackground
+        findBar.layer.cornerRadius = 12
+        findBar.layer.cornerCurve = .continuous
+        findBar.layer.shadowColor = UIColor.black.cgColor
+        findBar.layer.shadowOpacity = 0.15
+        findBar.layer.shadowRadius = 8
+        findBar.layer.shadowOffset = CGSize(width: 0, height: 2)
+        findBar.isHidden = true
+        findBar.translatesAutoresizingMaskIntoConstraints = false
+
+        findField.placeholder = String(localized: "Find in conversation")
+        findField.returnKeyType = .search
+        findField.autocorrectionType = .no
+        findField.autocapitalizationType = .none
+        findField.addAction(
+            UIAction { [weak self] _ in self?.runFind(retarget: true) }, for: .editingChanged)
+        findField.addAction(
+            UIAction { [weak self] _ in self?.stepFind(1) }, for: .primaryActionTriggered)
+
+        findCountLabel.font = .preferredFont(forTextStyle: .caption1)
+        findCountLabel.textColor = Theme.Color.secondaryLabel
+        findCountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let previous = UIButton(
+            type: .system,
+            primaryAction: UIAction(image: UIImage(systemName: "chevron.up")) { [weak self] _ in
+                self?.stepFind(-1)
+            })
+        previous.accessibilityLabel = String(localized: "Previous match")
+        let next = UIButton(
+            type: .system,
+            primaryAction: UIAction(image: UIImage(systemName: "chevron.down")) { [weak self] _ in
+                self?.stepFind(1)
+            })
+        next.accessibilityLabel = String(localized: "Next match")
+        let close = UIButton(
+            type: .system,
+            primaryAction: UIAction(image: UIImage(systemName: "xmark")) { [weak self] _ in
+                self?.closeFind()
+            })
+        close.accessibilityLabel = String(localized: "Close find")
+
+        let row = UIStackView(arrangedSubviews: [findField, findCountLabel, previous, next, close])
+        row.axis = .horizontal
+        row.spacing = Theme.Spacing.s
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        findBar.addSubview(row)
+        view.addSubview(findBar)
+        NSLayoutConstraint.activate([
+            findBar.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.s),
+            findBar.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            findBar.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+            row.topAnchor.constraint(equalTo: findBar.topAnchor, constant: Theme.Spacing.xs),
+            row.bottomAnchor.constraint(equalTo: findBar.bottomAnchor, constant: -Theme.Spacing.xs),
+            row.leadingAnchor.constraint(equalTo: findBar.leadingAnchor, constant: Theme.Spacing.m),
+            row.trailingAnchor.constraint(
+                equalTo: findBar.trailingAnchor, constant: -Theme.Spacing.m),
+        ])
+    }
+
+    func openFind() {
+        findVisible = true
+        findBar.isHidden = false
+        view.bringSubviewToFront(findBar)
+        findField.becomeFirstResponder()
+        runFind(retarget: true)
+    }
+
+    private func closeFind() {
+        findVisible = false
+        findBar.isHidden = true
+        findField.resignFirstResponder()
+        setFindHighlight(nil)
+        findMatches = []
+        findCountLabel.text = nil
+    }
+
+    private func runFind(retarget: Bool) {
+        let needle = (findField.text ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else {
+            findMatches = []
+            findCountLabel.text = nil
+            setFindHighlight(nil)
+            return
+        }
+        let previousID = findMatches.indices.contains(findCursor) ? findMatches[findCursor] : nil
+        findMatches = orderedIDs.filter { id in
+            guard let row = rowsByID[id] else { return false }
+            return Self.searchText(for: row).lowercased().contains(needle)
+        }
+        if retarget {
+            findCursor = max(0, findMatches.count - 1)
+        } else if let previousID, let kept = findMatches.firstIndex(of: previousID) {
+            findCursor = kept
+        } else {
+            findCursor = min(findCursor, max(0, findMatches.count - 1))
+        }
+        updateFindCount()
+        applyFindHighlight(scroll: retarget)
+    }
+
+    private func stepFind(_ delta: Int) {
+        guard !findMatches.isEmpty else { return }
+        findCursor = (findCursor + delta + findMatches.count) % findMatches.count
+        updateFindCount()
+        applyFindHighlight(scroll: true)
+    }
+
+    private func updateFindCount() {
+        findCountLabel.text = findMatches.isEmpty
+            ? String(localized: "No matches")
+            : "\(findCursor + 1)/\(findMatches.count)"
+    }
+
+    private func applyFindHighlight(scroll: Bool) {
+        guard findMatches.indices.contains(findCursor) else {
+            setFindHighlight(nil)
+            return
+        }
+        let id = findMatches[findCursor]
+        setFindHighlight(id)
+        guard scroll else { return }
+        userScrolledUp = true
+        scrollTo(id: id)
+    }
+
+    /// The current hit carries an accent ring; rows scroll in and out of reuse, so the ring is
+    /// re-applied in `willDisplay` and cleared here on whichever cell shows the old id.
+    private func setFindHighlight(_ id: String?) {
+        let previous = findHighlightedID
+        findHighlightedID = id
+        for indexPath in collectionView.indexPathsForVisibleItems {
+            guard let cellID = dataSource.itemIdentifier(for: indexPath),
+                cellID == previous || cellID == id,
+                let cell = collectionView.cellForItem(at: indexPath)
+            else { continue }
+            decorateFindRing(cell, on: cellID == id)
+        }
+    }
+
+    private func decorateFindRing(_ cell: UICollectionViewCell, on: Bool) {
+        cell.layer.cornerRadius = on ? 10 : 0
+        cell.layer.cornerCurve = .continuous
+        cell.layer.borderWidth = on ? 2 : 0
+        cell.layer.borderColor = on ? Theme.Color.accent.withAlphaComponent(0.6).cgColor : nil
+    }
+
+    /// What a row answers a text search with — the same fields the desktop transcripts index:
+    /// prose, code, tool names and their output, file names, subagent titles, seams and errors.
+    static func searchText(for row: ChatRow) -> String {
+        switch row.content {
+        case .text(let text):
+            return text
+        case .code(let block):
+            return "\(block.language ?? "") \(block.source)"
+        case .activity(let steps):
+            return steps.map { step in
+                switch step {
+                case .reasoning(let text): return text
+                case .tool(let call):
+                    return "\(call.name) \(call.title ?? "") \(call.output?.prefix(4000) ?? "")"
+                }
+            }.joined(separator: " ")
+        case .subagent(let card):
+            return "\(card.agentType ?? "") \(card.title)"
+        case .subagentGroup(let group):
+            return group.title
+        case .compaction(let row):
+            return row.compaction?.summary ?? "compaction"
+        case .file(let reference), .image(let reference):
+            return reference.filename ?? reference.path ?? ""
+        case .timestamp:
+            return ""
+        case .error(let message):
+            return message
+        }
     }
 
     /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
@@ -991,6 +1218,10 @@ final class ChatViewController: UIViewController {
         updateBanner(for: state)
         updateGoalChip(for: state)
         updateOverflowBadge(hasPermission: pendingPermission != nil)
+        if findVisible, !viewModel.isBusy || orderedIDs.count != lastFindRowCount {
+            lastFindRowCount = orderedIDs.count
+            runFind(retarget: false)
+        }
     }
 
     /// Distinguishes "history is still on its way" from "genuinely empty":
@@ -1175,9 +1406,44 @@ final class ChatViewController: UIViewController {
     private var turnStartedAt: Date?
     private var elapsedTicker: Task<Void, Never>?
     private var lastStatusPhaseText = ""
+    private var contextEstimate: Int?
+    private var countedMessages = -1
 
+    /// The nav status states the same facts as the desktop status bands — phase, running tool,
+    /// clock — derived through the shared `StatusFacts` rather than a private phase guess. The
+    /// richer iOS wording for the busy line still comes from `liveStatus`, but the phase and
+    /// color are the facts'.
     private func updateNavStatus(for state: ConversationState) {
-        guard viewModel.isBusy else {
+        if state.messages.count != countedMessages {
+            countedMessages = state.messages.count
+            contextEstimate = StatusFacts.estimateContextTokens(state.messages)
+        }
+        updateContextChip()
+        let facts = StatusFacts.from(
+            state: state, turnStartedAt: turnStartedAt, agents: viewModel.trackedSubagents,
+            usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate)
+        let text: String?
+        var color = Theme.Color.secondaryLabel
+        switch facts.phase {
+        case .idle, .offline, .connecting:
+            text = nil
+        case .working:
+            text = ChatViewModel.liveStatus(for: state).text
+        case .compacting:
+            text = String(localized: "Compacting…")
+        case .awaitingApproval:
+            text = ChatViewModel.liveStatus(for: state).text
+            color = Theme.Color.warning
+        case .awaitingAnswer:
+            text = String(localized: "Waiting for your answer")
+            color = Theme.Color.warning
+        case .reconnecting:
+            text = String(localized: "Reconnecting…")
+            color = Theme.Color.warning
+        case .failed:
+            text = nil
+        }
+        guard let text else {
             navSpinner.stopAnimating()
             navigationItem.titleView = nil
             turnStartedAt = nil
@@ -1186,7 +1452,7 @@ final class ChatViewController: UIViewController {
             lastStatusPhaseText = ""
             return
         }
-        if turnStartedAt == nil {
+        if viewModel.isBusy, turnStartedAt == nil {
             turnStartedAt = Date()
             elapsedTicker = Task { [weak self] in
                 while !Task.isCancelled {
@@ -1195,15 +1461,13 @@ final class ChatViewController: UIViewController {
                 }
             }
         }
-        let live = ChatViewModel.liveStatus(for: state)
         if navigationItem.titleView == nil {
             navTitleContainer.frame = CGRect(x: 0, y: 0, width: 190, height: 30)
             navigationItem.titleView = navTitleContainer
         }
         navSpinner.startAnimating()
-        let color = live.phase == .approval ? Theme.Color.warning : Theme.Color.secondaryLabel
-        if lastStatusPhaseText != live.text {
-            lastStatusPhaseText = live.text
+        if lastStatusPhaseText != text {
+            lastStatusPhaseText = text
             UIView.transition(
                 with: navStatusLabel, duration: 0.2, options: .transitionCrossDissolve
             ) {
@@ -1217,12 +1481,45 @@ final class ChatViewController: UIViewController {
     }
 
     private func renderNavStatus() {
-        guard let started = turnStartedAt, !lastStatusPhaseText.isEmpty else { return }
+        guard !lastStatusPhaseText.isEmpty else { return }
+        guard let started = turnStartedAt else {
+            navStatusLabel.text = lastStatusPhaseText
+            return
+        }
         let seconds = Int(Date().timeIntervalSince(started))
         let elapsed = seconds >= 60
             ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)s"
         navStatusLabel.text = seconds >= 3
             ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText
+    }
+
+    /// The transcript's own size in tokens, always visible above the composer once it is worth
+    /// knowing — the same `~` estimate the desktop bands show, one tap from Compact.
+    private func configureContextChip() {
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.image = UIImage(
+            systemName: "cylinder.split.1x2",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
+        config.imagePadding = 6
+        config.baseForegroundColor = Theme.Color.secondaryLabel
+        contextChip.configuration = config
+        contextChip.accessibilityHint = String(
+            localized: "Estimated conversation size. Opens compaction.")
+        contextChip.addAction(
+            UIAction { [weak self] _ in self?.presentCompactPreflight() }, for: .touchUpInside)
+    }
+
+    private func updateContextChip() {
+        guard let contextEstimate, viewModel.supportsCompaction else {
+            contextChip.isHidden = true
+            return
+        }
+        contextChip.configuration?.title = "~\(StatusFacts.tokens(contextEstimate))"
+        contextChip.configuration?.baseForegroundColor =
+            contextEstimate > 300_000 ? Theme.Color.warning : Theme.Color.secondaryLabel
+        contextChip.isHidden = false
     }
 
     private static func collectToolStatuses(from steps: [ActivityStep]) -> [String: ToolStatus] {
@@ -1436,7 +1733,13 @@ final class ChatViewController: UIViewController {
                 ) { [weak self] _ in self?.toggleSaved() }
             ])
         }
-        var children: [UIMenuElement] = [jump, subagents, regenerate, usage, save]
+        var children: [UIMenuElement] = [
+            UIAction(
+                title: String(localized: "Find in conversation"),
+                image: UIImage(systemName: "magnifyingglass")
+            ) { [weak self] _ in self?.openFind() }
+        ]
+        children += [jump, subagents, regenerate, usage, save]
         children.append(
             UIAction(
                 title: String(localized: "Share transcript"),
@@ -1537,11 +1840,11 @@ final class ChatViewController: UIViewController {
     #endif
 
     /// A spawned agent lives in this conversation, so "open" means scroll to its
-    /// card and expand it — never push a second chat the user has to come back from.
+    /// card and expand it — never push a second chat the user has to come back from. A filmed
+    /// tour animates the expansion: it inserts rows underneath the card, which a plain snapshot
+    /// apply would shove into place in one frame.
     private func revealSubagent(id agentID: String) {
         #if DEBUG
-            // Expanding a card inserts rows underneath it, which on a plain snapshot
-            // apply shoves everything below by a card's height in one frame.
             if TourDriver.isFilming { animateNextRender = true }
         #endif
         if !viewModel.isSubagentExpanded(agentID) { viewModel.toggleSubagent(agentID) }
@@ -2439,6 +2742,9 @@ final class ChatViewController: UIViewController {
         var expandedGroups: Set<String> = []
     }
 
+    /// Backends that never name the spawning call — opencode's child sessions, or a bridge that
+    /// hasn't resolved the id yet — get their cards seated in order against the spawn calls
+    /// still free, so a card still lands where its work began.
     private func subagentPlacement(for messages: [ChatMessage]) -> SubagentPlacement {
         guard viewModel.supportsSubagents, !viewModel.trackedSubagents.isEmpty else {
             return SubagentPlacement()
@@ -2460,9 +2766,6 @@ final class ChatViewController: UIViewController {
                 unmatched.append(card)
             }
         }
-        // Backends that don't name the spawning call (opencode's child sessions,
-        // or a bridge that hasn't resolved the id yet) are seated in order against
-        // the spawn calls still free, so a card still lands where its work began.
         var free = spawnIDs.filter { placement.byToolUse[$0] == nil }[...]
         for card in unmatched {
             guard let slot = free.first else {
@@ -2865,6 +3168,14 @@ extension ChatViewController: PHPickerViewControllerDelegate {
 
 extension ChatViewController: UICollectionViewDelegate {
     func collectionView(
+        _ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        let id = dataSource.itemIdentifier(for: indexPath)
+        decorateFindRing(cell, on: id != nil && id == findHighlightedID)
+    }
+
+    func collectionView(
         _ collectionView: UICollectionView,
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
@@ -3193,5 +3504,94 @@ extension ChatViewController: TextBubbleCellDelegate {
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer
         present(sheet, animated: true)
+    }
+}
+
+extension ChatViewController: KeyActionHost {
+    var keyContext: KeyContext {
+        composer.isEditing || findField.isFirstResponder ? .insert : .normal
+    }
+
+    var keyAwaitingApproval: Bool { pendingPermission != nil }
+
+    /// The conversation's answers to the shared registry — the same verbs the desktops
+    /// dispatch, spoken through this screen's own controls. False lets a press fall through.
+    func performKeyAction(_ action: KeyAction) -> Bool {
+        switch action {
+        case .scrollDown:
+            nudgeTranscript(by: 80)
+        case .scrollUp:
+            nudgeTranscript(by: -80)
+        case .halfPageDown:
+            nudgeTranscript(by: collectionView.bounds.height * 0.5)
+        case .halfPageUp:
+            nudgeTranscript(by: -collectionView.bounds.height * 0.5)
+        case .scrollTop:
+            userScrolledUp = true
+            collectionView.setContentOffset(
+                CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: true)
+        case .scrollBottom:
+            scrollToBottom(animated: true)
+        case .findInConversation:
+            openFind()
+        case .insert:
+            composer.focus()
+        case .leaveInsert:
+            if findVisible {
+                closeFind()
+                becomeFirstResponder()
+            } else if composer.isEditing {
+                composer.unfocus()
+                becomeFirstResponder()
+            } else {
+                return false
+            }
+        case .send:
+            guard composer.isEditing else { return false }
+            composer.triggerSend()
+        case .stop:
+            guard viewModel.isBusy else { return false }
+            composerDidTapStop()
+        case .commandPalette:
+            composer.setDraft("/")
+        case .toggleSaved:
+            toggleSaved()
+        case .archiveSelected:
+            let archived = ArchivedChatStore.toggle(
+                profileID: viewModel.contextID, sessionID: viewModel.session.id)
+            presentToast(
+                archived
+                    ? String(localized: "Archived — hidden from the list, kept on the server")
+                    : String(localized: "Back in the chat list"))
+        case .renameSelected:
+            guard viewModel.canRename else { return false }
+            promptRename()
+        case .forkSelected:
+            guard viewModel.canFork else { return false }
+            forkConversation()
+        case .allowOnce:
+            guard let permission = pendingPermission else { return false }
+            viewModel.respond(to: permission, decision: .once)
+        case .allowAlways:
+            guard let permission = pendingPermission else { return false }
+            viewModel.respond(to: permission, decision: .always)
+        case .deny:
+            guard let permission = pendingPermission else { return false }
+            viewModel.respond(to: permission, decision: .reject)
+        case .toggleHelp:
+            ShortcutCheatsheetViewController.present(from: self)
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func nudgeTranscript(by delta: CGFloat) {
+        let inset = collectionView.adjustedContentInset
+        let minY = -inset.top
+        let maxY = max(minY, collectionView.contentSize.height - collectionView.bounds.height + inset.bottom)
+        let target = min(maxY, max(minY, collectionView.contentOffset.y + delta))
+        if delta < 0 { userScrolledUp = true }
+        collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
     }
 }

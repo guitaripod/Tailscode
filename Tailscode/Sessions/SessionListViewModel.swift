@@ -111,6 +111,29 @@ final class SessionListViewModel {
         backend(for: entry)?.capabilities.supportsRenaming ?? false
     }
 
+    func supportsForking(_ entry: SessionEntry) -> Bool {
+        backend(for: entry)?.capabilities.supportsForking ?? false
+    }
+
+    /// Forks server-side and returns the copy as a listable entry, so the caller can open it
+    /// the same way a tapped row opens.
+    func fork(_ entry: SessionEntry) async -> SessionEntry? {
+        guard let backend = backend(for: entry) else { return nil }
+        do {
+            let forked = try await backend.forkSession(entry.session.id)
+            let new = SessionEntry(
+                profileID: entry.profileID, profileName: entry.profileName,
+                host: entry.host, backendType: entry.backendType, session: forked)
+            entries.insert(new, at: 0)
+            onChange?()
+            Task { await load() }
+            return new
+        } catch {
+            onError?(Self.readable(error))
+            return nil
+        }
+    }
+
     func rename(_ entry: SessionEntry, to title: String) async {
         guard let backend = backend(for: entry) else { return }
         do {

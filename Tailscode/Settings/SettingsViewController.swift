@@ -144,6 +144,7 @@ final class SettingsViewController: UIViewController {
         case usage
         case goMonthlyCap
         case goBillingDay
+        case keyboardShortcuts
         case appearance
         case pro
         case viewLogs
@@ -541,6 +542,13 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "calendar")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.customView(configuration: billingDayAccessory())]
+        case .keyboardShortcuts:
+            content.text = String(localized: "Keyboard shortcuts")
+            content.secondaryText = String(
+                localized: "For a hardware keyboard — same keys and rebinding file as the desktops")
+            content.image = UIImage(systemName: "keyboard")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
         case .appearance:
             content.text = String(localized: "Theme")
             content.image = UIImage(systemName: "circle.lefthalf.filled")
@@ -865,7 +873,7 @@ final class SettingsViewController: UIViewController {
                 .chat,
                 [
                     .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .toggle(.haptics),
-                    .toggle(.sendOnReturn),
+                    .toggle(.sendOnReturn), .keyboardShortcuts,
                 ]
             ),
             (.appearance, [.appearance]),
@@ -988,6 +996,10 @@ final class SettingsViewController: UIViewController {
         case .goBillingDay:
             return String(
                 localized: "billing day renewal cycle opencode go", comment: "search keywords")
+        case .keyboardShortcuts:
+            return String(
+                localized: "keyboard shortcuts keys hardware cheatsheet rebind",
+                comment: "search keywords")
         case .appearance:
             return String(
                 localized: "theme appearance dark light mode", comment: "search keywords")
@@ -1213,6 +1225,8 @@ extension SettingsViewController: UICollectionViewDelegate {
             open(Self.supportURL)
         case .licenses:
             navigationController?.pushViewController(LicensesViewController(), animated: true)
+        case .keyboardShortcuts:
+            ShortcutCheatsheetViewController.present(from: self)
         case .appearance, .toggle, .version, .goMonthlyCap, .goBillingDay, .tailnetScan:
             break
         }

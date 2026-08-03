@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 @main
@@ -7,6 +8,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         AppLogger.lifecycle.info("didFinishLaunching")
+        ShortcutSet.configDirectoryOverride = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask
+        ).first
         ProStore.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         endOrphanedActivitiesIfForeground(application)

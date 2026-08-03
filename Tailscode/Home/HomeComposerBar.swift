@@ -216,6 +216,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.becomeFirstResponder()
     }
 
+    func unfocus() {
+        textView.resignFirstResponder()
+    }
+
+    var isEditing: Bool { textView.isFirstResponder }
+
     var isEditingText: Bool { textView.isFirstResponder }
 
     #if DEBUG

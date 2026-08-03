@@ -253,6 +253,16 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.isScrollEnabled = size.height > 132
     }
 
+    var isEditing: Bool { textView.isFirstResponder }
+
+    func focus() { textView.becomeFirstResponder() }
+
+    func unfocus() { textView.resignFirstResponder() }
+
+    /// The hardware keyboard's send — the same path as the button, so busy-state and haptics
+    /// behave identically.
+    func triggerSend() { sendTapped() }
+
     @objc private func sendTapped() {
         let text = trimmed
         if text.isEmpty {

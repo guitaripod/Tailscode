@@ -112,7 +112,31 @@ final class HomeViewController: UIViewController {
         if wantsComposerFocus {
             wantsComposerFocus = false
             composerBar.focus()
+        } else {
+            becomeFirstResponder()
         }
+    }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard keyContext == .insert else { return nil }
+        return KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+    }
+
+    @objc private func handleInsertKeyCommand(_ command: UIKeyCommand) {
+        guard let token = command.propertyList as? String,
+            let chord = KeyBridge.chord(forToken: token)
+        else { return }
+        _ = KeyBridge.shared.handle(chord, context: .insert, awaitingApproval: false) {
+            [weak self] action in
+            self?.performKeyAction(action) ?? false
+        }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if keyContext == .normal, handleKeyPresses(presses) { return }
+        super.pressesBegan(presses, with: event)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -202,6 +226,9 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(savedDidChange),
             name: SavedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(archiveDidChange),
+            name: ArchivedChatStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(
@@ -213,6 +240,8 @@ final class HomeViewController: UIViewController {
     }
 
     @objc private func activityDidChange() { applySnapshot() }
+
+    @objc private func archiveDidChange() { applySnapshot() }
 
     /// Settings edited the servers. Rebuilding the backends here — rather than
     /// recreating the whole screen — keeps scroll position, the composer draft,
@@ -564,7 +593,11 @@ final class HomeViewController: UIViewController {
             snapshot.appendItems(projects.map(HomeItem.project), toSection: .projects)
         }
         let shown = liveIDs.union(savedCards.map(\.chat.sessionID))
-        let recent = viewModel.entries.filter { !shown.contains($0.session.id) }.prefix(6)
+        let archived = ArchivedChatStore.all()
+        let recent = viewModel.entries.filter {
+            !shown.contains($0.session.id)
+                && !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
+        }.prefix(6)
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(
@@ -1465,12 +1498,71 @@ extension HomeViewController: UICollectionViewDelegate {
                         }
                     })
             }
+            let isSaved = SavedChatStore.contains(entry)
+            actions.append(
+                UIAction(
+                    title: isSaved
+                        ? String(localized: "Remove from Saved") : String(localized: "Save chat"),
+                    image: UIImage(systemName: isSaved ? "bookmark.slash" : "bookmark")
+                ) { [weak self] _ in
+                    Theme.Haptics.tap()
+                    SavedChatStore.toggle(entry)
+                    self?.applySnapshot()
+                })
+            let isArchived = ArchivedChatStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            actions.append(
+                UIAction(
+                    title: isArchived
+                        ? String(localized: "Unarchive") : String(localized: "Archive"),
+                    subtitle: isArchived
+                        ? String(localized: "Back into the chat list")
+                        : String(localized: "Out of the list, kept on the server"),
+                    image: UIImage(systemName: isArchived ? "tray.and.arrow.up" : "archivebox")
+                ) { _ in
+                    Theme.Haptics.tap()
+                    ArchivedChatStore.toggle(
+                        profileID: entry.profileID, sessionID: entry.session.id)
+                })
+            let isUnread = SessionSeenStore.unreadEvaluator()(
+                entry.session.id, entry.session.updatedAt)
+            actions.append(
+                UIAction(
+                    title: isUnread
+                        ? String(localized: "Mark as read") : String(localized: "Mark as unread"),
+                    image: UIImage(systemName: isUnread ? "envelope.open" : "envelope.badge")
+                ) { [weak self] _ in
+                    Theme.Haptics.tap()
+                    if isUnread {
+                        SessionSeenStore.markSeen(entry.session.id)
+                    } else {
+                        SessionSeenStore.markUnread(
+                            entry.session.id, updatedAt: entry.session.updatedAt)
+                    }
+                    self?.applySnapshot()
+                })
             if self.viewModel.supportsRenaming(entry) {
                 actions.append(
                     UIAction(
                         title: String(localized: "Rename"), image: UIImage(systemName: "pencil")
                     ) {
                         [weak self] _ in self?.promptRename(entry)
+                    })
+            }
+            if self.viewModel.supportsForking(entry) {
+                actions.append(
+                    UIAction(
+                        title: String(localized: "Fork"),
+                        subtitle: String(
+                            localized: "A new session with this history, for a different direction"),
+                        image: UIImage(systemName: "arrow.triangle.branch")
+                    ) { [weak self] _ in
+                        Task { [weak self] in
+                            guard let self, let forked = await self.viewModel.fork(entry)
+                            else { return }
+                            Theme.Haptics.success()
+                            self.openChat(for: forked)
+                        }
                     })
             }
             if allowDelete, self.viewModel.supportsMultipleSessions(entry) {
@@ -1526,5 +1618,62 @@ extension HomeViewController: UICollectionViewDelegate {
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+extension HomeViewController: KeyActionHost {
+    var keyContext: KeyContext { composerBar.isEditing ? .insert : .normal }
+
+    /// The board's answers to the shared registry: the app-level verbs live here — new chat,
+    /// filter, archive view, help — and the list-cursor verbs live one push away on the Chats
+    /// screen, which is where a hardware-keyboard user lands the moment they ask for them.
+    func performKeyAction(_ action: KeyAction) -> Bool {
+        switch action {
+        case .newChat:
+            guard let profile = viewModel.servers.first else { return false }
+            if viewModel.servers.count == 1 {
+                startChat(on: profile)
+            } else {
+                composerBar.focus()
+            }
+        case .search:
+            pushChats()
+        case .selectNext, .selectPrevious, .selectFirst, .selectLast, .openSelected:
+            pushChats()
+        case .toggleArchiveView:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(
+                ArchivedChatsViewController(), animated: true)
+        case .insert:
+            composerBar.focus()
+        case .leaveInsert:
+            guard composerBar.isEditing else { return false }
+            composerBar.unfocus()
+            becomeFirstResponder()
+        case .scrollDown:
+            nudgeBoard(by: 120)
+        case .scrollUp:
+            nudgeBoard(by: -120)
+        case .halfPageDown:
+            nudgeBoard(by: collectionView.bounds.height * 0.5)
+        case .halfPageUp:
+            nudgeBoard(by: -collectionView.bounds.height * 0.5)
+        case .reload:
+            Task { await load(.user) }
+        case .toggleHelp:
+            ShortcutCheatsheetViewController.present(from: self)
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func nudgeBoard(by delta: CGFloat) {
+        let inset = collectionView.adjustedContentInset
+        let minY = -inset.top
+        let maxY = max(
+            minY, collectionView.contentSize.height - collectionView.bounds.height + inset.bottom)
+        let target = min(maxY, max(minY, collectionView.contentOffset.y + delta))
+        collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
     }
 }

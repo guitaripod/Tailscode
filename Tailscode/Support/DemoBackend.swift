@@ -31,7 +31,6 @@ enum DemoWorld {
     private static func ago(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(-seconds) }
     private static func hence(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
 
-    // MARK: - Claude Code server ("studio", claude-bridge)
 
     static let claude: MockBackend = MockBackend(
         agentType: .claudeCode,
@@ -149,7 +148,6 @@ enum DemoWorld {
             "agent-test-shard": subagentShardScript,
         ])
 
-    // MARK: - opencode server ("homelab")
 
     static let openCode: MockBackend = MockBackend(
         agentType: .openCode,
@@ -210,7 +208,6 @@ enum DemoWorld {
             ],
         ])
 
-    // MARK: - Claude scripts
 
     private static var claudeLiveScript: [MockScriptStep] {
         [
@@ -413,7 +410,6 @@ enum DemoWorld {
         ]
     }
 
-    // MARK: - opencode scripts
 
     private static var openCodeRefactorScript: [MockScriptStep] {
         [
@@ -557,7 +553,6 @@ enum DemoWorld {
         ]
     }
 
-    // MARK: - Builders
 
     private static func step(_ event: BackendEvent, ms: Int = 10) -> MockScriptStep {
         MockScriptStep(event, delay: .milliseconds(ms))

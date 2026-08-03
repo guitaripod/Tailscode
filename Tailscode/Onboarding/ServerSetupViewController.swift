@@ -185,7 +185,6 @@ final class ServerSetupViewController: UIViewController {
         startOnConnectStep = true
     }
 
-    // MARK: - Layout
 
     private func buildUI() {
         buildTailnetStep()
@@ -423,7 +422,6 @@ final class ServerSetupViewController: UIViewController {
         ])
     }
 
-    // MARK: - Step 2
 
     private func selectBackend(_ backend: AgentType, animated: Bool) {
         self.backend = backend
@@ -511,7 +509,6 @@ final class ServerSetupViewController: UIViewController {
         return String((0..<16).map { _ in alphabet.randomElement() ?? "x" })
     }
 
-    // MARK: - Step 1 state
 
     @objc private func didBecomeActive() {
         refreshTailnet()
@@ -565,7 +562,6 @@ final class ServerSetupViewController: UIViewController {
         applyVerification()
     }
 
-    // MARK: - Step 3 state
 
     private func addressChanged() {
         authTarget = nil
@@ -817,7 +813,6 @@ final class ServerSetupViewController: UIViewController {
         addressField.textField.becomeFirstResponder()
     }
 
-    // MARK: - Actions
 
     private func footerTapped() {
         view.endEditing(true)

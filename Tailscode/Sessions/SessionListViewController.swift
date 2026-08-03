@@ -26,6 +26,7 @@ final class SessionListViewController: UIViewController {
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var searchQuery = ""
+    var keyCursor: Int?
 
     init(filterProfileID: String? = nil) {
         let sources = ConnectionController.shared.allBackends().map {
@@ -71,6 +72,33 @@ final class SessionListViewController: UIViewController {
         if hasAppeared { Task { await viewModel.load() } }
         hasAppeared = true
         startClockRefresh()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard keyContext == .insert else { return nil }
+        return KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+    }
+
+    @objc private func handleInsertKeyCommand(_ command: UIKeyCommand) {
+        guard let token = command.propertyList as? String,
+            let chord = KeyBridge.chord(forToken: token)
+        else { return }
+        _ = KeyBridge.shared.handle(chord, context: .insert, awaitingApproval: false) {
+            [weak self] action in
+            self?.performKeyAction(action) ?? false
+        }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if keyContext == .normal, handleKeyPresses(presses) { return }
+        super.pressesBegan(presses, with: event)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -129,12 +157,34 @@ final class SessionListViewController: UIViewController {
             image: UIImage(systemName: "bookmark"),
             primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
         saved.accessibilityLabel = String(localized: "Saved chats")
-        navigationItem.rightBarButtonItems = [composeItem, saved]
+        var items = [composeItem, saved]
+        if archivedCount() > 0 {
+            let archived = UIBarButtonItem(
+                image: UIImage(systemName: "archivebox"),
+                primaryAction: UIAction { [weak self] _ in self?.pushArchived() })
+            archived.accessibilityLabel = String(localized: "Archived chats")
+            items.append(archived)
+        }
+        navigationItem.rightBarButtonItems = items
+    }
+
+    /// Counts archived rows in the current listing rather than the raw store, mirroring the
+    /// desktop footer: keys whose session no longer lists anywhere should not keep a door open.
+    private func archivedCount() -> Int {
+        let archived = ArchivedChatStore.all()
+        return viewModel.entries.count {
+            archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id))
+        }
     }
 
     private func pushSaved() {
         Theme.Haptics.tap()
         navigationController?.pushViewController(SavedChatsViewController(), animated: true)
+    }
+
+    private func pushArchived() {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(ArchivedChatsViewController(), animated: true)
     }
 
     private func configureChipBar() {
@@ -239,17 +289,33 @@ final class SessionListViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = .none
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath),
-                self.viewModel.supportsMultipleSessions(entry)
+            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
-            let delete = UIContextualAction(
-                style: .destructive, title: String(localized: "Delete")
-            ) {
-                [weak self] _, _, done in
-                self?.confirmDelete(entry, done: done)
+            var actions: [UIContextualAction] = []
+            if self.viewModel.supportsMultipleSessions(entry) {
+                let delete = UIContextualAction(
+                    style: .destructive, title: String(localized: "Delete")
+                ) {
+                    [weak self] _, _, done in
+                    self?.confirmDelete(entry, done: done)
+                }
+                delete.image = UIImage(systemName: "trash")
+                actions.append(delete)
             }
-            delete.image = UIImage(systemName: "trash")
-            let config = UISwipeActionsConfiguration(actions: [delete])
+            let isArchived = ArchivedChatStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            let archive = UIContextualAction(
+                style: .normal,
+                title: isArchived ? String(localized: "Unarchive") : String(localized: "Archive")
+            ) { [weak self] _, _, done in
+                self?.toggleArchived(entry)
+                done(true)
+            }
+            archive.image = UIImage(systemName: isArchived ? "tray.and.arrow.up" : "archivebox")
+            archive.backgroundColor = Theme.Color.secondaryLabel
+            actions.append(archive)
+            guard !actions.isEmpty else { return nil }
+            let config = UISwipeActionsConfiguration(actions: actions)
             config.performsFirstActionWithFullSwipe = false
             return config
         }
@@ -330,6 +396,14 @@ final class SessionListViewController: UIViewController {
                 dot.layer.cornerRadius = 4
                 accessories.append(.customView(
                     configuration: .init(customView: dot, placement: .trailing(displayed: .always))))
+            } else if SessionSeenStore.unreadEvaluator()(
+                entry.session.id, entry.session.updatedAt)
+            {
+                let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
+                dot.backgroundColor = Theme.Color.accent
+                dot.layer.cornerRadius = 4
+                accessories.append(.customView(
+                    configuration: .init(customView: dot, placement: .trailing(displayed: .always))))
             }
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
@@ -340,7 +414,15 @@ final class SessionListViewController: UIViewController {
             case .awaitingApproval:
                 cell.accessibilityValue = String(localized: "Awaiting approval")
             case .idle:
-                cell.accessibilityValue = isLive ? String(localized: "Live") : nil
+                if isLive {
+                    cell.accessibilityValue = String(localized: "Live")
+                } else if SessionSeenStore.unreadEvaluator()(
+                    entry.session.id, entry.session.updatedAt)
+                {
+                    cell.accessibilityValue = String(localized: "Unread")
+                } else {
+                    cell.accessibilityValue = nil
+                }
             }
         }
 
@@ -361,6 +443,14 @@ final class SessionListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
             name: SessionActivity.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(archiveDidChange),
+            name: ArchivedChatStore.didChange, object: nil)
+    }
+
+    @objc private func archiveDidChange() {
+        updateComposeButton()
+        applySnapshot()
     }
 
     @objc private func activityDidChange() {
@@ -396,7 +486,10 @@ final class SessionListViewController: UIViewController {
     }
 
     private func filteredEntries() -> [SessionEntry] {
-        var list = viewModel.entries
+        let archived = ArchivedChatStore.all()
+        var list = viewModel.entries.filter {
+            !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) || isLive($0)
+        }
         switch filter {
         case .all:
             break
@@ -459,6 +552,31 @@ final class SessionListViewController: UIViewController {
             config.text = String(localized: "No conversations here yet")
             config.secondaryText = String(localized: "Start one with the compose button.")
             contentUnavailableConfiguration = config
+        }
+    }
+
+    private func toggleArchived(_ entry: SessionEntry) {
+        Theme.Haptics.tap()
+        ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+    }
+
+    private func toggleUnread(_ entry: SessionEntry) {
+        Theme.Haptics.tap()
+        let unread = SessionSeenStore.unreadEvaluator()(
+            entry.session.id, entry.session.updatedAt)
+        if unread {
+            SessionSeenStore.markSeen(entry.session.id)
+        } else {
+            SessionSeenStore.markUnread(entry.session.id, updatedAt: entry.session.updatedAt)
+        }
+        reconfigureActivity()
+    }
+
+    private func forkAndOpen(_ entry: SessionEntry) {
+        Task { [weak self] in
+            guard let self, let forked = await self.viewModel.fork(entry) else { return }
+            Theme.Haptics.success()
+            self.openChat(for: forked)
         }
     }
 
@@ -665,6 +783,29 @@ extension SessionListViewController: UICollectionViewDelegate {
                     Theme.Haptics.tap()
                     SavedChatStore.toggle(entry)
                 })
+            let isArchived = ArchivedChatStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            actions.append(
+                UIAction(
+                    title: isArchived
+                        ? String(localized: "Unarchive") : String(localized: "Archive"),
+                    subtitle: isArchived
+                        ? String(localized: "Back into the chat list")
+                        : String(localized: "Out of the list, kept on the server"),
+                    image: UIImage(systemName: isArchived ? "tray.and.arrow.up" : "archivebox")
+                ) { [weak self] _ in
+                    self?.toggleArchived(entry)
+                })
+            let isUnread = SessionSeenStore.unreadEvaluator()(
+                entry.session.id, entry.session.updatedAt)
+            actions.append(
+                UIAction(
+                    title: isUnread
+                        ? String(localized: "Mark as read") : String(localized: "Mark as unread"),
+                    image: UIImage(systemName: isUnread ? "envelope.open" : "envelope.badge")
+                ) { [weak self] _ in
+                    self?.toggleUnread(entry)
+                })
             if self.viewModel.supportsRenaming(entry) {
                 actions.append(
                     UIAction(
@@ -672,6 +813,17 @@ extension SessionListViewController: UICollectionViewDelegate {
                     ) {
                         [weak self] _ in
                         self?.promptRename(entry)
+                    })
+            }
+            if self.viewModel.supportsForking(entry) {
+                actions.append(
+                    UIAction(
+                        title: String(localized: "Fork"),
+                        subtitle: String(
+                            localized: "A new session with this history, for a different direction"),
+                        image: UIImage(systemName: "arrow.triangle.branch")
+                    ) { [weak self] _ in
+                        self?.forkAndOpen(entry)
                     })
             }
             actions.append(
@@ -973,5 +1125,131 @@ extension FileBrowserViewController: UICollectionViewDelegate {
                 navigationController?.pushViewController(vc, animated: true)
             }
         }
+    }
+}
+
+extension SessionListViewController: KeyActionHost {
+    var keyContext: KeyContext {
+        searchController.searchBar.searchTextField.isFirstResponder ? .insert : .normal
+    }
+
+    /// The chat list's answers to the shared registry: J/K walk a visible cursor, Enter opens
+    /// it, and every row verb acts on the row under the cursor — the desktops' sidebar keys,
+    /// spoken through this screen. False lets a press fall through.
+    func performKeyAction(_ action: KeyAction) -> Bool {
+        switch action {
+        case .selectNext:
+            moveCursor(by: 1)
+        case .selectPrevious:
+            moveCursor(by: -1)
+        case .selectFirst:
+            moveCursor(to: 0)
+        case .selectLast:
+            moveCursor(to: max(0, dataSource.snapshot().numberOfItems - 1))
+        case .openSelected:
+            guard let entry = cursorEntry() else { return false }
+            SessionSeenStore.markSeen(entry.session.id)
+            openChat(for: entry)
+        case .scrollDown:
+            moveCursor(by: 1)
+        case .scrollUp:
+            moveCursor(by: -1)
+        case .halfPageDown:
+            moveCursor(by: 8)
+        case .halfPageUp:
+            moveCursor(by: -8)
+        case .search:
+            searchController.isActive = true
+            searchController.searchBar.searchTextField.becomeFirstResponder()
+        case .leaveInsert:
+            guard searchController.isActive else { return false }
+            searchController.isActive = false
+            becomeFirstResponder()
+        case .newChat:
+            guard let profile = viewModel.servers.first else { return false }
+            if viewModel.servers.count == 1 {
+                startChat(on: profile)
+            } else {
+                presentServerChoice()
+            }
+        case .toggleSaved:
+            guard let entry = cursorEntry() else { return false }
+            Theme.Haptics.tap()
+            SavedChatStore.toggle(entry)
+        case .archiveSelected:
+            guard let entry = cursorEntry() else { return false }
+            toggleArchived(entry)
+        case .toggleArchiveView:
+            pushArchived()
+        case .toggleUnreadSelected:
+            guard let entry = cursorEntry() else { return false }
+            toggleUnread(entry)
+        case .renameSelected:
+            guard let entry = cursorEntry(), viewModel.supportsRenaming(entry) else {
+                return false
+            }
+            promptRename(entry)
+        case .forkSelected:
+            guard let entry = cursorEntry(), viewModel.supportsForking(entry) else {
+                return false
+            }
+            forkAndOpen(entry)
+        case .deleteSelected:
+            guard let entry = cursorEntry(), viewModel.supportsMultipleSessions(entry) else {
+                return false
+            }
+            confirmDelete(entry) { _ in }
+        case .copySessionID:
+            guard let entry = cursorEntry() else { return false }
+            UIPasteboard.general.string = entry.session.id
+            Theme.Haptics.success()
+        case .copyProjectPath:
+            guard let entry = cursorEntry(), let directory = entry.session.directory else {
+                return false
+            }
+            UIPasteboard.general.string = directory
+            Theme.Haptics.success()
+        case .reload:
+            Task { await viewModel.load() }
+        case .toggleHelp:
+            ShortcutCheatsheetViewController.present(from: self)
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func cursorEntry() -> SessionEntry? {
+        guard let keyCursor else { return nil }
+        return dataSource.itemIdentifier(for: IndexPath(item: keyCursor, section: 0))
+    }
+
+    private func moveCursor(by delta: Int) {
+        let count = dataSource.snapshot().numberOfItems
+        guard count > 0 else { return }
+        moveCursor(to: max(0, min(count - 1, (keyCursor ?? (delta > 0 ? -1 : count)) + delta)))
+    }
+
+    private func moveCursor(to index: Int) {
+        let count = dataSource.snapshot().numberOfItems
+        guard count > 0, (0..<count).contains(index) else { return }
+        keyCursor = index
+        collectionView.selectItem(
+            at: IndexPath(item: index, section: 0), animated: true,
+            scrollPosition: .centeredVertically)
+    }
+
+    private func presentServerChoice() {
+        let sheet = UIAlertController(
+            title: String(localized: "New chat on…"), message: nil, preferredStyle: .actionSheet)
+        for profile in viewModel.servers {
+            sheet.addAction(
+                UIAlertAction(title: profile.name, style: .default) { [weak self] _ in
+                    self?.startChat(on: profile)
+                })
+        }
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = view
+        present(sheet, animated: true)
     }
 }
