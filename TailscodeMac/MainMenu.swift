@@ -101,6 +101,33 @@ final class MainMenu: NSObject {
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
         menu.addItem(.separator())
+        menu.addItem(item(Localized.text("Split Right"), #selector(splitRight), "d", [.command, .shift]))
+        menu.addItem(
+            item(
+                Localized.text("Split Down"), #selector(splitDown), "d",
+                [.command, .shift, .option]))
+        menu.addItem(item(Localized.text("Close Split"), #selector(closeSplit), "w", [.command, .shift]))
+        menu.addItem(
+            item(Localized.text("Zoom Split"), #selector(zoomSplit), "\r", [.command, .shift]))
+        menu.addItem(
+            item(
+                Localized.text("Focus Split Left"), #selector(focusSplitLeft), "\u{F702}",
+                [.command, .option]))
+        menu.addItem(
+            item(
+                Localized.text("Focus Split Right"), #selector(focusSplitRight), "\u{F703}",
+                [.command, .option]))
+        menu.addItem(
+            item(
+                Localized.text("Focus Split Above"), #selector(focusSplitUp), "\u{F700}",
+                [.command, .option]))
+        menu.addItem(
+            item(
+                Localized.text("Focus Split Below"), #selector(focusSplitDown), "\u{F701}",
+                [.command, .option]))
+        menu.addItem(item(Localized.text("Swap Split"), #selector(exchangeSplit), ""))
+        menu.addItem(item(Localized.text("Even Out Splits"), #selector(equalizeSplits), ""))
+        menu.addItem(.separator())
         menu.addItem(item(Localized.text("Zoom In"), #selector(zoomIn), "+"))
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
@@ -198,6 +225,16 @@ final class MainMenu: NSObject {
     @objc private func cheatsheet() { hub.perform(.toggleHelp) }
     @objc private func nextChat() { hub.perform(.selectNext) }
     @objc private func previousChat() { hub.perform(.selectPrevious) }
+    @objc fileprivate func splitRight() { hub.perform(.splitPane(.horizontal)) }
+    @objc fileprivate func splitDown() { hub.perform(.splitPane(.vertical)) }
+    @objc fileprivate func closeSplit() { hub.perform(.closeSplit) }
+    @objc fileprivate func zoomSplit() { hub.perform(.zoomSplit) }
+    @objc fileprivate func focusSplitLeft() { hub.perform(.focusSplit(.left)) }
+    @objc fileprivate func focusSplitRight() { hub.perform(.focusSplit(.right)) }
+    @objc fileprivate func focusSplitUp() { hub.perform(.focusSplit(.up)) }
+    @objc fileprivate func focusSplitDown() { hub.perform(.focusSplit(.down)) }
+    @objc fileprivate func exchangeSplit() { hub.perform(.exchangeSplit) }
+    @objc fileprivate func equalizeSplits() { hub.perform(.equalizeSplits) }
 }
 
 extension MainMenu: NSMenuItemValidation {
@@ -205,6 +242,14 @@ extension MainMenu: NSMenuItemValidation {
     /// Unread also flip their titles to describe the state they would leave behind, and Rename
     /// and Fork answer for what the server can actually do.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let treeVerbs: Set<Selector> = [
+            #selector(closeSplit), #selector(zoomSplit), #selector(focusSplitLeft),
+            #selector(focusSplitRight), #selector(focusSplitUp), #selector(focusSplitDown),
+            #selector(exchangeSplit), #selector(equalizeSplits),
+        ]
+        if let action = menuItem.action, treeVerbs.contains(action) {
+            return hub.splitPanes.paneCount > 1
+        }
         let chatVerbs: Set<Selector> = [
             #selector(send), #selector(stop), #selector(toggleSaved), #selector(toggleArchived),
             #selector(toggleUnread), #selector(rename), #selector(fork),

@@ -10,11 +10,15 @@ import TailscodeCore
 @MainActor
 final class MainWindowController: NSWindowController {
     let sidebar = SidebarViewController()
-    let transcript = TranscriptViewController()
+    let splitPanes = SplitPaneHost()
     let filesPane = FileTreePane()
     let terminalPane = TerminalPane()
-    private(set) var currentEntry: SessionEntry?
-    private(set) var currentBackend: (any CodingAgentBackend)?
+
+    /// The focused pane's conversation — every single-chat verb in the app lands here, so the
+    /// tiling tree changes what "the transcript" means without changing who asks for it.
+    var transcript: TranscriptViewController { splitPanes.active }
+    var currentEntry: SessionEntry? { transcript.currentEntry }
+    var currentBackend: (any CodingAgentBackend)? { transcript.currentBackend }
 
     private let split = NSSplitViewController()
     private let contentSplit = NSSplitViewController()
@@ -24,8 +28,10 @@ final class MainWindowController: NSWindowController {
     private var dividerSavingEnabled = false
     private var shortcuts = ShortcutSet.load()
     private var pendingChords: [KeyChord] = []
-    private var lastState: ConversationState?
     private var focused: Pane = .chats
+    /// What each restored pane was showing, until the cached listing carries the session and the
+    /// pane can open it for real.
+    private var pendingBindings: [PaneID: SplitPaneSession] = [:]
     private var cheatsheet: NSPanel?
     private var keyMonitor: Any?
     private var usageTask: Task<Void, Never>?
@@ -43,6 +49,8 @@ final class MainWindowController: NSWindowController {
         window.title = "Tailscode"
         super.init(window: window)
         wireChildren()
+        splitPanes.bootstrap()
+        restoreSplitLayout()
         configureSplit()
         configureToolbar()
         window.center()
@@ -52,6 +60,7 @@ final class MainWindowController: NSWindowController {
         DispatchQueue.main.async { [weak self] in
             self?.applyStoredDividers()
             self?.dividerSavingEnabled = true
+            self?.resolvePendingBindings()
         }
         startUsagePolling()
         if !shortcuts.issues.isEmpty {
@@ -68,8 +77,78 @@ final class MainWindowController: NSWindowController {
     }
 
     func handleDidBecomeActive() {
-        transcript.reconnect()
-        Task { [weak self] in await self?.sidebar.refresh() }
+        splitPanes.eachPane { $0.reconnect() }
+        Task { [weak self] in
+            await self?.sidebar.refresh()
+            self?.resolvePendingBindings()
+        }
+    }
+
+    /// A restored pane opens its session the moment the cached listing carries it; a session no
+    /// listing carries leaves an explanation, and the binding is kept for the next refresh.
+    private func resolvePendingBindings() {
+        guard !pendingBindings.isEmpty else { return }
+        let listed = SessionListCache.load()
+        for (paneID, binding) in pendingBindings {
+            guard let pane = splitPanes.panes[paneID] else {
+                pendingBindings[paneID] = nil
+                continue
+            }
+            guard
+                let entry = listed.first(where: {
+                    $0.profileID == binding.profileID && $0.session.id == binding.sessionID
+                }),
+                let profile = ServerDirectory.shared.profiles.first(where: {
+                    $0.id == binding.profileID
+                }),
+                let backend = ServerDirectory.shared.backend(for: profile)
+            else { continue }
+            pendingBindings[paneID] = nil
+            pane.open(entry, backend: backend)
+        }
+    }
+
+    private func restoreSplitLayout() {
+        guard let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
+            let snapshot = SplitSnapshot.decode(raw)
+        else { return }
+        pendingBindings = splitPanes.restore(snapshot)
+    }
+
+    /// The focused pane changed — by keyboard, click, band, or a structural verb. The window
+    /// title, the file tree, the terminal and the remembered last-session all follow the eye.
+    private func focusedPaneChanged() {
+        let pane = transcript
+        guard let entry = pane.currentEntry else {
+            window?.title = "Tailscode"
+            window?.subtitle = ""
+            return
+        }
+        UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
+        window?.title =
+            entry.session.hasPlaceholderTitle
+            ? Localized.text("New conversation") : entry.session.title
+        window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        terminalPane.setDirectory(entry.session.directory)
+        if let backend = pane.currentBackend {
+            filesPane.show(directory: entry.session.directory, on: backend)
+        }
+    }
+
+    /// Opening a row into a fresh pane beside the ones already on screen: split, then run the
+    /// same open path a sidebar click takes.
+    private func openInNewSplit(_ entry: SessionEntry) {
+        guard
+            let profile = ServerDirectory.shared.profiles.first(where: {
+                $0.id == entry.profileID
+            }), let backend = ServerDirectory.shared.backend(for: profile)
+        else {
+            setNotice(Localized.text("That server is not configured."))
+            return
+        }
+        splitPanes.splitActive(axis: .horizontal)
+        SessionSeenStore.markSeen(entry.session.id)
+        handleOpen(entry, backend: backend)
     }
 
     /// A two-second floating confirmation — the answer to "did my click do anything". Presented
@@ -212,33 +291,48 @@ final class MainWindowController: NSWindowController {
         case .zoomReset:
             MacTheme.UIScale.reset()
             applyUIScale()
+        case .splitPane(let axis):
+            focused = .transcript
+            splitPanes.splitActive(axis: axis)
+        case .closeSplit:
+            splitPanes.closeActive()
+        case .focusSplit(let direction):
+            focused = .transcript
+            splitPanes.focusNeighbor(direction)
+        case .zoomSplit:
+            splitPanes.zoomActive()
+        case .equalizeSplits:
+            splitPanes.equalize()
+        case .exchangeSplit:
+            splitPanes.exchangeActive()
         }
         return true
     }
 
-    /// Every fact on the band answers to the same verbs a person would reach for: reading the
-    /// status and steering the turn are one gesture.
-    func perform(bandAction action: StatusFacts.Action) {
+    /// Every fact on the band answers to the same verbs a person would reach for — on the pane
+    /// whose band was clicked, which the click also focuses.
+    func perform(bandAction action: StatusFacts.Action, on pane: TranscriptViewController) {
+        splitPanes.focus(pane, grabKeyboard: false)
         switch action {
         case .stop:
-            transcript.stopTurn()
+            pane.stopTurn()
         case .compact:
-            transcript.presentCompactPreflight()
+            pane.presentCompactPreflight()
         case .goal:
-            transcript.presentGoalSheet()
+            pane.presentGoalSheet()
         case .scrollToPending:
-            transcript.scrollToBottom()
+            pane.scrollToBottom()
         case .scrollToAgents:
-            transcript.scrollToNewestAgent()
+            pane.scrollToNewestAgent()
         case .agent(let id):
-            transcript.scrollToAgent(id)
+            pane.scrollToAgent(id)
         case .reconnect:
-            transcript.reconnect()
+            pane.reconnect()
         }
     }
 
     private func applyUIScale() {
-        transcript.applyUIScale()
+        splitPanes.eachPane { $0.applyUIScale() }
         sidebar.applyUIScale()
     }
 
@@ -313,9 +407,14 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// A notification tap: raise the window, then open the session it names.
+    /// A notification tap: raise the window, then bring the session it names to the eye — the
+    /// pane already showing it if one is, else through the ordinary open into the focused pane.
     func openSession(withID id: String) {
         window?.makeKeyAndOrderFront(nil)
+        if let pane = splitPanes.pane(showing: id) {
+            splitPanes.focus(pane, grabKeyboard: false)
+            return
+        }
         sidebar.open(withID: id)
     }
 
@@ -323,24 +422,56 @@ final class MainWindowController: NSWindowController {
         sidebar.onOpen = { [weak self] entry, backend in
             self?.handleOpen(entry, backend: backend)
         }
+        sidebar.onOpenInSplit = { [weak self] entry in
+            self?.openInNewSplit(entry)
+        }
+        sidebar.focusedSessionID = { [weak self] in
+            self?.transcript.currentEntry?.session.id
+        }
+        sidebar.onDeleted = { [weak self] entry in
+            self?.paneCleanupAfterDelete(entry)
+        }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
-        transcript.onState = { [weak self] state in
-            guard let self else { return }
-            self.lastState = state
-            if let entry = self.currentEntry {
-                MacNotifier.shared.observeConversation(
-                    profileID: entry.profileID, sessionID: entry.session.id,
-                    title: entry.session.hasPlaceholderTitle
-                        ? Localized.text("New conversation") : entry.session.title,
-                    state: state)
-            }
+        splitPanes.makePane = { [weak self] in
+            self?.makePane() ?? TranscriptViewController()
         }
-        transcript.onToast = { [weak self] text in self?.toast(text) }
-        transcript.onBandAction = { [weak self] action in self?.perform(bandAction: action) }
+        splitPanes.onFocusChanged = { [weak self] in self?.focusedPaneChanged() }
         filesPane.onOpen = { [weak self] path in
             self?.transcript.composer.insertText("@\(path) ")
         }
+    }
+
+    /// Every pane is wired at birth: its state feeds the notifier with its own session, its
+    /// toasts land in the shared queue, and its band steers the pane it belongs to.
+    private func makePane() -> TranscriptViewController {
+        let pane = TranscriptViewController()
+        pane.onState = { [weak pane] state in
+            guard let pane, let entry = pane.currentEntry else { return }
+            MacNotifier.shared.observeConversation(
+                profileID: entry.profileID, sessionID: entry.session.id,
+                title: entry.session.hasPlaceholderTitle
+                    ? Localized.text("New conversation") : entry.session.title,
+                state: state)
+        }
+        pane.onToast = { [weak self] text in self?.toast(text) }
+        pane.onBandAction = { [weak self, weak pane] action in
+            guard let pane else { return }
+            self?.perform(bandAction: action, on: pane)
+        }
+        return pane
+    }
+
+    /// Every pane showing a deleted session empties with an explanation; the sidebar's own flow
+    /// already repopulates the focused one.
+    private func paneCleanupAfterDelete(_ entry: SessionEntry) {
+        splitPanes.eachPane { pane in
+            guard pane.currentEntry?.session.id == entry.session.id,
+                pane.currentEntry?.profileID == entry.profileID
+            else { return }
+            pane.resetPane(placeholder: Localized.text("That conversation was deleted."))
+        }
+        splitPanes.persist()
     }
 
     /// Quota is account state, not session state: polled on its own slow cadence — quickly only
@@ -402,8 +533,6 @@ final class MainWindowController: NSWindowController {
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {
-        currentEntry = entry
-        currentBackend = backend
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
         filesPane.show(directory: entry.session.directory, on: backend)
@@ -412,6 +541,7 @@ final class MainWindowController: NSWindowController {
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        splitPanes.persist()
     }
 
     /// Sidebar, content column, files inspector — and inside the content column its own vertical
@@ -428,7 +558,7 @@ final class MainWindowController: NSWindowController {
 
         contentSplit.splitView.isVertical = false
         contentSplit.splitView.dividerStyle = .thin
-        let transcriptItem = NSSplitViewItem(viewController: transcript)
+        let transcriptItem = NSSplitViewItem(viewController: splitPanes)
         transcriptItem.minimumThickness = 240
         contentSplit.addSplitViewItem(transcriptItem)
         let terminal = NSSplitViewItem(viewController: terminalPane)
@@ -477,7 +607,8 @@ final class MainWindowController: NSWindowController {
         guard let chord = MacKeys.chord(for: event) else { return event }
         let context = keyContext()
         let awaiting =
-            context == .normal && !(lastState?.pendingPermissions.isEmpty ?? true)
+            context == .normal
+            && !(transcript.currentState?.pendingPermissions.isEmpty ?? true)
         switch shortcuts.resolve(
             chord, context: context, pending: pendingChords, awaitingApproval: awaiting)
         {
@@ -499,8 +630,11 @@ final class MainWindowController: NSWindowController {
     /// Return-to-send. `nil` means "not the composer's business" and the keystroke falls through
     /// to the shared registry; `false` hands it to the text view for ordinary typing.
     private func composerKey(_ event: NSEvent) -> Bool? {
-        let composer = transcript.composer
-        guard composer.editorHasFocus else { return nil }
+        guard let pane = splitPanes.orderedPanes.first(where: { $0.composer.editorHasFocus })
+        else { return nil }
+        splitPanes.focus(pane, grabKeyboard: false)
+        focused = .transcript
+        let composer = pane.composer
         let isReturn = event.keyCode == 36 || event.keyCode == 76
         if event.modifierFlags.contains(.command) {
             if isReturn {
@@ -546,7 +680,7 @@ final class MainWindowController: NSWindowController {
                 return true
             }
             if composer.vimMode != .insert {
-                return composerNormalKey(key, event: event)
+                return composerNormalKey(key, event: event, pane: pane)
             }
         }
 
@@ -564,8 +698,10 @@ final class MainWindowController: NSWindowController {
     /// key of a command already in flight, so `3x`, `diw` and `ct)` still land. A key neither
     /// side binds goes back to vim rather than to the text view, so no stray letter types itself
     /// into the draft.
-    private func composerNormalKey(_ key: VimKey, event: NSEvent) -> Bool? {
-        let composer = transcript.composer
+    private func composerNormalKey(
+        _ key: VimKey, event: NSEvent, pane: TranscriptViewController
+    ) -> Bool? {
+        let composer = pane.composer
         if key.control, event.charactersIgnoringModifiers == "c",
             composer.copySelectionToPasteboard()
         {
@@ -573,7 +709,7 @@ final class MainWindowController: NSWindowController {
             return true
         }
         guard let chord = MacKeys.chord(for: event) else { return nil }
-        let awaiting = !(lastState?.pendingPermissions.isEmpty ?? true)
+        let awaiting = !(pane.currentState?.pendingPermissions.isEmpty ?? true)
         if awaiting, !chord.control, !chord.alt, pendingChords.isEmpty,
             let action = shortcuts.approval[chord.token]
         {

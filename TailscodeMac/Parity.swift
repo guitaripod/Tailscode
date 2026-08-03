@@ -58,6 +58,7 @@ enum ParityManifest {
         case .shortcutCheatsheet: return .implemented("cheatsheet")
         case .fileBrowser: return .implemented("FileTreePane")
         case .terminalPane: return .implemented("TerminalPane")
+        case .splitPanes: return .implemented("SplitPaneHost")
         case .uiScale: return .implemented("UIScale")
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")

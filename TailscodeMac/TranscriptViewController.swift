@@ -35,12 +35,19 @@ final class TranscriptViewController: NSViewController {
 
     private let context = TranscriptContext()
     private let rowBuilder = TranscriptRowBuilder()
+    private let identityLabel = NSTextField(labelWithString: "")
 
     private var conversation: AgentConversation?
     private var streamTask: Task<Void, Never>?
     private var backend: (any CodingAgentBackend)?
     private var entry: SessionEntry?
     private var lastState: ConversationState?
+
+    /// What this pane is showing, read by the hub and the tiling host: the focused pane's entry
+    /// is the window's "current chat", and a restored layout rebinds by these.
+    var currentEntry: SessionEntry? { entry }
+    var currentBackend: (any CodingAgentBackend)? { backend }
+    var currentState: ConversationState? { lastState }
 
     private var renderedRows: [TranscriptRow] = []
     private var rowViews: [NSView] = []
@@ -91,6 +98,13 @@ final class TranscriptViewController: NSViewController {
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(emptyLabel)
 
+        identityLabel.font = MacTheme.Font.caption()
+        identityLabel.textColor = MacTheme.Color.secondaryLabel
+        identityLabel.lineBreakMode = .byTruncatingMiddle
+        identityLabel.isHidden = true
+        identityLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(identityLabel)
+
         let glass = configureComposerLayer()
         container.addSubview(glass)
         composerGlass = glass
@@ -132,6 +146,13 @@ final class TranscriptViewController: NSViewController {
                 equalTo: container.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
             findBar.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
+
+            identityLabel.topAnchor.constraint(
+                equalTo: container.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
+            identityLabel.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
+            identityLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m),
 
             emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
@@ -193,6 +214,7 @@ final class TranscriptViewController: NSViewController {
         agentStreamSessionID = nil
         updateStatus()
         refreshAuthBanner()
+        refreshIdentity()
 
         if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
@@ -225,6 +247,57 @@ final class TranscriptViewController: NSViewController {
     func reconnect() {
         guard let conversation else { return }
         Task { await conversation.reconnect() }
+    }
+
+    /// The strip that says whose conversation this pane is — only worth its line once a second
+    /// pane exists, so a lone pane stays exactly the window it always was.
+    func setIdentityVisible(_ visible: Bool) {
+        identityLabel.isHidden = !visible
+        refreshIdentity()
+    }
+
+    private func refreshIdentity() {
+        guard let entry else {
+            identityLabel.stringValue = Localized.text("No conversation")
+            return
+        }
+        let title =
+            entry.session.hasPlaceholderTitle
+            ? Localized.text("New conversation") : entry.session.title
+        let server = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        identityLabel.stringValue = "\(title) · \(server)"
+    }
+
+    /// A closing pane stops talking to the world before its views go: a cancelled stream is the
+    /// difference between a closed pane and a leak that keeps rendering into nothing.
+    func shutdownPane() {
+        streamTask?.cancel()
+        streamTask = nil
+        tickerTask?.cancel()
+        tickerTask = nil
+        agentStreamTask?.cancel()
+        agentStreamTask = nil
+        agentStreamSessionID = nil
+    }
+
+    /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
+    /// never a stale transcript that looks alive.
+    func resetPane(placeholder: String) {
+        shutdownPane()
+        conversation = nil
+        entry = nil
+        backend = nil
+        lastState = nil
+        lastFullRows = []
+        lastFullCount = 0
+        echoedPrompt = nil
+        pendingSignature = "\u{0}"
+        pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        composer.isHidden = true
+        authGlass?.isHidden = true
+        showPlaceholder(placeholder)
+        refreshIdentity()
+        updateStatus()
     }
 
     /// A notice is transient — the last thing the app did on your behalf — and it lives at the

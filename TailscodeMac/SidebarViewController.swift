@@ -15,8 +15,14 @@ import TailscodeCore
 @MainActor
 final class SidebarViewController: NSViewController {
     var onOpen: ((SessionEntry, any CodingAgentBackend) -> Void)?
+    var onOpenInSplit: ((SessionEntry) -> Void)?
+    var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
     var onToast: ((String) -> Void)?
+    /// Which session the focused pane is actually showing. With a tiling tree, "already open"
+    /// is a fact about the focused pane, not about this list's last click — an empty pane must
+    /// be able to receive the row the previous pane still shows.
+    var focusedSessionID: (() -> String?)?
 
     private(set) var showingArchive = false
 
@@ -186,7 +192,9 @@ final class SidebarViewController: NSViewController {
     }
 
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
-        guard selectedID != entry.session.id else { return }
+        let alreadyShowing =
+            focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
+        guard !alreadyShowing else { return }
         self.freshlyCreated = freshlyCreated ? entry : nil
         selectedID = entry.session.id
         SessionSeenStore.markSeen(entry.session.id)
@@ -531,6 +539,7 @@ final class SidebarViewController: NSViewController {
         pendingDeletes.insert(sessionID)
         entries.removeAll { $0.profileID == entry.profileID && $0.session.id == sessionID }
         if freshlyCreated?.session.id == sessionID { freshlyCreated = nil }
+        onDeleted?(entry)
         if selectedID == sessionID {
             selectedID = nil
             if let next = entries.first { open(next) }
@@ -637,6 +646,11 @@ extension SidebarViewController: NSMenuDelegate {
         if entry.session.id != selectedID {
             menu.addItem(menuItem(Localized.text("Open"), action: #selector(menuOpen)))
         }
+        menu.addItem(
+            menuItem(
+                Localized.text("Open in a new split"),
+                subtitle: Localized.text("Beside the conversations already on screen"),
+                action: #selector(menuOpenInSplit)))
         let saved = SavedChatStore.contains(entry)
         menu.addItem(
             menuItem(
@@ -707,6 +721,11 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuOpen() {
         guard let model = menuModel else { return }
         open(model.entry)
+    }
+
+    @objc private func menuOpenInSplit() {
+        guard let model = menuModel else { return }
+        onOpenInSplit?(model.entry)
     }
 
     @objc private func menuToggleSaved() {
