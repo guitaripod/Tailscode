@@ -132,8 +132,19 @@ final class MainWindowController: NSWindowController {
         switch action {
         case .focus(let pane):
             return focus(pane)
-        case .cycleForward, .cycleBackward:
-            return focus(focused == .chats ? .transcript : .chats)
+        case .cycleForward:
+            if focused == .chats { return focus(.transcript) }
+            if transcript.composer.editorHasFocus { return focus(.chats) }
+            focused = .transcript
+            transcript.focusComposer()
+        case .cycleBackward:
+            if focused == .chats {
+                focused = .transcript
+                transcript.focusComposer()
+                return true
+            }
+            if transcript.composer.editorHasFocus { return focus(.transcript) }
+            return focus(.chats)
         case .selectNext:
             sidebar.move(by: 1)
         case .selectPrevious:
@@ -151,6 +162,7 @@ final class MainWindowController: NSWindowController {
             transcript.focusComposer()
         case .leaveInsert:
             transcript.setFindShown(false)
+            transcript.composer.dismissCompletion()
             window?.makeFirstResponder(nil)
             closeCheatsheet()
         case .toggleSaved:
@@ -222,7 +234,11 @@ final class MainWindowController: NSWindowController {
             } else {
                 transcript.stopTurn()
             }
-        case .send, .commandPalette, .zoomIn, .zoomOut, .zoomReset:
+        case .send:
+            transcript.composer.sendNow()
+        case .commandPalette:
+            transcript.composer.openCommandPalette()
+        case .zoomIn, .zoomOut, .zoomReset:
             return false
         }
         return true
@@ -293,6 +309,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
+        if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
         let context = keyContext()
         let awaiting =
@@ -312,6 +329,141 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// The prompt box's own key handling, decided here rather than in the text view so the same
+    /// keystroke means the same thing whether a person typed it or a binding sent it — exactly
+    /// Linux `handleComposerKey`: completion keys first while the popover shows, then vim, then
+    /// Return-to-send. `nil` means "not the composer's business" and the keystroke falls through
+    /// to the shared registry; `false` hands it to the text view for ordinary typing.
+    private func composerKey(_ event: NSEvent) -> Bool? {
+        let composer = transcript.composer
+        guard composer.editorHasFocus else { return nil }
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if event.modifierFlags.contains(.command) {
+            if isReturn {
+                composer.sendNow()
+                return true
+            }
+            return nil
+        }
+        let control = event.modifierFlags.contains(.control)
+        let shift = event.modifierFlags.contains(.shift)
+        let letter = event.charactersIgnoringModifiers
+
+        if composer.completionVisible {
+            switch event.keyCode {
+            case 48:
+                if shift { composer.moveCompletion(by: -1) } else { composer.acceptCompletion() }
+                return true
+            case 125:
+                composer.moveCompletion(by: 1)
+                return true
+            case 126:
+                composer.moveCompletion(by: -1)
+                return true
+            case 53:
+                composer.dismissCompletion()
+                return true
+            default:
+                if control, letter == "n" {
+                    composer.moveCompletion(by: 1)
+                    return true
+                }
+                if control, letter == "p" {
+                    composer.moveCompletion(by: -1)
+                    return true
+                }
+            }
+        }
+
+        if composer.vimEnabled {
+            let key = vimKey(for: event)
+            if composer.vimMode == .insert, key.isEscape || (control && letter == "[") {
+                composer.applyVim(VimKey(isEscape: true))
+                return true
+            }
+            if composer.vimMode != .insert {
+                return composerNormalKey(key, event: event)
+            }
+        }
+
+        if isReturn, !shift, ComposerView.sendOnReturn || control {
+            composer.sendNow()
+            return true
+        }
+        if isReturn, shift || !ComposerView.sendOnReturn { return false }
+        return nil
+    }
+
+    /// The composer's normal mode is the app's normal mode: every key answers to the shortcut
+    /// table first — j scrolls, J switches chats, ? opens the cheatsheet — while vim keeps what
+    /// makes it vim: the visual modes whole, insert and visual entries, Enter to send, and every
+    /// key of a command already in flight, so `3x`, `diw` and `ct)` still land. A key neither
+    /// side binds goes back to vim rather than to the text view, so no stray letter types itself
+    /// into the draft.
+    private func composerNormalKey(_ key: VimKey, event: NSEvent) -> Bool? {
+        let composer = transcript.composer
+        if key.control, event.charactersIgnoringModifiers == "c",
+            composer.copySelectionToPasteboard()
+        {
+            toast(Localized.text("Copied"))
+            return true
+        }
+        guard let chord = MacKeys.chord(for: event) else { return nil }
+        let awaiting = !(lastState?.pendingPermissions.isEmpty ?? true)
+        if awaiting, !chord.control, !chord.alt, pendingChords.isEmpty,
+            let action = shortcuts.approval[chord.token]
+        {
+            pendingChords = []
+            return perform(action)
+        }
+        if key.isEnter, chord.control {
+            pendingChords = []
+            composer.sendNow()
+            return true
+        }
+        let plain = !chord.control && !chord.alt
+        let entries: Set<Character> = ["i", "a", "o", "v", "V"]
+        let entersVimMode = plain && (key.character.map { entries.contains($0) } ?? false)
+        if composer.vimMode != .normal || composer.vimAwaitsMore || entersVimMode
+            || (plain && key.isEnter)
+        {
+            pendingChords = []
+            composer.applyVim(key)
+            return true
+        }
+        switch shortcuts.resolve(
+            chord, context: .normal, pending: pendingChords, awaitingApproval: false)
+        {
+        case .run(let action):
+            pendingChords = []
+            _ = perform(action)
+            return true
+        case .pending(let chords):
+            pendingChords = chords
+            return true
+        case .unbound:
+            pendingChords = []
+            composer.applyVim(key)
+            return true
+        }
+    }
+
+    private func vimKey(for event: NSEvent) -> VimKey {
+        var character: Character?
+        if let raw = event.charactersIgnoringModifiers?.first,
+            let scalar = raw.unicodeScalars.first?.value, scalar >= 0x20,
+            !(0xF700...0xF8FF).contains(scalar)
+        {
+            character = raw
+        }
+        return VimKey(
+            character: character,
+            isEscape: event.keyCode == 53,
+            isEnter: event.keyCode == 36 || event.keyCode == 76,
+            isBackspace: event.keyCode == 51,
+            control: event.modifierFlags.contains(.control))
+    }
+
     /// Anything that takes text — the composer, the filter field's editor, a rename sheet — is
     /// insert; the rest of the window is normal. The terminal context arrives with its pane.
     private func keyContext() -> KeyContext {
@@ -321,6 +473,7 @@ final class MainWindowController: NSWindowController {
 
     @discardableResult
     private func focus(_ pane: Pane) -> Bool {
+        if pane != .transcript { transcript.composer.dismissCompletion() }
         switch pane {
         case .chats:
             focused = .chats
@@ -462,6 +615,7 @@ final class MainWindowController: NSWindowController {
 extension MainWindowController: NSToolbarDelegate {
     private enum ToolbarID {
         static let sidebar = NSToolbarItem.Identifier("tailscode.toolbar.sidebar")
+        static let actions = NSToolbarItem.Identifier("tailscode.toolbar.actions")
         static let files = NSToolbarItem.Identifier("tailscode.toolbar.files")
         static let terminal = NSToolbarItem.Identifier("tailscode.toolbar.terminal")
         static let usage = NSToolbarItem.Identifier("tailscode.toolbar.usage")
@@ -471,8 +625,9 @@ extension MainWindowController: NSToolbarDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            ToolbarID.sidebar, .sidebarTrackingSeparator, .flexibleSpace, ToolbarID.files,
-            ToolbarID.terminal, ToolbarID.usage, ToolbarID.servers, ToolbarID.settings,
+            ToolbarID.sidebar, .sidebarTrackingSeparator, .flexibleSpace, ToolbarID.actions,
+            ToolbarID.files, ToolbarID.terminal, ToolbarID.usage, ToolbarID.servers,
+            ToolbarID.settings,
         ]
     }
 
@@ -490,6 +645,19 @@ extension MainWindowController: NSToolbarDelegate {
                 itemIdentifier, symbol: "sidebar.leading", label: Localized.text("Chats"),
                 tip: Localized.text("Show or hide the chat list"),
                 action: #selector(toolbarToggleSidebar))
+        case ToolbarID.actions:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.image = NSImage(
+                systemSymbolName: "ellipsis.circle",
+                accessibilityDescription: Localized.text("Conversation actions"))
+            item.label = Localized.text("Actions")
+            item.paletteLabel = Localized.text("Actions")
+            item.toolTip = Localized.text("Everything this conversation can do")
+            item.isBordered = true
+            let menu = NSMenu()
+            menu.delegate = self
+            item.menu = menu
+            return item
         case ToolbarID.files:
             return makeToolbarItem(
                 itemIdentifier, symbol: "sidebar.trailing", label: Localized.text("Files"),
@@ -554,6 +722,107 @@ extension MainWindowController: NSToolbarDelegate {
 
 extension MainWindowController: NSToolbarItemValidation {
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool { true }
+}
+
+extension MainWindowController: NSMenuDelegate {
+    /// The ⋯ menu: everything the open conversation can do, rebuilt on every click so the verbs
+    /// and the Save/Unsave title always describe the chat as it is now — capability-gated, and
+    /// reusing the sidebar's own flows so a rename here and a rename there are the same rename.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let entry = currentEntry, let backend = currentBackend else {
+            let empty = NSMenuItem(
+                title: Localized.text("No conversation open"), action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+            return
+        }
+        let capabilities = backend.capabilities
+        let saved = SavedChatStore.contains(entry)
+        menu.addItem(
+            actionsItem(
+                saved ? Localized.text("Unsave") : Localized.text("Save"),
+                subtitle: Localized.text(
+                    "A saved chat lists itself even when its server is unreachable")
+            ) { [weak self] in
+                self?.sidebar.toggleSaved(entry)
+            })
+        if capabilities.supportsRenaming {
+            menu.addItem(
+                actionsItem(Localized.text("Rename…")) { [weak self] in
+                    self?.sidebar.presentRename(entry: entry, backend: backend)
+                })
+        }
+        if capabilities.supportsForking {
+            menu.addItem(
+                actionsItem(
+                    Localized.text("Fork"),
+                    subtitle: Localized.text(
+                        "A new session with this history, for a different direction")
+                ) { [weak self] in
+                    self?.sidebar.fork(entry: entry, backend: backend)
+                })
+        }
+        if capabilities.supportsCompaction {
+            menu.addItem(
+                actionsItem(
+                    Localized.text("Compact…"),
+                    subtitle: Localized.text("Irreversible, takes minutes")
+                ) { [weak self] in
+                    self?.transcript.presentCompactPreflight()
+                })
+        }
+        if capabilities.supportsClearing {
+            menu.addItem(
+                actionsItem(
+                    Localized.text("Clear…"),
+                    subtitle: Localized.text("Empty the conversation in place")
+                ) { [weak self] in
+                    self?.presentClear(entry: entry, backend: backend)
+                })
+        }
+        menu.addItem(.separator())
+        menu.addItem(
+            actionsItem(
+                Localized.text("Delete…"),
+                subtitle: Localized.text("Remove the session from its server"), destructive: true
+            ) { [weak self] in
+                self?.sidebar.presentDelete(entry: entry, backend: backend)
+            })
+    }
+
+    private func actionsItem(
+        _ title: String, subtitle: String? = nil, destructive: Bool = false,
+        handler: @escaping @MainActor () -> Void
+    ) -> NSMenuItem {
+        let item = ClosureMenuItem(title: title, handler: handler)
+        if let subtitle { item.subtitle = subtitle }
+        if destructive {
+            item.attributedTitle = NSAttributedString(
+                string: title, attributes: [.foregroundColor: MacTheme.Color.danger])
+        }
+        return item
+    }
+
+    private func presentClear(entry: SessionEntry, backend: any CodingAgentBackend) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = Localized.text("Clear this conversation?")
+        alert.informativeText = Localized.text(
+            "Everything in it goes away, on the server, for every device.")
+        let confirm = alert.addButton(withTitle: Localized.text("Clear"))
+        confirm.hasDestructiveAction = true
+        alert.addButton(withTitle: Localized.text("Cancel"))
+        let sessionID = entry.session.id
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            Task { [weak self] in
+                try? await backend.clearConversation(sessionID)
+                await self?.sidebar.refresh()
+            }
+        }
+    }
 }
 
 /// Esc dismisses, matching the key that opened it: the cheatsheet is a glance, not a window to

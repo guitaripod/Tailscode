@@ -20,7 +20,7 @@ final class TranscriptViewController: NSViewController {
     private let pendingStack = NSStackView()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusLine = NSTextField(labelWithString: "")
-    private let composer = ComposerView()
+    let composer = ComposerView()
     private let findBar = FindBar()
     private let jumpButton = RowKit.ActionButton(title: "") {}
     private let emptyLabel = NSTextField(labelWithString: "")
@@ -80,6 +80,8 @@ final class TranscriptViewController: NSViewController {
         container.addSubview(glass)
         composerGlass = glass
 
+        container.addSubview(composer.completion)
+
         let jump = configureJumpPill()
         container.addSubview(jump)
         jumpGlass = jump
@@ -99,6 +101,13 @@ final class TranscriptViewController: NSViewController {
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
             glass.bottomAnchor.constraint(
                 equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.m),
+
+            composer.completion.bottomAnchor.constraint(
+                equalTo: glass.topAnchor, constant: -MacTheme.Spacing.s),
+            composer.completion.leadingAnchor.constraint(
+                equalTo: glass.leadingAnchor, constant: MacTheme.Spacing.m),
+            composer.completion.trailingAnchor.constraint(
+                lessThanOrEqualTo: glass.trailingAnchor, constant: -MacTheme.Spacing.m),
 
             jump.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.xl),
@@ -141,6 +150,7 @@ final class TranscriptViewController: NSViewController {
         lastState = nil
         emptyLabel.isHidden = true
         composer.isHidden = false
+        composer.prepare(for: entry, backend: backend)
         context.expanded = []
         context.subagentRows = [:]
         context.agentFacts = [:]
@@ -304,6 +314,8 @@ final class TranscriptViewController: NSViewController {
         ])
     }
 
+    /// The whole writing surface — chips, prompt box, pills — is one glass card inside one glass
+    /// group, so its neighbouring shapes read as a single wet surface and merge when they touch.
     private func configureComposerLayer() -> NSView {
         statusLine.font = MacTheme.Font.mono(11)
         statusLine.textColor = MacTheme.Color.secondaryLabel
@@ -311,9 +323,19 @@ final class TranscriptViewController: NSViewController {
         statusLine.lineBreakMode = .byTruncatingTail
         statusLine.translatesAutoresizingMaskIntoConstraints = false
 
-        composer.translatesAutoresizingMaskIntoConstraints = false
-        composer.onSend = { [weak self] text in self?.send(text) }
         composer.isHidden = true
+        composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
+            self?.sendPrompt(text, model: model, effort: effort, attachments: attachments)
+        }
+        composer.onRunCommand = { [weak self] command, arguments in
+            guard let conversation = self?.conversation else { return }
+            Task { try? await conversation.run(command, arguments: arguments) }
+        }
+        composer.onCompactRequested = { [weak self] instruction in
+            self?.presentCompactPreflight(initialInstruction: instruction)
+        }
+        composer.onStop = { [weak self] in self?.stopTurn() }
+        composer.onToast = { [weak self] text in self?.onToast?(text) }
 
         let column = NSStackView(views: [statusLine, composer])
         column.orientation = .vertical
@@ -323,7 +345,20 @@ final class TranscriptViewController: NSViewController {
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
             right: MacTheme.Spacing.m)
         column.translatesAutoresizingMaskIntoConstraints = false
-        return MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
+
+        let card = MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(card)
+        NSLayoutConstraint.activate([
+            card.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            card.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            card.topAnchor.constraint(equalTo: host.topAnchor),
+            card.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+        ])
+        let group = MacTheme.glassGroup()
+        group.contentView = host
+        return group
     }
 
     private func configureJumpPill() -> NSView {
@@ -391,15 +426,49 @@ final class TranscriptViewController: NSViewController {
         scrollToBottom()
     }
 
-    private func send(_ text: String) {
+    /// The prompt is on screen before the server has heard of it. A busy bridge can take seconds
+    /// to answer, and a composer that empties into silence reads as a hang.
+    private func sendPrompt(
+        _ text: String, model: ModelSelection?, effort: String?,
+        attachments: [PromptAttachment]
+    ) {
         guard let conversation else { return }
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
         Task {
             do {
-                try await conversation.send(text)
+                try await conversation.send(
+                    text, model: model, reasoningEffort: effort, attachments: attachments)
             } catch {
                 NSSound.beep()
+            }
+        }
+    }
+
+    /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
+    /// instruction for what the summary must keep — so it always opens this preflight first.
+    func presentCompactPreflight(initialInstruction: String = "") {
+        guard let conversation, let window = view.window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = Localized.text("Compact this conversation?")
+        alert.informativeText = Localized.text(
+            "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."
+        )
+        let field = NSTextField(string: initialInstruction)
+        field.placeholderString = Localized.text("What must the summary keep? (optional)")
+        field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        let confirm = alert.addButton(withTitle: Localized.text("Compact"))
+        confirm.hasDestructiveAction = true
+        alert.addButton(withTitle: Localized.text("Cancel"))
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            let instruction = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            Task {
+                try? await conversation.compact(
+                    instructions: instruction.isEmpty ? nil : instruction)
             }
         }
     }
@@ -465,7 +534,7 @@ final class TranscriptViewController: NSViewController {
             applyRows(windowed, appended: appended)
         }
         renderPendingCards(state)
-        composer.setBusy(state.status == .running)
+        composer.noteState(state)
         statusLine.isHidden = state.status != .running
         statusLine.stringValue = Localized.text("Working…")
     }

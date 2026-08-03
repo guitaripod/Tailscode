@@ -1,0 +1,220 @@
+import AppKit
+import TailscodeCore
+
+/// The line under the prompt box that says where the next prompt goes and how: vim mode,
+/// destination, model, effort, the command palette, attachments, and stop. The CLI's status
+/// line, made clickable — every pill pops the menu that changes what it names.
+@MainActor
+final class PillsRow: NSView {
+    struct MenuRow {
+        let title: String
+        let subtitle: String?
+        let checked: Bool
+        let handler: @MainActor () -> Void
+
+        init(
+            _ title: String, subtitle: String? = nil, checked: Bool = false,
+            handler: @escaping @MainActor () -> Void = {}
+        ) {
+            self.title = title
+            self.subtitle = subtitle
+            self.checked = checked
+            self.handler = handler
+        }
+    }
+
+    var modelRows: (() -> [MenuRow])?
+    var effortRows: (() -> [MenuRow])?
+    var commandRows: (() -> [MenuRow])?
+    var attachRows: (() -> [MenuRow])?
+    var onStop: (() -> Void)?
+
+    private let vimBadge = NSTextField(labelWithString: "")
+    private let vimBadgeWrap = NSView()
+    private let destinationLabel = NSTextField(labelWithString: "")
+    private let modelPill: MenuPill
+    private let effortPill: MenuPill
+    private let commandPill: MenuPill
+    private let attachButton: MenuPill
+    private let stopButton: RowKit.ActionButton
+
+    init() {
+        modelPill = MenuPill(title: Localized.text("model"))
+        effortPill = MenuPill(title: Localized.text("effort"))
+        commandPill = MenuPill(title: "/")
+        attachButton = MenuPill(title: "")
+        stopButton = RowKit.ActionButton(title: "") {}
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        vimBadge.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        vimBadge.textColor = MacTheme.Color.label
+        vimBadge.translatesAutoresizingMaskIntoConstraints = false
+        vimBadgeWrap.wantsLayer = true
+        vimBadgeWrap.layer?.cornerRadius = 5
+        vimBadgeWrap.translatesAutoresizingMaskIntoConstraints = false
+        vimBadgeWrap.addSubview(vimBadge)
+        NSLayoutConstraint.activate([
+            vimBadge.leadingAnchor.constraint(equalTo: vimBadgeWrap.leadingAnchor, constant: 6),
+            vimBadge.trailingAnchor.constraint(
+                equalTo: vimBadgeWrap.trailingAnchor, constant: -6),
+            vimBadge.topAnchor.constraint(equalTo: vimBadgeWrap.topAnchor, constant: 2),
+            vimBadge.bottomAnchor.constraint(equalTo: vimBadgeWrap.bottomAnchor, constant: -2),
+        ])
+        vimBadgeWrap.isHidden = true
+
+        destinationLabel.font = MacTheme.Font.caption()
+        destinationLabel.textColor = MacTheme.Color.tertiaryLabel
+        destinationLabel.lineBreakMode = .byTruncatingMiddle
+        destinationLabel.translatesAutoresizingMaskIntoConstraints = false
+        destinationLabel.setContentCompressionResistancePriority(
+            .defaultLow, for: .horizontal)
+
+        modelPill.rows = { [weak self] in self?.modelRows?() ?? [] }
+        modelPill.toolTip = Localized.text("The model the next prompt runs on")
+        effortPill.rows = { [weak self] in self?.effortRows?() ?? [] }
+        effortPill.toolTip = Localized.text("How hard the model thinks")
+        commandPill.rows = { [weak self] in self?.commandRows?() ?? [] }
+        commandPill.toolTip = Localized.text("Slash commands")
+
+        attachButton.rows = { [weak self] in self?.attachRows?() ?? [] }
+        attachButton.image = NSImage(
+            systemSymbolName: "paperclip",
+            accessibilityDescription: Localized.text("Attach files"))
+        attachButton.toolTip = Localized.text("Attach files or a pasted image, up to 8 MB each")
+
+        stopButton.bezelStyle = .rounded
+        stopButton.controlSize = .small
+        stopButton.image = NSImage(
+            systemSymbolName: "stop.fill",
+            accessibilityDescription: Localized.text("Stop the running turn"))
+        stopButton.contentTintColor = MacTheme.Color.danger
+        stopButton.toolTip = Localized.text("Stop the running turn")
+        stopButton.isHidden = true
+        stopButton.target = self
+        stopButton.action = #selector(stopTapped)
+        stopButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let row = NSStackView(views: [
+            vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill, RowKit.spacer(),
+            attachButton, stopButton,
+        ])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = MacTheme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Alongside the badge the caret itself says which mode this is, so the badge carries the
+    /// mode's color too: quiet in normal, accent in insert, warning in the visual modes.
+    func setVim(_ mode: VimMode?) {
+        guard let mode else {
+            vimBadgeWrap.isHidden = true
+            return
+        }
+        vimBadgeWrap.isHidden = false
+        vimBadge.stringValue = mode.label
+        let background: NSColor =
+            switch mode {
+            case .insert: MacTheme.Color.accent.withAlphaComponent(0.25)
+            case .normal: NSColor.quaternaryLabelColor
+            case .visual, .visualLine: MacTheme.Color.warning.withAlphaComponent(0.3)
+            }
+        vimBadgeWrap.layer?.backgroundColor = background.cgColor
+    }
+
+    func setDestination(_ text: String) {
+        destinationLabel.stringValue = text
+    }
+
+    func setModelTitle(_ text: String) {
+        modelPill.title = text
+    }
+
+    func setEffortTitle(_ text: String) {
+        effortPill.title = text
+    }
+
+    func setAttachShown(_ shown: Bool) {
+        attachButton.isHidden = !shown
+    }
+
+    func setStopShown(_ shown: Bool) {
+        stopButton.isHidden = !shown
+    }
+
+    func popUpCommandMenu() {
+        commandPill.popUpMenu()
+    }
+
+    @objc private func stopTapped() {
+        onStop?()
+    }
+}
+
+/// A pill that pops a menu built fresh on every click, so the rows always describe the session
+/// as it is now rather than as it was when the pill was made.
+@MainActor
+final class MenuPill: NSButton {
+    var rows: (() -> [PillsRow.MenuRow])?
+
+    init(title: String) {
+        super.init(frame: .zero)
+        self.title = title
+        bezelStyle = .rounded
+        controlSize = .small
+        font = MacTheme.Font.caption()
+        target = self
+        action = #selector(popUp)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func popUpMenu() {
+        popUp()
+    }
+
+    @objc private func popUp() {
+        let rows = rows?() ?? []
+        guard !rows.isEmpty else { return }
+        let menu = NSMenu()
+        for row in rows {
+            let item = ClosureMenuItem(title: row.title, handler: row.handler)
+            if let subtitle = row.subtitle { item.subtitle = subtitle }
+            item.state = row.checked ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+    }
+}
+
+/// A target-action shim so a menu built from data can hand a closure to AppKit.
+@MainActor
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: @MainActor () -> Void
+
+    init(title: String, handler: @escaping @MainActor () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError() }
+
+    @objc private func fire() {
+        handler()
+    }
+}
