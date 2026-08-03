@@ -1,6 +1,6 @@
 # Tailscode — Agent Instructions
 
-Native UIKit iOS client for remote coding agents (opencode + Claude Code via claude-bridge) over Tailscale. Thin shell over **CodingAgentKit** (`~/Dev/swift/CodingAgentKit`).
+Native UIKit iOS client for remote coding agents (opencode + Claude Code via claude-bridge) over Tailscale. Thin shell over **CodingAgentKit** (`~/Dev/swift/CodingAgentKit`). Two desktop peers live in this repo: **TailscodeLinux** (GTK4) and **TailscodeMac** (AppKit, macOS 26+, Liquid Glass — read `TailscodeMac/AGENTS.md` before touching it; it carries the design contract, feature-parity rules, and the rsync+ssh build/selftest loop against `macbook`). Toolkit-free logic (shortcut registry, vim engine, slash completion, row state, status facts, stores) lives in **TailscodeCore** and is shared by all three clients — new capabilities go there first.
 
 ## Stack
 
