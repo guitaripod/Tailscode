@@ -49,6 +49,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case sendQueue
     case modelEffortPicker
     case modelEffortDisplay
+    case ultracodeAura
     case stopTurn
     case statusBand
     case usagePanel
@@ -228,11 +229,15 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .modelEffortPicker, area: "composer", title: "Model and effort choice",
             spec:
-                "The next turn's model and reasoning effort are pickable from availableModels; the choice rides send(model:reasoningEffort:)."),
+                "The next turn's model and reasoning effort are pickable from availableModels; the choice rides send(model:reasoningEffort:). A pick is recorded per session and as the server's last-used default (ModelPreferenceStore/EffortPreferenceStore.recordPick), and a chat opens on initialModel/initialEffort — never a hardcoded default. Claude Code's effort menu includes ultracode, which the server maps to xhigh plus standing workflow orchestration; typing the word in a prompt opts that turn in the same way."),
         CapabilityDefinition(
             id: .modelEffortDisplay, area: "composer", title: "The chip tells the truth",
             spec:
                 "The model/effort chip shows what will actually answer: the explicit pick, else the model observed on the last assistant turn, else the session's own record."),
+        CapabilityDefinition(
+            id: .ultracodeAura, area: "composer", title: "Ultracode looks unlocked",
+            spec:
+                "Picking the ultracode tier, typing the word into the draft, or a turn in flight that was sent with it wraps the composer in the shared animated rainbow aura (Ultracode.auraActive over Ultracode.rainbowStops) — special powers visibly on before the prompt is sent — and the effort menu presents ultracode as a power (Ultracode.menuTitle/menuSubtitle), not another level."),
         CapabilityDefinition(
             id: .stopTurn, area: "composer", title: "Stop the turn",
             spec: "A visible control cancels the current turn via cancelCurrentTurn."),

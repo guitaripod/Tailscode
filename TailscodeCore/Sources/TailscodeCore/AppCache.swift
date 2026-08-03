@@ -36,6 +36,22 @@ public enum ModelPreferenceStore {
     public static func setGlobalModel(_ model: ModelSelection?, forContextID contextID: String) {
         setModel(model, forKey: contextID)
     }
+
+    /// The model a chat opens with: its own recorded pick, else the last model
+    /// used anywhere on that server — never a hardcoded default.
+    public static func initialModel(sessionKey: String?, contextID: String) -> ModelSelection? {
+        sessionKey.flatMap { model(forKey: $0) } ?? globalModel(forContextID: contextID)
+    }
+
+    /// Records a pick everywhere a future chat looks for one: the session's own
+    /// key, the server's last-used default, and the recents shortlist.
+    public static func recordPick(
+        _ model: ModelSelection?, sessionKey: String?, contextID: String
+    ) {
+        if let sessionKey { setModel(model, forKey: sessionKey) }
+        setGlobalModel(model, forContextID: contextID)
+        if let model { RecentModelsStore.record(model) }
+    }
 }
 
 /// The last few models picked anywhere, surfaced as a "Recent" section at the
@@ -80,5 +96,16 @@ public enum EffortPreferenceStore {
         } else {
             defaults.removeObject(forKey: storagePrefix + key)
         }
+    }
+
+    /// The effort a chat opens at: its own recorded pick, else the effort last
+    /// used anywhere on that server.
+    public static func initialEffort(sessionKey: String?, contextID: String) -> String? {
+        sessionKey.flatMap { effort(forKey: $0) } ?? globalEffort(forContextID: contextID)
+    }
+
+    public static func recordPick(_ level: String?, sessionKey: String?, contextID: String) {
+        if let sessionKey { setEffort(level, forKey: sessionKey) }
+        setGlobalEffort(level, forContextID: contextID)
     }
 }
