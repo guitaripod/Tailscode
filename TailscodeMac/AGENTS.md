@@ -2,9 +2,12 @@
 
 Native AppKit client for remote coding agents, **macOS 26+ only**, Liquid Glass. Peer of the
 iOS app and the GTK Linux app: same CodingAgentKit core, same TailscodeCore stores, same
-`~/.config/tailscode/keybindings.json`. Feature parity target is the Linux app
-(`TailscodeLinux/Sources/TailscodeLinux/`) — when in doubt about a behavior, read how Linux does
-it and mirror the semantics, not the toolkit.
+`~/.config/tailscode/keybindings.json`. Feature parity is governed by the capability registry
+(`TailscodeCore/Sources/TailscodeCore/Parity.swift` + this client's `Parity.swift` manifest —
+see the `/parity` skill): every capability the Mac gains, loses, or renames must be answered
+there, and `scripts/parity.sh` greps the anchors. When in doubt about a behavior, read the
+spec in `CapabilityRegistry` and the richest existing implementation, and mirror the
+semantics, not the toolkit.
 
 ## Non-negotiable conventions
 

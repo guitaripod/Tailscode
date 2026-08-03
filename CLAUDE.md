@@ -2,6 +2,10 @@
 
 Native UIKit iOS client for remote coding agents (opencode + Claude Code via claude-bridge) over Tailscale. Thin shell over **CodingAgentKit** (`~/Dev/swift/CodingAgentKit`). Two desktop peers live in this repo: **TailscodeLinux** (GTK4) and **TailscodeMac** (AppKit, macOS 26+, Liquid Glass — read `TailscodeMac/AGENTS.md` before touching it; it carries the design contract, feature-parity rules, and the rsync+ssh build/selftest loop against `macbook`). Toolkit-free logic (shortcut registry, vim engine, slash completion, row state, status facts, stores) lives in **TailscodeCore** and is shared by all three clients — new capabilities go there first.
 
+## Feature parity (enforced)
+
+Three clients, one capability registry: `TailscodeCore/Sources/TailscodeCore/Parity.swift`. Every user-facing capability is an `AppCapability` case with a toolkit-free spec (`CapabilityRegistry`); each client answers every case in its own `Parity.swift` manifest with an exhaustive switch — adding a capability refuses to compile any client that hasn't decided what it does about it. **Any user-facing feature starts by adding/updating the case, and ends with all three manifests answering honestly** (`.implemented(anchor)` / `.partial` / `.gap(reason)` / `.notApplicable(reason)`). `scripts/parity.sh` prints the matrix and greps every anchor (`--check` gates; a Stop hook runs it). The `/parity` skill carries the full playbook and per-client validation loops. Never ship a feature to one client silently.
+
 ## Stack
 
 - Programmatic UIKit, MVVM + `AppCoordinator`. No storyboards, **no SwiftUI** (except a future Live Activity). Swift 6 strict concurrency, iOS 18+ / macOS 15+ baseline.
