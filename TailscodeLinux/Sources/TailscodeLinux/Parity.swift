@@ -27,7 +27,7 @@ enum ParityManifest {
         case .toolRows: return .implemented("ToolRowView")
         case .toolDiffs: return .implemented("ToolDiff")
         case .imageParts: return .implemented("ImageCache")
-        case .imageViewer: return .partial("presentImage", missing: "a paged gallery over every picture in the conversation and 1:1 zoom; one window with save-to-Downloads today")
+        case .imageViewer: return .implemented("ImageGallery")
         case .subagentCards: return .implemented("subagentRows")
         case .questionCells: return .implemented("asksUserQuestion")
         case .compactionSeam: return .implemented("compaction")
@@ -60,8 +60,8 @@ enum ParityManifest {
         case .uiScale: return .implemented("UIScale")
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")
-        case .firstRunSetup: return .partial("TailnetStatusLinux", missing: "a first-run checklist that proves this machine's tailnet presence; the tailnet address only feeds new-chat host suggestions")
-        case .activityNotifications: return .gap("no desktop notifications; a finished turn or a needs-you in an unfocused window stays silent")
+        case .firstRunSetup: return .implemented("FirstRunDialog")
+        case .activityNotifications: return .implemented("Notifier")
         }
     }
 }

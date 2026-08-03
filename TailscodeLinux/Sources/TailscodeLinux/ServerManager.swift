@@ -163,30 +163,43 @@ final class ServerManager: @unchecked Sendable {
         }
 
         setStatus(Localized.text("Probing %@…", address.url.absoluteString))
-        let profile = ConnectionProfile(
-            id: UUID().uuidString,
-            name: label.isEmpty ? address.displayHost : label,
-            backend: backend,
-            baseURL: address.url,
-            username: backend == .claudeCode ? "claude" : "opencode")
-
         Task { [weak self] in
-            let candidate = profile.makeBackend(password: password.isEmpty ? nil : password)
-            do {
-                let health = try await candidate.health()
-                try await ServerDirectory.shared.save(
-                    profile, password: password.isEmpty ? nil : password)
-                self?.onChanged()
-                Gtk.onMain { [weak self] in
-                    self?.setStatus(
-                        Localized.text(
-                            "Saved %@ — %@", profile.name, health.version ?? "connected"))
-                    self?.renderList()
-                    gtk_editable_set_text(op(self!.addressEntry), "")
+            let verdict = await ProbeSweep.best(
+                address: address, password: password.isEmpty ? nil : password,
+                preferring: backend)
+            switch verdict.outcome {
+            case .ok(let agent, let version):
+                let profile = ConnectionProfile(
+                    id: UUID().uuidString,
+                    name: label.isEmpty ? address.displayHost : label,
+                    backend: agent,
+                    baseURL: verdict.url,
+                    username: agent == .claudeCode ? "claude" : "opencode")
+                do {
+                    try await ServerDirectory.shared.save(
+                        profile, password: password.isEmpty ? nil : password)
+                    self?.onChanged()
+                    Gtk.onMain { [weak self] in
+                        self?.setStatus(
+                            Localized.text(
+                                "Saved %@ — %@", profile.name, version ?? "connected"))
+                        self?.renderList()
+                        gtk_editable_set_text(op(self!.addressEntry), "")
+                    }
+                } catch {
+                    let text = Localized.text("Could not save: %@", String(describing: error))
+                    Gtk.onMain { [weak self] in self?.setStatus(text) }
                 }
-            } catch {
-                let cause = await Self.diagnose(
-                    address: address, backend: backend, error: error)
+            case .authFailed:
+                let text = password.isEmpty
+                    ? Localized.text(
+                        "%@ answered and wants a password.", verdict.url.absoluteString)
+                    : Localized.text(
+                        "%@ answered but refused the password. Check it on the server.",
+                        verdict.url.absoluteString)
+                Gtk.onMain { [weak self] in self?.setStatus(text) }
+            case .notAnAgentServer, .unreachable:
+                let cause = await Self.diagnose(address: address, backend: backend)
                 Gtk.onMain { [weak self] in self?.setStatus(cause) }
             }
         }
@@ -347,16 +360,8 @@ final class ServerManager: @unchecked Sendable {
     }
 
     /// A failed probe names its cause rather than surfacing a raw error: the port not answering,
-    /// the host not resolving, or the server answering and refusing the password.
-    private static func diagnose(
-        address: HostAddress, backend: AgentType, error: Error
-    ) async -> String {
-        let described = String(describing: error)
-        if described.contains("401") || described.lowercased().contains("unauthorized") {
-            return Localized.text(
-                "%@ answered but refused the password. Check it on the server.",
-                address.displayHost)
-        }
+    /// the host not resolving, or something on the port that is not an agent.
+    private static func diagnose(address: HostAddress, backend: AgentType) async -> String {
         guard let host = address.url.host, let port = address.url.port else {
             return Localized.text("Could not reach %@.", address.url.absoluteString)
         }

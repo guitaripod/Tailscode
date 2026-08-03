@@ -111,6 +111,8 @@ enum StatusBand {
         Gtk.addClass(widget, segment.css)
     }
 
+    /// A menu segment's rows are read at open time, so a list opened mid-turn is the list as it
+    /// is now.
     private static func make(
         _ segment: StatusFacts.Segment, state: State,
         perform: @escaping @Sendable (StatusFacts.Action) -> Void
@@ -130,7 +132,6 @@ enum StatusBand {
         case .menu:
             let id = segment.id
             let button = Gtk.menuButton(segment.text, css: ["flat", "seg", segment.css]) {
-                // Read at open time, so a list opened mid-turn is the list as it is now.
                 let rows = state.facts.segments.first { $0.id == id }?.rows ?? []
                 return rows.map { row in
                     (row.title, row.detail, { if let action = row.action { perform(action) } })

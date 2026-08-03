@@ -144,14 +144,17 @@ final class MainWindow: @unchecked Sendable {
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
 
+    /// The canvas follows the desktop: KDE flipping to dark at sunset restyles the chrome through
+    /// libadwaita and lands here, where the palette and the markup baked into prose rows are
+    /// traded for the other set. And the chats you had are on screen before the first byte
+    /// crosses the tailnet — a server that takes fifteen seconds to list its sessions must not
+    /// mean fifteen seconds of empty window — with liveness stripped from the cache, so nothing
+    /// shown from it can claim to be running.
     func present(in app: UnsafeMutablePointer<AdwApplication>) {
         Preferences.applyAppearance()
         MatrixTheme.install()
         terminal.applyPalette(MatrixTheme.palette)
         UIScale.apply()
-        // The canvas follows the desktop: KDE flipping to dark at sunset restyles the chrome
-        // through libadwaita and lands here, where the palette and the markup baked into prose
-        // rows are traded for the other set.
         if let manager = adw_style_manager_get_default() {
             Gtk.onNotify(UnsafeMutableRawPointer(manager), property: "dark") { [weak self] in
                 Gtk.onMain { [weak self] in self?.retheme() }
@@ -193,14 +196,17 @@ final class MainWindow: @unchecked Sendable {
         fileTree.onOpen = { [weak self] path in self?.insertIntoComposer("@\(path) ") }
         wireContext()
         installKeymap(on: window)
+        Notifier.shared.attach(app: app) { [weak self] sessionID in
+            self?.openSession(withID: sessionID)
+        }
         applyPanePreferences()
-        // The chats you had are on screen before the first byte crosses the tailnet: a server
-        // that takes fifteen seconds to list its sessions must not mean fifteen seconds of empty
-        // window. Liveness is stripped from the cache, so nothing here can claim to be running.
         let cachedEntries = SessionListCache.load()
         if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: []) }
         startRefreshing()
         startUsagePolling()
+        FirstRunDialog.presentIfNeeded(parent: window) { [weak self] in
+            Task { [weak self] in await self?.refresh() }
+        }
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }
@@ -380,7 +386,10 @@ final class MainWindow: @unchecked Sendable {
     /// Conversation on the left of the content area, the project it works in on the right: the
     /// files the agent is editing and a shell in the same directory, because reading what it just
     /// changed and running the thing it just built are the two moves that otherwise send you back
-    /// to a terminal.
+    /// to a terminal. Both panes may be squeezed below their natural width: without that, a pane
+    /// whose content is naturally wide — a long status segment, a deep file path — makes the
+    /// split wider than the window, and GTK resolves that by drawing the conversation off the
+    /// left edge, underneath the chat list.
     private func makeContentPane() -> UnsafeMutablePointer<GtkWidget> {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
@@ -403,10 +412,6 @@ final class MainWindow: @unchecked Sendable {
         gtk_paned_set_end_child(op(panes), makeProjectColumn())
         gtk_paned_set_position(op(panes), Preferences.divider(.project) ?? 800)
         gtk_paned_set_resize_start_child(op(panes), 1)
-        // Both children may be squeezed below their natural width. Without this a pane whose
-        // content is naturally wide — a long status segment, a deep file path — makes the split
-        // wider than the window, and GTK resolves that by drawing the conversation off the left
-        // edge, underneath the chat list.
         gtk_paned_set_shrink_start_child(op(panes), 1)
         gtk_paned_set_shrink_end_child(op(panes), 1)
         projectPaned = panes
@@ -415,6 +420,13 @@ final class MainWindow: @unchecked Sendable {
         return toolbar
     }
 
+    /// The vadjustment's `changed` signal fires when the content's extent moves — including while
+    /// the window is unfocused and doing no other work — which is the only moment at which "stay
+    /// at the bottom" can be honoured correctly. The pin must never run inside that signal: it
+    /// fires during the viewport's own allocation, and a value written mid-layout is accepted but
+    /// never drawn — the scrollbar says bottom while the pixels stay put until the window is
+    /// disturbed — so the pin runs on the next idle, outside layout, where the viewport reacts to
+    /// it the ordinary way.
     private func makeConversationColumn() -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(column, "canvas")
@@ -464,16 +476,8 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), overlay)
 
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
-            // `changed` fires when the content's extent moves — including while the window is
-            // unfocused and doing no other work — which is the only moment at which "stay at the
-            // bottom" can be honoured correctly.
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "changed") { [weak self] in
                 guard let self, self.followsBottom else { return }
-                // Never pin from inside this signal: it fires during the viewport's own
-                // allocation, and a value written mid-layout is accepted but never drawn — the
-                // scrollbar says bottom while the pixels stay put until the window is disturbed.
-                // The pin runs on the next idle, outside layout, where the viewport reacts to it
-                // the ordinary way.
                 self.schedulePinCorrector()
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
@@ -505,6 +509,8 @@ final class MainWindow: @unchecked Sendable {
         return fileTree.widget
     }
 
+    /// Dropping files on the prompt box attaches them, which is how a file gets from a file
+    /// manager into a conversation without a dialog in between.
     private func makeComposer() -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(row, top: 10, bottom: 4, leading: 26, trailing: 26)
@@ -542,8 +548,6 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(row), attach)
         gtk_box_append(ptr(row), sendButton)
 
-        // Dropping files on the prompt box attaches them, which is how a file gets from a file
-        // manager into a conversation without a dialog in between.
         Gtk.acceptFileDrops(on: row) { [weak self] paths in
             self?.attach(paths: paths)
         }
@@ -628,6 +632,8 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// Opening the last row grows the transcript below the fold; if the person was at the bottom,
+    /// the bottom must follow them to what they just opened.
     private func wireContext() {
         context.onToggle = { [weak self] key, open in
             Gtk.onMain { [weak self] in
@@ -635,8 +641,6 @@ final class MainWindow: @unchecked Sendable {
                 if open { self.context.expanded.insert(key) } else {
                     self.context.expanded.remove(key)
                 }
-                // Opening the last row grows the transcript below the fold; if the person was at
-                // the bottom, the bottom must follow them to what they just opened.
                 if open, self.followsBottom { self.schedulePinCorrector() }
             }
         }
@@ -669,60 +673,26 @@ final class MainWindow: @unchecked Sendable {
         adw_toast_overlay_add_toast(op(toastOverlay), toast)
     }
 
-    /// The picture at full size in its own window, and a save that hands over the bytes the
-    /// server sent — never a re-encode of the bitmap a row downsampled to display.
+    /// Opens the gallery over every picture in the conversation, landed on the one clicked.
     private func presentImage(key: String, name: String) {
-        guard let bits = context.textures[key], bits != 0 else { return }
-        let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
-        let data = context.imageData[key]
-        // As big as the window allows, with the picture scaled to fit it whole — reading a
-        // screenshot should not start with scrollbars around a 1:1 crop.
-        let hostWidth = window.map { gtk_widget_get_width($0) } ?? 0
-        let hostHeight = window.map { gtk_widget_get_height($0) } ?? 0
-        let width = max(960, hostWidth - 120)
-        let height = max(700, hostHeight - 100)
-        let (viewer, content) = Dialogs.window(title: name, parent: window, width: width)
-        gtk_window_set_default_size(ptr(viewer), width, height)
-
-        let picture = tailscode_picture_for_texture(texture)!
-        gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_CONTAIN)
-        gtk_widget_set_hexpand(picture, 1)
-        gtk_widget_set_vexpand(picture, 1)
-        gtk_box_append(ptr(content), picture)
-
-        let bar = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(bar),
-            Gtk.label(
-                "\(tailscode_texture_width(texture))×\(tailscode_texture_height(texture))",
-                css: "row-detail", selectable: false))
-        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        gtk_widget_set_hexpand(spacer, 1)
-        gtk_box_append(ptr(bar), spacer)
-        if let data {
-            let filename = name
-            gtk_box_append(
-                ptr(bar),
-                Gtk.button(Localized.text("Save to Downloads"), css: ["suggested-action"]) {
-                    [weak self] in
-                    let target = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent("Downloads", isDirectory: true)
-                        .appendingPathComponent(filename)
-                    try? FileManager.default.createDirectory(
-                        at: target.deletingLastPathComponent(),
-                        withIntermediateDirectories: true)
-                    let wrote = (try? data.write(to: target)) != nil
-                    Gtk.onMain { [weak self] in
-                        guard let self else { return }
-                        self.setNotice(
-                            wrote
-                                ? Localized.text("Saved %@", target.path)
-                                : Localized.text("Could not write %@", target.path))
-                    }
-                })
+        let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
+            guard case .file(let reference) = row.kind,
+                (reference.mime ?? "").hasPrefix("image/")
+            else { return nil }
+            let name =
+                reference.filename
+                ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "image"
+            return ImageGallery.Item(key: row.key, name: name, reference: reference)
         }
-        gtk_box_append(ptr(content), bar)
-        gtk_window_present(ptr(viewer))
+        guard !items.isEmpty else { return }
+        ImageGallery.present(
+            items: items, startKey: key, parent: window, context: context,
+            fetch: { [weak self] reference, key in
+                Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key) }
+            },
+            notice: { [weak self] text in
+                Gtk.onMain { [weak self] in self?.setNotice(text) }
+            })
     }
 
     private func startRefreshing() {
@@ -813,7 +783,10 @@ final class MainWindow: @unchecked Sendable {
 
     /// Rebuilding two hundred rows of widgets is a visible stutter, and the 10-second refresh
     /// would do it whether or not anything changed — so nothing is touched unless what the list
-    /// would say actually differs from what it says now.
+    /// would say actually differs from what it says now. Two hundred chats is also two hundred
+    /// rows of widgets, and building them all is the freeze you feel at launch: only the first
+    /// screenful or two are built, the rest arrive when asked for, and the filter still searches
+    /// every chat.
     private func renderSidebar() {
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
@@ -830,6 +803,13 @@ final class MainWindow: @unchecked Sendable {
                 saved: saved.contains($0.session.id))
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        Notifier.shared.observeListing(
+            rows.map {
+                ActivityObservation(
+                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
+                    title: $0.title, isActive: $0.entry.session.isActive == true)
+            },
+            openSessionID: selectedID, windowActive: windowIsActive)
         let archivedKeys = ArchivedChatStore.all()
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
@@ -890,9 +870,6 @@ final class MainWindow: @unchecked Sendable {
             return
         }
 
-        // Two hundred chats is two hundred rows of widgets, and building them all is the freeze
-        // you feel at launch. Only the first screenful or two are built; the rest arrive when
-        // asked for, and the filter above still searches every chat.
         var built = 0
         for (title, members) in sections {
             guard built < sidebarLimit else { break }
@@ -1017,6 +994,39 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    private var windowIsActive: Bool {
+        guard let window else { return false }
+        return gtk_window_is_active(ptr(window)) != 0
+    }
+
+    /// A notification tap arrives here: raise the window, then open the session it names —
+    /// refreshing first when the listing does not carry it yet.
+    func openSession(withID id: String) {
+        if let window { gtk_window_present(ptr(window)) }
+        if let entry = entries.first(where: { $0.session.id == id }) {
+            open(entry)
+            return
+        }
+        Task { [weak self] in
+            await self?.refresh()
+            Gtk.onMain { [weak self] in
+                guard let self, let entry = self.entries.first(where: { $0.session.id == id })
+                else { return }
+                self.open(entry)
+            }
+        }
+    }
+
+    /// Switching chats resets per-conversation state, with deliberate exceptions and orderings.
+    /// Decoded textures survive the switch — a picture decoded once is a picture that never pops
+    /// in again — while subagent transcripts do not, because they can still be running. A session
+    /// created a heartbeat ago is empty by definition: its ready state paints now and the
+    /// composer takes focus, while the stream settles in behind it. The profile store is loaded
+    /// on demand rather than assumed, because a chat opened straight from the cache can arrive
+    /// before the profile list has been read off disk. And rows are built only for the tail the
+    /// window can show, only off the GLib main context, and only for messages that changed — the
+    /// builder remembers the rest — with the paint going out before the context estimate is
+    /// computed: the transcript appearing must never wait on a statistic about it.
     private func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard selectedID != entry.session.id else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
@@ -1033,8 +1043,6 @@ final class MainWindow: @unchecked Sendable {
         chosenEffort = nil
         turnStartedAt = nil
         context.expanded = []
-        // Textures survive a chat switch on purpose: a picture decoded once is a picture that
-        // never pops in again. The subagent transcripts do not — they can still be running.
         context.subagentRows = [:]
         inFlightImages = []
         inFlightSubagents = []
@@ -1061,8 +1069,6 @@ final class MainWindow: @unchecked Sendable {
                 remembered.count > limit ? Array(remembered.suffix(limit)) : remembered
             applyRows(windowed)
         } else if freshlyCreated {
-            // A session created a heartbeat ago is empty by definition: the ready state paints
-            // now and the composer takes focus, while the stream settles in behind it.
             showPlaceholder(Localized.text("Nothing here yet. Say something."))
             gtk_widget_grab_focus(entryView)
         } else {
@@ -1089,8 +1095,6 @@ final class MainWindow: @unchecked Sendable {
 
         streamTask = Task { [weak self] in
             guard let self else { return }
-            // A chat opened straight from the cache can arrive before the profile list has been
-            // read off disk, so the store is loaded on demand rather than assumed.
             if await ServerDirectory.shared.profiles().isEmpty {
                 await ServerDirectory.shared.reload()
             }
@@ -1112,10 +1116,6 @@ final class MainWindow: @unchecked Sendable {
             let conversation = AgentConversation(
                 backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
             self.conversation = conversation
-            // Rows are built only for the tail the window can show, only off the GLib main
-            // context, and only for messages that changed — the builder remembers the rest. The
-            // paint goes out before the context estimate is computed: the transcript appearing
-            // must never wait on a statistic about it.
             var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
             for await state in await conversation.states() {
@@ -1203,13 +1203,20 @@ final class MainWindow: @unchecked Sendable {
 
     /// The transcript renders a tail window, not the whole history: a widget per row is fine for
     /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
-    /// button that widens the window — the full rows are kept, so nothing is refetched.
+    /// button that widens the window — the full rows are kept, so nothing is refetched. The
+    /// locally echoed prompt stands only until the transcript carries the same words back.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
+        if let currentEntry {
+            Notifier.shared.observeConversation(
+                profileID: currentEntry.profileID, sessionID: currentEntry.session.id,
+                title: currentEntry.session.hasPlaceholderTitle
+                    ? Localized.text("New conversation") : currentEntry.session.title,
+                state: state, windowActive: windowIsActive)
+        }
         var rows = rows
-        // The echo stands only until the transcript carries the same words back.
         if let echoedPrompt {
             if state.messages.contains(where: {
                 $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
@@ -1267,14 +1274,22 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// The rendering path, shaped around what a person is looking at. On first paint the tail —
-    /// the rows the window actually shows — goes up immediately, and everything earlier backfills
-    /// above it one chunk per idle, so a huge conversation is readable in one frame instead of
-    /// after a ten-chunk climb. While streaming, everything before the first changed row keeps its
-    /// widget — and its disclosure state, its selection, its scroll cost — and a token appended to
-    /// the last message rebuilds one row, not the conversation.
+    /// the rows the window actually shows — goes up immediately, built invisible so the first
+    /// frame anyone sees is the settled bottom of the conversation, never the top of it sliding
+    /// down into place; everything earlier backfills above it newest-first, one chunk per idle,
+    /// so a huge conversation is readable in one frame instead of after a ten-chunk climb — and
+    /// the backfill also runs on a remembered transcript before the server has said a word. While
+    /// streaming, everything before the first changed row keeps its widget — and its disclosure
+    /// state, its selection, its scroll cost — and a token appended to the last message rebuilds
+    /// one row, not the conversation. Whether to follow is what the person last chose, not where
+    /// the scrollbar happens to be: an unfocused window does not lay out, so its position is
+    /// stale exactly when new rows arrive.
     ///
     /// `renderedRows` is always a contiguous slice of the applied row list that reaches its end;
-    /// where that slice starts is re-found by key on every pass, because the window slides.
+    /// where that slice starts is re-found by key on every pass, because the window slides. Rows
+    /// that fall off the window's front while the screen still shows them are trimmed from the
+    /// top — their widgets removed, everything else kept — rather than treated as a reason to
+    /// rebuild; only a window that shares nothing with the screen starts over.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
         let initialFill = placeholderShown
         if placeholderShown {
@@ -1284,22 +1299,13 @@ final class MainWindow: @unchecked Sendable {
             highlightedRow = 0
             placeholderShown = false
             currentPlaceholder = nil
-            // Built invisible: the first frame anyone sees is the settled bottom of the
-            // conversation, never the top of it sliding down into place.
             gtk_widget_set_opacity(transcriptBox, 0)
             pendingReveal = true
         }
-        // Whether to follow is what the person last chose, not where the scrollbar happens to be:
-        // an unfocused window does not lay out, so its position is stale exactly when new rows
-        // arrive.
         let stick = initialFill || followsBottom
         let growth = initialFill ? 0 : appended
         let chunk = 40
 
-        // Align what is on screen with the new window. The window slides forward as messages
-        // arrive, so rows fall off its front while the screen still shows them: those are trimmed
-        // from the top — their widgets removed, everything else kept — rather than treated as a
-        // reason to rebuild. Only a window that shares nothing with the screen starts over.
         var start = 0
         if !renderedRows.isEmpty {
             var indexByKey = [String: Int](minimumCapacity: rows.count)
@@ -1349,7 +1355,6 @@ final class MainWindow: @unchecked Sendable {
             appendRowWidgets(rows[tailFrom..<tailEnd])
         }
 
-        // The tail is on screen; earlier rows arrive above it, newest-first, one chunk per pass.
         let tailDone = start + renderedRows.count >= rows.count
         if tailDone, start > 0 {
             let from = max(0, start - chunk)
@@ -1378,7 +1383,6 @@ final class MainWindow: @unchecked Sendable {
                     if let state = self.lastState {
                         self.apply(state: state, rows: self.lastFullRows)
                     } else {
-                        // A remembered transcript backfilling before the server has said a word.
                         let limit = max(self.windowLimit, Preferences.transcriptWindow)
                         let rows = self.lastFullRows
                         self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
@@ -1663,6 +1667,8 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event.
+    /// When the turn ends, one last look settles the agents list on "done" instead of freezing
+    /// mid-flight glyphs.
     private func updateTicker(running: Bool) {
         if running, tickerTask == nil {
             tickerTask = Task { [weak self] in
@@ -1681,8 +1687,6 @@ final class MainWindow: @unchecked Sendable {
             if tickerTask != nil {
                 tickerTask?.cancel()
                 tickerTask = nil
-                // One last look after the turn ends, so the agents list settles on "done"
-                // instead of freezing mid-flight glyphs.
                 refreshTurnFacts()
             }
         }
@@ -2335,6 +2339,8 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(helpOverlay), hint)
     }
 
+    /// Ctrl+C over a selection means copy everywhere else on the desktop; only with nothing
+    /// selected does the stop binding mean "stop the turn".
     private func perform(_ action: KeyAction) -> Bool {
         switch action {
         case .focus(let pane): focus(pane)
@@ -2360,8 +2366,6 @@ final class MainWindow: @unchecked Sendable {
         case .search: gtk_widget_grab_focus(searchEntry)
         case .send: sendFromComposer()
         case .stop:
-            // Ctrl+C over a selection means copy everywhere else on the desktop; only with
-            // nothing selected does it mean "stop the turn".
             if let window, let focused = tailscode_focused_widget(window),
                 let selection = tailscode_label_selection(focused)
             {
@@ -2475,11 +2479,11 @@ final class MainWindow: @unchecked Sendable {
         UserDefaults.standard.object(forKey: pane.key) as? Bool ?? true
     }
 
+    /// A terminal someone just opened is a terminal they want to type into; focus follows the
+    /// reveal, on idle so the widget is on screen by the time focus lands.
     private func togglePane(_ pane: ClosablePane) {
         SettingsFile.set(!paneShown(pane), forKey: pane.key)
         applyPane(pane)
-        // A terminal someone just opened is a terminal they want to type into; focus follows the
-        // reveal, on idle so the widget is on screen by the time focus lands.
         if pane == .terminal, paneShown(.terminal) {
             Gtk.onMain { [weak self] in self?.focus(.terminal) }
         }
@@ -2504,7 +2508,9 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// Everything the settings window can change that is not a colour: pane sizes, the prompt
-    /// box's height, the terminal's own font, and how much transcript is kept on screen.
+    /// box's height, the terminal's own font, and how much transcript is kept on screen. Compact
+    /// and dense change what a row *is*, so the transcript is rebuilt rather than restyled: the
+    /// diff that keeps streaming cheap would otherwise keep the old rows.
     private func applyLayoutPreferences() {
         if let splitWidget {
             gtk_paned_set_position(op(splitWidget), Preferences.divider(.sidebar) ?? 300)
@@ -2522,8 +2528,6 @@ final class MainWindow: @unchecked Sendable {
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         gtk_box_set_spacing(ptr(transcriptBox), Preferences.denseRows ? 3 : 10)
         updateVimBadge()
-        // Compact and dense change what a row *is*, so the transcript is rebuilt rather than
-        // restyled: the diff that keeps streaming cheap would otherwise keep the old rows.
         tearDownAllRows()
         placeholderShown = true
         rebuildTranscriptRows()
@@ -2781,6 +2785,7 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// An empty prompt box is one line, whatever the last layout still believes.
     private func measureComposer() {
         guard let composerScroller else { return }
         let line = 20.0 * Preferences.scale(.mono)
@@ -2793,7 +2798,6 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_measure(
             entryView, GTK_ORIENTATION_VERTICAL, width > 0 ? width : -1, &minimum, &natural,
             nil, nil)
-        // An empty prompt box is one line, whatever the last layout still believes.
         let wanted = composerText().isEmpty ? floor : max(floor, min(ceiling, natural + 18))
         guard wanted != composerHeight else { return }
         composerHeight = wanted
@@ -2851,12 +2855,12 @@ final class MainWindow: @unchecked Sendable {
         if following { pinToBottom() }
     }
 
+    /// Setting a value the adjustment already has still emits `changed`, and this runs from the
+    /// `changed` handler — writing unconditionally spins the main loop at full tilt.
     private func pinToBottom() {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
-        // Setting a value the adjustment already has still emits `changed`, and this is the
-        // handler for `changed` — writing unconditionally spins the main loop at full tilt.
         let target = max(
             gtk_adjustment_get_lower(adjustment),
             gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
@@ -3067,6 +3071,8 @@ final class MainWindow: @unchecked Sendable {
         updateVimBadge()
     }
 
+    /// The prompt is on screen before the server has heard of it: a busy bridge can take seconds
+    /// to answer, and a composer that empties into silence reads as a hang.
     private func sendFromComposer() {
         let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoing = attachments
@@ -3079,8 +3085,6 @@ final class MainWindow: @unchecked Sendable {
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
         if handleSlashCommand(text) { return }
-        // The prompt is on screen before the server has heard of it. A busy bridge can take
-        // seconds to answer, and a composer that empties into silence reads as a hang.
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
         attachments = []

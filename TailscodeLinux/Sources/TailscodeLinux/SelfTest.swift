@@ -12,6 +12,9 @@ import TailscodeCore
 public enum SelfTest {
     public static var isRequested: Bool { CommandLine.arguments.contains("--selftest") }
 
+    /// The pass over the servers keeps one loaded conversation aside as the two-observer subject:
+    /// a conversation with words in it makes the stronger subject, and an empty one only stands in
+    /// when every server's newest chat is empty.
     public static func run() async -> Never {
         startWatchdog()
         var failures = 0
@@ -134,8 +137,6 @@ public enum SelfTest {
                     failures += 1
                     continue
                 }
-                // A conversation with words in it makes the stronger two-observer subject; an
-                // empty one only stands in when every server's newest chat is empty.
                 if warmed == nil || (warmedIsEmpty && !state.messages.isEmpty) {
                     warmed = (backend, newest)
                     warmedIsEmpty = state.messages.isEmpty
@@ -669,7 +670,10 @@ public enum SelfTest {
     }
 
     /// The band over the prompt box: a status that shows every field always is a status nobody
-    /// reads, so what is asserted here is mostly what is *absent*.
+    /// reads, so what is asserted here is mostly what is *absent*. Compact by default — the
+    /// agents band counts while its popover names, and the goal is a glyph until it is asked
+    /// about, its words living in the popover. Twenty agents spawned with one preamble must not
+    /// read as twenty copies of the preamble.
     private static func checkStatusBand() throws -> Int {
         func text(_ facts: StatusFacts) -> String {
             facts.segments.map(\.text).joined(separator: " | ")
@@ -718,7 +722,6 @@ public enum SelfTest {
                 id: "c", title: "verify", agentType: "verify", toolUseID: "t3",
                 updatedAt: now.addingTimeInterval(-90), isCompleted: true),
         ]
-        // Compact by default: the band counts, the popover names.
         guard text(idle).contains("▸ 2 · 1✓"), !text(idle).contains("explore") else {
             throw SelfTestFailure("agents band is not compact: \(text(idle))")
         }
@@ -738,7 +741,6 @@ public enum SelfTest {
         idle.lastCostUSD = 0.38
         guard text(idle).contains("$0.38") else { throw SelfTestFailure("cost: \(text(idle))") }
 
-        // The goal is a glyph until it is asked about — its words live in the popover.
         idle.goal = "ship it"
         guard text(idle).contains("⦿"), !text(idle).contains("ship it") else {
             throw SelfTestFailure("goal is not compact: \(text(idle))")
@@ -762,7 +764,6 @@ public enum SelfTest {
             throw SelfTestFailure("approval segment is not actionable")
         }
 
-        // Twenty agents spawned with one preamble must not read as twenty copies of the preamble.
         var fanOut = StatusFacts()
         fanOut.agents = (0..<4).map { index in
             SubagentSummary(

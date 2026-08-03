@@ -128,7 +128,9 @@ enum ToolRowView {
         return row
     }
 
-    /// What the disclosure opens onto, or nil when the line already says everything.
+    /// What the disclosure opens onto, or nil when the line already says everything. The command
+    /// line copies on a plain click while a drag still selects — the release only copies when
+    /// nothing ended up selected, so both gestures keep their meaning.
     private static func bodyColumn(
         _ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget>? {
@@ -153,8 +155,6 @@ enum ToolRowView {
             gtk_widget_set_cursor_from_name(line, "copy")
             gtk_widget_set_tooltip_text(line, Localized.text("Click to copy"))
             let toast = context.toast
-            // A plain click copies; a drag still selects — the release only copies when nothing
-            // ended up selected, so both gestures keep their meaning.
             let lineBits = UInt(bitPattern: line)
             Gtk.onRelease(line) {
                 guard let raw = UnsafeMutableRawPointer(bitPattern: lineBits) else { return }

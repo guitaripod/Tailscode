@@ -7,7 +7,6 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-ROOT=$PWD
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
@@ -25,24 +24,10 @@ pkill -f "$BIN_DIR/tailscode$" 2>/dev/null || true
 mkdir -p "$BIN_DIR" "$APPS_DIR"
 install -m 0755 "$BUILT" "$BIN_DIR/tailscode"
 
-# The app's own icon rather than a stock terminal glyph: the SVG the iOS icon is generated from,
-# installed into the hicolor theme where the shell and the switcher both look for it.
-ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
-mkdir -p "$ICON_DIR"
-install -m 0644 "$ROOT/Resources/AppIcon.svg" "$ICON_DIR/tailscode.svg"
-gtk4-update-icon-cache -q -t -f "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
-
-cat > "$APPS_DIR/tailscode.desktop" <<DESKTOP
-[Desktop Entry]
-Type=Application
-Name=Tailscode
-Comment=Drive your coding agents over Tailscale
-Exec=$BIN_DIR/tailscode
-Icon=tailscode
-Terminal=false
-Categories=Development;
-StartupWMClass=tailscode
-DESKTOP
+# The desktop entry and icons are owned by the app itself (DesktopIntegration writes the
+# GApplication-id-named files on every launch — the name GNotification and the Wayland shell
+# both match against). The script only clears the misnamed entry earlier versions wrote.
+rm -f "$APPS_DIR/tailscode.desktop"
 update-desktop-database "$APPS_DIR" 2>/dev/null || true
 
 echo "installed $("$BIN_DIR/tailscode" --version 2>/dev/null || echo "$BIN_DIR/tailscode")"

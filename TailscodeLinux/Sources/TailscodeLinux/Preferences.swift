@@ -360,6 +360,38 @@ enum SettingsDialog {
                 onLayoutChanged()
             })
 
+        let alerts = group(
+            Localized.text("Notifications"), on: page,
+            description: Localized.text(
+                "Raised only while the window is not focused, and withdrawn once a request is answered."))
+        adw_preferences_group_add(
+            ptr(alerts),
+            switchRow(
+                title: Localized.text("A turn finishes"),
+                subtitle: Localized.text("Any chat, not only the open one"),
+                value: Notifier.notifyTurnComplete
+            ) { value in
+                Notifier.setNotifyTurnComplete(value)
+            })
+        adw_preferences_group_add(
+            ptr(alerts),
+            switchRow(
+                title: Localized.text("An agent needs you"),
+                subtitle: Localized.text("An approval to give or a question to answer"),
+                value: Notifier.notifyNeedsYou
+            ) { value in
+                Notifier.setNotifyNeedsYou(value)
+            })
+        adw_preferences_group_add(
+            ptr(alerts),
+            buttonRow(
+                Localized.text("Prove the path"),
+                subtitle: Localized.text("Sends one notification right now"),
+                label: Localized.text("Test")
+            ) {
+                Notifier.shared.sendTest()
+            })
+
         let keyboard = group(
             Localized.text("Keyboard"), on: page,
             description: Localized.text(

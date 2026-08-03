@@ -83,6 +83,8 @@ final class TerminalPane: @unchecked Sendable {
         #endif
     }
 
+    /// A running shell is not restarted to follow the conversation: it is told to change
+    /// directory, the way you would. History, environment and whatever is half-typed all survive.
     func setDirectory(_ path: String?) {
         guard directory != path else { return }
         directory = path
@@ -91,9 +93,6 @@ final class TerminalPane: @unchecked Sendable {
                 respawn()
                 return
             }
-            // A running shell is not restarted to follow the conversation: it is told to change
-            // directory, the way you would. History, environment and whatever is half-typed all
-            // survive.
             if let path {
                 let line = "cd \(path.replacingOccurrences(of: "'", with: "'\\''"))\n"
                 vte_terminal_feed_child(ptr(terminal), line, gssize(line.utf8.count))

@@ -95,7 +95,9 @@ enum Dialogs {
 
     /// Long machine-facing prose — a compaction summary, a tool's full output — reads in a window
     /// of its own: selectable, scrollable, copyable, never squeezed into a few hundred pixels of
-    /// the conversation's flow.
+    /// the conversation's flow. Focus opens on the Close button, not the first selectable label —
+    /// a focused GtkLabel opens with its whole paragraph highlighted, which reads as a stuck
+    /// selection.
     static func reader(
         title: String, subtitle: String? = nil, body: String, mono: Bool = false,
         parent: UnsafeMutablePointer<GtkWidget>?
@@ -162,8 +164,6 @@ enum Dialogs {
 
         gtk_window_set_child(ptr(window), column)
         gtk_window_present(ptr(window))
-        // Focus belongs on the button, not on the first selectable label — a focused GtkLabel
-        // opens with its whole paragraph highlighted, which reads as a stuck selection.
         gtk_widget_grab_focus(dismiss)
     }
 

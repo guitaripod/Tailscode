@@ -13,7 +13,8 @@ enum PangoMarkdown {
 
     /// Rendering runs once per prose segment per streamed state, and a long conversation replays
     /// the same three hundred segments on every token — so the answer is remembered. The colors
-    /// are part of the key: a palette change is a different rendering, not a stale hit.
+    /// are part of the key: a palette change is a different rendering, not a stale hit. Trailing
+    /// blank lines are dropped — they add nothing but height in a bubble-less transcript.
     static func render(_ text: String, dim: String, code: String, accent: String) -> String {
         let key = "\(dim)|\(code)|\(accent)|\(text)"
         cacheLock.lock()
@@ -26,7 +27,6 @@ enum PangoMarkdown {
         for raw in text.components(separatedBy: "\n") {
             lines.append(block(raw, dim: dim, code: code, accent: accent))
         }
-        // Trailing blank lines add nothing but height in a bubble-less transcript.
         while let last = lines.last, last.isEmpty { lines.removeLast() }
         let rendered = lines.joined(separator: "\n")
         cacheLock.lock()

@@ -23,6 +23,9 @@ final class TranscriptContext: @unchecked Sendable {
         (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     /// A short confirmation the window floats over everything — "Command copied".
     var toast: (@Sendable (String) -> Void)?
+    /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
+    /// the moment ``store(textureBits:data:forKey:)`` lands it.
+    var onImageStored: (@Sendable (String) -> Void)?
     private var textureOrder: [String] = []
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
@@ -37,6 +40,7 @@ final class TranscriptContext: @unchecked Sendable {
         }
         textures[key] = textureBits
         imageData[key] = data
+        onImageStored?(key)
         textureOrder.removeAll { $0 == key }
         textureOrder.append(key)
         while textureOrder.count > 48 {
@@ -404,6 +408,11 @@ struct TranscriptRow: Hashable {
         }
     }
 
+    /// A thumbnail, not a poster: the transcript is for reading, and a picture in it is a
+    /// reference — small, scaled to fit, one click from the full-window viewer. Until the bytes
+    /// arrive, the placeholder holds a thumbnail-sized space so the arrival replaces it instead
+    /// of shoving everything below it down — the difference between a photo developing and a
+    /// transcript twitching.
     private static func filePart(
         _ reference: FileReference, key: String, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
@@ -414,8 +423,6 @@ struct TranscriptRow: Hashable {
         guard isImage else {
             return Gtk.label("📎 \(name)", css: "attachment")
         }
-        // A thumbnail, not a poster: the transcript is for reading, and a picture in it is a
-        // reference — small, scaled to fit, one click from the full-window viewer.
         let thumbWidth: Int32 = 220
         let thumbHeight: Int32 = 140
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
@@ -444,9 +451,6 @@ struct TranscriptRow: Hashable {
                 ptr(column),
                 Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
         } else {
-            // The placeholder holds a thumbnail-sized space so the arrival replaces it instead of
-            // shoving everything below it down — the difference between a photo developing and a
-            // transcript twitching.
             let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(frame, "image-part")
             gtk_widget_set_size_request(frame, thumbWidth, thumbHeight)
