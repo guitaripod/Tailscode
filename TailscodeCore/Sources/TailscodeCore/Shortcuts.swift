@@ -381,7 +381,7 @@ public struct ShortcutSet: Sendable {
     public static var configURL: URL {
         let base = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? FileManager.default.homeDirectoryForCurrentUser
+        } ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent(".config", isDirectory: true)
         return base.appendingPathComponent("tailscode", isDirectory: true)
             .appendingPathComponent("keybindings.json")
