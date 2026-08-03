@@ -11,12 +11,17 @@ import TailscodeCore
 final class MainWindowController: NSWindowController {
     let sidebar = SidebarViewController()
     let transcript = TranscriptViewController()
+    let filesPane = FileTreePane()
+    let terminalPane = TerminalPane()
     private(set) var currentEntry: SessionEntry?
     private(set) var currentBackend: (any CodingAgentBackend)?
 
     private let split = NSSplitViewController()
+    private let contentSplit = NSSplitViewController()
     private var sidebarItem: NSSplitViewItem?
     private var filesItem: NSSplitViewItem?
+    private var terminalItem: NSSplitViewItem?
+    private var dividerSavingEnabled = false
     private var shortcuts = ShortcutSet.load()
     private var pendingChords: [KeyChord] = []
     private var lastState: ConversationState?
@@ -43,6 +48,11 @@ final class MainWindowController: NSWindowController {
         window.center()
         window.setFrameAutosaveName("TailscodeMain")
         installKeyMonitor()
+        observeDividers()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyStoredDividers()
+            self?.dividerSavingEnabled = true
+        }
         startUsagePolling()
         if !shortcuts.issues.isEmpty {
             setNotice(
@@ -89,27 +99,17 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// Everything the keyboard can mean, one switch. Only the panes that do not exist yet — the
-    /// file tree's focus, the terminal — decline their verbs, returning false so the keystroke
-    /// falls through instead of being swallowed by a promise.
+    /// Everything the keyboard can mean, one switch. A verb aimed at a hidden pane declines,
+    /// returning false so the keystroke falls through instead of being swallowed by a promise.
     @discardableResult
     func perform(_ action: KeyAction) -> Bool {
         switch action {
         case .focus(let pane):
             return focus(pane)
         case .cycleForward:
-            if focused == .chats { return focus(.transcript) }
-            if transcript.composer.editorHasFocus { return focus(.chats) }
-            focused = .transcript
-            transcript.focusComposer()
+            cycle(1)
         case .cycleBackward:
-            if focused == .chats {
-                focused = .transcript
-                transcript.focusComposer()
-                return true
-            }
-            if transcript.composer.editorHasFocus { return focus(.transcript) }
-            return focus(.chats)
+            cycle(-1)
         case .selectNext:
             sidebar.move(by: 1)
         case .selectPrevious:
@@ -322,6 +322,9 @@ final class MainWindowController: NSWindowController {
         transcript.onState = { [weak self] state in self?.lastState = state }
         transcript.onToast = { [weak self] text in self?.toast(text) }
         transcript.onBandAction = { [weak self] action in self?.perform(bandAction: action) }
+        filesPane.onOpen = { [weak self] path in
+            self?.transcript.composer.insertText("@\(path) ")
+        }
     }
 
     /// Quota is account state, not session state: polled on its own slow cadence — quickly only
@@ -387,12 +390,17 @@ final class MainWindowController: NSWindowController {
         currentBackend = backend
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
+        filesPane.show(directory: entry.session.directory, on: backend)
+        terminalPane.setDirectory(entry.session.directory)
         window?.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
     }
 
+    /// Sidebar, content column, files inspector — and inside the content column its own vertical
+    /// split, the transcript over the terminal, so the terminal pane belongs to the conversation
+    /// the way it does on Linux rather than running under the whole window.
     private func configureSplit() {
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 240
@@ -402,9 +410,21 @@ final class MainWindowController: NSWindowController {
         split.addSplitViewItem(sidebarItem)
         self.sidebarItem = sidebarItem
 
-        split.addSplitViewItem(NSSplitViewItem(viewController: transcript))
+        contentSplit.splitView.isVertical = false
+        contentSplit.splitView.dividerStyle = .thin
+        let transcriptItem = NSSplitViewItem(viewController: transcript)
+        transcriptItem.minimumThickness = 240
+        contentSplit.addSplitViewItem(transcriptItem)
+        let terminal = NSSplitViewItem(viewController: terminalPane)
+        terminal.minimumThickness = 120
+        terminal.canCollapse = true
+        terminal.holdingPriority = NSLayoutConstraint.Priority(261)
+        terminal.isCollapsed = !paneShown(.terminal)
+        contentSplit.addSplitViewItem(terminal)
+        terminalItem = terminal
+        split.addSplitViewItem(NSSplitViewItem(viewController: contentSplit))
 
-        let files = NSSplitViewItem(inspectorWithViewController: FilesPlaceholderViewController())
+        let files = NSSplitViewItem(inspectorWithViewController: filesPane)
         files.minimumThickness = 220
         files.maximumThickness = 400
         files.canCollapse = true
@@ -593,8 +613,11 @@ final class MainWindowController: NSWindowController {
     }
 
     /// Anything that takes text — the composer, the filter field's editor, a rename sheet — is
-    /// insert; the rest of the window is normal. The terminal context arrives with its pane.
+    /// insert; the rest of the window is normal. The terminal is stricter than both: a shell's
+    /// own Ctrl+B or Ctrl+E is not the app's to take, so while its field or output holds focus
+    /// only Ctrl+Shift moves and zoom resolve, exactly like Linux.
     private func keyContext() -> KeyContext {
+        if terminalPane.ownsFocus(in: window) { return .terminal }
         guard let responder = window?.firstResponder else { return .normal }
         return responder is NSText ? .insert : .normal
     }
@@ -609,10 +632,59 @@ final class MainWindowController: NSWindowController {
         case .transcript:
             focused = .transcript
             window?.makeFirstResponder(nil)
-        case .files, .terminal:
-            return false
+        case .files:
+            guard filesItem?.isCollapsed == false else { return false }
+            focused = .files
+            filesPane.takeFocus()
+        case .terminal:
+            guard terminalItem?.isCollapsed == false else { return false }
+            focused = .terminal
+            terminalPane.takeFocus()
         }
         return true
+    }
+
+    /// Where the keyboard actually is, first responder as ground truth: the composer counts as
+    /// its own stop so Tab from the transcript lands in the prompt box before moving on.
+    private enum CycleStop {
+        case chats
+        case transcript
+        case composer
+        case files
+        case terminal
+    }
+
+    private func currentStop() -> CycleStop {
+        if terminalPane.ownsFocus(in: window) { return .terminal }
+        if filesPane.ownsFocus(in: window) { return .files }
+        if transcript.composer.editorHasFocus { return .composer }
+        return focused == .chats ? .chats : .transcript
+    }
+
+    /// Linux `nextPane`, with the Mac's extra stop: chats → transcript → composer → files →
+    /// terminal, wrapping, and a hidden pane is simply not on the route.
+    private func cycle(_ delta: Int) {
+        var stops: [CycleStop] = []
+        if sidebarItem?.isCollapsed == false { stops.append(.chats) }
+        stops.append(.transcript)
+        stops.append(.composer)
+        if filesItem?.isCollapsed == false { stops.append(.files) }
+        if terminalItem?.isCollapsed == false { stops.append(.terminal) }
+        let index = (stops.firstIndex(of: currentStop()) ?? 0) + delta
+        let count = stops.count
+        switch stops[((index % count) + count) % count] {
+        case .chats:
+            focus(.chats)
+        case .transcript:
+            focus(.transcript)
+        case .composer:
+            focused = .transcript
+            transcript.focusComposer()
+        case .files:
+            focus(.files)
+        case .terminal:
+            focus(.terminal)
+        }
     }
 
     /// Every pane closes, and the choice survives relaunch under the same `tailscode.pane.*`
@@ -633,13 +705,87 @@ final class MainWindowController: NSWindowController {
     private func togglePane(_ pane: ClosablePane) {
         let shown = !paneShown(pane)
         UserDefaults.standard.set(shown, forKey: pane.key)
+        let item: NSSplitViewItem?
         switch pane {
-        case .sidebar:
-            sidebarItem?.animator().isCollapsed = !shown
-        case .files:
-            filesItem?.animator().isCollapsed = !shown
-        case .terminal:
-            toast(Localized.text("The terminal pane arrives in a later phase"))
+        case .sidebar: item = sidebarItem
+        case .files: item = filesItem
+        case .terminal: item = terminalItem
+        }
+        guard let item else { return }
+        NSAnimationContext.runAnimationGroup(
+            { _ in item.animator().isCollapsed = !shown },
+            completionHandler: { [weak self] in
+                guard let self, shown else { return }
+                self.applyStoredDividers()
+                if pane == .terminal { self.focus(.terminal) }
+            })
+    }
+
+    /// The dividers survive relaunch under the same `tailscode.divider.*` keys the Linux desktop
+    /// uses — sidebar and project on the outer split, terminal on the content column's own — and
+    /// a pane toggled back open is re-asserted to the position it was shaped to, because
+    /// NSSplitView's own resizing would otherwise re-deal the space.
+    private enum DividerKey: String {
+        case sidebar
+        case project
+        case terminal
+
+        var key: String { "tailscode.divider.\(rawValue)" }
+    }
+
+    private func storedDivider(_ divider: DividerKey) -> CGFloat? {
+        let value = UserDefaults.standard.double(forKey: divider.key)
+        return value > 0 ? CGFloat(value) : nil
+    }
+
+    private func applyStoredDividers() {
+        if paneShown(.sidebar), let position = storedDivider(.sidebar) {
+            split.splitView.setPosition(position, ofDividerAt: 0)
+        }
+        if paneShown(.files), let position = storedDivider(.project) {
+            split.splitView.setPosition(position, ofDividerAt: 1)
+        }
+        if paneShown(.terminal), let position = storedDivider(.terminal) {
+            contentSplit.splitView.setPosition(position, ofDividerAt: 0)
+        }
+    }
+
+    private func observeDividers() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(dividersMoved),
+            name: NSSplitView.didResizeSubviewsNotification, object: split.splitView)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(dividersMoved),
+            name: NSSplitView.didResizeSubviewsNotification, object: contentSplit.splitView)
+    }
+
+    /// Positions are read back whenever the split settles rather than watched per-drag, and only
+    /// sane ones are kept: a pane mid-collapse or mid-reveal passes through widths that are
+    /// nobody's intent, so anything under the pane's own minimum is ignored.
+    @objc private func dividersMoved() {
+        guard dividerSavingEnabled else { return }
+        let defaults = UserDefaults.standard
+        if let sidebarItem, !sidebarItem.isCollapsed {
+            let width = sidebarItem.viewController.view.frame.width
+            if width >= sidebarItem.minimumThickness {
+                defaults.set(Double(width), forKey: DividerKey.sidebar.key)
+            }
+        }
+        if let filesItem, !filesItem.isCollapsed {
+            let width = filesItem.viewController.view.frame.width
+            if width >= filesItem.minimumThickness {
+                let position = split.splitView.bounds.width - width
+                    - split.splitView.dividerThickness
+                defaults.set(Double(position), forKey: DividerKey.project.key)
+            }
+        }
+        if let terminalItem, !terminalItem.isCollapsed {
+            let height = terminalItem.viewController.view.frame.height
+            if height >= terminalItem.minimumThickness {
+                let position = contentSplit.splitView.bounds.height - height
+                    - contentSplit.splitView.dividerThickness
+                defaults.set(Double(position), forKey: DividerKey.terminal.key)
+            }
         }
     }
 
@@ -795,7 +941,7 @@ extension MainWindowController: NSToolbarDelegate {
         case ToolbarID.terminal:
             return makeToolbarItem(
                 itemIdentifier, symbol: "terminal", label: Localized.text("Terminal"),
-                tip: Localized.text("The terminal pane arrives in a later phase"),
+                tip: Localized.text("Show or hide the terminal pane"),
                 action: #selector(toolbarToggleTerminal))
         case ToolbarID.usage:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -985,30 +1131,5 @@ private final class CheatsheetPanel: NSPanel {
 
     override func cancelOperation(_ sender: Any?) {
         close()
-    }
-}
-
-/// Holds the trailing inspector's place until the file-tree phase: the pane, its glass and its
-/// persistence are real today, so that phase only swaps the content.
-@MainActor
-private final class FilesPlaceholderViewController: NSViewController {
-    override func loadView() {
-        let label = NSTextField(
-            wrappingLabelWithString: Localized.text(
-                "The project's files land here in a later phase."))
-        label.font = MacTheme.Font.caption()
-        label.textColor = MacTheme.Color.tertiaryLabel
-        label.alignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            label.leadingAnchor.constraint(
-                equalTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
-            label.trailingAnchor.constraint(
-                equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
-        ])
-        view = container
     }
 }

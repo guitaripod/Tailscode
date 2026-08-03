@@ -69,6 +69,14 @@ enum SelfTest {
             failures += 1
         }
 
+        let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
+        if shellOutput.contains("tailscode-shell-ok") {
+            report("shell: ok (one command at a time in a login shell)")
+        } else {
+            report("shell: no output")
+            failures += 1
+        }
+
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
             report("no servers configured — set TAILSCODE_HOST to seed one")
