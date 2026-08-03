@@ -18,6 +18,9 @@ final class ChatViewModel {
     private(set) var state = ConversationState()
     private(set) var selectedModel: ModelSelection?
     private(set) var currentEffort: String?
+    /// A summoned turn is still running: the aura stays lit after the draft
+    /// that lit it has been sent.
+    private(set) var ultracodeInFlight = false
 
     var isBound = true
     var onState: ((ConversationState) -> Void)?
@@ -394,6 +397,10 @@ final class ChatViewModel {
                     self.cachedUsage = nil
                     self.refreshTitleFromServer()
                     self.refreshTitleFromServer(delay: .seconds(12))
+                    if self.ultracodeInFlight {
+                        self.ultracodeInFlight = false
+                        self.onModelChange?()
+                    }
                 }
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
                 self.state = state
@@ -643,6 +650,10 @@ final class ChatViewModel {
         }
         let resolvedModel = model ?? selectedModel
         let resolvedEffort = effort ?? currentEffort
+        if Ultracode.invokes(text) || resolvedEffort == Ultracode.effortLevel {
+            ultracodeInFlight = true
+            onModelChange?()
+        }
         let payloadBytes = attachments.reduce(0) { $0 + ($1.data?.count ?? 0) }
         let sendBound = 15 + payloadBytes / 50_000
         sendTask = Task {
@@ -808,16 +819,13 @@ final class ChatViewModel {
 
     func selectModel(_ model: ModelSelection?) {
         selectedModel = model
-        if let model { RecentModelsStore.record(model) }
-        ModelPreferenceStore.setModel(model, forKey: persistKey)
-        ModelPreferenceStore.setGlobalModel(model, forContextID: contextID)
+        ModelPreferenceStore.recordPick(model, sessionKey: persistKey, contextID: contextID)
         onModelChange?()
     }
 
     func setEffort(_ level: String?) {
         currentEffort = level
-        EffortPreferenceStore.setEffort(level, forKey: persistKey)
-        EffortPreferenceStore.setGlobalEffort(level, forContextID: contextID)
+        EffortPreferenceStore.recordPick(level, sessionKey: persistKey, contextID: contextID)
         onModelChange?()
     }
 

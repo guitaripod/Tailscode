@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 @MainActor
@@ -29,6 +30,17 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private var heightConstraint: NSLayoutConstraint!
     private var lastMeasuredWidth: CGFloat = 0
     private var isSending = false
+    private let auraHost = UIView()
+    private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
+
+    var ultracodeEffort: String? {
+        didSet { refreshAura() }
+    }
+
+    private func refreshAura() {
+        aura.setActive(
+            Ultracode.auraActive(effort: ultracodeEffort, draft: textView.text ?? ""))
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -46,6 +58,10 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         bar.clipsToBounds = true
         bar.isUserInteractionEnabled = false
         addSubview(bar)
+
+        auraHost.translatesAutoresizingMaskIntoConstraints = false
+        auraHost.isUserInteractionEnabled = false
+        addSubview(auraHost)
 
         var chip = UIButton.Configuration.plain()
         chip.contentInsets = .zero
@@ -116,6 +132,10 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         NSLayoutConstraint.activate([
+            auraHost.topAnchor.constraint(equalTo: bar.topAnchor),
+            auraHost.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            auraHost.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            auraHost.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             bar.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.xs),
             bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
             bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
@@ -287,10 +307,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         placeholder.isHidden = !textView.text.isEmpty
         updateHeight()
         updateSendButton()
+        refreshAura()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        aura.layout()
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }

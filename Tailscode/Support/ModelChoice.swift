@@ -185,8 +185,15 @@ enum ModelMenu {
                 ) { _ in actions.selectEffort(nil) }
             ]
             levels += efforts.map { level in
-                UIAction(
-                    title: level.capitalized, state: choice.effort == level ? .on : .off
+                guard level == Ultracode.effortLevel else {
+                    return UIAction(
+                        title: level.capitalized, state: choice.effort == level ? .on : .off
+                    ) { _ in actions.selectEffort(level) }
+                }
+                return UIAction(
+                    title: Ultracode.menuTitle, subtitle: Ultracode.menuSubtitle,
+                    image: UIImage(systemName: "sparkles"),
+                    state: choice.effort == level ? .on : .off
                 ) { _ in actions.selectEffort(level) }
             }
             sections.append(

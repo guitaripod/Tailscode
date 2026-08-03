@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 @MainActor
@@ -41,6 +42,22 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var textViewLeadingToAttach: NSLayoutConstraint?
     private var textViewLeadingToBar: NSLayoutConstraint?
     private var lastMeasuredWidth: CGFloat = 0
+    private let auraHost = UIView()
+    private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
+
+    var ultracodeEffort: String? {
+        didSet { refreshAura() }
+    }
+    var ultracodeInFlight = false {
+        didSet { refreshAura() }
+    }
+
+    private func refreshAura() {
+        aura.setActive(
+            Ultracode.auraActive(
+                effort: ultracodeEffort, draft: textView.text ?? "",
+                inFlightInvoked: ultracodeInFlight))
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -58,6 +75,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         bar.clipsToBounds = true
         bar.isUserInteractionEnabled = false
         addSubview(bar)
+
+        auraHost.translatesAutoresizingMaskIntoConstraints = false
+        auraHost.isUserInteractionEnabled = false
+        addSubview(auraHost)
 
         textView.font = Theme.Font.body()
         textView.adjustsFontForContentSizeCategory = true
@@ -127,6 +148,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
 
         NSLayoutConstraint.activate([
+            auraHost.topAnchor.constraint(equalTo: bar.topAnchor),
+            auraHost.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            auraHost.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            auraHost.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             bar.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.xs),
             bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
             bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
@@ -211,6 +236,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        aura.layout()
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
@@ -242,6 +268,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         placeholder.isHidden = !textView.text.isEmpty
         updateHeight()
         updateSendButton()
+        refreshAura()
         delegate?.composerTextDidChange(textView.text)
     }
 

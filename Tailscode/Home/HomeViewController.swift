@@ -1101,6 +1101,9 @@ extension HomeViewController: HomeComposerBarDelegate {
         let project = target.directory.map { ($0 as NSString).lastPathComponent }
         let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
         let modelLabel = modelChipLabel(for: profile)
+        composerBar.ultracodeEffort =
+            modelChoices[profile.id]?.effort
+            ?? EffortPreferenceStore.globalEffort(forContextID: profile.id)
         let state = "\(profile.id)|\(target.directory ?? "")|\(title)|\(modelLabel ?? "")"
         guard state != appliedComposerState else { return }
         appliedComposerState = state
@@ -1188,8 +1191,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     }
 
     private func setComposeModel(_ selection: ModelSelection?, for profile: ConnectionProfile) {
-        if let selection { RecentModelsStore.record(selection) }
-        ModelPreferenceStore.setGlobalModel(selection, forContextID: profile.id)
+        ModelPreferenceStore.recordPick(selection, sessionKey: nil, contextID: profile.id)
         if selection == nil {
             modelChoices[profile.id] = nil
         } else {
@@ -1202,7 +1204,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     }
 
     private func setComposeEffort(_ level: String?, for profile: ConnectionProfile) {
-        EffortPreferenceStore.setGlobalEffort(level, forContextID: profile.id)
+        EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: profile.id)
         var choice = modelChoices[profile.id] ?? ModelChoice()
         choice.effort = level
         modelChoices[profile.id] = choice

@@ -1621,6 +1621,8 @@ final class ChatViewController: UIViewController {
         items.append(overflowBarButton())
         navigationItem.rightBarButtonItems = items
         refreshAttachmentGating()
+        composer.ultracodeEffort = viewModel.currentEffort
+        composer.ultracodeInFlight = viewModel.ultracodeInFlight
     }
 
     /// A model that takes no images can still take files — the agent opens those

@@ -407,15 +407,14 @@ final class ServerDetailViewController: UIViewController {
     }
 
     private func setDefaultModel(_ selection: ModelSelection?) {
-        if let selection { RecentModelsStore.record(selection) }
-        ModelPreferenceStore.setGlobalModel(selection, forContextID: profile.id)
+        ModelPreferenceStore.recordPick(selection, sessionKey: nil, contextID: profile.id)
         modelChoice.model = selection
         Theme.Haptics.selection()
         reconfigure([.defaultModel])
     }
 
     private func setDefaultEffort(_ level: String?) {
-        EffortPreferenceStore.setGlobalEffort(level, forContextID: profile.id)
+        EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: profile.id)
         modelChoice.effort = level
         Theme.Haptics.selection()
         reconfigure([.defaultModel])
