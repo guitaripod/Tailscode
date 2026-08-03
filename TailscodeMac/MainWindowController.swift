@@ -313,13 +313,29 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// A notification tap: raise the window, then open the session it names.
+    func openSession(withID id: String) {
+        window?.makeKeyAndOrderFront(nil)
+        sidebar.open(withID: id)
+    }
+
     private func wireChildren() {
         sidebar.onOpen = { [weak self] entry, backend in
             self?.handleOpen(entry, backend: backend)
         }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
-        transcript.onState = { [weak self] state in self?.lastState = state }
+        transcript.onState = { [weak self] state in
+            guard let self else { return }
+            self.lastState = state
+            if let entry = self.currentEntry {
+                MacNotifier.shared.observeConversation(
+                    profileID: entry.profileID, sessionID: entry.session.id,
+                    title: entry.session.hasPlaceholderTitle
+                        ? Localized.text("New conversation") : entry.session.title,
+                    state: state)
+            }
+        }
         transcript.onToast = { [weak self] text in self?.toast(text) }
         transcript.onBandAction = { [weak self] action in self?.perform(bandAction: action) }
         filesPane.onOpen = { [weak self] path in

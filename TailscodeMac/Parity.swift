@@ -27,7 +27,7 @@ enum ParityManifest {
         case .toolRows: return .implemented("ToolRowView")
         case .toolDiffs: return .implemented("ToolDiff")
         case .imageParts: return .implemented("ImageStore")
-        case .imageViewer: return .partial("ImageViewer", missing: "a paged gallery over every picture in the conversation and 1:1 zoom; one window with save-to-Downloads today")
+        case .imageViewer: return .implemented("ImageViewer")
         case .subagentCards: return .implemented("SubagentRowView")
         case .questionCells: return .implemented("PendingCards")
         case .compactionSeam: return .implemented("Compaction")
@@ -60,8 +60,8 @@ enum ParityManifest {
         case .uiScale: return .implemented("UIScale")
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")
-        case .firstRunSetup: return .partial("ServerProbe", missing: "a first-run checklist that proves this Mac's tailnet presence; add-server probes and diagnoses only")
-        case .activityNotifications: return .gap("no user notifications; a finished turn or a needs-you in an unfocused window stays silent")
+        case .firstRunSetup: return .implemented("FirstRunWindow")
+        case .activityNotifications: return .implemented("MacNotifier")
         }
     }
 }

@@ -447,9 +447,20 @@ final class TranscriptViewController: NSViewController {
             self?.fetchSubagent(call)
         }
         context.openImage = { [weak self] key, name in
-            guard let self, let entry = ImageStore.shared.entry(forKey: key) else { return }
+            guard let self else { return }
+            let items: [ImageViewer.Item] = self.lastFullRows.compactMap { row in
+                guard case .file(let reference) = row.kind,
+                    (reference.mime ?? "").hasPrefix("image/")
+                else { return nil }
+                let itemName =
+                    reference.filename
+                    ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent }
+                    ?? "image"
+                return ImageViewer.Item(key: row.key, name: itemName, reference: reference)
+            }
             ImageViewer.present(
-                entry: entry, name: name, host: self.view.window,
+                items: items, startKey: key, host: self.view.window,
+                fetch: { [weak self] reference, key in self?.fetchImage(reference, key: key) },
                 toast: { [weak self] text in self?.onToast?(text) })
         }
         context.presentText = { [weak self] title, subtitle, body, mono in

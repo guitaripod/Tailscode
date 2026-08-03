@@ -20,6 +20,9 @@ final class ImageStore {
 
     private var entries: [String: DecodedImage] = [:]
     private var order: [String] = []
+    /// The gallery's ear while it is open: a page whose bytes were still being fetched repaints
+    /// the moment they land.
+    var onStored: ((String) -> Void)?
 
     private init() {}
 
@@ -31,6 +34,7 @@ final class ImageStore {
     /// decoded is released — its bytes are still on disk, one frame away.
     func store(_ entry: DecodedImage, forKey key: String) {
         entries[key] = entry
+        onStored?(key)
         order.removeAll { $0 == key }
         order.append(key)
         while order.count > 48 {
@@ -199,42 +203,90 @@ enum ImageRowView {
     }
 }
 
-/// The picture at full size in its own window, and a save that hands over the bytes the server
-/// sent — never a re-encode of the bitmap a row downsampled to display.
+/// A gallery over every picture in the conversation rather than a single-image window: paged
+/// with ‹ › or the arrow keys, magnifiable between fit and true 1:1 screen pixels with a
+/// double-click or `z`, and a save that hands over the exact bytes the server sent under their
+/// sniffed extension. Pages whose bytes are still being fetched paint the moment they land.
 @MainActor
-enum ImageViewer {
-    static func present(entry: DecodedImage, name: String, host: NSWindow?, toast: ((String) -> Void)?) {
+final class ImageViewer: NSObject {
+    struct Item {
+        let key: String
+        let name: String
+        let reference: FileReference
+    }
+
+    private let items: [Item]
+    private var index: Int
+    private let fetch: (FileReference, String) -> Void
+    private let toast: ((String) -> Void)?
+    private let previousEar: ((String) -> Void)?
+
+    private var window: FloatingWindow?
+    private let scrollView = NSScrollView()
+    private let imageView = NSImageView()
+    private let counterLabel = RowKit.label(
+        "", font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+    private let zoomButton = NSButton(title: "", target: nil, action: nil)
+    private var oneToOne = false
+    private static var open: ImageViewer?
+
+    static func present(
+        items: [Item], startKey: String, host: NSWindow?,
+        fetch: @escaping (FileReference, String) -> Void, toast: ((String) -> Void)?
+    ) {
+        guard !items.isEmpty else { return }
+        let viewer = ImageViewer(items: items, startKey: startKey, fetch: fetch, toast: toast)
+        open = viewer
+        viewer.presentWindow(host: host)
+    }
+
+    private init(
+        items: [Item], startKey: String, fetch: @escaping (FileReference, String) -> Void,
+        toast: ((String) -> Void)?
+    ) {
+        self.items = items
+        self.index = items.firstIndex { $0.key == startKey } ?? 0
+        self.fetch = fetch
+        self.toast = toast
+        self.previousEar = ImageStore.shared.onStored
+        super.init()
+    }
+
+    private func presentWindow(host: NSWindow?) {
         let hostFrame = host?.frame ?? NSRect(x: 0, y: 0, width: 1080, height: 800)
         let width = max(960, hostFrame.width - 120)
         let height = max(700, hostFrame.height - 100)
 
-        let imageView = NSImageView(image: entry.image)
         imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.setContentCompressionResistancePriority(.init(1), for: .horizontal)
-        imageView.setContentCompressionResistancePriority(.init(1), for: .vertical)
+        scrollView.documentView = imageView
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = 0.02
+        scrollView.maxMagnification = 12
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let sizeLabel = RowKit.label(
-            "\(entry.pixelWidth)×\(entry.pixelHeight)", font: MacTheme.Font.caption(),
-            color: MacTheme.Color.secondaryLabel)
-        let data = entry.data
-        let filename = name
+        var barViews: [NSView] = []
+        if items.count > 1 {
+            barViews.append(
+                RowKit.ActionButton(title: "‹") { [weak self] in self?.step(-1) })
+            barViews.append(
+                RowKit.ActionButton(title: "›") { [weak self] in self?.step(1) })
+        }
+        zoomButton.target = self
+        zoomButton.action = #selector(toggleZoom)
+        zoomButton.bezelStyle = .rounded
+        barViews.append(zoomButton)
+        barViews.append(counterLabel)
+        barViews.append(RowKit.spacer())
         let save = RowKit.ActionButton(title: Localized.text("Save to Downloads")) {
-            let target = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Downloads", isDirectory: true)
-                .appendingPathComponent(filename)
-            try? FileManager.default.createDirectory(
-                at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let wrote = (try? data.write(to: target)) != nil
-            toast?(
-                wrote
-                    ? Localized.text("Saved %@", target.path)
-                    : Localized.text("Could not write %@", target.path))
+            [weak self] in self?.save()
         }
         save.bezelStyle = .rounded
-        save.translatesAutoresizingMaskIntoConstraints = false
+        barViews.append(save)
 
-        let bar = NSStackView(views: [sizeLabel, RowKit.spacer(), save])
+        let bar = NSStackView(views: barViews)
         bar.orientation = .horizontal
         bar.spacing = MacTheme.Spacing.s
         bar.edgeInsets = NSEdgeInsets(
@@ -242,33 +294,153 @@ enum ImageViewer {
             right: MacTheme.Spacing.l)
         bar.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSStackView(views: [imageView, bar])
+        let column = NSStackView(views: [scrollView, bar])
         column.orientation = .vertical
         column.alignment = .width
         column.spacing = 0
         column.translatesAutoresizingMaskIntoConstraints = false
 
-        let window = FloatingWindow(
+        let window = GalleryWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = name
         window.contentView = column
+        window.onKey = { [weak self] key in self?.handleKey(key) ?? false }
+        window.onDoubleClick = { [weak self] in self?.toggleZoom() }
+        self.window = window
+        ImageStore.shared.onStored = { [weak self] key in
+            guard let self, key == self.items[self.index].key else { return }
+            self.render()
+        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification,
+            object: window)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowResized), name: NSWindow.didResizeNotification,
+            object: window)
         if let host {
             window.setFrameOrigin(
-                NSPoint(
-                    x: host.frame.midX - width / 2,
-                    y: host.frame.midY - height / 2))
+                NSPoint(x: host.frame.midX - width / 2, y: host.frame.midY - height / 2))
         } else {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [weak self] in self?.render() }
+    }
+
+    @objc private func windowClosed() {
+        ImageStore.shared.onStored = previousEar
+        Self.open = nil
+    }
+
+    @objc private func windowResized() {
+        guard !oneToOne else { return }
+        applyMagnification()
+    }
+
+    private func handleKey(_ key: String) -> Bool {
+        switch key {
+        case "left": step(-1)
+        case "right": step(1)
+        case "z": toggleZoom()
+        case "s": save()
+        default: return false
+        }
+        return true
+    }
+
+    private func step(_ delta: Int) {
+        guard !items.isEmpty else { return }
+        index = (index + delta + items.count) % items.count
+        oneToOne = false
+        render()
+    }
+
+    @objc private func toggleZoom() {
+        oneToOne.toggle()
+        applyMagnification()
+    }
+
+    private func render() {
+        let item = items[index]
+        let counter = items.count > 1 ? "\(index + 1)/\(items.count)" : ""
+        guard let entry = ImageStore.shared.entry(forKey: item.key) else {
+            window?.title = item.name
+            counterLabel.stringValue = [counter, Localized.text("Loading…")]
+                .filter { !$0.isEmpty }.joined(separator: "  ·  ")
+            imageView.image = nil
+            fetch(item.reference, item.key)
+            return
+        }
+        window?.title = item.name
+        counterLabel.stringValue = [counter, "\(entry.pixelWidth)×\(entry.pixelHeight)"]
+            .filter { !$0.isEmpty }.joined(separator: "  ·  ")
+        imageView.image = entry.image
+        imageView.setFrameSize(
+            NSSize(width: CGFloat(entry.pixelWidth), height: CGFloat(entry.pixelHeight)))
+        applyMagnification()
+    }
+
+    /// Fit shows the whole picture; 1:1 shows one image pixel per screen pixel — the document
+    /// view is sized in image pixels, so that is a magnification of 1/backingScale.
+    private func applyMagnification() {
+        zoomButton.title = oneToOne ? Localized.text("Fit") : "1:1"
+        guard imageView.image != nil else { return }
+        if oneToOne {
+            let scale = window?.backingScaleFactor ?? 2
+            scrollView.magnification = 1 / scale
+        } else {
+            scrollView.magnify(toFit: imageView.frame)
+        }
+    }
+
+    private func save() {
+        let item = items[index]
+        guard let entry = ImageStore.shared.entry(forKey: item.key) else {
+            toast?(Localized.text("Still loading — try again in a moment."))
+            return
+        }
+        let filename = ImageBytes.exportFilename(item.name, data: entry.data)
+        let target = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+            .appendingPathComponent(filename)
+        try? FileManager.default.createDirectory(
+            at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let wrote = (try? entry.data.write(to: target)) != nil
+        toast?(
+            wrote
+                ? Localized.text("Saved %@", target.path)
+                : Localized.text("Could not write %@", target.path))
+    }
+}
+
+/// The gallery's window: arrows page, `z` zooms, `s` saves, Esc closes, a double-click anywhere
+/// toggles fit and 1:1.
+@MainActor
+private final class GalleryWindow: FloatingWindow {
+    var onKey: ((String) -> Bool)?
+    var onDoubleClick: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let name: String
+        switch event.keyCode {
+        case 123: name = "left"
+        case 124: name = "right"
+        default: name = event.charactersIgnoringModifiers ?? ""
+        }
+        if onKey?(name) == true { return }
+        super.keyDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if event.clickCount == 2 { onDoubleClick?() }
+        super.mouseUp(with: event)
     }
 }
 
 /// A window unowned by any controller — a picture viewer, a summary reader — that holds itself
 /// open in a shared registry until the person closes it, and Esc closes it like the panel it is.
 @MainActor
-final class FloatingWindow: NSWindow {
+class FloatingWindow: NSWindow {
     private static var open: [FloatingWindow] = []
 
     override init(

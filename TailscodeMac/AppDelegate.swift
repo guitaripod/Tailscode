@@ -18,6 +18,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = MainMenu(hub: controller)
         menu.install()
         self.menu = menu
+        MacNotifier.shared.activate()
+        MacNotifier.shared.onOpen = { [weak controller] sessionID in
+            controller?.openSession(withID: sessionID)
+        }
+        FirstRunWindow.presentIfNeeded { [weak controller] in
+            Task { [weak controller] in await controller?.sidebar.refresh() }
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 

@@ -105,6 +105,28 @@ final class PreferencesWindow: NSWindowController {
                 valueLabel: windowLabel, action: #selector(windowChanged)))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Notifications")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("A turn finishes"),
+                subtitle: Localized.text(
+                    "Any chat, not only the open one — raised only while the app is in the background"),
+                value: MacNotifier.notifyTurnComplete, action: #selector(notifyTurnsChanged)))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("An agent needs you"),
+                subtitle: Localized.text(
+                    "An approval to give or a question to answer; withdrawn once it is answered"),
+                value: MacNotifier.notifyNeedsYou, action: #selector(notifyNeedsChanged)))
+        let test = NSButton(
+            title: Localized.text("Test"), target: self, action: #selector(sendTestNotification))
+        column.addArrangedSubview(
+            buttonRow(
+                title: Localized.text("Prove the path"),
+                subtitle: Localized.text("Sends one notification two seconds from now"),
+                button: test))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Keyboard")))
         let edit = NSButton(
             title: Localized.text("Edit"), target: self, action: #selector(editShortcuts))
@@ -151,6 +173,18 @@ final class PreferencesWindow: NSWindowController {
         defaults.set(sender.integerValue, forKey: "tailscode.transcriptWindow")
         windowLabel.stringValue = "\(sender.integerValue)"
         onTranscriptChanged()
+    }
+
+    @objc private func notifyTurnsChanged(_ sender: NSButton) {
+        MacNotifier.setNotifyTurnComplete(sender.state == .on)
+    }
+
+    @objc private func notifyNeedsChanged(_ sender: NSButton) {
+        MacNotifier.setNotifyNeedsYou(sender.state == .on)
+    }
+
+    @objc private func sendTestNotification() {
+        MacNotifier.shared.sendTest()
     }
 
     @objc private func editShortcuts() {

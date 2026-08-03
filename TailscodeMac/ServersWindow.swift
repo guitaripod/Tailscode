@@ -209,28 +209,42 @@ final class ServersWindow: NSWindowController {
         }
 
         setStatus(Localized.text("Probing %@…", address.url.absoluteString))
-        let profile = ConnectionProfile(
-            id: UUID().uuidString,
-            name: label.isEmpty ? address.displayHost : label,
-            backend: backend,
-            baseURL: address.url,
-            username: backend == .claudeCode ? "claude" : "opencode")
-
         Task { [weak self] in
-            let candidate = profile.makeBackend(password: password.isEmpty ? nil : password)
-            do {
-                let health = try await ServerProbe.health(of: candidate)
-                guard let self else { return }
-                try ServerDirectory.shared.save(
-                    profile, password: password.isEmpty ? nil : password)
-                self.onChanged()
+            let verdict = await ProbeSweep.best(
+                address: address, password: password.isEmpty ? nil : password,
+                preferring: backend)
+            guard let self else { return }
+            switch verdict.outcome {
+            case .ok(let agent, let version):
+                let profile = ConnectionProfile(
+                    id: UUID().uuidString,
+                    name: label.isEmpty ? address.displayHost : label,
+                    backend: agent,
+                    baseURL: verdict.url,
+                    username: agent == .claudeCode ? "claude" : "opencode")
+                do {
+                    try ServerDirectory.shared.save(
+                        profile, password: password.isEmpty ? nil : password)
+                    self.onChanged()
+                    self.setStatus(
+                        Localized.text("Saved %@ — %@", profile.name, version ?? "connected"))
+                    self.renderList()
+                    self.addressField.stringValue = ""
+                } catch {
+                    self.setStatus(
+                        Localized.text("Could not save: %@", String(describing: error)))
+                }
+            case .authFailed:
                 self.setStatus(
-                    Localized.text("Saved %@ — %@", profile.name, health.version ?? "connected"))
-                self.renderList()
-                self.addressField.stringValue = ""
-            } catch {
-                let cause = await Self.diagnose(address: address, backend: backend, error: error)
-                self?.setStatus(cause)
+                    password.isEmpty
+                        ? Localized.text(
+                            "%@ answered and wants a password.", verdict.url.absoluteString)
+                        : Localized.text(
+                            "%@ answered but refused the password. Check it on the server.",
+                            verdict.url.absoluteString))
+            case .notAnAgentServer, .unreachable:
+                let cause = await Self.diagnose(address: address, backend: backend)
+                self.setStatus(cause)
             }
         }
     }
@@ -404,16 +418,8 @@ final class ServersWindow: NSWindowController {
     }
 
     /// A failed probe names its cause rather than surfacing a raw error: the port not answering,
-    /// the host not resolving, or the server answering and refusing the password.
-    private static func diagnose(
-        address: HostAddress, backend: AgentType, error: Error
-    ) async -> String {
-        let described = String(describing: error)
-        if described.contains("401") || described.lowercased().contains("unauthorized") {
-            return Localized.text(
-                "%@ answered but refused the password. Check it on the server.",
-                address.displayHost)
-        }
+    /// the host not resolving, or something on the port that is not an agent.
+    private static func diagnose(address: HostAddress, backend: AgentType) async -> String {
         guard let host = address.url.host, let port = address.url.port else {
             return Localized.text("Could not reach %@.", address.url.absoluteString)
         }

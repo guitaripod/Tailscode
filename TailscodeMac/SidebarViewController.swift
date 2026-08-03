@@ -170,6 +170,21 @@ final class SidebarViewController: NSViewController {
         open(entry, freshlyCreated: true)
     }
 
+    /// A notification tap arrives here with only an id — refreshing first when the listing does
+    /// not carry it yet.
+    func open(withID id: String) {
+        if let entry = entries.first(where: { $0.session.id == id }) {
+            open(entry)
+            return
+        }
+        Task { [weak self] in
+            await self?.refresh()
+            guard let self, let entry = self.entries.first(where: { $0.session.id == id })
+            else { return }
+            self.open(entry)
+        }
+    }
+
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard selectedID != entry.session.id else { return }
         self.freshlyCreated = freshlyCreated ? entry : nil
@@ -383,6 +398,13 @@ final class SidebarViewController: NSViewController {
                 saved: saved.contains($0.session.id))
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
+        MacNotifier.shared.observeListing(
+            models.map {
+                ActivityObservation(
+                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
+                    title: $0.title, isActive: $0.entry.session.isActive == true)
+            },
+            openSessionID: selectedID)
         let archivedKeys = ArchivedChatStore.all()
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
