@@ -76,6 +76,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkParity()
+            report("parity: \(checks) capabilities answered")
+        } catch {
+            report("parity: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkSettingsFile()
             report("settings file: survives a reinstall")
         } catch {
@@ -379,6 +387,29 @@ public enum SelfTest {
             ShortcutSet.build(overrides: [:]).helpSections().contains {
                 $0.rows.contains { $0.keys.contains("^⏎") }
             }, "the cheatsheet lists effective keys")
+        return checks
+    }
+
+    private static func checkParity() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("parity: \(label)") }
+            checks += 1
+        }
+        try expect(
+            CapabilityRegistry.missingDefinitions.isEmpty, "every capability has a spec")
+        for capability in AppCapability.allCases {
+            switch ParityManifest.evidence(for: capability) {
+            case .implemented(let anchor):
+                try expect(!anchor.isEmpty, "\(capability.rawValue) names its anchor")
+            case .partial(let anchor, let missing):
+                try expect(
+                    !anchor.isEmpty && !missing.isEmpty,
+                    "\(capability.rawValue) names its anchor and its debt")
+            case .gap(let reason), .notApplicable(let reason):
+                try expect(!reason.isEmpty, "\(capability.rawValue) states its reason")
+            }
+        }
         return checks
     }
 
