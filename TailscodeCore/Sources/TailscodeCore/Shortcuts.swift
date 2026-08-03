@@ -378,7 +378,15 @@ public struct ShortcutSet: Sendable {
     public let effective: [String: [String]]
     public let issues: [String]
 
+    /// Where the rebinding file lives when `~/.config` is not a place the user can reach — the
+    /// phone points this at its Documents folder, so the same file the desktops keep under XDG
+    /// is editable in the Files app. Set once at launch, before anything loads.
+    nonisolated(unsafe) public static var configDirectoryOverride: URL?
+
     public static var configURL: URL {
+        if let configDirectoryOverride {
+            return configDirectoryOverride.appendingPathComponent("keybindings.json")
+        }
         let base = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         } ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)

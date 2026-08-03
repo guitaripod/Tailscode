@@ -7,6 +7,11 @@ public enum ArchivedChatStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.archived.sessions"
 
+    /// Posted after every toggle. A client with more than one surface reading the archive —
+    /// a board, a list and an archived view at once — listens here instead of each surface
+    /// re-rendering the others by hand.
+    public static let didChange = Notification.Name("tailscode.archived.didChange")
+
     public static func all() -> Set<String> {
         Set(defaults.stringArray(forKey: storageKey) ?? [])
     }
@@ -28,6 +33,7 @@ public enum ArchivedChatStore {
             archived = true
         }
         defaults.set(current.sorted(), forKey: storageKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
         return archived
     }
 
