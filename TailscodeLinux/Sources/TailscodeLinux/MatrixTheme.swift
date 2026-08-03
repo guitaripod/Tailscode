@@ -1,5 +1,6 @@
 import CAdw
 import Foundation
+import TailscodeCore
 
 /// The colors of one appearance, named by what they mean rather than what they are: the transcript
 /// canvas and its raised surfaces, the two text registers, and the handful of signal colors every
@@ -448,18 +449,23 @@ enum MatrixTheme {
             font-size: \(m(0.85));
             padding: 4px 12px;
         }
-        .pill-row { padding: 0px 22px 10px 22px; }
+        .pill-row { padding: 0px 22px 6px 22px; }
         .pill-row button {
             font-family: monospace;
             font-size: \(m(0.78));
             min-height: 0;
-            padding: 2px 10px;
+            padding: 1px 8px;
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
             border-radius: 0;
             color: \(textDim);
         }
         .pill-row button:hover { border-color: \(accent); color: \(text); }
+        .pill-row arrow { -gtk-icon-size: 8px; opacity: 0.4; }
+        .pill-row button.send-pill { color: \(accentDim); border-color: \(accentDim); }
+        .pill-row button.send-pill:hover { color: \(accent); border-color: \(accent); }
+        .pill-row button.stop-pill { color: \(danger); border-color: \(danger); }
+        .pill-row button.stop-pill:hover { color: \(palette.onAccent); background-color: \(danger); }
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
 
         .chip {
@@ -488,6 +494,17 @@ enum MatrixTheme {
             border-bottom: 1px solid \(rule);
             padding: 2px 4px;
         }
+        .chat-pane { border: 1px solid transparent; }
+        .pane-focused { border: 1px solid alpha(\(accent), 0.55); }
+        .pane-identity {
+            color: \(textDim);
+            background-color: \(canvasRaised);
+            border-bottom: 1px solid \(rule);
+            font-family: monospace;
+            font-size: \(m(0.72));
+            padding: 2px 10px;
+        }
+        .pane-focused .pane-identity { color: \(accent); }
         .find-hit {
             background-color: \(palette.findHit);
             box-shadow: inset 2px 0 0 \(warn);
@@ -567,5 +584,40 @@ enum MatrixTheme {
             gtk_style_context_add_provider_for_display(
                 display, op(provider), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
         }
+    }
+
+    private nonisolated(unsafe) static var auraProvider: UnsafeMutablePointer<GtkCssProvider>?
+
+    /// The ultracode aura: the composer's border becomes a turning rainbow. GTK
+    /// CSS cannot animate a gradient on its own, so the caller ticks the angle
+    /// and this reloads one tiny dedicated provider — the app-wide sheet is
+    /// untouched by the animation. `border-image` keeps the theme's own
+    /// background exactly as it was; only the edge lights up.
+    static func applyUltracodeAura(angle: Int) {
+        let count = Ultracode.rainbowStops.count - 1
+        let stops = Ultracode.rainbowStops.enumerated().map { index, stop in
+            let red = Int(stop.red * 255)
+            let green = Int(stop.green * 255)
+            let blue = Int(stop.blue * 255)
+            return "rgb(\(red),\(green),\(blue)) \(index * 100 / count)%"
+        }.joined(separator: ", ")
+        let css = """
+            .composer-ultracode {
+                border: 2px solid transparent;
+                border-image-source: linear-gradient(\(angle)deg, \(stops));
+                border-image-slice: 1;
+                box-shadow: 0 0 14px rgba(180, 90, 250, 0.35);
+            }
+            """
+        if auraProvider == nil {
+            auraProvider = gtk_css_provider_new()
+            if let auraProvider, let display = gdk_display_get_default() {
+                gtk_style_context_add_provider_for_display(
+                    display, op(auraProvider),
+                    guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1))
+            }
+        }
+        guard let auraProvider else { return }
+        gtk_css_provider_load_from_string(auraProvider, css)
     }
 }
