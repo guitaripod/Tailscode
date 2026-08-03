@@ -63,6 +63,7 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")
         case .firstRunSetup: return .implemented("FirstRunWindow")
+        case .demoMode: return .gap("No demo world; first run can only point at a real server")
         case .activityNotifications: return .implemented("MacNotifier")
         }
     }

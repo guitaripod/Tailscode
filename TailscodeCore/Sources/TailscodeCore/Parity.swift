@@ -68,6 +68,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case settingsSurface
     case goalControl
     case firstRunSetup
+    case demoMode
     case activityNotifications
 }
 
@@ -304,6 +305,10 @@ public enum CapabilityRegistry {
             id: .firstRunSetup, area: "app", title: "First run is a verified checklist",
             spec:
                 "Setup states each requirement and proves what it can — this machine's tailnet presence, and which agent answers the typed address via probeCandidates — before asking for anything."),
+        CapabilityDefinition(
+            id: .demoMode, area: "app", title: "Try it without a server",
+            spec:
+                "First run offers a scripted demo world (MockBackend) so the product can make its argument before any machine is set up — a real conversation surface over fake servers, clearly labeled, exitable back to setup."),
         CapabilityDefinition(
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:

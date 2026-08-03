@@ -63,6 +63,7 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
         case .firstRunSetup: return .implemented("ServerSetupViewController")
+        case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("NotificationManager")
         }
     }
