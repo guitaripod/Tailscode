@@ -44,6 +44,7 @@ enum ParityManifest {
         case .sendQueue: return .implemented("Queue")
         case .modelEffortPicker: return .implemented("PillsRow")
         case .modelEffortDisplay: return .implemented("ModelBadge")
+        case .ultracodeAura: return .implemented("UltracodeAura")
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBandView")
         case .usagePanel: return .implemented("UsagePanel")

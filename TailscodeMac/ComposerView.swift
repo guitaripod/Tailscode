@@ -45,6 +45,16 @@ final class ComposerView: NSView {
     private var chosenEffort: String?
     private var completionMatches: [AgentCommand] = []
     private var completionCursor = 0
+    private var ultracodeInFlight = false
+    private lazy var aura = UltracodeAura(
+        around: fieldContainer, cornerRadius: MacTheme.Radius.control)
+
+    private func refreshAura() {
+        aura.setActive(
+            Ultracode.auraActive(
+                effort: chosenEffort, draft: textView.string,
+                inFlightInvoked: ultracodeInFlight))
+    }
 
     static var sendOnReturn: Bool {
         UserDefaults.standard.object(forKey: "tailscode.sendOnReturn") as? Bool ?? true
@@ -111,8 +121,11 @@ final class ComposerView: NSView {
         pastedImageCount = 0
         syncChips()
         let key = Self.preferenceKey(entry)
-        chosenModel = ModelPreferenceStore.model(forKey: key)
-        chosenEffort = EffortPreferenceStore.effort(forKey: key)
+        chosenModel = ModelPreferenceStore.initialModel(sessionKey: key, contextID: entry.profileID)
+        chosenEffort = EffortPreferenceStore.initialEffort(
+            sessionKey: key, contextID: entry.profileID)
+        ultracodeInFlight = false
+        refreshAura()
         models = modelsByProfile[entry.profileID] ?? []
         commands = commandsBySession[entry.session.id] ?? []
         dismissCompletion()
@@ -132,6 +145,10 @@ final class ComposerView: NSView {
         sendButton.title = running ? Localized.text("Queue") : Localized.text("Send")
         pills.setStopShown(running)
         refreshPills()
+        if ultracodeInFlight, !running, state.hasLoadedTranscript {
+            ultracodeInFlight = false
+            refreshAura()
+        }
     }
 
     /// The send path: trim, keep nothing the draft store would resurrect, let a typed slash
@@ -151,6 +168,10 @@ final class ComposerView: NSView {
         if handleSlashCommand(text) { return }
         attachments = []
         syncChips()
+        if Ultracode.invokes(text) || chosenEffort == Ultracode.effortLevel {
+            ultracodeInFlight = true
+        }
+        refreshAura()
         onSubmitPrompt?(text, chosenModel, chosenEffort, outgoing.map(\.prompt))
     }
 
@@ -220,6 +241,7 @@ final class ComposerView: NSView {
     override func layout() {
         super.layout()
         scheduleMeasure()
+        aura.layout()
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -464,9 +486,9 @@ final class ComposerView: NSView {
     private func setModel(_ selection: ModelSelection?) {
         chosenModel = selection
         if let entry {
-            ModelPreferenceStore.setModel(selection, forKey: Self.preferenceKey(entry))
+            ModelPreferenceStore.recordPick(
+                selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
         }
-        if let selection { RecentModelsStore.record(selection) }
         refreshPills()
     }
 
@@ -483,8 +505,13 @@ final class ComposerView: NSView {
             }
         ]
         for option in options {
+            let isPower = option == Ultracode.effortLevel
             rows.append(
-                PillsRow.MenuRow(option, checked: chosenEffort == option) { [weak self] in
+                PillsRow.MenuRow(
+                    isPower ? "\(option) ✦" : option,
+                    subtitle: isPower ? Ultracode.menuSubtitle : nil,
+                    checked: chosenEffort == option
+                ) { [weak self] in
                     self?.setEffort(option)
                 })
         }
@@ -494,9 +521,11 @@ final class ComposerView: NSView {
     private func setEffort(_ level: String?) {
         chosenEffort = level
         if let entry {
-            EffortPreferenceStore.setEffort(level, forKey: Self.preferenceKey(entry))
+            EffortPreferenceStore.recordPick(
+                level, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
         }
         refreshPills()
+        refreshAura()
     }
 
     /// On the server first — what this machine will actually resolve — then what the app itself
@@ -703,6 +732,7 @@ final class ComposerView: NSView {
         placeholderLabel.isHidden = !textView.string.isEmpty
         scheduleMeasure()
         updateSlashCompletion()
+        refreshAura()
     }
 
     /// The prompt box is as tall as what is in it: one line when empty, taller as the text wraps
