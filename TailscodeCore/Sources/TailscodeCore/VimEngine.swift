@@ -178,12 +178,11 @@ public final class VimEngine {
         return handleNormal(character)
     }
 
-    // MARK: - Normal and visual commands
 
+    /// In visual mode `u` and `U` case the selection rather than undoing it — the one place where
+    /// a normal-mode letter means something else entirely.
     private func handleNormal(_ character: Character) -> VimOutcome {
         let repeats = takeCount()
-        // In visual mode `u` and `U` case the selection rather than undoing it — the one place
-        // where a normal-mode letter means something else entirely.
         if mode == .visual || mode == .visualLine, character == "u" || character == "U",
             let range = selection
         {
@@ -320,7 +319,10 @@ public final class VimEngine {
     }
 
     /// The second half of an operator: a doubled key means the line, `i`/`a` a text object,
-    /// anything else a motion whose span is what the operator eats.
+    /// anything else a motion whose span is what the operator eats. `dw` on the last word of a
+    /// line stops at the line's end rather than swallowing the newline, and `de` takes the
+    /// character it lands on — the two places where an operator's span differs from the same
+    /// motion's landing spot.
     private func handleOperatorPending(_ character: Character) -> VimOutcome {
         guard let pending = pendingOperator else { return .handled }
         if character.isNumber, !(character == "0" && count.isEmpty) {
@@ -359,9 +361,6 @@ public final class VimEngine {
             clearPending()
             return .handled
         }
-        // `dw` on the last word of a line stops at the line's end rather than swallowing the
-        // newline, and `de` takes the character it lands on — the two places where an operator's
-        // span differs from the same motion's landing spot.
         if character == "w" || character == "W" {
             target = min(target, max(lineEnd(of: document.cursor), document.cursor))
         }
@@ -406,7 +405,6 @@ public final class VimEngine {
         if mode == .normal { clampCursorLeftOfLineEnd() }
     }
 
-    // MARK: - Motions
 
     private func motionTarget(_ character: Character, count: Int) -> Int? {
         var target = document.cursor
@@ -622,7 +620,6 @@ public final class VimEngine {
         return offsetOfLine(line)
     }
 
-    // MARK: - Edits
 
     private func applyDeletion(range: Range<Int>, linewise: Bool, yank shouldYank: Bool) {
         let range = clamped(range)
@@ -734,7 +731,6 @@ public final class VimEngine {
         document.characters.insert(contentsOf: Array(text), at: min(index, document.characters.count))
     }
 
-    // MARK: - Undo
 
     private func push() {
         undoStack.append(document)
@@ -756,7 +752,6 @@ public final class VimEngine {
         clampCursorLeftOfLineEnd()
     }
 
-    // MARK: - Geometry
 
     private var lineCount: Int {
         document.characters.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }

@@ -238,6 +238,8 @@ final class SavedChatsViewController: UIViewController {
         return hasLoadedOnce ? .missing : .unknown
     }
 
+    /// Rows that can still be opened lead; a chat whose conversation is gone is kept for tidying
+    /// up, not for reaching, so it never heads the list.
     private func rows() -> [Row] {
         let isUnread = SessionSeenStore.unreadEvaluator()
         let matching = saved.filter { chat in
@@ -254,8 +256,6 @@ final class SavedChatsViewController: UIViewController {
                 unread: state.isOpenable && isUnread(chat.sessionID, chat.updatedAt),
                 isRunning: state.isOpenable && isRunning(chat))
         }
-        // Rows that can still be opened lead; a chat whose conversation is gone
-        // is kept for tidying up, not for reaching, so it never heads the list.
         .sorted { lhs, rhs in
             if lhs.availability.isOpenable != rhs.availability.isOpenable {
                 return lhs.availability.isOpenable
