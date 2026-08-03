@@ -58,6 +58,7 @@ enum ParityManifest {
         case .shortcutCheatsheet: return .implemented("ShortcutCheatsheetViewController")
         case .fileBrowser: return .implemented("FileBrowserViewController")
         case .terminalPane: return .notApplicable("iOS has no shell; the pane presumes the app shares a filesystem with the agent")
+        case .splitPanes: return .notApplicable("one conversation fills a phone; a tiling tree presumes a desktop's width and the OS owns window arrangement")
         case .uiScale: return .implemented("Theme")
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
