@@ -149,6 +149,27 @@ final class SidebarViewController: NSViewController {
         applyEntries(fresh, unreachable: down)
     }
 
+    /// The directories chats already work in, newest first — what the new-chat sheet offers, so
+    /// + then Enter starts a conversation where the last one worked.
+    var recentDirectories: [String] {
+        var seen = Set<String>()
+        return entries.compactMap(\.session.directory).filter { seen.insert($0).inserted }
+    }
+
+    /// A chat created a heartbeat ago: seeded into the list by hand and opened on the spot,
+    /// because a bridge that answers `GET /sessions` from a sweep a second old would otherwise
+    /// blink the row away while the person is already typing into it.
+    func noteCreated(_ entry: SessionEntry) {
+        if !entries.contains(where: {
+            $0.profileID == entry.profileID && $0.session.id == entry.session.id
+        }) {
+            entries.insert(entry, at: 0)
+        }
+        lastSidebar = nil
+        render()
+        open(entry, freshlyCreated: true)
+    }
+
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard selectedID != entry.session.id else { return }
         self.freshlyCreated = freshlyCreated ? entry : nil
@@ -230,21 +251,14 @@ final class SidebarViewController: NSViewController {
     }
 
     func presentRename(entry: SessionEntry, backend: any CodingAgentBackend) {
-        guard let window = view.window else { return }
         let sessionID = entry.session.id
-        let alert = NSAlert()
-        alert.messageText = Localized.text("Rename this conversation")
-        alert.addButton(withTitle: Localized.text("Rename"))
-        alert.addButton(withTitle: Localized.text("Cancel"))
-        let field = NSTextField(
-            string: entry.session.hasPlaceholderTitle ? "" : entry.session.title)
-        field.placeholderString = Localized.text("Title")
-        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        MacDialogs.prompt(
+            on: view.window,
+            title: Localized.text("Rename this conversation"),
+            placeholder: Localized.text("Title"),
+            initial: entry.session.hasPlaceholderTitle ? "" : entry.session.title,
+            confirmLabel: Localized.text("Rename")
+        ) { [weak self] title in
             guard !title.isEmpty else { return }
             Task { [weak self] in
                 try? await backend.renameSession(sessionID, title: title)
@@ -258,18 +272,14 @@ final class SidebarViewController: NSViewController {
     /// refresh behind the request reconciles either way, so a delete the server refused simply
     /// puts the row back, with a notice saying why.
     func presentDelete(entry: SessionEntry, backend: any CodingAgentBackend) {
-        guard let window = view.window else { return }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = Localized.text("Delete this conversation?")
-        alert.informativeText = Localized.text(
-            "It is removed from %@ for every device. A saved copy on this machine survives.",
-            entry.profileName)
-        let confirm = alert.addButton(withTitle: Localized.text("Delete"))
-        confirm.hasDestructiveAction = true
-        alert.addButton(withTitle: Localized.text("Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
+        MacDialogs.confirm(
+            on: view.window,
+            title: Localized.text("Delete this conversation?"),
+            body: Localized.text(
+                "It is removed from %@ for every device. A saved copy on this machine survives.",
+                entry.profileName),
+            confirmLabel: Localized.text("Delete")
+        ) { [weak self] in
             self?.deleteOptimistically(entry, backend: backend)
         }
     }

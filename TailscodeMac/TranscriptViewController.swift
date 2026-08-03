@@ -24,6 +24,8 @@ final class TranscriptViewController: NSViewController {
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
     private var bandGlass: NSView?
+    private let authBanner = NSStackView()
+    private var authGlass: NSView?
     let composer = ComposerView()
     private let findBar = FindBar()
     private let jumpButton = RowKit.ActionButton(title: "") {}
@@ -190,6 +192,7 @@ final class TranscriptViewController: NSViewController {
         agentStreamTask = nil
         agentStreamSessionID = nil
         updateStatus()
+        refreshAuthBanner()
 
         if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
@@ -384,7 +387,19 @@ final class TranscriptViewController: NSViewController {
         let band = MacTheme.glass(around: statusBand, cornerRadius: MacTheme.Radius.card)
         band.isHidden = true
         bandGlass = band
-        let host = NSStackView(views: [band, card])
+
+        authBanner.orientation = .horizontal
+        authBanner.spacing = MacTheme.Spacing.s
+        authBanner.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
+            right: MacTheme.Spacing.m)
+        let auth = MacTheme.tintedGlass(
+            around: authBanner, tint: MacTheme.Color.warning,
+            cornerRadius: MacTheme.Radius.card)
+        auth.isHidden = true
+        authGlass = auth
+
+        let host = NSStackView(views: [auth, band, card])
         host.orientation = .vertical
         host.alignment = .width
         host.spacing = MacTheme.Spacing.s
@@ -481,29 +496,60 @@ final class TranscriptViewController: NSViewController {
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
     /// instruction for what the summary must keep — so it always opens this preflight first.
     func presentCompactPreflight(initialInstruction: String = "") {
-        guard let conversation, let window = view.window else { return }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = Localized.text("Compact this conversation?")
-        alert.informativeText = Localized.text(
-            "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."
-        )
-        let field = NSTextField(string: initialInstruction)
-        field.placeholderString = Localized.text("What must the summary keep? (optional)")
-        field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        let confirm = alert.addButton(withTitle: Localized.text("Compact"))
-        confirm.hasDestructiveAction = true
-        alert.addButton(withTitle: Localized.text("Cancel"))
-        alert.beginSheetModal(for: window) { response in
-            guard response == .alertFirstButtonReturn else { return }
-            let instruction = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let conversation else { return }
+        MacDialogs.prompt(
+            on: view.window,
+            title: Localized.text("Compact this conversation?"),
+            body: Localized.text(
+                "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."),
+            placeholder: Localized.text("What must the summary keep? (optional)"),
+            initial: initialInstruction,
+            confirmLabel: Localized.text("Compact"), destructive: true
+        ) { instruction in
             Task {
                 try? await conversation.compact(
                     instructions: instruction.isEmpty ? nil : instruction)
             }
         }
+    }
+
+    /// A signed-out Claude is a state, not a reply: the CLI answers every turn with "Not logged
+    /// in" instead of failing, so the warning lives here — above the prompt box someone is about
+    /// to type into — with the one button that fixes it. Never "open a terminal".
+    private func refreshAuthBanner() {
+        authGlass?.isHidden = true
+        guard let entry, let authenticating = backend as? any AuthenticatingBackend else { return }
+        let sessionID = entry.session.id
+        Task { [weak self] in
+            guard let auth = try? await authenticating.authStatus() else { return }
+            guard let self, self.entry?.session.id == sessionID else { return }
+            self.renderAuthBanner(auth, backend: authenticating)
+        }
+    }
+
+    private func renderAuthBanner(_ auth: ServerAuth, backend: any AuthenticatingBackend) {
+        authBanner.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard !auth.loggedIn else {
+            authGlass?.isHidden = true
+            return
+        }
+        let name =
+            entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) }
+            ?? "server"
+        let label = NSTextField(
+            wrappingLabelWithString: Localized.text(
+                "⚠ Claude is signed out on %@ — every turn will refuse until it signs in.", name))
+        label.font = MacTheme.Font.caption()
+        label.setContentHuggingPriority(.init(1), for: .horizontal)
+        let signIn = RowKit.ActionButton(title: Localized.text("Sign in")) { [weak self] in
+            guard let self, let window = self.view.window else { return }
+            SignInSheet.present(on: window, serverName: name, backend: backend) { [weak self] in
+                self?.refreshAuthBanner()
+            }
+        }
+        authBanner.addArrangedSubview(label)
+        authBanner.addArrangedSubview(signIn)
+        authGlass?.isHidden = false
     }
 
     private func respond(to permission: PermissionRequest, decision: PermissionDecision) {

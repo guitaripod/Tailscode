@@ -86,6 +86,18 @@ final class ComposerView: NSView {
         window?.makeFirstResponder(textView)
     }
 
+    /// Settings changed underneath a live composer: a vim toggle must move the caret, the badge
+    /// and the border to the truth right now — leaving normal mode when the engine is switched
+    /// off, so no draft ends up trapped behind a hidden caret — and a new height ceiling
+    /// re-measures the field.
+    func applyPreferences() {
+        if !vimEnabled, vim.mode != .insert {
+            vim.reset(to: textView.string, cursor: characterCursor(), mode: .insert)
+        }
+        updateVimUI()
+        scheduleMeasure()
+    }
+
     /// Half-typed prompts follow their conversation, not the window: switching chats stashes
     /// what was in the composer and restores whatever was stashed for the chat being opened —
     /// along with that chat's own model choice, effort, commands and attachments-in-waiting.

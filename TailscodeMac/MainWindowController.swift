@@ -26,6 +26,8 @@ final class MainWindowController: NSWindowController {
     private var usageTask: Task<Void, Never>?
     private var usagePopover: NSPopover?
     private var lastQuotas: [(String, UsageQuota)] = []
+    private var serversWindow: ServersWindow?
+    private var preferencesWindow: PreferencesWindow?
     private lazy var toasts = ToastPresenter { [weak self] in self?.transcript.toastAnchor }
 
     init() {
@@ -87,9 +89,9 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// Everything the keyboard can mean, one switch: the chat-list verbs are live now, the
-    /// conversation verbs land with their panes in later phases — those return false so the
-    /// keystroke falls through instead of being swallowed by a promise.
+    /// Everything the keyboard can mean, one switch. Only the panes that do not exist yet — the
+    /// file tree's focus, the terminal — decline their verbs, returning false so the keystroke
+    /// falls through instead of being swallowed by a promise.
     @discardableResult
     func perform(_ action: KeyAction) -> Bool {
         switch action {
@@ -167,7 +169,7 @@ final class MainWindowController: NSWindowController {
         case .toggleHelp:
             toggleCheatsheet()
         case .newChat:
-            NSSound.beep()
+            presentNewChat()
         case .reload:
             Task { [weak self] in await self?.sidebar.refresh() }
         case .scrollDown:
@@ -238,6 +240,77 @@ final class MainWindowController: NSWindowController {
     private func applyUIScale() {
         transcript.applyUIScale()
         sidebar.applyUIScale()
+    }
+
+    /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
+    /// sidebar refreshed behind every change.
+    func presentServers() {
+        if serversWindow == nil {
+            serversWindow = ServersWindow { [weak self] in
+                Task { [weak self] in await self?.sidebar.refresh() }
+            }
+        }
+        serversWindow?.present()
+    }
+
+    func presentPreferences() {
+        if preferencesWindow == nil {
+            preferencesWindow = PreferencesWindow(
+                onComposerChanged: { [weak self] in
+                    self?.transcript.composer.applyPreferences()
+                },
+                onTranscriptChanged: { [weak self] in
+                    self?.transcript.applyUIScale()
+                },
+                onReloadShortcuts: { [weak self] in
+                    self?.reloadShortcuts()
+                })
+        }
+        preferencesWindow?.present()
+    }
+
+    /// ⌘N: a server and a directory, then Enter. No configured server means the servers window —
+    /// the form that fixes the actual problem — rather than an empty picker.
+    func presentNewChat() {
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else {
+            presentServers()
+            return
+        }
+        let recents = sidebar.recentDirectories
+        Task { [weak self] in
+            let locals = await Task.detached { NewChatSheet.localAddresses }.value
+            guard let self, let window = self.window else { return }
+            NewChatSheet.present(
+                on: window, profiles: profiles, recentDirectories: recents,
+                localAddresses: locals
+            ) { [weak self] profile, directory in
+                self?.createChat(on: profile, directory: directory)
+            }
+        }
+    }
+
+    /// The one round trip that mints the session id is all the new chat waits for. The sidebar
+    /// row is seeded from the answer and the conversation opens on the spot with the composer
+    /// focused; the full list refresh reconciles behind it, because a person who just started a
+    /// chat is looking at the prompt box, not at the list.
+    private func createChat(on profile: ConnectionProfile, directory: String?) {
+        guard let backend = ServerDirectory.shared.backend(for: profile) else { return }
+        Task { [weak self] in
+            do {
+                let session = try await backend.createSession(title: nil, directory: directory)
+                guard let self else { return }
+                let entry = SessionEntry(
+                    profileID: profile.id, profileName: profile.name,
+                    host: profile.baseURL.host ?? profile.name,
+                    backendType: profile.backend, session: session)
+                self.sidebar.noteCreated(entry)
+                self.transcript.focusComposer()
+                await self.sidebar.refresh()
+            } catch {
+                self?.setNotice(Localized.text("Could not start a session: %@", "\(error)"))
+            }
+        }
     }
 
     private func wireChildren() {
@@ -670,6 +743,7 @@ final class MainWindowController: NSWindowController {
 extension MainWindowController: NSToolbarDelegate {
     private enum ToolbarID {
         static let sidebar = NSToolbarItem.Identifier("tailscode.toolbar.sidebar")
+        static let newChat = NSToolbarItem.Identifier("tailscode.toolbar.newchat")
         static let actions = NSToolbarItem.Identifier("tailscode.toolbar.actions")
         static let files = NSToolbarItem.Identifier("tailscode.toolbar.files")
         static let terminal = NSToolbarItem.Identifier("tailscode.toolbar.terminal")
@@ -680,9 +754,9 @@ extension MainWindowController: NSToolbarDelegate {
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            ToolbarID.sidebar, .sidebarTrackingSeparator, .flexibleSpace, ToolbarID.actions,
-            ToolbarID.files, ToolbarID.terminal, ToolbarID.usage, ToolbarID.servers,
-            ToolbarID.settings,
+            ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
+            ToolbarID.actions, ToolbarID.files, ToolbarID.terminal, ToolbarID.usage,
+            ToolbarID.servers, ToolbarID.settings,
         ]
     }
 
@@ -736,16 +810,21 @@ extension MainWindowController: NSToolbarDelegate {
             button.bezelStyle = .toolbar
             item.view = button
             return item
+        case ToolbarID.newChat:
+            return makeToolbarItem(
+                itemIdentifier, symbol: "square.and.pencil", label: Localized.text("New Chat"),
+                tip: Localized.text("Start a conversation on one of your servers"),
+                action: #selector(toolbarNewChat))
         case ToolbarID.servers:
             return makeToolbarItem(
                 itemIdentifier, symbol: "server.rack", label: Localized.text("Servers"),
-                tip: Localized.text("Server management arrives in a later phase"),
-                action: #selector(toolbarPlaceholder))
+                tip: Localized.text("Add, probe, update or remove a server"),
+                action: #selector(toolbarServers))
         case ToolbarID.settings:
             return makeToolbarItem(
                 itemIdentifier, symbol: "gearshape", label: Localized.text("Settings"),
-                tip: Localized.text("Settings arrive in a later phase"),
-                action: #selector(toolbarPlaceholder))
+                tip: Localized.text("The prompt box, the transcript and the keyboard"),
+                action: #selector(toolbarSettings))
         default:
             return nil
         }
@@ -782,8 +861,16 @@ extension MainWindowController: NSToolbarDelegate {
         presentUsagePopover(from: sender)
     }
 
-    @objc private func toolbarPlaceholder(_ sender: NSToolbarItem) {
-        toast(sender.toolTip ?? Localized.text("Coming in a later phase"))
+    @objc private func toolbarNewChat() {
+        presentNewChat()
+    }
+
+    @objc private func toolbarServers() {
+        presentServers()
+    }
+
+    @objc private func toolbarSettings() {
+        presentPreferences()
     }
 }
 
@@ -872,18 +959,13 @@ extension MainWindowController: NSMenuDelegate {
     }
 
     private func presentClear(entry: SessionEntry, backend: any CodingAgentBackend) {
-        guard let window else { return }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = Localized.text("Clear this conversation?")
-        alert.informativeText = Localized.text(
-            "Everything in it goes away, on the server, for every device.")
-        let confirm = alert.addButton(withTitle: Localized.text("Clear"))
-        confirm.hasDestructiveAction = true
-        alert.addButton(withTitle: Localized.text("Cancel"))
         let sessionID = entry.session.id
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
+        MacDialogs.confirm(
+            on: window,
+            title: Localized.text("Clear this conversation?"),
+            body: Localized.text("Everything in it goes away, on the server, for every device."),
+            confirmLabel: Localized.text("Clear")
+        ) { [weak self] in
             Task { [weak self] in
                 try? await backend.clearConversation(sessionID)
                 await self?.sidebar.refresh()
