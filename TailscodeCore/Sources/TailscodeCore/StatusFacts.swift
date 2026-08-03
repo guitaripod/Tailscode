@@ -46,11 +46,11 @@ public struct StatusFacts: Sendable {
             for part in message.parts {
                 switch part.kind {
                 case .text(let text), .reasoning(let text):
-                    characters += text.count
+                    characters += text.utf8.count
                 case .tool(let call):
-                    characters += (call.output?.count ?? 0) + call.name.count + 120
+                    characters += (call.output?.utf8.count ?? 0) + call.name.utf8.count + 120
                 case .compaction(let compaction):
-                    characters = compaction.summary?.count ?? 0
+                    characters = compaction.summary?.utf8.count ?? 0
                 case .file, .unknown:
                     continue
                 }

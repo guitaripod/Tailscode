@@ -45,4 +45,33 @@ public enum SessionListCache {
         try? data.write(
             to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
+
+    @MainActor private static var pending: [SessionEntry]?
+    @MainActor private static var writer: Task<Void, Never>?
+
+    /// Coalesces the write storm a busy turn produces — a proto-2 bridge pushes
+    /// an upsert every time a status moves — into one encode+write a few seconds
+    /// later, off the main actor. The cache exists for the next cold launch, not
+    /// for durability, so the trailing edge is the right edge.
+    @MainActor public static func scheduleSave(_ entries: [SessionEntry]) {
+        pending = entries
+        guard writer == nil else { return }
+        writer = Task(priority: .utility) { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            writer = nil
+            guard let entries = pending else { return }
+            pending = nil
+            await Task.detached(priority: .utility) { save(entries) }.value
+        }
+    }
+
+    /// Writes whatever is still pending right now — for app backgrounding or
+    /// window close, where the debounce window may never elapse.
+    @MainActor public static func flushPendingSave() {
+        writer?.cancel()
+        writer = nil
+        guard let entries = pending else { return }
+        pending = nil
+        save(entries)
+    }
 }

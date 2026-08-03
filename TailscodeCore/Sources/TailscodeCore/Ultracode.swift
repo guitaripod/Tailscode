@@ -8,10 +8,16 @@ import Foundation
 public enum Ultracode {
     public static let effortLevel = "ultracode"
 
+    private static let invocation = try! NSRegularExpression(pattern: #"(?i)\bultracode\b"#)
+
     /// Whether a prompt summons ultracode by word — the keyword the CLI honours
-    /// interactively, granted the same power by the bridge for one turn.
+    /// interactively, granted the same power by the bridge for one turn. This
+    /// runs on every keystroke of every composer, so the compiled expression is
+    /// hoisted and gated behind a plain substring scan that almost always says no.
     public static func invokes(_ prompt: String) -> Bool {
-        prompt.range(of: #"(?i)\bultracode\b"#, options: .regularExpression) != nil
+        guard prompt.range(of: "ultracode", options: .caseInsensitive) != nil else { return false }
+        let range = NSRange(prompt.startIndex..., in: prompt)
+        return invocation.firstMatch(in: prompt, options: [], range: range) != nil
     }
 
     /// Whether the aura shows: the chat runs at ultracode effort, the draft

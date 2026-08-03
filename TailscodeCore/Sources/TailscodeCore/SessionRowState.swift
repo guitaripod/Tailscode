@@ -101,8 +101,9 @@ public enum SessionSection: String, CaseIterable, Sendable {
 /// never shows a heading with nothing under it.
 public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
     let live = rows.filter { $0.state == .live || $0.state == .awaitingApproval }
-    let saved = rows.filter { $0.saved && !live.contains($0) }
-    let seen = Set((live + saved).map(\.entry.session.id))
+    let liveIDs = Set(live.map(\.entry.session.id))
+    let saved = rows.filter { $0.saved && !liveIDs.contains($0.entry.session.id) }
+    let seen = liveIDs.union(saved.map(\.entry.session.id))
     let recent = rows.filter { !seen.contains($0.entry.session.id) }
     return [(.live, live), (.saved, saved), (.recent, recent)].filter { !$0.1.isEmpty }
 }
