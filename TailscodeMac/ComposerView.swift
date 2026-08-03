@@ -13,8 +13,12 @@ final class ComposerView: NSView {
     var onCompactRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
     var onToast: ((String) -> Void)?
+    /// The attachments-in-waiting changed — the status band counts them.
+    var onAttachmentsChanged: (() -> Void)?
 
     let completion = CompletionPopover()
+
+    var attachmentCount: Int { attachments.count }
 
     private let textView = NSTextView()
     private let scrollView = NSScrollView()
@@ -93,7 +97,7 @@ final class ComposerView: NSView {
         running = false
         attachments = []
         pastedImageCount = 0
-        chips.set([])
+        syncChips()
         let key = Self.preferenceKey(entry)
         chosenModel = ModelPreferenceStore.model(forKey: key)
         chosenEffort = EffortPreferenceStore.effort(forKey: key)
@@ -134,7 +138,7 @@ final class ComposerView: NSView {
         dismissCompletion()
         if handleSlashCommand(text) { return }
         attachments = []
-        chips.set([])
+        syncChips()
         onSubmitPrompt?(text, chosenModel, chosenEffort, outgoing.map(\.prompt))
     }
 
@@ -316,7 +320,7 @@ final class ComposerView: NSView {
         chips.onRemove = { [weak self] id in
             guard let self else { return }
             self.attachments.removeAll { $0.id == id }
-            self.chips.set(self.attachments)
+            self.syncChips()
         }
         completion.onPick = { [weak self] index in
             self?.acceptCompletion(at: index)
@@ -576,7 +580,12 @@ final class ComposerView: NSView {
                 onToast?(refusal.message)
             }
         }
+        syncChips()
+    }
+
+    private func syncChips() {
         chips.set(attachments)
+        onAttachmentsChanged?()
     }
 
     private func pasteImageAttachment() {
@@ -600,7 +609,7 @@ final class ComposerView: NSView {
         attachments.append(
             PendingAttachment(
                 name: "pasted-\(pastedImageCount).png", mime: "image/png", data: data))
-        chips.set(attachments)
+        syncChips()
     }
 
     private func pngFromTIFF(_ pasteboard: NSPasteboard) -> Data? {

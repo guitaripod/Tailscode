@@ -43,11 +43,35 @@ enum MacTheme {
     }
 
     enum Font {
-        static func body() -> NSFont { .systemFont(ofSize: 13) }
-        static func emphasis() -> NSFont { .systemFont(ofSize: 13, weight: .semibold) }
-        static func caption() -> NSFont { .systemFont(ofSize: 11) }
+        static func body() -> NSFont { .systemFont(ofSize: 13 * UIScale.factor) }
+        static func emphasis() -> NSFont {
+            .systemFont(ofSize: 13 * UIScale.factor, weight: .semibold)
+        }
+        static func caption() -> NSFont { .systemFont(ofSize: 11 * UIScale.factor) }
         static func mono(_ size: CGFloat = 12) -> NSFont {
-            .monospacedSystemFont(ofSize: size, weight: .regular)
+            .monospacedSystemFont(ofSize: size * UIScale.factor, weight: .regular)
+        }
+    }
+
+    /// Type scale as a live, keyboard-driven preference, under the same `tailscode.uiScale` key
+    /// the Linux desktop persists. AppKit has no global font DPI knob, so the factor multiplies
+    /// the token fonts and the markdown renderer instead — views rebuilt after a step come out
+    /// at the new size.
+    enum UIScale {
+        private static let key = "tailscode.uiScale"
+
+        static var factor: CGFloat {
+            let stored = UserDefaults.standard.double(forKey: key)
+            return stored == 0 ? 1.0 : CGFloat(stored)
+        }
+
+        static func step(_ delta: Double) {
+            let next = min(2.0, max(0.6, ((Double(factor) + delta) * 10).rounded() / 10))
+            UserDefaults.standard.set(next, forKey: key)
+        }
+
+        static func reset() {
+            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 

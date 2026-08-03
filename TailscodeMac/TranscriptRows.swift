@@ -31,6 +31,12 @@ final class TranscriptContext {
 final class TranscriptRowBuilder {
     private var cache: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
 
+    /// Forgets every memoised row — the rendering baked into them (fonts, markdown) is stale
+    /// after a type-scale change.
+    func invalidate() {
+        cache = [:]
+    }
+
     func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]

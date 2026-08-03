@@ -308,10 +308,11 @@ enum MacMarkdown {
     }
 
     private static func attributes(_ style: Style) -> [NSAttributedString.Key: Any] {
+        let size = style.size * MacTheme.UIScale.factor
         var font: NSFont =
             style.mono
-            ? .monospacedSystemFont(ofSize: style.size, weight: style.bold ? .semibold : .regular)
-            : .systemFont(ofSize: style.size, weight: style.bold ? .semibold : .regular)
+            ? .monospacedSystemFont(ofSize: size, weight: style.bold ? .semibold : .regular)
+            : .systemFont(ofSize: size, weight: style.bold ? .semibold : .regular)
         if style.italic {
             font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
         }

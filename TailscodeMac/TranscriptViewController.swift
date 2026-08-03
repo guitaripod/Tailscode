@@ -13,13 +13,17 @@ final class TranscriptViewController: NSViewController {
     var onState: ((ConversationState) -> Void)?
     /// A floating confirmation, presented by the hub so it clears toasts app-wide.
     var onToast: ((String) -> Void)?
+    /// A click on the status band, routed through the hub — reading the status and steering the
+    /// turn are one gesture, and the hub owns the steering.
+    var onBandAction: ((StatusFacts.Action) -> Void)?
 
     private let scrollView = NSScrollView()
     private let canvas = NSStackView()
     private let rowsStack = NSStackView()
     private let pendingStack = NSStackView()
     private let earlierButton = RowKit.ActionButton(title: "") {}
-    private let statusLine = NSTextField(labelWithString: "")
+    private let statusBand = StatusBandView()
+    private var bandGlass: NSView?
     let composer = ComposerView()
     private let findBar = FindBar()
     private let jumpButton = RowKit.ActionButton(title: "") {}
@@ -60,6 +64,15 @@ final class TranscriptViewController: NSViewController {
     private var findMatches: [Int] = []
     private var findCursor = 0
     private var highlightedView: NSView?
+    private var agents: [SubagentSummary] = []
+    private var usage: AgentUsage?
+    private var contextEstimate: Int?
+    private var countedMessages = -1
+    private var notice: String?
+    private var turnStartedAt: Date?
+    private var tickerTask: Task<Void, Never>?
+    private var agentStreamTask: Task<Void, Never>?
+    private var agentStreamSessionID: String?
 
     override func loadView() {
         let container = NSView()
@@ -166,6 +179,17 @@ final class TranscriptViewController: NSViewController {
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         setFindShown(false)
+        agents = []
+        usage = nil
+        contextEstimate = nil
+        countedMessages = -1
+        turnStartedAt = nil
+        tickerTask?.cancel()
+        tickerTask = nil
+        agentStreamTask?.cancel()
+        agentStreamTask = nil
+        agentStreamSessionID = nil
+        updateStatus()
 
         if let remembered = sessionRows[entry.session.id] {
             placeholderShown = true
@@ -200,11 +224,18 @@ final class TranscriptViewController: NSViewController {
         Task { await conversation.reconnect() }
     }
 
-    /// The status line doubles as the notice line until the status band phase: a delete that
-    /// failed or a broken keybindings file has to say so somewhere visible today.
+    /// A notice is transient — the last thing the app did on your behalf — and it lives at the
+    /// far end of the band so it never pushes a live fact off it.
     func setNotice(_ text: String) {
-        statusLine.isHidden = false
-        statusLine.stringValue = text
+        notice = text
+        updateStatus()
+    }
+
+    /// Where a toast belongs: over the transcript, above the floating glass layer, so glass
+    /// never stacks on glass.
+    var toastAnchor: (host: NSView, above: NSLayoutYAxisAnchor)? {
+        guard let composerGlass else { return nil }
+        return (view, composerGlass.topAnchor)
     }
 
     func focusComposer() {
@@ -254,12 +285,17 @@ final class TranscriptViewController: NSViewController {
         Task { try? await conversation.cancelCurrentTurn() }
     }
 
-    /// Live facts for the running fan-out, delivered by the hub in a later phase: the cards
-    /// re-paint in place so a working agent's progress line ticks without touching the scroll.
+    /// Live facts for the running fan-out, keyed by spawning tool-use id: only the cards whose
+    /// facts actually changed re-paint, in place, so a working agent's progress line ticks
+    /// without touching the scroll or the forty cards around it.
     func applyAgentFacts(_ facts: [String: SubagentSummary]) {
+        let changed = facts.keys.filter { context.agentFacts[$0] != facts[$0] }
+        let vanished = context.agentFacts.keys.filter { facts[$0] == nil }
         context.agentFacts = facts
+        let stale = Set(changed + vanished)
+        guard !stale.isEmpty else { return }
         replaceRows {
-            if case .subagent = $0.kind { return true }
+            if case .subagent(let call) = $0.kind { return stale.contains(call.id) }
             return false
         }
     }
@@ -314,14 +350,11 @@ final class TranscriptViewController: NSViewController {
         ])
     }
 
-    /// The whole writing surface — chips, prompt box, pills — is one glass card inside one glass
-    /// group, so its neighbouring shapes read as a single wet surface and merge when they touch.
+    /// The whole floating layer — the status capsule and the writing card — is one glass group,
+    /// so its neighbouring shapes read as a single wet surface and merge when they touch. The
+    /// band is its own glass shape above the composer's: two facts, two capsules.
     private func configureComposerLayer() -> NSView {
-        statusLine.font = MacTheme.Font.mono(11)
-        statusLine.textColor = MacTheme.Color.secondaryLabel
-        statusLine.isHidden = true
-        statusLine.lineBreakMode = .byTruncatingTail
-        statusLine.translatesAutoresizingMaskIntoConstraints = false
+        statusBand.perform = { [weak self] action in self?.onBandAction?(action) }
 
         composer.isHidden = true
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
@@ -336,8 +369,9 @@ final class TranscriptViewController: NSViewController {
         }
         composer.onStop = { [weak self] in self?.stopTurn() }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
+        composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
 
-        let column = NSStackView(views: [statusLine, composer])
+        let column = NSStackView(views: [composer])
         column.orientation = .vertical
         column.alignment = .width
         column.spacing = MacTheme.Spacing.xs
@@ -347,15 +381,14 @@ final class TranscriptViewController: NSViewController {
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let card = MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
-        let host = NSView()
+        let band = MacTheme.glass(around: statusBand, cornerRadius: MacTheme.Radius.card)
+        band.isHidden = true
+        bandGlass = band
+        let host = NSStackView(views: [band, card])
+        host.orientation = .vertical
+        host.alignment = .width
+        host.spacing = MacTheme.Spacing.s
         host.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(card)
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            card.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            card.topAnchor.constraint(equalTo: host.topAnchor),
-            card.bottomAnchor.constraint(equalTo: host.bottomAnchor),
-        ])
         let group = MacTheme.glassGroup()
         group.contentView = host
         return group
@@ -535,8 +568,190 @@ final class TranscriptViewController: NSViewController {
         }
         renderPendingCards(state)
         composer.noteState(state)
-        statusLine.isHidden = state.status != .running
-        statusLine.stringValue = Localized.text("Working…")
+        if state.messages.count != countedMessages {
+            countedMessages = state.messages.count
+            contextEstimate = StatusFacts.estimateContextTokens(state.messages)
+        }
+        updateStatus()
+        updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+    }
+
+    /// The band between transcript and composer: what the turn is doing, which agents are out,
+    /// how much of the context is spent, what the goal is — every fact clickable, so reading the
+    /// status and steering the turn are one gesture rather than two.
+    private func updateStatus() {
+        guard let state = lastState else {
+            statusBand.render(facts: nil, notice: notice)
+            bandGlass?.isHidden = !statusBand.hasContent
+            return
+        }
+        let running = state.status == .running || state.compaction?.isRunning == true
+        if running {
+            if turnStartedAt == nil { turnStartedAt = Date() }
+        } else {
+            turnStartedAt = nil
+        }
+        let facts = StatusFacts.from(
+            state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
+            attachments: composer.attachmentCount, contextTokens: contextEstimate)
+        statusBand.render(facts: facts, notice: notice)
+        bandGlass?.isHidden = !statusBand.hasContent
+    }
+
+    /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;
+    /// every fifth tick also re-asks the server for agents and cost.
+    private func updateTicker(running: Bool) {
+        if running, tickerTask == nil {
+            tickerTask = Task { [weak self] in
+                var tick = 0
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled, let self else { return }
+                    tick += 1
+                    self.updateStatus()
+                    if tick % 5 == 0 { self.refreshTurnFacts() }
+                }
+            }
+        } else if !running, tickerTask != nil {
+            tickerTask?.cancel()
+            tickerTask = nil
+            refreshTurnFacts()
+        }
+    }
+
+    /// Subagents and cost are polled rather than streamed: the bridge reports both on request
+    /// only, and a fan-out is worth watching while it runs. One final refresh after the turn
+    /// stops settles the agents list on "done" instead of freezing mid-flight glyphs.
+    private func refreshTurnFacts() {
+        guard let backend, let entry else { return }
+        startAgentStreamIfAvailable()
+        let sessionID = entry.session.id
+        let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
+        Task { [weak self] in
+            let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
+            let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
+            guard let self, self.entry?.session.id == sessionID else { return }
+            self.usage = usage
+            if let agents {
+                self.applyAgentSummaries(agents)
+            } else {
+                self.updateStatus()
+            }
+        }
+    }
+
+    /// A proto-2 bridge pushes each fan-out's live facts as they change; older servers are
+    /// polled. Started lazily on the first turn tick after a chat opens.
+    private func startAgentStreamIfAvailable() {
+        guard agentStreamSessionID != entry?.session.id else { return }
+        guard let backend, let entry else { return }
+        agentStreamSessionID = entry.session.id
+        let sessionID = entry.session.id
+        agentStreamTask?.cancel()
+        agentStreamTask = Task { [weak self] in
+            guard let streaming = backend as? SubagentStreaming,
+                let changes = await streaming.subagentChanges(for: sessionID)
+            else {
+                self?.agentStreamSessionID = nil
+                return
+            }
+            for await agents in changes {
+                guard let self, !Task.isCancelled, self.entry?.session.id == sessionID
+                else { return }
+                self.applyAgentSummaries(agents)
+            }
+        }
+    }
+
+    private func applyAgentSummaries(_ agents: [SubagentSummary]) {
+        self.agents = agents
+        var keyed: [String: SubagentSummary] = [:]
+        for agent in agents {
+            if let toolUseID = agent.toolUseID { keyed[toolUseID] = agent }
+        }
+        applyAgentFacts(keyed)
+        updateStatus()
+    }
+
+    /// The card for one named agent — matched to the tool call that spawned it, which is the id
+    /// the summary carries — expanded in place and its transcript fetched on arrival.
+    func scrollToAgent(_ id: String) {
+        for (index, row) in renderedRows.enumerated() {
+            guard case .subagent(let call) = row.kind, call.id == id else { continue }
+            context.expanded.insert(row.key)
+            replaceRows { $0.key == row.key }
+            fetchSubagent(call)
+            scrollToRow(at: index)
+            return
+        }
+        scrollToNewestAgent()
+    }
+
+    func scrollToNewestAgent() {
+        for (index, row) in renderedRows.enumerated().reversed() {
+            guard case .subagent = row.kind else { continue }
+            scrollToRow(at: index)
+            return
+        }
+        scrollToBottom()
+    }
+
+    private func scrollToRow(at index: Int) {
+        guard index < rowViews.count else { return }
+        followsBottom = false
+        view.layoutSubtreeIfNeeded()
+        let rowView = rowViews[index]
+        let frame = rowView.convert(rowView.bounds, to: canvas)
+        adjustScroll { _ in frame.minY - self.scrollView.contentView.bounds.height * 0.3 }
+    }
+
+    /// The goal in a sheet rather than a bare command: what stands, whether it is met, and the
+    /// two things you can do about it — restate it or abandon it.
+    func presentGoalSheet() {
+        guard let conversation, let window = view.window else { return }
+        let hasGoal = lastState?.goal != nil
+        let alert = NSAlert()
+        alert.messageText = Localized.text("Change the goal")
+        alert.informativeText = Localized.text(
+            "The agent pursues the goal across turns and reports when it is met.")
+        let field = NSTextField(string: lastState?.goal?.condition ?? "")
+        field.placeholderString = Localized.text("What must become true?")
+        field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.addButton(withTitle: Localized.text("Set goal"))
+        if hasGoal {
+            let clear = alert.addButton(withTitle: Localized.text("Clear goal"))
+            clear.hasDestructiveAction = true
+        }
+        alert.addButton(withTitle: Localized.text("Cancel"))
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn {
+                let condition = field.stringValue.trimmingCharacters(
+                    in: .whitespacesAndNewlines)
+                guard !condition.isEmpty else { return }
+                Task { try? await conversation.setGoal(condition) }
+            } else if hasGoal, response == .alertSecondButtonReturn {
+                Task { try? await conversation.clearGoal() }
+            }
+        }
+    }
+
+    /// Re-renders every row at the current type scale: the builder's memo and the per-session
+    /// row snapshots hold rendering baked at the old size, so both are dropped before the
+    /// rebuild.
+    func applyUIScale() {
+        rowBuilder.invalidate()
+        sessionRows = [:]
+        sessionRowOrder = []
+        pendingSignature = "\u{0}"
+        guard let state = lastState else { return }
+        tearDownAllRows()
+        placeholderShown = true
+        let tail = rowTailMessages
+        let messages =
+            state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
+        apply(state: state, rows: rowBuilder.rows(for: messages))
     }
 
     private func showPlaceholder(_ text: String) {

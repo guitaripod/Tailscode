@@ -116,10 +116,12 @@ final class SidebarSessionCell: NSView {
 
     func configure(with model: SessionRowModel) {
         glyph.stringValue = model.state.glyph.text
+        glyph.font = MacTheme.Font.body()
         glyph.textColor = Self.glyphColor(model.state)
         title.stringValue = model.title
         title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
         detail.stringValue = model.detail
+        detail.font = MacTheme.Font.caption()
         for view in titleRow.arrangedSubviews.dropFirst() {
             titleRow.removeArrangedSubview(view)
             view.removeFromSuperview()

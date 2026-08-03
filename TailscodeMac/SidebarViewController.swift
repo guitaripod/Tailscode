@@ -24,6 +24,7 @@ final class SidebarViewController: NSViewController {
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let rowMenu = NSMenu()
+    private let usageFooter = UsageFooterView()
 
     private var entries: [SessionEntry] = []
     private var unreachable: [String] = []
@@ -83,6 +84,7 @@ final class SidebarViewController: NSViewController {
 
         container.addSubview(searchField)
         container.addSubview(scrollView)
+        container.addSubview(usageFooter)
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(
                 equalTo: container.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
@@ -94,9 +96,28 @@ final class SidebarViewController: NSViewController {
                 equalTo: searchField.bottomAnchor, constant: MacTheme.Spacing.xs),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            scrollView.bottomAnchor.constraint(
+                equalTo: usageFooter.topAnchor, constant: -MacTheme.Spacing.xs),
+            usageFooter.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor, constant: MacTheme.Spacing.m),
+            usageFooter.trailingAnchor.constraint(
+                equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.m),
+            usageFooter.bottomAnchor.constraint(
+                equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.s),
         ])
         view = container
+    }
+
+    /// The quota picture at a glance, fed by the hub's slow poll — account state under the chat
+    /// list, the way the phone keeps it on the Home board.
+    func renderUsage(_ quotas: [(String, UsageQuota)]) {
+        usageFooter.render(quotas)
+    }
+
+    /// Rows pick their fonts up at configure time, so a reload is the whole zoom.
+    func applyUIScale() {
+        lastSidebar = nil
+        render()
     }
 
     /// The chats you had are on screen before the first byte crosses the tailnet — a server that

@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import CodingAgentKitApple
 import TailscodeCore
 
 /// The hub — the Mac's `MainWindow`: it owns the window, the toolbar, the split layout, the
@@ -21,9 +22,11 @@ final class MainWindowController: NSWindowController {
     private var lastState: ConversationState?
     private var focused: Pane = .chats
     private var cheatsheet: NSPanel?
-    private var toastView: NSView?
-    private var toastGeneration = 0
     private var keyMonitor: Any?
+    private var usageTask: Task<Void, Never>?
+    private var usagePopover: NSPopover?
+    private var lastQuotas: [(String, UsageQuota)] = []
+    private lazy var toasts = ToastPresenter { [weak self] in self?.transcript.toastAnchor }
 
     init() {
         let window = NSWindow(
@@ -38,6 +41,7 @@ final class MainWindowController: NSWindowController {
         window.center()
         window.setFrameAutosaveName("TailscodeMain")
         installKeyMonitor()
+        startUsagePolling()
         if !shortcuts.issues.isEmpty {
             setNotice(
                 Localized.text("Keybindings: %@", shortcuts.issues.joined(separator: " · ")))
@@ -56,51 +60,10 @@ final class MainWindowController: NSWindowController {
         Task { [weak self] in await self?.sidebar.refresh() }
     }
 
-    /// A two-second floating confirmation — the answer to "did my click do anything". Glass,
-    /// because it floats above content; one at a time, because two toasts is a queue nobody reads.
+    /// A two-second floating confirmation — the answer to "did my click do anything". Presented
+    /// by the hub so every child's toast lands in the same queue.
     func toast(_ text: String) {
-        guard let host = window?.contentView else { return }
-        toastView?.removeFromSuperview()
-        let label = NSTextField(labelWithString: text)
-        label.font = MacTheme.Font.body()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        let padded = NSView()
-        padded.translatesAutoresizingMaskIntoConstraints = false
-        padded.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: padded.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: padded.trailingAnchor, constant: -14),
-            label.topAnchor.constraint(equalTo: padded.topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: padded.bottomAnchor, constant: -8),
-        ])
-        let glass = MacTheme.glass(around: padded, cornerRadius: 18)
-        host.addSubview(glass)
-        NSLayoutConstraint.activate([
-            glass.centerXAnchor.constraint(equalTo: host.centerXAnchor),
-            glass.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -28),
-        ])
-        toastView = glass
-        glass.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            glass.animator().alphaValue = 1
-        }
-        toastGeneration += 1
-        let generation = toastGeneration
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            guard let self, self.toastGeneration == generation, let view = self.toastView
-            else { return }
-            NSAnimationContext.runAnimationGroup(
-                { context in
-                    context.duration = 0.3
-                    view.animator().alphaValue = 0
-                }, completionHandler: nil)
-            try? await Task.sleep(for: .milliseconds(320))
-            guard self.toastGeneration == generation else { return }
-            self.toastView?.removeFromSuperview()
-            self.toastView = nil
-        }
+        toasts.show(text)
     }
 
     func setNotice(_ text: String) {
@@ -238,10 +201,43 @@ final class MainWindowController: NSWindowController {
             transcript.composer.sendNow()
         case .commandPalette:
             transcript.composer.openCommandPalette()
-        case .zoomIn, .zoomOut, .zoomReset:
-            return false
+        case .zoomIn:
+            MacTheme.UIScale.step(0.1)
+            applyUIScale()
+        case .zoomOut:
+            MacTheme.UIScale.step(-0.1)
+            applyUIScale()
+        case .zoomReset:
+            MacTheme.UIScale.reset()
+            applyUIScale()
         }
         return true
+    }
+
+    /// Every fact on the band answers to the same verbs a person would reach for: reading the
+    /// status and steering the turn are one gesture.
+    func perform(bandAction action: StatusFacts.Action) {
+        switch action {
+        case .stop:
+            transcript.stopTurn()
+        case .compact:
+            transcript.presentCompactPreflight()
+        case .goal:
+            transcript.presentGoalSheet()
+        case .scrollToPending:
+            transcript.scrollToBottom()
+        case .scrollToAgents:
+            transcript.scrollToNewestAgent()
+        case .agent(let id):
+            transcript.scrollToAgent(id)
+        case .reconnect:
+            transcript.reconnect()
+        }
+    }
+
+    private func applyUIScale() {
+        transcript.applyUIScale()
+        sidebar.applyUIScale()
     }
 
     private func wireChildren() {
@@ -252,6 +248,65 @@ final class MainWindowController: NSWindowController {
         sidebar.onToast = { [weak self] text in self?.toast(text) }
         transcript.onState = { [weak self] state in self?.lastState = state }
         transcript.onToast = { [weak self] text in self?.toast(text) }
+        transcript.onBandAction = { [weak self] action in self?.perform(bandAction: action) }
+    }
+
+    /// Quota is account state, not session state: polled on its own slow cadence — quickly only
+    /// while the profile list has not been seeded yet — and rendered in the sidebar footer, the
+    /// way the phone keeps it on the Home board.
+    private func startUsagePolling() {
+        usageTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let settled = await self?.refreshUsage() ?? true
+                try? await Task.sleep(for: .seconds(settled ? 120 : 15))
+            }
+        }
+    }
+
+    private func refreshUsage() async -> Bool {
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else { return false }
+        let snapshot = await Self.collectQuotas(profiles: profiles)
+        lastQuotas = snapshot
+        sidebar.renderUsage(snapshot)
+        return true
+    }
+
+    /// Every quota every server can speak for: the agent's own, plus whatever other providers
+    /// the machine holds accounts for (a bridge also reports Grok). One machine answering for a
+    /// provider is enough — a second profile on the same host must not double the card.
+    private static func collectQuotas(profiles: [ConnectionProfile]) async
+        -> [(String, UsageQuota)]
+    {
+        var quotas: [(String, UsageQuota)] = []
+        var seen = Set<String>()
+        for profile in profiles {
+            guard let backend = ServerDirectory.shared.backend(for: profile) else { continue }
+            var collected: [UsageQuota] = []
+            if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
+            collected += (try? await backend.additionalUsageQuotas()) ?? []
+            for quota in collected
+            where seen.insert("\(quota.providerName)|\(quota.source)").inserted {
+                quotas.append((profile.name, quota))
+            }
+        }
+        return quotas
+    }
+
+    private func presentUsagePopover(from anchor: NSView) {
+        if let usagePopover, usagePopover.isShown {
+            usagePopover.close()
+            self.usagePopover = nil
+            return
+        }
+        let panel = UsagePanelViewController(initial: lastQuotas) {
+            await Self.collectQuotas(profiles: ServerDirectory.shared.profiles)
+        }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = panel
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        usagePopover = popover
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {
@@ -669,10 +724,18 @@ extension MainWindowController: NSToolbarDelegate {
                 tip: Localized.text("The terminal pane arrives in a later phase"),
                 action: #selector(toolbarToggleTerminal))
         case ToolbarID.usage:
-            return makeToolbarItem(
-                itemIdentifier, symbol: "gauge", label: Localized.text("Usage"),
-                tip: Localized.text("The quota picture arrives in a later phase"),
-                action: #selector(toolbarPlaceholder))
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = Localized.text("Usage")
+            item.paletteLabel = Localized.text("Usage")
+            item.toolTip = Localized.text("Every provider's quota picture")
+            let button = NSButton(
+                image: NSImage(
+                    systemSymbolName: "gauge",
+                    accessibilityDescription: Localized.text("Usage"))!,
+                target: self, action: #selector(toolbarUsage(_:)))
+            button.bezelStyle = .toolbar
+            item.view = button
+            return item
         case ToolbarID.servers:
             return makeToolbarItem(
                 itemIdentifier, symbol: "server.rack", label: Localized.text("Servers"),
@@ -713,6 +776,10 @@ extension MainWindowController: NSToolbarDelegate {
 
     @objc private func toolbarToggleTerminal() {
         perform(.toggleTerminal)
+    }
+
+    @objc private func toolbarUsage(_ sender: NSButton) {
+        presentUsagePopover(from: sender)
     }
 
     @objc private func toolbarPlaceholder(_ sender: NSToolbarItem) {
