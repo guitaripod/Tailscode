@@ -150,6 +150,7 @@ final class MainWindowController: NSWindowController {
             focused = .transcript
             transcript.focusComposer()
         case .leaveInsert:
+            transcript.setFindShown(false)
             window?.makeFirstResponder(nil)
             closeCheatsheet()
         case .toggleSaved:
@@ -194,9 +195,34 @@ final class MainWindowController: NSWindowController {
             NSSound.beep()
         case .reload:
             Task { [weak self] in await self?.sidebar.refresh() }
-        case .scrollDown, .scrollUp, .halfPageDown, .halfPageUp, .scrollTop, .scrollBottom,
-            .send, .stop, .allowOnce, .allowAlways, .deny, .findInConversation, .commandPalette,
-            .zoomIn, .zoomOut, .zoomReset:
+        case .scrollDown:
+            transcript.scrollBy(60)
+        case .scrollUp:
+            transcript.scrollBy(-60)
+        case .halfPageDown:
+            transcript.scrollByPages(0.5)
+        case .halfPageUp:
+            transcript.scrollByPages(-0.5)
+        case .scrollTop:
+            transcript.scrollToTop()
+        case .scrollBottom:
+            transcript.scrollToBottom()
+        case .findInConversation:
+            transcript.setFindShown(true)
+        case .allowOnce:
+            transcript.respondToFirstPermission(.once)
+        case .allowAlways:
+            transcript.respondToFirstPermission(.always)
+        case .deny:
+            transcript.respondToFirstPermission(.reject)
+        case .stop:
+            if let text = window?.firstResponder as? NSText, text.selectedRange.length > 0 {
+                text.copy(nil)
+                toast(Localized.text("Copied"))
+            } else {
+                transcript.stopTurn()
+            }
+        case .send, .commandPalette, .zoomIn, .zoomOut, .zoomReset:
             return false
         }
         return true
@@ -209,6 +235,7 @@ final class MainWindowController: NSWindowController {
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
         transcript.onState = { [weak self] state in self?.lastState = state }
+        transcript.onToast = { [weak self] text in self?.toast(text) }
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {
