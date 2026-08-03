@@ -63,6 +63,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case shortcutCheatsheet
     case fileBrowser
     case terminalPane
+    case splitPanes
     case uiScale
     case settingsSurface
     case goalControl
@@ -285,6 +286,10 @@ public enum CapabilityRegistry {
             id: .terminalPane, area: "app", title: "A shell beside the conversation",
             spec:
                 "Run shell commands in the conversation's working directory with history, from the same window as the chat."),
+        CapabilityDefinition(
+            id: .splitPanes, area: "app", title: "Tiling split panes",
+            spec:
+                "The conversation surface is a binary tree of live panes (SplitLayout): any pane splits right or down to any depth, and each pane is a complete conversation — its own stream, composer, vim, find, status. The ctrl+w verbs work the tree (directional focus, close, zoom, swap, equalize), the focused pane wears a visible accent and drives the window chrome, a chat-list row can open into a new split, and the tree with its ratios and sessions persists under tailscode.layout.tree and restores on launch — a pane whose session cannot be found says so instead of collapsing the arrangement."),
         CapabilityDefinition(
             id: .uiScale, area: "app", title: "Type scale",
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),

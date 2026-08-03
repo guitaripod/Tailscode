@@ -327,6 +327,22 @@ public enum ShortcutRegistry {
             category: .navigate, action: .cycleBackward, contexts: [.normal],
             defaults: ["shift+tab"]),
         .init(
+            id: "split.focusLeft", title: Localized.text("Focus the split to the left"),
+            category: .navigate, action: .focusSplit(.left), contexts: [.normal],
+            defaults: ["ctrl+w h", "ctrl+w left"]),
+        .init(
+            id: "split.focusDown", title: Localized.text("Focus the split below"),
+            category: .navigate, action: .focusSplit(.down), contexts: [.normal],
+            defaults: ["ctrl+w j", "ctrl+w down"]),
+        .init(
+            id: "split.focusUp", title: Localized.text("Focus the split above"),
+            category: .navigate, action: .focusSplit(.up), contexts: [.normal],
+            defaults: ["ctrl+w k", "ctrl+w up"]),
+        .init(
+            id: "split.focusRight", title: Localized.text("Focus the split to the right"),
+            category: .navigate, action: .focusSplit(.right), contexts: [.normal],
+            defaults: ["ctrl+w l", "ctrl+w right"]),
+        .init(
             id: "pane.sidebar", title: Localized.text("Show / hide the chat list"),
             category: .view, action: .toggleSidebar, contexts: [.normal, .insert, .terminal],
             defaults: ["normal,insert:ctrl+b", "ctrl+shift+b"]),
@@ -338,6 +354,30 @@ public enum ShortcutRegistry {
             id: "pane.terminal", title: Localized.text("Show / hide the terminal"),
             category: .view, action: .toggleTerminal, contexts: [.normal, .insert, .terminal],
             defaults: ["normal,insert:ctrl+t", "ctrl+shift+t"]),
+        .init(
+            id: "split.right", title: Localized.text("Split the conversation right"),
+            category: .view, action: .splitPane(.horizontal), contexts: [.normal],
+            defaults: ["ctrl+w v"]),
+        .init(
+            id: "split.down", title: Localized.text("Split the conversation down"),
+            category: .view, action: .splitPane(.vertical), contexts: [.normal],
+            defaults: ["ctrl+w s"]),
+        .init(
+            id: "split.close", title: Localized.text("Close this split"),
+            category: .view, action: .closeSplit, contexts: [.normal],
+            defaults: ["ctrl+w q"]),
+        .init(
+            id: "split.zoom", title: Localized.text("Zoom this split"),
+            category: .view, action: .zoomSplit, contexts: [.normal],
+            defaults: ["ctrl+w z", "ctrl+w o"]),
+        .init(
+            id: "split.exchange", title: Localized.text("Swap this split with its sibling"),
+            category: .view, action: .exchangeSplit, contexts: [.normal],
+            defaults: ["ctrl+w x"]),
+        .init(
+            id: "split.equalize", title: Localized.text("Even out the splits"),
+            category: .view, action: .equalizeSplits, contexts: [.normal],
+            defaults: ["ctrl+w equal"]),
         .init(
             id: "zoom.in", title: Localized.text("Zoom in"), category: .view, action: .zoomIn,
             contexts: [.normal, .insert, .terminal], defaults: ["ctrl+equal", "ctrl+plus"]),
@@ -611,6 +651,12 @@ public enum KeyAction: Equatable, Sendable {
     case deleteSelected
     case copySessionID
     case copyProjectPath
+    case splitPane(SplitAxis)
+    case closeSplit
+    case focusSplit(SplitDirection)
+    case zoomSplit
+    case equalizeSplits
+    case exchangeSplit
 }
 
 /// The canonical key-code space is GDK's, spelled out rather than imported: on Linux the numbers
