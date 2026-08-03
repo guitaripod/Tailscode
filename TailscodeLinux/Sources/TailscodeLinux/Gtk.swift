@@ -219,6 +219,30 @@ enum Gtk {
         }
     }
 
+    /// Detaches a widget from whatever holds it, through the parent's own API. A raw
+    /// `gtk_widget_unparent` on a `GtkPaned`'s child leaves the paned's `start_child`/`end_child`
+    /// pointer dangling; if anything (AT-SPI, an animation) keeps that paned alive past the
+    /// rebuild, its eventual dispose unparents the widget from its *new* parent — a double
+    /// release that finalizes a live pane and leaves the fresh paned measuring freed memory.
+    static func detachFromParent(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        guard let parent = gtk_widget_get_parent(widget) else { return }
+        let instance = UnsafeMutableRawPointer(parent)
+            .assumingMemoryBound(to: GTypeInstance.self)
+        if g_type_check_instance_is_a(instance, gtk_paned_get_type()) != 0 {
+            if gtk_paned_get_start_child(op(parent)) == widget {
+                gtk_paned_set_start_child(op(parent), nil)
+            } else if gtk_paned_get_end_child(op(parent)) == widget {
+                gtk_paned_set_end_child(op(parent), nil)
+            } else {
+                gtk_widget_unparent(widget)
+            }
+        } else if g_type_check_instance_is_a(instance, gtk_box_get_type()) != 0 {
+            gtk_box_remove(ptr(parent), widget)
+        } else {
+            gtk_widget_unparent(widget)
+        }
+    }
+
     static func button(
         _ title: String, css: [String] = [], onClick: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {

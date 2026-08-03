@@ -118,6 +118,7 @@ final class SplitHost: @unchecked Sendable {
     private func rebuild() {
         for pane in panes.values {
             g_object_ref(UnsafeMutableRawPointer(pane.root))
+            Gtk.detachFromParent(pane.root)
         }
         Gtk.removeChildren(of: container)
         splitWidgets = [:]
@@ -139,9 +140,7 @@ final class SplitHost: @unchecked Sendable {
             guard let pane = panes[id] else {
                 return Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             }
-            if gtk_widget_get_parent(pane.root) != nil {
-                gtk_widget_unparent(pane.root)
-            }
+            Gtk.detachFromParent(pane.root)
             return pane.root
         case .split(let id, let axis, _, let first, let second):
             let paned = gtk_paned_new(
