@@ -175,6 +175,46 @@ struct WorkflowRunTests {
         #expect(runs[0].state == .launching)
     }
 
+    @Test("The completion notification gives up its task and its answer")
+    func readsCompletionNotification() {
+        let notification = """
+            <task-notification>
+            <task-id>wuzrihlvy</task-id>
+            <status>completed</status>
+            <result>"# Pokémon Yellow\\n\\n**60 EUR** — Espoo"</result>
+            </task-notification>
+            """
+
+        let found = WorkflowRunAssembly.completions(in: ["unrelated text", notification])
+
+        #expect(found.count == 1)
+        #expect(found["wuzrihlvy"] == "# Pokémon Yellow\n\n**60 EUR** — Espoo")
+    }
+
+    @Test("A result that is not JSON is kept exactly as it came")
+    func keepsPlainResultVerbatim() {
+        let notification = """
+            <task-notification>
+            <task-id>t1</task-id>
+            <result>{"a":"alpha-ok"}</result>
+            </task-notification>
+            """
+
+        #expect(WorkflowRunAssembly.completions(in: [notification])["t1"] == #"{"a":"alpha-ok"}"#)
+    }
+
+    @Test("A notification with no result still marks the task done, using its summary")
+    func fallsBackToSummary() {
+        let notification = """
+            <task-notification>
+            <task-id>t2</task-id>
+            <summary>Workflow "probe" completed</summary>
+            </task-notification>
+            """
+
+        #expect(WorkflowRunAssembly.completions(in: [notification])["t2"] == #"Workflow "probe" completed"#)
+    }
+
     @Test("Durations read as a person would say them")
     func durationFormatting() {
         #expect(WorkflowRun.duration(9) == "9s")

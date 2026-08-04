@@ -391,6 +391,38 @@ public enum WorkflowRunAssembly {
             result: result)
     }
 
+    /// A run's answer comes back as its own message, not as the tool's result: the harness posts a
+    /// `<task-notification>` naming the task it finished. Reading it is how a card stops spinning.
+    public static func completions(in texts: [String]) -> [String: String] {
+        var found: [String: String] = [:]
+        for text in texts {
+            guard text.contains("<task-notification>"),
+                let taskID = tag("task-id", in: text)
+            else { continue }
+            found[taskID] = tag("result", in: text).map(unquoted) ?? tag("summary", in: text) ?? ""
+        }
+        return found
+    }
+
+    private static func tag(_ name: String, in text: String) -> String? {
+        guard let open = text.range(of: "<\(name)>"),
+            let close = text.range(of: "</\(name)>", range: open.upperBound..<text.endIndex)
+        else { return nil }
+        let body = String(text[open.upperBound..<close.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.isEmpty ? nil : body
+    }
+
+    /// The harness writes a returned value as JSON, so a workflow answering with prose arrives
+    /// wrapped in quotes with its newlines escaped. A value that is not a JSON string is its own.
+    private static func unquoted(_ body: String) -> String {
+        guard body.hasPrefix("\""),
+            let data = body.data(using: .utf8),
+            let decoded = try? JSONDecoder().decode(String.self, from: data)
+        else { return body }
+        return decoded
+    }
+
     private static func string(_ input: JSONValue?, _ key: String) -> String? {
         guard case .object(let fields)? = input, case .string(let value)? = fields[key],
             !value.isEmpty
