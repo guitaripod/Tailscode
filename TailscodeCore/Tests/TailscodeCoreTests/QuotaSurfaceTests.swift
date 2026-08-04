@@ -88,6 +88,25 @@ struct QuotaSurfaceTests {
         #expect(e?.source == .failure)
     }
 
+    @Test("A pre-emptive notice only speaks for the chat's own provider family")
+    func familyScope() {
+        let all = [
+            quota("Claude", [gauge(label: "Weekly", fraction: 1.0, resetsIn: 600)]),
+            quota("opencode", [gauge(label: "Monthly", fraction: 0.4)]),
+        ]
+        let opencodeChat = QuotaSurface.relevantQuotas(for: .openCode, among: all)
+        #expect(opencodeChat.count == 1)
+        #expect(opencodeChat[0].providerName == "opencode")
+        #expect(
+            QuotaSurface.hottestExhausted(
+                in: QuotaSurface.relevantQuotas(for: .openCode, among: all)) == nil)
+        let claudeChat = QuotaSurface.relevantQuotas(for: .claudeCode, among: all)
+        #expect(claudeChat.count == 1)
+        #expect(claudeChat[0].providerName == "Claude")
+        #expect(QuotaSurface.hottestExhausted(in: claudeChat)?.window == "Weekly")
+        #expect(QuotaSurface.relevantQuotas(for: nil, among: all).count == 2)
+    }
+
     @Test("Copy names the wall and the next step")
     func copy() {
         let e = QuotaExhaustion(

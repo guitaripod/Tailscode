@@ -33,6 +33,24 @@ public struct QuotaExhaustion: Sendable, Equatable {
 /// How the product talks about a used-up quota. Toolkit-free copy so every client says the same
 /// thing whether the news arrives as a gauge at full or a raw rate-limit failure mid-turn.
 public enum QuotaSurface {
+    /// The provider family a chat is on. A pre-emptive wall only speaks in a chat whose provider
+    /// it names — Claude's weekly is not news above an opencode composer. No backend known keeps
+    /// every quota in play.
+    public static func relevantQuotas(for backend: AgentType?, among quotas: [UsageQuota])
+        -> [UsageQuota]
+    {
+        guard let family = quotaFamily(for: backend) else { return quotas }
+        return quotas.filter { ProviderBrand.slug($0.providerName) == family }
+    }
+
+    private static func quotaFamily(for backend: AgentType?) -> String? {
+        switch backend {
+        case .claudeCode: return "claude"
+        case .openCode: return "opencode"
+        default: return nil
+        }
+    }
+
     /// A window at or past this fraction is treated as used up. Providers occasionally report
     /// slightly over 1.0 after an over-limit request; clamp presentation elsewhere.
     public static let exhaustedFloor: Double = 1.0

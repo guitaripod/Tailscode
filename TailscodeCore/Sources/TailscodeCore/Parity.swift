@@ -169,7 +169,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .quotaExhaustion, area: "sessions", title: "Used-up quota is a clear state",
             spec:
-                "When a provider window is at or past full, or a turn fails because of a rate limit / quota wall: a clear surface names the provider and window, says when it resets when known, and tells the person to switch model or wait — never a raw rate-limit string alone. Live gauges at full read as \"Used up\". A one-shot notification fires the first time a window hits full. Pre-emptive notice rides the conversation chrome while the wall is up, not only after a failed send. Copy and classification live in QuotaSurface so every client says the same thing."),
+                "When a provider window is at or past full, or a turn fails because of a rate limit / quota wall: a clear surface names the provider and window, says when it resets when known, and tells the person to switch model or wait — never a raw rate-limit string alone. Live gauges at full read as \"Used up\". A one-shot notification fires the first time a window hits full. Pre-emptive notice rides the conversation chrome while the wall is up, not only after a failed send, and speaks only for the chat's own provider family — a wall on another provider stays in the gauges. Copy and classification live in QuotaSurface so every client says the same thing."),
         CapabilityDefinition(
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:

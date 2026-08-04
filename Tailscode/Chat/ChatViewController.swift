@@ -1480,7 +1480,8 @@ final class ChatViewController: UIViewController {
         if let failure {
             exhaustion = QuotaSurface.resolve(failureMessage: failure, quotas: quotas)
         } else {
-            exhaustion = QuotaSurface.hottestExhausted(in: quotas)
+            exhaustion = QuotaSurface.hottestExhausted(
+                in: QuotaSurface.relevantQuotas(for: viewModel.backend.agentType, among: quotas))
         }
         guard let exhaustion else { return false }
         banner.show(

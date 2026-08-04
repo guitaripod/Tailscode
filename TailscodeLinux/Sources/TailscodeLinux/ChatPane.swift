@@ -1247,10 +1247,12 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
-    /// rewritten phase, so this only speaks when the wall is up before the next send.
+    /// rewritten phase, so this only speaks when the wall is up before the next send. Only the
+    /// chat's own provider family speaks here; other walls stay in the sidebar gauges.
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
         guard state.lastFailure == nil, state.status != .running else { return nil }
-        return QuotaSurface.hottestExhausted(in: quotas).map(QuotaSurface.short)
+        let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
+        return QuotaSurface.hottestExhausted(in: relevant).map(QuotaSurface.short)
     }
 
     private func perform(bandAction action: StatusFacts.Action) {
