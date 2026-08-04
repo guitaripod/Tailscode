@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import TailscodeCore
 
 /// Reachability per saved server, kept alive across screens. Settings used to
 /// hold this in the view controller, so every visit re-ran the whole fan-out and

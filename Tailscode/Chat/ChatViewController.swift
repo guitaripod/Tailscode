@@ -2840,7 +2840,7 @@ final class ChatViewController: UIViewController {
         Theme.Haptics.tap()
         let picker = ModelPickerViewController(
             sources: ModelFleet.sources(
-                profiles: AppCoordinator.shared?.profiles ?? [],
+                profiles: ConnectionController.shared.profiles,
                 current: viewModel.contextID, currentModels: availableModels,
                 allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
             selected: viewModel.selectedModel

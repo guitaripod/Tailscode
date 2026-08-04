@@ -1216,9 +1216,18 @@ extension HomeViewController: HomeComposerBarDelegate {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
         let picker = ModelPickerViewController(
-            models: models, selected: modelChoices[profile.id]?.model
-        ) { [weak self] selection in
-            self?.setComposeModel(selection, for: profile)
+            sources: ModelFleet.sources(
+                profiles: ConnectionController.shared.profiles, current: profile.id,
+                currentModels: models, allowsServerDefault: profile.backend == .claudeCode),
+            selected: modelChoices[profile.id]?.model
+        ) { [weak self] pick in
+            guard let self else { return }
+            if pick.isElsewhere {
+                ModelFleet.adopt(pick)
+                self.aimCompose(at: pick.profileID)
+            } else {
+                self.setComposeModel(pick.selection, for: profile)
+            }
         }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
@@ -1304,6 +1313,16 @@ extension HomeViewController: HomeComposerBarDelegate {
         if let directory { FileBrowserRecents.record(directory, for: profile.id) }
         Theme.Haptics.selection()
         updateComposer()
+    }
+
+    /// Aims the docked composer at another machine, the Home half of the fleet's "start a chat
+    /// there" move. The compose is a promise about where the next session will live, so it is the
+    /// one thing on this screen that can point somewhere else.
+    func aimCompose(at profileID: String) {
+        guard let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
+        else { return }
+        setComposeTarget(profile: profile, directory: nil)
+        focusComposer()
     }
 
     private func browseComposeTarget(profile: ConnectionProfile) {

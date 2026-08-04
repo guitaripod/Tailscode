@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 import UIKit
 
 /// Builds transcript rows from messages — pure mapping, no view ownership.

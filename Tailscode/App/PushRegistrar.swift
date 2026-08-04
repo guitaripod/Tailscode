@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import TailscodeCore
 
 /// Uploads the APNs device token to every connected claude-code bridge so the
 /// server can push turn-completion alerts and silent usage refreshes. Older
