@@ -30,9 +30,7 @@ enum ParityManifest {
         case .imageParts: return .implemented("ImageStore")
         case .imageViewer: return .implemented("ImageViewer")
         case .subagentCards: return .implemented("SubagentRowView")
-        case .workflowCard:
-            return .gap(
-                "Workflow calls still render as one flat tool row. TailscodeCore.WorkflowRun has the run, the phases and the agents ready to draw.")
+        case .workflowCard: return .implemented("WorkflowCardView")
         case .questionCells: return .implemented("PendingCards")
         case .compactionSeam: return .implemented("Compaction")
         case .permissionCards: return .implemented("PendingCards")

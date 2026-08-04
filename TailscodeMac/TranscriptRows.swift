@@ -8,13 +8,27 @@ import TailscodeCore
 @MainActor
 final class TranscriptContext {
     var expanded: Set<String> = []
+    /// The newest text of a thought that is still being written. A reasoning row's header counts
+    /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
+    /// The row is updated in place instead, and a body opened afterwards reads the current text
+    /// from here rather than the one its closure was built with.
+    var liveReasoning: [String: String] = [:]
     var subagentRows: [String: [TranscriptRow]] = [:]
     /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
     /// inline agent card shows for progress while its transcript is still being written.
     var agentFacts: [String: SubagentSummary] = [:]
+    /// The workflow runs of this conversation, keyed by the Workflow call that started each. A run
+    /// outlives its tool call by minutes, so the card reads its state from here rather than from a
+    /// call that has said all it will say.
+    var workflowRuns: [String: WorkflowRun] = [:]
+    /// The clock the live parts of a workflow card are drawn against, moved by the ticker so every
+    /// spinner and elapsed reading in one frame agrees.
+    var workflowNow: Date = Date()
     var onToggle: ((String, Bool) -> Void)?
     var requestImage: ((FileReference, String) -> Void)?
     var requestSubagent: ((ToolCall) -> Void)?
+    /// A workflow agent is fetched by its own id: it has no spawning call to name it.
+    var requestWorkflowAgent: ((String) -> Void)?
     var openImage: ((String, String) -> Void)?
     var presentText: ((_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     /// A short confirmation the window floats over everything — "Command copied".
@@ -76,6 +90,7 @@ struct TranscriptRow: Hashable {
         case tool(ToolCall)
         case toolRun([ToolCall])
         case subagent(ToolCall)
+        case workflow(ToolCall)
         case file(FileReference)
         case compaction(Compaction)
         case turnBreak
@@ -89,6 +104,12 @@ struct TranscriptRow: Hashable {
     static var compactTools: Bool {
         if let raw = ProcessInfo.processInfo.environment["TAILSCODE_COMPACT"] { return raw == "1" }
         return UserDefaults.standard.bool(forKey: "tailscode.compactTools")
+    }
+
+    /// A Workflow call is its run, not a tool line; everything else that spawns work is an agent.
+    static func kind(for call: ToolCall) -> Kind {
+        if call.summary.kind == .workflow { return .workflow(call) }
+        return call.spawnsSubagent ? .subagent(call) : .tool(call)
     }
 
     static func searchText(for call: ToolCall) -> String {
@@ -154,7 +175,7 @@ struct TranscriptRow: Hashable {
                 if call.asksUserQuestion, call.isAwaitingAnswer { continue }
                 rows.append(
                     TranscriptRow(
-                        key: key, kind: call.spawnsSubagent ? .subagent(call) : .tool(call)))
+                        key: key, kind: Self.kind(for: call)))
             case .file(let reference):
                 rows.append(TranscriptRow(key: key, kind: .file(reference)))
             case .compaction(let compaction):
@@ -223,7 +244,7 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
-        case .tool(let call), .subagent(let call):
+        case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
         case .toolRun(let calls):
             return calls.map(Self.searchText(for:)).joined(separator: " ")
@@ -257,6 +278,8 @@ struct TranscriptRow: Hashable {
             return ToolRowView.make(call, key: key, context: context)
         case .toolRun(let calls):
             return ToolRowView.makeRun(calls, key: key, context: context)
+        case .workflow(let call):
+            return WorkflowCardView.make(call, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
         case .file(let reference):
@@ -617,5 +640,26 @@ final class DisclosureRow: NSView {
         let built = makeBody()
         stack.addArrangedSubview(built)
         body = built
+    }
+
+    /// The header restated without rebuilding the row — what a thought counting its own words
+    /// needs, since tearing the row down twenty times a second is the flicker, not the counting.
+    func restate(header text: String) {
+        (stack.arrangedSubviews.first as? NSTextField)?.stringValue = text
+    }
+
+    /// The body restated, when it happens to be open already.
+    func restateBody(_ text: String) {
+        guard let body else { return }
+        if let field = body as? NSTextField {
+            field.stringValue = text
+            return
+        }
+        for view in body.subviews {
+            if let field = view as? NSTextField {
+                field.stringValue = text
+                return
+            }
+        }
     }
 }

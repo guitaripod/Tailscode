@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 @MainActor
@@ -17,6 +18,7 @@ struct ChatRow: Hashable {
         case code(CodeBlock)
         case activity([ActivityStep])
         case subagent(SubagentCard)
+        case workflow(WorkflowRun)
         case subagentGroup(SubagentGroup)
         case compaction(CompactionRow)
         case file(FileReference)
@@ -162,7 +164,10 @@ final class TextBubbleCell: UICollectionViewCell {
         textView.attributedText = string
     }
 
-    func configure(text: String, role: MessageRole, reasoning: Bool, timestamp: Bool = false) {
+    func configure(
+        text: String, role: MessageRole, reasoning: Bool, timestamp: Bool = false,
+        cascade: CascadeTail? = nil
+    ) {
         let isUser = role == .user
 
         timestampLeading?.isActive = false
@@ -195,7 +200,19 @@ final class TextBubbleCell: UICollectionViewCell {
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.secondaryLabel
             textView.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitItalic)
-            textView.text = text
+            if let cascade {
+                let string = NSAttributedString(
+                    string: text,
+                    attributes: [
+                        .font: UIFont.preferredFont(forTextStyle: .subheadline)
+                            .withTraits(.traitItalic),
+                        .foregroundColor: Theme.Color.secondaryLabel,
+                    ])
+                textView.attributedText = cascade.paint(
+                    string, settled: Theme.Color.secondaryLabel)
+            } else {
+                textView.text = text
+            }
             textView.linkTextAttributes = [
                 .foregroundColor: Theme.Color.secondaryLabel,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -210,11 +227,31 @@ final class TextBubbleCell: UICollectionViewCell {
             bubble.backgroundColor = Theme.Color.assistantBubble
             textView.textColor = Theme.Color.label
             textView.font = Theme.Font.body()
-            textView.attributedText = Self.rendered(text, color: Theme.Color.label)
+            let rendered = Self.rendered(text, color: Theme.Color.label)
+            textView.attributedText =
+                cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
             textView.linkTextAttributes = [
                 .foregroundColor: Theme.Color.accent,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
             ]
+        }
+    }
+
+    /// A frame that moved only the band: the glyph count is unchanged, so nothing needs measuring
+    /// and the cell repaints itself without the data source hearing about it.
+    func applyCascade(_ cascade: CascadeTail, text: String, reasoning: Bool) {
+        if reasoning {
+            let string = NSAttributedString(
+                string: text,
+                attributes: [
+                    .font: UIFont.preferredFont(forTextStyle: .subheadline)
+                        .withTraits(.traitItalic),
+                    .foregroundColor: Theme.Color.secondaryLabel,
+                ])
+            textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
+        } else {
+            textView.attributedText = cascade.paint(
+                Self.rendered(text, color: Theme.Color.label), settled: Theme.Color.label)
         }
     }
 
@@ -587,7 +624,10 @@ final class CodeBlockCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ block: CodeBlock, expanded: Bool, onToggle: @escaping () -> Void) {
+    func configure(
+        _ block: CodeBlock, expanded: Bool, cascade: CascadeTail? = nil,
+        onToggle: @escaping () -> Void
+    ) {
         self.source = block.source
         self.onToggle = onToggle
         codeScroll.setContentOffset(.zero, animated: false)
@@ -601,16 +641,35 @@ final class CodeBlockCell: UICollectionViewCell {
         let isLong = lines.count > Self.collapsedLineLimit
         if isLong && !expanded {
             let shortSource = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
-            codeLabel.attributedText = Self.highlightedCode(shortSource, language: block.language)
+            codeLabel.attributedText = Self.highlightedCode(
+                shortSource, language: block.language, cascade: nil)
             lineNumberLabel.text = Self.lineNumbers(count: Self.collapsedLineLimit)
             toggleButton.setTitle(String(localized: "Show all \(lines.count) lines"), for: .normal)
             toggleButton.isHidden = false
         } else {
-            codeLabel.attributedText = Self.highlightedCode(block.source, language: block.language)
+            codeLabel.attributedText = Self.highlightedCode(
+                block.source, language: block.language, cascade: cascade)
             lineNumberLabel.text = Self.lineNumbers(count: lines.count)
             toggleButton.setTitle(String(localized: "Collapse"), for: .normal)
             toggleButton.isHidden = !isLong
         }
+    }
+
+    /// The wave over freshly written code. The highlighter's own colours are the settled ones, so
+    /// a keyword leaves the wave the keyword colour rather than the prose colour — the cascade
+    /// tints what is there rather than replacing it.
+    private static func highlightedCode(
+        _ source: String, language: String?, cascade: CascadeTail?
+    ) -> NSAttributedString {
+        let highlighted = highlightedCode(source, language: language)
+        guard let cascade else { return highlighted }
+        return cascade.paint(highlighted, settled: Theme.Color.label)
+    }
+
+    /// A frame that moved only the band, as above: the same glyphs, freshly tinted.
+    func applyCascade(_ cascade: CascadeTail, block: CodeBlock) {
+        codeLabel.attributedText = Self.highlightedCode(
+            block.source, language: block.language, cascade: cascade)
     }
 
     private static func lineNumbers(count: Int) -> String {

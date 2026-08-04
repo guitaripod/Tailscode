@@ -2588,6 +2588,59 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.
+    /// A synthetic conversation carrying one live workflow and one finished one, so the card can be
+    /// driven and photographed headlessly without waiting three minutes on a real fan-out.
+    func driverWorkflowDemo() {
+        let now = Date()
+        let script = """
+            export const meta = {
+              name: 'kaytetty-best',
+              description: 'Recommend the best USED-market buy in Finland — priced live across Tori.fi and Huuto.net',
+              phases: [
+                { title: 'Scope', detail: 'classify the request and build the used-market search plan' },
+                { title: 'Hunt', detail: 'pull live listings from Tori.fi + Huuto.net', model: 'claude-haiku-4-5-20251001' },
+                { title: 'Appraise', detail: 'compute the fair band, flag scams, pick the best listing' },
+              ],
+            }
+            """
+        let call = ToolCall(
+            id: "demo-wf", name: "Workflow", status: .running,
+            input: .object(["script": .string(script)]),
+            output: "Workflow launched in background. Task ID: demo-task\nRun ID: wf_demo")
+        let prompt = ChatMessage(
+            id: "demo-user", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("/kaytetty-best Pokemon Yellow"))],
+            createdAt: now.addingTimeInterval(-104))
+        let launch = ChatMessage(
+            id: "demo-launch", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "p", kind: .tool(call))],
+            createdAt: now.addingTimeInterval(-100))
+        agents = [
+            SubagentSummary(
+                id: "d0", title: "You are scoping a \"best thing to buy SECOND-HAND in Finland\" request",
+                agentType: WorkflowRunAssembly.agentType, updatedAt: now.addingTimeInterval(-41),
+                isActive: false, isCompleted: true, startedAt: now.addingTimeInterval(-100)),
+            SubagentSummary(
+                id: "d1", title: "Use the WebFetch tool on this Tori.fi used-marketplace search URL",
+                agentType: WorkflowRunAssembly.agentType, updatedAt: now,
+                isActive: true, isCompleted: false, startedAt: now.addingTimeInterval(-41),
+                toolCount: 3, currentTool: "WebFetch"),
+            SubagentSummary(
+                id: "d2", title: "Run EXACTLY these commands (Huuto.net public JSON API, two pages)",
+                agentType: WorkflowRunAssembly.agentType, updatedAt: now,
+                isActive: true, isCompleted: false, startedAt: now.addingTimeInterval(-41),
+                toolCount: 2, currentTool: "Bash"),
+        ]
+        var state = ConversationState()
+        state.messages = [prompt, launch]
+        state.hasLoadedTranscript = true
+        state.status = .idle
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        context.expanded.insert("demo-launch:p")
+        refreshWorkflowRuns()
+        replaceRows { if case .workflow = $0.kind { return true } else { return false } }
+    }
+
     func driverType(_ text: String) {
         gtk_widget_grab_focus(entryView)
         vim.reset(to: text, cursor: text.count, mode: .insert)

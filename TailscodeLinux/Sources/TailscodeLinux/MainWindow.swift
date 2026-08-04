@@ -183,6 +183,8 @@ final class MainWindow: @unchecked Sendable {
                                 "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
                                     .utf8))
                     }
+                case "workflowdemo":
+                    self.activePane.driverWorkflowDemo()
                 case "newchat":
                     Task { [weak self] in
                         let profiles = await ServerDirectory.shared.profiles()

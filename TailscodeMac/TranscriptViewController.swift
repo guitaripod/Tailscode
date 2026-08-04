@@ -16,6 +16,9 @@ final class TranscriptViewController: NSViewController {
     /// A click on the status band, routed through the hub — reading the status and steering the
     /// turn are one gesture, and the hub owns the steering.
     var onBandAction: ((StatusFacts.Action) -> Void)?
+    /// An answered chooser row: which server, which chat, or a new one — acted on by the hub,
+    /// which owns the servers and the minting of sessions.
+    var onChooserAction: ((PaneChooserAction) -> Void)?
 
     private let scrollView = NSScrollView()
     private let canvas = NSStackView()
@@ -30,6 +33,8 @@ final class TranscriptViewController: NSViewController {
     private let findBar = FindBar()
     private let jumpButton = RowKit.ActionButton(title: "") {}
     private let emptyLabel = NSTextField(labelWithString: "")
+    private let chooserView = ChooserView()
+    private var chooser: PaneChooser?
     private var composerGlass: NSView?
     private var jumpGlass: NSView?
 
@@ -41,6 +46,14 @@ final class TranscriptViewController: NSViewController {
     private var streamTask: Task<Void, Never>?
     private var backend: (any CodingAgentBackend)?
     private var entry: SessionEntry?
+    /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
+    private var video: VideoSlotView?
+    /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
+    private var page: WebSlotView?
+
+    /// Told to the hub when a slot starts, stops, or learns its stream's title, so the layout is
+    /// written back exactly as an opened conversation writes it back.
+    var onVideoChanged: (() -> Void)?
     private var lastState: ConversationState?
 
     /// What this pane is showing, read by the hub and the tiling host: the focused pane's entry
@@ -49,8 +62,13 @@ final class TranscriptViewController: NSViewController {
     var currentBackend: (any CodingAgentBackend)? { backend }
     var currentState: ConversationState? { lastState }
 
+    private let cascade = CascadePainter()
     private var renderedRows: [TranscriptRow] = []
     private var rowViews: [NSView] = []
+    /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
+    /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
+    /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
+    private var enteredRows: Set<String> = []
     private var lastFullRows: [TranscriptRow] = []
     private var lastFullCount = 0
     private var windowLimit = 400
@@ -80,6 +98,7 @@ final class TranscriptViewController: NSViewController {
     private var notice: String?
     private var turnStartedAt: Date?
     private var tickerTask: Task<Void, Never>?
+    private var workflowRuns: [WorkflowRun] = []
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
 
@@ -97,6 +116,10 @@ final class TranscriptViewController: NSViewController {
         emptyLabel.textColor = MacTheme.Color.tertiaryLabel
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(emptyLabel)
+
+        chooserView.isHidden = true
+        chooserView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(chooserView)
 
         identityLabel.font = MacTheme.Font.caption()
         identityLabel.textColor = MacTheme.Color.secondaryLabel
@@ -156,6 +179,14 @@ final class TranscriptViewController: NSViewController {
 
             emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+
+            chooserView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            chooserView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            chooserView.widthAnchor.constraint(
+                lessThanOrEqualTo: container.widthAnchor, constant: -MacTheme.Spacing.xl * 2),
+            chooserView.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
+            chooserView.leadingAnchor.constraint(
+                greaterThanOrEqualTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
         ])
         view = container
         wireContext()
@@ -184,6 +215,7 @@ final class TranscriptViewController: NSViewController {
         self.entry = entry
         self.backend = backend
         lastState = nil
+        dismissChooser()
         emptyLabel.isHidden = true
         composer.isHidden = false
         composer.prepare(for: entry, backend: backend)
@@ -256,7 +288,108 @@ final class TranscriptViewController: NSViewController {
         refreshIdentity()
     }
 
+    /// Turns this pane into a video slot, or points the one it already is at something else. The
+    /// chat furniture is hidden rather than destroyed, so a slot is a state of a pane and not a
+    /// second kind of object the tiling would have to learn.
+    func showVideo(_ target: VideoTarget?) {
+        chooser = nil
+        chooserView.isHidden = true
+        if video == nil {
+            let slot = VideoSlotView(target: target)
+            slot.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(slot, positioned: .below, relativeTo: identityLabel)
+            NSLayoutConstraint.activate([
+                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                slot.topAnchor.constraint(equalTo: view.topAnchor),
+                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            video = slot
+            slot.onChange = { [weak self] in
+                self?.refreshIdentity()
+                self?.onVideoChanged?()
+            }
+            setChatFurnitureVisible(false)
+        } else if let target {
+            video?.point(at: target)
+        }
+        if target == nil { video?.focusPrompt() }
+        refreshIdentity()
+    }
+
+    /// Turns this pane into a browser slot, or points the one it already is at another address.
+    func showWeb(_ target: WebTarget?) {
+        chooser = nil
+        chooserView.isHidden = true
+        if page == nil {
+            let slot = WebSlotView(target: target)
+            slot.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(slot, positioned: .below, relativeTo: identityLabel)
+            NSLayoutConstraint.activate([
+                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                slot.topAnchor.constraint(equalTo: view.topAnchor),
+                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            page = slot
+            slot.onChange = { [weak self] in
+                self?.refreshIdentity()
+                self?.onVideoChanged?()
+            }
+            setChatFurnitureVisible(false)
+        } else if let target {
+            page?.point(at: target)
+        }
+        if target == nil { page?.focusPrompt() }
+        refreshIdentity()
+    }
+
+    var isBrowsing: Bool { page != nil }
+    var webTarget: WebTarget? {
+        page.flatMap { slot in slot.currentAddress.map(WebTarget.page) ?? slot.target }
+    }
+    var webSummary: String? { page?.summary }
+
+    /// A browsing pane claims only the chords a browser owns; every other key belongs to the page,
+    /// which is typing into a form as often as not.
+    func handleWebChord(_ chord: KeyChord) -> Bool {
+        guard let page, let command = WebCommand.command(for: chord) else { return false }
+        if page.isAsking, command == .address { return false }
+        page.handle(command)
+        return true
+    }
+
+    var isWatching: Bool { video != nil }
+    var videoTarget: VideoTarget? { video?.target }
+    var videoSummary: String? { video?.summary }
+
+    /// A slot answers its own keys while it is focused; everything it does not claim goes on to
+    /// the shortcut table, so the chat panes lose nothing to a slot in the grid.
+    func handleVideoChord(_ chord: KeyChord) -> Bool {
+        guard let video, !video.isAsking else { return false }
+        guard let command = VideoCommand.command(for: chord) else { return false }
+        video.handle(command)
+        return true
+    }
+
+    /// Everything the pane draws for a conversation, out of the way while it holds a stream —
+    /// walked rather than named so a new piece of chat chrome cannot forget to hide itself.
+    private func setChatFurnitureVisible(_ visible: Bool) {
+        for subview in view.subviews
+        where subview !== identityLabel && subview !== video && subview !== page {
+            subview.isHidden = !visible
+        }
+    }
+
     private func refreshIdentity() {
+        if let page {
+            identityLabel.stringValue = "\(page.slot.title) · \(page.slot.subtitle)"
+            return
+        }
+        if let video {
+            identityLabel.stringValue = "\(video.slot.title) · \(video.slot.subtitle)"
+            return
+        }
         guard let entry else {
             identityLabel.stringValue = Localized.text("No conversation")
             return
@@ -271,6 +404,9 @@ final class TranscriptViewController: NSViewController {
     /// A closing pane stops talking to the world before its views go: a cancelled stream is the
     /// difference between a closed pane and a leak that keeps rendering into nothing.
     func shutdownPane() {
+        cascade.release()
+        page?.shutdown()
+        video?.shutdown()
         streamTask?.cancel()
         streamTask = nil
         tickerTask?.cancel()
@@ -433,6 +569,7 @@ final class TranscriptViewController: NSViewController {
         statusBand.perform = { [weak self] action in self?.onBandAction?(action) }
 
         composer.isHidden = true
+        cascade.onFrame = { [weak self] in self?.paintCascade() }
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
             self?.sendPrompt(text, model: model, effort: effort, attachments: attachments)
         }
@@ -518,6 +655,9 @@ final class TranscriptViewController: NSViewController {
         }
         context.requestSubagent = { [weak self] call in
             self?.fetchSubagent(call)
+        }
+        context.requestWorkflowAgent = { [weak self] agentID in
+            self?.fetchWorkflowAgent(agentID)
         }
         context.openImage = { [weak self] key, name in
             guard let self else { return }
@@ -689,12 +829,15 @@ final class TranscriptViewController: NSViewController {
                 "… %@ earlier rows — show more", "\(hiddenCount)")
         }
         if rows.isEmpty {
+            cascade.release()
             showPlaceholder(
                 state.hasLoadedTranscript
                     ? Localized.text("Nothing here yet. Say something.")
                     : Localized.text("Loading…"))
         } else {
-            applyRows(windowed, appended: appended)
+            applyRows(
+                pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            paintCascade()
         }
         renderPendingCards(state)
         composer.noteState(state)
@@ -703,6 +846,7 @@ final class TranscriptViewController: NSViewController {
             contextEstimate = StatusFacts.estimateContextTokens(state.messages)
         }
         updateStatus()
+        refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
     }
 
@@ -731,6 +875,7 @@ final class TranscriptViewController: NSViewController {
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;
     /// every fifth tick also re-asks the server for agents and cost.
     private func updateTicker(running: Bool) {
+        let running = running || workflowRuns.contains(where: \.isLive)
         if running, tickerTask == nil {
             tickerTask = Task { [weak self] in
                 var tick = 0
@@ -739,6 +884,7 @@ final class TranscriptViewController: NSViewController {
                     guard !Task.isCancelled, let self else { return }
                     tick += 1
                     self.updateStatus()
+                    self.advanceWorkflowClock()
                     if tick % 5 == 0 { self.refreshTurnFacts() }
                 }
             }
@@ -793,6 +939,61 @@ final class TranscriptViewController: NSViewController {
         }
     }
 
+    /// This conversation's workflow runs, rebuilt from the transcript and the live fan-out. Only
+    /// the cards whose run actually changed are replaced.
+    private func refreshWorkflowRuns() {
+        guard let state = lastState else { return }
+        let runs = WorkflowRunAssembly.runs(
+            messages: state.messages, agents: agents, now: context.workflowNow)
+        if runs != workflowRuns {
+            var byCall: [String: WorkflowRun] = [:]
+            for run in runs { byCall[run.id] = run }
+            let stale = Set(
+                byCall.keys.filter { context.workflowRuns[$0] != byCall[$0] }
+                    + context.workflowRuns.keys.filter { byCall[$0] == nil })
+            workflowRuns = runs
+            context.workflowRuns = byCall
+            if !stale.isEmpty {
+                replaceRows {
+                    if case .workflow(let call) = $0.kind { return stale.contains(call.id) }
+                    return false
+                }
+            }
+        }
+        updateTicker(running: state.status == .running)
+    }
+
+    /// A background run outlives the turn that launched it, so the clock every live card is drawn
+    /// against keeps moving after the turn ends — a frozen elapsed reads as a hang.
+    private func advanceWorkflowClock() {
+        guard workflowRuns.contains(where: \.isLive) else { return }
+        context.workflowNow = Date()
+        let live = Set(workflowRuns.filter(\.isLive).map(\.id))
+        refreshWorkflowRuns()
+        replaceRows {
+            if case .workflow(let call) = $0.kind { return live.contains(call.id) }
+            return false
+        }
+    }
+
+    private func fetchWorkflowAgent(_ agentID: String) {
+        guard let backend, let entry, !inFlightSubagents.contains(agentID) else { return }
+        inFlightSubagents.insert(agentID)
+        let sessionID = entry.session.id
+        Task { [weak self] in
+            let messages =
+                (try? await backend.subagentMessages(sessionID: sessionID, agentID: agentID)) ?? []
+            let rows = TranscriptRow.rows(for: messages)
+            guard let self else { return }
+            self.inFlightSubagents.remove(agentID)
+            self.context.subagentRows[WorkflowAgentRows.key(agentID)] = rows
+            self.replaceRows {
+                if case .workflow = $0.kind { return true }
+                return false
+            }
+        }
+    }
+
     private func applyAgentSummaries(_ agents: [SubagentSummary]) {
         self.agents = agents
         var keyed: [String: SubagentSummary] = [:]
@@ -800,6 +1001,7 @@ final class TranscriptViewController: NSViewController {
             if let toolUseID = agent.toolUseID { keyed[toolUseID] = agent }
         }
         applyAgentFacts(keyed)
+        refreshWorkflowRuns()
         updateStatus()
     }
 
@@ -884,7 +1086,77 @@ final class TranscriptViewController: NSViewController {
         apply(state: state, rows: rowBuilder.rows(for: messages))
     }
 
+    /// An empty pane asks which server rather than captioning itself. The chooser owns the
+    /// canvas until something fills it, and every re-render keeps the person's place.
+    func showChooser(_ model: PaneChooser) {
+        chooser = model
+        emptyLabel.isHidden = true
+        composer.isHidden = true
+        chooserView.isHidden = false
+        renderChooser()
+    }
+
+    var chooserShown: Bool { chooser != nil }
+    var chooserServerID: String? { chooser?.serverID }
+
+    /// One line describing the chooser, for the headless selftest: the question, then the rows
+    /// with the cursor marked.
+    var chooserSummary: String? {
+        guard let chooser else { return nil }
+        let rows = chooser.rows.enumerated().map { index, row in
+            "\(index == chooser.cursor ? "*" : "")\(row.title)"
+        }
+        return "\(chooser.heading) [\(rows.joined(separator: " | "))]"
+    }
+
+    /// A fresh listing under an open chooser: the same question, answered with what is true now.
+    func restateChooser(servers: [PaneChooserServer], entries: [SessionEntry]) {
+        guard let current = chooser else { return }
+        chooser = current.restated(servers: servers, entries: entries)
+        renderChooser()
+    }
+
+    /// The chooser answers the keyboard before the shortcut table does — but only for the keys it
+    /// binds, so the ctrl+w verbs, ? and everything else still reach the window.
+    func handleChooserChord(_ chord: KeyChord) -> Bool {
+        guard var model = chooser, let command = PaneChooser.command(for: chord) else {
+            return false
+        }
+        let (handled, action) = model.handle(command)
+        guard handled else { return false }
+        chooser = model
+        if let action {
+            onChooserAction?(action)
+        } else {
+            renderChooser()
+        }
+        return true
+    }
+
+    private func renderChooser() {
+        guard let model = chooser else { return }
+        chooserView.render(model) { [weak self] index in self?.activateChooserRow(index) }
+    }
+
+    private func activateChooserRow(_ index: Int) {
+        guard var model = chooser, model.rows.indices.contains(index) else { return }
+        model.focus(index)
+        let outcome = model.activate(model.rows[index].action)
+        chooser = model
+        if let outcome {
+            onChooserAction?(outcome)
+        } else {
+            renderChooser()
+        }
+    }
+
+    private func dismissChooser() {
+        chooser = nil
+        chooserView.isHidden = true
+    }
+
     private func showPlaceholder(_ text: String) {
+        dismissChooser()
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
         tearDownAllRows()
@@ -904,7 +1176,37 @@ final class TranscriptViewController: NSViewController {
     ///
     /// `renderedRows` is always a contiguous slice of the applied row list that reaches its end;
     /// where that slice starts is re-found by key on every pass, because the window slides.
+    /// A streamed token changes exactly one row, and rebuilding its view for every arrival is what
+    /// makes a live answer flicker: the label is torn down and remade dozens of times a second,
+    /// which restarts its entrance, drops any selection inside it, and asks the whole column to lay
+    /// out again. When the only difference is more words in a row that can take them where it
+    /// stands — the answer the painter is holding, or a thought counting itself up — the change is
+    /// written into the view and the bookkeeping moves with it.
+    private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
+        guard !placeholderShown, fillComplete,
+            renderedRows.count == rows.count, let last = rows.indices.last, last > 0,
+            renderedRows[last].key == rows[last].key, renderedRows[last] != rows[last],
+            last < rowViews.count,
+            renderedRows.dropLast().elementsEqual(rows.dropLast())
+        else { return false }
+        switch (renderedRows[last].kind, rows[last].kind) {
+        case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
+            guard rows[last].key == cascade.key else { return false }
+        case (.reasoning, .reasoning(let text)):
+            guard let disclosure = rowViews[last] as? DisclosureRow else { return false }
+            context.liveReasoning[rows[last].key] = text
+            disclosure.restate(header: ToolRowView.thoughtHeader(text))
+            disclosure.restateBody(text)
+        default:
+            return false
+        }
+        renderedRows[last] = rows[last]
+        if followsBottom { scrollToBottom() }
+        return true
+    }
+
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        if updatedLastRowInPlace(rows) { return }
         let initialFill = placeholderShown
         if placeholderShown {
             tearDownAllRows()
@@ -1011,11 +1313,110 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func appendRowViews(_ rows: ArraySlice<TranscriptRow>) {
-        for row in rows {
+        let entering = !placeholderShown && !pendingReveal && fillComplete && followsBottom
+        for (offset, row) in rows.enumerated() {
             let rowView = row.makeView(context: context)
             rowsStack.addArrangedSubview(rowView)
+            let firstSight = enteredRows.insert(row.key).inserted
+            if entering, firstSight, row.key != cascade.key {
+                CascadeEntrance.animate(rowView, index: offset, of: rows.count)
+            }
             rowViews.append(rowView)
             renderedRows.append(row)
+        }
+    }
+
+    /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
+    /// the network delivered. Only the last row can be live — anything after it is proof the
+    /// stream has moved on — and only prose and code grow a character at a time, so a tool call
+    /// landing after a paragraph settles that paragraph rather than freezing it half-written.
+    ///
+    /// The row is held at its markdown-safe prefix so the renderer never sees `**bold` without its
+    /// closer; how much of what it rendered is on screen is the painter's business, applied to the
+    /// label after the diff has built it.
+    private func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
+        cascade.host = view
+        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let released = cascade.key
+        guard let live, let source = live.streamedText else {
+            cascade.release()
+            if let released { settleCascade(on: released, in: rows) }
+            return rows
+        }
+        let safe = LiveCascade.renderable(source, sealed: !running)
+        var paced = rows
+        let row = safe == source ? live : live.held(to: safe)
+        paced[paced.count - 1] = row
+        cascade.focus(
+            row.key, rendered: row.renderedText ?? "", sealed: !running,
+            ultracode: composer.auraActive)
+        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
+        return paced
+    }
+
+    /// One frame of the wave, painted into the live row's own label instead of through the row
+    /// diff: the text a person is reading must not be torn down and rebuilt a hundred times a
+    /// second, or a selection cannot survive the sentence it is in being written.
+    private func paintCascade() {
+        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
+        let index = renderedRows.count - 1
+        guard index < rowViews.count, renderedRows[index].key == key,
+            let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind),
+            let tail = cascade.tail(for: key)
+        else { return }
+        switch renderedRows[index].kind {
+        case .agentProse(_, let rendered):
+            label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
+        case .codeBlock(_, let body):
+            label.attributedStringValue = tail.paint(
+                Self.codeRendering(body), settled: MacTheme.Color.label)
+        default:
+            return
+        }
+        if followsBottom { scrollToBottom() }
+    }
+
+    /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
+    /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
+    /// the heat of a stream that stopped — the row has to be handed back whole by hand.
+    private func settleCascade(on key: String, in rows: [TranscriptRow]) {
+        guard let index = renderedRows.lastIndex(where: { $0.key == key }),
+            index < rowViews.count,
+            let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind)
+        else { return }
+        let row = rows.last(where: { $0.key == key }) ?? renderedRows[index]
+        switch row.kind {
+        case .agentProse(_, let rendered):
+            label.attributedStringValue = rendered
+        case .codeBlock(_, let body):
+            label.stringValue = body
+        default:
+            break
+        }
+    }
+
+    /// A code block's body as the row already draws it, so the wave tints the same glyphs the
+    /// settled row shows rather than restyling them on its way past.
+    private static func codeRendering(_ body: String) -> NSAttributedString {
+        NSAttributedString(
+            string: body,
+            attributes: [.font: MacTheme.Font.mono(12), .foregroundColor: MacTheme.Color.label])
+    }
+
+    /// Where a live row keeps the words: prose is the label itself, a code block keeps its body
+    /// under the header and behind a scroller once it is tall enough to need one.
+    private static func streamedLabel(in view: NSView, kind: TranscriptRow.Kind) -> NSTextField? {
+        switch kind {
+        case .agentProse:
+            return view as? NSTextField
+        case .codeBlock:
+            guard let stack = view as? NSStackView,
+                let last = stack.arrangedSubviews.last
+            else { return nil }
+            if let field = last as? NSTextField { return field }
+            return (last as? NSScrollView)?.documentView as? NSTextField
+        default:
+            return nil
         }
     }
 
@@ -1033,6 +1434,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func tearDownAllRows() {
+        enteredRows.removeAll(keepingCapacity: true)
         clearFindHighlight()
         rowViews.forEach { $0.removeFromSuperview() }
         rowViews = []

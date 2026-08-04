@@ -69,6 +69,11 @@ final class ChatViewController: UIViewController {
     private let enhancement = PromptEnhancementController()
     private var enhanceOverlay: PromptEnhanceOverlay?
     private var isApplyingEnhancedPrompt = false
+    private let cascade = CascadeDriver()
+    /// Rows the wave has just let go of. A turn that simply ends leaves the row's value identical,
+    /// so the diff has nothing to do and the last glyphs would keep the heat of a stream that
+    /// stopped — they are reconfigured by name instead.
+    private var settledCascadeRows: Set<String> = []
 
     var sessionID: String { viewModel.session.id }
     init(viewModel: ChatViewModel) {
@@ -198,9 +203,46 @@ final class ChatViewController: UIViewController {
     override var canBecomeFirstResponder: Bool { true }
 
     override var keyCommands: [UIKeyCommand]? {
-        guard keyContext == .insert else { return nil }
-        return KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+        let palette = commandPalette.isHidden ? [] : paletteKeyCommands()
+        guard keyContext == .insert else { return palette.isEmpty ? nil : palette }
+        return palette + KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
     }
+
+    /// Only while the palette is up, and only then claiming priority over the system: the same
+    /// arrows have to keep moving the caret through an ordinary draft, and Return has to keep
+    /// sending one. A completion list that ate them permanently would be worse than none.
+    private func paletteKeyCommands() -> [UIKeyCommand] {
+        let bindings: [(String, Selector)] = [
+            (UIKeyCommand.inputUpArrow, #selector(paletteSelectPrevious)),
+            (UIKeyCommand.inputDownArrow, #selector(paletteSelectNext)),
+            ("\t", #selector(paletteSelectNext)),
+            ("\r", #selector(paletteAccept)),
+            (UIKeyCommand.inputEscape, #selector(paletteDismiss)),
+        ]
+        var commands = bindings.map { input, action -> UIKeyCommand in
+            let command = UIKeyCommand(input: input, modifierFlags: [], action: action)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+        let back = UIKeyCommand(
+            input: "\t", modifierFlags: .shift, action: #selector(paletteSelectPrevious))
+        back.wantsPriorityOverSystemBehavior = true
+        commands.append(back)
+        return commands
+    }
+
+    @objc private func paletteSelectNext() { commandPalette.moveSelection(by: 1) }
+
+    @objc private func paletteSelectPrevious() { commandPalette.moveSelection(by: -1) }
+
+    @objc private func paletteAccept() {
+        guard commandPalette.activateSelection() else {
+            composer.triggerSend()
+            return
+        }
+    }
+
+    @objc private func paletteDismiss() { hideCommandPalette() }
 
     @objc private func handleInsertKeyCommand(_ command: UIKeyCommand) {
         guard let token = command.propertyList as? String,
@@ -219,6 +261,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        cascade.release()
         saveDraft()
         SessionSeenStore.markSeen(viewModel.session.id)
         viewModel.stopSubagentTracking()
@@ -307,6 +350,8 @@ final class ChatViewController: UIViewController {
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
         collectionView.register(
             SubagentCardCell.self, forCellWithReuseIdentifier: SubagentCardCell.reuseID)
+        collectionView.register(
+            WorkflowCardCell.self, forCellWithReuseIdentifier: WorkflowCardCell.reuseID)
         collectionView.register(
             SubagentGroupCell.self, forCellWithReuseIdentifier: SubagentGroupCell.reuseID)
         collectionView.register(
@@ -686,6 +731,8 @@ final class ChatViewController: UIViewController {
             }.joined(separator: " ")
         case .subagent(let card):
             return "\(card.agentType ?? "") \(card.title)"
+        case .workflow(let run):
+            return "\(run.name) \(run.summary ?? "") \(run.result ?? "")"
         case .subagentGroup(let group):
             return group.title
         case .compaction(let row):
@@ -701,10 +748,11 @@ final class ChatViewController: UIViewController {
 
     /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
     /// most people don't know it accepts. The sheet is where that gets said.
-    private func presentCompactPreflight() {
+    private func presentCompactPreflight(instruction: String = "") {
         let sheet = CompactPreflightViewController(
             messageCount: viewModel.state.messages.count(where: { $0.role != .system }),
-            lastCompaction: viewModel.lastCompaction
+            lastCompaction: viewModel.lastCompaction,
+            initialInstruction: instruction
         ) { [weak self] instructions in
             self?.viewModel.compact(instructions: instructions)
         }
@@ -921,11 +969,16 @@ final class ChatViewController: UIViewController {
             case .timestamp(let text):
                 return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
             case .text(let text):
-                return self.bubble(collectionView, indexPath, text, row.role, reasoning: false)
+                return self.bubble(
+                    collectionView, indexPath, text, row.role, reasoning: false,
+                    cascade: self.cascade.tail(for: id))
             case .code(let block):
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
-                cell.configure(block, expanded: self.expandedReasoning.contains(id)) {
+                cell.configure(
+                    block, expanded: self.expandedReasoning.contains(id),
+                    cascade: self.cascade.tail(for: id)
+                ) {
                     [weak self] in self?.toggleReasoning(id)
                 }
                 return cell
@@ -943,6 +996,14 @@ final class ChatViewController: UIViewController {
                     onToggle: { [weak self] in self?.toggleReasoning(id) },
                     onToolTap: toolTap,
                     onLinkTap: { [weak self] url in self?.openWebLink(url) })
+                return cell
+            case .workflow(let run):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
+                    as! WorkflowCardCell
+                cell.configure(
+                    run, at: self.workflowNow,
+                    onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) })
                 return cell
             case .subagent(let card):
                 let cell = collectionView.dequeueReusableCell(
@@ -999,16 +1060,96 @@ final class ChatViewController: UIViewController {
 
     private func bubble(
         _ collectionView: UICollectionView, _ indexPath: IndexPath, _ text: String,
-        _ role: MessageRole, reasoning: Bool, timestamp: Bool = false
+        _ role: MessageRole, reasoning: Bool, timestamp: Bool = false,
+        cascade: CascadeTail? = nil
     ) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-        cell.configure(text: text, role: role, reasoning: reasoning, timestamp: timestamp)
+        cell.configure(
+            text: text, role: role, reasoning: reasoning, timestamp: timestamp, cascade: cascade)
         cell.linkDelegate = self
         return cell
     }
 
+    /// One frame of the wave. The live row is reconfigured on its own rather than through a fresh
+    /// render: the transcript above it has not changed, and re-deriving three hundred rows a
+    /// hundred times a second to repaint the last thirty characters of one of them is the cost
+    /// that makes people turn animations off.
+    private func repaintCascade() {
+        guard let id = cascade.key else { return }
+        if !cascade.revealMoved, repaintLiveCellInPlace(id) { return }
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(id) else { return }
+        snapshot.reconfigureItems([id])
+        let nearBottom = isNearBottom()
+        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            guard let self, nearBottom, !self.userScrolledUp else { return }
+            self.scrollToBottom(animated: false)
+        }
+    }
+
+    /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
+    /// the network delivered. Only the last row can be live — anything after it is proof the
+    /// stream has moved on — and only prose and code grow a character at a time, so a tool call
+    /// landing after a paragraph settles that paragraph rather than freezing it half-written.
+    ///
+    /// The row is held at its markdown-safe prefix so the renderer never sees `**bold` without its
+    /// closer; how much of what it rendered is on screen is the cell's business, from the plan the
+    /// driver hands it.
+    private func paceCascade(_ rows: [ChatRow]) {
+        let live = viewModel.isBusy
+            ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let released = cascade.key
+        guard let live, let source = live.streamedText else {
+            cascade.release()
+            if let released { settledCascadeRows.insert(released) }
+            return
+        }
+        let safe = LiveCascade.renderable(source, sealed: !viewModel.isBusy)
+        let row = safe == source ? live : live.held(to: safe)
+        rowsByID[row.id] = row
+        cascade.focus(
+            row.id, rendered: Self.renderedText(of: row), sealed: !viewModel.isBusy,
+            ultracode: viewModel.ultracodeInFlight
+                || viewModel.currentEffort == Ultracode.effortLevel)
+        if let released, released != cascade.key { settledCascadeRows.insert(released) }
+    }
+
+    /// The band moved but the glyph count did not, so the cell can be repainted where it stands.
+    /// False when the row is off screen or has no cell to talk to, and the caller falls back to
+    /// the data source.
+    private func repaintLiveCellInPlace(_ id: String) -> Bool {
+        guard let tail = cascade.tail(for: id), let row = rowsByID[id],
+            let indexPath = dataSource.indexPath(for: id),
+            let cell = collectionView.cellForItem(at: indexPath)
+        else { return false }
+        switch (row.content, cell) {
+        case (.text(let text), let bubble as TextBubbleCell):
+            bubble.applyCascade(tail, text: text, reasoning: false)
+            return true
+        case (.code(let block), let code as CodeBlockCell):
+            code.applyCascade(tail, block: block)
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// What the reveal counts: the characters a reader will actually see, markers already eaten by
+    /// the renderer whose output the cell will show.
+    private static func renderedText(of row: ChatRow) -> String {
+        switch row.content {
+        case .text(let text):
+            return TextBubbleCell.rendered(text, color: Theme.Color.label).string
+        case .code(let block):
+            return block.source
+        default:
+            return ""
+        }
+    }
+
     private func bind() {
+        cascade.onFrame = { [weak self] in self?.repaintCascade() }
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onSignInStateChanged = { [weak self] in
             guard let self else { return }
@@ -1055,11 +1196,18 @@ final class ChatViewController: UIViewController {
     }
 
     private func render(_ state: ConversationState) {
+        let runs = WorkflowRunAssembly.runs(
+            messages: state.messages, agents: viewModel.trackedSubagents, now: workflowNow)
+        workflowRuns = runs
+        lastRenderedState = state
+        updateWorkflowTicker()
         let rows = Self.makeRows(
-            from: state.messages, agents: subagentPlacement(for: state.messages))
+            from: state.messages, agents: subagentPlacement(for: state.messages),
+            runs: Dictionary(uniqueKeysWithValues: runs.map { ($0.id, $0) }))
         let previous = rowsByID
         rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         orderedIDs = rows.map(\.id)
+        paceCascade(rows)
         streamingActivityID = orderedIDs.last(where: { id in
             guard let content = rowsByID[id]?.content else { return false }
             if case .activity = content { return true }
@@ -1140,6 +1288,10 @@ final class ChatViewController: UIViewController {
         snapshot.appendItems(ids, toSection: .main)
 
         var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        for id in settledCascadeRows where rowsByID[id] != nil && !changed.contains(id) {
+            changed.append(id)
+        }
+        settledCascadeRows.removeAll()
         let streamingID = viewModel.isBusy ? streamingActivityID : nil
         if streamingID != lastStreamingID {
             for id in [streamingID, lastStreamingID].compactMap({ $0 })
@@ -1194,7 +1346,7 @@ final class ChatViewController: UIViewController {
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id
-            Theme.Haptics.warning()
+            Theme.Haptics.needsYou()
         }
         if let permission = pendingPermission, permission.id != lastNotifiedPermissionID {
             lastNotifiedPermissionID = permission.id
@@ -1207,7 +1359,7 @@ final class ChatViewController: UIViewController {
         }
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
-            Theme.Haptics.warning()
+            Theme.Haptics.needsYou()
             NotificationManager.notify(
                 kind: .approval,
                 title: viewModel.title,
@@ -1735,13 +1887,22 @@ final class ChatViewController: UIViewController {
                 ) { [weak self] _ in self?.toggleSaved() }
             ])
         }
+        let commands = UIDeferredMenuElement.uncached { [weak self] completion in
+            guard let self, !self.viewModel.serverCommands.isEmpty else { return completion([]) }
+            completion([
+                UIAction(
+                    title: String(localized: "Commands (\(self.viewModel.serverCommands.count))"),
+                    image: UIImage(systemName: "square.grid.2x2")
+                ) { [weak self] _ in self?.presentCommandCatalog() }
+            ])
+        }
         var children: [UIMenuElement] = [
             UIAction(
                 title: String(localized: "Find in conversation"),
                 image: UIImage(systemName: "magnifyingglass")
             ) { [weak self] _ in self?.openFind() }
         ]
-        children += [jump, subagents, regenerate, usage, save]
+        children += [commands, jump, subagents, regenerate, usage, save]
         children.append(
             UIAction(
                 title: String(localized: "Share transcript"),
@@ -1881,6 +2042,54 @@ final class ChatViewController: UIViewController {
         viewModel.toggleSubagent(agentID)
     }
 
+    /// A workflow agent has no spawning tool call to reveal, so opening one goes straight to its
+    /// own transcript inside this conversation — never a chat screen of its own.
+    /// A run copied out of the transcript reads as what it did, not as the launch receipt: the
+    /// workflow, its phases, its agents, and the answer it came back with.
+    private static func workflowMarkdown(_ run: WorkflowRun) -> String {
+        var lines = ["**" + String(localized: "Workflow · \(run.name)") + "**"]
+        if let summary = run.summary { lines.append(summary) }
+        if !run.phases.isEmpty {
+            lines.append(run.phases.map(\.title).joined(separator: " → "))
+        }
+        if !run.agents.isEmpty {
+            lines.append(String(localized: "\(run.doneCount) of \(run.agents.count) agents"))
+        }
+        if let result = run.result, !result.isEmpty { lines.append(result) }
+        return lines.joined(separator: "\n\n")
+    }
+
+    private func openWorkflowAgent(_ agentID: String) {
+        revealSubagent(id: agentID)
+    }
+
+    /// The clock every live workflow card is drawn against. A background run outlives the turn that
+    /// launched it, so the cards keep their own second hand after the turn ends — a frozen elapsed
+    /// reads as a hang.
+    private func advanceWorkflowClock() {
+        guard workflowRuns.contains(where: \.isLive), let state = lastRenderedState else { return }
+        workflowNow = Date()
+        render(state)
+    }
+
+    /// A background run keeps working after the turn that launched it ended, so its cards need a
+    /// second hand the turn's own ticker no longer provides. It stops the moment nothing is live.
+    private func updateWorkflowTicker() {
+        let live = workflowRuns.contains(where: \.isLive)
+        if live, workflowTicker == nil {
+            workflowTicker = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    self?.advanceWorkflowClock()
+                }
+            }
+        } else if !live {
+            workflowTicker?.cancel()
+            workflowTicker = nil
+        }
+    }
+
     #if DEBUG
         private func openFirstCompactionSummary() {
             guard let row = orderedIDs.compactMap({ id -> CompactionRow? in
@@ -1959,6 +2168,13 @@ final class ChatViewController: UIViewController {
             composer.clear()
             composerTextDidChange("")
         }
+
+        func tourSetDraft(_ text: String) {
+            composer.setDraft(text, focus: true)
+            composerTextDidChange(text)
+        }
+
+        func tourOpenCommandCatalog() { presentCommandCatalog() }
 
         func tourType(_ text: String, perCharacter: Double) async {
             for index in text.indices {
@@ -2159,26 +2375,41 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    /// The palette follows the caret through the two halves of a slash invocation: a ranked list
+    /// while the command is still being named, that one command's own argument hint once it is
+    /// settled. It never simply vanishes on a word the catalog lacks — that reads as the app
+    /// losing the draft, when in fact the words are about to be sent as an ordinary message.
     private func updateCommandPalette(for text: String) {
-        guard text.hasPrefix("/"), !text.contains(" "), !text.contains("\n") else {
+        switch SlashStage.of(text) {
+        case .none:
+            hideCommandPalette()
+        case .naming(let query):
+            presentCommandList(query: query)
+        case .arguments(let name, let typed):
+            presentArgumentHint(name: name, typed: typed)
+        }
+    }
+
+    private func presentCommandList(query: String) {
+        let sections = commandSections(query: query)
+        guard sections.contains(where: { !$0.commands.isEmpty }) else {
+            guard !query.isEmpty else { return hideCommandPalette() }
+            commandPalette.update(with: .noMatch(query: query, browse: browseCommand()))
+            showCommandPalette()
+            return
+        }
+        commandPalette.update(with: .commands(sections))
+        showCommandPalette()
+    }
+
+    /// Only a real server command earns the argument stage: the app's own rows take no arguments,
+    /// so holding one on screen while somebody types past it would promise something untrue.
+    private func presentArgumentHint(name: String, typed: String) {
+        guard let command = viewModel.serverCommands.first(where: { $0.name == name }) else {
             hideCommandPalette()
             return
         }
-        let query = String(text.dropFirst()).lowercased()
-        let matches = commandSections().map { section in
-            SlashCommandSection(
-                title: section.title,
-                commands: section.commands.filter { command in
-                    query.isEmpty
-                        || command.keywords.contains { $0.hasPrefix(query) }
-                        || command.title.lowercased().contains(query)
-                })
-        }
-        guard matches.contains(where: { !$0.commands.isEmpty }) else {
-            hideCommandPalette()
-            return
-        }
-        commandPalette.update(with: matches)
+        commandPalette.update(with: .arguments(command: makeServerCommand(command), typed: typed))
         showCommandPalette()
     }
 
@@ -2200,8 +2431,10 @@ final class ChatViewController: UIViewController {
         _ keywords: [String], _ title: String, _ subtitle: String, _ symbol: String,
         _ action: @escaping () -> Void
     ) -> SlashCommand {
-        SlashCommand(keywords: keywords, title: title, subtitle: subtitle, symbol: symbol) {
-            [weak self] in
+        SlashCommand(
+            id: "app:\(keywords.first ?? title)", keywords: keywords, title: title,
+            subtitle: subtitle, symbol: symbol
+        ) { [weak self] in
             self?.composer.clear()
             self?.hideCommandPalette()
             Theme.Haptics.selection()
@@ -2210,60 +2443,97 @@ final class ChatViewController: UIViewController {
     }
 
     /// `/` addresses two machines: the app and the agent. They stay in separate sections so
-    /// nobody expects `/copy` to reach the server or `/compact` to be a local trick.
-    private func commandSections() -> [SlashCommandSection] {
-        let server = viewModel.serverCommands.map(makeServerCommand)
-        guard !server.isEmpty else {
-            return [SlashCommandSection(title: "", commands: appCommands())]
+    /// nobody expects `/copy` to reach the server or `/compact` to be a local trick — and the
+    /// handful of commands this device actually reaches for sits above both, because a phone
+    /// types the same three all week.
+    private func commandSections(query: String) -> [SlashCommandSection] {
+        let recentNames = SlashRecents.surviving(in: viewModel.serverCommands)
+        let ranked = SlashCompletion.ranked(
+            viewModel.serverCommands, query: query, recents: recentNames)
+        let app = appCommands().compactMap { command -> SlashCommand? in
+            guard let highlight = Self.appMatch(command, query: query) else { return nil }
+            var matched = command
+            matched.highlight = highlight
+            return matched
         }
+
+        guard !ranked.isEmpty || !viewModel.serverCommands.isEmpty else {
+            return [SlashCommandSection(title: "", commands: app)]
+        }
+
+        var server = ranked.map { makeServerCommand($0.command, highlight: $0.highlight) }
+        let recentRows =
+            query.isEmpty
+            ? Array(server.prefix { recentNames.contains(commandName(of: $0)) }.prefix(4)) : []
+        if !recentRows.isEmpty {
+            let taken = Set(recentRows.map(\.id))
+            server = server.filter { !taken.contains($0.id) }
+        }
+        if !server.isEmpty, let browse = browseCommand() { server.append(browse) }
+
         return [
+            SlashCommandSection(title: String(localized: "Recent"), commands: recentRows),
             SlashCommandSection(title: String(localized: "On the server"), commands: server),
-            SlashCommandSection(title: String(localized: "In Tailscode"), commands: appCommands()),
+            SlashCommandSection(title: String(localized: "In Tailscode"), commands: app),
         ]
     }
 
-    private func makeServerCommand(_ command: AgentCommand) -> SlashCommand {
-        var subtitle = command.details
-        if let scope = command.scope, !scope.isEmpty {
-            subtitle = subtitle.isEmpty ? scope : "\(subtitle) · \(scope)"
+    private func commandName(of row: SlashCommand) -> String {
+        String(row.id.dropFirst("server:".count))
+    }
+
+    /// An app row answers to its own vocabulary — `/m`, `/think`, `/retry` — so the letters that
+    /// matched are found against whichever keyword hit, then mapped onto the title when the title
+    /// happens to carry them. A keyword-only hit still shows, just without tinted letters.
+    private static func appMatch(_ command: SlashCommand, query: String) -> [Int]? {
+        guard !query.isEmpty else { return [] }
+        let title = command.title.lowercased()
+        if let range = title.range(of: query) {
+            let start = title.distance(from: title.startIndex, to: range.lowerBound)
+            return Array(start..<(start + query.count))
         }
+        return command.keywords.contains { $0.hasPrefix(query) } ? [] : nil
+    }
+
+    private func browseCommand() -> SlashCommand? {
+        let total = viewModel.serverCommands.count
+        guard total > 0 else { return nil }
         return SlashCommand(
+            id: "app:·browse",
+            keywords: ["all", "commands", "browse", "help"],
+            title: String(localized: "All commands"),
+            subtitle: String(localized: "Browse the \(total) this server offers"),
+            symbol: "square.grid.2x2"
+        ) { [weak self] in
+            self?.hideCommandPalette()
+            Theme.Haptics.selection()
+            self?.presentCommandCatalog()
+        }
+    }
+
+    private func makeServerCommand(_ command: AgentCommand, highlight: [Int] = []) -> SlashCommand {
+        SlashCommand(
+            id: "server:\(command.name)",
             keywords: [command.name.lowercased()],
             title: "/\(command.name)",
-            subtitle: subtitle,
-            symbol: Self.symbol(for: command),
+            subtitle: command.details,
+            symbol: CommandSymbol.of(command),
+            highlight: highlight.map { $0 + 1 },
+            argumentHint: command.argumentHint,
+            badge: command.scope,
             runsOnServer: true
         ) { [weak self] in
             self?.hideCommandPalette()
             Theme.Haptics.selection()
-            self?.invokeServerCommand(command)
+            self?.selectServerCommand(command)
         }
     }
 
-    private static func symbol(for command: AgentCommand) -> String {
-        switch command.name {
-        case "goal": return "target"
-        case "recap": return "text.line.first.and.arrowtriangle.forward"
-        case "compact": return "arrow.down.right.and.arrow.up.left"
-        case "context": return "chart.pie"
-        case "usage": return "creditcard"
-        case "init": return "doc.badge.plus"
-        case "review": return "checklist"
-        default: break
-        }
-        switch command.source {
-        case .plugin: return "puzzlepiece.extension"
-        case .project: return "folder"
-        case .mcp: return "cable.connector"
-        case .skill: return "wand.and.stars"
-        default: return "terminal"
-        }
-    }
-
-    /// A command that takes arguments lands in the composer for the user to complete rather than
-    /// firing bare; `/goal` gets a purpose-built prompt because a stop condition is a different
-    /// kind of writing from a message.
-    private func invokeServerCommand(_ command: AgentCommand) {
+    /// Picking a command that takes arguments lands it in the composer to be completed rather than
+    /// firing bare — a tap is a choice, not a submission. `/goal` gets a purpose-built prompt
+    /// because a stop condition is a different kind of writing from a message.
+    private func selectServerCommand(_ command: AgentCommand) {
+        SlashRecents.record(command.name)
         if command.name == "goal" {
             composer.clear()
             presentGoalComposer()
@@ -2278,8 +2548,39 @@ final class ChatViewController: UIViewController {
             composer.setDraft("/\(command.name) ", focus: true)
             return
         }
+        runServerCommand(command, arguments: nil)
+    }
+
+    /// A command the person typed out and sent. Unlike a pick, this is a submission: a command
+    /// that wants arguments and was sent without them runs bare, exactly as a terminal would,
+    /// rather than being handed back for editing.
+    private func runServerCommand(_ command: AgentCommand, arguments: String?) {
+        SlashRecents.record(command.name)
+        if command.name == "goal", arguments == nil {
+            composer.clear()
+            presentGoalComposer()
+            return
+        }
+        if command.name == "compact", viewModel.supportsCompaction {
+            composer.clear()
+            presentCompactPreflight(instruction: arguments ?? "")
+            return
+        }
         composer.clear()
-        viewModel.run(command)
+        UserDefaults.standard.removeObject(forKey: draftKey)
+        viewModel.run(command, arguments: arguments)
+    }
+
+    private func presentCommandCatalog() {
+        let catalog = CommandCatalogViewController(commands: viewModel.serverCommands)
+        catalog.onPick = { [weak self] command in self?.selectServerCommand(command) }
+        let nav = UINavigationController(rootViewController: catalog)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.large(), .medium()]
+            sheet.selectedDetentIdentifier = .large
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     private func appCommands() -> [SlashCommand] {
@@ -2466,6 +2767,8 @@ final class ChatViewController: UIViewController {
                 }.joined(separator: "\n")
             case .subagent(let card):
                 body = Self.subagentMarkdown(card)
+            case .workflow(let run):
+                body = Self.workflowMarkdown(run)
             case .subagentGroup(let group):
                 body = "_" + String(localized: "\(group.total) agents") + "_"
             case .file(let file), .image(let file):
@@ -2579,7 +2882,8 @@ final class ChatViewController: UIViewController {
     /// that agent's own card, so the agent's work sits in the conversation at the point it began
     /// instead of behind a screen of its own.
     private static func makeRows(
-        from messages: [ChatMessage], agents: SubagentPlacement
+        from messages: [ChatMessage], agents: SubagentPlacement,
+        runs: [String: WorkflowRun] = [:]
     ) -> [ChatRow] {
         var rows: [ChatRow] = []
         var lastDate: Date?
@@ -2622,6 +2926,15 @@ final class ChatViewController: UIViewController {
                             ChatRow(
                                 id: "agent:\(card.agentID)", messageID: message.id,
                                 role: message.role, content: .subagent(card)))
+                        continue
+                    }
+                    if let run = runs[call.id] {
+                        flushActivity()
+                        rows.append(
+                            ChatRow(
+                                id: "workflow:\(call.id)", messageID: message.id,
+                                role: message.role, content: .workflow(run)))
+                        pendingUnattached = []
                         continue
                     }
                     if steps.isEmpty { groupID = part.id }
@@ -2747,6 +3060,11 @@ final class ChatViewController: UIViewController {
     /// Backends that never name the spawning call — opencode's child sessions, or a bridge that
     /// hasn't resolved the id yet — get their cards seated in order against the spawn calls
     /// still free, so a card still lands where its work began.
+    private var workflowRuns: [WorkflowRun] = []
+    private var workflowNow: Date = Date()
+    private var workflowTicker: Task<Void, Never>?
+    private var lastRenderedState: ConversationState?
+
     private func subagentPlacement(for messages: [ChatMessage]) -> SubagentPlacement {
         guard viewModel.supportsSubagents, !viewModel.trackedSubagents.isEmpty else {
             return SubagentPlacement()
@@ -2905,9 +3223,26 @@ final class ChatViewController: UIViewController {
 }
 
 extension ChatViewController: ComposerViewDelegate {
+    /// A typed slash goes where the palette would have sent it — the person who types the whole
+    /// command should not get different behaviour from the person who tapped the row. Anything
+    /// the server has never heard of goes out as the words that were written: the server is the
+    /// authority on its own grammar.
     func composerDidSend(_ text: String) {
         hideCommandPalette()
-        sendDraft(text)
+        switch SlashDispatch.decide(
+            text: text, commands: viewModel.serverCommands,
+            supportsCompaction: viewModel.supportsCompaction,
+            resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText)
+        {
+        case .compactPreflight(let instruction):
+            UserDefaults.standard.removeObject(forKey: draftKey)
+            SlashRecents.record("compact")
+            presentCompactPreflight(instruction: instruction)
+        case .run(let command, let arguments):
+            runServerCommand(command, arguments: arguments)
+        case .plainText:
+            sendDraft(text)
+        }
     }
 
     private func sendDraft(_ text: String, model: ModelSelection? = nil, effort: String? = nil) {
@@ -3285,6 +3620,8 @@ extension ChatViewController: UICollectionViewDelegate {
             }.joined(separator: "\n\n")
         case .subagent(let card):
             return Self.subagentMarkdown(card)
+        case .workflow(let run):
+            return Self.workflowMarkdown(run)
         case .subagentGroup:
             return nil
         case .file(let file), .image(let file):
