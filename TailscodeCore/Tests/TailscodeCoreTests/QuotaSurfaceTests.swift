@@ -75,6 +75,19 @@ struct QuotaSurfaceTests {
         #expect(withGauge?.resetsAt != nil)
     }
 
+    @Test("A named-provider failure wins over a full gauge on another provider")
+    func namedFailureBeatsOtherGauge() {
+        let message =
+            "monthly usage limit reached. It will reset in 3 days 5 hours. "
+            + "https://opencode.ai/workspace/wrk_01KWZ4MWEY0CDNAK0WMP4VRH7Q/go"
+        let e = QuotaSurface.resolve(
+            failureMessage: message,
+            quotas: [quota("Claude", [gauge(label: "Weekly", fraction: 1.0, resetsIn: 600)])])
+        #expect(e?.provider == "OpenCode Go")
+        #expect(e?.window == Localized.text("Monthly"))
+        #expect(e?.source == .failure)
+    }
+
     @Test("Copy names the wall and the next step")
     func copy() {
         let e = QuotaExhaustion(

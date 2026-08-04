@@ -74,20 +74,24 @@ public enum QuotaSurface {
         return needles.contains { lower.contains($0) }
     }
 
-    /// Prefer live gauges for the window name and reset; fall back to classifying a failure string
-    /// alone when the turn died before a refresh landed.
+    /// Prefer the wall the failed turn itself hit, then live gauges for the window name and
+    /// reset, and fall back to classifying the failure string alone. A failure that names its
+    /// provider is the turn's own wall — a full gauge on some *other* provider (say Claude's
+    /// weekly, while this turn died on opencode-go) must not rewrite it.
     public static func resolve(failureMessage: String?, quotas: [UsageQuota]) -> QuotaExhaustion? {
-        if let gauge = hottestExhausted(in: quotas) {
-            if failureMessage == nil || isQuotaFailure(failureMessage ?? "") {
-                return gauge
+        if let message = failureMessage, isQuotaFailure(message) {
+            let named = QuotaExhaustion(
+                provider: providerHint(in: message) ?? Localized.text("Provider"),
+                window: windowHint(in: message) ?? Localized.text("Usage"),
+                fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false,
+                source: .failure)
+            if providerHint(in: message) != nil {
+                return named
             }
+            if let gauge = hottestExhausted(in: quotas) { return gauge }
+            return named
         }
-        guard let message = failureMessage, isQuotaFailure(message) else { return nil }
-        if let gauge = hottestExhausted(in: quotas) { return gauge }
-        return QuotaExhaustion(
-            provider: providerHint(in: message) ?? Localized.text("Provider"),
-            window: windowHint(in: message) ?? Localized.text("Usage"),
-            fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false, source: .failure)
+        return hottestExhausted(in: quotas)
     }
 
     /// Banner / phase line: names what is used up.
