@@ -22,6 +22,7 @@ final class ChatPane: @unchecked Sendable {
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
+    private var workflowRuns: [WorkflowRun] = []
     private var usage: AgentUsage?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
@@ -74,16 +75,26 @@ final class ChatPane: @unchecked Sendable {
     private var lastFullCount = 0
 
     let context = TranscriptContext()
+    private let cascade = CascadePainter()
     private let rowBuilder = TranscriptRowBuilder()
     private(set) var renderedRows: [TranscriptRow] = []
     private var rowWidgets: [UInt] = []
+    /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
+    /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
+    /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
+    private var enteredRows: Set<String> = []
     private var placeholderShown = false
     private var currentPlaceholder: String?
+    private var chooser: PaneChooser?
     private var freshlyCreatedID: String?
     private var inFlightImages: Set<String> = []
     private var inFlightSubagents: Set<String> = []
 
     private(set) var entry: SessionEntry?
+    /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
+    private(set) var video: VideoPane?
+    /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
+    private(set) var page: WebPane?
     private(set) var backend: (any CodingAgentBackend)?
     private(set) var conversation: AgentConversation?
     private(set) var lastState: ConversationState?
@@ -112,6 +123,7 @@ final class ChatPane: @unchecked Sendable {
         self.host = host
         buildRoot()
         wireContext()
+        cascade.onFrame = { [weak self] in self?.paintCascade() }
     }
 
     /// The vadjustment's `changed` signal fires when the content's extent moves — including while
@@ -198,14 +210,6 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(root), attachmentsBox)
         gtk_box_append(ptr(root), makeComposer())
         gtk_box_append(ptr(root), makePillRow())
-
-        Gtk.onRelease(root) { [weak self] in
-            guard let self, let host = self.host else { return }
-            Gtk.onMain { [weak host, weak self] in
-                guard let self else { return }
-                host?.paneClicked(self)
-            }
-        }
     }
 
     /// Dropping files on the prompt box attaches them, which is how a file gets from a file
@@ -315,6 +319,11 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(row), attach)
 
         gtk_button_set_label(ptr(sendButton), Localized.text("⏎ send"))
+        /// A pill whose label decides how narrow the pane may be is a pill that clips the whole
+        /// transcript the moment Send becomes Queue: the longer word raised the pane's minimum
+        /// past what the window could give it, and every row in it spilled over the edge for as
+        /// long as a turn ran. The chrome shrinks before the conversation does.
+        gtk_button_set_can_shrink(ptr(sendButton), 1)
         Gtk.addClass(sendButton, "send-pill")
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             self?.sendFromComposer()
@@ -348,6 +357,9 @@ final class ChatPane: @unchecked Sendable {
         context.requestSubagent = { [weak self] call in
             Gtk.onMain { [weak self] in self?.fetchSubagent(call) }
         }
+        context.requestWorkflowAgent = { [weak self] agentID in
+            Gtk.onMain { [weak self] in self?.fetchWorkflowAgent(agentID) }
+        }
         context.openImage = { [weak self] key, name in
             Gtk.onMain { [weak self] in self?.presentImage(key: key, name: name) }
         }
@@ -370,7 +382,110 @@ final class ChatPane: @unchecked Sendable {
         if visible { refreshIdentity() }
     }
 
+    /// Turns this pane into a video slot, or points the one it already is at something else. The
+    /// chat furniture is hidden rather than destroyed, so a slot is a state of a pane and not a
+    /// second kind of object the split tree would have to learn.
+    func showVideo(_ target: VideoTarget?) {
+        chooser = nil
+        if video == nil {
+            let pane = VideoPane(target: target)
+            video = pane
+            gtk_box_append(ptr(root), pane.root)
+            setChatFurnitureVisible(false)
+            pane.onChange = { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.refreshIdentity()
+                    self.host?.videoSlotChanged()
+                }
+            }
+        } else if let target {
+            video?.point(at: target)
+        }
+        if target == nil { video?.focusPrompt() }
+        refreshIdentity()
+    }
+
+    /// Turns this pane into a browser slot, or points the one it already is at another address.
+    func showWeb(_ target: WebTarget?) {
+        chooser = nil
+        if page == nil {
+            let pane = WebPane(target: target)
+            page = pane
+            gtk_box_append(ptr(root), pane.root)
+            setChatFurnitureVisible(false)
+            pane.onChange = { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.refreshIdentity()
+                    self.host?.videoSlotChanged()
+                }
+            }
+        } else if let target {
+            page?.point(at: target)
+        }
+        if target == nil { page?.focusPrompt() }
+        refreshIdentity()
+    }
+
+    var isBrowsing: Bool { page != nil }
+    var webTarget: WebTarget? {
+        page.flatMap { pane in pane.currentAddress.map(WebTarget.page) ?? pane.target }
+    }
+    var webSummary: String? { page?.summary }
+
+    /// A browsing pane claims only the chords a browser owns; every other key belongs to the page,
+    /// which is typing into a form as often as not.
+    func handleWebChord(_ chord: KeyChord) -> Bool {
+        guard let page else { return false }
+        if page.isAsking {
+            guard let command = WebCommand.command(for: chord), command != .address else {
+                return false
+            }
+            page.handle(command)
+            return true
+        }
+        guard let command = WebCommand.command(for: chord) else { return false }
+        page.handle(command)
+        return true
+    }
+
+    var isWatching: Bool { video != nil }
+    var videoTarget: VideoTarget? { video?.target }
+    var videoSummary: String? { video?.summary }
+
+    /// A slot answers its own keys while it is focused; everything it does not claim goes on to
+    /// the app's shortcut table, so the chat panes lose nothing to a slot in the grid.
+    func handleVideoChord(_ chord: KeyChord) -> Bool {
+        guard let video, !video.isAsking else { return false }
+        guard let command = VideoCommand.command(for: chord) else { return false }
+        video.handle(command)
+        return true
+    }
+
+    /// Everything the pane draws for a conversation, out of the way while it holds a stream —
+    /// walked rather than named so a new piece of chat chrome cannot forget to hide itself.
+    private func setChatFurnitureVisible(_ visible: Bool) {
+        var child = gtk_widget_get_first_child(root)
+        while let current = child {
+            let next = gtk_widget_get_next_sibling(current)
+            if current != identityLabel, current != video?.root, current != page?.root {
+                gtk_widget_set_visible(current, visible ? 1 : 0)
+            }
+            child = next
+        }
+    }
+
     private func refreshIdentity() {
+        if let page {
+            gtk_label_set_text(op(identityLabel), "\(page.slot.title) · \(page.slot.subtitle)")
+            return
+        }
+        if let video {
+            gtk_label_set_text(
+                op(identityLabel), "\(video.slot.title) · \(video.slot.subtitle)")
+            return
+        }
         guard let entry else {
             gtk_label_set_text(op(identityLabel), Localized.text("No conversation"))
             return
@@ -411,6 +526,7 @@ final class ChatPane: @unchecked Sendable {
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard sessionID != entry.session.id else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
+        chooser = nil
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
         self.entry = entry
@@ -555,6 +671,11 @@ final class ChatPane: @unchecked Sendable {
     /// A closing pane stops talking to the world before its widgets go: a cancelled stream is
     /// the difference between a closed pane and a leak that keeps rendering into nothing.
     func shutdown() {
+        cascade.release()
+        video?.shutdown()
+        video = nil
+        page?.shutdown()
+        page = nil
         stashDraft()
         streamTask?.cancel()
         agentStreamTask?.cancel()
@@ -653,6 +774,7 @@ final class ChatPane: @unchecked Sendable {
             }
         }
         lastFullRows = rows
+        refreshWorkflowRuns()
         if let sessionID { host?.rememberRows(rows, for: sessionID) }
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
@@ -671,9 +793,12 @@ final class ChatPane: @unchecked Sendable {
                 ? Localized.text("Nothing here yet. Say something.") : Localized.text("Loading…"))
             : nil
         if let placeholder {
+            cascade.release()
             showPlaceholder(placeholder)
         } else {
-            applyRows(windowed, appended: appended)
+            applyRows(
+                pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            paintCascade()
         }
         renderPendingCards(state)
         refreshPills()
@@ -681,7 +806,88 @@ final class ChatPane: @unchecked Sendable {
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
     }
 
+    /// An empty pane asks which server rather than captioning itself. The chooser owns the
+    /// transcript area until something fills it, and every re-render keeps the person's place.
+    func showChooser(_ model: PaneChooser) {
+        chooser = model
+        renderChooser()
+    }
+
+    var chooserShown: Bool { chooser != nil }
+    var chooserServerID: String? { chooser?.serverID }
+
+    /// A pane holding an unanswered question or a slot is not an empty pane looking for a chat:
+    /// the listing may refresh under it, but nothing may fill it except the person who opened it.
+    var isAnswering: Bool { chooser != nil || video != nil || page != nil }
+
+    /// One line describing the chooser, for the headless driver: the question, then the rows with
+    /// the cursor marked.
+    var chooserSummary: String? {
+        guard let chooser else { return nil }
+        let rows = chooser.rows.enumerated().map { index, row in
+            "\(index == chooser.cursor ? "*" : "")\(row.title)"
+        }
+        return "\(chooser.heading) [\(rows.joined(separator: " | "))]"
+    }
+
+    /// A fresh listing under an open chooser: the same question, answered with what is true now.
+    func restateChooser(servers: [PaneChooserServer], entries: [SessionEntry]) {
+        guard let current = chooser else { return }
+        chooser = current.restated(servers: servers, entries: entries)
+        renderChooser()
+    }
+
+    /// The chooser answers the keyboard before the shortcut table does — but only for the keys it
+    /// binds, so `ctrl+w` verbs, `?` and everything else still reach the window.
+    func handleChooserChord(_ chord: KeyChord) -> Bool {
+        guard var model = chooser, let command = PaneChooser.command(for: chord) else {
+            return false
+        }
+        let (handled, action) = model.handle(command)
+        guard handled else { return false }
+        chooser = model
+        if let action {
+            host?.pane(self, chose: action)
+        } else {
+            renderChooser()
+        }
+        return true
+    }
+
+    private func renderChooser() {
+        guard let model = chooser else { return }
+        Gtk.removeChildren(of: transcriptBox)
+        renderedRows = []
+        rowWidgets = []
+        highlightedRow = 0
+        placeholderShown = true
+        currentPlaceholder = nil
+        pendingReveal = false
+        gtk_widget_set_opacity(transcriptBox, 1)
+        gtk_box_append(
+            ptr(transcriptBox),
+            ChooserView.make(model) { [weak self] index in
+                Gtk.onMain { [weak self] in self?.activateChooserRow(index) }
+            })
+    }
+
+    private func activateChooserRow(_ index: Int) {
+        guard var model = chooser else { return }
+        host?.paneClicked(self)
+        model.focus(index)
+        let action = model.rows.indices.contains(index) ? model.rows[index].action : nil
+        guard let action else { return }
+        let outcome = model.activate(action)
+        chooser = model
+        if let outcome {
+            host?.pane(self, chose: outcome)
+        } else {
+            renderChooser()
+        }
+    }
+
     func showPlaceholder(_ text: String) {
+        chooser = nil
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
         Gtk.removeChildren(of: transcriptBox)
@@ -701,6 +907,7 @@ final class ChatPane: @unchecked Sendable {
     /// the person's, not the scrollbar's. `renderedRows` is always a contiguous slice of the
     /// applied row list that reaches its end.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        if updatedLastRowInPlace(rows) { return }
         let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
@@ -810,15 +1017,21 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
-        for row in rows {
+        let entering = !placeholderShown && !pendingReveal && fillComplete && followsBottom
+        for (offset, row) in rows.enumerated() {
             let widget = row.makeWidget(context: context)
             gtk_box_append(ptr(transcriptBox), widget)
+            let firstSight = enteredRows.insert(row.key).inserted
+            if entering, firstSight, row.key != cascade.key {
+                CascadeEntrance.animate(widget, index: offset, of: rows.count)
+            }
             rowWidgets.append(UInt(bitPattern: widget))
             renderedRows.append(row)
         }
     }
 
     private func tearDownAllRows() {
+        enteredRows.removeAll(keepingCapacity: true)
         for bits in rowWidgets {
             guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
             gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
@@ -826,6 +1039,151 @@ final class ChatPane: @unchecked Sendable {
         renderedRows = []
         rowWidgets = []
         highlightedRow = 0
+    }
+
+    /// A streamed token changes exactly one row, and rebuilding its widget for every arrival is
+    /// what makes a live answer flicker: the label is torn down and remade dozens of times a
+    /// second, which restarts its entrance, drops any selection inside it, and asks the whole
+    /// column to lay out again. When the only difference is more words in a row that can take them
+    /// where it stands — the answer the painter is holding, or a thought counting itself up — the
+    /// change is written into the widget and the bookkeeping moves with it.
+    private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
+        guard !placeholderShown, fillComplete,
+            renderedRows.count == rows.count, let last = rows.indices.last, last > 0,
+            renderedRows[last].key == rows[last].key, renderedRows[last] != rows[last],
+            last < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[last]),
+            renderedRows.dropLast().elementsEqual(rows.dropLast())
+        else { return false }
+        let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        switch (renderedRows[last].kind, rows[last].kind) {
+        case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
+            guard rows[last].key == cascade.key, Self.cascadeMarkup(for: rows[last]) != nil
+            else { return false }
+        case (.reasoning, .reasoning(let text)):
+            guard TranscriptRow.restateReasoning(
+                widget, text: text, key: rows[last].key, context: context)
+            else { return false }
+        default:
+            return false
+        }
+        renderedRows[last] = rows[last]
+        if followsBottom { scrollToBottom() }
+        return true
+    }
+
+    /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
+    /// the network delivered. Only the last row can be live — anything after it is proof the
+    /// stream has moved on — and only the kinds that grow a character at a time qualify, so a tool
+    /// call landing after a paragraph settles that paragraph rather than freezing it half-written.
+    ///
+    /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
+    /// without its closer. How much of what it rendered is actually on screen is the painter's
+    /// business, applied to the widget after the diff has built it.
+    private func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
+        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let released = cascade.key
+        guard let live, let source = live.streamedText else {
+            cascade.release()
+            if let released { settleCascade(on: released, in: rows) }
+            return rows
+        }
+        let safe = LiveCascade.renderable(source, sealed: !running)
+        var paced = rows
+        let row = safe == source ? live : live.truncated(to: safe)
+        paced[paced.count - 1] = row
+        guard let markup = Self.cascadeMarkup(for: row) else {
+            cascade.release()
+            if let released { settleCascade(on: released, in: rows) }
+            return rows
+        }
+        cascade.focus(
+            row.key, markup: markup, sealed: !running,
+            ultracode: auraActive || ultracodeInFlight, clock: transcriptBox)
+        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
+        return paced
+    }
+
+    /// One frame of the wave, painted into the live row's own label. The markup is parsed once by
+    /// the shim and cached, so a frame is a substring and an attribute list — never a markdown
+    /// parse and never a widget rebuild, which is what lets a selection survive the sentence it is
+    /// in being written.
+    private func paintCascade() {
+        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
+        let index = renderedRows.count - 1
+        guard index < rowWidgets.count, renderedRows[index].key == key,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
+            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind),
+            let markup = Self.cascadeMarkup(for: renderedRows[index])
+        else { return }
+        cascade.paint(label, markup: markup)
+        if followsBottom { scrollToBottom() }
+    }
+
+    /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
+    /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
+    /// the heat of a stream that stopped — the row has to be handed back whole by hand.
+    private func settleCascade(on key: String, in rows: [TranscriptRow]) {
+        guard let index = renderedRows.lastIndex(where: { $0.key == key }),
+            index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
+            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
+        else { return }
+        let row = rows.last(where: { $0.key == key }) ?? renderedRows[index]
+        guard let markup = Self.cascadeMarkup(for: row) else { return }
+        cascade.settle(label, markup: markup)
+    }
+
+    /// What the shim should parse for this row. Prose already carries its markup; a code block is
+    /// its own body, escaped, so the one reveal path serves both.
+    ///
+    /// GtkLabel resolves `<a href>` itself and never hands it to Pango, but a live row is painted
+    /// through Pango's own parser — so a link is dressed as what the label would have made of it,
+    /// and becomes a real link again the moment the row settles and is rendered the ordinary way.
+    private static func cascadeMarkup(for row: TranscriptRow) -> String? {
+        switch row.kind {
+        case .agentProse(_, let markup):
+            let accent = MatrixTheme.palette.accent
+            var text = markup.replacingOccurrences(of: "</a>", with: "</span>")
+            while let open = text.range(of: "<a href=\""),
+                let close = text[open.upperBound...].range(of: "\">")
+            {
+                text.replaceSubrange(
+                    open.lowerBound..<close.upperBound,
+                    with: "<span foreground=\"\(accent)\" underline=\"single\">")
+            }
+            return text
+        case .codeBlock(_, let body):
+            return PangoMarkdown.escape(body)
+        default:
+            return nil
+        }
+    }
+
+    /// Where a live row keeps the words: prose is the label, a code block keeps its body under the
+    /// header and behind a scroller once it is tall enough to need one.
+    private static func streamedLabel(
+        in widget: UnsafeMutablePointer<GtkWidget>, kind: TranscriptRow.Kind
+    ) -> UnsafeMutablePointer<GtkWidget>? {
+        func isA(_ candidate: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
+            let instance = UnsafeMutableRawPointer(candidate).assumingMemoryBound(
+                to: GTypeInstance.self)
+            return g_type_check_instance_is_a(instance, type) != 0
+        }
+        switch kind {
+        case .agentProse:
+            return isA(widget, gtk_label_get_type()) ? widget : nil
+        case .codeBlock:
+            guard let last = gtk_widget_get_last_child(widget) else { return nil }
+            if isA(last, gtk_label_get_type()) { return last }
+            guard isA(last, gtk_scrolled_window_get_type()),
+                let child = gtk_scrolled_window_get_child(op(last)),
+                isA(child, gtk_label_get_type())
+            else { return nil }
+            return child
+        default:
+            return nil
+        }
     }
 
     /// A cache arrival (a decoded picture, a fetched subagent transcript) redraws exactly the rows
@@ -1039,6 +1397,7 @@ final class ChatPane: @unchecked Sendable {
                 return false
             }
         }
+        refreshWorkflowRuns()
         updateStatus()
     }
 
@@ -1066,6 +1425,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event.
     private func updateTicker(running: Bool) {
+        let running = running || needsTicker
         if running, tickerTask == nil {
             tickerTask = Task { [weak self] in
                 var tick = 0
@@ -1075,6 +1435,7 @@ final class ChatPane: @unchecked Sendable {
                     let facts = tick % 5 == 0
                     Gtk.onMain { [weak self] in
                         self?.updateStatus()
+                        self?.advanceWorkflowClock()
                         if facts { self?.refreshTurnFacts() }
                     }
                 }
@@ -1152,6 +1513,9 @@ final class ChatPane: @unchecked Sendable {
         return backend?.reasoningEffortOptions ?? []
     }
 
+    /// The pill offers what this person actually works with — the shared shortlist — and hands the
+    /// rest to the chooser, which is the only surface that can hold a catalog of two hundred and
+    /// still be read. The two are the same list at two lengths.
     private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
         guard !models.isEmpty else {
             return [(Localized.text("This server lists no models"), nil, {})]
@@ -1163,16 +1527,30 @@ final class ChatPane: @unchecked Sendable {
                 }
             })
         ]
-        for model in models {
-            let selection = model.selection
+        for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
+            let selection = candidate.selection
             rows.append(
-                (model.name, model.providerID, { [weak self] in
+                (candidate.name, candidate.providerNames.joined(separator: " · "), { [weak self] in
                     Gtk.onMain { [weak self] in
                         self?.setChosenModel(selection)
                     }
                 }))
         }
+        rows.append(
+            (Localized.text("All models…"), ModelChooser(models: models, selected: chosenModel).summary,
+             { [weak self] in
+                Gtk.onMain { [weak self] in self?.openModelChooser() }
+             }))
         return rows
+    }
+
+    private func openModelChooser() {
+        ModelChooserWindow.present(
+            models: models, selected: chosenModel, allowsServerDefault: true,
+            parent: host?.windowWidget ?? root
+        ) { [weak self] selection in
+            Gtk.onMain { [weak self] in self?.setChosenModel(selection) }
+        }
     }
 
     private func setChosenModel(_ selection: ModelSelection?) {
@@ -1414,8 +1792,9 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// The composer's normal mode is the app's normal mode: every key answers to the shortcut
-    /// table first while vim keeps what makes it vim. A key neither side binds goes back to vim
-    /// rather than to the text view, so no stray letter types itself into the draft.
+    /// table first while vim keeps what makes it vim — and a chord sequence in flight outranks
+    /// both, so `ctrl+w v` splits rather than entering visual mode. A key neither side binds goes
+    /// back to vim rather than to the text view, so no stray letter types itself into the draft.
     private func composerNormalKey(
         _ key: VimKey, keyval: UInt32, state: UInt32
     ) -> Bool? {
@@ -1435,9 +1814,7 @@ final class ChatPane: @unchecked Sendable {
             return true
         }
         let plain = !chord.control && !chord.alt
-        let entries: Set<Character> = ["i", "a", "o", "v", "V"]
-        let entersVimMode = plain && (Keymap.scalar(keyval).map { entries.contains($0) } ?? false)
-        if vim.mode != .normal || vim.awaitsMore || entersVimMode || (plain && key.isEnter) {
+        if vim.claims(key, plain: plain, chordPending: !host.pendingChords.isEmpty) {
             host.pendingChords = []
             applyVim(vim.handle(key, text: composerText(), cursor: composerCursor()))
             return true
@@ -1647,7 +2024,8 @@ final class ChatPane: @unchecked Sendable {
             dismissCompletion()
             return
         }
-        var matches = SlashCompletion.matches(commands, query: query)
+        var matches = SlashCompletion.matches(
+            commands, query: query, recents: SlashRecents.surviving(in: commands))
         if matches.count == 1, matches[0].name.lowercased() == query.lowercased() {
             matches = []
         }
@@ -2002,6 +2380,71 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// A workflow's runs, rebuilt from the transcript and the live fan-out. Only the cards whose
+    /// run actually changed are replaced: a run reports every second and a full rebuild of the
+    /// transcript for a spinner frame is a flicker.
+    private func refreshWorkflowRuns() {
+        guard let state = lastState else { return }
+        let runs = WorkflowRunAssembly.runs(
+            messages: state.messages, agents: agents, now: context.workflowNow)
+        if runs != workflowRuns {
+            var byCall: [String: WorkflowRun] = [:]
+            for run in runs { byCall[run.id] = run }
+            let stale = Set(
+                byCall.keys.filter { context.workflowRuns[$0] != byCall[$0] }
+                    + context.workflowRuns.keys.filter { byCall[$0] == nil })
+            workflowRuns = runs
+            context.workflowRuns = byCall
+            if !stale.isEmpty {
+                replaceRows {
+                    if case .workflow(let call) = $0.kind { return stale.contains(call.id) }
+                    return false
+                }
+            }
+        }
+        updateTicker(running: state.status == .running)
+    }
+
+    /// Whether anything on screen still needs a clock: a turn in flight, or a workflow that outlived
+    /// it. A background run keeps four agents working for minutes after the turn that launched it
+    /// ended, and a card whose elapsed reading froze at launch reads as a hang.
+    private var needsTicker: Bool {
+        lastState?.status == .running || workflowRuns.contains(where: \.isLive)
+    }
+
+    /// The clock every live workflow card is drawn against, moved once a second so spinners turn and
+    /// elapsed readings climb without a state event.
+    private func advanceWorkflowClock() {
+        guard workflowRuns.contains(where: \.isLive) else { return }
+        context.workflowNow = Date()
+        let live = Set(workflowRuns.filter(\.isLive).map(\.id))
+        refreshWorkflowRuns()
+        replaceRows {
+            if case .workflow(let call) = $0.kind { return live.contains(call.id) }
+            return false
+        }
+    }
+
+    private func fetchWorkflowAgent(_ agentID: String) {
+        guard let backend, let entry, !inFlightSubagents.contains(agentID) else { return }
+        inFlightSubagents.insert(agentID)
+        let sessionID = entry.session.id
+        Task { [weak self] in
+            let messages =
+                (try? await backend.subagentMessages(sessionID: sessionID, agentID: agentID)) ?? []
+            let rows = TranscriptRow.rows(for: messages)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.inFlightSubagents.remove(agentID)
+                self.context.subagentRows[WorkflowAgentRows.key(agentID)] = rows
+                self.replaceRows {
+                    if case .workflow = $0.kind { return true }
+                    return false
+                }
+            }
+        }
+    }
+
     private func fetchSubagent(_ call: ToolCall) {
         guard let backend, let entry,
             !inFlightSubagents.contains(call.id)
@@ -2122,25 +2565,26 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
-    /// A typed slash command goes where the palette would send it; anything unknown goes out as
-    /// plain text — the server is the authority on its own grammar.
+    /// A typed slash command goes where the completion list would send it. The decision is the
+    /// shared one so all three clients answer a typed command the same way; false means the words
+    /// go out as an ordinary prompt.
     private func handleSlashCommand(_ text: String) -> Bool {
-        guard text.hasPrefix("/") else { return false }
-        let name = String(text.dropFirst().prefix(while: { !$0.isWhitespace }))
-        let arguments = String(text.dropFirst(1 + name.count)).trimmingCharacters(
-            in: .whitespaces)
-        if name == "compact" {
-            host?.presentCompactPreflight(for: self, initialInstruction: arguments)
+        switch SlashDispatch.decide(
+            text: text, commands: commands,
+            supportsCompaction: backend?.capabilities.supportsCompaction != false,
+            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true)
+        {
+        case .compactPreflight(let instruction):
+            host?.presentCompactPreflight(for: self, initialInstruction: instruction)
             return true
+        case .run(let command, let arguments):
+            guard let conversation else { return false }
+            SlashRecents.record(command.name)
+            Task { try? await conversation.run(command, arguments: arguments) }
+            return true
+        case .plainText:
+            return false
         }
-        guard let command = commands.first(where: { $0.name == name }),
-            let conversation
-        else { return false }
-        if backend?.resolvesCommandsFromPromptText == true { return false }
-        Task {
-            try? await conversation.run(command, arguments: arguments.isEmpty ? nil : arguments)
-        }
-        return true
     }
 
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.

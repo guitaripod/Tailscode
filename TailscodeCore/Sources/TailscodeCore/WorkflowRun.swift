@@ -338,6 +338,30 @@ public enum WorkflowRunAssembly {
         }
     }
 
+    /// Every workflow launched in a transcript, in the order the conversation made them.
+    public static func launches(in messages: [ChatMessage]) -> [Launch] {
+        messages.flatMap { message in
+            message.parts.compactMap { part -> Launch? in
+                guard case .tool(let call) = part.kind, call.summary.kind == .workflow else {
+                    return nil
+                }
+                return Launch(call: call, at: message.createdAt)
+            }
+        }
+    }
+
+    /// The runs a whole conversation knows about: its launches, the agents fanned out under them,
+    /// and the notifications that reported the answers back. One call is the client's whole job.
+    public static func runs(messages: [ChatMessage], agents: [SubagentSummary], now: Date)
+        -> [WorkflowRun]
+    {
+        let launches = launches(in: messages)
+        guard !launches.isEmpty else { return [] }
+        return runs(
+            launches: launches, agents: agents,
+            completions: completions(in: messages.map(\.text)), now: now)
+    }
+
     public static func runs(
         launches: [Launch], agents: [SubagentSummary], completions: [String: String] = [:],
         now: Date

@@ -9,15 +9,29 @@ import TailscodeCore
 /// rebuilt freely; this survives them.
 final class TranscriptContext: @unchecked Sendable {
     var expanded: Set<String> = []
+    /// The newest text of a thought that is still being written. A reasoning row's header counts
+    /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
+    /// The row is updated in place instead, and a body opened afterwards reads the current text
+    /// from here rather than the one its closure was built with.
+    var liveReasoning: [String: String] = [:]
     var textures: [String: UInt] = [:]
     var imageData: [String: Data] = [:]
     var subagentRows: [String: [TranscriptRow]] = [:]
     /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
     /// inline agent card shows for progress while its transcript is still being written.
     var agentFacts: [String: SubagentSummary] = [:]
+    /// The workflow runs of this conversation, keyed by the Workflow call that started each. A run
+    /// outlives its tool call by minutes, so the card reads its state from here rather than from a
+    /// call that has said all it will say.
+    var workflowRuns: [String: WorkflowRun] = [:]
+    /// The clock the live parts of a workflow card are drawn against, moved by the pane's ticker so
+    /// every spinner and elapsed reading in one frame agrees.
+    var workflowNow: Date = Date()
     var onToggle: (@Sendable (String, Bool) -> Void)?
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
+    /// A workflow agent is fetched by its own id: it has no spawning call to name it.
+    var requestWorkflowAgent: (@Sendable (String) -> Void)?
     var openImage: (@Sendable (String, String) -> Void)?
     var presentText:
         (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
@@ -113,6 +127,7 @@ struct TranscriptRow: Hashable {
         case tool(ToolCall)
         case toolRun([ToolCall])
         case subagent(ToolCall)
+        case workflow(ToolCall)
         case file(FileReference)
         case compaction(Compaction)
         case turnBreak
@@ -185,9 +200,13 @@ struct TranscriptRow: Hashable {
                 rows.append(TranscriptRow(key: key, kind: .reasoning(trimmed)))
             case .tool(let call):
                 if call.asksUserQuestion, call.isAwaitingAnswer { continue }
-                rows.append(
-                    TranscriptRow(
-                        key: key, kind: call.spawnsSubagent ? .subagent(call) : .tool(call)))
+                let kind: Kind
+                if call.summary.kind == .workflow {
+                    kind = .workflow(call)
+                } else {
+                    kind = call.spawnsSubagent ? .subagent(call) : .tool(call)
+                }
+                rows.append(TranscriptRow(key: key, kind: kind))
             case .file(let reference):
                 rows.append(TranscriptRow(key: key, kind: .file(reference)))
             case .compaction(let compaction):
@@ -246,6 +265,38 @@ struct TranscriptRow: Hashable {
         return fused
     }
 
+    /// The text the agent is still writing into, when this row is the kind that grows a character
+    /// at a time. Everything else — a tool call, a picture, a seam — arrives whole and has nothing
+    /// for the cascade to pace.
+    var streamedText: String? {
+        switch kind {
+        case .agentProse(let text, _): return text
+        case .codeBlock(_, let body): return body
+        default: return nil
+        }
+    }
+
+    /// The same row with only the part of its text that has been revealed. The markup is rebuilt
+    /// uncached: a growing prefix is a new string sixty times a second and none of them will ever
+    /// be asked for again.
+    func truncated(to visible: String) -> TranscriptRow {
+        switch kind {
+        case .agentProse:
+            let palette = MatrixTheme.palette
+            return TranscriptRow(
+                key: key,
+                kind: .agentProse(
+                    text: visible,
+                    markup: PangoMarkdown.render(
+                        visible, dim: palette.textDim, code: palette.info,
+                        accent: palette.accent, cache: false)))
+        case .codeBlock(let language, _):
+            return TranscriptRow(key: key, kind: .codeBlock(language: language, body: visible))
+        default:
+            return self
+        }
+    }
+
     /// What in-conversation search reads for this row: the words a person saw, not widget state.
     var searchText: String {
         switch kind {
@@ -255,7 +306,7 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
-        case .tool(let call), .subagent(let call):
+        case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
         case .toolRun(let calls):
             return calls.map(Self.searchText(for:)).joined(separator: " ")
@@ -291,6 +342,8 @@ struct TranscriptRow: Hashable {
             return ToolRowView.makeRun(calls, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
+        case .workflow(let call):
+            return WorkflowCardView.make(call, key: key, context: context)
         case .file(let reference):
             return Self.filePart(reference, key: key, context: context)
         case .compaction(let compaction):
@@ -394,18 +447,45 @@ struct TranscriptRow: Hashable {
     private static func reasoning(_ text: String, key: String, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
     {
-        let words = text.split(separator: " ").count
-        let header = Gtk.label(
-            Localized.text("⌄ Thought · %@ words", "\(words)"), css: "dim", selectable: false)
+        context.liveReasoning[key] = text
+        let header = Gtk.label(Self.thoughtHeader(text), css: "dim", selectable: false)
         let toggle = context.onToggle
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
             onToggle: { open in toggle?(key, open) }
-        ) {
-            let body = Gtk.label(text, css: "reasoning-body", wrap: true)
+        ) { [weak context] in
+            let body = Gtk.label(
+                context?.liveReasoning[key] ?? text, css: "reasoning-body", wrap: true)
             Gtk.margins(body, leading: 14)
             return body
         }
+    }
+
+    static func thoughtHeader(_ text: String) -> String {
+        Localized.text("⌄ Thought · %@ words", "\(text.split(separator: " ").count)")
+    }
+
+    /// A thought growing under its own disclosure, written into the widget it already has. The
+    /// header counts words, so it changes with every arrival; tearing the row down and building it
+    /// again twenty times a second is the flicker, not the counting.
+    static func restateReasoning(
+        _ widget: UnsafeMutablePointer<GtkWidget>, text: String, key: String,
+        context: TranscriptContext
+    ) -> Bool {
+        func isLabel(_ candidate: UnsafeMutablePointer<GtkWidget>) -> Bool {
+            let instance = UnsafeMutableRawPointer(candidate).assumingMemoryBound(
+                to: GTypeInstance.self)
+            return g_type_check_instance_is_a(instance, gtk_label_get_type()) != 0
+        }
+        guard let button = gtk_widget_get_first_child(widget),
+            let header = gtk_button_get_child(ptr(button)), isLabel(header)
+        else { return false }
+        context.liveReasoning[key] = text
+        gtk_label_set_text(op(header), thoughtHeader(text))
+        if let body = gtk_widget_get_next_sibling(button), isLabel(body) {
+            gtk_label_set_text(op(body), text)
+        }
+        return true
     }
 
     /// A thumbnail, not a poster: the transcript is for reading, and a picture in it is a

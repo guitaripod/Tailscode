@@ -41,12 +41,16 @@ final class MainWindow: @unchecked Sendable {
     private var sessionRowOrder: [String] = []
 
     private var entries: [SessionEntry] = []
+    /// The configured servers, kept on the main context so an empty pane can ask its question in
+    /// the same frame the split happens rather than after a hop through the directory actor.
+    private var knownProfiles: [ConnectionProfile] = []
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing
     /// keeps reporting the session until the delete lands, and each report would resurrect the
     /// row; the tombstone outlives them all.
     private var pendingDeletes: Set<String> = []
     private var showingArchive = false
     private var sidebarScroller: UnsafeMutablePointer<GtkWidget>?
+    private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
     private var sidebarScrollTarget: Double?
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
@@ -132,6 +136,7 @@ final class MainWindow: @unchecked Sendable {
         }
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
+        installPressRouting(on: window)
         Notifier.shared.attach(app: app) { [weak self] sessionID in
             self?.openSession(withID: sessionID)
         }
@@ -168,6 +173,16 @@ final class MainWindow: @unchecked Sendable {
                     if let index = Int(argument), index < self.visible.count {
                         self.open(self.visible[index].entry)
                     }
+                case "openid":
+                    if let match = self.visible.first(where: { $0.entry.session.id == argument }) {
+                        self.open(match.entry)
+                    } else {
+                        let ids = self.visible.prefix(6).map { $0.entry.session.id }
+                        FileHandle.standardOutput.write(
+                            Data(
+                                "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
+                                    .utf8))
+                    }
                 case "newchat":
                     Task { [weak self] in
                         let profiles = await ServerDirectory.shared.profiles()
@@ -201,6 +216,8 @@ final class MainWindow: @unchecked Sendable {
                     _ = self.activePane.handleComposerKey(keyval: Keymap.tab, state: 0)
                     FileHandle.standardOutput.write(
                         Data("COMPOSER \"\(self.activePane.composerText())\"\n".utf8))
+                case "files":
+                    _ = self.perform(.toggleFiles)
                 case "term":
                     _ = self.perform(.toggleTerminal)
                     Gtk.after(300) { [weak self] in
@@ -253,6 +270,137 @@ final class MainWindow: @unchecked Sendable {
                     _ = self.perform(.exchangeSplit)
                 case "seq":
                     _ = self.perform(.equalizeSplits)
+                case "full":
+                    if let window = self.window { gtk_window_fullscreen(ptr(window)) }
+                case "handles":
+                    guard let window = self.window else { break }
+                    var shadowX: Double = 0
+                    var shadowY: Double = 0
+                    gtk_native_get_surface_transform(op(window), &shadowX, &shadowY)
+                    let centers = self.splitHost.handleCenters(in: window)
+                        .map { ($0.0, $0.1 + shadowX, $0.2 + shadowY) }
+                        .map { String(format: "%.0f,%.0f", $0.1, $0.2) }
+                        .sorted()
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "HANDLES \(centers.count) \(centers.joined(separator: " ")) window=\(gtk_widget_get_width(window))x\(gtk_widget_get_height(window))\n"
+                                .utf8))
+                case "geom":
+                    guard let window = self.window else { break }
+                    var shadowX: Double = 0
+                    var shadowY: Double = 0
+                    gtk_native_get_surface_transform(op(window), &shadowX, &shadowY)
+                    let described = self.splitHost.orderedPanes.enumerated().map {
+                        index, pane -> String in
+                        let bounds = Gtk.bounds(of: pane.root, in: window) ?? (0, 0, 0, 0)
+                        let composer =
+                            pane.composerScroller.flatMap { Gtk.bounds(of: $0, in: window) }
+                            ?? (0, 0, 0, 0)
+                        return String(
+                            format: "%d(%.0f,%.0f %.0fx%.0f composer=%.0f,%.0f)", index,
+                            bounds.x + shadowX, bounds.y + shadowY, bounds.width, bounds.height,
+                            composer.x + composer.width / 2 + shadowX,
+                            composer.y + composer.height / 2 + shadowY)
+                    }.joined(separator: " ")
+                    FileHandle.standardOutput.write(Data("GEOM \(described)\n".utf8))
+                case "chooser":
+                    FileHandle.standardOutput.write(
+                        Data("CHOOSER \(self.activePane.chooserSummary ?? "-")\n".utf8))
+                case "watch":
+                    let pane = self.activePane
+                    pane.showVideo(VideoTarget.classify(argument))
+                    FileHandle.standardOutput.write(
+                        Data("WATCH \(pane.videoSummary ?? "-")\n".utf8))
+                case "browse":
+                    let pane = self.activePane
+                    pane.showWeb(WebTarget.classify(argument))
+                    FileHandle.standardOutput.write(
+                        Data("BROWSE \(pane.webSummary ?? "-")\n".utf8))
+                case "web":
+                    let described = self.splitHost.orderedPanes.enumerated().map {
+                        index, pane in "\(index):\(pane.webSummary ?? "chat")"
+                    }.joined(separator: " | ")
+                    FileHandle.standardOutput.write(Data("WEB \(described)\n".utf8))
+                case "wkey":
+                    let keyval: UInt32
+                    var state: UInt32 = 0
+                    switch argument {
+                    case "back": keyval = 0xFF51; state = KeyChord.altMask
+                    case "forward": keyval = 0xFF53; state = KeyChord.altMask
+                    case "reload": keyval = 0x72; state = KeyChord.controlMask
+                    case "address": keyval = 0x6C; state = KeyChord.controlMask
+                    default: keyval = argument.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+                    }
+                    var handled = false
+                    if let chord = KeyChord.canonical(keyval: keyval, state: state) {
+                        handled = self.activePane.handleWebChord(chord)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "WKEY \(argument) handled=\(handled) \(self.activePane.webSummary ?? "-")\n"
+                                .utf8))
+                case "video":
+                    let described = self.splitHost.orderedPanes.enumerated().map {
+                        index, pane in "\(index):\(pane.videoSummary ?? "chat")"
+                    }.joined(separator: " | ")
+                    FileHandle.standardOutput.write(Data("VIDEO \(described)\n".utf8))
+                case "vkey":
+                    let keyval = argument == "space"
+                        ? UInt32(0x20)
+                        : (argument.unicodeScalars.first.map { UInt32($0.value) } ?? 0)
+                    var handled = false
+                    if let chord = KeyChord.canonical(keyval: keyval, state: 0) {
+                        handled = self.activePane.handleVideoChord(chord)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "VKEY \(argument) handled=\(handled) \(self.activePane.videoSummary ?? "-")\n"
+                                .utf8))
+                case "ckey":
+                    let keyval: UInt32
+                    switch argument {
+                    case "enter": keyval = Keymap.enter
+                    case "esc": keyval = Keymap.escape
+                    case "up": keyval = Keymap.up
+                    case "down": keyval = Keymap.down
+                    default:
+                        keyval = argument.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+                    }
+                    if let chord = KeyChord.canonical(keyval: keyval, state: 0) {
+                        let handled = self.activePane.handleChooserChord(chord)
+                        FileHandle.standardOutput.write(
+                            Data(
+                                "CKEY \(argument) handled=\(handled) \(self.activePane.chooserSummary ?? "-")\n"
+                                    .utf8))
+                    }
+                case "drag", "drop":
+                    let fields = argument.split(separator: ",").map(String.init)
+                    let index = Int(fields.first ?? "") ?? 0
+                    let u = Double(fields.count > 1 ? fields[1] : "0.5") ?? 0.5
+                    let v = Double(fields.count > 2 ? fields[2] : "0.5") ?? 0.5
+                    let sessionID = fields.count > 3 ? fields[3] : self.entries.first?.session.id
+                    let panes = self.splitHost.orderedPanes
+                    guard panes.indices.contains(index),
+                        let id = sessionID,
+                        let entry = self.entries.first(where: { $0.session.id.hasPrefix(id) })
+                    else {
+                        FileHandle.standardOutput.write(Data("DROP no-target\n".utf8))
+                        break
+                    }
+                    let pane = panes[index]
+                    let payload = PaneDragPayload(
+                        profileID: entry.profileID, sessionID: entry.session.id)
+                    let x = u * Double(gtk_widget_get_width(pane.root))
+                    let y = v * Double(gtk_widget_get_height(pane.root))
+                    if verb == "drag" {
+                        self.splitHost.hover(pane, payload: payload, x: x, y: y)
+                        FileHandle.standardOutput.write(
+                            Data("DRAG \(self.splitHost.dropSummary)\n".utf8))
+                    } else {
+                        let took = self.splitHost.receiveDrop(payload.encoded, on: pane.id, x: x, y: y)
+                        FileHandle.standardOutput.write(
+                            Data("DROP took=\(took) panes=\(self.splitHost.paneCount)\n".utf8))
+                    }
                 case "splits":
                     let layout = self.splitHost.layout
                     let frames = layout.frames()
@@ -266,7 +414,7 @@ final class MainWindow: @unchecked Sendable {
                     }.joined(separator: " ")
                     FileHandle.standardOutput.write(
                         Data(
-                            "SPLITS \(layout.paneCount) zoom=\(layout.zoomedPane != nil) \(described)\n"
+                            "SPLITS \(layout.paneCount) zoom=\(layout.zoomedPane != nil) region=\(self.focused) \(described)\n"
                                 .utf8))
                 case "state":
                     let pane = self.activePane
@@ -341,6 +489,7 @@ final class MainWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
+        sidebarColumn = column
         Gtk.addClass(toolbar, "sidebar-pane")
         sidebarPane = toolbar
         return toolbar
@@ -440,11 +589,53 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
-    /// A click anywhere inside a pane makes it the focused one; GTK has already placed keyboard
-    /// focus where the click landed, so nothing is grabbed.
+    /// A press anywhere inside a pane makes it the focused one — the transcript, the prompt box,
+    /// the band, a pill, a permission card, the chooser, and either button. It runs in the capture
+    /// phase, before the widget under the pointer acts, so a control in a background pane acts on
+    /// its own conversation rather than on whichever pane the eye had left behind. GTK has already
+    /// placed keyboard focus where the press landed, so nothing is grabbed.
     func paneClicked(_ pane: ChatPane) {
+        Trace.mark("paneClicked \(splitHost.orderedPanes.firstIndex(where: { $0 === pane }) ?? -1)")
         focused = .transcript
         splitHost.focus(pane, grabKeyboard: false)
+    }
+
+    /// The same rule for the regions beside the tree: pressing in the chat list, the file tree or
+    /// the terminal is what makes them the keyboard's region, so Tab cycles from where the hand
+    /// actually is. Only the region moves — the press keeps whatever it was going to do, and
+    /// nothing is given the keyboard that the press did not already give it.
+    private func regionClicked(_ pane: Pane) {
+        guard focused != pane else { return }
+        focused = pane
+        if pane != .transcript { activePane.dismissCompletion() }
+    }
+
+    /// One capture-phase watcher on the window itself decides what a press activated. It has to be
+    /// the toplevel: a menu button pops its popover on the press, and a gesture on any widget in
+    /// between never sees that sequence at all. Nothing is claimed, so the press still does
+    /// whatever it was going to do — this only decides what it was aimed at.
+    private func installPressRouting(on window: UnsafeMutablePointer<GtkWidget>) {
+        let root = UInt(bitPattern: window)
+        Gtk.onPressCapture(window) { [weak self] x, y in
+            guard let self, let base = UnsafeMutableRawPointer(bitPattern: root) else { return }
+            self.pressLanded(x: x, y: y, in: ptr(base))
+        }
+    }
+
+    private func pressLanded(x: Double, y: Double, in window: UnsafeMutablePointer<GtkWidget>) {
+        if let pane = splitHost.pane(at: x, y: y, in: window) {
+            paneClicked(pane)
+            return
+        }
+        for (widget, region) in regionTargets
+        where widget.map({ Gtk.contains($0, x: x, y: y, in: window) }) == true {
+            regionClicked(region)
+            return
+        }
+    }
+
+    private var regionTargets: [(UnsafeMutablePointer<GtkWidget>?, Pane)] {
+        [(sidebarColumn, .chats), (fileTree.widget, .files), (terminal.widget, .terminal)]
     }
 
     private func refreshChromeForActivePane() {
@@ -534,9 +725,11 @@ final class MainWindow: @unchecked Sendable {
 
     func refresh() async {
         await ServerDirectory.shared.reload()
+        let profiles = await ServerDirectory.shared.profiles()
         let (entries, unreachable) = await ServerDirectory.shared.entries()
         if !entries.isEmpty { SessionListCache.save(entries) }
         Gtk.onMain { [weak self] in
+            self?.knownProfiles = profiles
             self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
             SettingsFile.capture()
@@ -560,8 +753,10 @@ final class MainWindow: @unchecked Sendable {
         }
         resolvePendingBindings()
         renderSidebar()
+        restateChoosers()
         let active = activePane
-        guard active.sessionID == nil, pendingBindings[active.id] == nil, !entries.isEmpty
+        guard active.sessionID == nil, pendingBindings[active.id] == nil, !entries.isEmpty,
+            !active.isAnswering
         else { return }
         let remembered = Preferences.lastSession.flatMap { id in
             entries.first { $0.session.id == id }
@@ -801,6 +996,13 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// What a second launch gets: the window that exists, brought forward. Never a second one —
+    /// the first is still holding every session's stream.
+    func raise() {
+        guard let window else { return }
+        gtk_window_present(ptr(window))
+    }
+
     /// A notification tap arrives here: raise the window, then bring the session it names to the
     /// eye — the pane already showing it if one is, else the focused pane.
     func openSession(withID id: String) {
@@ -830,25 +1032,148 @@ final class MainWindow: @unchecked Sendable {
         activePane.open(entry)
     }
 
-    private func presentNewChat() {
+    /// A pane with nothing in it asks which server, then what on it — the question the chat list
+    /// cannot ask, at the moment a split makes it worth asking. The servers may not be loaded yet
+    /// on the very first frame, so the chooser goes up with what is known and restates itself the
+    /// moment the directory answers.
+    func presentChooser(in pane: ChatPane, preferring serverID: String? = nil) {
+        pane.showChooser(chooserModel(preferredServer: serverID))
+        guard knownProfiles.isEmpty else { return }
         Task { [weak self] in
+            if await ServerDirectory.shared.profiles().isEmpty {
+                await ServerDirectory.shared.reload()
+            }
+            let profiles = await ServerDirectory.shared.profiles()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.knownProfiles = profiles
+                self.restateChoosers()
+            }
+        }
+    }
+
+    private func chooserModel(preferredServer: String?) -> PaneChooser {
+        PaneChooser(
+            servers: chooserServers, entries: entries, preferredServer: preferredServer)
+    }
+
+    private var chooserServers: [PaneChooserServer] {
+        knownProfiles.map { profile in
+            PaneChooserServer(
+                profileID: profile.id, name: profile.name, backend: profile.backend,
+                address: ServerLabel.address(profile),
+                reachable: !unreachable.contains(ServerLabel.display(profile)))
+        }
+    }
+
+    private func restateChoosers() {
+        let servers = chooserServers
+        splitHost.eachPane { pane in
+            guard pane.chooserShown else { return }
+            pane.restateChooser(servers: servers, entries: entries)
+        }
+    }
+
+    /// What a chooser row means once it is chosen. The pane that asked is the pane that fills —
+    /// including the new chat, which lands where the question was asked rather than in whichever
+    /// pane the focus later wandered to.
+    func pane(_ pane: ChatPane, chose action: PaneChooserAction) {
+        switch action {
+        case .openChat(let profileID, let sessionID):
+            guard
+                let entry = entries.first(where: {
+                    $0.profileID == profileID && $0.session.id == sessionID
+                })
+            else { return }
+            pane.open(entry)
+        case .newChat(let profileID):
+            guard let profile = knownProfiles.first(where: { $0.id == profileID }) else { return }
+            presentNewChat(on: profile, into: pane)
+        case .addServer:
+            presentServers()
+        case .browse:
+            pane.showWeb(nil)
+            splitHost.focus(pane, grabKeyboard: false)
+            splitHost.persist()
+        case .watch:
+            pane.showVideo(nil)
+            splitHost.focus(pane, grabKeyboard: false)
+            splitHost.persist()
+        case .chooseServer, .allChats, .back:
+            break
+        }
+    }
+
+    /// A slot that started, stopped, or learned the stream's own title. The layout is written back
+    /// so a restart reopens what was playing, exactly as it reopens a conversation.
+    func videoSlotChanged() {
+        splitHost.persist()
+    }
+
+    /// What a chat dragged from the list is called, for the caption inside the drop highlight —
+    /// the listing first, then the bookmarks, so a chat whose server is unreachable still names
+    /// itself while it is being carried.
+    func chatTitle(for payload: PaneDragPayload) -> String? {
+        if let entry = self.entry(for: payload) {
+            return SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false)
+                .title
+        }
+        return SavedChatStore.all().first { $0.sessionID == payload.sessionID }?.title
+    }
+
+    private func entry(for payload: PaneDragPayload) -> SessionEntry? {
+        entries.first {
+            $0.profileID == payload.profileID && $0.session.id == payload.sessionID
+        }
+    }
+
+    /// A chat let go over a pane. The middle of a pane means open it there; an edge means the
+    /// arrangement the highlight drew — the pane halves and the arriving chat takes that side. A
+    /// chat no listing knows changes nothing rather than emptying a pane.
+    @discardableResult
+    func pane(_ pane: ChatPane, received payload: PaneDragPayload, zone: PaneDropZone) -> Bool {
+        guard let entry = entry(for: payload) else { return false }
+        freshlyCreated = nil
+        switch zone {
+        case .fill:
+            pane.open(entry)
+            splitHost.focus(pane, grabKeyboard: false)
+        case .split(let edge):
+            guard let fresh = splitHost.split(pane, edge: edge) else { return false }
+            fresh.open(entry)
+            splitHost.focus(fresh, grabKeyboard: false)
+        }
+        focused = .transcript
+        return true
+    }
+
+    /// - Parameters:
+    ///   - profile: the server the dialog opens on, when the question has already been answered
+    ///     somewhere else — a pane's chooser — so it is never asked twice.
+    ///   - pane: where the minted chat opens; the focused pane when nothing says otherwise.
+    private func presentNewChat(on profile: ConnectionProfile? = nil, into pane: ChatPane? = nil) {
+        Task { [weak self, weak pane] in
             let profiles = await ServerDirectory.shared.profiles()
             let localAddresses = Self.localAddresses
-            Gtk.onMain { [weak self] in
+            Gtk.onMain { [weak self, weak pane] in
                 guard let self else { return }
                 guard !profiles.isEmpty else {
                     self.presentServers()
                     return
                 }
+                let ordered =
+                    profile.map { chosen in
+                        [chosen] + profiles.filter { $0.id != chosen.id }
+                    } ?? profiles
                 var seen = Set<String>()
                 let recents = self.entries.compactMap(\.session.directory).filter {
                     seen.insert($0).inserted
                 }
                 Dialogs.newChat(
-                    parent: self.window, profiles: profiles, recentDirectories: recents,
+                    parent: self.window, profiles: ordered, recentDirectories: recents,
                     localAddresses: localAddresses
-                ) { [weak self] profile, directory in
-                    self?.createChat(on: profile, directory: directory)
+                ) { [weak self, weak pane] profile, directory in
+                    self?.createChat(on: profile, directory: directory, into: pane)
                 }
             }
         }
@@ -866,9 +1191,11 @@ final class MainWindow: @unchecked Sendable {
 
     /// The one round trip that mints the session id is all the new chat waits for; the full list
     /// refresh reconciles behind it.
-    private func createChat(on profile: ConnectionProfile, directory: String?) {
+    private func createChat(
+        on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil
+    ) {
         Trace.mark("createChat begin")
-        Task { [weak self] in
+        Task { [weak self, weak pane] in
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { return }
             do {
                 let session = try await backend.createSession(title: nil, directory: directory)
@@ -877,7 +1204,7 @@ final class MainWindow: @unchecked Sendable {
                     profileID: profile.id, profileName: profile.name,
                     host: profile.baseURL.host ?? profile.name,
                     backendType: profile.backend, session: session)
-                Gtk.onMain { [weak self] in
+                Gtk.onMain { [weak self, weak pane] in
                     guard let self else { return }
                     if !self.entries.contains(where: { $0.session.id == entry.session.id }) {
                         self.entries.insert(entry, at: 0)
@@ -885,14 +1212,14 @@ final class MainWindow: @unchecked Sendable {
                     self.freshlyCreated = entry
                     self.lastSidebar = nil
                     self.renderSidebar()
-                    self.activePane.open(entry, freshlyCreated: true)
+                    (pane ?? self.activePane).open(entry, freshlyCreated: true)
                 }
                 await self?.refresh()
                 Trace.mark("createChat refresh done")
             } catch {
-                Gtk.onMain { [weak self] in
+                Gtk.onMain { [weak self, weak pane] in
                     guard let self else { return }
-                    self.activePane.setNotice(
+                    (pane ?? self.activePane).setNotice(
                             Localized.text("Could not start a session: %@", "\(error)"))
                 }
             }
@@ -1131,8 +1458,8 @@ final class MainWindow: @unchecked Sendable {
 
     /// Normal mode owns the letters; focusing anything that takes text hands them back, and the
     /// terminal keeps everything but Ctrl+Shift and zoom. The composer key first goes to
-    /// whichever pane's composer actually has focus — which also settles which pane is focused,
-    /// so typing into a pane and commanding it are never two different panes.
+    /// whichever pane's composer actually has focus, and that pane becomes the focused one before
+    /// the key acts — so typing into a pane and commanding it are never two different panes.
     private func installKeymap(on window: UnsafeMutablePointer<GtkWidget>) {
         let root = UInt(bitPattern: window)
         Gtk.onKey(window) { [weak self] keyval, state in
@@ -1140,14 +1467,12 @@ final class MainWindow: @unchecked Sendable {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
-            for pane in self.splitHost.orderedPanes {
-                guard let handled = pane.handleComposerKey(keyval: keyval, state: state) else {
-                    continue
+            for pane in self.splitHost.orderedPanes where pane.composerHasFocus() {
+                self.splitHost.focus(pane, grabKeyboard: false)
+                if let handled = pane.handleComposerKey(keyval: keyval, state: state) {
+                    return handled
                 }
-                if self.splitHost.layout.focusedPane != pane.id {
-                    self.splitHost.focus(pane, grabKeyboard: false)
-                }
-                return handled
+                break
             }
             guard let chord = KeyChord.canonical(keyval: keyval, state: state) else {
                 return false
@@ -1155,6 +1480,21 @@ final class MainWindow: @unchecked Sendable {
             let context: KeyContext =
                 self.terminal.ownsFocus(in: window)
                 ? .terminal : Gtk.focusTakesText(window) ? .insert : .normal
+            if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
+                self.activePane.handleChooserChord(chord)
+            {
+                return true
+            }
+            if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
+                self.activePane.handleVideoChord(chord)
+            {
+                return true
+            }
+            if self.focused == .transcript, self.pendingChords.isEmpty,
+                self.activePane.handleWebChord(chord)
+            {
+                return true
+            }
             let awaiting =
                 context == .normal
                 && !(self.activePane.lastState?.pendingPermissions.isEmpty ?? true)

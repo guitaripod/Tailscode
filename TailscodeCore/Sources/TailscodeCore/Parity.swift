@@ -29,11 +29,13 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case usageGauges
     case markdownRendering
     case streamingGrowth
+    case streamCascade
     case toolRows
     case toolDiffs
     case imageParts
     case imageViewer
     case subagentCards
+    case workflowCard
     case questionCells
     case compactionSeam
     case permissionCards
@@ -44,10 +46,13 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case userEcho
     case vimComposer
     case slashCompletion
+    case slashDispatch
+    case commandCatalog
     case attachments
     case drafts
     case sendQueue
     case modelEffortPicker
+    case unifiedModelChooser
     case modelEffortDisplay
     case ultracodeAura
     case stopTurn
@@ -64,12 +69,19 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case fileBrowser
     case terminalPane
     case splitPanes
+    case newPaneChooser
+    case chatDragToPane
+    case clickToActivate
     case uiScale
+    case themePicker
     case settingsSurface
     case goalControl
     case firstRunSetup
     case demoMode
     case activityNotifications
+    case videoSlot
+    case browserSlot
+    case hapticFeedback
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -162,6 +174,10 @@ public enum CapabilityRegistry {
             spec:
                 "A streaming part updates its existing row (reconfigure/diff), never tearing down the transcript or losing scroll position."),
         CapabilityDefinition(
+            id: .streamCascade, area: "transcript", title: "The answer is written, not pasted",
+            spec:
+                "Streamed prose plays out of a buffer instead of appearing in whatever lumps the network delivered. LiveCascade renders the whole markdown-safe prefix once per arrival (CascadeGate holds the renderer at the last position where no inline token is half-open, so no answer ever flashes its asterisks) and then reveals through the *rendered* characters, which is what makes the speed even — punctuation the renderer ate never counts. StreamCadence plays at a rate that changes on a long time constant and may never drain the buffer faster than CadenceTuning.floorTime, so a model that pauses reads as a hand slowing rather than a frame dropping. RevealPlan reserves the rest of the word being written and lays it out invisibly, so a per-character reveal never rewraps a line — glyphs arrive in place. The last StreamCascade.span characters carry the wave: heat toward the theme's accent, a shimmer band travelling back on its own clock, and a per-glyph entry fade from StreamCascade.entryFloor. Ultracode paints the edge with the shared rainbow. Frames come from the display's own clock at up to 120Hz. New rows enter with the same easing and stagger; history, a chat switch or a burst past the tuning is adopted whole; reduced motion reveals at once; and the wave comes off by hand when it lets go of a row."),
+        CapabilityDefinition(
             id: .toolRows, area: "transcript", title: "Tool call rows",
             spec:
                 "Each tool call is a compact row stating tool, target and status, expandable to its payload; one row per MessagePart."),
@@ -180,6 +196,10 @@ public enum CapabilityRegistry {
             id: .subagentCards, area: "transcript", title: "Subagents inline",
             spec:
                 "A subagent renders as a card docked at its spawning tool call, expanding in place; a wide fan-out collapses behind one group row; never a separate chat."),
+        CapabilityDefinition(
+            id: .workflowCard, area: "transcript", title: "A workflow run is one card",
+            spec:
+                "A Workflow call renders as the run it started, not the receipt it returned: the workflow's name and description, the phase plan its script declares, live agent rows (what each is doing, for how long), a progress reading over the fan-out in hand, elapsed, and — when the run's task reports back — the answer folded into the same card. Phase attribution is only claimed once the finished run records it; a live card shows the plan and the agents, never a guessed position between them."),
         CapabilityDefinition(
             id: .questionCells, area: "transcript", title: "Questions, not tool rows",
             spec:
@@ -216,7 +236,15 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .slashCompletion, area: "composer", title: "Slash command completion",
             spec:
-                "Typing / offers the backend's availableCommands through the shared SlashCompletion pipeline, keyboard-navigable."),
+                "Typing / offers the backend's availableCommands through the shared SlashCompletion ranking: the whole word typed out first, then a prefix, then a namespace:name segment matched on its bare half (/planner reaching project:planner), then letters found inside, then letters found in order but apart (/gm reaching git:merge) — and inside a tier, the commands this device reached for most recently (SlashRecents). Every row states what it is: the letters that matched tinted inside the name, the server's own argumentHint as a trailing chip, and the plugin or project that contributed it. The list is keyboard-navigable — arrows or tab to walk, enter or tab to accept, escape to dismiss — without taking those keys from an ordinary draft. Past the command's name the list gives way to that one command's signature and description, held on screen while the argument is written, and a word the catalog does not have says so rather than vanishing under the caret."),
+        CapabilityDefinition(
+            id: .slashDispatch, area: "composer", title: "A typed command runs",
+            spec:
+                "A slash command typed out and sent goes exactly where picking it from the list would have sent it, through the shared SlashDispatch.decide: /compact always through its preflight carrying whatever instruction was typed after it, a command the server knows through the command route with its arguments, and anything the server has never heard of out as the plain words that were written — the server is the authority on its own grammar, and an agent that resolves its own slash grammar from prompt text gets the prompt untouched."),
+        CapabilityDefinition(
+            id: .commandCatalog, area: "composer", title: "Browse every command",
+            spec:
+                "The whole catalog is browsable, not just completable: grouped by where each command came from (built in, this project, yours, plugins, skills, MCP servers) with its description, scope and argument hint, searchable over names and descriptions through the same shared ranking, and recently used first. Picking one hands it to the composer half-typed when it takes arguments, and runs it when it does not. A completion list cannot teach a name nobody has seen."),
         CapabilityDefinition(
             id: .attachments, area: "composer", title: "Attachments",
             spec:
@@ -232,6 +260,10 @@ public enum CapabilityRegistry {
             id: .modelEffortPicker, area: "composer", title: "Model and effort choice",
             spec:
                 "The next turn's model and reasoning effort are pickable from availableModels; the choice rides send(model:reasoningEffort:). A pick is recorded per session and as the server's last-used default (ModelPreferenceStore/EffortPreferenceStore.recordPick), and a chat opens on initialModel/initialEffort — never a hardcoded default. Claude Code's effort menu includes ultracode, which the server maps to xhigh plus standing workflow orchestration; typing the word in a prompt opts that turn in the same way."),
+        CapabilityDefinition(
+            id: .unifiedModelChooser, area: "composer", title: "One selector over every provider",
+            spec:
+                "Every model the server lists, from every provider, is chosen from one searchable surface built on the shared ModelChooser — never a flat menu of the raw catalog. The same model offered by two providers folds into one row that says so and opens onto its alternates (⌃→ / the chevron); sections are model families, not provider keys, with the provider a fact on the row beside the id, what it reads (vision/pdf/files), how many effort levels it takes, and whether it runs on the server's own machine. One query searches names, ids, providers and families through ModelChooser.search with the matched letters weighted in the row; recents float; the row already chosen is where the chooser opens. The pill's quick menu shows ModelChooser.shortlist and hands the rest to this surface, so the two are one list at two lengths."),
         CapabilityDefinition(
             id: .modelEffortDisplay, area: "composer", title: "The chip tells the truth",
             spec:
@@ -290,10 +322,25 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .splitPanes, area: "app", title: "Tiling split panes",
             spec:
-                "The conversation surface is a binary tree of live panes (SplitLayout): any pane splits right or down to any depth, and each pane is a complete conversation — its own stream, composer, vim, find, status. The ctrl+w verbs work the tree (directional focus, close, zoom, swap, equalize), the focused pane wears a visible accent and drives the window chrome, a chat-list row can open into a new split, and the tree with its ratios and sessions persists under tailscode.layout.tree and restores on launch — a pane whose session cannot be found says so instead of collapsing the arrangement."),
+                "The conversation surface is a binary tree of live panes (SplitLayout): any pane splits right or down to any depth, and each pane is a complete conversation — its own stream, composer, vim, find, status. The ctrl+w verbs work the tree (directional focus, close, zoom, swap, equalize) and a double click on any divider evens the whole tree out without touching the keyboard, the focused pane wears a visible accent and drives the window chrome, a chat-list row can open into a new split, and the tree with its ratios and sessions persists under tailscode.layout.tree and restores on launch — a pane whose session cannot be found says so instead of collapsing the arrangement."),
+        CapabilityDefinition(
+            id: .newPaneChooser, area: "app", title: "The new pane asks which server",
+            spec:
+                "A pane with no conversation in it is a chooser, not a caption (PaneChooser): it names every configured server with its address, chat count and whether it is answering, and once one is chosen it offers a new chat there plus that server's recent chats — so a split can land on another machine without touching the chat list. One configured server skips the question; two or more pre-focus the server the pane was already on. Keyboard-first everywhere: arrows or j/k walk, enter opens, 1-9 pick outright, esc steps back to the servers, and the rows are clickable. Choosing New chat here opens the new-chat flow with that server already selected, and the chat it mints opens in the pane that asked."),
+        CapabilityDefinition(
+            id: .chatDragToPane, area: "app", title: "Drag a chat into a pane",
+            spec:
+                "A chat-list row is a drag source carrying its profile and session under a private type (PaneDragPayload), never plain text, so a chat dropped on a prompt box cannot arrive as pasted words. Every pane is a drop target: the middle of a pane means open it here, and the outer 28% of any edge means split that pane and give the arriving chat that side (PaneDropTarget/PaneDropZone) — a pane with no room to halve, under 560pt on that axis, only offers to fill. While the pointer is over a pane the arrangement it would make is drawn on top of it, in exactly the region the chat would take, captioned with the verb and the chat's title; leaving the pane or the window takes the highlight with it. The drop opens the chat, focuses the pane it landed in, and persists the tree — an edge drop puts the new pane on the side the highlight promised (SplitLayout.split placingNewFirst), and a drop carrying a chat no listing knows changes nothing."),
+        CapabilityDefinition(
+            id: .clickToActivate, area: "app", title: "Pressing something activates it",
+            spec:
+                "Where the pointer goes down is what the keyboard is working in. A press anywhere inside a pane — transcript, prompt box, status band, pill, permission card, chooser, either button — makes that pane the focused one: the accent moves, the window chrome (title, file tree, terminal, remembered session) follows, and the ctrl+w verbs work from there. It happens before the widget under the pointer acts, so a control in a background pane commands its own conversation rather than whichever pane the eye had left behind, and the press keeps its ordinary meaning — nothing is swallowed and keyboard focus lands exactly where the click put it, never grabbed on its behalf. The same rule holds for the regions beside the tree: pressing in the chat list, the file tree or the terminal makes that the keyboard's region, so Tab cycles from where the hand is. A press on a divider, on chrome outside the tree, or in the pane that is already focused changes nothing."),
         CapabilityDefinition(
             id: .uiScale, area: "app", title: "Type scale",
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),
+        CapabilityDefinition(
+            id: .themePicker, area: "app", title: "Theme",
+            spec: "A named theme is chosen and persists under tailscode.theme; each theme carries its own light and dark appearance and follows the desktop between them unless pinned. Every colour a label draws from clears WCAG contrast on its own canvas."),
         CapabilityDefinition(
             id: .settingsSurface, area: "app", title: "Settings",
             spec: "App preferences live on one discoverable surface, persisted under the shared tailscode.* keys."),
@@ -310,9 +357,21 @@ public enum CapabilityRegistry {
             spec:
                 "First run offers a scripted demo world (MockBackend) so the product can make its argument before any machine is set up — a real conversation surface over fake servers, clearly labeled, exitable back to setup."),
         CapabilityDefinition(
+            id: .hapticFeedback, area: "app", title: "Cues you feel, at a strength you choose",
+            spec:
+                "Every physical cue is a named HapticCue rather than an amplitude at the call site, played from HapticRecipe's composed pattern — a sustained body under a sharp crack, reinforcement stacked on top — so the top of the range is the hardware's ceiling rather than a canned tap. One setting scales all of them through HapticStrength.drive, persisted, with reinforcement dropping out below its floor so a gentle setting is a lighter cue and not a quieter thump; hardware that cannot compose falls back to canned feedback that keeps each cue's meaning. The setting is chosen by feel: the control plays every stop it passes at the strength under the finger."),
+        CapabilityDefinition(
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:
                 "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it."),
+        CapabilityDefinition(
+            id: .browserSlot, area: "splits", title: "Browser slot in the split grid",
+            spec:
+                "A pane can hold a web page. WebTarget reads an address, a bare host, a port on this machine or words to look up; the page renders inside the grid with the platform's own engine, and every split verb treats it like any other pane. The slot asks for an address when it is empty, wears the page's own title in its identity strip, and claims only the chords a browser owns (ctrl+l, ctrl+r, alt+←→, ctrl+±/0, esc) so every other key belongs to the page."),
+        CapabilityDefinition(
+            id: .videoSlot, area: "splits", title: "Video slot in the split grid",
+            spec:
+                "A pane can hold a stream instead of a chat. VideoTarget reads a channel, a link or words; the slot plays it inside the grid, and every split verb treats it like any other pane — it splits, the dividers resize it, zoom hides its siblings, closing it hands the space back, and the layout snapshot restores what it was watching. An empty slot asks what to watch, a playing one states the stream's own title in its identity strip, and VideoCommand answers space/m/e/arrows without taking keys from the chat panes. What it costs the grid is stated rather than discovered: VideoNotice's line rides the chooser row that offers a stream and the empty slot's own body, and a playing slot keeps the short of it at the end of its identity strip until it is paused."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

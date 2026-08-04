@@ -2,81 +2,14 @@ import CAdw
 import Foundation
 import TailscodeCore
 
-/// The colors of one appearance, named by what they mean rather than what they are: the transcript
-/// canvas and its raised surfaces, the two text registers, and the handful of signal colors every
-/// glyph, pill and border draws from. Two palettes exist — Rosé Pine when the desktop is dark,
-/// Solarized Light when it is light — and everything else styles itself from whichever is current.
-struct Palette: Equatable {
-    let name: String
-    let isDark: Bool
-    let canvas: String
-    let canvasRaised: String
-    let rule: String
-    let text: String
-    let textDim: String
-    /// Live, positive, additions: the running glyph, the prompt rule, `+` in a diff.
-    let accent: String
-    let accentDim: String
-    /// Attention that is not failure: approvals, compaction seams, visual mode.
-    let warn: String
-    let danger: String
-    /// Identity of tools and files: tool names, chips, the file tree's directories.
-    let info: String
-    /// The goal and other standing marks.
-    let special: String
-    let codeBg: String
-    let subagentBg: String
-    let findHit: String
-    /// Text set on an accent-filled surface — the vim badge, the jump pill.
-    let onAccent: String
-    /// The shell pane wears the theme too: sixteen ANSI colors plus its own fg/bg, because a
-    /// terminal that stays black inside a Solarized window is a hole in the design.
-    let terminalFg: String
-    let terminalBg: String
-    let ansi: [String]
-
-    static let rosePine = Palette(
-        name: "rosepine", isDark: true,
-        canvas: "#191724", canvasRaised: "#1f1d2e", rule: "#26233a",
-        text: "#e0def4", textDim: "#908caa",
-        accent: "#9ccfd8", accentDim: "#31748f",
-        warn: "#f6c177", danger: "#eb6f92",
-        info: "#c4a7e7", special: "#ebbcba",
-        codeBg: "#16141f", subagentBg: "#1f1d2e", findHit: "#403d52",
-        onAccent: "#191724",
-        terminalFg: "#e0def4", terminalBg: "#191724",
-        ansi: [
-            "#26233a", "#eb6f92", "#31748f", "#f6c177",
-            "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
-            "#6e6a86", "#eb6f92", "#31748f", "#f6c177",
-            "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
-        ])
-
-    static let solarizedLight = Palette(
-        name: "solarized", isDark: false,
-        canvas: "#fdf6e3", canvasRaised: "#eee8d5", rule: "#ddd6c1",
-        text: "#586e75", textDim: "#93a1a1",
-        accent: "#859900", accentDim: "#667a00",
-        warn: "#b58900", danger: "#dc322f",
-        info: "#2aa198", special: "#6c71c4",
-        codeBg: "#f5eeda", subagentBg: "#f6f0dd", findHit: "#efe3b3",
-        onAccent: "#fdf6e3",
-        terminalFg: "#657b83", terminalBg: "#fdf6e3",
-        ansi: [
-            "#073642", "#dc322f", "#859900", "#b58900",
-            "#268bd2", "#d33682", "#2aa198", "#eee8d5",
-            "#002b36", "#cb4b16", "#586e75", "#657b83",
-            "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
-        ])
-}
-
 /// The desktop's look: quiet native chrome around an opaque, terminal-grade canvas.
 ///
 /// The sidebar, header bars and dialogs are left to libadwaita, so they follow the system's own
 /// accent and dark preference. The transcript, the file tree and the terminal are one surface with
 /// its own rules — monospace throughout, hairline rules, square corners, and a small set of signal
-/// colors that carry every live fact. Which colors depends on the desktop: Rosé Pine when it is
-/// dark, Solarized Light when it is light, following the system unless the settings pin one.
+/// colors that carry every live fact. Which colors is the chosen theme's business — the settings
+/// pick one identity from `AppTheme.all`, and it follows the desktop between its own two
+/// appearances rather than being two unrelated choices.
 ///
 /// Type size is not one number. Three areas scale independently — the chat list, the prose in the
 /// transcript, and everything monospace — because the reason to enlarge a transcript (reading) is
@@ -85,16 +18,24 @@ struct Palette: Equatable {
 enum MatrixTheme {
     /// Read from row-building tasks off the main context, written only on it — a torn read here
     /// costs one wrongly-tinted frame, never a crash.
-    nonisolated(unsafe) private(set) static var palette: Palette = .rosePine
+    nonisolated(unsafe) private(set) static var palette: Palette = AppTheme.fallback.dark.corrected()
 
     private nonisolated(unsafe) static var provider: UnsafeMutablePointer<GtkCssProvider>?
 
-    /// Re-reads the desktop's dark preference. Only meaningful where a display exists — the
-    /// headless selftest keeps the default palette.
+    /// Re-reads the chosen theme and the desktop's dark preference. Only the dark flag needs a
+    /// display — the headless selftest still picks up a pinned theme, in its dark appearance.
     static func refreshPalette() {
-        guard gdk_display_get_default() != nil, let manager = adw_style_manager_get_default()
-        else { return }
-        palette = adw_style_manager_get_dark(manager) != 0 ? .rosePine : .solarizedLight
+        var dark = true
+        if gdk_display_get_default() != nil, let manager = adw_style_manager_get_default() {
+            dark = adw_style_manager_get_dark(manager) != 0
+        }
+        palette = palette(for: Preferences.themeID, dark: dark)
+    }
+
+    /// The choice itself, with no display and no stored preference in it, so the one thing that
+    /// turns a saved id into the colours on screen can be asserted headlessly.
+    static func palette(for themeID: String?, dark: Bool) -> Palette {
+        AppTheme.named(themeID).palette(dark: dark).corrected()
     }
 
     static var css: String { css(for: palette) }
@@ -220,8 +161,9 @@ enum MatrixTheme {
         }
         .tool-name { color: \(info); font-family: monospace; font-size: \(m(0.88)); }
         .tool-detail { color: \(textDim); font-family: monospace; font-size: \(m(0.88)); }
-        .glyph-done { color: \(accent); }
-        .glyph-running { color: \(warn); }
+        .glyph-done { color: alpha(\(accent), 0.72); }
+        .glyph-running { color: \(accent); }
+        .glyph-needs { color: \(warn); }
         .glyph-error { color: \(danger); }
         .glyph-pending { color: \(textDim); }
         .dim { color: \(textDim); }
@@ -259,6 +201,7 @@ enum MatrixTheme {
         .seg-live { color: \(accent); }
         .seg-warn { color: \(warn); }
         .seg-error { color: \(danger); }
+        .seg-offline { color: \(warn); }
         .seg-agents { color: \(info); }
         .seg-goal { color: \(special); }
         .seg-notice { color: \(accentDim); }
@@ -274,7 +217,7 @@ enum MatrixTheme {
             font-size: \(m(0.92));
         }
         .composer-normal { border-color: \(accent); }
-        .composer-visual { border-color: \(warn); }
+        .composer-visual { border-color: \(info); }
         .vim-badge {
             font-family: monospace;
             font-size: \(m(0.72));
@@ -282,8 +225,8 @@ enum MatrixTheme {
             color: \(palette.onAccent);
             background-color: \(accent);
         }
-        .vim-badge-visual { background-color: \(warn); }
-        .vim-badge-insert { background-color: \(info); }
+        .vim-badge-visual { background-color: \(info); }
+        .vim-badge-insert { background-color: \(accentDim); }
         .code-block {
             background-color: \(palette.codeBg);
             border-left: 2px solid \(rule);
@@ -302,10 +245,10 @@ enum MatrixTheme {
             border-radius: 2px;
         }
         .pill-live { color: \(palette.onAccent); background-color: \(accent); }
-        .pill-needs { color: \(palette.onAccent); background-color: \(warn); }
+        .pill-needs { color: \(palette.onAccent); background-color: \(warn); font-weight: 700; }
         .pill-error { color: \(palette.onAccent); background-color: \(danger); }
-        .pill-saved { color: \(info); border: 1px solid \(info); }
-        .pill-offline { color: \(textDim); border: 1px solid \(rule); }
+        .pill-saved { color: \(special); border: 1px solid alpha(\(special), 0.7); }
+        .pill-offline { color: \(textDim); border: 1px solid alpha(\(textDim), 0.5); }
 
         .session-row {
             padding: 0;
@@ -327,6 +270,12 @@ enum MatrixTheme {
         .row-title { font-size: \(c(0.92)); color: \(text); }
         .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
         .row-detail { font-size: \(c(0.78)); opacity: 0.65; font-family: monospace; }
+        .row-note {
+            color: \(accent);
+            font-size: \(c(0.72));
+            opacity: 0.55;
+            font-family: monospace;
+        }
         .section-header {
             font-size: \(c(0.72));
             font-weight: 700;
@@ -335,6 +284,70 @@ enum MatrixTheme {
             padding: 10px 8px 2px 8px;
         }
         .unread-dot { color: \(accent); font-size: \(c(0.7)); }
+
+        .model-summary {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(m(0.82));
+            padding: 0 2px;
+        }
+        .model-search {
+            background-color: \(canvas);
+            color: \(text);
+            border: 1px solid \(rule);
+            border-radius: 4px;
+        }
+        .model-search:focus-within { border-color: \(accent); }
+        .model-search text { color: \(text); font-family: monospace; }
+        .model-row {
+            padding: 0;
+            border: none;
+            border-radius: 5px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .model-row:hover { background-color: alpha(\(accent), 0.08); }
+        .model-row:active { background-color: alpha(\(accent), 0.16); }
+        .model-row-nested { margin-left: 26px; }
+        .model-check { color: \(accent); font-family: monospace; font-size: \(c(0.85)); }
+        .model-chevron {
+            padding: 0 6px;
+            min-height: 0;
+            border: none;
+            border-radius: 4px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+        }
+        .model-chevron:hover { background-color: alpha(\(accent), 0.16); }
+        .model-chevron-glyph { color: \(textDim); font-size: \(c(0.8)); }
+        .model-section-count {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(c(0.7));
+            opacity: 0.7;
+            padding: 10px 8px 2px 8px;
+        }
+        .model-fact {
+            font-family: monospace;
+            font-size: \(c(0.66));
+            letter-spacing: 0.04em;
+            color: \(textDim);
+            border: 1px solid alpha(\(textDim), 0.35);
+            border-radius: 2px;
+            padding: 0px 4px;
+        }
+        .model-fact-local { color: \(accent); border-color: alpha(\(accent), 0.6); }
+        .model-fact-providers { color: \(info); border-color: alpha(\(info), 0.6); }
+        .chooser-hint {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(c(0.72));
+            opacity: 0.75;
+            padding: 2px;
+        }
 
         .tree-row { font-family: monospace; font-size: \(m(0.85)); color: \(text); }
         .tree-dir { color: \(info); font-family: monospace; font-size: \(m(0.85)); }
@@ -367,7 +380,7 @@ enum MatrixTheme {
             padding: 12px 16px;
         }
         .card-permission { border-left: 2px solid \(warn); }
-        .card-question { border-left: 2px solid \(info); }
+        .card-question { border-left: 2px solid \(warn); }
         .card-title { font-size: \(p(0.95)); font-weight: 600; color: \(text); }
         .answer-option {
             font-family: monospace;
@@ -389,7 +402,7 @@ enum MatrixTheme {
             border: 1px solid \(rule);
         }
         .agent-live {
-            color: \(warn);
+            color: \(accent);
             font-family: monospace;
             font-size: \(m(0.78));
         }
@@ -400,7 +413,7 @@ enum MatrixTheme {
             font-style: italic;
         }
         .seam-text {
-            color: \(warn);
+            color: \(special);
             font-family: monospace;
             font-size: \(p(0.78));
             letter-spacing: 0.08em;
@@ -434,6 +447,55 @@ enum MatrixTheme {
             padding: 6px 10px;
             background-color: \(palette.subagentBg);
         }
+        .workflow-card {
+            border-left: 2px solid \(accent);
+            padding: 8px 10px;
+            background-color: \(palette.subagentBg);
+        }
+        .workflow-name {
+            color: \(accent);
+            font-family: monospace;
+            font-size: \(m(0.9));
+            font-weight: bold;
+        }
+        .workflow-summary {
+            color: \(textDim);
+            font-size: \(p(0.85));
+        }
+        .workflow-elapsed {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(m(0.76));
+        }
+        .workflow-meter {
+            color: \(accentDim);
+            font-family: monospace;
+            font-size: \(m(0.8));
+            letter-spacing: -0.04em;
+        }
+        .workflow-meter-live {
+            color: \(accent);
+            font-family: monospace;
+            font-size: \(m(0.8));
+            letter-spacing: -0.04em;
+        }
+        .workflow-phase, .workflow-phase-done {
+            font-family: monospace;
+            font-size: \(m(0.78));
+        }
+        .workflow-phase { color: \(textDim); }
+        .workflow-phase-done { color: \(accent); }
+        .workflow-phase-title {
+            color: \(text);
+            font-family: monospace;
+            font-size: \(m(0.8));
+        }
+        .workflow-model {
+            color: \(special);
+            font-family: monospace;
+            font-size: \(m(0.72));
+        }
+        .workflow-answer { color: \(text); font-size: \(p(0.9)); }
         .image-part { border: 1px solid \(rule); }
 
         .goal-line {
@@ -495,6 +557,23 @@ enum MatrixTheme {
             padding: 2px 4px;
         }
         .chat-pane { border: 1px solid transparent; }
+        .video-pane { background-color: #000000; }
+        .web-pane { background-color: \(canvas); }
+        .video-heading {
+            color: \(accent);
+            font-family: monospace;
+            font-size: \(m(1.1));
+            letter-spacing: 1px;
+        }
+        .video-notice {
+            color: \(textDim);
+            background-color: alpha(\(accent), 0.10);
+            border: 1px solid alpha(\(accent), 0.30);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-family: monospace;
+            font-size: \(m(0.8));
+        }
         .pane-focused { border: 1px solid alpha(\(accent), 0.55); }
         .pane-identity {
             color: \(textDim);
@@ -505,6 +584,17 @@ enum MatrixTheme {
             padding: 2px 10px;
         }
         .pane-focused .pane-identity { color: \(accent); }
+        .drop-zone {
+            background-color: alpha(\(accent), 0.16);
+            border: 2px solid \(accent);
+            border-radius: 4px;
+        }
+        .drop-caption {
+            color: \(accent);
+            font-family: monospace;
+            font-size: \(m(0.85));
+            font-weight: bold;
+        }
         .find-hit {
             background-color: \(palette.findHit);
             box-shadow: inset 2px 0 0 \(warn);
@@ -531,12 +621,12 @@ enum MatrixTheme {
         .gauge-fill-ok { background-color: \(accentDim); border-radius: 3px; }
         .gauge-fill-warn { background-color: \(warn); border-radius: 3px; }
         .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
-        .brand-claude { color: #D97757; }
-        .brand-opencode { color: \(palette.isDark ? "#4ADE47" : "#038000"); }
-        .brand-grok { color: \(palette.isDark ? "#E8E8EB" : "#1F1F1F"); }
-        .gauge-fill-claude { background-color: #D97757; border-radius: 3px; }
-        .gauge-fill-opencode { background-color: #03B000; border-radius: 3px; }
-        .gauge-fill-grok { background-color: \(palette.isDark ? "#E8E8EB" : "#1F1F1F"); border-radius: 3px; }
+        .brand-claude { color: \(palette.brandClaude); }
+        .brand-opencode { color: \(palette.brandOpencode); }
+        .brand-grok { color: \(palette.brandGrok); }
+        .gauge-fill-claude { background-color: \(palette.brandClaude); border-radius: 3px; }
+        .gauge-fill-opencode { background-color: \(palette.brandOpencode); border-radius: 3px; }
+        .gauge-fill-grok { background-color: \(palette.brandGrok); border-radius: 3px; }
         .usage-card {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
