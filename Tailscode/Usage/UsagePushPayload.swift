@@ -2,7 +2,8 @@ import Foundation
 
 enum UsageGaugeFormat {
     static func percentText(fraction: Double) -> String {
-        "\(Int((fraction * 100).rounded()))%"
+        if fraction >= 1.0 { return String(localized: "Used up") }
+        return "\(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
     }
 
     static func resetCaption(resetsAt: Date?, trustedReset: Bool) -> String {

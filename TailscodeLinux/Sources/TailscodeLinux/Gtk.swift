@@ -65,6 +65,35 @@ enum Gtk {
         tailscode_on_release(widget, unsafeBitCast(callback, to: (@convention(c) (UnsafeMutableRawPointer?) -> Void).self), box)
     }
 
+    /// Any button pressed anywhere inside `widget`, children included, with where it landed —
+    /// before the widget under the pointer acts on it. The event itself is untouched, which is how
+    /// a window learns what was pressed without taking the press away from it.
+    static func onPressCapture(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        _ handler: @escaping @Sendable (Double, Double) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PointBox(handler)).toOpaque()
+        let callback: @convention(c) (Double, Double, UnsafeMutableRawPointer?) -> Void = {
+            x, y, raw in
+            guard let raw else { return }
+            Unmanaged<PointBox>.fromOpaque(raw).takeUnretainedValue().handler(x, y)
+        }
+        tailscode_on_press_capture(widget, callback, box)
+    }
+
+    /// A double click on a paned's handle — the divider itself, never its children. Single
+    /// clicks and drags pass through untouched, so the handle keeps its ordinary meaning.
+    static func onPanedHandleDoubleClick(
+        _ paned: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+        }
+        tailscode_on_paned_handle_double_click(paned, callback, box)
+    }
+
     /// A right click (or long-press equivalent the desktop maps to it) on any widget, with where
     /// it landed, so a context menu can open under the pointer rather than at a corner.
     static func onRightClick(
@@ -195,6 +224,86 @@ enum Gtk {
         tailscode_accept_file_drops(widget, callback, box)
     }
 
+    /// Makes `widget` a chat the pointer can pick up and carry to a pane.
+    static func makeChatDragSource(
+        _ widget: UnsafeMutablePointer<GtkWidget>, payload: String
+    ) {
+        tailscode_make_chat_drag_source(widget, payload)
+    }
+
+    /// A dragged chat over `widget`, in the widget's own coordinates: where it is now, when it
+    /// leaves, and what to do when it lands. `drop` answers whether the chat was taken.
+    static func acceptChatDrops(
+        on widget: UnsafeMutablePointer<GtkWidget>,
+        motion: @escaping @Sendable (String?, Double, Double) -> Void,
+        leave: @escaping @Sendable () -> Void,
+        drop: @escaping @Sendable (String, Double, Double) -> Bool
+    ) {
+        let box = Unmanaged.passRetained(ChatDropBox(motion: motion, leave: leave, drop: drop))
+            .toOpaque()
+        let onMotion:
+            @convention(c) (UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer?) -> Void = {
+                payload, x, y, raw in
+                guard let raw else { return }
+                Unmanaged<ChatDropBox>.fromOpaque(raw).takeUnretainedValue()
+                    .motion(payload.map { String(cString: $0) }, x, y)
+            }
+        let onLeave: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<ChatDropBox>.fromOpaque(raw).takeUnretainedValue().leave()
+        }
+        let onDrop:
+            @convention(c) (UnsafePointer<CChar>?, Double, Double, UnsafeMutableRawPointer?) -> gboolean = {
+                payload, x, y, raw in
+                guard let raw, let payload else { return 0 }
+                let box = Unmanaged<ChatDropBox>.fromOpaque(raw).takeUnretainedValue()
+                return box.drop(String(cString: payload), x, y) ? 1 : 0
+            }
+        tailscode_accept_chat_drops(widget, onMotion, onLeave, onDrop, box)
+    }
+
+    final class ChatDropBox: @unchecked Sendable {
+        let motion: @Sendable (String?, Double, Double) -> Void
+        let leave: @Sendable () -> Void
+        let drop: @Sendable (String, Double, Double) -> Bool
+
+        init(
+            motion: @escaping @Sendable (String?, Double, Double) -> Void,
+            leave: @escaping @Sendable () -> Void,
+            drop: @escaping @Sendable (String, Double, Double) -> Bool
+        ) {
+            self.motion = motion
+            self.leave = leave
+            self.drop = drop
+        }
+    }
+
+    /// Where `widget` sits inside `ancestor`, or nil when the two are not connected.
+    static func bounds(
+        of widget: UnsafeMutablePointer<GtkWidget>, in ancestor: UnsafeMutablePointer<GtkWidget>
+    ) -> (x: Double, y: Double, width: Double, height: Double)? {
+        var x = 0.0
+        var y = 0.0
+        var width = 0.0
+        var height = 0.0
+        guard tailscode_widget_bounds_in(widget, ancestor, &x, &y, &width, &height) != 0 else {
+            return nil
+        }
+        return (x, y, width, height)
+    }
+
+    /// Whether a point in `ancestor`'s coordinates falls inside `widget` as it is drawn right now.
+    /// A widget the window has not mapped — a hidden pane, a collapsed column — contains nothing.
+    static func contains(
+        _ widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double,
+        in ancestor: UnsafeMutablePointer<GtkWidget>
+    ) -> Bool {
+        guard gtk_widget_get_mapped(widget) != 0, let box = bounds(of: widget, in: ancestor) else {
+            return false
+        }
+        return x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height
+    }
+
     static func box(_ orientation: GtkOrientation, spacing: Int32) -> UnsafeMutablePointer<GtkWidget> {
         gtk_box_new(orientation, spacing)!
     }
@@ -319,6 +428,7 @@ enum Gtk {
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_menu_button_new()!
         gtk_menu_button_set_label(op(button), title)
+        gtk_menu_button_set_can_shrink(op(button), 1)
         for name in css { addClass(button, name) }
         let popover = gtk_popover_new()!
         gtk_menu_button_set_popover(op(button), popover)

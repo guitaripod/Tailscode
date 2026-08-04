@@ -10,11 +10,20 @@ import TailscodeCore
 final class SplitPaneHost: NSViewController {
     private(set) var layout = SplitLayout()
     private(set) var panes: [PaneID: TranscriptViewController] = [:]
+    /// A pane born empty, with the server the split came from — the hub answers it with the
+    /// chooser.
+    var onPaneOpened: ((TranscriptViewController, String?) -> Void)?
+    /// A chat let go over a pane — the hub opens it and resolves the zone.
+    var onChatDropped: ((TranscriptViewController, PaneDragPayload, PaneDropZone) -> Bool)?
+    /// Title for the drop caption while a chat is carried over a pane.
+    var chatTitleForDrop: ((PaneDragPayload) -> String?)?
     private var splitViews: [SplitID: NSSplitView] = [:]
     private var splitItems: [SplitID: (first: NSSplitViewItem, second: NSSplitViewItem)] = [:]
     private var splitLeaves: [SplitID: (first: Set<PaneID>, second: Set<PaneID>)] = [:]
     private var treeRoot: NSViewController?
     private var suppressCapture = false
+    private let dropHighlight = PaneDropHighlightView(frame: .zero)
+    private var dropZone: (pane: PaneID, zone: PaneDropZone)?
 
     /// The hub builds each pane so its closures — toasts, band actions, state observation — are
     /// wired the moment the pane exists, before anything can stream into it.
@@ -30,13 +39,18 @@ final class SplitPaneHost: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        view = NSView()
+        let root = NSView()
+        dropHighlight.autoresizingMask = []
+        root.addSubview(dropHighlight)
+        view = root
     }
 
     /// Creates the first pane once the hub has handed over its factory.
     func bootstrap() {
         guard panes.isEmpty, let makePane else { return }
-        panes[layout.focusedPane] = makePane()
+        let pane = makePane()
+        panes[layout.focusedPane] = pane
+        installDropTarget(on: pane)
         rebuild()
     }
 
@@ -58,16 +72,37 @@ final class SplitPaneHost: NSViewController {
         for pane in orderedPanes { body(pane) }
     }
 
-    /// Splits the focused pane; the new pane opens empty and focused, ready for the chat list —
-    /// or a subsequent open — to fill it.
+    /// Splits the focused pane; the new pane opens focused and asking which server, so the split
+    /// itself is the moment the second machine gets chosen — the chat list, or a subsequent open,
+    /// can still fill it instead.
     func splitActive(axis: SplitAxis) {
+        let source = active.currentEntry?.profileID
         guard let makePane, let freshID = layout.split(layout.focusedPane, axis: axis) else {
             return
         }
-        panes[freshID] = makePane()
+        let pane = makePane()
+        panes[freshID] = pane
+        installDropTarget(on: pane)
+        rebuild()
+        onPaneOpened?(pane, source)
+        onFocusChanged?()
+        persist()
+    }
+
+    /// Splits `pane` and hands back the fresh pane on the side a drop was aimed at.
+    @discardableResult
+    func split(_ pane: TranscriptViewController, edge: PaneDropEdge) -> TranscriptViewController? {
+        guard let makePane,
+            let id = panes.first(where: { $0.value === pane })?.key,
+            let freshID = layout.split(id, axis: edge.axis, placingNewFirst: edge.placesArrivalFirst)
+        else { return nil }
+        let fresh = makePane()
+        panes[freshID] = fresh
+        installDropTarget(on: fresh)
         rebuild()
         onFocusChanged?()
         persist()
+        return fresh
     }
 
     /// Closes the focused pane; its conversation stops streaming and the sibling inherits the
@@ -110,10 +145,32 @@ final class SplitPaneHost: NSViewController {
         persist()
     }
 
+    /// Every pane its fair share, from the menu verb or a double click on any divider.
     func equalize() {
         layout.equalize()
         applyRatios()
         persist()
+    }
+
+    /// The pane a point in window coordinates lands in. A press on a divider, on a collapsed
+    /// pane's ghost, or on the chrome beside the tree belongs to no pane and changes nothing —
+    /// which is why this hit tests the pane views themselves rather than the tree's bounds.
+    func pane(atWindowPoint point: NSPoint) -> TranscriptViewController? {
+        Self.hitTest(orderedPanes, at: point)
+    }
+
+    /// The geometry rule on its own, so the selftest can assert it over plain controllers: the
+    /// first one whose view is loaded, in a window, on screen, and actually under the point.
+    static func hitTest<Controller: NSViewController>(
+        _ controllers: [Controller], at point: NSPoint
+    ) -> Controller? {
+        controllers.first { controller in
+            guard controller.isViewLoaded, controller.view.window != nil,
+                !controller.view.isHiddenOrHasHiddenAncestor
+            else { return false }
+            let local = controller.view.convert(point, from: nil)
+            return NSMouseInRect(local, controller.view.bounds, controller.view.isFlipped)
+        }
     }
 
     /// Focus by intent: a keyboard move also asks the pane to take the keyboard; a click leaves
@@ -143,27 +200,116 @@ final class SplitPaneHost: NSViewController {
         layout = snapshot.layout
         var bindings: [PaneID: SplitPaneSession] = [:]
         for id in layout.paneIDs {
-            panes[id] = makePane()
-            if let session = snapshot.session(for: id) { bindings[id] = session }
+            let pane = makePane()
+            panes[id] = pane
+            installDropTarget(on: pane)
+            if let target = snapshot.page(for: id) {
+                pane.showWeb(target)
+            } else if let target = snapshot.video(for: id) {
+                pane.showVideo(target)
+            } else if let session = snapshot.session(for: id) {
+                bindings[id] = session
+            }
         }
         rebuild()
         return bindings
     }
 
+    private func installDropTarget(on pane: TranscriptViewController) {
+        pane.view.registerForDraggedTypes([.tailscodeChat])
+        pane.onDragEntered = { [weak self, weak pane] sender in
+            guard let self, let pane else { return false }
+            return self.dragUpdated(sender, over: pane)
+        }
+        pane.onDragUpdated = { [weak self, weak pane] sender in
+            guard let self, let pane else { return [] }
+            return self.dragUpdated(sender, over: pane) ? .copy : []
+        }
+        pane.onDragExited = { [weak self] in self?.clearDropHighlight() }
+        pane.onDragPerform = { [weak self, weak pane] sender in
+            guard let self, let pane else { return false }
+            return self.receiveDrop(sender, on: pane)
+        }
+    }
+
+    @discardableResult
+    private func dragUpdated(_ sender: NSDraggingInfo, over pane: TranscriptViewController) -> Bool {
+        guard let id = panes.first(where: { $0.value === pane })?.key else { return false }
+        let local = pane.view.convert(sender.draggingLocation, from: nil)
+        let bounds = pane.view.bounds
+        let zone = PaneDropTarget.zone(
+            x: Double(local.x), y: Double(local.y),
+            width: Double(bounds.width), height: Double(bounds.height))
+        let payload = payload(from: sender)
+        let title = payload.flatMap { chatTitleForDrop?($0) }
+        showDropHighlight(zone, on: pane, caption: zone.caption(title))
+        dropZone = (id, zone)
+        return true
+    }
+
+    private func showDropHighlight(
+        _ zone: PaneDropZone, on pane: TranscriptViewController, caption: String
+    ) {
+        let paneFrame = pane.view.convert(pane.view.bounds, to: view)
+        let rect = PaneDropTarget.highlight(
+            for: zone, width: Double(paneFrame.width), height: Double(paneFrame.height))
+        let frame = NSRect(
+            x: paneFrame.minX + rect.x, y: paneFrame.minY + rect.y,
+            width: rect.width, height: rect.height)
+        dropHighlight.show(frame: frame, caption: caption)
+        view.addSubview(dropHighlight, positioned: .above, relativeTo: nil)
+    }
+
+    func clearDropHighlight() {
+        dropZone = nil
+        dropHighlight.clear()
+    }
+
+    @discardableResult
+    private func receiveDrop(_ sender: NSDraggingInfo, on pane: TranscriptViewController) -> Bool {
+        clearDropHighlight()
+        guard let payload = payload(from: sender) else { return false }
+        let local = pane.view.convert(sender.draggingLocation, from: nil)
+        let bounds = pane.view.bounds
+        let zone = PaneDropTarget.zone(
+            x: Double(local.x), y: Double(local.y),
+            width: Double(bounds.width), height: Double(bounds.height))
+        return onChatDropped?(pane, payload, zone) ?? false
+    }
+
+    private func payload(from sender: NSDraggingInfo) -> PaneDragPayload? {
+        let pb = sender.draggingPasteboard
+        guard let text = pb.string(forType: .tailscodeChat) else { return nil }
+        return PaneDragPayload.decode(text)
+    }
+
     func snapshot() -> SplitSnapshot {
         var sessions: [String: SplitPaneSession] = [:]
+        var videos: [String: String] = [:]
+        var pages: [String: String] = [:]
         for (id, pane) in panes {
+            if let target = pane.webTarget {
+                pages[id.raw] = target.address
+                continue
+            }
+            if let target = pane.videoTarget {
+                videos[id.raw] = target.address
+                continue
+            }
             guard let entry = pane.currentEntry else { continue }
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
-        return SplitSnapshot(layout: layout, sessions: sessions)
+        return SplitSnapshot(layout: layout, sessions: sessions, videos: videos, pages: pages)
     }
 
     /// The same key and shape the Linux desktop persists, so both restore the same arrangement.
     /// A lone pane clears the record: the plain window needs no layout file.
     func persist() {
-        if paneCount > 1, let encoded = snapshot().encoded {
+        let current = snapshot()
+        if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty,
+            let encoded = current.encoded
+        {
             UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
         } else {
             UserDefaults.standard.removeObject(forKey: SplitSnapshot.defaultsKey)
@@ -211,6 +357,9 @@ final class SplitPaneHost: NSViewController {
             return pane
         case .split(let id, let axis, _, let first, let second):
             let controller = NSSplitViewController()
+            let splitView = DividerSplitView()
+            splitView.onDividerDoubleClick = { [weak self] in self?.equalize() }
+            controller.splitView = splitView
             controller.splitView.isVertical = axis == .horizontal
             controller.splitView.dividerStyle = .thin
             let firstItem = NSSplitViewItem(viewController: build(first))
@@ -304,5 +453,38 @@ final class SplitPaneHost: NSViewController {
     private func applyIdentity() {
         let several = layout.paneCount > 1
         for pane in panes.values { pane.setIdentityVisible(several) }
+    }
+}
+
+/// A split view whose divider answers a double click by evening the whole arrangement out. The
+/// second click is intercepted before `NSSplitView` starts tracking a drag, and only when it
+/// lands in the gap between the two subviews — a double click anywhere in a conversation is none
+/// of this view's business.
+final class DividerSplitView: NSSplitView {
+    var onDividerDoubleClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, hitsDivider(convert(event.locationInWindow, from: nil)) {
+            onDividerDoubleClick?()
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    private func hitsDivider(_ point: NSPoint) -> Bool {
+        let slop = max(dividerThickness, 4)
+        for (left, right) in zip(arrangedSubviews, arrangedSubviews.dropFirst()) {
+            let ordered =
+                isVertical
+                ? (left.frame.minX <= right.frame.minX ? (left, right) : (right, left))
+                : (left.frame.minY <= right.frame.minY ? (left, right) : (right, left))
+            let low =
+                isVertical ? ordered.0.frame.maxX : ordered.0.frame.maxY
+            let high =
+                isVertical ? ordered.1.frame.minX : ordered.1.frame.minY
+            let value = isVertical ? point.x : point.y
+            if value >= low - slop, value <= high + slop { return true }
+        }
+        return false
     }
 }

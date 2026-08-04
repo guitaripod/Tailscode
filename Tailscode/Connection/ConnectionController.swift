@@ -14,7 +14,6 @@ final class ConnectionController {
 
     private let store: ConnectionProfileStore?
     private let activeKey = "tailscode.activeProfileID"
-    private let demoKey = "tailscode.demoMode"
     private(set) var activeProfileID: String?
     private(set) var isDemoMode: Bool
 
@@ -43,7 +42,7 @@ final class ConnectionController {
     init() {
         store = Self.makeStore()
         activeProfileID = UserDefaults.standard.string(forKey: activeKey)
-        isDemoMode = UserDefaults.standard.bool(forKey: demoKey)
+        isDemoMode = DemoMode.isActive
         if let store {
             AppLogger.connection.info("profile store ready at \(store.directory.lastPathComponent)")
         } else {
@@ -123,14 +122,14 @@ final class ConnectionController {
     /// Puts the app into the scripted no-server demo world. Exits automatically
     /// the moment a real server is saved.
     func enterDemoMode() {
-        UserDefaults.standard.set(true, forKey: demoKey)
+        DemoMode.enter()
         isDemoMode = true
         setActive(DemoWorld.claudeProfile.id)
         AppLogger.connection.info("entered demo mode")
     }
 
     func leaveDemoMode() {
-        UserDefaults.standard.set(false, forKey: demoKey)
+        DemoMode.leave()
         isDemoMode = false
         let remaining = profiles.first?.id
         setActive(activeProfileID.flatMap { id in profiles.contains { $0.id == id } ? id : nil } ?? remaining)

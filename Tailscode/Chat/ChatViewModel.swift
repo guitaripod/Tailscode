@@ -300,6 +300,9 @@ final class ChatViewModel {
     }
 
     var supportsServerCommands: Bool { backend.capabilities.supportsCommands }
+    /// Whether the agent reads its own slash grammar out of the prompt text. A CLI-backed agent
+    /// does, so a typed command must go out untouched rather than through the command route.
+    var resolvesCommandsFromPromptText: Bool { backend.resolvesCommandsFromPromptText }
     var supportsGoals: Bool { backend.capabilities.supportsGoals }
     var goal: SessionGoal? { state.goal }
 

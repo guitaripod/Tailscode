@@ -1,16 +1,16 @@
 # Tailscode
 
-**Drive your coding agents from your phone.** Tailscode is a native UIKit iOS client for remote coding agents — [opencode](https://opencode.ai) and **Claude Code** (via [claude-bridge](https://github.com/guitaripod/claude-bridge)) — reached over [Tailscale](https://tailscale.com). Send a prompt, pocket your phone, and follow the agent's progress from your Lock Screen.
+**Drive your coding agents from every seat.** Tailscode is three native clients for remote coding agents — [opencode](https://opencode.ai) and **Claude Code** (via [claude-bridge](https://github.com/guitaripod/claude-bridge)) — reached over [Tailscale](https://tailscale.com): **iOS** (UIKit), **Linux** (GTK4), and **macOS** (AppKit, Liquid Glass). One conversation engine, one shared core (`TailscodeCore`), feature parity enforced by a capability registry.
 
 <p align="center">
   <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>Download on the App Store</b></a> · free, with a one-time Pro unlock · <a href="LICENSE">GPL-3.0</a>
 </p>
 
-Built on [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit), a GPL-3.0 Swift package that unifies both backends behind one conversation engine. The app is a polished shell; the engine is reusable.
+Built on [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit), a GPL-3.0 Swift package that unifies both backends behind one conversation engine. The clients are polished shells; the engine is reusable.
 
 ## Why
 
-Coding agents run long turns on machines that aren't in front of you. Tailscode makes the phone the remote control: full streaming transcripts, tool-call visibility, permission approvals, and Live Activities — so "prompt and bounce" actually works.
+Coding agents run long turns on machines that aren't in front of you. The phone is the remote control — full streaming transcripts, tool-call visibility, permission approvals, and Live Activities — so "prompt and bounce" actually works. The desktops are the multi-pane workspace: tiled chats, a terminal and file tree beside them, optional browser and video slots, vim in the composer.
 
 <p align="center">
   <img src="docs/screenshot-streaming.png" width="240" alt="A live turn: elapsed status, collapsed thought group, streamed code, running command" />
@@ -59,37 +59,56 @@ Coding agents run long turns on machines that aren't in front of you. Tailscode 
 - Localized into **ten languages** (English, German, Spanish, French, Italian, Japanese, Korean, Brazilian Portuguese, Simplified and Traditional Chinese).
 - File-based diagnostics logger with an in-app colorized viewer and a shareable report.
 
+## Clients
+
+| Client | Toolkit | Where it shines |
+|---|---|---|
+| **iOS** (`Tailscode/`) | UIKit, iOS 18+ | Pocket remote: Live Activities, haptics, widgets, on-device prompt enhance |
+| **Linux** (`TailscodeLinux/`) | GTK4 + libadwaita | Tiling panes, named themes, terminal, file tree, browser/video slots |
+| **macOS** (`TailscodeMac/`) | AppKit, macOS 26+ Liquid Glass | Same tiling workspace on the Mac; system materials for chrome |
+
+Shared toolkit-free logic lives in `TailscodeCore/`. `scripts/parity.sh` prints the capability matrix and greps every claimed anchor.
+
 ## Requirements
 
-- iOS 18+ (Liquid Glass effects and prompt enhance appear on iOS 26+).
+- **iOS** 18+ (Liquid Glass and prompt enhance on iOS 26+).
+- **macOS** 26+ for TailscodeMac.
+- **Linux** with GTK4/libadwaita (optional VTE, mpv, WebKitGTK for terminal/video/browser panes).
 - A machine on your tailnet running one of:
   - `opencode serve` (port 4096)
   - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098)
 
 ## Build
 
-The project is generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
+**iOS** — generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 
 ```bash
 xcodegen generate
 open Tailscode.xcodeproj
 ```
 
-Set your own `DEVELOPMENT_TEAM` in `project.yml`. A built-in demo mode ("No server yet? Try the demo" on the connect screen, or the `--demo` launch argument) populates the whole app with two sample servers and scripted sessions — no tailnet needed. DEBUG builds auto-connect from `TAILSCODE_HOST` / `TAILSCODE_PASSWORD` environment variables, and a set of `TAILSCODE_*` launch hooks opens any screen directly.
+Set your own `DEVELOPMENT_TEAM` in `project.yml`. Demo mode ("Try the demo" on first run, or `--demo`) populates scripted servers with no tailnet — same world on iOS, Linux, and Mac. DEBUG builds auto-connect from `TAILSCODE_HOST` / `TAILSCODE_PASSWORD`.
+
+**Linux** — `scripts/dev-linuxapp.sh` keeps one harness display; `scripts/install-linuxapp.sh` puts a change in front of the person.
+
+**macOS** — rsync + `xcodegen` + `xcodebuild` on a Mac (see `TailscodeMac/AGENTS.md`).
 
 | Script | What |
 |---|---|
-| `scripts/shots.sh` | Rebuilds the marketing screenshot set on a dedicated simulator, one clean launch per shot |
-| `scripts/film.sh` | Rebuilds the launch film: records the app's `--tour`, renders it on a procedural iPhone in Blender, titles and grades it |
-| `scripts/release.sh` | Archives + uploads a build through the stable-macOS build VM |
+| `scripts/parity.sh` | Capability matrix + anchor greps across all three clients |
+| `scripts/shots.sh` | Marketing screenshots on a dedicated simulator |
+| `scripts/film.sh` | Launch film capture + grade |
+| `scripts/release.sh` | Archive + upload through the stable-macOS build VM |
 | `scripts/build-mac.sh`, `scripts/run-mac.sh` | Drive a remote Mac over SSH for author-on-Linux workflows |
+| `scripts/dev-linuxapp.sh` | Headless Linux client harness (never the real desktop) |
 
 ## Architecture
 
 ```
-Tailscode/
-  App/           AppDelegate, SceneDelegate, AppCoordinator (routing + deep links), push registration
-  DesignSystem/  Theme — colors, spacing, typography, haptics, Liquid Glass helpers
+TailscodeCore/   Shared: parity, slash, splits, cascade, stores, demo world, themes contract
+Tailscode/       iOS UIKit client
+  App/           AppDelegate, SceneDelegate, AppCoordinator, push registration
+  DesignSystem/  Theme — system materials, spacing, typography, haptics, Liquid Glass
   Logging/       AppLogger → OSLog + rotated file (Library/Logs/tailscode.log)
   Connection/    ConnectionController, tailnet discovery, manual connect
   Onboarding/    First-run connect flow with live probing, setup guide
@@ -98,6 +117,8 @@ Tailscode/
   Chat/          ChatViewController + ViewModel, composer, cells, subagents, compaction,
                  model picker, slash palette, on-device prompt enhance
   Usage/         Plan gauges and quota detail
+TailscodeLinux/  GTK4 desktop client (tiling, terminal, themes, slots)
+TailscodeMac/    AppKit desktop client (tiling, Liquid Glass)
   Settings/      Servers, notifications, tailnet token, diagnostics, Pro
   Support/       Demo backend, Pro store, tour driver
 TailscodeWidget/ ActivityKit widget (Lock Screen + Dynamic Island) + quota widgets

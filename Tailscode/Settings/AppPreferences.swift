@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 /// User-facing app preferences, backed by `UserDefaults`.
@@ -41,6 +42,19 @@ enum AppPreferences {
     static var hapticsEnabled: Bool {
         get { flag("pref.haptics", default: true) }
         set { defaults.set(newValue, forKey: "pref.haptics") }
+    }
+
+    /// How hard every cue lands, 0…1. Ships at the hardware's ceiling: the setting exists to be
+    /// dialled down by someone who finds it too much, not discovered by someone who finds the
+    /// phone too quiet.
+    static var hapticIntensity: Double {
+        get {
+            guard defaults.object(forKey: "pref.hapticIntensity") != nil else {
+                return HapticStrength.standard
+            }
+            return HapticStrength.clamped(defaults.double(forKey: "pref.hapticIntensity"))
+        }
+        set { defaults.set(HapticStrength.clamped(newValue), forKey: "pref.hapticIntensity") }
     }
 
     static var sendOnReturn: Bool {

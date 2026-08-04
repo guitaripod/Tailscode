@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import TailscodeCore
 import UIKit
 
 private struct QuotaUnavailableError: LocalizedError, Sendable {
@@ -372,11 +373,12 @@ final class UsageViewController: UIViewController {
 
     private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
         let gauges = quota.gauges.prefix(3).map { gauge -> GaugeVM in
-            let percent = Int((gauge.fraction * 100).rounded())
+            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
             return GaugeVM(
                 name: gauge.label,
                 fraction: gauge.fraction,
-                percentText: "\(percent)%",
+                percentText: QuotaSurface.amountLabel(
+                    fraction: gauge.fraction, percentText: "\(percent)%"),
                 caption: resetCaption(gauge))
         }
         return CardModel(

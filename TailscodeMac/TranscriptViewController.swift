@@ -19,6 +19,14 @@ final class TranscriptViewController: NSViewController {
     /// An answered chooser row: which server, which chat, or a new one — acted on by the hub,
     /// which owns the servers and the minting of sessions.
     var onChooserAction: ((PaneChooserAction) -> Void)?
+    /// Live quotas for used-up surfaces — the same numbers the sidebar footer shows.
+    var quotasForStatus: (() -> [UsageQuota])?
+
+    /// Drag-a-chat-into-this-pane hooks, owned by the tiling host so every pane is a drop target.
+    var onDragEntered: ((NSDraggingInfo) -> Bool)?
+    var onDragUpdated: ((NSDraggingInfo) -> NSDragOperation)?
+    var onDragExited: (() -> Void)?
+    var onDragPerform: ((NSDraggingInfo) -> Bool)?
 
     private let scrollView = NSScrollView()
     private let canvas = NSStackView()
@@ -62,9 +70,9 @@ final class TranscriptViewController: NSViewController {
     var currentBackend: (any CodingAgentBackend)? { backend }
     var currentState: ConversationState? { lastState }
 
-    private let cascade = CascadePainter()
-    private var renderedRows: [TranscriptRow] = []
-    private var rowViews: [NSView] = []
+    let cascade = CascadePainter()
+    private(set) var renderedRows: [TranscriptRow] = []
+    private(set) var rowViews: [NSView] = []
     /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
     /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
     /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
@@ -73,12 +81,12 @@ final class TranscriptViewController: NSViewController {
     private var lastFullCount = 0
     private var windowLimit = 400
     private var rowTailMessages = 300
-    private var placeholderShown = true
+    var placeholderShown = true
     private var currentPlaceholder: String?
     private var pendingReveal = false
     private var fillComplete = false
     private var isFillingInChunks = false
-    private var followsBottom = true
+    var followsBottom = true
     private var isAutoScrolling = false
     private var pinScheduled = false
     private var unseenRows = 0
@@ -103,7 +111,8 @@ final class TranscriptViewController: NSViewController {
     private var agentStreamSessionID: String?
 
     override func loadView() {
-        let container = NSView()
+        let container = DropForwardingView()
+        container.owner = self
         container.wantsLayer = true
         container.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
 
@@ -436,6 +445,13 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
     }
 
+    /// Browse every command this server offers — the completion popover is for speed.
+    func presentCommandCatalog() {
+        CommandCatalogWindow.present(commands: composer.availableCommands) { [weak self] command in
+            self?.composer.acceptCatalogCommand(command)
+        }
+    }
+
     /// A notice is transient — the last thing the app did on your behalf — and it lives at the
     /// far end of the band so it never pushes a live fact off it.
     func setNotice(_ text: String) {
@@ -583,6 +599,7 @@ final class TranscriptViewController: NSViewController {
         composer.onStop = { [weak self] in self?.stopTurn() }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
+        composer.onBrowseCommands = { [weak self] in self?.presentCommandCatalog() }
 
         let column = NSStackView(views: [composer])
         column.orientation = .vertical
@@ -865,11 +882,20 @@ final class TranscriptViewController: NSViewController {
         } else {
             turnStartedAt = nil
         }
+        let quotas = quotasForStatus?() ?? []
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
-            attachments: composer.attachmentCount, contextTokens: contextEstimate)
-        statusBand.render(facts: facts, notice: notice)
+            attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas)
+        let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
+        statusBand.render(facts: facts, notice: bandNotice)
         bandGlass?.isHidden = !statusBand.hasContent
+    }
+
+    /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
+    /// rewritten phase, so this only speaks when the wall is up before the next send.
+    private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
+        guard state.lastFailure == nil, state.status != .running else { return nil }
+        return QuotaSurface.hottestExhausted(in: quotas).map(QuotaSurface.short)
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;
@@ -1326,60 +1352,12 @@ final class TranscriptViewController: NSViewController {
         }
     }
 
-    /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
-    /// the network delivered. Only the last row can be live — anything after it is proof the
-    /// stream has moved on — and only prose and code grow a character at a time, so a tool call
-    /// landing after a paragraph settles that paragraph rather than freezing it half-written.
-    ///
-    /// The row is held at its markdown-safe prefix so the renderer never sees `**bold` without its
-    /// closer; how much of what it rendered is on screen is the painter's business, applied to the
-    /// label after the diff has built it.
-    private func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
-        cascade.host = view
-        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
-        let released = cascade.key
-        guard let live, let source = live.streamedText else {
-            cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
-            return rows
-        }
-        let safe = LiveCascade.renderable(source, sealed: !running)
-        var paced = rows
-        let row = safe == source ? live : live.held(to: safe)
-        paced[paced.count - 1] = row
-        cascade.focus(
-            row.key, rendered: row.renderedText ?? "", sealed: !running,
-            ultracode: composer.auraActive)
-        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
-        return paced
-    }
 
-    /// One frame of the wave, painted into the live row's own label instead of through the row
-    /// diff: the text a person is reading must not be torn down and rebuilt a hundred times a
-    /// second, or a selection cannot survive the sentence it is in being written.
-    private func paintCascade() {
-        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
-        let index = renderedRows.count - 1
-        guard index < rowViews.count, renderedRows[index].key == key,
-            let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind),
-            let tail = cascade.tail(for: key)
-        else { return }
-        switch renderedRows[index].kind {
-        case .agentProse(_, let rendered):
-            label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
-        case .codeBlock(_, let body):
-            label.attributedStringValue = tail.paint(
-                Self.codeRendering(body), settled: MacTheme.Color.label)
-        default:
-            return
-        }
-        if followsBottom { scrollToBottom() }
-    }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
     /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
     /// the heat of a stream that stopped — the row has to be handed back whole by hand.
-    private func settleCascade(on key: String, in rows: [TranscriptRow]) {
+    func settleCascade(on key: String, in rows: [TranscriptRow]) {
         guard let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowViews.count,
             let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind)
@@ -1397,7 +1375,7 @@ final class TranscriptViewController: NSViewController {
 
     /// A code block's body as the row already draws it, so the wave tints the same glyphs the
     /// settled row shows rather than restyling them on its way past.
-    private static func codeRendering(_ body: String) -> NSAttributedString {
+    static func codeRendering(_ body: String) -> NSAttributedString {
         NSAttributedString(
             string: body,
             attributes: [.font: MacTheme.Font.mono(12), .foregroundColor: MacTheme.Color.label])
@@ -1405,7 +1383,7 @@ final class TranscriptViewController: NSViewController {
 
     /// Where a live row keeps the words: prose is the label itself, a code block keeps its body
     /// under the header and behind a scroller once it is tall enough to need one.
-    private static func streamedLabel(in view: NSView, kind: TranscriptRow.Kind) -> NSTextField? {
+    static func streamedLabel(in view: NSView, kind: TranscriptRow.Kind) -> NSTextField? {
         switch kind {
         case .agentProse:
             return view as? NSTextField
@@ -1775,4 +1753,30 @@ final class TranscriptViewController: NSViewController {
 /// of upwards like a default AppKit document.
 private final class FlippedClipView: NSClipView {
     override var isFlipped: Bool { true }
+}
+
+/// Forwards drag-destination events to the transcript so the tiling host can treat every pane as
+/// a place a chat can land.
+private final class DropForwardingView: NSView {
+    weak var owner: TranscriptViewController?
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        owner?.onDragEntered?(sender) == true ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        owner?.onDragUpdated?(sender) ?? []
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        owner?.onDragExited?()
+    }
+
+    override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        true
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        owner?.onDragPerform?(sender) ?? false
+    }
 }

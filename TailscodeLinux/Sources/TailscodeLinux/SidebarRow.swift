@@ -33,7 +33,9 @@ enum SidebarRow {
     /// One conversation. Three registers on two lines — what it is, where it lives, and what it is
     /// doing — with the state carried by a pill rather than by a colour a reader has to decode.
     /// A right click hands back the row widget (as bits, for the sendable hop) and where inside it
-    /// the click landed, so the caller can open a menu under the pointer.
+    /// the click landed, so the caller can open a menu under the pointer. The row is also the
+    /// handle a pointer picks the chat up by: it carries its own identity to whichever pane it is
+    /// dragged onto.
     static func make(
         _ model: SessionRowModel, focused: Bool,
         onOpen: @escaping @Sendable () -> Void,
@@ -78,6 +80,10 @@ enum SidebarRow {
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
         let buttonBits = UInt(bitPattern: button)
         Gtk.onRightClick(button) { x, y in onMenu(buttonBits, x, y) }
+        Gtk.makeChatDragSource(
+            button,
+            payload: PaneDragPayload(
+                profileID: model.entry.profileID, sessionID: model.entry.session.id).encoded)
         return button
     }
 

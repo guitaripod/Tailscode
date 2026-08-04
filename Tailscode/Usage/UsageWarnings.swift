@@ -1,11 +1,12 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 
-/// Warns once when a usage window is nearly spent, on whichever surface lands
-/// the numbers first — the foreground fetch, the background refresh, or a silent
-/// push. Running out of quota mid-task is the failure a phone user can do
-/// something about (switch model, wait for the reset), but only if they hear
-/// about it before the agent stops.
+/// Warns once when a usage window is nearly spent, and again when it is used up,
+/// on whichever surface lands the numbers first — the foreground fetch, the
+/// background refresh, or a silent push. Running out of quota mid-task is the
+/// failure a phone user can do something about (switch model, wait for the reset),
+/// but only if they hear about it before the agent stops.
 @MainActor
 enum UsageWarnings {
     static let threshold = 0.9
@@ -44,24 +45,45 @@ enum UsageWarnings {
 
     private static func evaluate(_ gauges: [Gauge]) {
         guard AppPreferences.notifyUsageWarnings else { return }
+        if let full = gauges.filter({ $0.fraction >= QuotaSurface.exhaustedFloor })
+            .max(by: { $0.fraction < $1.fraction })
+        {
+            fire(
+                full, keySuffix: "full",
+                title: QuotaSurface.notificationTitle(
+                    QuotaExhaustion(
+                        provider: full.provider, window: full.label, fraction: full.fraction,
+                        resetsAt: full.resetsAt, trustedReset: full.resetsAt != nil,
+                        source: .gauge)),
+                body: QuotaSurface.notificationBody(
+                    QuotaExhaustion(
+                        provider: full.provider, window: full.label, fraction: full.fraction,
+                        resetsAt: full.resetsAt, trustedReset: full.resetsAt != nil,
+                        source: .gauge)))
+            return
+        }
         guard let hottest = gauges.filter({ $0.fraction >= threshold })
             .max(by: { $0.fraction < $1.fraction })
         else { return }
-        let key = identity(for: hottest)
-        var fired = firedWindows()
-        guard fired[key] == nil else { return }
-        fired[key] = Date().timeIntervalSince1970
-        store(fired)
         let percent = Int((hottest.fraction * 100).rounded())
         let reset = hottest.resetsAt.map {
             " · " + UsageGaugeFormat.resetCaption(resetsAt: $0, trustedReset: true)
         } ?? ""
-        NotificationManager.notify(
-            kind: .usage,
+        fire(
+            hottest, keySuffix: "warn",
             title: String(localized: "\(hottest.provider) is \(percent)% used"),
-            body: "\(hottest.label)\(reset)",
-            identifier: "usage:\(key)")
-        AppLogger.session.info("usage warning raised for \(key) at \(percent)%")
+            body: "\(hottest.label)\(reset)")
+    }
+
+    private static func fire(_ gauge: Gauge, keySuffix: String, title: String, body: String) {
+        let key = identity(for: gauge) + "|" + keySuffix
+        var fired = firedWindows()
+        guard fired[key] == nil else { return }
+        fired[key] = Date().timeIntervalSince1970
+        store(fired)
+        NotificationManager.notify(
+            kind: .usage, title: title, body: body, identifier: "usage:\(key)")
+        AppLogger.session.info("usage warning raised for \(key)")
     }
 
     /// One warning per window, not per fetch: a gauge sits above the threshold

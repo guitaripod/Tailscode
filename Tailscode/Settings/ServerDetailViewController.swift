@@ -423,9 +423,13 @@ final class ServerDetailViewController: UIViewController {
     private func presentModelPicker(models: [ModelInfo]) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
-        let picker = ModelPickerViewController(models: models, selected: modelChoice.model) {
-            [weak self] selection in
-            self?.setDefaultModel(selection)
+        let source = ModelSource(
+            profileID: profile.id, name: profile.name, backend: profile.backend, models: models,
+            isCurrent: true, allowsServerDefault: true,
+            acceptsAnyModelID: profile.backend == .claudeCode)
+        let picker = ModelPickerViewController(sources: [source], selected: modelChoice.model) {
+            [weak self] pick in
+            self?.setDefaultModel(pick.selection)
         }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {

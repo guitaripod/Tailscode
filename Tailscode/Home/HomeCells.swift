@@ -751,7 +751,8 @@ final class QuotaCardCell: GlassCardCell {
         let percent = UILabel()
         percent.font = UIFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         percent.textColor = gauge.fraction > 0.85 ? Theme.Color.danger : Theme.Color.label
-        percent.text = "\(Int((gauge.fraction * 100).rounded()))%"
+        let raw = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        percent.text = QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: raw)
         percent.setContentHuggingPriority(.required, for: .horizontal)
 
         let top = UIStackView(arrangedSubviews: [label, percent])

@@ -341,6 +341,11 @@ enum MatrixTheme {
         }
         .model-fact-local { color: \(accent); border-color: alpha(\(accent), 0.6); }
         .model-fact-providers { color: \(info); border-color: alpha(\(info), 0.6); }
+        .model-fact-server {
+            color: \(warn);
+            border-color: alpha(\(warn), 0.6);
+            background: alpha(\(warn), 0.10);
+        }
         .chooser-hint {
             color: \(textDim);
             font-family: monospace;

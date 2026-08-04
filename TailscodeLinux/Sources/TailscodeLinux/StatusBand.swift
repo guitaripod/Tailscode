@@ -104,8 +104,7 @@ enum StatusBand {
         case .act: gtk_button_set_label(ptr(widget), segment.text)
         case .menu: gtk_menu_button_set_label(op(widget), segment.text)
         }
-        for css in ["seg-idle", "seg-dim", "seg-live", "seg-warn", "seg-error", "seg-agents", "seg-goal"]
-        where css != segment.css {
+        for css in StatusFacts.Segment.allCSS where css != segment.css {
             gtk_widget_remove_css_class(widget, css)
         }
         Gtk.addClass(widget, segment.css)

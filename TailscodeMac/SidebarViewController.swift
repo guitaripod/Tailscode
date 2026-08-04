@@ -32,7 +32,7 @@ final class SidebarViewController: NSViewController {
     private let rowMenu = NSMenu()
     private let usageFooter = UsageFooterView()
 
-    private var entries: [SessionEntry] = []
+    private(set) var entries: [SessionEntry] = []
     private var unreachable: [String] = []
     private var visible: [SessionRowModel] = []
     private var rows: [SidebarRow] = []
@@ -154,6 +154,14 @@ final class SidebarViewController: NSViewController {
         SavedChatStore.reconcile(with: fresh)
         applyEntries(fresh, unreachable: down)
     }
+
+    /// Every chat the list knows about, and the servers that stopped answering — read by the
+    /// hub so an empty pane's chooser offers the same truth the list is showing.
+    var allEntries: [SessionEntry] { entries }
+    var unreachableServers: [String] { unreachable }
+
+    /// A fresh listing landed: the hub restates any chooser standing on the old one.
+    var onEntriesChanged: (() -> Void)?
 
     /// The directories chats already work in, newest first — what the new-chat sheet offers, so
     /// + then Enter starts a conversation where the last one worked.
@@ -383,6 +391,7 @@ final class SidebarViewController: NSViewController {
             }
         }
         render()
+        onEntriesChanged?()
         guard selectedID == nil, !entries.isEmpty else { return }
         let remembered = UserDefaults.standard.string(forKey: "tailscode.lastSession")
             .flatMap { id in entries.first { $0.session.id == id } }
@@ -599,6 +608,17 @@ final class SidebarViewController: NSViewController {
 extension SidebarViewController: NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int {
         rows.count
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
+        -> (any NSPasteboardWriting)?
+    {
+        guard case .session(let model) = rows[row] else { return nil }
+        let payload = PaneDragPayload(
+            profileID: model.entry.profileID, sessionID: model.entry.session.id)
+        let item = NSPasteboardItem()
+        item.setString(payload.encoded, forType: .tailscodeChat)
+        return item
     }
 }
 

@@ -94,8 +94,9 @@ final class StatusBandView: NSView {
         case "seg-live": return MacTheme.Color.accent
         case "seg-warn": return MacTheme.Color.warning
         case "seg-error": return MacTheme.Color.danger
-        case "seg-agents": return .systemBlue
-        case "seg-goal": return .systemPurple
+        case "seg-offline": return MacTheme.Color.secondaryLabel
+        case "seg-agents": return MacTheme.Color.info
+        case "seg-goal": return MacTheme.Color.mark
         default: return MacTheme.Color.secondaryLabel
         }
     }

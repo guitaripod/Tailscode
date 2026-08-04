@@ -31,7 +31,9 @@ for c in "${CLIENTS[@]}"; do
   grep -nE '(^|[^A-Za-z])default *:' "$mf" >/dev/null && errors+=("$c: 'default:' found in $mf — the switch must stay exhaustive, one case per line")
   grep -nE 'case \.[A-Za-z]+ *,' "$mf" >/dev/null && errors+=("$c: grouped cases found in $mf — one case per line so the script can parse evidence")
   for cap in "${caps[@]}"; do
-    line=$(grep -E "case \.$cap: " "$mf" || true)
+    line=$(grep -A3 -E "case \.$cap:( |$)" "$mf" | tr '\n' ' ' \
+      | sed -e 's/( */(/g' -e 's/  */ /g' -e 's/^ *//')
+    line=${line%% case .*}
     if [[ -z "$line" ]]; then
       errors+=("$c: no answer for .$cap in $mf")
       KIND[$c/$cap]="?"

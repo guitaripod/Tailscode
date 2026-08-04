@@ -1,0 +1,34 @@
+SLASH COMMANDS, IN FULL
+
+Typing / now ranks your server's whole catalog the way you'd reach for it: the word typed out, then a prefix, then a namespace:name matched on its bare half (/open finds /pr:open), then letters found inside a name, then letters found in order but apart (/scrv finds /security-review). The commands you actually use float to the top. Every row shows the letters that matched, the command's own argument hint, and the plugin or project that contributed it.
+
+Past the command's name the list becomes that one command's signature and description, held there while you write the argument. A word your server has never heard of says so, instead of vanishing under the caret.
+
+A command typed out and sent now goes exactly where tapping it would have gone. "/compact keep the failing test names" opens the compact preflight with that instruction already in it. A command your server knows runs as a command. Anything else goes out as the plain words you wrote — your server is the authority on its own grammar.
+
+ALL COMMANDS
+
+The whole catalog is now browsable and searchable, grouped by where each command came from: built in, this project, yours, plugins, skills, MCP servers — each with its description, scope and argument hint. From the ••• menu, or the last row of the completion list. A completion list cannot teach you a name you have never seen.
+
+With a hardware keyboard: up/down or tab walks the list, return or tab accepts, esc dismisses — without taking those keys from an ordinary draft.
+
+THE ANSWER IS WRITTEN, NOT PASTED
+
+Text leaves a model in lumps, and a transcript that paints each lump as it lands reads as a stutter. The live answer now reveals through a paced wave: it chases the backlog rather than copying it, never stops inside a half-open markdown token (no emphasis flashing its asterisks), and the leading edge carries heat toward the accent with a shimmer travelling back through it, so a turn stalled on a tool still breathes. Ultracode paints that edge with its own rainbow. History and chat switches appear whole, and Reduce Motion reveals at once.
+
+CUES YOU FEEL, AT A STRENGTH YOU CHOOSE
+
+Every haptic is now a named cue played from a composed Core Haptics pattern — a sustained body under a sharp crack — so the top of the range is the Taptic Engine's ceiling rather than a canned tap. One setting scales all of them, and the reinforcement drops out at the gentle end, so a lower setting is a lighter cue and not a quieter thump. Pick it by feel: the slider plays every stop it passes at the strength under your finger. Settings > Haptics.
+
+ALSO
+
+The demo world (no server needed) now carries a real command catalog, so / has something to show before you have set a machine up.
+
+WHAT TO CHECK
+
+- Type / in a chat and walk the list; try a few letters that aren't a prefix.
+- Type a command with arguments and send it, rather than tapping the row.
+- Try /compact with an instruction written after it.
+- Open All commands from the ••• menu and search it.
+- Watch a live answer arrive, and try it with Reduce Motion on.
+- Settings > Haptics: drag the slider and feel the stops.

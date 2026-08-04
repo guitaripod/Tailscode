@@ -59,6 +59,7 @@ final class WelcomeViewController: UIViewController {
         headline.adjustsFontForContentSizeCategory = true
         headline.textColor = Theme.Color.label
         headline.numberOfLines = 0
+        Self.letWrap(headline)
 
         let subtitle = UILabel()
         subtitle.text = String(
@@ -69,6 +70,7 @@ final class WelcomeViewController: UIViewController {
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = Theme.Color.secondaryLabel
         subtitle.numberOfLines = 0
+        Self.letWrap(subtitle)
 
         let values = UIStackView(arrangedSubviews: [
             Self.valueRow(
@@ -134,6 +136,7 @@ final class WelcomeViewController: UIViewController {
         footnote.textColor = Theme.Color.tertiaryLabel
         footnote.textAlignment = .center
         footnote.numberOfLines = 0
+        Self.letWrap(footnote)
 
         let heroBox = UIView()
         heroBox.translatesAutoresizingMaskIntoConstraints = false
@@ -142,9 +145,12 @@ final class WelcomeViewController: UIViewController {
             hero.topAnchor.constraint(equalTo: heroBox.topAnchor),
             hero.bottomAnchor.constraint(equalTo: heroBox.bottomAnchor),
             hero.centerXAnchor.constraint(equalTo: heroBox.centerXAnchor),
-            hero.widthAnchor.constraint(lessThanOrEqualToConstant: 320),
+            hero.widthAnchor.constraint(lessThanOrEqualTo: heroBox.widthAnchor),
+            hero.widthAnchor.constraint(lessThanOrEqualToConstant: 320).withPriority(
+                UILayoutPriority(999)),
             hero.widthAnchor.constraint(
-                equalTo: heroBox.widthAnchor, multiplier: 1, constant: 0).withPriority(.defaultHigh),
+                equalTo: heroBox.widthAnchor, multiplier: 1, constant: 0).withPriority(
+                    UILayoutPriority(998)),
         ])
 
         column.axis = .vertical
@@ -185,13 +191,22 @@ final class WelcomeViewController: UIViewController {
             column.topAnchor.constraint(
                 greaterThanOrEqualTo: box.topAnchor, constant: Theme.Spacing.xl),
             column.bottomAnchor.constraint(lessThanOrEqualTo: box.bottomAnchor, constant: -Theme.Spacing.xl),
-            column.centerYAnchor.constraint(equalTo: box.centerYAnchor).withPriority(.defaultHigh),
+            column.centerYAnchor.constraint(equalTo: box.centerYAnchor).withPriority(.defaultLow),
             column.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            column.widthAnchor.constraint(
+                lessThanOrEqualTo: box.widthAnchor, constant: -2 * Theme.Spacing.l),
             column.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
             column.widthAnchor.constraint(
                 equalTo: box.widthAnchor, constant: -2 * Theme.Spacing.l)
-                .withPriority(.defaultHigh),
+                .withPriority(UILayoutPriority(999)),
         ])
+    }
+
+    /// A multi-line label defends its longest line at the same priority a column
+    /// uses to fit the screen, and that tie is how a headline decides the width
+    /// of everything under it. Text that is meant to wrap must say so.
+    private static func letWrap(_ label: UILabel) {
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
     private static func valueRow(symbol: String, text: String) -> UIView {
@@ -211,6 +226,7 @@ final class WelcomeViewController: UIViewController {
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 0
+        letWrap(label)
 
         let row = UIStackView(arrangedSubviews: [icon, label])
         row.axis = .horizontal

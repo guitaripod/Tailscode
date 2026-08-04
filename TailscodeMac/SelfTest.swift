@@ -30,6 +30,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkCascade()
+            report("cascade: \(checks) prefixes reveal cleanly")
+        } catch {
+            report("cascade: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {
@@ -46,6 +54,22 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkVideoSlot()
+            report("video slot: \(checks) answers, resolver \(VideoResolver.tool() ?? "missing")")
+        } catch {
+            report("video slot: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkBrowserSlot()
+            report("browser slot: \(checks) answers, engine WKWebView")
+        } catch {
+            report("browser slot: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkParity()
             report("parity: \(checks) capabilities answered")
         } catch {
@@ -58,6 +82,30 @@ enum SelfTest {
             report("vim: \(checks) commands behave")
         } catch {
             report("vim: \(error)")
+            failures += 1
+        }
+
+        let chooserFailures = PaneChooserCheck.run()
+        if chooserFailures.isEmpty {
+            report("pane chooser: servers, chats and keys behave")
+        } else {
+            report("pane chooser: \(chooserFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let modelFailures = ModelChooserCheck.run()
+        if modelFailures.isEmpty {
+            report("model chooser: providers fold, ranking holds, keys behave")
+        } else {
+            report("model chooser: \(modelFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkPaneHitTest()
+            report("pane hit test: \(checks) presses land where they look")
+        } catch {
+            report("pane hit test: \(error)")
             failures += 1
         }
 
@@ -212,6 +260,131 @@ enum SelfTest {
             (attributes(in: link, over: "docs")?[.link] as? URL)?.absoluteString
                 == "https://x.dev", "a link carries its URL")
         try expect(!link.string.contains("]("), "the link markup is consumed")
+        return checks
+    }
+
+    /// The rule a press is routed by, over real views in a real window: two panes side by side
+    /// with a gap between them for the divider, and one hidden the way a zoom hides it.
+    private static func checkPaneHitTest() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("hit test case failed: \(label)") }
+            checks += 1
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        func pane(_ frame: NSRect) -> NSViewController {
+            let controller = NSViewController()
+            controller.view = NSView(frame: frame)
+            window.contentView?.addSubview(controller.view)
+            return controller
+        }
+        let left = pane(NSRect(x: 0, y: 0, width: 195, height: 200))
+        let right = pane(NSRect(x: 205, y: 0, width: 195, height: 200))
+        let hidden = pane(NSRect(x: 0, y: 0, width: 400, height: 200))
+        hidden.view.isHidden = true
+        let detached = NSViewController()
+        detached.view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        let panes = [left, right, hidden, detached]
+
+        func hit(_ x: Double, _ y: Double) -> NSViewController? {
+            SplitPaneHost.hitTest(panes, at: NSPoint(x: x, y: y))
+        }
+        try expect(hit(40, 100) === left, "a press in the left pane is the left pane's")
+        try expect(hit(300, 100) === right, "a press in the right pane is the right pane's")
+        try expect(hit(200, 100) == nil, "a press on the divider belongs to no pane")
+        try expect(hit(194.5, 100) === left, "the pane owns its own last column")
+        try expect(hit(-5, 100) == nil, "a press outside the tree belongs to no pane")
+        try expect(hit(40, 260) == nil, "a press above the tree belongs to no pane")
+        try expect(
+            hit(40, 100) !== hidden, "a pane the zoom has hidden never takes the press")
+        try expect(
+            SplitPaneHost.hitTest([detached], at: NSPoint(x: 40, y: 100)) == nil,
+            "a pane in no window takes nothing")
+        return checks
+    }
+
+    /// The paced reveal, checked where it can actually go wrong on this toolkit: every prefix the
+    /// renderer is allowed to see must produce text that has already eaten its own punctuation —
+    /// an answer that flashes its asterisks as each `**bold**` closes is the artefact that makes a
+    /// smooth reveal look broken — the reservation must never reach past what has been rendered,
+    /// and the wave must land every glyph back on the colour it would have had without it.
+    private static func checkCascade() throws -> Int {
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+        }
+        let source = """
+            Here is **bold** text, some *italic*, a `snippet`, a [link](https://x.dev), \
+            and ~~struck~~ words.
+
+            - first bullet with `code`
+            - second bullet with **weight**
+
+            ## A heading arrives
+            """
+        let characters = Array(source)
+        var checks = 0
+        for cut in 0...characters.count {
+            let safe = LiveCascade.renderable(String(characters[..<cut]), sealed: false)
+            let rendered = MacMarkdown.render(safe, cache: false).string
+            for marker in ["**", "~~", "`"] {
+                try expect(
+                    !rendered.contains(marker),
+                    "prefix \(cut) leaked \(marker): \(rendered.debugDescription)")
+            }
+            checks += 1
+        }
+
+        let full = MacMarkdown.render(source, cache: false)
+        var live = LiveCascade()
+        live.focus("row", rendered: full.string, sealed: false, at: 0)
+        try expect(live.revealed == 0, "a row born under our eyes starts empty")
+        var time = 0.0
+        var last = 0
+        while time < 30, !live.isSettled {
+            time += 1.0 / 120
+            live.focus("row", rendered: full.string, sealed: false, at: time)
+            live.advance(to: time)
+            try expect(live.revealed >= last, "the reveal went backwards")
+            try expect(live.revealed <= full.length, "the reveal ran past what had arrived")
+            last = live.revealed
+        }
+        try expect(live.revealed == full.length, "the reveal never landed on its source")
+        checks += 3
+
+        let edge = CascadeTint.edge(ultracode: false, phase: 0.5)
+        try expect(edge == MacTheme.Color.accent, "a plain turn leads with the system accent")
+        let shown = full.length / 2
+        let tail = CascadeTail(
+            revealed: shown, span: StreamCascade.span, phase: 0.3, edge: edge,
+            spark: CascadeTint.spark(for: edge))
+        let painted = tail.paint(full, settled: MacTheme.Color.label)
+        try expect(
+            painted.length == full.length,
+            "the paint changed the layout instead of only the ink")
+        try expect(painted.string == full.string, "the paint changed the words, not just the ink")
+        let unshown =
+            painted.attribute(.foregroundColor, at: shown + 1, effectiveRange: nil) as? NSColor
+        try expect(
+            (unshown?.alphaComponent ?? 1) == 0,
+            "text the reveal has not reached was drawn instead of held")
+        let far = shown - StreamCascade.span * 2
+        try expect(far > 0, "the sample text is too short to have a settled half")
+        try expect(
+            (painted.attribute(.foregroundColor, at: far, effectiveRange: nil) as? NSColor)
+                == (full.attribute(.foregroundColor, at: far, effectiveRange: nil) as? NSColor),
+            "a glyph the wave has passed kept its own colour")
+        let atEdge =
+            painted.attribute(.foregroundColor, at: shown - 1, effectiveRange: nil) as? NSColor
+        try expect(atEdge != nil, "the leading glyph carries the wave")
+        try expect(
+            (atEdge?.alphaComponent ?? 1) < 1, "the leading glyph fades in rather than popping")
+        try expect(
+            (atEdge?.alphaComponent ?? 0) >= StreamCascade.entryFloor,
+            "the leading glyph appears from a whisper, not from nothing")
+        checks += 7
         return checks
     }
 
@@ -372,6 +545,133 @@ enum SelfTest {
             ShortcutSet.build(overrides: [:]).helpSections().contains {
                 $0.rows.contains { $0.keys.contains("^⏎") }
             }, "the cheatsheet lists effective keys")
+        return checks
+    }
+
+    /// A slot is a pane, so what it holds has to read back the same after a restart, and the keys
+    /// it answers have to be the keys the other desktop answers.
+    private static func checkVideoSlot() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("video slot: \(label)") }
+            checks += 1
+        }
+
+        try expect(VideoTarget.classify("kamet0") == .twitch("kamet0"), "a bare word is a channel")
+        try expect(
+            VideoTarget.classify("https://www.twitch.tv/kamet0") == .twitch("kamet0"),
+            "a channel link is that channel")
+        try expect(
+            VideoTarget.classify("@LofiGirl") == .youtube("@LofiGirl"), "a handle is a channel")
+        try expect(
+            VideoTarget.classify("lofi hip hop") == .search("lofi hip hop"), "words are a search")
+        try expect(VideoTarget.classify("  ") == nil, "nothing typed points nowhere")
+        for target: VideoTarget in [
+            .twitch("kamet0"), .youtube("@LofiGirl"), .search("two words"), .link("/tmp/a.mp4"),
+        ] {
+            try expect(
+                VideoTarget.classify(target.address) == target, "\(target.address) round-trips")
+        }
+        try expect(
+            VideoTarget.search("two words").extractionArgument == "ytsearch1:two words",
+            "a search is extracted as a search")
+
+        var slot = VideoSlot()
+        try expect(slot.isAsking, "an empty slot asks")
+        slot.point(at: .twitch("kamet0"))
+        try expect(slot.phase == .loading && slot.title == "kamet0", "a pointed slot opens")
+        slot.loaded(title: "Kamet0 · LEC")
+        try expect(slot.phase == .playing && slot.title == "Kamet0 · LEC", "the stream names it")
+        try expect(
+            slot.subtitle.hasSuffix(VideoNotice.splitCostTag),
+            "a playing slot says what it costs the grid")
+        slot.paused = true
+        try expect(
+            !slot.subtitle.contains(VideoNotice.splitCostTag),
+            "a paused slot costs nothing and stops saying so")
+        slot.paused = false
+        try expect(!slot.notice.isEmpty, "an empty slot has the whole of it to read")
+        slot.ask()
+        try expect(
+            slot.isAsking && slot.draft == "kamet0",
+            "changing it offers the channel back, not the stream's own title")
+
+        var layout = SplitLayout()
+        let first = layout.focusedPane
+        guard let second = layout.split(first, axis: .horizontal) else {
+            throw SelfTestFailure("video slot: the layout would not split")
+        }
+        let snapshot = SplitSnapshot(
+            layout: layout, sessions: [:],
+            videos: [second.raw: VideoTarget.twitch("kamet0").address])
+        guard let encoded = snapshot.encoded, let restored = SplitSnapshot.decode(encoded) else {
+            throw SelfTestFailure("video slot: the layout would not persist")
+        }
+        try expect(restored.video(for: second) == .twitch("kamet0"), "a restart reopens the slot")
+        try expect(restored.video(for: first) == nil, "a chat pane restores as a chat")
+
+        guard let space = KeyChord.canonical(keyval: 0x20, state: 0),
+            let controlM = KeyChord.canonical(keyval: 0x6D, state: KeyChord.controlMask)
+        else { throw SelfTestFailure("video slot: a keystroke would not resolve") }
+        try expect(VideoCommand.command(for: space) == .playPause, "space pauses")
+        try expect(VideoCommand.command(for: controlM) == nil, "a control chord stays the app's")
+        return checks
+    }
+
+
+    /// A page is a pane, so what it holds has to read back the same after a restart, and a browsing
+    /// pane must leave the keyboard to the page except for the chords a browser owns.
+    private static func checkBrowserSlot() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("browser slot: \(label)") }
+            checks += 1
+        }
+
+        try expect(WebTarget.classify("swift.org") == .page("https://swift.org"), "a host is a page")
+        try expect(WebTarget.classify(":3000") == .page("http://localhost:3000"), "a port is local")
+        try expect(
+            WebTarget.classify("localhost:8080/health") == .page("http://localhost:8080/health"),
+            "a local path is kept")
+        try expect(
+            WebTarget.classify("how to split a pane") == .search("how to split a pane"),
+            "words are a search")
+        try expect(WebTarget.classify("  ") == nil, "nothing typed points nowhere")
+        try expect(
+            WebTarget.search("two words").url.hasPrefix("https://duckduckgo.com/?q="),
+            "a search is a real page")
+
+        var slot = WebSlot()
+        try expect(slot.isAsking, "an empty slot asks")
+        slot.point(at: .page("https://swift.org"))
+        slot.arrived(url: "https://www.swift.org/", title: "Swift Programming Language")
+        try expect(slot.phase == .showing, "a landed page shows")
+        try expect(slot.title == "Swift Programming Language", "the page names the pane")
+        slot.ask()
+        try expect(slot.draft == "https://www.swift.org/", "the address bar opens on where it is")
+
+        var layout = SplitLayout()
+        let first = layout.focusedPane
+        guard let second = layout.split(first, axis: .vertical) else {
+            throw SelfTestFailure("browser slot: the layout would not split")
+        }
+        let snapshot = SplitSnapshot(
+            layout: layout, sessions: [:], videos: [:],
+            pages: [second.raw: "https://swift.org/documentation/"])
+        guard let encoded = snapshot.encoded, let restored = SplitSnapshot.decode(encoded) else {
+            throw SelfTestFailure("browser slot: the layout would not persist")
+        }
+        try expect(
+            restored.page(for: second) == .page("https://swift.org/documentation/"),
+            "a restart reopens the page")
+
+        guard let plain = KeyChord.canonical(keyval: 0x61, state: 0),
+            let address = KeyChord.canonical(keyval: 0x6C, state: KeyChord.controlMask),
+            let back = KeyChord.canonical(keyval: 0xFF51, state: KeyChord.altMask)
+        else { throw SelfTestFailure("browser slot: a keystroke would not resolve") }
+        try expect(WebCommand.command(for: plain) == nil, "a letter belongs to the page")
+        try expect(WebCommand.command(for: address) == .address, "ctrl+l opens the address bar")
+        try expect(WebCommand.command(for: back) == .back, "alt+left goes back")
         return checks
     }
 

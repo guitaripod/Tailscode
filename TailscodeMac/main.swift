@@ -17,13 +17,14 @@ enum MacCLI {
         tailscode-mac — drive your coding agents over Tailscale
 
           TailscodeMac                          open the window
+          TailscodeMac --demo                   open the scripted demo world (no server)
           TailscodeMac --connect <address>      save a server (--password, --name, --opencode)
           TailscodeMac --selftest               check the whole chain with no display
           TailscodeMac --version
         """
 
     static let knownOptions: Set<String> = [
-        "--selftest", "--connect", "--password", "--name", "--opencode",
+        "--selftest", "--connect", "--password", "--name", "--opencode", "--demo",
         "--version", "--help", "-h",
     ]
 }
@@ -113,6 +114,10 @@ if let stray = CommandLine.arguments.dropFirst().first(where: {
 if Connect.isRequested {
     Task { await Connect.run() }
     dispatchMain()
+}
+
+if CommandLine.arguments.contains("--demo") {
+    DemoMode.enter()
 }
 
 let delegate = AppDelegate()

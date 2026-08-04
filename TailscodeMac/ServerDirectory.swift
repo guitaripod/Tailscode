@@ -18,6 +18,7 @@ final class ServerDirectory {
     static let shared = ServerDirectory()
 
     private(set) var profiles: [ConnectionProfile] = []
+    private(set) var isDemoMode = false
     private var backends: [String: any CodingAgentBackend] = [:]
     private var ephemeralPasswords: [String: String] = [:]
     private let store: ConnectionProfileStore?
@@ -32,13 +33,22 @@ final class ServerDirectory {
         if let (profile, password) = Self.environmentProfile() {
             profiles = [profile]
             ephemeralPasswords = [profile.id: password].compactMapValues { $0 }
+            isDemoMode = false
             return
         }
         ephemeralPasswords = [:]
-        profiles = (try? store?.profiles()) ?? []
+        var listed = (try? store?.profiles()) ?? []
+        isDemoMode = DemoMode.isActive
+        if isDemoMode {
+            listed.append(contentsOf: DemoWorld.profiles)
+        }
+        profiles = listed
     }
 
     func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
+        if profile.id.hasPrefix(DemoWorld.profilePrefix) {
+            return DemoWorld.backend(for: profile.id)
+        }
         if let existing = backends[profile.id] { return existing }
         let made: (any CodingAgentBackend)?
         if let password = ephemeralPasswords[profile.id] {
@@ -51,13 +61,27 @@ final class ServerDirectory {
         return made
     }
 
-    func save(_ profile: ConnectionProfile, password: String?) throws {
-        guard let store else { throw AgentError.unsupported("no profile store") }
-        try store.save(profile, password: password)
+    func enterDemoMode() {
+        DemoMode.enter()
         reload()
     }
 
+    func leaveDemoMode() {
+        DemoMode.leave()
+        reload()
+    }
+
+    func save(_ profile: ConnectionProfile, password: String?) throws {
+        guard let store else { throw AgentError.unsupported("no profile store") }
+        try store.save(profile, password: password)
+        if isDemoMode { leaveDemoMode() } else { reload() }
+    }
+
     func delete(id: String) {
+        if id.hasPrefix(DemoWorld.profilePrefix) {
+            leaveDemoMode()
+            return
+        }
         try? store?.delete(id: id)
         reload()
     }

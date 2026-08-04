@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import SafariServices
+import TailscodeCore
 import UIKit
 import UserNotifications
 
@@ -27,13 +28,12 @@ final class SettingsViewController: UIViewController {
     }
 
     private enum Toggle: Hashable {
-        case autoExpandThinking, haptics, sendOnReturn, promptEnhancement
+        case autoExpandThinking, sendOnReturn, promptEnhancement
         case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
 
         var title: String {
             switch self {
             case .autoExpandThinking: return String(localized: "Auto-expand thinking")
-            case .haptics: return String(localized: "Haptic feedback")
             case .sendOnReturn: return String(localized: "Send on return key")
             case .promptEnhancement: return String(localized: "Enhance prompts")
             case .notifyTurnComplete: return String(localized: "Turn finished")
@@ -48,7 +48,6 @@ final class SettingsViewController: UIViewController {
             switch self {
             case .autoExpandThinking:
                 return String(localized: "Show the agent's reasoning without tapping to unfold it")
-            case .haptics: return String(localized: "Taps and thumps as messages send and land")
             case .sendOnReturn:
                 return String(localized: "Return sends instead of inserting a newline")
             case .promptEnhancement:
@@ -71,7 +70,6 @@ final class SettingsViewController: UIViewController {
         var icon: String {
             switch self {
             case .autoExpandThinking: return "brain"
-            case .haptics: return "hand.tap"
             case .sendOnReturn: return "return"
             case .promptEnhancement: return "sparkles"
             case .notifyTurnComplete: return "checkmark.bubble"
@@ -85,7 +83,6 @@ final class SettingsViewController: UIViewController {
         var tint: UIColor {
             switch self {
             case .autoExpandThinking: return .systemPurple
-            case .haptics: return .systemPink
             case .sendOnReturn: return .systemTeal
             case .promptEnhancement: return Theme.Color.accent
             case .notifyTurnComplete: return Theme.Color.success
@@ -99,7 +96,6 @@ final class SettingsViewController: UIViewController {
         var isOn: Bool {
             switch self {
             case .autoExpandThinking: return AppPreferences.autoExpandThinking
-            case .haptics: return AppPreferences.hapticsEnabled
             case .sendOnReturn: return AppPreferences.sendOnReturn
             case .promptEnhancement: return AppPreferences.promptEnhancement
             case .notifyTurnComplete: return AppPreferences.notifyTurnComplete
@@ -114,7 +110,6 @@ final class SettingsViewController: UIViewController {
         func set(_ value: Bool) {
             switch self {
             case .autoExpandThinking: AppPreferences.autoExpandThinking = value
-            case .haptics: AppPreferences.hapticsEnabled = value
             case .sendOnReturn: AppPreferences.sendOnReturn = value
             case .promptEnhancement: AppPreferences.promptEnhancement = value
             case .notifyTurnComplete: AppPreferences.notifyTurnComplete = value
@@ -145,6 +140,7 @@ final class SettingsViewController: UIViewController {
         case goMonthlyCap
         case goBillingDay
         case keyboardShortcuts
+        case haptics
         case appearance
         case pro
         case viewLogs
@@ -245,6 +241,8 @@ final class SettingsViewController: UIViewController {
                     TailnetTokenViewController(), animated: false)
             case "logs":
                 navigationController?.pushViewController(LogViewerViewController(), animated: false)
+            case "haptics":
+                navigationController?.pushViewController(HapticsViewController(), animated: false)
             default:
                 break
             }
@@ -549,6 +547,16 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "keyboard")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.disclosureIndicator()]
+        case .haptics:
+            content.text = String(localized: "Haptic feedback")
+            content.secondaryText =
+                AppPreferences.hapticsEnabled
+                ? String(localized: "The wait reported to your hand — sent, progress, done")
+                : String(localized: "Off")
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "hand.tap")
+            content.imageProperties.tintColor = .systemPink
+            cell.accessories = [strengthBadge(), .disclosureIndicator()]
         case .appearance:
             content.text = String(localized: "Theme")
             content.image = UIImage(systemName: "circle.lefthalf.filled")
@@ -701,6 +709,17 @@ final class SettingsViewController: UIViewController {
     private func toggleDidChange(_ toggle: Toggle) {
         guard toggle == .serverPush else { return }
         applySnapshot()
+    }
+
+    /// The row states the strength it is set to, so the one number worth knowing does not
+    /// require opening the screen that owns it.
+    private func strengthBadge() -> UICellAccessory {
+        let label = UILabel()
+        label.font = Theme.Font.subheadline()
+        label.textColor = Theme.Color.secondaryLabel
+        label.text =
+            AppPreferences.hapticsEnabled ? HapticStrength.label(AppPreferences.hapticIntensity) : ""
+        return .customView(configuration: .init(customView: label, placement: .trailing()))
     }
 
     private func appearanceAccessory() -> UICellAccessory.CustomViewConfiguration {
@@ -872,7 +891,7 @@ final class SettingsViewController: UIViewController {
             (
                 .chat,
                 [
-                    .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .toggle(.haptics),
+                    .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .haptics,
                     .toggle(.sendOnReturn), .keyboardShortcuts,
                 ]
             ),
@@ -999,6 +1018,10 @@ final class SettingsViewController: UIViewController {
         case .keyboardShortcuts:
             return String(
                 localized: "keyboard shortcuts keys hardware cheatsheet rebind",
+                comment: "search keywords")
+        case .haptics:
+            return String(
+                localized: "haptics vibration taptic strength intensity feedback buzz",
                 comment: "search keywords")
         case .appearance:
             return String(
@@ -1227,6 +1250,9 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(LicensesViewController(), animated: true)
         case .keyboardShortcuts:
             ShortcutCheatsheetViewController.present(from: self)
+        case .haptics:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(HapticsViewController(), animated: true)
         case .appearance, .toggle, .version, .goMonthlyCap, .goBillingDay, .tailnetScan:
             break
         }

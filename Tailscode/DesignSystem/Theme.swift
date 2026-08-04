@@ -70,6 +70,14 @@ enum Theme {
                 for: .systemFont(ofSize: baseSize(of: style), weight: weight))
         }
 
+        /// A text style that answers Dynamic Type up to a ceiling. Type set inside a
+        /// fixed diagram has nowhere to grow into: past a point every extra point
+        /// costs a word, so the label that names a node stops rather than truncates.
+        static func capped(_ style: UIFont.TextStyle, maximum: CGFloat) -> UIFont {
+            UIFontMetrics(forTextStyle: style).scaledFont(
+                for: .systemFont(ofSize: baseSize(of: style)), maximumPointSize: maximum)
+        }
+
         static func scaledMono(_ style: UIFont.TextStyle = .footnote, weight: UIFont.Weight = .regular)
             -> UIFont
         {
@@ -85,40 +93,25 @@ enum Theme {
         }
     }
 
+    /// Names for the physical cues; the force behind them is `HapticEngine`'s business and the
+    /// user's setting, so nothing here mentions an amplitude.
     @MainActor
     enum Haptics {
-        private static let selectionGenerator = UISelectionFeedbackGenerator()
-
-        private static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle, _ intensity: CGFloat = 1) {
-            guard AppPreferences.hapticsEnabled else { return }
-            UIImpactFeedbackGenerator(style: style).impactOccurred(intensity: intensity)
-        }
-
-        /// A light tap for general button presses.
-        static func tap() { impact(.light) }
-        /// A distinct medium thump when the user sends a message.
-        static func send() { impact(.medium) }
-        /// A soft cushion when the agent finishes responding.
-        static func received() { impact(.soft, 0.7) }
-        /// A crisp tick as an agent action (tool step) lands during a turn.
-        static func step() { impact(.rigid, 0.5) }
-        /// The system selection click for pickers and expand/collapse.
-        static func selection() {
-            guard AppPreferences.hapticsEnabled else { return }
-            selectionGenerator.selectionChanged()
-        }
-        static func success() {
-            guard AppPreferences.hapticsEnabled else { return }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
-        static func warning() {
-            guard AppPreferences.hapticsEnabled else { return }
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        }
-        static func error() {
-            guard AppPreferences.hapticsEnabled else { return }
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-        }
+        /// A soft tap for general button presses.
+        static func tap() { HapticEngine.shared.play(.tap) }
+        /// The message leaves and the wait begins.
+        static func send() { HapticEngine.shared.play(.send) }
+        /// The wait is over: the agent finished and it is your turn.
+        static func received() { HapticEngine.shared.play(.received) }
+        /// A step of the work landed while you wait; repeats are coalesced.
+        static func step() { HapticEngine.shared.play(.step) }
+        /// The agent stopped mid-wait to ask for something.
+        static func needsYou() { HapticEngine.shared.play(.needsYou) }
+        /// The selection click for pickers and expand/collapse.
+        static func selection() { HapticEngine.shared.play(.selection) }
+        static func success() { HapticEngine.shared.play(.success) }
+        static func warning() { HapticEngine.shared.play(.warning) }
+        static func error() { HapticEngine.shared.play(.error) }
     }
 
     @MainActor

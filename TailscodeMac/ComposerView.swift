@@ -19,6 +19,7 @@ final class ComposerView: NSView {
     let completion = CompletionPopover()
 
     var attachmentCount: Int { attachments.count }
+    var availableCommands: [AgentCommand] { commands }
 
     private let textView = NSTextView()
     private let scrollView = NSScrollView()
@@ -45,15 +46,22 @@ final class ComposerView: NSView {
     private var chosenEffort: String?
     private var completionMatches: [AgentCommand] = []
     private var completionCursor = 0
+    /// Opens the browsable catalog — the chat owner owns the window chrome.
+    var onBrowseCommands: (() -> Void)?
     private var ultracodeInFlight = false
     private lazy var aura = UltracodeAura(
         around: fieldContainer, cornerRadius: MacTheme.Radius.control)
 
+    /// Whether the powers are visibly on. The transcript reads it too: while the aura burns around
+    /// the prompt box, the stream cascade leads with the same rainbow rather than the accent, so
+    /// ultracode is legible in the writing and not only in the chrome.
+    var auraActive: Bool {
+        Ultracode.auraActive(
+            effort: chosenEffort, draft: textView.string, inFlightInvoked: ultracodeInFlight)
+    }
+
     private func refreshAura() {
-        aura.setActive(
-            Ultracode.auraActive(
-                effort: chosenEffort, draft: textView.string,
-                inFlightInvoked: ultracodeInFlight))
+        aura.setActive(auraActive)
     }
 
     static var sendOnReturn: Bool {
@@ -90,6 +98,11 @@ final class ComposerView: NSView {
     var vimEnabled: Bool { Self.vimPreferred }
     var vimMode: VimMode { vim.mode }
     var vimAwaitsMore: Bool { vim.awaitsMore }
+
+    func vimClaims(_ key: VimKey, plain: Bool, chordPending: Bool) -> Bool {
+        vim.claims(key, plain: plain, chordPending: chordPending)
+    }
+
     var completionVisible: Bool { completion.isShowing }
 
     func takeFocus() {
@@ -220,10 +233,17 @@ final class ComposerView: NSView {
         let count = completionMatches.count
         guard count > 0 else { return }
         completionCursor = ((completionCursor + delta) % count + count) % count
-        completion.render(matches: completionMatches, cursor: completionCursor)
+        let ranked = completionMatches.map {
+            SlashMatch(command: $0, kind: .prefix, highlight: [])
+        }
+        completion.renderCompletion(.naming(matches: ranked), cursor: completionCursor)
     }
 
     func acceptCompletion() {
+        if let command = completion.selectedCommand {
+            accept(command)
+            return
+        }
         acceptCompletion(at: completionCursor)
     }
 
@@ -356,9 +376,10 @@ final class ComposerView: NSView {
             self.attachments.removeAll { $0.id == id }
             self.syncChips()
         }
-        completion.onPick = { [weak self] index in
-            self?.acceptCompletion(at: index)
+        completion.onPick = { [weak self] command in
+            self?.accept(command)
         }
+        completion.onBrowse = { [weak self] in self?.onBrowseCommands?() }
     }
 
     private func wirePills() {
@@ -460,6 +481,9 @@ final class ComposerView: NSView {
         return backend?.reasoningEffortOptions ?? []
     }
 
+    /// The pill offers what this person actually works with — the shared shortlist — and hands the
+    /// rest to the chooser, the only surface that can hold a catalog of two hundred and still be
+    /// read. The two are the same list at two lengths.
     private func modelMenuRows() -> [PillsRow.MenuRow] {
         guard !models.isEmpty else {
             return [PillsRow.MenuRow(Localized.text("This server lists no models"))]
@@ -471,16 +495,33 @@ final class ComposerView: NSView {
                 self?.setModel(nil)
             }
         ]
-        for model in models {
-            let selection = model.selection
+        for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
+            let selection = candidate.selection
             rows.append(
                 PillsRow.MenuRow(
-                    model.name, subtitle: model.providerID, checked: chosenModel == selection
+                    candidate.name, subtitle: candidate.providerNames.joined(separator: " · "),
+                    checked: candidate.carries(chosenModel)
                 ) { [weak self] in
                     self?.setModel(selection)
                 })
         }
+        rows.append(
+            PillsRow.MenuRow(
+                Localized.text("All models…"),
+                subtitle: ModelChooser(models: models, selected: chosenModel).summary
+            ) { [weak self] in
+                self?.openModelChooser()
+            })
         return rows
+    }
+
+    private func openModelChooser() {
+        guard let host = window else { return }
+        ModelChooserSheet.present(
+            on: host, models: models, selected: chosenModel, allowsServerDefault: true
+        ) { [weak self] selection in
+            self?.setModel(selection)
+        }
     }
 
     private func setModel(_ selection: ModelSelection?) {
@@ -558,22 +599,25 @@ final class ComposerView: NSView {
         return rows
     }
 
-    /// A typed slash command goes where the palette would send it: `/compact` to its preflight,
-    /// a known server command to the command route when the server wants one, and anything
-    /// unknown out as plain text — the server is the authority on its own grammar.
+    /// A typed slash command goes where the completion list would send it. The decision is the
+    /// shared one so all three clients answer a typed command the same way; false means the words
+    /// go out as an ordinary prompt.
     private func handleSlashCommand(_ text: String) -> Bool {
-        guard text.hasPrefix("/") else { return false }
-        let name = String(text.dropFirst().prefix(while: { !$0.isWhitespace }))
-        let arguments = String(text.dropFirst(1 + name.count)).trimmingCharacters(
-            in: .whitespaces)
-        if name == "compact" {
-            onCompactRequested?(arguments)
+        switch SlashDispatch.decide(
+            text: text, commands: commands,
+            supportsCompaction: backend?.capabilities.supportsCompaction != false,
+            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true)
+        {
+        case .compactPreflight(let instruction):
+            onCompactRequested?(instruction)
             return true
+        case .run(let command, let arguments):
+            SlashRecents.record(command.name)
+            onRunCommand?(command, arguments)
+            return true
+        case .plainText:
+            return false
         }
-        guard let command = commands.first(where: { $0.name == name }) else { return false }
-        if backend?.resolvesCommandsFromPromptText == true { return false }
-        onRunCommand?(command, arguments.isEmpty ? nil : arguments)
-        return true
     }
 
     private var attachmentsSupported: Bool {
@@ -774,31 +818,49 @@ final class ComposerView: NSView {
 
     private func updateSlashCompletion() {
         let typing = !vimEnabled || vim.mode == .insert
-        guard typing, let query = SlashCompletion.query(in: textView.string) else {
+        guard typing else {
             dismissCompletion()
             return
         }
-        var matches = SlashCompletion.matches(commands, query: query)
-        if matches.count == 1, matches[0].name.lowercased() == query.lowercased() {
-            matches = []
-        }
-        completionMatches = matches
-        completionCursor = 0
-        guard !matches.isEmpty else {
+        completion.onPick = { [weak self] command in self?.accept(command) }
+        completion.onBrowse = { [weak self] in self?.onBrowseCommands?() }
+        let presentation = SlashPresentation.of(
+            text: textView.string, commands: commands,
+            recents: SlashRecents.surviving(in: commands))
+        switch presentation {
+        case .hidden:
             dismissCompletion()
-            return
+        case .naming(let matches):
+            completionMatches = matches.map(\.command)
+            completionCursor = min(completionCursor, max(0, matches.count - 1))
+            completion.renderCompletion(presentation, cursor: completionCursor)
+        case .arguments, .noMatch:
+            completionMatches = []
+            completionCursor = 0
+            completion.renderCompletion(presentation)
         }
-        completion.render(matches: matches, cursor: completionCursor)
     }
 
     private func acceptCompletion(at index: Int) {
         guard index < completionMatches.count else { return }
-        let command = completionMatches[index]
+        accept(completionMatches[index])
+    }
+
+    private func accept(_ command: AgentCommand) {
+        SlashRecents.record(command.name)
         let text = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
         setEditorText(text, caretAtEnd: true)
         vim.reset(to: text, cursor: text.count, mode: .insert)
         updateVimUI()
         takeFocus()
+        if !command.takesArguments {
+            updateSlashCompletion()
+        }
+    }
+
+    /// A pick from the browsable catalog — same landing as accepting a completion row.
+    func acceptCatalogCommand(_ command: AgentCommand) {
+        accept(command)
     }
 
     private func restoreDraft(for sessionID: String) {

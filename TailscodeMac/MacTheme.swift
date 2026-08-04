@@ -15,6 +15,10 @@ enum MacTheme {
         static let success = NSColor.systemGreen
         static let warning = NSColor.systemOrange
         static let danger = NSColor.systemRed
+        /// Identity of what the agent touched — subagents, tools, files, modes.
+        static let info = NSColor.systemIndigo
+        /// Standing marks on a conversation — the goal, a compaction seam, a saved chat.
+        static let mark = NSColor.systemPurple
         static let claude = NSColor(
             name: nil,
             dynamicProvider: { appearance in

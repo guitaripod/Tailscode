@@ -137,6 +137,14 @@ enum ModelMenu {
     /// the searchable picker.
     private static let inlineLimit = 8
 
+    /// The menu and the picker are one list at two lengths, so the shortlist rule lives in the Kit
+    /// beside the folding — a model the menu offers is the same folded row the picker shows.
+    private static func shortlist(
+        _ models: [ModelInfo], selected: ModelSelection?
+    ) -> [ModelCandidate] {
+        ModelChooser.shortlist(models, selected: selected, limit: inlineLimit)
+    }
+
     static func elements(
         models: [ModelInfo], choice: ModelChoice, efforts: [String],
         allowsServerDefault: Bool, actions: Actions
@@ -154,26 +162,31 @@ enum ModelMenu {
                 ) { _ in actions.selectModel(nil) })
         }
         let showsProvider = Set(models.map(\.providerID)).count > 1
-        picks += shortlist.map { model in
+        picks += shortlist.map { candidate in
             UIAction(
-                title: model.name,
-                subtitle: showsProvider ? model.providerID : nil,
-                state: choice.model == model.selection ? .on : .off
-            ) { _ in actions.selectModel(model.selection) }
+                title: candidate.name,
+                subtitle: candidate.isLocal
+                    ? String(localized: "\(candidate.primary.providerName) · local")
+                    : (showsProvider
+                        ? candidate.providerNames.joined(separator: " · ") : nil),
+                state: candidate.carries(choice.model) ? .on : .off
+            ) { _ in actions.selectModel(candidate.selection) }
         }
         if picks.isEmpty {
             picks.append(
                 UIAction(title: String(localized: "No models reported"), attributes: .disabled) { _ in })
         }
         sections.append(UIMenu(options: .displayInline, children: picks))
-        if let browseAll = actions.browseAll, models.count > shortlist.count {
+        if let browseAll = actions.browseAll,
+            ModelChooser.fold(models).count > shortlist.count
+        {
             sections.append(
                 UIMenu(
                     options: .displayInline,
                     children: [
                         UIAction(
                             title: String(localized: "All models…"),
-                            subtitle: String(localized: "\(models.count) available"),
+                            subtitle: ModelChooser(models: models, selected: choice.model).summary,
                             image: UIImage(systemName: "magnifyingglass")
                         ) { _ in browseAll() }
                     ]))
@@ -206,22 +219,4 @@ enum ModelMenu {
         return sections
     }
 
-    /// The models worth showing inline: the whole catalog when it is small,
-    /// otherwise the recently used ones plus whatever is selected now.
-    private static func shortlist(
-        _ models: [ModelInfo], selected: ModelSelection?
-    ) -> [ModelInfo] {
-        guard models.count > inlineLimit else { return models }
-        var result: [ModelInfo] = []
-        for selection in RecentModelsStore.all().prefix(5) {
-            guard let match = models.first(where: { $0.selection == selection }) else { continue }
-            result.append(match)
-        }
-        if let selected, !result.contains(where: { $0.selection == selected }),
-            let match = models.first(where: { $0.selection == selected })
-        {
-            result.insert(match, at: 0)
-        }
-        return result
-    }
 }

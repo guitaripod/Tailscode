@@ -221,6 +221,8 @@ final class ServerSetupViewController: UIViewController {
             column.topAnchor.constraint(equalTo: box.topAnchor, constant: Theme.Spacing.l),
             column.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -Theme.Spacing.xl),
             column.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            column.widthAnchor.constraint(
+                lessThanOrEqualTo: box.widthAnchor, constant: -2 * Theme.Spacing.l),
             column.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
             column.widthAnchor.constraint(
                 equalTo: box.widthAnchor, constant: -2 * Theme.Spacing.l)

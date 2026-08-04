@@ -28,6 +28,26 @@
             Task { await driver.run() }
         }
 
+        /// Walks the composer through every state `/` can put it in, holding each one long enough
+        /// to be photographed. The completion list is the one surface with no still of its own in
+        /// the film, and its states — ranked, fuzzy, argument, unknown, catalog — are exactly the
+        /// ones a screenshot proves and a unit test cannot.
+        static func startSlashWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.slashWalk() }
+        }
+
+        /// Holds the model picker open in one of its shapes. A catalog of hundreds is read through
+        /// more layouts than its first frame shows — what you reached for last repeated above its
+        /// own family, a query that lands, a word nothing answers — and each is a shape the list has
+        /// to survive rather than a state a unit test can photograph.
+        static func startModelWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.modelWalk() }
+        }
+
         private let window: UIWindow
 
         private init(window: UIWindow) { self.window = window }
@@ -226,6 +246,53 @@
             await hold(3.0)
         }
 
+
+        /// One state per launch, held open indefinitely — capturing a simulator screen costs tens
+        /// of seconds, so a walk that steps itself would have moved on before the shutter closed.
+        /// `TAILSCODE_SLASH_STATE` names which state to sit in.
+        private func slashWalk() async {
+            let state = ProcessInfo.processInfo.environment["TAILSCODE_SLASH_STATE"] ?? "all"
+            AppLogger.ui.info("slashwalk: state=\(state)")
+            await hold(2.0)
+            home?.openSession(withID: "demo-c1")
+            await hold(2.5)
+            guard let draft = Self.slashDrafts[state] else {
+                chat?.tourOpenCommandCatalog()
+                AppLogger.ui.info("slashwalk: catalog open")
+                return
+            }
+            chat?.tourSetDraft(draft)
+            AppLogger.ui.info("slashwalk: draft=\(draft)")
+        }
+
+        private func modelWalk() async {
+            let state = ProcessInfo.processInfo.environment["TAILSCODE_MODEL_STATE"] ?? "list"
+            AppLogger.ui.info("modelwalk: state=\(state)")
+            await hold(2.0)
+            home?.openSession(withID: "demo-o1")
+            await hold(2.5)
+            chat?.tourRunAppCommand("model")
+            await hold(1.5)
+            guard let query = Self.modelQueries[state] else { return }
+            modelPicker?.tourSearch(query)
+            AppLogger.ui.info("modelwalk: query=\(query)")
+        }
+
+        private static let modelQueries: [String: String] = [
+            "search": "son",
+            "provider": "openai",
+            "unknown": "zzz",
+        ]
+
+        private static let slashDrafts: [String: String] = [
+            "all": "/",
+            "prefix": "/co",
+            "segment": "/open",
+            "fuzzy": "/scrv",
+            "args": "/goal ",
+            "argstyped": "/goal the suite is green",
+            "unknown": "/nonsense",
+        ]
 
         private func hold(_ seconds: Double) async {
             try? await Task.sleep(for: .seconds(seconds))

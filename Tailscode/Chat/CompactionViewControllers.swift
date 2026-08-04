@@ -12,11 +12,15 @@ final class CompactPreflightViewController: UIViewController {
     private let instructions = UITextField()
     private let scroll = UIScrollView()
 
-    init(messageCount: Int, lastCompaction: Compaction?, onCompact: @escaping (String?) -> Void) {
+    init(
+        messageCount: Int, lastCompaction: Compaction?, initialInstruction: String = "",
+        onCompact: @escaping (String?) -> Void
+    ) {
         self.messageCount = messageCount
         self.lastCompaction = lastCompaction
         self.onCompact = onCompact
         super.init(nibName: nil, bundle: nil)
+        instructions.text = initialInstruction
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

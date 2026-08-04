@@ -8,7 +8,11 @@ import TailscodeCore
 /// model as ratios, structural verbs rebuild the widget skeleton around the surviving panes,
 /// and the zoom is nothing but visibility, so unzooming costs no rebuild at all.
 final class SplitHost: @unchecked Sendable {
-    let container = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    let container = gtk_overlay_new()!
+    private let treeBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let dropHighlight = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let dropCaption = Gtk.label("", css: "drop-caption", selectable: false)
+    private var dropZone: (pane: PaneID, zone: PaneDropZone)?
     private(set) var layout: SplitLayout
     private(set) var panes: [PaneID: ChatPane] = [:]
     private var splitWidgets: [SplitID: UInt] = [:]
@@ -19,9 +23,47 @@ final class SplitHost: @unchecked Sendable {
         layout = SplitLayout()
         gtk_widget_set_hexpand(container, 1)
         gtk_widget_set_vexpand(container, 1)
-        let pane = ChatPane(id: layout.focusedPane, host: host)
+        gtk_widget_set_hexpand(treeBox, 1)
+        gtk_widget_set_vexpand(treeBox, 1)
+        gtk_overlay_set_child(op(container), treeBox)
+        buildDropHighlight()
+        let pane = makePane(layout.focusedPane)
         panes[pane.id] = pane
         rebuild()
+    }
+
+    /// The arrangement a drop would make, drawn over the panes rather than inside one: it has to
+    /// be able to cover half a pane exactly, and it must never take the pointer events the drop
+    /// target underneath it is still reading.
+    private func buildDropHighlight() {
+        Gtk.addClass(dropHighlight, "drop-zone")
+        gtk_widget_set_can_target(dropHighlight, 0)
+        gtk_widget_set_halign(dropHighlight, GTK_ALIGN_START)
+        gtk_widget_set_valign(dropHighlight, GTK_ALIGN_START)
+        gtk_widget_set_visible(dropHighlight, 0)
+        gtk_label_set_max_width_chars(op(dropCaption), 18)
+        gtk_label_set_xalign(op(dropCaption), 0.5)
+        gtk_widget_set_halign(dropCaption, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(dropCaption, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(dropCaption, 1)
+        gtk_box_append(ptr(dropHighlight), dropCaption)
+        gtk_overlay_add_overlay(op(container), dropHighlight)
+    }
+
+    /// Every pane is a place a dragged chat can land, so a pane is never built without its drop
+    /// target — including the ones a restore or a drop itself mints.
+    private func makePane(_ id: PaneID) -> ChatPane {
+        let pane = ChatPane(id: id, host: host!)
+        Gtk.acceptChatDrops(
+            on: pane.root,
+            motion: { [weak self] payload, x, y in
+                self?.dragMoved(over: id, payload: payload, x: x, y: y)
+            },
+            leave: { [weak self] in self?.clearDropHighlight() },
+            drop: { [weak self] payload, x, y in
+                self?.receiveDrop(payload, on: id, x: x, y: y) ?? false
+            })
+        return pane
     }
 
     var activePane: ChatPane {
@@ -43,15 +85,18 @@ final class SplitHost: @unchecked Sendable {
         for pane in orderedPanes { body(pane) }
     }
 
-    /// Splits the focused pane; the new pane opens empty and focused, ready for the chat list —
-    /// or a subsequent open — to fill it.
+    /// Splits the focused pane; the new pane opens focused and asking which server, so the split
+    /// itself is the moment the second machine gets chosen — the chat list, or a subsequent open,
+    /// can still fill it instead.
     func splitActive(axis: SplitAxis) {
         guard let host else { return }
+        let source = activePane.entry?.profileID
         guard let freshID = layout.split(layout.focusedPane, axis: axis) else { return }
-        let pane = ChatPane(id: freshID, host: host)
-        pane.showPlaceholder(Localized.text("Pick a chat, or n for a new one."))
+        let pane = makePane(freshID)
         panes[freshID] = pane
         rebuild()
+        host.presentChooser(in: pane, preferring: source)
+        pane.focusTranscript()
         host.focusedPaneChanged()
         persist()
     }
@@ -95,10 +140,89 @@ final class SplitHost: @unchecked Sendable {
         persist()
     }
 
+    /// Every pane its fair share, from the keyboard verb or a double click on any divider.
     func equalize() {
         layout.equalize()
         applyRatios()
         persist()
+    }
+
+    /// Splits `pane` and hands back the fresh pane on the side a drop was aimed at — the highlight
+    /// promised that half, so the tree has to put it there rather than always second.
+    @discardableResult
+    func split(_ pane: ChatPane, edge: PaneDropEdge) -> ChatPane? {
+        guard
+            let freshID = layout.split(
+                pane.id, axis: edge.axis, placingNewFirst: edge.placesArrivalFirst)
+        else { return nil }
+        let fresh = makePane(freshID)
+        panes[freshID] = fresh
+        rebuild()
+        host?.focusedPaneChanged()
+        persist()
+        return fresh
+    }
+
+    /// The same drag the pointer makes, without a pointer — what the headless driver aims with.
+    func hover(_ pane: ChatPane, payload: PaneDragPayload, x: Double, y: Double) {
+        dragMoved(over: pane.id, payload: payload.encoded, x: x, y: y)
+    }
+
+    /// A chat dragged over a pane, followed live: the region it would take is drawn where it would
+    /// be, captioned with what letting go means.
+    private func dragMoved(over id: PaneID, payload: String?, x: Double, y: Double) {
+        guard let pane = panes[id] else { return }
+        let width = Double(gtk_widget_get_width(pane.root))
+        let height = Double(gtk_widget_get_height(pane.root))
+        let zone = PaneDropTarget.zone(x: x, y: y, width: width, height: height)
+        let title = payload.flatMap(PaneDragPayload.decode).flatMap { host?.chatTitle(for: $0) }
+        showDropHighlight(zone, on: pane, caption: zone.caption(title))
+    }
+
+    private func showDropHighlight(_ zone: PaneDropZone, on pane: ChatPane, caption: String) {
+        guard let bounds = Gtk.bounds(of: pane.root, in: container) else { return }
+        let rect = PaneDropTarget.highlight(
+            for: zone, width: bounds.width, height: bounds.height)
+        dropZone = (pane.id, zone)
+        gtk_label_set_text(op(dropCaption), caption)
+        Gtk.margins(
+            dropHighlight, top: Int32((bounds.y + rect.y).rounded()),
+            leading: Int32((bounds.x + rect.x).rounded()))
+        gtk_widget_set_size_request(
+            dropHighlight, Int32(rect.width.rounded()), Int32(rect.height.rounded()))
+        gtk_widget_set_visible(dropHighlight, 1)
+    }
+
+    func clearDropHighlight() {
+        dropZone = nil
+        gtk_widget_set_visible(dropHighlight, 0)
+    }
+
+    /// A chat let go over a pane. The zone is read again at the drop rather than trusted from the
+    /// last motion, so what lands is what the pointer was over when the button came up.
+    @discardableResult
+    func receiveDrop(_ text: String, on id: PaneID, x: Double, y: Double) -> Bool {
+        clearDropHighlight()
+        guard let pane = panes[id], let payload = PaneDragPayload.decode(text) else { return false }
+        let zone = PaneDropTarget.zone(
+            x: x, y: y, width: Double(gtk_widget_get_width(pane.root)),
+            height: Double(gtk_widget_get_height(pane.root)))
+        return host?.pane(pane, received: payload, zone: zone) ?? false
+    }
+
+    /// What the headless driver reads: which pane a drag is over and what letting go would do.
+    var dropSummary: String {
+        guard let dropZone, let index = layout.paneIDs.firstIndex(of: dropZone.pane) else {
+            return "-"
+        }
+        return "\(index) \(dropZone.zone)"
+    }
+
+    /// The pane a point in `reference`'s coordinates lands in. A press on a divider, on a pane the
+    /// zoom has hidden, or on the chrome beside the tree belongs to no pane and changes nothing —
+    /// which is why this asks the pane widgets where they are rather than carving up the window.
+    func pane(at x: Double, y: Double, in reference: UnsafeMutablePointer<GtkWidget>) -> ChatPane? {
+        orderedPanes.first { Gtk.contains($0.root, x: x, y: y, in: reference) }
     }
 
     /// Focus by intent: a keyboard move also moves the keyboard into the pane; a click leaves
@@ -120,10 +244,11 @@ final class SplitHost: @unchecked Sendable {
             g_object_ref(UnsafeMutableRawPointer(pane.root))
             Gtk.detachFromParent(pane.root)
         }
-        Gtk.removeChildren(of: container)
+        clearDropHighlight()
+        Gtk.removeChildren(of: treeBox)
         splitWidgets = [:]
         let treeRoot = build(layout.root)
-        gtk_box_append(ptr(container), treeRoot)
+        gtk_box_append(ptr(treeBox), treeRoot)
         for pane in panes.values {
             g_object_unref(UnsafeMutableRawPointer(pane.root))
         }
@@ -153,6 +278,9 @@ final class SplitHost: @unchecked Sendable {
             gtk_paned_set_shrink_end_child(op(paned), 1)
             gtk_widget_set_hexpand(paned, 1)
             gtk_widget_set_vexpand(paned, 1)
+            Gtk.onPanedHandleDoubleClick(paned) { [weak self] in
+                self?.equalize()
+            }
             splitWidgets[id] = UInt(bitPattern: paned)
             return paned
         }
@@ -190,6 +318,25 @@ final class SplitHost: @unchecked Sendable {
         }
     }
 
+    /// Where each divider sits in `reference`'s coordinates, so the driver can aim a real pointer
+    /// at a handle instead of guessing where the gap fell.
+    func handleCenters(in reference: UnsafeMutablePointer<GtkWidget>) -> [(SplitID, Double, Double)]
+    {
+        var centers: [(SplitID, Double, Double)] = []
+        for (id, bits) in splitWidgets {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+            let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            var x: Double = 0
+            var y: Double = 0
+            guard tailscode_paned_handle_center(paned, &x, &y) != 0 else { continue }
+            var local = graphene_point_t(x: Float(x), y: Float(y))
+            var mapped = graphene_point_t()
+            guard gtk_widget_compute_point(paned, reference, &local, &mapped) != 0 else { continue }
+            centers.append((id, Double(mapped.x), Double(mapped.y)))
+        }
+        return centers
+    }
+
     /// The zoom is visibility, not structure: every other pane hides, each paned collapses onto
     /// the subtree that is still visible, and unzooming shows everything exactly where it was.
     private func applyZoomVisibility() {
@@ -219,26 +366,40 @@ final class SplitHost: @unchecked Sendable {
 
     func snapshot() -> SplitSnapshot {
         var sessions: [String: SplitPaneSession] = [:]
+        var videos: [String: String] = [:]
+        var pages: [String: String] = [:]
         for (id, pane) in panes {
+            if let target = pane.webTarget {
+                pages[id.raw] = target.address
+                continue
+            }
+            if let target = pane.videoTarget {
+                videos[id.raw] = target.address
+                continue
+            }
             guard let entry = pane.entry else { continue }
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)
         }
-        return SplitSnapshot(layout: layout, sessions: sessions)
+        return SplitSnapshot(layout: layout, sessions: sessions, videos: videos, pages: pages)
     }
 
     /// Rebuilds panes from a persisted arrangement and hands back what each pane was showing.
     /// The sessions themselves resolve later, when the listing arrives — restore never waits on
     /// the network to draw the window's shape.
     func restore(_ snapshot: SplitSnapshot) -> [PaneID: SplitPaneSession] {
-        guard let host, snapshot.layout.isValid else { return [:] }
+        guard host != nil, snapshot.layout.isValid else { return [:] }
         for pane in panes.values { pane.shutdown() }
         panes = [:]
         layout = snapshot.layout
         var bindings: [PaneID: SplitPaneSession] = [:]
         for id in layout.paneIDs {
-            let pane = ChatPane(id: id, host: host)
-            if let session = snapshot.session(for: id) {
+            let pane = makePane(id)
+            if let target = snapshot.page(for: id) {
+                pane.showWeb(target)
+            } else if let target = snapshot.video(for: id) {
+                pane.showVideo(target)
+            } else if let session = snapshot.session(for: id) {
                 bindings[id] = session
                 pane.showPlaceholder(Localized.text("Connecting…"))
             } else {
@@ -250,8 +411,12 @@ final class SplitHost: @unchecked Sendable {
         return bindings
     }
 
+    /// A lone pane needs no layout written — except when it is a slot, which is the one thing a
+    /// single pane can hold that the chat list cannot restore on its own.
     func persist() {
-        guard let encoded = snapshot().encoded else { return }
-        SettingsFile.set(paneCount > 1 ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
+        let snapshot = snapshot()
+        guard let encoded = snapshot.encoded else { return }
+        let worthKeeping = paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
+        SettingsFile.set(worthKeeping ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
     }
 }

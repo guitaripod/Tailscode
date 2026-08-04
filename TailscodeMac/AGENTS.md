@@ -36,8 +36,9 @@ Glass is for the floating control layer, never for content:
   sits on glass; glass never stacks on glass.
 - The transcript scroll view extends under the floating composer/status layer with a matching
   `contentInsets.bottom`, so content scrolls behind glass (scroll-edge effect).
-- Colors are system semantic + `MacTheme.Color.brand(_:)`. The app follows the system appearance;
-  there are no custom canvas palettes on the Mac.
+- Colors are system semantic + `MacTheme.Color.brand(_:)`. The app follows the system appearance
+  and accent; named canvas palettes are Linux's job (GTK owns its chrome). Liquid Glass and system
+  materials stay the Mac's theme.
 
 ## Architecture and file ownership
 

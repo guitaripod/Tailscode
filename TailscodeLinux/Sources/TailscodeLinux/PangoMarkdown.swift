@@ -15,20 +15,28 @@ enum PangoMarkdown {
     /// the same three hundred segments on every token — so the answer is remembered. The colors
     /// are part of the key: a palette change is a different rendering, not a stale hit. Trailing
     /// blank lines are dropped — they add nothing but height in a bubble-less transcript.
-    static func render(_ text: String, dim: String, code: String, accent: String) -> String {
+    /// A growing prefix is a different string every frame, so the stream cascade renders with
+    /// `cache: false` — remembering sixty renderings a second of text nobody will ask for again
+    /// would evict the three hundred settled segments the memo exists for.
+    static func render(
+        _ text: String, dim: String, code: String, accent: String, cache useCache: Bool = true
+    ) -> String {
         let key = "\(dim)|\(code)|\(accent)|\(text)"
-        cacheLock.lock()
-        if let hit = cache[key] {
+        if useCache {
+            cacheLock.lock()
+            if let hit = cache[key] {
+                cacheLock.unlock()
+                return hit
+            }
             cacheLock.unlock()
-            return hit
         }
-        cacheLock.unlock()
         var lines: [String] = []
         for raw in text.components(separatedBy: "\n") {
             lines.append(block(raw, dim: dim, code: code, accent: accent))
         }
         while let last = lines.last, last.isEmpty { lines.removeLast() }
         let rendered = lines.joined(separator: "\n")
+        guard useCache else { return rendered }
         cacheLock.lock()
         if cache.count > 4096 { cache.removeAll(keepingCapacity: true) }
         cache[key] = rendered

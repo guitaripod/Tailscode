@@ -15,22 +15,33 @@ public actor ServerDirectory {
     private var cached: [ConnectionProfile] = []
     private var backends: [String: any CodingAgentBackend] = [:]
     private var ephemeralPasswords: [String: String] = [:]
+    private var demoMode = false
     private let store = LinuxProfileStore()
 
     public func profiles() -> [ConnectionProfile] { cached }
+    public func isDemoMode() -> Bool { demoMode }
 
     public func reload() {
         backends = [:]
         if let (profile, password) = Self.environmentProfile() {
             cached = [profile]
             ephemeralPasswords = password.map { [profile.id: $0] } ?? [:]
+            demoMode = false
             return
         }
         ephemeralPasswords = [:]
-        cached = (try? store.profiles()) ?? []
+        var listed = (try? store.profiles()) ?? []
+        demoMode = DemoMode.isActive
+        if demoMode {
+            listed.append(contentsOf: DemoWorld.profiles)
+        }
+        cached = listed
     }
 
     public func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
+        if profile.id.hasPrefix(DemoWorld.profilePrefix) {
+            return DemoWorld.backend(for: profile.id)
+        }
         if let existing = backends[profile.id] { return existing }
         let made: (any CodingAgentBackend)?
         if let password = ephemeralPasswords[profile.id] {
@@ -43,12 +54,30 @@ public actor ServerDirectory {
         return made
     }
 
+    public func enterDemoMode() {
+        DemoMode.enter()
+        reload()
+    }
+
+    public func leaveDemoMode() {
+        DemoMode.leave()
+        reload()
+    }
+
     public func save(_ profile: ConnectionProfile, password: String?) throws {
         try store.save(profile, password: password)
+        if demoMode {
+            DemoMode.leave()
+        }
         reload()
     }
 
     public func delete(id: String) {
+        if id.hasPrefix(DemoWorld.profilePrefix) {
+            DemoMode.leave()
+            reload()
+            return
+        }
         try? store.delete(id: id)
         reload()
     }

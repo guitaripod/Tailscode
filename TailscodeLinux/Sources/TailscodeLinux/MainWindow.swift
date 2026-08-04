@@ -55,6 +55,9 @@ final class MainWindow: @unchecked Sendable {
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
     private var lastQuotas: [(String, UsageQuota)] = []
+
+    /// Quotas the panes read for used-up surfaces — same numbers the sidebar footer shows.
+    func quotasForStatus() -> [UsageQuota] { lastQuotas.map(\.1) }
     private var cursor = 0
     private var filter = ""
     var pendingChords: [KeyChord] = []
@@ -732,6 +735,7 @@ final class MainWindow: @unchecked Sendable {
         if !entries.isEmpty { SessionListCache.save(entries) }
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
+            self?.warmCatalogs(profiles)
             self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
             SettingsFile.capture()
@@ -1052,6 +1056,31 @@ final class MainWindow: @unchecked Sendable {
                 self.restateChoosers()
             }
         }
+    }
+
+    /// The servers a pane may offer beyond its own — the model chooser spans the fleet, and a pane
+    /// does not keep the directory itself.
+    func fleetProfiles() -> [ConnectionProfile] { knownProfiles }
+
+    /// Asks every server what it runs, once, when the listing lands. The chooser has to be able to
+    /// name a machine's models before anyone has opened a chat on it, and a catalog nobody asked
+    /// for is the difference between a fleet-wide list and a list of wherever you happen to be.
+    private func warmCatalogs(_ profiles: [ConnectionProfile]) {
+        for profile in profiles where ModelCatalogStore.cached(profile.id).isEmpty {
+            Task {
+                guard let backend = await ServerDirectory.shared.backend(for: profile) else {
+                    return
+                }
+                await ModelCatalogStore.refresh(profileID: profile.id, backend: backend)
+            }
+        }
+    }
+
+    /// A pane asking for a chat on another machine, which is what picking that machine's model
+    /// means.
+    func startChat(on profileID: String, into pane: ChatPane) {
+        guard let profile = knownProfiles.first(where: { $0.id == profileID }) else { return }
+        presentNewChat(on: profile, into: pane)
     }
 
     private func chooserModel(preferredServer: String?) -> PaneChooser {
@@ -1885,8 +1914,11 @@ final class MainWindow: @unchecked Sendable {
                 gtk_box_append(ptr(track), fill)
                 gtk_box_append(ptr(row), track)
 
+                let percentText = QuotaSurface.amountLabel(
+                    fraction: gauge.fraction,
+                    percentText: "\(Int((fraction * 100).rounded()))%")
                 let percent = Gtk.label(
-                    "\(Int((fraction * 100).rounded()))%", css: "gauge-\(severity)",
+                    percentText, css: "gauge-\(severity)",
                     selectable: false)
                 gtk_widget_set_size_request(percent, 34, -1)
                 gtk_label_set_xalign(op(percent), 1)

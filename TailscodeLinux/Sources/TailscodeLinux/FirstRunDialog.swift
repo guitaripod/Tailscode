@@ -105,6 +105,11 @@ final class FirstRunDialog: @unchecked Sendable {
         gtk_widget_set_halign(actions, GTK_ALIGN_END)
         gtk_box_append(
             ptr(actions),
+            Gtk.button(Localized.text("Try the demo")) { [self] in
+                Gtk.onMain { [self] in self.enterDemo() }
+            })
+        gtk_box_append(
+            ptr(actions),
             Gtk.button(Localized.text("Later")) { [self] in
                 Gtk.onMain { [self] in
                     if let window = self.window { Dialogs.close(window) }
@@ -132,6 +137,16 @@ final class FirstRunDialog: @unchecked Sendable {
         pollTailnet()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(addressEntry)
+    }
+
+    private func enterDemo() {
+        Task {
+            await ServerDirectory.shared.enterDemoMode()
+            Gtk.onMain { [self] in
+                if let window = self.window { Dialogs.close(window) }
+                onSaved()
+            }
+        }
     }
 
     private func appendStep(

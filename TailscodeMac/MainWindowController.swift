@@ -34,6 +34,7 @@ final class MainWindowController: NSWindowController {
     private var pendingBindings: [PaneID: SplitPaneSession] = [:]
     private var cheatsheet: NSPanel?
     private var keyMonitor: Any?
+    private var mouseMonitor: Any?
     private var usageTask: Task<Void, Never>?
     private var usagePopover: NSPopover?
     private var lastQuotas: [(String, UsageQuota)] = []
@@ -56,6 +57,7 @@ final class MainWindowController: NSWindowController {
         window.center()
         window.setFrameAutosaveName("TailscodeMain")
         installKeyMonitor()
+        installMouseMonitor()
         observeDividers()
         DispatchQueue.main.async { [weak self] in
             self?.applyStoredDividers()
@@ -355,6 +357,7 @@ final class MainWindowController: NSWindowController {
                 },
                 onTranscriptChanged: { [weak self] in
                     self?.transcript.applyUIScale()
+                    Task { await self?.sidebar.refresh() }
                 },
                 onReloadShortcuts: { [weak self] in
                     self?.reloadShortcuts()
@@ -363,14 +366,74 @@ final class MainWindowController: NSWindowController {
         preferencesWindow?.present()
     }
 
+    /// A pane with nothing in it asks which server, then what on it — the question the chat list
+    /// cannot ask, at the moment a split makes it worth asking.
+    func presentChooser(in pane: TranscriptViewController, preferring serverID: String? = nil) {
+        pane.showChooser(
+            PaneChooser(
+                servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID))
+    }
+
+    private var chooserServers: [PaneChooserServer] {
+        let down = sidebar.unreachableServers
+        return ServerDirectory.shared.profiles.map { profile in
+            PaneChooserServer(
+                profileID: profile.id, name: profile.name, backend: profile.backend,
+                address: ServerLabel.address(profile),
+                reachable: !down.contains(ServerLabel.display(profile)))
+        }
+    }
+
+    private func restateChoosers() {
+        let servers = chooserServers
+        let entries = sidebar.allEntries
+        splitPanes.eachPane { pane in
+            guard pane.chooserShown else { return }
+            pane.restateChooser(servers: servers, entries: entries)
+        }
+    }
+
+    /// What a chooser row means once it is chosen. The pane that asked is the pane that fills —
+    /// including the new chat, which lands where the question was asked.
+    private func pane(_ pane: TranscriptViewController, chose action: PaneChooserAction) {
+        switch action {
+        case .openChat(_, let sessionID):
+            guard let entry = sidebar.allEntries.first(where: { $0.session.id == sessionID })
+            else { return }
+            splitPanes.focus(pane, grabKeyboard: false)
+            sidebar.open(entry)
+        case .newChat(let profileID):
+            guard let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
+            else { return }
+            splitPanes.focus(pane, grabKeyboard: false)
+            presentNewChat(on: profile)
+        case .addServer:
+            presentServers()
+        case .watch:
+            splitPanes.focus(pane, grabKeyboard: false)
+            pane.showVideo(nil)
+            splitPanes.persist()
+        case .browse:
+            splitPanes.focus(pane, grabKeyboard: false)
+            pane.showWeb(nil)
+            splitPanes.persist()
+        case .chooseServer, .allChats, .back:
+            break
+        }
+    }
+
     /// ⌘N: a server and a directory, then Enter. No configured server means the servers window —
     /// the form that fixes the actual problem — rather than an empty picker.
-    func presentNewChat() {
-        let profiles = ServerDirectory.shared.profiles
-        guard !profiles.isEmpty else {
+    /// - Parameter profile: the server the sheet opens on, when the question has already been
+    ///   answered somewhere else — a pane's chooser — so it is never asked twice.
+    func presentNewChat(on profile: ConnectionProfile? = nil) {
+        let all = ServerDirectory.shared.profiles
+        guard !all.isEmpty else {
             presentServers()
             return
         }
+        let profiles =
+            profile.map { chosen in [chosen] + all.filter { $0.id != chosen.id } } ?? all
         let recents = sidebar.recentDirectories
         Task { [weak self] in
             let locals = await Task.detached { NewChatSheet.localAddresses }.value
@@ -436,7 +499,17 @@ final class MainWindowController: NSWindowController {
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
         }
+        splitPanes.onPaneOpened = { [weak self] pane, source in
+            self?.presentChooser(in: pane, preferring: source)
+        }
         splitPanes.onFocusChanged = { [weak self] in self?.focusedPaneChanged() }
+        splitPanes.chatTitleForDrop = { [weak self] payload in
+            self?.chatTitle(for: payload)
+        }
+        splitPanes.onChatDropped = { [weak self] pane, payload, zone in
+            self?.pane(pane, received: payload, zone: zone) ?? false
+        }
+        sidebar.onEntriesChanged = { [weak self] in self?.restateChoosers() }
         filesPane.onOpen = { [weak self] path in
             self?.transcript.composer.insertText("@\(path) ")
         }
@@ -455,10 +528,16 @@ final class MainWindowController: NSWindowController {
                 state: state)
         }
         pane.onToast = { [weak self] text in self?.toast(text) }
+        pane.onVideoChanged = { [weak self] in self?.splitPanes.persist() }
         pane.onBandAction = { [weak self, weak pane] action in
             guard let pane else { return }
             self?.perform(bandAction: action, on: pane)
         }
+        pane.onChooserAction = { [weak self, weak pane] action in
+            guard let pane else { return }
+            self?.pane(pane, chose: action)
+        }
+        pane.quotasForStatus = { [weak self] in self?.lastQuotas.map(\.1) ?? [] }
         return pane
     }
 
@@ -544,6 +623,43 @@ final class MainWindowController: NSWindowController {
         splitPanes.persist()
     }
 
+    /// What a chat dragged from the list is called, for the caption inside the drop highlight.
+    private func chatTitle(for payload: PaneDragPayload) -> String? {
+        if let entry = sidebar.entries.first(where: {
+            $0.profileID == payload.profileID && $0.session.id == payload.sessionID
+        }) {
+            return SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false)
+                .title
+        }
+        return SavedChatStore.all().first { $0.sessionID == payload.sessionID }?.title
+    }
+
+    /// A chat let go over a pane. The middle of a pane means open it there; an edge means the
+    /// arrangement the highlight drew.
+    @discardableResult
+    private func pane(
+        _ pane: TranscriptViewController, received payload: PaneDragPayload, zone: PaneDropZone
+    ) -> Bool {
+        guard
+            let entry = sidebar.entries.first(where: {
+                $0.profileID == payload.profileID && $0.session.id == payload.sessionID
+            }),
+            let profile = ServerDirectory.shared.profiles.first(where: { $0.id == entry.profileID }),
+            let backend = ServerDirectory.shared.backend(for: profile)
+        else { return false }
+        SessionSeenStore.markSeen(entry.session.id)
+        switch zone {
+        case .fill:
+            splitPanes.focus(pane, grabKeyboard: false)
+            handleOpen(entry, backend: backend)
+        case .split(let edge):
+            guard let fresh = splitPanes.split(pane, edge: edge) else { return false }
+            splitPanes.focus(fresh, grabKeyboard: false)
+            handleOpen(entry, backend: backend)
+        }
+        return true
+    }
+
     /// Sidebar, content column, files inspector — and inside the content column its own vertical
     /// split, the transcript over the terminal, so the terminal pane belongs to the conversation
     /// the way it does on Linux rather than running under the whole window.
@@ -602,10 +718,72 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// The pointer's own claim on the keyboard: a local monitor sees every button going down
+    /// before AppKit dispatches it, so whatever was pressed becomes the focused pane and the
+    /// keyboard's region *first* — a band chip, a permission card or a pill in a background pane
+    /// then acts on its own conversation instead of on whichever pane the eye had left behind.
+    /// The event is returned untouched: the click keeps its ordinary meaning and first responder
+    /// lands exactly where the press put it.
+    private func installMouseMonitor() {
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
+            self?.pressLanded(event)
+            return event
+        }
+    }
+
+    private func pressLanded(_ event: NSEvent) {
+        guard event.window === window else { return }
+        let point = event.locationInWindow
+        if let pane = splitPanes.pane(atWindowPoint: point) {
+            regionPressed(.transcript)
+            splitPanes.focus(pane, grabKeyboard: false)
+            return
+        }
+        if contains(sidebar, point) {
+            regionPressed(.chats)
+        } else if filesItem?.isCollapsed == false, contains(filesPane, point) {
+            regionPressed(.files)
+        } else if terminalItem?.isCollapsed == false, contains(terminalPane, point) {
+            regionPressed(.terminal)
+        }
+    }
+
+    /// Pressing in a region is what makes it the keyboard's region, so Tab cycles from where the
+    /// hand actually is. Only the region moves — the press keeps whatever it was going to do, and
+    /// nothing is made first responder that the click did not already choose.
+    private func regionPressed(_ pane: Pane) {
+        guard focused != pane else { return }
+        focused = pane
+        if pane != .transcript { transcript.composer.dismissCompletion() }
+    }
+
+    private func contains(_ controller: NSViewController, _ windowPoint: NSPoint) -> Bool {
+        guard controller.isViewLoaded, controller.view.window != nil,
+            !controller.view.isHiddenOrHasHiddenAncestor
+        else { return false }
+        let local = controller.view.convert(windowPoint, from: nil)
+        return NSMouseInRect(local, controller.view.bounds, controller.view.isFlipped)
+    }
+
     private func handle(_ event: NSEvent) -> NSEvent? {
         if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
         let context = keyContext()
+        if context == .normal, focused == .transcript, pendingChords.isEmpty,
+            transcript.handleChooserChord(chord)
+        {
+            return nil
+        }
+        if context == .normal, focused == .transcript, pendingChords.isEmpty,
+            transcript.handleVideoChord(chord)
+        {
+            return nil
+        }
+        if focused == .transcript, pendingChords.isEmpty, transcript.handleWebChord(chord) {
+            return nil
+        }
         let awaiting =
             context == .normal
             && !(transcript.currentState?.pendingPermissions.isEmpty ?? true)
@@ -694,8 +872,9 @@ final class MainWindowController: NSWindowController {
 
     /// The composer's normal mode is the app's normal mode: every key answers to the shortcut
     /// table first — j scrolls, J switches chats, ? opens the cheatsheet — while vim keeps what
-    /// makes it vim: the visual modes whole, insert and visual entries, Enter to send, and every
-    /// key of a command already in flight, so `3x`, `diw` and `ct)` still land. A key neither
+    /// makes it vim: the visual modes, insert and visual entries, Enter to send, and every key of
+    /// a command already in flight, so `3x`, `diw` and `ct)` still land. A chord sequence in
+    /// flight outranks both, so `ctrl+w v` splits rather than entering visual mode. A key neither
     /// side binds goes back to vim rather than to the text view, so no stray letter types itself
     /// into the draft.
     private func composerNormalKey(
@@ -722,11 +901,7 @@ final class MainWindowController: NSWindowController {
             return true
         }
         let plain = !chord.control && !chord.alt
-        let entries: Set<Character> = ["i", "a", "o", "v", "V"]
-        let entersVimMode = plain && (key.character.map { entries.contains($0) } ?? false)
-        if composer.vimMode != .normal || composer.vimAwaitsMore || entersVimMode
-            || (plain && key.isEnter)
-        {
+        if composer.vimClaims(key, plain: plain, chordPending: !pendingChords.isEmpty) {
             pendingChords = []
             composer.applyVim(key)
             return true

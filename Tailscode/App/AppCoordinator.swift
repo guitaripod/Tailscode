@@ -52,6 +52,12 @@ final class AppCoordinator: NSObject {
                 openSettingsForDebug(slug: slug)
             }
             if CommandLine.arguments.contains("--tour") { TourDriver.start(in: window) }
+            if CommandLine.arguments.contains("--slashwalk") {
+                TourDriver.startSlashWalk(in: window)
+            }
+            if CommandLine.arguments.contains("--modelwalk") {
+                TourDriver.startModelWalk(in: window)
+            }
         #endif
     }
 

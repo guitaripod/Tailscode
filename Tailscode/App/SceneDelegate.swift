@@ -39,10 +39,12 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()
+        HapticEngine.shared.prepare()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         UsageBackgroundRefresh.schedule()
+        HapticEngine.shared.relinquish()
     }
 
     func routeDeepLink(_ url: URL) {

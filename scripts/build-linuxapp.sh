@@ -4,7 +4,9 @@
 #
 #   TAILSCODE_HOST=http://100.x.y.z:4098 TAILSCODE_PASSWORD=… scripts/build-linuxapp.sh
 #   scripts/build-linuxapp.sh --shot     # also write /tmp/tailscode-linux.png
-#   scripts/build-linuxapp.sh --run      # open the window on the real desktop instead
+#   scripts/build-linuxapp.sh --run      # leave it running on the harness display
+#
+# Both delegate to scripts/dev-linuxapp.sh, which is the fuller loop: input, drive verbs, logs.
 set -euo pipefail
 
 cd "$(dirname "$0")/../TailscodeLinux"
@@ -17,25 +19,18 @@ if [ -n "${TAILSCODE_HOST:-}" ]; then
     "$BIN" --selftest
 fi
 
+# Rendering is the harness's job, and the harness keeps ONE app alive rather than starting another
+# one per look: a nested X server and a private session bus, so nothing lands on the real desktop
+# and nothing joins the instance the person is using.
+HARNESS="$(dirname "$0")/dev-linuxapp.sh"
+
 case "${1:-}" in
 --shot)
-    # A nested X server rather than the session's own compositor: the screenshot then contains the
-    # app and nothing else, and the same command works over ssh on a machine with no desktop.
-    # A private session bus as well: GApplication is single-instance per bus name, so without one
-    # the dev build would remote-activate an installed tailscode already running on the desktop
-    # and exit 0 with nothing to photograph.
-    xvfb-run -a --server-args="-screen 0 1280x820x24" dbus-run-session -- bash -c "
-        env -u WAYLAND_DISPLAY GDK_BACKEND=x11 '$BIN' > /tmp/tailscode-linux-run.log 2>&1 &
-        sleep 20
-        import -window root /tmp/tailscode-linux.png
-        pkill -f '$BIN\$' || true
-    "
-    echo "screenshot -> /tmp/tailscode-linux.png"
+    "$HARNESS" start --no-build >/dev/null
+    "$HARNESS" shot /tmp/tailscode-linux.png
     ;;
 --run)
-    pkill -f "$BIN\$" 2>/dev/null || true
-    nohup "$BIN" > /tmp/tailscode-linux-run.log 2>&1 &
-    sleep 3
-    pgrep -f "$BIN\$" >/dev/null && echo "running" || { tail -20 /tmp/tailscode-linux-run.log; exit 1; }
+    "$HARNESS" start --no-build
+    "$HARNESS" status
     ;;
 esac

@@ -644,24 +644,17 @@ final class ChatViewController: UIViewController {
     }
 
     private func runFind(retarget: Bool) {
-        let needle = (findField.text ?? "").trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else {
-            findMatches = []
-            findCountLabel.text = nil
+        let previousID = findMatches.indices.contains(findCursor) ? findMatches[findCursor] : nil
+        findMatches = ChatFind.matchingIDs(
+            needle: findField.text ?? "", orderedIDs: orderedIDs, rowsByID: rowsByID)
+        findCursor = ChatFind.cursor(
+            matches: findMatches, previousID: previousID, previousCursor: findCursor,
+            retarget: retarget)
+        if findMatches.isEmpty {
+            findCountLabel.text = (findField.text ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                ? nil : String(localized: "No matches")
             setFindHighlight(nil)
             return
-        }
-        let previousID = findMatches.indices.contains(findCursor) ? findMatches[findCursor] : nil
-        findMatches = orderedIDs.filter { id in
-            guard let row = rowsByID[id] else { return false }
-            return Self.searchText(for: row).lowercased().contains(needle)
-        }
-        if retarget {
-            findCursor = max(0, findMatches.count - 1)
-        } else if let previousID, let kept = findMatches.firstIndex(of: previousID) {
-            findCursor = kept
-        } else {
-            findCursor = min(findCursor, max(0, findMatches.count - 1))
         }
         updateFindCount()
         applyFindHighlight(scroll: retarget)
@@ -711,39 +704,6 @@ final class ChatViewController: UIViewController {
         cell.layer.cornerCurve = .continuous
         cell.layer.borderWidth = on ? 2 : 0
         cell.layer.borderColor = on ? Theme.Color.accent.withAlphaComponent(0.6).cgColor : nil
-    }
-
-    /// What a row answers a text search with — the same fields the desktop transcripts index:
-    /// prose, code, tool names and their output, file names, subagent titles, seams and errors.
-    static func searchText(for row: ChatRow) -> String {
-        switch row.content {
-        case .text(let text):
-            return text
-        case .code(let block):
-            return "\(block.language ?? "") \(block.source)"
-        case .activity(let steps):
-            return steps.map { step in
-                switch step {
-                case .reasoning(let text): return text
-                case .tool(let call):
-                    return "\(call.name) \(call.title ?? "") \(call.output?.prefix(4000) ?? "")"
-                }
-            }.joined(separator: " ")
-        case .subagent(let card):
-            return "\(card.agentType ?? "") \(card.title)"
-        case .workflow(let run):
-            return "\(run.name) \(run.summary ?? "") \(run.result ?? "")"
-        case .subagentGroup(let group):
-            return group.title
-        case .compaction(let row):
-            return row.compaction?.summary ?? "compaction"
-        case .file(let reference), .image(let reference):
-            return reference.filename ?? reference.path ?? ""
-        case .timestamp:
-            return ""
-        case .error(let message):
-            return message
-        }
     }
 
     /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
@@ -1201,7 +1161,7 @@ final class ChatViewController: UIViewController {
         workflowRuns = runs
         lastRenderedState = state
         updateWorkflowTicker()
-        let rows = Self.makeRows(
+        let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
             runs: Dictionary(uniqueKeysWithValues: runs.map { ($0.id, $0) }))
         let previous = rowsByID
@@ -1488,8 +1448,10 @@ final class ChatViewController: UIViewController {
                     symbol: "wifi.slash")
             }
         case .connecting, .live:
+            if applyQuotaExhaustion(for: state) { return }
             if let failure = state.lastFailure, failure != viewModel.dismissedFailure,
-                state.status != .running, Date() > suppressBannerUntil {
+                state.status != .running, Date() > suppressBannerUntil
+            {
                 banner.show(
                     failure.message, color: Theme.Color.danger,
                     symbol: "exclamationmark.triangle.fill")
@@ -1501,6 +1463,35 @@ final class ChatViewController: UIViewController {
                 banner.hide()
             }
         }
+    }
+
+    /// A used-up quota is a state, not a generic failure: name the window, say when it resets,
+    /// and leave the raw rate-limit string behind. Pre-emptive when gauges are already full, and
+    /// after a turn dies of a rate limit.
+    @discardableResult
+    private func applyQuotaExhaustion(for state: ConversationState) -> Bool {
+        guard Date() > suppressBannerUntil, state.status != .running else { return false }
+        let quotas = UsageWidgetStore.cachedQuotas()
+        let failure: String? = {
+            guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
+            return f.message
+        }()
+        let exhaustion: QuotaExhaustion?
+        if let failure {
+            exhaustion = QuotaSurface.resolve(failureMessage: failure, quotas: quotas)
+        } else {
+            exhaustion = QuotaSurface.hottestExhausted(in: quotas)
+        }
+        guard let exhaustion else { return false }
+        banner.show(
+            QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,
+            symbol: "gauge.with.dots.needle.100percent")
+        let key = "\(exhaustion.provider)|\(exhaustion.window)|\(exhaustion.source)"
+        if lastHapticFailure != key {
+            lastHapticFailure = key
+            Theme.Haptics.warning()
+        }
+        return true
     }
 
 
@@ -2847,10 +2838,13 @@ final class ChatViewController: UIViewController {
         guard !availableModels.isEmpty else { return }
         Theme.Haptics.tap()
         let picker = ModelPickerViewController(
-            models: availableModels, selected: viewModel.selectedModel
-        ) { [weak self] selection in
-            self?.viewModel.selectModel(selection)
-            self?.updateNavControls()
+            sources: ModelFleet.sources(
+                profiles: AppCoordinator.shared?.profiles ?? [],
+                current: viewModel.contextID, currentModels: availableModels,
+                allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
+            selected: viewModel.selectedModel
+        ) { [weak self] pick in
+            self?.apply(pick)
         }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
@@ -2858,6 +2852,30 @@ final class ChatViewController: UIViewController {
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+    }
+
+    /// A model on this server changes what this chat runs. A model on another one cannot — the
+    /// conversation is a session on the machine that answers it — so the app says so and offers the
+    /// only thing it can honour: the same model, on that machine, in a new chat.
+    private func apply(_ pick: ModelPick) {
+        guard pick.isElsewhere else {
+            viewModel.selectModel(pick.selection)
+            updateNavControls()
+            return
+        }
+        let alert = UIAlertController(
+            title: ModelFleet.moveTitle(pick), message: ModelFleet.moveBody(pick),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: ModelFleet.moveAction, style: .default) { [weak self] _ in
+                ModelFleet.adopt(pick)
+                Theme.Haptics.success()
+                self?.navigationController?.popToRootViewController(animated: true)
+                (self?.navigationController?.viewControllers.first as? HomeViewController)?
+                    .aimCompose(at: pick.profileID)
+            })
+        present(alert, animated: true)
     }
 
     /// Diagnostic: fires when a still-pending bubble (queued item or local echo)
@@ -2875,177 +2893,6 @@ final class ChatViewController: UIViewController {
             "pending phantom: \(phantoms.count) pending bubble(s) duplicate a server message — "
                 + "queued=\(viewModel.queued.count) echoes=\(viewModel.localEchoes.count) "
                 + "serverUsers=\(serverUserTexts.count) first=\"\(phantoms[0].prefix(30))\"")
-    }
-
-    /// Folds consecutive agent actions (thinking + tools) into one `.activity` row; text and files
-    /// break the group and render on their own. A tool call that spawned a subagent is replaced by
-    /// that agent's own card, so the agent's work sits in the conversation at the point it began
-    /// instead of behind a screen of its own.
-    private static func makeRows(
-        from messages: [ChatMessage], agents: SubagentPlacement,
-        runs: [String: WorkflowRun] = [:]
-    ) -> [ChatRow] {
-        var rows: [ChatRow] = []
-        var lastDate: Date?
-        var seenMessageIDs = Set<String>()
-        var pendingUnattached = agents.unattached
-        for message in messages {
-            guard seenMessageIDs.insert(message.id).inserted else { continue }
-            if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
-                rows.append(ChatRow(
-                    id: "ts:\(message.id)", messageID: message.id, role: .system,
-                    content: .timestamp(Self.relativeTimestamp(message.createdAt))))
-            }
-            if lastDate == nil || message.createdAt > (lastDate ?? .distantPast) {
-                lastDate = message.createdAt
-            }
-            var steps: [ActivityStep] = []
-            var groupID: String?
-
-            func flushActivity() {
-                guard !steps.isEmpty, let groupID else { return }
-                rows.append(
-                    ChatRow(
-                        id: "\(message.id):activity:\(groupID)", messageID: message.id,
-                        role: message.role, content: .activity(steps)))
-                steps = []
-            }
-
-            for part in message.parts {
-                let id = "\(message.id):\(part.id)"
-                switch part.kind {
-                case .reasoning(let text):
-                    if text.isEmpty { continue }
-                    if steps.isEmpty { groupID = part.id }
-                    steps.append(.reasoning(text))
-                case .tool(let call):
-                    if var card = agents.byToolUse[call.id] {
-                        flushActivity()
-                        card.spawnSummary = call.summary.displayOutput ?? call.sanitizedOutput
-                        rows.append(
-                            ChatRow(
-                                id: "agent:\(card.agentID)", messageID: message.id,
-                                role: message.role, content: .subagent(card)))
-                        continue
-                    }
-                    if let run = runs[call.id] {
-                        flushActivity()
-                        rows.append(
-                            ChatRow(
-                                id: "workflow:\(call.id)", messageID: message.id,
-                                role: message.role, content: .workflow(run)))
-                        pendingUnattached = []
-                        continue
-                    }
-                    if steps.isEmpty { groupID = part.id }
-                    steps.append(.tool(call))
-                    if call.summary.kind == .workflow, !pendingUnattached.isEmpty {
-                        flushActivity()
-                        rows.append(
-                            contentsOf: Self.agentRows(
-                                pendingUnattached, groupID: call.id, messageID: message.id,
-                                role: message.role, expandedGroups: agents.expandedGroups))
-                        pendingUnattached = []
-                    }
-                case .text(let text):
-                    flushActivity()
-                    if text.isEmpty { continue }
-                    if message.role == .user {
-                        let (interrupted, remainder) = Self.strippedInterruption(text)
-                        if interrupted {
-                            rows.append(
-                                ChatRow(
-                                    id: "\(id):interrupted", messageID: message.id,
-                                    role: .system,
-                                    content: .timestamp(String(localized: "interrupted"))))
-                        }
-                        if !remainder.isEmpty {
-                            rows.append(
-                                ChatRow(
-                                    id: id, messageID: message.id, role: message.role,
-                                    content: .text(remainder)))
-                        }
-                    } else {
-                        let segments = MessageSegment.split(text)
-                        for (index, segment) in segments.enumerated() {
-                            let segID = segments.count == 1 ? id : "\(id):seg\(index)"
-                            let content: ChatRow.Content
-                            switch segment {
-                            case .text(let value): content = .text(value)
-                            case .code(let block): content = .code(block)
-                            }
-                            rows.append(
-                                ChatRow(id: segID, messageID: message.id, role: message.role, content: content))
-                        }
-                    }
-                case .file(let file):
-                    flushActivity()
-                    rows.append(
-                        ChatRow(
-                            id: id, messageID: message.id, role: message.role,
-                            content: file.isImage ? .image(file) : .file(file)))
-                case .compaction(let compaction):
-                    flushActivity()
-                    rows.append(
-                        ChatRow(
-                            id: id, messageID: message.id, role: .system,
-                            content: .compaction(
-                                CompactionRow(id: id, state: .done(compaction)))))
-                case .unknown:
-                    continue
-                }
-            }
-            flushActivity()
-            if let error = message.error, !error.isEmpty, message.role == .assistant {
-                rows.append(ChatRow(
-                    id: "\(message.id):error", messageID: message.id, role: message.role,
-                    content: .error(error)))
-            }
-        }
-        rows.append(
-            contentsOf: Self.agentRows(
-                pendingUnattached, groupID: "session", messageID: "agents", role: .assistant,
-                expandedGroups: agents.expandedGroups))
-        return fuseActivity(rows)
-    }
-
-    /// The CLI records an Escape as a user line reading `[Request interrupted by user]` (or
-    /// `… for tool use]`, sometimes with the real next prompt appended). That is a seam in the
-    /// turn, not something the person said — it renders as a dim marker, and only the text they
-    /// actually typed gets a bubble.
-    static func strippedInterruption(_ text: String) -> (interrupted: Bool, remainder: String) {
-        guard text.hasPrefix("[Request interrupted") else { return (false, text) }
-        guard let close = text.firstIndex(of: "]") else { return (true, "") }
-        let remainder = String(text[text.index(after: close)...])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (true, remainder)
-    }
-
-    /// Above this many agents with no spawn point of their own, the cards
-    /// collapse behind one row: a workflow can fan out to a hundred, and a
-    /// hundred cards buries the conversation they belong to.
-    private static let inlineAgentLimit = 3
-
-    private static func agentRows(
-        _ cards: [SubagentCard], groupID: String, messageID: String, role: MessageRole,
-        expandedGroups: Set<String>
-    ) -> [ChatRow] {
-        guard !cards.isEmpty else { return [] }
-        func card(_ card: SubagentCard) -> ChatRow {
-            ChatRow(
-                id: "agent:\(card.agentID)", messageID: messageID, role: role,
-                content: .subagent(card))
-        }
-        guard cards.count > inlineAgentLimit else { return cards.map(card) }
-        let id = "agents:\(groupID)"
-        let expanded = expandedGroups.contains(id)
-        let header = ChatRow(
-            id: id, messageID: messageID, role: role,
-            content: .subagentGroup(
-                SubagentGroup(
-                    id: id, total: cards.count, live: cards.count(where: \.isActive),
-                    expanded: expanded)))
-        return expanded ? [header] + cards.map(card) : [header]
     }
 
     /// Where each spawned agent's card belongs: against the tool call that
@@ -3099,7 +2946,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func subagentCard(for agent: SubagentSummary) -> SubagentCard {
-        let digest = Self.digest(viewModel.subagentTranscripts[agent.id])
+        let digest = ChatRowBuilder.digest(viewModel.subagentTranscripts[agent.id])
         return SubagentCard(
             agentID: agent.id,
             title: agent.title,
@@ -3111,84 +2958,16 @@ final class ChatViewController: UIViewController {
             isLoading: viewModel.loadingSubagents.contains(agent.id),
             steps: digest.steps,
             report: digest.report,
-            progress: Self.liveProgress(agent))
+            progress: ChatRowBuilder.liveProgress(agent))
     }
 
     /// One line saying what a live agent is doing: its todo position when it keeps a list,
     /// otherwise its tool trail — count, the current tool, and elapsed time.
-    private static func liveProgress(_ agent: SubagentSummary) -> String? {
-        guard agent.isActive else { return nil }
-        var parts: [String] = []
-        if let done = agent.todosDone, let total = agent.todosTotal, total > 0 {
-            parts.append("\(done)/\(total)")
-            if let current = agent.currentTodo, !current.isEmpty {
-                parts.append(String(current.prefix(40)))
-            }
-        } else if let current = agent.currentTool, !current.isEmpty {
-            if let count = agent.toolCount {
-                parts.append(String(localized: "\(count) tools"))
-            }
-            parts.append(String(current.prefix(40)))
-        }
-        guard !parts.isEmpty else { return nil }
-        if let started = agent.startedAt {
-            let seconds = Int(max(0, Date().timeIntervalSince(started)))
-            parts.append(seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s")
-        }
-        return parts.joined(separator: " · ")
-    }
-
     /// A subagent transcript reads as a run of work plus one answer: its thoughts
     /// and tool calls become steps, and its final message is what it reported to
     /// the conversation that spawned it.
-    private static func digest(_ messages: [ChatMessage]?) -> (steps: [ActivityStep], report: String?) {
-        guard let messages else { return ([], nil) }
-        var steps: [ActivityStep] = []
-        var report: String?
-        for message in messages where message.role == .assistant {
-            for part in message.parts {
-                switch part.kind {
-                case .reasoning(let text):
-                    if !text.isEmpty { steps.append(.reasoning(text)) }
-                case .tool(let call):
-                    steps.append(.tool(call))
-                case .text(let text):
-                    if !text.isEmpty { report = text }
-                case .file, .compaction, .unknown:
-                    continue
-                }
-            }
-        }
-        return (steps, report)
-    }
-
-    private static func relativeTimestamp(_ date: Date) -> String {
-        let time = date.formatted(date: .omitted, time: .shortened)
-        if Calendar.current.isDateInToday(date) { return String(localized: "Today \(time)") }
-        if Calendar.current.isDateInYesterday(date) {
-            return String(localized: "Yesterday \(time)")
-        }
-        return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
-    }
-
     /// Merges any adjacent activity rows into one, so a run of thinking/tool steps (even across
     /// message boundaries) reads as a single collapsible group.
-    private static func fuseActivity(_ rows: [ChatRow]) -> [ChatRow] {
-        var merged: [ChatRow] = []
-        for row in rows {
-            if case .activity(let steps) = row.content, let last = merged.last,
-                case .activity(let prior) = last.content
-            {
-                merged[merged.count - 1] = ChatRow(
-                    id: last.id, messageID: last.messageID, role: last.role,
-                    content: .activity(prior + steps))
-            } else {
-                merged.append(row)
-            }
-        }
-        return merged
-    }
-
     private func isNearBottom() -> Bool {
         let offsetY = collectionView.contentOffset.y
         let height = collectionView.contentSize.height

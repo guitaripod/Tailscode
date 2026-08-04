@@ -48,7 +48,7 @@ enum DesktopIntegration {
         let installed = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/bin/tailscode").path
         let exec = FileManager.default.isExecutableFile(atPath: installed)
-            ? installed : (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).path } ?? "tailscode")
+            ? installed : (Arguments.all.first.map { URL(fileURLWithPath: $0).path } ?? "tailscode")
         return """
         [Desktop Entry]
         Type=Application

@@ -5,6 +5,7 @@ enum TailscodeVersion {
         tailscode — drive your coding agents over Tailscale
 
           tailscode                          open the window
+          tailscode --demo                   open the scripted demo world (no server)
           tailscode --connect <address>      save a server (--password, --name, --opencode)
           tailscode --selftest               check the whole chain with no display
           tailscode --version

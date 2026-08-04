@@ -3,7 +3,7 @@ import Foundation
 import TailscodeCore
 
 enum ProbeNewChat {
-    static var isRequested: Bool { CommandLine.arguments.contains("--probe-newchat") }
+    static var isRequested: Bool { Arguments.contains("--probe-newchat") }
 
     static func run() async -> Never {
         let clock = ContinuousClock()

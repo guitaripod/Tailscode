@@ -83,20 +83,25 @@ enum ToolRowView {
     /// Reasoning folded to its size, because the thought is the agent's scratch work: worth a
     /// glance, never worth the screen the answer needs.
     static func reasoning(_ text: String, key: String, context: TranscriptContext) -> NSView {
-        let words = text.split(separator: " ").count
+        context.liveReasoning[key] = text
         let header = RowKit.label(
-            Localized.text("⌄ Thought · %@ words", "\(words)"), font: MacTheme.Font.caption(),
+            Self.thoughtHeader(text), font: MacTheme.Font.caption(),
             color: MacTheme.Color.secondaryLabel)
         let toggle = context.onToggle
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
             onToggle: { open in toggle?(key, open) }
-        ) {
+        ) { [weak context] in
             RowKit.inset(
                 RowKit.wrapping(
-                    text, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel),
+                    context?.liveReasoning[key] ?? text, font: MacTheme.Font.caption(),
+                    color: MacTheme.Color.secondaryLabel),
                 leading: 14)
         }
+    }
+
+    static func thoughtHeader(_ text: String) -> String {
+        Localized.text("⌄ Thought · %@ words", "\(text.split(separator: " ").count)")
     }
 
     /// Whether the disclosure would open onto anything — decided without building a single body

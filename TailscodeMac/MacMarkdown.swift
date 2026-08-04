@@ -14,8 +14,11 @@ enum MacMarkdown {
     /// Rendering runs once per prose segment per streamed state, and a long conversation replays
     /// the same three hundred segments on every token — so the answer is remembered. Colors are
     /// semantic and resolve at draw time, so appearance changes never stale the cache.
-    static func render(_ text: String) -> NSAttributedString {
-        if let hit = cache[text] { return hit }
+    /// A growing prefix is a different string every frame, so the stream cascade renders with
+    /// `cache: false` — remembering sixty renderings a second of text nobody will ask for again
+    /// would evict the three hundred settled segments the memo exists for.
+    static func render(_ text: String, cache useCache: Bool = true) -> NSAttributedString {
+        if useCache, let hit = cache[text] { return hit }
         var lines: [NSAttributedString] = []
         for raw in text.components(separatedBy: "\n") {
             lines.append(block(raw))
@@ -26,6 +29,7 @@ enum MacMarkdown {
             if index > 0 { rendered.append(NSAttributedString(string: "\n", attributes: attributes(Style()))) }
             rendered.append(line)
         }
+        guard useCache else { return rendered }
         if cache.count > 4096 { cache.removeAll(keepingCapacity: true) }
         cache[text] = rendered
         return rendered

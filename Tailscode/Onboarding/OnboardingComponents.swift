@@ -41,11 +41,14 @@ final class TailnetLinkView: UIView {
         badgeIcon.translatesAutoresizingMaskIntoConstraints = false
         badge.addSubview(badgeIcon)
 
-        caption.font = Theme.Font.caption()
+        caption.font = Theme.Font.capped(.caption1, maximum: 15)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.tertiaryLabel
         caption.textAlignment = .center
         caption.numberOfLines = 2
+        caption.adjustsFontSizeToFitWidth = true
+        caption.minimumScaleFactor = 0.7
+        caption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         caption.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(phoneNode)
@@ -58,6 +61,7 @@ final class TailnetLinkView: UIView {
             phoneNode.leadingAnchor.constraint(equalTo: leadingAnchor),
             serverNode.topAnchor.constraint(equalTo: topAnchor),
             serverNode.trailingAnchor.constraint(equalTo: trailingAnchor),
+            phoneNode.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.28),
             serverNode.widthAnchor.constraint(equalTo: phoneNode.widthAnchor),
             serverNode.leadingAnchor.constraint(
                 greaterThanOrEqualTo: phoneNode.trailingAnchor, constant: Theme.Spacing.xxl),
@@ -232,11 +236,12 @@ private final class TailnetNodeView: UIView {
         circle.addSubview(glyph)
 
         caption.text = text
-        caption.font = Theme.Font.caption()
+        caption.font = Theme.Font.capped(.caption1, maximum: 17)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.secondaryLabel
         caption.textAlignment = .center
         caption.numberOfLines = 2
+        caption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         caption.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(circle)

@@ -72,6 +72,30 @@ void tailscode_set_text_scale(double scale);
 /// prompt box apart from the search field without guessing from the event.
 GtkWidget *tailscode_focused_widget(GtkWidget *root);
 
+/// The widget's rectangle inside `ancestor` — the whole frame, where `tailscode_widget_offset_y`
+/// answers only the top edge. False when the two are not connected.
+gboolean tailscode_widget_bounds_in(
+    GtkWidget *widget, GtkWidget *ancestor, double *x, double *y, double *width, double *height);
+
+/// The private type a dragged chat travels as. A boxed string rather than `G_TYPE_STRING`: every
+/// editable text view in the app accepts dropped text, so a public type would let a chat dragged
+/// slightly wide of a pane land in a prompt box as pasted words.
+GType tailscode_chat_ref_get_type(void);
+
+/// Makes `widget` draggable, carrying `payload` under that private type and dragging a likeness
+/// of the widget itself so the pointer holds the row it picked up.
+void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload);
+
+/// Accepts a dragged chat over `widget`: `motion` on every move inside it (with the payload, which
+/// the target preloads so the highlight can name the chat before it lands), `leave` when the
+/// pointer goes, and `drop` to take it. The payload lives inside a `GValue` Swift cannot unbox.
+void tailscode_accept_chat_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data);
+
 /// Accepts files dropped on `widget` and calls back with their paths. The drop payload is a
 /// `GdkFileList` inside a `GValue`, neither of which Swift can unbox, so the whole exchange is C.
 void tailscode_accept_file_drops(
@@ -88,6 +112,27 @@ void tailscode_connect_notify(
 void tailscode_after(guint ms, void (*handler)(void *), void *data);
 void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data);
 
+/// Any pointer button going down anywhere inside `widget`, with where it landed in `widget`'s own
+/// coordinates. The gesture watches in the capture phase, which runs from the toplevel down before
+/// any child sees the event, and never claims the sequence, so the text view still selects, the
+/// button still fires and the scroller still drags. Watch the window rather than a subtree: a menu
+/// button pops its popover on the press and the sequence never reaches an intermediate widget's
+/// capture gesture at all. Watching every button rather than only the primary one means a right
+/// click activates what it is about to open a menu on.
+void tailscode_on_press_capture(
+    GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
+
+/// A double click on `paned`'s own handle — the gap between its two children, not anywhere in
+/// them. The gesture watches in the capture phase so it sees the press before the paned's resize
+/// drag does, and claims the sequence only for the second press on the handle, which leaves an
+/// ordinary drag and every click inside a child untouched.
+void tailscode_on_paned_handle_double_click(
+    GtkWidget *paned, void (*handler)(void *), void *data);
+
+/// The middle of that same handle in the paned's own coordinates — what the driver aims a real
+/// pointer at, so the test and the gesture agree on where the divider is.
+gboolean tailscode_paned_handle_center(GtkWidget *paned, double *x, double *y);
+
 /// A right click on `widget`, with where it landed in the widget's own coordinates. The gesture
 /// claims the sequence on press so the widget underneath does not also treat it as a click, but
 /// the handler fires on release: a popover popped up mid-press grabs the pointer, and the release
@@ -97,3 +142,77 @@ void tailscode_on_right_click(
     GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
 char *tailscode_label_selection(GtkWidget *widget);
 gboolean tailscode_label_has_selection(GtkWidget *widget);
+
+/// The stream cascade, painted into a label from markup that is parsed once.
+///
+/// The whole arrived paragraph is laid out and everything past `visible` is drawn at zero alpha
+/// rather than cut off — which is what makes the reveal read as writing rather than as a widget
+/// resizing: the text is measured when it arrives and never again, so no glyph moves after it
+/// lands and no line re-wraps under the reader. The last `wave` visible glyphs carry the
+/// per-character colour and alpha the shared cascade computed. Returns the markup's total rendered
+/// length, or -1 if it could not be parsed. A negative `visible` clears the wave and hands the
+/// label the whole markup back.
+int tailscode_label_reveal(
+    GtkWidget *label, const char *markup, int visible, int wave,
+    const unsigned int *rgb, const unsigned short *alpha);
+
+/// The markup's rendered text — what a reader actually sees, with every marker already eaten.
+/// The caller paces over this, so it has to be the same string the label will show. Owned by the
+/// one-entry parse cache and valid until the next call with different markup.
+const char *tailscode_markup_text(const char *markup);
+
+/// A callback on the widget's own frame clock. A chained timeout drifts against the compositor and
+/// lands two frames in one and none in the next, which is the stutter a cascade exists to remove;
+/// the frame clock is what the screen is actually doing.
+guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data);
+void tailscode_remove_tick(GtkWidget *widget, guint id);
+
+/// Whether the desktop wants motion at all. A person who has turned animations off has said what
+/// they want from a cascade, and the answer is the text.
+gboolean tailscode_animations_enabled(void);
+
+/// The video slot's player. libmpv draws into a GL area the pane owns, so a stream is a widget in
+/// the split tree rather than a window floating over it — Wayland gives a client no way to place
+/// an external window inside another, and a pane that cannot be tiled is not a pane. Compiled out
+/// where libmpv is absent, which is what `tailscode_mpv_available` reports.
+typedef struct TailscodeMpv TailscodeMpv;
+
+gboolean tailscode_mpv_available(void);
+
+/// Creates the player and its GL area. `event` is called on the main thread with a kind
+/// ("loaded", "title", "end", "error", "pause", "mute") and the payload that goes with it.
+TailscodeMpv *tailscode_mpv_new(
+    void (*event)(void *user, const char *kind, const char *text), void *user);
+
+/// Why the last `tailscode_mpv_new` came back NULL, in mpv's own words.
+const char *tailscode_mpv_last_error(void);
+
+GtkWidget *tailscode_mpv_area(TailscodeMpv *player);
+void tailscode_mpv_play(TailscodeMpv *player, const char *url);
+
+/// A NULL-terminated mpv command, exactly as `VideoCommand.mpvCommand` states it.
+void tailscode_mpv_command(TailscodeMpv *player, const char *const *args);
+
+gboolean tailscode_mpv_flag(TailscodeMpv *player, const char *name);
+void tailscode_mpv_free(TailscodeMpv *player);
+
+/// The browser slot's engine. WebKitGTK is a GtkWidget, so a page is a widget the tiling owns
+/// exactly like the transcript beside it — no window to place, no process to reparent, and the
+/// same compositor path the rest of the app draws through. Compiled out where it is absent, which
+/// is what `tailscode_web_available` reports.
+typedef struct TailscodeWeb TailscodeWeb;
+
+gboolean tailscode_web_available(void);
+
+/// Creates the web view. `event` is called on the main thread with a kind ("title", "uri",
+/// "progress", "history", "error") and the payload that goes with it.
+TailscodeWeb *tailscode_web_new(
+    void (*event)(void *user, const char *kind, const char *text), void *user);
+
+GtkWidget *tailscode_web_widget(TailscodeWeb *web);
+void tailscode_web_load(TailscodeWeb *web, const char *uri);
+
+/// One of "back", "forward", "reload", "stop".
+void tailscode_web_verb(TailscodeWeb *web, const char *verb);
+void tailscode_web_zoom(TailscodeWeb *web, double level);
+void tailscode_web_free(TailscodeWeb *web);

@@ -162,12 +162,14 @@ enum UsagePanel {
         return block
     }
 
-    /// A spend window reads as money, everything else as the percent already used.
+    /// A spend window reads as money, everything else as the percent already used — or "Used up"
+    /// when the window is at the wall.
     private static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
             return "$\(trimmed(used)) of $\(trimmed(limit))"
         }
-        return "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
     }
 
     private static func trimmed(_ value: Double) -> String {

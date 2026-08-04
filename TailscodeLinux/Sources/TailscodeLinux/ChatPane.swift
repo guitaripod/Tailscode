@@ -15,7 +15,7 @@ final class ChatPane: @unchecked Sendable {
 
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let identityLabel = Gtk.label("", css: "pane-identity", selectable: false)
-    private let transcriptBox = Gtk.box(
+    let transcriptBox = Gtk.box(
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let authBanner = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
@@ -75,15 +75,15 @@ final class ChatPane: @unchecked Sendable {
     private var lastFullCount = 0
 
     let context = TranscriptContext()
-    private let cascade = CascadePainter()
+    let cascade = CascadePainter()
     private let rowBuilder = TranscriptRowBuilder()
     private(set) var renderedRows: [TranscriptRow] = []
-    private var rowWidgets: [UInt] = []
+    var rowWidgets: [UInt] = []
     /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
     /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
     /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
     private var enteredRows: Set<String> = []
-    private var placeholderShown = false
+    var placeholderShown = false
     private var currentPlaceholder: String?
     private var chooser: PaneChooser?
     private var freshlyCreatedID: String?
@@ -113,7 +113,7 @@ final class ChatPane: @unchecked Sendable {
     private var chosenEffort: String?
     private var ultracodeAuraTask: Task<Void, Never>?
     private var ultracodeAuraAngle = 0
-    private var ultracodeInFlight = false
+    var ultracodeInFlight = false
 
     var sessionID: String? { entry?.session.id }
     var auraActive: Bool { ultracodeAuraTask != nil }
@@ -696,6 +696,9 @@ final class ChatPane: @unchecked Sendable {
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.models = models
+                if let profileID = self.entry?.profileID {
+                    ModelCatalogStore.store(models, for: profileID)
+                }
                 self.commands = commands
                 self.refreshPills()
                 self.refreshTurnFacts()
@@ -1072,58 +1075,12 @@ final class ChatPane: @unchecked Sendable {
         return true
     }
 
-    /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
-    /// the network delivered. Only the last row can be live — anything after it is proof the
-    /// stream has moved on — and only the kinds that grow a character at a time qualify, so a tool
-    /// call landing after a paragraph settles that paragraph rather than freezing it half-written.
-    ///
-    /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
-    /// without its closer. How much of what it rendered is actually on screen is the painter's
-    /// business, applied to the widget after the diff has built it.
-    private func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
-        let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
-        let released = cascade.key
-        guard let live, let source = live.streamedText else {
-            cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
-            return rows
-        }
-        let safe = LiveCascade.renderable(source, sealed: !running)
-        var paced = rows
-        let row = safe == source ? live : live.truncated(to: safe)
-        paced[paced.count - 1] = row
-        guard let markup = Self.cascadeMarkup(for: row) else {
-            cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
-            return rows
-        }
-        cascade.focus(
-            row.key, markup: markup, sealed: !running,
-            ultracode: auraActive || ultracodeInFlight, clock: transcriptBox)
-        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
-        return paced
-    }
 
-    /// One frame of the wave, painted into the live row's own label. The markup is parsed once by
-    /// the shim and cached, so a frame is a substring and an attribute list — never a markdown
-    /// parse and never a widget rebuild, which is what lets a selection survive the sentence it is
-    /// in being written.
-    private func paintCascade() {
-        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
-        let index = renderedRows.count - 1
-        guard index < rowWidgets.count, renderedRows[index].key == key,
-            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
-            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind),
-            let markup = Self.cascadeMarkup(for: renderedRows[index])
-        else { return }
-        cascade.paint(label, markup: markup)
-        if followsBottom { scrollToBottom() }
-    }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
     /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
     /// the heat of a stream that stopped — the row has to be handed back whole by hand.
-    private func settleCascade(on key: String, in rows: [TranscriptRow]) {
+    func settleCascade(on key: String, in rows: [TranscriptRow]) {
         guard let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
@@ -1140,7 +1097,7 @@ final class ChatPane: @unchecked Sendable {
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, but a live row is painted
     /// through Pango's own parser — so a link is dressed as what the label would have made of it,
     /// and becomes a real link again the moment the row settles and is rendered the ordinary way.
-    private static func cascadeMarkup(for row: TranscriptRow) -> String? {
+    static func cascadeMarkup(for row: TranscriptRow) -> String? {
         switch row.kind {
         case .agentProse(_, let markup):
             let accent = MatrixTheme.palette.accent
@@ -1162,7 +1119,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// Where a live row keeps the words: prose is the label, a code block keeps its body under the
     /// header and behind a scroller once it is tall enough to need one.
-    private static func streamedLabel(
+    static func streamedLabel(
         in widget: UnsafeMutablePointer<GtkWidget>, kind: TranscriptRow.Kind
     ) -> UnsafeMutablePointer<GtkWidget>? {
         func isA(_ candidate: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
@@ -1275,16 +1232,25 @@ final class ChatPane: @unchecked Sendable {
         } else {
             turnStartedAt = nil
         }
+        let quotas = host?.quotasForStatus() ?? []
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
-            attachments: attachments.count, contextTokens: contextEstimate)
-        StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: notice) {
+            attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas)
+        let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
+        StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: bandNotice) {
             [weak self] action in
             Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
         }
         gtk_button_set_label(
             ptr(sendButton), running ? Localized.text("⏎ queue") : Localized.text("⏎ send"))
         gtk_widget_set_visible(stopButton, running ? 1 : 0)
+    }
+
+    /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
+    /// rewritten phase, so this only speaks when the wall is up before the next send.
+    private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
+        guard state.lastFailure == nil, state.status != .running else { return nil }
+        return QuotaSurface.hottestExhausted(in: quotas).map(QuotaSurface.short)
     }
 
     private func perform(bandAction action: StatusFacts.Action) {
@@ -1546,11 +1512,39 @@ final class ChatPane: @unchecked Sendable {
 
     private func openModelChooser() {
         ModelChooserWindow.present(
-            models: models, selected: chosenModel, allowsServerDefault: true,
+            sources: modelSources(), selected: chosenModel,
             parent: host?.windowWidget ?? root
-        ) { [weak self] selection in
-            Gtk.onMain { [weak self] in self?.setChosenModel(selection) }
+        ) { [weak self] pick in
+            Gtk.onMain { [weak self] in self?.apply(pick) }
         }
+    }
+
+    /// Every server this app is connected to, with this pane's own at the front. A catalog is a
+    /// fact about a machine, so the list can name what the other machine runs without this pane
+    /// ever having talked to it.
+    private func modelSources() -> [ModelSource] {
+        let profiles = host?.fleetProfiles() ?? []
+        let sources = ModelFleet.sources(
+            profiles: profiles, current: entry?.profileID, currentModels: models)
+        guard sources.isEmpty else { return sources }
+        return [
+            ModelSource(
+                profileID: entry?.profileID ?? "", name: "", backend: backend?.agentType ?? .openCode,
+                models: models, isCurrent: true, allowsServerDefault: true,
+                acceptsAnyModelID: backend?.agentType == .claudeCode)
+        ]
+    }
+
+    /// A model on this machine changes what this chat runs. A model on another one cannot: the
+    /// conversation is a process on the machine that answers it, so the pick is remembered as that
+    /// server's own choice and the pane opens a new chat there.
+    private func apply(_ pick: ModelPick) {
+        guard pick.isElsewhere else {
+            setChosenModel(pick.selection)
+            return
+        }
+        ModelFleet.adopt(pick)
+        host?.startChat(on: pick.profileID, into: self)
     }
 
     private func setChosenModel(_ selection: ModelSelection?) {
@@ -1691,6 +1685,12 @@ final class ChatPane: @unchecked Sendable {
                      guard let self else { return }
                      self.host?.presentCompactPreflight(for: self)
                  } }))
+        }
+        if !commands.isEmpty {
+            rows.append(
+                (Localized.text("All commands…"),
+                 Localized.text("Browse every command this server offers"),
+                 { [weak self] in Gtk.onMain { [weak self] in self?.presentCommandCatalog() } }))
         }
         if capabilities?.supportsClearing == true, let backend {
             rows.append(
@@ -1950,7 +1950,7 @@ final class ChatPane: @unchecked Sendable {
         isAutoScrolling = false
     }
 
-    private func scrollToBottom() {
+    func scrollToBottom() {
         setFollowing(true)
         schedulePinCorrector()
     }
@@ -2020,34 +2020,45 @@ final class ChatPane: @unchecked Sendable {
 
     private func updateSlashCompletion() {
         let typing = !Preferences.vimComposer || vim.mode == .insert
-        guard typing, let query = SlashCompletion.query(in: composerText()) else {
+        guard typing else {
             dismissCompletion()
             return
         }
-        var matches = SlashCompletion.matches(
-            commands, query: query, recents: SlashRecents.surviving(in: commands))
-        if matches.count == 1, matches[0].name.lowercased() == query.lowercased() {
-            matches = []
-        }
-        completionMatches = matches
-        completionCursor = 0
-        guard !matches.isEmpty else {
+        let presentation = SlashPresentation.of(
+            text: composerText(), commands: commands,
+            recents: SlashRecents.surviving(in: commands))
+        switch presentation {
+        case .hidden:
             dismissCompletion()
-            return
+        case .naming(let matches):
+            completionMatches = matches.map(\.command)
+            completionCursor = min(completionCursor, max(0, matches.count - 1))
+            renderCompletion(presentation)
+        case .arguments, .noMatch:
+            completionMatches = []
+            completionCursor = 0
+            renderCompletion(presentation)
         }
-        renderCompletion()
     }
 
     private func moveCompletion(by delta: Int) {
         let count = completionMatches.count
         guard count > 0 else { return }
         completionCursor = ((completionCursor + delta) % count + count) % count
-        renderCompletion()
+        renderCompletion(
+            .naming(
+                matches: completionMatches.map {
+                    SlashMatch(command: $0, kind: .prefix, highlight: [])
+                }))
     }
 
     private func acceptCompletion(at index: Int) {
         guard index < completionMatches.count else { return }
-        let command = completionMatches[index]
+        acceptSlashCommand(completionMatches[index])
+    }
+
+    private func acceptSlashCommand(_ command: AgentCommand) {
+        SlashRecents.record(command.name)
         let text = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, text, -1)
@@ -2057,6 +2068,7 @@ final class ChatPane: @unchecked Sendable {
         vim.reset(to: text, cursor: text.count, mode: .insert)
         updateVimBadge()
         gtk_widget_grab_focus(entryView)
+        if !command.takesArguments { updateSlashCompletion() }
     }
 
     func dismissCompletion() {
@@ -2066,9 +2078,19 @@ final class ChatPane: @unchecked Sendable {
         gtk_popover_popdown(ptr(completionPopover))
     }
 
-    /// At most eight rows, windowed around the selection so the highlight can never scroll off.
-    private func renderCompletion() {
+    /// Argument stage, hints, and no-match live here with the naming list — the greppable anchor
+    /// for slashCompletion on Linux.
+    private func renderCompletion(_ presentation: SlashPresentation? = nil) {
         guard let anchor = composerScroller else { return }
+        let surface =
+            presentation
+            ?? SlashPresentation.of(
+                text: composerText(), commands: commands,
+                recents: SlashRecents.surviving(in: commands))
+        guard surface.isVisible else {
+            dismissCompletion()
+            return
+        }
         let popover: UnsafeMutablePointer<GtkWidget>
         if let existing = completionPopover {
             popover = existing
@@ -2081,34 +2103,97 @@ final class ChatPane: @unchecked Sendable {
             completionPopover = popover
         }
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        let start = max(0, min(completionCursor - 3, completionMatches.count - 8))
-        let end = min(completionMatches.count, start + 8)
-        for index in start..<end {
-            let command = completionMatches[index]
-            let item = gtk_button_new()!
-            Gtk.addClass(item, "flat")
-            if index == completionCursor { Gtk.addClass(item, "completion-selected") }
-            let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        switch surface {
+        case .hidden:
+            break
+        case .naming(let matches):
+            let start = max(0, min(completionCursor - 3, matches.count - 8))
+            let end = min(matches.count, start + 8)
+            for index in start..<end {
+                let command = matches[index].command
+                gtk_box_append(
+                    ptr(column),
+                    completionButton(
+                        title: "/\(command.name)",
+                        detail: [command.argumentHint, command.details, command.scope]
+                            .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · "),
+                        selected: index == completionCursor
+                    ) { [weak self] in
+                        Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
+                    })
+            }
+            if start > 0 || end < matches.count {
+                let hidden = matches.count - (end - start)
+                gtk_box_append(
+                    ptr(column),
+                    Gtk.label("… \(hidden) more", css: "row-detail", selectable: false))
+            }
+        case .arguments(let command, let typed):
             gtk_box_append(
-                ptr(lines), Gtk.label("/\(command.name)", css: "row-title", selectable: false))
+                ptr(column),
+                Gtk.label("/\(command.name)", css: "row-title", selectable: false))
+            if let hint = command.argumentHint, !hint.isEmpty {
+                gtk_box_append(
+                    ptr(column), Gtk.label(hint, css: "row-title", selectable: false))
+            }
             if !command.details.isEmpty {
-                let detail = Gtk.label(command.details, css: "row-detail", selectable: false)
-                gtk_label_set_max_width_chars(op(detail), 64)
-                gtk_box_append(ptr(lines), detail)
+                gtk_box_append(
+                    ptr(column),
+                    Gtk.label(command.details, css: "row-detail", selectable: false))
             }
-            gtk_button_set_child(ptr(item), lines)
-            Gtk.connect(UnsafeMutableRawPointer(item), "clicked") { [weak self] in
-                Gtk.onMain { [weak self] in self?.acceptCompletion(at: index) }
+            if !typed.isEmpty {
+                gtk_box_append(
+                    ptr(column),
+                    Gtk.label(
+                        Localized.text("Writing: %@", typed), css: "row-detail",
+                        selectable: false))
             }
-            gtk_box_append(ptr(column), item)
-        }
-        if start > 0 || end < completionMatches.count {
-            let hidden = completionMatches.count - (end - start)
+        case .noMatch(let query):
             gtk_box_append(
-                ptr(column), Gtk.label("… \(hidden) more", css: "row-detail", selectable: false))
+                ptr(column),
+                Gtk.label(
+                    Localized.text("No command named “%@”", query), css: "row-detail",
+                    selectable: false))
+            if !commands.isEmpty {
+                gtk_box_append(
+                    ptr(column),
+                    completionButton(
+                        title: Localized.text("Browse every command"),
+                        detail: Localized.text("%@ on this server", "\(commands.count)"),
+                        selected: false
+                    ) { [weak self] in
+                        Gtk.onMain { [weak self] in self?.presentCommandCatalog() }
+                    })
+            }
         }
         gtk_popover_set_child(ptr(popover), column)
         gtk_popover_popup(ptr(popover))
+    }
+
+    private func completionButton(
+        title: String, detail: String, selected: Bool, action: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let item = gtk_button_new()!
+        Gtk.addClass(item, "flat")
+        if selected { Gtk.addClass(item, "completion-selected") }
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_box_append(ptr(lines), Gtk.label(title, css: "row-title", selectable: false))
+        if !detail.isEmpty {
+            let label = Gtk.label(detail, css: "row-detail", selectable: false)
+            gtk_label_set_max_width_chars(op(label), 64)
+            gtk_box_append(ptr(lines), label)
+        }
+        gtk_button_set_child(ptr(item), lines)
+        Gtk.connect(UnsafeMutableRawPointer(item), "clicked", action)
+        return item
+    }
+
+    /// The greppable catalog surface for Linux — every command this server offers.
+    func presentCommandCatalog() {
+        dismissCompletion()
+        CommandCatalog.present(parent: root, commands: commands) { [weak self] command in
+            Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
+        }
     }
 
     func insertIntoComposer(_ text: String) {

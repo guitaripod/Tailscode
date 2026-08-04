@@ -67,12 +67,14 @@ enum UsageFormat {
         return track
     }
 
-    /// A spend window reads as money, everything else as the percent already used.
+    /// A spend window reads as money, everything else as the percent already used — or "Used up"
+    /// when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
             return "$\(trimmed(used)) of $\(trimmed(limit))"
         }
-        return "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
     }
 
     static func trimmed(_ value: Double) -> String {
@@ -136,7 +138,7 @@ final class UsageFooterView: NSView {
                 let title = RowKit.label(gauge.label, font: MacTheme.Font.caption(), color: color)
                 title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
                 let percent = RowKit.label(
-                    "\(Int((fraction * 100).rounded()))%", font: MacTheme.Font.caption(),
+                    UsageFormat.amount(for: gauge), font: MacTheme.Font.caption(),
                     color: color)
                 percent.alignment = .right
                 percent.widthAnchor.constraint(equalToConstant: 34).isActive = true

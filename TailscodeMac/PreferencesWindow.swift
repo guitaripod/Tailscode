@@ -70,6 +70,19 @@ final class PreferencesWindow: NSWindowController {
         column.spacing = MacTheme.Spacing.s
         column.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 20, right: 24)
 
+        if ServerDirectory.shared.isDemoMode {
+            column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Demo")))
+            let leave = NSButton(
+                title: Localized.text("Leave"), target: self, action: #selector(leaveDemo))
+            column.addArrangedSubview(
+                buttonRow(
+                    title: Localized.text("Demo world"),
+                    subtitle: Localized.text(
+                        "Scripted servers with no tailnet — leave to set up a real one"),
+                    button: leave))
+            column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        }
+
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Prompt box")))
         column.addArrangedSubview(
             switchRow(
@@ -147,6 +160,12 @@ final class PreferencesWindow: NSWindowController {
             view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48).isActive = true
         }
         return MacDialogs.scrollColumn(holding: column)
+    }
+
+    @objc private func leaveDemo() {
+        ServerDirectory.shared.leaveDemoMode()
+        onTranscriptChanged()
+        window?.close()
     }
 
     @objc private func sendOnReturnChanged(_ sender: NSButton) {

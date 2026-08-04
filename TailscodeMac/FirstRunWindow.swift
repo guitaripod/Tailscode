@@ -100,10 +100,13 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
 
         connectButton.title = Localized.text("Connect")
         connectButton.keyEquivalent = "\r"
+        let demo = RowKit.ActionButton(title: Localized.text("Try the demo")) { [weak self] in
+            self?.enterDemo()
+        }
         let later = RowKit.ActionButton(title: Localized.text("Later")) { [weak self] in
             self?.window?.close()
         }
-        let actions = NSStackView(views: [RowKit.spacer(), later, connectButton])
+        let actions = NSStackView(views: [RowKit.spacer(), demo, later, connectButton])
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
         actions.translatesAutoresizingMaskIntoConstraints = false
@@ -147,6 +150,12 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     @objc private func windowClosed() {
         closed = true
         Self.open = nil
+    }
+
+    private func enterDemo() {
+        ServerDirectory.shared.enterDemoMode()
+        onSaved()
+        window?.close()
     }
 
     func controlTextDidChange(_ notification: Notification) {

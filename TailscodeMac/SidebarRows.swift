@@ -131,7 +131,7 @@ final class SidebarSessionCell: NSView {
         }
         if model.saved {
             titleRow.addArrangedSubview(
-                Self.pill(Localized.text("SAVED"), tint: MacTheme.Color.accent))
+                Self.pill(Localized.text("SAVED"), tint: MacTheme.Color.mark))
         }
         if model.unread {
             let dot = NSTextField(labelWithString: "●")
@@ -141,11 +141,13 @@ final class SidebarSessionCell: NSView {
         }
     }
 
-    /// The glyph column carries the same three tones the Linux CSS classes do: running is alive,
-    /// pending is quiet, error is red.
+    /// The glyph column carries the same tones the Linux CSS classes do, and draws the same line
+    /// between them: a turn that is running is alive, a turn that is waiting on the reader is
+    /// amber, and the two never share a colour.
     private static func glyphColor(_ state: SessionRowState) -> NSColor {
         switch state {
-        case .awaitingApproval, .live: return MacTheme.Color.success
+        case .awaitingApproval: return MacTheme.Color.warning
+        case .live: return MacTheme.Color.success
         case .idle, .offline: return MacTheme.Color.tertiaryLabel
         case .failed: return MacTheme.Color.danger
         }

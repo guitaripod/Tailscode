@@ -175,8 +175,21 @@ enum Preferences {
         }
     }
 
-    /// Which palette the canvas wears: the system's own preference by default — Rosé Pine when
-    /// the desktop is dark, Solarized Light when it is light — or pinned to one.
+    /// Which theme the canvas wears. Stored by id rather than by index, so reordering the catalog
+    /// or dropping a theme cannot silently repaint someone's window — an unknown id falls back.
+    static var themeID: String {
+        defaults.string(forKey: "tailscode.theme") ?? AppTheme.fallback.id
+    }
+
+    static var theme: AppTheme { AppTheme.named(themeID) }
+
+    static func setTheme(_ theme: AppTheme) {
+        write(theme.id == AppTheme.fallback.id ? nil : theme.id, forKey: "tailscode.theme")
+    }
+
+    /// Which of a theme's two appearances to wear: the desktop's own preference by default, or
+    /// pinned. Independent of *which* theme — picking Gruvbox should not also decide whether it is
+    /// night, and pinning light should not throw away the theme.
     enum Appearance: String, CaseIterable {
         case system
         case light
@@ -184,9 +197,9 @@ enum Preferences {
 
         var title: String {
             switch self {
-            case .system: return Localized.text("System")
-            case .light: return Localized.text("Light · Solarized")
-            case .dark: return Localized.text("Dark · Rosé Pine")
+            case .system: return Localized.text("Follow the system")
+            case .light: return Localized.text("Always light")
+            case .dark: return Localized.text("Always dark")
             }
         }
     }
@@ -233,21 +246,49 @@ enum SettingsDialog {
         let page = adw_preferences_page_new()!
         adw_preferences_window_add(ptr(window), ptr(page))
 
+        if DemoMode.isActive {
+            let demo = group(Localized.text("Demo"), on: page)
+            let windowBits = UInt(bitPattern: window)
+            adw_preferences_group_add(
+                ptr(demo),
+                buttonRow(Localized.text("Leave the demo world")) {
+                    DemoMode.leave()
+                    Task {
+                        await ServerDirectory.shared.reload()
+                        Gtk.onMain {
+                            onLayoutChanged()
+                            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
+                                gtk_window_close(ptr(raw))
+                            }
+                        }
+                    }
+                })
+        }
+
         let appearance = group(Localized.text("Appearance"), on: page)
-        let themes: [(Preferences.Appearance, String)] = [
-            (.system, Localized.text("Follow the system")),
-            (.light, Localized.text("Solarized Light")),
-            (.dark, Localized.text("Rosé Pine")),
-        ]
+        let themes = AppTheme.all
         adw_preferences_group_add(
             ptr(appearance),
             comboRow(
                 title: Localized.text("Theme"),
                 subtitle: Localized.text("The canvas, the terminal and the chrome, together"),
-                options: themes.map(\.1),
-                selected: themes.firstIndex { $0.0 == Preferences.appearance } ?? 0
+                options: themes.map { "\($0.name) — \($0.blurb)" },
+                selected: themes.firstIndex { $0.id == Preferences.themeID } ?? 0
             ) { index in
-                Preferences.setAppearance(themes[index].0)
+                Preferences.setTheme(themes[index])
+                MatrixTheme.install()
+                onLayoutChanged()
+            })
+        let appearances = Preferences.Appearance.allCases
+        adw_preferences_group_add(
+            ptr(appearance),
+            comboRow(
+                title: Localized.text("Light or dark"),
+                subtitle: Localized.text("Which of the theme's two faces it wears"),
+                options: appearances.map(\.title),
+                selected: appearances.firstIndex(of: Preferences.appearance) ?? 0
+            ) { index in
+                Preferences.setAppearance(appearances[index])
                 Preferences.applyAppearance()
                 MatrixTheme.install()
                 onLayoutChanged()

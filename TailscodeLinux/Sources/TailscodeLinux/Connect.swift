@@ -11,10 +11,10 @@ import TailscodeCore
 /// server is probed before it is saved, so a typo fails here rather than becoming a row that never
 /// loads.
 enum Connect {
-    static var isRequested: Bool { CommandLine.arguments.contains("--connect") }
+    static var isRequested: Bool { Arguments.contains("--connect") }
 
     static func run() async -> Never {
-        let arguments = CommandLine.arguments
+        let arguments = Arguments.all
         guard let index = arguments.firstIndex(of: "--connect"),
             index + 1 < arguments.count
         else {
