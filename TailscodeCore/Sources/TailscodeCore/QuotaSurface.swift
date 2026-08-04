@@ -87,7 +87,7 @@ public enum QuotaSurface {
         return QuotaExhaustion(
             provider: providerHint(in: message) ?? Localized.text("Provider"),
             window: windowHint(in: message) ?? Localized.text("Usage"),
-            fraction: 1, resetsAt: nil, trustedReset: false, source: .failure)
+            fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false, source: .failure)
     }
 
     /// Banner / phase line: names what is used up.
@@ -166,14 +166,41 @@ public enum QuotaSurface {
         let lower = message.lowercased()
         if lower.contains("claude") || lower.contains("anthropic") { return "Claude" }
         if lower.contains("grok") || lower.contains("xai") { return "Grok" }
+        if lower.contains("opencode") { return "OpenCode Go" }
         if lower.contains("openai") || lower.contains("gpt") { return "OpenAI" }
         if lower.contains("gemini") || lower.contains("google") { return "Gemini" }
         return nil
     }
 
+    /// A quota wall's message often carries its own reset ("It will reset in 3 days 5 hours")
+    /// even when no gauge has refreshed; turn that into a real countdown.
+    static func parsedReset(in message: String, now: Date = Date()) -> Date? {
+        let lower = message.lowercased()
+        guard lower.range(of: "reset") != nil else { return nil }
+        let patterns: [(pattern: String, multiplier: Double)] = [
+            ("(\\d+(?:\\.\\d+)?)\\s*day", 86_400),
+            ("(\\d+(?:\\.\\d+)?)\\s*hour", 3_600),
+            ("(\\d+(?:\\.\\d+)?)\\s*minute", 60),
+        ]
+        var seconds: Double = 0
+        let ns = lower as NSString
+        for entry in patterns {
+            guard
+                let regex = try? NSRegularExpression(pattern: entry.pattern),
+                let match = regex.firstMatch(in: lower, range: NSRange(location: 0, length: ns.length)),
+                match.numberOfRanges == 2,
+                let value = Double(ns.substring(with: match.range(at: 1)))
+            else { continue }
+            seconds += value * entry.multiplier
+        }
+        guard seconds > 0 else { return nil }
+        return now.addingTimeInterval(seconds)
+    }
+
     private static func windowHint(in message: String) -> String? {
         let lower = message.lowercased()
-        if lower.contains("session") || lower.contains("5-hour") || lower.contains("5 hour") {
+        if lower.contains("session") || lower.contains("5-hour") || lower.contains("5 hour usage")
+        {
             return Localized.text("Session")
         }
         if lower.contains("week") { return Localized.text("Weekly") }

@@ -101,4 +101,27 @@ struct QuotaSurfaceTests {
             failure: "connection refused", quotas: [])
         #expect(plain == "connection refused")
     }
+
+    @Test("An opencode retry message names the provider, window, and reset countdown")
+    func opencodeRetryMessage() {
+        let message =
+            "monthly usage limit reached. It will reset in 3 days 5 hours. To continue using "
+            + "this model now, enable usage from your available balance - "
+            + "https://opencode.ai/workspace/wrk_01KWZ4MWEY0CDNAK0WMP4VRH7Q/go"
+        let e = QuotaSurface.resolve(failureMessage: message, quotas: [])
+        #expect(e?.provider == "OpenCode Go")
+        #expect(e?.window == Localized.text("Monthly"))
+        #expect(e?.source == .failure)
+        #expect(e?.resetsAt != nil)
+        let remaining = e!.resetsAt!.timeIntervalSinceNow
+        let target: TimeInterval = 3 * 86_400 + 5 * 3_600
+        #expect(abs(remaining - target) < 60)
+    }
+
+    @Test("A reset is only read from a message that speaks of one")
+    func parsedReset() {
+        #expect(QuotaSurface.parsedReset(in: "resets in 45 minutes") != nil)
+        #expect(QuotaSurface.parsedReset(in: "it will reset in 2 hours") != nil)
+        #expect(QuotaSurface.parsedReset(in: "try again later") == nil)
+    }
 }
