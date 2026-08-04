@@ -1,0 +1,407 @@
+import Foundation
+
+/// How the pacer spends what it has.
+///
+/// Text does not leave a model the way it is read. It arrives in lumps — two hundred characters at
+/// once, then nothing for four hundred milliseconds, then a single word — so a transcript that
+/// paints each lump as it lands reads as a stutter. The answer is the one every media player
+/// reached: hold a buffer, and play out of the buffer at a speed that changes slowly. The network
+/// fills the buffer; the buffer feeds the eye; the two are never wired to each other directly.
+public struct CadenceTuning: Sendable {
+    /// How much text the hand tries to keep in front of it, in seconds. This is the whole budget
+    /// the smoothing has to spend: the reveal trails what has arrived by about this much.
+    public var buffer: Double
+    /// How long a change of speed takes to take effect. Long on purpose — the point of a buffer is
+    /// that the hand does not react to the network, and a rate that chases every arrival is the
+    /// stutter with extra steps.
+    public var response: Double
+    /// The slowest the hand may write while it still has anything to say.
+    public var minimumRate: Double
+    /// The fastest it may write. Past this, a cascade stops reading as writing.
+    public var maximumRate: Double
+    /// The buffer may never be drained faster than this, whatever the rate says. It is what turns
+    /// running out into decelerating: the reveal glides toward empty instead of hitting it, so a
+    /// model that pauses to think looks like a hand pausing rather than a frame dropping.
+    public var floorTime: Double
+    /// Once the turn is over there is nothing left to buffer against, so the tail lands.
+    public var sealedBuffer: Double
+    public var sealedResponse: Double
+    /// Past this much unshown text it is not a stream, it is a paste — history arriving, a tool
+    /// dumping a wall of output, a reconnect replaying. Nobody wants to watch that type.
+    public var flush: Int
+
+    public init(
+        buffer: Double = 0.42, response: Double = 0.55,
+        minimumRate: Double = 26, maximumRate: Double = 380,
+        floorTime: Double = 0.10,
+        sealedBuffer: Double = 0.16, sealedResponse: Double = 0.22,
+        flush: Int = 1600
+    ) {
+        self.buffer = buffer
+        self.response = response
+        self.minimumRate = minimumRate
+        self.maximumRate = maximumRate
+        self.floorTime = floorTime
+        self.sealedBuffer = sealedBuffer
+        self.sealedResponse = sealedResponse
+        self.flush = flush
+    }
+
+    public static let standard = CadenceTuning()
+}
+
+/// The pacer: arrivals in, a monotone reveal out, at a speed that moves like a hand rather than
+/// like a network.
+public struct StreamCadence: Sendable {
+    public private(set) var revealed: Int = 0
+    public private(set) var available: Int = 0
+    public private(set) var rate: Double = 0
+    public private(set) var sealed: Bool = false
+    private var carry: Double = 0
+    private var clock: Double?
+    private let tuning: CadenceTuning
+
+    public init(tuning: CadenceTuning = .standard) {
+        self.tuning = tuning
+    }
+
+    public var backlog: Int { max(0, available - revealed) }
+    public var isSettled: Bool { revealed >= available }
+
+    /// What the stream has produced so far. Text only grows during a turn, but a re-render can
+    /// hand over a shorter string — a fence closing moves a segment's boundary — and the reveal
+    /// clamps rather than pretending to have shown characters that no longer exist.
+    public mutating func observe(available count: Int, sealed: Bool) {
+        available = count
+        self.sealed = sealed
+        if revealed > count {
+            revealed = count
+            carry = 0
+        }
+    }
+
+    /// Shows everything at once: the row was not written under our eyes, so there is nothing to
+    /// animate. History, a chat switch, a reconnect.
+    public mutating func adopt(_ count: Int) {
+        available = count
+        revealed = count
+        carry = 0
+        rate = 0
+    }
+
+    /// Moves the reveal to where it should be at `time`. Returns true when the visible prefix
+    /// actually changed, so a caller can skip re-laying-out text on a frame that would paint the
+    /// same glyphs.
+    @discardableResult
+    public mutating func advance(to time: Double) -> Bool {
+        defer { clock = time }
+        guard let previous = clock else { return false }
+        let elapsed = min(max(time - previous, 0), 0.1)
+        guard elapsed > 0 else { return false }
+        guard backlog > 0 else {
+            carry = 0
+            return false
+        }
+        if backlog > tuning.flush {
+            revealed = available
+            carry = 0
+            rate = 0
+            return true
+        }
+        let want = Double(backlog) / (sealed ? tuning.sealedBuffer : tuning.buffer)
+        let goal = min(max(want, tuning.minimumRate), tuning.maximumRate)
+        let tau = sealed ? tuning.sealedResponse : tuning.response
+        rate += (goal - rate) * (1 - exp(-elapsed / tau))
+        let spendable = Double(backlog) / max(tuning.floorTime, 0.001)
+        carry += min(rate, spendable) * elapsed
+        let step = Int(carry)
+        guard step > 0 else { return false }
+        carry -= Double(step)
+        let before = revealed
+        revealed = min(available, revealed + step)
+        return revealed != before
+    }
+}
+
+/// How far the renderer is allowed to get ahead of the closing half of a markdown token.
+///
+/// Markdown is punctuation that disappears. Render `**bold` while its closer is still in flight
+/// and the asterisks show for a few frames and are then swallowed — the sentence twitches as it is
+/// written. So the *renderer* is held at the last position where nothing is half-open. The reveal
+/// is not held: it keeps playing out of the buffer, and merely stops being topped up until the
+/// token closes, which the buffer is there to absorb.
+///
+/// Parity is counted from the start of the text and only *honoured* within a window. Both halves
+/// matter. Counting from the start is not an optimisation to skip: a scan that begins in the
+/// middle assumes nothing is open, so the first closer it meets reads as an opener and every
+/// marker after it is inverted. Honouring only recent markers is what keeps one unmatched asterisk
+/// from stalling an entire answer — a marker that has gone this long without a partner is
+/// arithmetic or a bullet, and showing it beats freezing the paragraph behind it.
+public enum CascadeGate {
+    public static let window = 168
+
+    /// The largest cut at or below `index` that leaves no inline token open. `sealed` means the
+    /// turn is over and nothing more is coming — a marker that never found its partner is literal
+    /// after all, so the gate stops holding it back.
+    public static func safeCut(_ characters: [Character], at index: Int, sealed: Bool = false)
+        -> Int
+    {
+        let limit = min(index, characters.count)
+        guard limit > 0, !sealed else { return max(0, limit) }
+        var pending: [String: Int] = [:]
+
+        func toggle(_ token: String, at position: Int) {
+            if pending[token] != nil {
+                pending[token] = nil
+            } else {
+                pending[token] = position
+            }
+        }
+
+        var index = 0
+        while index < limit {
+            let character = characters[index]
+            let next: Character? = index + 1 < limit ? characters[index + 1] : nil
+            let previous: Character? = index > 0 ? characters[index - 1] : nil
+            switch character {
+            case "`":
+                toggle("`", at: index)
+                index += 1
+            case "*", "_":
+                let doubled = next == character
+                let token = doubled ? String(repeating: character, count: 2) : String(character)
+                if !doubled, character == "_",
+                    previous?.isLetter == true || previous?.isNumber == true
+                {
+                    index += 1
+                    continue
+                }
+                if !doubled, next == " " || next == nil {
+                    index += 1
+                    continue
+                }
+                toggle(token, at: index)
+                index += doubled ? 2 : 1
+            case "~":
+                guard next == "~" else {
+                    index += 1
+                    continue
+                }
+                toggle("~~", at: index)
+                index += 2
+            case "[":
+                pending["["] = index
+                index += 1
+            case ")":
+                pending["["] = nil
+                index += 1
+            default:
+                index += 1
+            }
+        }
+        guard let earliest = pending.values.filter({ $0 >= limit - window }).min() else {
+            return limit
+        }
+        return earliest
+    }
+}
+
+/// One frame of the wave, at one character's distance behind the leading edge.
+public struct CascadeSample: Sendable, Equatable {
+    /// How hot this glyph still is: 1 at the edge, 0 once the wave has passed. Clients spend it as
+    /// a blend from the settled text colour toward the theme's leading-edge colour.
+    public let heat: Double
+    /// The travelling specular band, independent of the reveal, so a turn that stalls on a tool
+    /// still breathes instead of freezing mid-sentence.
+    public let shimmer: Double
+    /// Glyph entry: a character arrives faint and lands within a few positions, so the edge
+    /// dissolves into the page rather than ending in a hard chop.
+    public let alpha: Double
+
+    public init(heat: Double, shimmer: Double, alpha: Double) {
+        self.heat = heat
+        self.shimmer = shimmer
+        self.alpha = alpha
+    }
+
+    /// How far toward the leading-edge colour this glyph should be pulled, heat and shimmer
+    /// resolved into the single number every client blends with. One effect, three toolkits: the
+    /// arithmetic lives here so a phone and two desktops cannot drift apart on what it looks like.
+    public var pull: Double { min(1, heat * 0.86 + shimmer * 0.55) }
+
+    public static let settled = CascadeSample(heat: 0, shimmer: 0, alpha: 1)
+}
+
+/// The look of the reveal: a wave of the theme's own colour trailing the last written character,
+/// with a specular band running back through it.
+///
+/// The wave is defined in characters behind the edge rather than in seconds since a glyph landed.
+/// That is deliberate: the cadence already smooths speed, so distance is proportional to age, and
+/// a distance-based wave needs no per-character timestamps, survives a re-render, and looks
+/// identical at 60 and 120 Hz.
+public enum StreamCascade {
+    /// How many characters the colour wave covers.
+    public static let span = 26
+    /// How many characters a glyph takes to go from faint to solid. Short: a long fade is a
+    /// paragraph with a blurry edge, which reads as bad rendering rather than as motion.
+    public static let entry = 2.2
+    /// How faint a glyph is allowed to be on arrival. Never zero — a character that appears from
+    /// nothing pops, one that appears from a whisper is written.
+    public static let entryFloor = 0.28
+    /// The specular band's width, in characters.
+    public static let shimmerWidth = 8.5
+    /// How far back the band travels before it starts again.
+    public static let shimmerReach = 78.0
+    /// How long one pass of the band takes.
+    public static let shimmerPeriod = 2.4
+    /// How brightly the band burns at its centre.
+    public static let shimmerPeak = 0.5
+
+    /// The band's position within its pass, from a monotonic clock. Clients hand over their own
+    /// frame time; the phase is the only thing that has to agree between them.
+    public static func phase(at time: Double) -> Double {
+        let cycle = time.truncatingRemainder(dividingBy: shimmerPeriod)
+        return (cycle < 0 ? cycle + shimmerPeriod : cycle) / shimmerPeriod
+    }
+
+    public static func sample(distance: Int, phase: Double, span: Int = span) -> CascadeSample {
+        guard distance >= 0 else { return .settled }
+        let reach = max(1, span)
+        let normalized = min(1, Double(distance) / Double(reach))
+        let heat = pow(1 - normalized, 2.2)
+        let centre = shimmerReach * phase
+        let offset = (Double(distance) - centre) / shimmerWidth
+        let band = exp(-0.5 * offset * offset)
+        let fade = 1 - min(1, Double(distance) / shimmerReach)
+        let shimmer = band * fade * fade * shimmerPeak
+        let entered = min(1, pow((Double(distance) + 0.6) / entry, 0.8))
+        return CascadeSample(
+            heat: heat, shimmer: shimmer, alpha: entryFloor + (1 - entryFloor) * entered)
+    }
+
+    /// The leading edge's colour while ultracode is on: the shared rainbow, sampled by phase, so
+    /// the special powers are legible in the writing and not only around the prompt box.
+    public static func rainbow(at phase: Double) -> (red: Double, green: Double, blue: Double) {
+        let stops = Ultracode.rainbowStops
+        let span = Double(stops.count - 1)
+        let position = min(max(phase, 0), 1) * span
+        let index = min(stops.count - 2, Int(position))
+        let mix = position - Double(index)
+        let start = stops[index]
+        let end = stops[index + 1]
+        return (
+            start.red + (end.red - start.red) * mix,
+            start.green + (end.green - start.green) * mix,
+            start.blue + (end.blue - start.blue) * mix
+        )
+    }
+
+    /// A row's share of the entrance stagger. New rows do not all appear at once — a tool row, its
+    /// picture and the prose after it arrive as a run — so they land in order, a beat apart, and
+    /// the transcript grows in one direction instead of blinking.
+    public static func entranceDelay(index: Int, of count: Int, step: Double = 0.045) -> Double {
+        guard count > 1 else { return 0 }
+        return min(0.34, Double(max(0, index)) * step)
+    }
+
+    /// Ease-out for entrances and for the empty-to-first-row handoff, shared so the whole product
+    /// moves with one curve.
+    public static func ease(_ t: Double) -> Double {
+        let clamped = min(max(t, 0), 1)
+        return 1 - pow(1 - clamped, 3)
+    }
+}
+
+/// The single row the stream is writing into, paced and painted.
+///
+/// The reveal is counted in *rendered* characters, not source characters. That is the difference
+/// between this and the obvious implementation: rendering a growing prefix of markdown re-parses
+/// the paragraph on every frame, changes length unevenly as punctuation is eaten, and flashes the
+/// markers of every token as it closes. Rendering the whole safe prefix once and revealing through
+/// it costs one parse per arrival, moves at a genuinely constant rate, and can never show a
+/// marker — the renderer has already eaten them all.
+public struct LiveCascade: Sendable {
+    /// A row first seen already this long was not written under our eyes: history, a chat switch,
+    /// a reconnect replaying a finished answer. It is adopted whole rather than replayed.
+    public static let adoptLimit = 260
+
+    public private(set) var id: String?
+    /// How many rendered characters are shown. Everything after them is laid out and drawn at zero
+    /// alpha rather than cut off, which is the whole reason this reads as writing: the paragraph
+    /// is measured once when it arrives and never again, so no glyph ever moves after it lands and
+    /// no line ever re-wraps under the reader. A frame changes colours, never layout.
+    public private(set) var revealed = 0
+    public private(set) var total = 0
+    public private(set) var phase: Double = 0
+    private var characters: [Character] = []
+    private var cadence: StreamCadence
+    private let tuning: CadenceTuning
+
+    public init(tuning: CadenceTuning = .standard) {
+        self.tuning = tuning
+        self.cadence = StreamCadence(tuning: tuning)
+    }
+
+    public var isActive: Bool { id != nil }
+    public var isSettled: Bool { cadence.isSettled }
+    public var rate: Double { cadence.rate }
+
+    /// What the client should render: the markdown-safe prefix of the source. Held at the last
+    /// position where no inline token is half-open, so the renderer never sees `**bold` without
+    /// its closer and no answer ever flashes its punctuation.
+    public static func renderable(_ source: String, sealed: Bool) -> String {
+        guard !sealed else { return source }
+        let characters = Array(source)
+        let cut = CascadeGate.safeCut(characters, at: characters.count)
+        guard cut < characters.count else { return source }
+        return String(characters[..<cut])
+    }
+
+    /// Points the wave at the row the stream is writing into, with that row's rendered text.
+    /// Passing nil lets go of it.
+    public mutating func focus(_ id: String?, rendered: String, sealed: Bool, at time: Double) {
+        guard let id else {
+            self.id = nil
+            characters = []
+            revealed = 0
+            total = 0
+            cadence = StreamCadence(tuning: tuning)
+            return
+        }
+        if id != self.id {
+            self.id = id
+            characters = Array(rendered)
+            total = characters.count
+            cadence = StreamCadence(tuning: tuning)
+            if total > Self.adoptLimit || sealed {
+                cadence.adopt(total)
+            } else {
+                cadence.observe(available: total, sealed: sealed)
+            }
+            revealed = cadence.revealed
+            phase = StreamCascade.phase(at: time)
+            return
+        }
+        characters = Array(rendered)
+        total = characters.count
+        cadence.observe(available: total, sealed: sealed)
+        revealed = min(revealed, total)
+    }
+
+    /// Advances one frame. Returns true when the row needs repainting — either the reveal moved,
+    /// or the band did.
+    @discardableResult
+    public mutating func advance(to time: Double) -> Bool {
+        guard id != nil else { return false }
+        let moved = cadence.advance(to: time)
+        if moved { revealed = cadence.revealed }
+        let previous = phase
+        phase = StreamCascade.phase(at: time)
+        return moved || abs(phase - previous) > 0.002 || phase < previous
+    }
+
+    /// The wave over the rendered tail, measured back from the last visible glyph.
+    public func sample(distance: Int) -> CascadeSample {
+        StreamCascade.sample(distance: distance, phase: phase)
+    }
+}

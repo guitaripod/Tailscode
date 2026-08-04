@@ -6,20 +6,20 @@ import Foundation
 /// The self-contained demo world: two scripted servers that saturate every screen with
 /// believable sessions, quotas, models, and file trees — no tailnet required. Ships in
 /// Release so App Review and first-run users can explore the full app before owning a server.
-enum DemoWorld {
-    static let profilePrefix = "demo-"
+public enum DemoWorld {
+    public static let profilePrefix = "demo-"
 
-    static let claudeProfile = ConnectionProfile(
+    public static let claudeProfile = ConnectionProfile(
         id: "demo-claude", name: "studio", backend: .claudeCode,
         baseURL: URL(string: "http://studio.tailnet-demo.ts.net:4098")!)
 
-    static let openCodeProfile = ConnectionProfile(
+    public static let openCodeProfile = ConnectionProfile(
         id: "demo-opencode", name: "homelab", backend: .openCode,
         baseURL: URL(string: "http://homelab.tailnet-demo.ts.net:4096")!)
 
-    static var profiles: [ConnectionProfile] { [claudeProfile, openCodeProfile] }
+    public static var profiles: [ConnectionProfile] { [claudeProfile, openCodeProfile] }
 
-    static func backend(for profileID: String) -> (any CodingAgentBackend)? {
+    public static func backend(for profileID: String) -> (any CodingAgentBackend)? {
         switch profileID {
         case claudeProfile.id: return claude
         case openCodeProfile.id: return openCode
@@ -32,7 +32,7 @@ enum DemoWorld {
     private static func hence(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
 
 
-    static let claude: MockBackend = MockBackend(
+    public static let claude: MockBackend = MockBackend(
         agentType: .claudeCode,
         scripts: [
             "demo-c1": claudeLiveScript,
@@ -74,7 +74,8 @@ enum DemoWorld {
             supportsMultipleSessions: true, supportsModelSelection: true, supportsAttachments: true,
             supportsReasoningEffort: true, supportsClearing: true, supportsForking: true,
             supportsAbort: true, supportsSessionUsage: true, supportsQuestions: false,
-            supportsRenaming: true, supportsSubagents: true),
+            supportsRenaming: true, supportsSubagents: true, supportsCommands: true,
+            supportsGoals: true, supportsCompaction: true),
         quota: UsageQuota(
             providerName: "Claude", subtitle: "Max 20×", source: "claude-bridge", live: true,
             gauges: [
@@ -149,7 +150,7 @@ enum DemoWorld {
         ])
 
 
-    static let openCode: MockBackend = MockBackend(
+    public static let openCode: MockBackend = MockBackend(
         agentType: .openCode,
         scripts: [
             "demo-o1": openCodeRefactorScript,
@@ -187,7 +188,7 @@ enum DemoWorld {
             supportsMultipleSessions: true, supportsModelSelection: true, supportsAttachments: true,
             supportsReasoningEffort: false, supportsClearing: false, supportsForking: false,
             supportsAbort: true, supportsSessionUsage: true, supportsQuestions: true,
-            supportsRenaming: true, supportsSubagents: false),
+            supportsRenaming: true, supportsSubagents: false, supportsCommands: true),
         sessionUsage: AgentUsage(costUSD: 0.42, tokens: 18_431),
         fileTree: [
             ".": [

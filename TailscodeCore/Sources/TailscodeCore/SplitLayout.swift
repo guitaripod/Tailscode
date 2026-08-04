@@ -133,12 +133,22 @@ public struct SplitLayout: Sendable, Equatable, Codable {
     }
 
     /// Splits `pane` in two along `axis`; the new pane takes the second half and the focus.
+    ///
+    /// - Parameter placingNewFirst: gives the new pane the *first* half instead. The keyboard verbs
+    ///   never need this — vim's `:vsplit` always opens to one side — but a chat dropped against a
+    ///   pane's left edge has to land on the left, and a highlight that promised the left half and
+    ///   delivered the right would be a lie.
     @discardableResult
-    public mutating func split(_ pane: PaneID, axis: SplitAxis) -> PaneID? {
+    public mutating func split(
+        _ pane: PaneID, axis: SplitAxis, placingNewFirst: Bool = false
+    ) -> PaneID? {
         guard contains(pane) else { return nil }
         let fresh = PaneID()
         root = Self.replacingLeaf(pane, in: root) {
-            .split(id: SplitID(), axis: axis, ratio: 0.5, first: .pane(pane), second: .pane(fresh))
+            .split(
+                id: SplitID(), axis: axis, ratio: 0.5,
+                first: .pane(placingNewFirst ? fresh : pane),
+                second: .pane(placingNewFirst ? pane : fresh))
         }
         zoomedPane = nil
         focus(fresh)
@@ -426,10 +436,29 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
 
     public let layout: SplitLayout
     public let sessions: [String: SplitPaneSession]
+    /// What each video slot was watching, by pane. Kept beside the sessions rather than inside
+    /// them because a slot holds no conversation at all, and decoded leniently so a layout written
+    /// before slots existed still restores.
+    public let videos: [String: String]
+    /// The page each browser slot ended on, by pane — a slot restores what it was reading.
+    public let pages: [String: String]
 
-    public init(layout: SplitLayout, sessions: [String: SplitPaneSession]) {
+    public init(
+        layout: SplitLayout, sessions: [String: SplitPaneSession], videos: [String: String] = [:],
+        pages: [String: String] = [:]
+    ) {
         self.layout = layout
         self.sessions = sessions
+        self.videos = videos
+        self.pages = pages
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        layout = try container.decode(SplitLayout.self, forKey: .layout)
+        sessions = try container.decode([String: SplitPaneSession].self, forKey: .sessions)
+        videos = try container.decodeIfPresent([String: String].self, forKey: .videos) ?? [:]
+        pages = try container.decodeIfPresent([String: String].self, forKey: .pages) ?? [:]
     }
 
     public var encoded: String? {
@@ -447,5 +476,13 @@ public struct SplitSnapshot: Codable, Sendable, Equatable {
 
     public func session(for pane: PaneID) -> SplitPaneSession? {
         sessions[pane.raw]
+    }
+
+    public func video(for pane: PaneID) -> VideoTarget? {
+        videos[pane.raw].flatMap(VideoTarget.classify)
+    }
+
+    public func page(for pane: PaneID) -> WebTarget? {
+        pages[pane.raw].flatMap(WebTarget.classify)
     }
 }

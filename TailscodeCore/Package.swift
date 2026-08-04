@@ -15,7 +15,8 @@ let package = Package(
             name: "TailscodeCore",
             dependencies: [
                 .product(name: "CodingAgentKit", package: "CodingAgentKit"),
-                .product(name: "CodingAgentKitApple", package: "CodingAgentKit")
+                .product(name: "CodingAgentKitApple", package: "CodingAgentKit"),
+                .product(name: "AgentTestSupport", package: "CodingAgentKit"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

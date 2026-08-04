@@ -31,7 +31,7 @@ public enum SessionRowState: Equatable, Sendable {
 
     public var glyph: (text: String, css: String) {
         switch self {
-        case .awaitingApproval: return ("⏸", "glyph-running")
+        case .awaitingApproval: return ("⏸", "glyph-needs")
         case .live: return ("◐", "glyph-running")
         case .idle: return ("·", "glyph-pending")
         case .offline: return ("⚠", "glyph-pending")

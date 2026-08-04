@@ -62,11 +62,14 @@ public struct StatusFacts: Sendable {
 
     public static func from(
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
-        usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil
+        usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
+        quotas: [UsageQuota] = []
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
-            facts.phase = .failed(failure.message)
+            let message = QuotaSurface.statusFailureMessage(
+                failure: failure.message, quotas: quotas) ?? failure.message
+            facts.phase = .failed(message)
         } else {
             switch state.connection {
             case .offline: facts.phase = .offline
@@ -127,6 +130,14 @@ public struct StatusFacts: Sendable {
             public let action: Action?
         }
 
+        /// Every class a segment can wear. A band recycles its widgets, so it has to strip the
+        /// previous state's class before adding the new one — from this list rather than a
+        /// hand-kept copy, which is how a reconnected server keeps drawing itself amber.
+        public static let allCSS = [
+            "seg-idle", "seg-dim", "seg-live", "seg-warn", "seg-error", "seg-offline",
+            "seg-agents", "seg-goal",
+        ]
+
         public let id: String
         public let text: String
         public let css: String
@@ -175,7 +186,9 @@ public struct StatusFacts: Sendable {
                 Segment(id: "phase", text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))
         case .offline:
             result.append(
-                Segment(id: "phase", text: Localized.text("✗ offline"), css: "seg-error", kind: .act(.reconnect)))
+                Segment(
+                    id: "phase", text: Localized.text("✗ offline"), css: "seg-offline",
+                    kind: .act(.reconnect)))
         case .failed(let message):
             result.append(
                 Segment(

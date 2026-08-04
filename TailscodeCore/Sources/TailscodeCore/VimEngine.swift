@@ -107,6 +107,43 @@ public final class VimEngine {
         }
     }
 
+    /// Whether the engine has a meaning for this key in the mode it is in. The composer asks
+    /// before handing a keystroke to the app's own shortcut table, so a key vim does not bind —
+    /// `?` — still opens the cheatsheet from visual mode instead of vanishing.
+    public func binds(_ key: VimKey) -> Bool {
+        if key.isEscape || key.isEnter || awaitsMore { return true }
+        if mode == .insert { return true }
+        if key.control { return key.character.map { "rdu".contains($0) } ?? false }
+        guard let character = key.character else { return false }
+        if character.isNumber { return true }
+        return VimEngine.commandKeys.contains(character)
+    }
+
+    /// Whether this keystroke belongs to vim rather than to the app's shortcut table. A chord
+    /// sequence already in flight outranks everything — `ctrl+w v` is a split, not visual mode —
+    /// and a chord carrying a modifier is never vim's. Normal mode keeps only what makes it vim
+    /// (the insert and visual entries, Enter to send, a command half-typed), because the
+    /// composer's normal mode is the app's normal mode; visual mode keeps every key the engine
+    /// actually binds, and nothing more.
+    public func claims(_ key: VimKey, plain: Bool, chordPending: Bool) -> Bool {
+        if chordPending { return false }
+        if awaitsMore { return true }
+        guard plain else { return false }
+        switch mode {
+        case .insert:
+            return true
+        case .normal:
+            if key.isEnter { return true }
+            return key.character.map { VimEngine.modeEntries.contains($0) } ?? false
+        case .visual, .visualLine:
+            return binds(key)
+        }
+    }
+
+    private static let modeEntries: Set<Character> = ["i", "a", "o", "v", "V"]
+    private static let commandKeys: Set<Character> = Set(
+        "iaIAoOvVdcy<>=xXsSCDYpPu~JrfFtT;,gGhjklwWbBeE0^$}{%")
+
     public func reset(to text: String, cursor: Int, mode: VimMode) {
         document = VimDocument(text: text, cursor: cursor)
         self.mode = mode

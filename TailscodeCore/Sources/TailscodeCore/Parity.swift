@@ -27,6 +27,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case liveListUpdates
     case rowContextActions
     case usageGauges
+    case quotaExhaustion
     case markdownRendering
     case streamingGrowth
     case streamCascade
@@ -165,6 +166,10 @@ public enum CapabilityRegistry {
             id: .usageGauges, area: "chat list", title: "Usage quota gauges",
             spec:
                 "Account quota (usageQuota + additionalUsageQuotas) is visible at a glance from the list surface and refreshes on a slow poll."),
+        CapabilityDefinition(
+            id: .quotaExhaustion, area: "sessions", title: "Used-up quota is a clear state",
+            spec:
+                "When a provider window is at or past full, or a turn fails because of a rate limit / quota wall: a clear surface names the provider and window, says when it resets when known, and tells the person to switch model or wait — never a raw rate-limit string alone. Live gauges at full read as \"Used up\". A one-shot notification fires the first time a window hits full. Pre-emptive notice rides the conversation chrome while the wall is up, not only after a failed send. Copy and classification live in QuotaSurface so every client says the same thing."),
         CapabilityDefinition(
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:
@@ -340,7 +345,7 @@ public enum CapabilityRegistry {
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),
         CapabilityDefinition(
             id: .themePicker, area: "app", title: "Theme",
-            spec: "A named theme is chosen and persists under tailscode.theme; each theme carries its own light and dark appearance and follows the desktop between them unless pinned. Every colour a label draws from clears WCAG contrast on its own canvas."),
+            spec: "Where the client owns its chrome (Linux GTK), a named theme is chosen and persists under tailscode.theme; each theme carries its own light and dark appearance and follows the desktop between them unless pinned, and every colour a label draws from clears WCAG contrast on its own canvas. Where the OS owns the materials (iOS Liquid Glass, macOS system glass), the app follows the system appearance and accent rather than painting a parallel palette that would fight the chrome."),
         CapabilityDefinition(
             id: .settingsSurface, area: "app", title: "Settings",
             spec: "App preferences live on one discoverable surface, persisted under the shared tailscode.* keys."),
@@ -359,7 +364,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .hapticFeedback, area: "app", title: "Cues you feel, at a strength you choose",
             spec:
-                "Every physical cue is a named HapticCue rather than an amplitude at the call site, played from HapticRecipe's composed pattern — a sustained body under a sharp crack, reinforcement stacked on top — so the top of the range is the hardware's ceiling rather than a canned tap. One setting scales all of them through HapticStrength.drive, persisted, with reinforcement dropping out below its floor so a gentle setting is a lighter cue and not a quieter thump; hardware that cannot compose falls back to canned feedback that keeps each cue's meaning. The setting is chosen by feel: the control plays every stop it passes at the strength under the finger."),
+                "Every physical cue is a named HapticCue rather than an amplitude at the call site, played from HapticRecipe's composed pattern. The cues that carry a turn — sent, progress, needs-you, finished — are the point: waiting on another machine is what the app asks of someone, and the wait is reported to the hand. Every recipe is authored to be pleasant at full strength (rounded body, soft attack, at most one reinforcing beat, low sharpness), one setting scales all of them through HapticStrength.drive, reinforcement drops out below its floor, and repeats inside minimumGap are dropped so a burst of tool calls reads as progress rather than a rattle. Hardware that cannot compose falls back to canned feedback that keeps each cue's meaning. The setting is chosen by feel: the control plays every stop it passes at the strength under the finger."),
         CapabilityDefinition(
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:

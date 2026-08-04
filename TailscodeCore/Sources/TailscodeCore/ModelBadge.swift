@@ -29,6 +29,22 @@ public enum ModelBadge {
             return name
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard !trimmed.isEmpty else { return nil }
+        // Raw catalog ids ("ollama/qwen3:14b", "hf.co/org/Qwen3.6-…:IQ2_M")
+        // read better as names: drop the provider prefix, drop a HF quant tag,
+        // and let the size survive a tag split ("qwen3 14b").
+        var cleaned = trimmed
+        if cleaned.contains("hf.co/") {
+            if let last = cleaned.split(separator: "/").last {
+                cleaned = String(last.split(separator: ":").first ?? last)
+            }
+        } else if cleaned.contains(":") {
+            cleaned = cleaned.split(separator: ":")
+                .filter { $0.lowercased() != "latest" }
+                .joined(separator: " ")
+        }
+        return cleaned.split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 }
