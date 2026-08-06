@@ -16,6 +16,7 @@ public enum ParityClient: String, CaseIterable, Sendable {
 public enum AppCapability: String, CaseIterable, Sendable {
     case sessionSections
     case sessionRowStatus
+    case sessionPinning
     case unreadTracking
     case savedChats
     case archivedChats
@@ -26,6 +27,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case autoOpenLastSession
     case liveListUpdates
     case rowContextActions
+    case rowSnippet
     case usageGauges
     case quotaExhaustion
     case markdownRendering
@@ -127,6 +129,10 @@ public enum CapabilityRegistry {
             spec:
                 "Every row states what it is doing via SessionRowState: live, needs-you, offline, failed each get a pill/glyph; silence is reserved for idle."),
         CapabilityDefinition(
+            id: .sessionPinning, area: "chat list", title: "Pinned chats lead the list",
+            spec:
+                "A chat pins to the top of the list on this device (SessionPinStore, ordered). Pinned rows lead in a PINNED section ahead of every other section, keep their state pill, and pin order is the order the pins were made; unpinning returns the row to recency order. A row action pins and unpins. Device-local by design, like the archive."),
+        CapabilityDefinition(
             id: .unreadTracking, area: "chat list", title: "Unread markers",
             spec:
                 "Background activity marks a session unread (SessionSeenStore); opening it clears the mark; a row action toggles read/unread by hand."),
@@ -162,6 +168,10 @@ public enum CapabilityRegistry {
             id: .rowContextActions, area: "chat list", title: "Per-row action menu",
             spec:
                 "Long-press/right-click on a row offers save, archive, rename, fork, delete, read/unread — the same verbs on every platform."),
+        CapabilityDefinition(
+            id: .rowSnippet, area: "chat list", title: "A busy row names the work",
+            spec:
+                "While a session is working, the row's second line carries agentTask (the task in flight) in place of the meta line, so the list says what the agent is doing rather than only that it is live; idle rows keep their meta. Filtering matches the snippet too."),
         CapabilityDefinition(
             id: .usageGauges, area: "chat list", title: "Usage quota gauges",
             spec:

@@ -8,7 +8,7 @@ import UIKit
 /// finding a chat is scroll-or-search instead of expand-and-hunt.
 @MainActor
 final class SessionListViewController: UIViewController {
-    private enum Section { case main }
+    private enum Section: Hashable { case pinned, main }
 
     private enum ChatFilter: Equatable {
         case all, live, profile(String)
@@ -287,7 +287,7 @@ final class SessionListViewController: UIViewController {
 
     private func configureCollectionView() {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-        config.headerMode = .none
+        config.headerMode = .supplementary
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
@@ -368,9 +368,13 @@ final class SessionListViewController: UIViewController {
                 parts.append(badge)
             }
             parts.append(Self.relativeDate(entry.session.updatedAt))
-            content.secondaryText = parts.joined(separator: " · ")
+            let meta = parts.joined(separator: " · ")
+            let working = entry.session.isWorking
+            content.secondaryText = working ? entry.session.agentTask ?? meta : meta
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
+            content.secondaryTextProperties.color =
+                working && entry.session.agentTask != nil
+                ? Theme.Color.accent : Theme.Color.tertiaryLabel
             content.secondaryTextProperties.numberOfLines = 1
 
             content.textToSecondaryTextVerticalPadding = 2
@@ -388,6 +392,18 @@ final class SessionListViewController: UIViewController {
             cell.contentConfiguration = content
 
             var accessories: [UICellAccessory] = []
+            if SessionPinStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            {
+                let pin = UIImageView(image: UIImage(systemName: "pin.fill"))
+                pin.tintColor = Theme.Color.accent
+                pin.contentMode = .scaleAspectFit
+                pin.frame = CGRect(x: 0, y: 0, width: 13, height: 13)
+                accessories.append(.customView(
+                    configuration: .init(
+                        customView: pin, placement: .trailing(displayed: .always),
+                        maintainsFixedSize: true)))
+            }
             if let pill = Self.statusPill(for: entry.session.id) {
                 accessories.append(pill)
             } else if isLive {
@@ -430,6 +446,23 @@ final class SessionListViewController: UIViewController {
             collectionView, indexPath, entry in
             collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: entry)
         }
+        let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
+            elementKind: UICollectionView.elementKindSectionHeader
+        ) { view, _, indexPath in
+            let sections = self.dataSource.snapshot().sectionIdentifiers
+            guard sections.indices.contains(indexPath.section) else { return }
+            switch sections[indexPath.section] {
+            case .pinned:
+                var content = UIListContentConfiguration.prominentInsetGroupedHeader()
+                content.text = String(localized: "PINNED")
+                view.contentConfiguration = content
+            case .main:
+                view.contentConfiguration = nil
+            }
+        }
+        dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
+            collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
+        }
     }
 
     private func bind() {
@@ -446,6 +479,13 @@ final class SessionListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(archiveDidChange),
             name: ArchivedChatStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(pinDidChange),
+            name: SessionPinStore.didChange, object: nil)
+    }
+
+    @objc private func pinDidChange() {
+        applySnapshot()
     }
 
     @objc private func archiveDidChange() {
@@ -501,6 +541,7 @@ final class SessionListViewController: UIViewController {
         guard !searchQuery.isEmpty else { return list }
         return list.filter {
             $0.session.title.localizedCaseInsensitiveContains(searchQuery)
+                || ($0.session.agentTask?.localizedCaseInsensitiveContains(searchQuery) ?? false)
                 || ($0.session.directory?.localizedCaseInsensitiveContains(searchQuery) ?? false)
                 || $0.profileName.localizedCaseInsensitiveContains(searchQuery)
         }
@@ -508,9 +549,27 @@ final class SessionListViewController: UIViewController {
 
     private func applySnapshot() {
         let entries = filteredEntries()
+        let pinnedKeys = SessionPinStore.all()
+        let isPinned: (SessionEntry) -> Bool = {
+            pinnedKeys.contains(SessionPinStore.key($0.profileID, $0.session.id))
+        }
+        let pinnedEntries = entries.filter(isPinned).sorted {
+            guard
+                let a = SessionPinStore.rank(
+                    profileID: $0.profileID, sessionID: $0.session.id),
+                let b = SessionPinStore.rank(
+                    profileID: $1.profileID, sessionID: $1.session.id)
+            else { return false }
+            return a < b
+        }
+        let rest = entries.filter { !isPinned($0) }
         var snapshot = NSDiffableDataSourceSnapshot<Section, SessionEntry>()
+        if !pinnedEntries.isEmpty {
+            snapshot.appendSections([.pinned])
+            snapshot.appendItems(pinnedEntries, toSection: .pinned)
+        }
         snapshot.appendSections([.main])
-        snapshot.appendItems(entries, toSection: .main)
+        snapshot.appendItems(rest, toSection: .main)
         let existing = Set(dataSource.snapshot().itemIdentifiers)
         let retained = entries.filter { existing.contains($0) }
         if !retained.isEmpty { snapshot.reconfigureItems(retained) }
@@ -558,6 +617,11 @@ final class SessionListViewController: UIViewController {
     private func toggleArchived(_ entry: SessionEntry) {
         Theme.Haptics.tap()
         ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+    }
+
+    private func togglePinned(_ entry: SessionEntry) {
+        Theme.Haptics.tap()
+        SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
     }
 
     private func toggleUnread(_ entry: SessionEntry) {
@@ -795,6 +859,18 @@ extension SessionListViewController: UICollectionViewDelegate {
                     image: UIImage(systemName: isArchived ? "tray.and.arrow.up" : "archivebox")
                 ) { [weak self] _ in
                     self?.toggleArchived(entry)
+                })
+            let isPinned = SessionPinStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            actions.append(
+                UIAction(
+                    title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
+                    subtitle: isPinned
+                        ? String(localized: "Back into the recency order")
+                        : String(localized: "Always at the top of the chat list"),
+                    image: UIImage(systemName: isPinned ? "pin.slash" : "pin")
+                ) { [weak self] _ in
+                    self?.togglePinned(entry)
                 })
             let isUnread = SessionSeenStore.unreadEvaluator()(
                 entry.session.id, entry.session.updatedAt)

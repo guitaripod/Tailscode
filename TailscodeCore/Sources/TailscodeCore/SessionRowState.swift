@@ -48,11 +48,18 @@ public struct SessionRowModel: Equatable, Sendable {
     public let detail: String
     public let unread: Bool
     public let saved: Bool
+    public let pinned: Bool
+    /// What the agent is working on, when it is working — the line a busy row leads with.
+    public let snippet: String?
 
-    public init(entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool) {
+    public init(
+        entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool = false
+    ) {
         self.entry = entry
         self.unread = unread
         self.saved = saved
+        self.pinned = pinned
+        self.snippet = entry.session.isWorking ? entry.session.agentTask : nil
         self.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
@@ -84,12 +91,14 @@ public struct SessionRowModel: Equatable, Sendable {
 
 /// The sections the chat list is grouped into, in the order the phone's board uses.
 public enum SessionSection: String, CaseIterable, Sendable {
+    case pinned
     case live
     case saved
     case recent
 
     public var title: String {
         switch self {
+        case .pinned: return Localized.text("PINNED")
         case .live: return Localized.text("LIVE NOW")
         case .saved: return Localized.text("SAVED")
         case .recent: return Localized.text("RECENT")
@@ -98,12 +107,31 @@ public enum SessionSection: String, CaseIterable, Sendable {
 }
 
 /// Splits a flat listing into the sections the sidebar draws, dropping empty ones so the list
-/// never shows a heading with nothing under it.
+/// never shows a heading with nothing under it. Pinned rows lead in their own section, in the
+/// order the pins were made, and keep their state pill — a pinned live session reads as pinned
+/// *and* live, never as one or the other.
 public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
-    let live = rows.filter { $0.state == .live || $0.state == .awaitingApproval }
+    let pinned = rows.filter { $0.pinned }.sorted {
+        guard
+            let a = SessionPinStore.rank(
+                profileID: $0.entry.profileID, sessionID: $0.entry.session.id),
+            let b = SessionPinStore.rank(
+                profileID: $1.entry.profileID, sessionID: $1.entry.session.id)
+        else { return false }
+        return a < b
+    }
+    let pinnedIDs = Set(pinned.map(\.entry.session.id))
+    let live = rows.filter {
+        ($0.state == .live || $0.state == .awaitingApproval)
+            && !pinnedIDs.contains($0.entry.session.id)
+    }
     let liveIDs = Set(live.map(\.entry.session.id))
-    let saved = rows.filter { $0.saved && !liveIDs.contains($0.entry.session.id) }
-    let seen = liveIDs.union(saved.map(\.entry.session.id))
+    let saved = rows.filter {
+        $0.saved && !liveIDs.contains($0.entry.session.id)
+            && !pinnedIDs.contains($0.entry.session.id)
+    }
+    let seen = liveIDs.union(saved.map(\.entry.session.id)).union(pinnedIDs)
     let recent = rows.filter { !seen.contains($0.entry.session.id) }
-    return [(.live, live), (.saved, saved), (.recent, recent)].filter { !$0.1.isEmpty }
+    return [(.pinned, pinned), (.live, live), (.saved, saved), (.recent, recent)]
+        .filter { !$0.1.isEmpty }
 }

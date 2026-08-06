@@ -11,6 +11,7 @@ enum ParityManifest {
         switch capability {
         case .sessionSections: return .implemented("HomeSection")
         case .sessionRowStatus: return .implemented("statusPill")
+        case .sessionPinning: return .implemented("togglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatsViewController")
         case .archivedChats: return .implemented("ArchivedChatsViewController")
@@ -21,6 +22,7 @@ enum ParityManifest {
         case .autoOpenLastSession: return .notApplicable("the phone launches to the Home board by design; Live cards and deep links reopen work")
         case .liveListUpdates: return .implemented("startStreams")
         case .rowContextActions: return .implemented("sessionMenu")
+        case .rowSnippet: return .implemented("agentTask")
         case .usageGauges: return .implemented("QuotaCard")
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
         case .markdownRendering: return .implemented("TextBubbleCell")

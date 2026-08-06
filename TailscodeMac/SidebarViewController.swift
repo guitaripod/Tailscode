@@ -262,6 +262,11 @@ final class SidebarViewController: NSViewController {
         render()
     }
 
+    func togglePinned(_ entry: SessionEntry) {
+        SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+        render()
+    }
+
     func toggleUnread(_ entry: SessionEntry) {
         let unread = SessionSeenStore.unreadEvaluator()(entry.session.id, entry.session.updatedAt)
         if unread {
@@ -412,7 +417,9 @@ final class SidebarViewController: NSViewController {
                 unreachable: unreachable.contains(
                     ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
                 unread: unread($0.session.id, $0.session.updatedAt),
-                saved: saved.contains($0.session.id))
+                saved: saved.contains($0.session.id),
+                pinned: SessionPinStore.contains(
+                    profileID: $0.profileID, sessionID: $0.session.id))
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
         MacNotifier.shared.observeListing(
@@ -430,6 +437,7 @@ final class SidebarViewController: NSViewController {
         let matching = models.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
+                || ($0.snippet?.lowercased().contains(needle) ?? false)
         }
         let active = matching.filter {
             !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
@@ -687,6 +695,15 @@ extension SidebarViewController: NSMenuDelegate {
                     ? Localized.text("Back into the chat list")
                     : Localized.text("Out of the list, kept on the server"),
                 action: #selector(menuToggleArchived)))
+        let pinned = SessionPinStore.contains(
+            profileID: entry.profileID, sessionID: entry.session.id)
+        menu.addItem(
+            menuItem(
+                pinned ? Localized.text("Unpin") : Localized.text("Pin"),
+                subtitle: pinned
+                    ? Localized.text("Back into the recency order")
+                    : Localized.text("Always at the top of the chat list"),
+                action: #selector(menuTogglePinned)))
         menu.addItem(
             menuItem(
                 model.unread
@@ -756,6 +773,11 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuToggleArchived() {
         guard let model = menuModel else { return }
         toggleArchived(model.entry)
+    }
+
+    @objc private func menuTogglePinned() {
+        guard let model = menuModel else { return }
+        togglePinned(model.entry)
     }
 
     @objc private func menuToggleUnread() {

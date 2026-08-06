@@ -58,6 +58,9 @@ enum SidebarRow {
         if let pill = model.state.pill {
             gtk_box_append(ptr(titleRow), makePill(pill.text, css: pill.css))
         }
+        if model.pinned {
+            gtk_box_append(ptr(titleRow), makePill(Localized.text("PINNED"), css: "pill-pinned"))
+        }
         if model.saved {
             gtk_box_append(ptr(titleRow), makePill(Localized.text("SAVED"), css: "pill-saved"))
         }
@@ -68,7 +71,8 @@ enum SidebarRow {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
         gtk_box_append(
-            ptr(column), Gtk.label(model.detail, css: "row-detail", selectable: false))
+            ptr(column),
+            Gtk.label(model.snippet ?? model.detail, css: "row-detail", selectable: false))
         gtk_widget_set_hexpand(column, 1)
 
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)

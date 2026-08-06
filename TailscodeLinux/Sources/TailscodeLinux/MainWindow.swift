@@ -810,7 +810,9 @@ final class MainWindow: @unchecked Sendable {
                 unreachable: unreachable.contains(
                     ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
                 unread: unread($0.session.id, $0.session.updatedAt),
-                saved: saved.contains($0.session.id))
+                saved: saved.contains($0.session.id),
+                pinned: SessionPinStore.contains(
+                    profileID: $0.profileID, sessionID: $0.session.id))
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
         Notifier.shared.observeListing(
@@ -828,6 +830,7 @@ final class MainWindow: @unchecked Sendable {
         let matching = rows.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
+                || ($0.snippet?.lowercased().contains(needle) ?? false)
         }
         let active = matching.filter {
             !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
@@ -1435,6 +1438,20 @@ final class MainWindow: @unchecked Sendable {
                  ? Localized.text("Back into the chat list")
                  : Localized.text("Out of the list, kept on the server"),
              { [weak self] in Gtk.onMain { [weak self] in self?.toggleArchived(entry) } }))
+        let pinned = SessionPinStore.contains(
+            profileID: entry.profileID, sessionID: entry.session.id)
+        rows.append(
+            (pinned ? Localized.text("Unpin") : Localized.text("Pin"),
+             pinned
+                 ? Localized.text("Back into the recency order")
+                 : Localized.text("Always at the top of the chat list"),
+             { [weak self] in
+                 Gtk.onMain { [weak self] in
+                     SessionPinStore.toggle(
+                         profileID: entry.profileID, sessionID: entry.session.id)
+                     self?.renderSidebar()
+                 }
+             }))
         rows.append(
             (row.unread ? Localized.text("Mark as read") : Localized.text("Mark as unread"), nil,
              { [weak self] in

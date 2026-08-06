@@ -248,6 +248,7 @@ enum MatrixTheme {
         .pill-needs { color: \(palette.onAccent); background-color: \(warn); font-weight: 700; }
         .pill-error { color: \(palette.onAccent); background-color: \(danger); }
         .pill-saved { color: \(special); border: 1px solid alpha(\(special), 0.7); }
+        .pill-pinned { color: \(accent); border: 1px solid alpha(\(accent), 0.7); }
         .pill-offline { color: \(textDim); border: 1px solid alpha(\(textDim), 0.5); }
 
         .session-row {

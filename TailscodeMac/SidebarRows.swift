@@ -120,14 +120,20 @@ final class SidebarSessionCell: NSView {
         glyph.textColor = Self.glyphColor(model.state)
         title.stringValue = model.title
         title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
-        detail.stringValue = model.detail
+        detail.stringValue = model.snippet ?? model.detail
         detail.font = MacTheme.Font.caption()
+        detail.textColor =
+            model.snippet != nil ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
         for view in titleRow.arrangedSubviews.dropFirst() {
             titleRow.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
         if let pill = model.state.pill {
             titleRow.addArrangedSubview(Self.pill(pill.text, tint: Self.pillTint(model.state)))
+        }
+        if model.pinned {
+            titleRow.addArrangedSubview(
+                Self.pill(Localized.text("PINNED"), tint: MacTheme.Color.accent))
         }
         if model.saved {
             titleRow.addArrangedSubview(

@@ -11,6 +11,7 @@ enum ParityManifest {
         switch capability {
         case .sessionSections: return .implemented("groupIntoSections")
         case .sessionRowStatus: return .implemented("SessionRowModel")
+        case .sessionPinning: return .implemented("menuTogglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatStore")
         case .archivedChats: return .implemented("ArchivedChatStore")
@@ -21,6 +22,7 @@ enum ParityManifest {
         case .autoOpenLastSession: return .implemented("lastSession")
         case .liveListUpdates: return .implemented("SessionListStreaming")
         case .rowContextActions: return .implemented("rowMenu")
+        case .rowSnippet: return .implemented("model.snippet ?? model.detail")
         case .usageGauges: return .implemented("usageFooter")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("MacMarkdown")

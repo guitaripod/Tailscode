@@ -1545,6 +1545,20 @@ extension HomeViewController: UICollectionViewDelegate {
                     ArchivedChatStore.toggle(
                         profileID: entry.profileID, sessionID: entry.session.id)
                 })
+            let isPinned = SessionPinStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id)
+            actions.append(
+                UIAction(
+                    title: isPinned ? String(localized: "Unpin") : String(localized: "Pin"),
+                    subtitle: isPinned
+                        ? String(localized: "Back into the recency order")
+                        : String(localized: "Always at the top of the chat list"),
+                    image: UIImage(systemName: isPinned ? "pin.slash" : "pin")
+                ) { _ in
+                    Theme.Haptics.tap()
+                    SessionPinStore.toggle(
+                        profileID: entry.profileID, sessionID: entry.session.id)
+                })
             let isUnread = SessionSeenStore.unreadEvaluator()(
                 entry.session.id, entry.session.updatedAt)
             actions.append(
