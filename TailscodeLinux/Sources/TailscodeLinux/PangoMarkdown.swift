@@ -10,6 +10,12 @@ import Foundation
 enum PangoMarkdown {
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: String] = [:]
+    nonisolated(unsafe) private static var cacheBytes = 0
+    /// What the memo may hold, in entries and in bytes. A count alone is not a bound: three
+    /// hundred settled segments of ordinary prose and three hundred segments of a forty-thousand
+    /// word answer are the same number and two orders of magnitude apart in memory.
+    private static let cacheLimit = 4096
+    private static let cacheByteLimit = 8 << 20
 
     /// Rendering runs once per prose segment per streamed state, and a long conversation replays
     /// the same three hundred segments on every token — so the answer is remembered. The colors
@@ -38,8 +44,13 @@ enum PangoMarkdown {
         let rendered = lines.joined(separator: "\n")
         guard useCache else { return rendered }
         cacheLock.lock()
-        if cache.count > 4096 { cache.removeAll(keepingCapacity: true) }
-        cache[key] = rendered
+        if cache.count > cacheLimit || cacheBytes > cacheByteLimit {
+            cache.removeAll(keepingCapacity: true)
+            cacheBytes = 0
+        }
+        if cache.updateValue(rendered, forKey: key) == nil {
+            cacheBytes += key.utf8.count + rendered.utf8.count
+        }
         cacheLock.unlock()
         return rendered
     }

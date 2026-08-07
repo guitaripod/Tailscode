@@ -146,63 +146,91 @@ public enum CascadeGate {
     public static func safeCut(_ characters: [Character], at index: Int, sealed: Bool = false)
         -> Int
     {
-        let limit = min(index, characters.count)
-        guard limit > 0, !sealed else { return max(0, limit) }
-        var pending: [String: Int] = [:]
+        scan(characters, count: characters.count, at: index, sealed: sealed)
+    }
 
-        func toggle(_ token: String, at position: Int) {
-            if pending[token] != nil {
-                pending[token] = nil
-            } else {
-                pending[token] = position
-            }
+    /// The same gate asked of the text itself.
+    ///
+    /// The gate runs once per arrival, on the whole answer so far, and an answer arrives a
+    /// thousand times. Turning that answer into `[Character]` to read it costs sixteen bytes a
+    /// character every time — an answer's worth of garbage per token, which is what a heap that
+    /// only ever grows is made of. The walk needs the current character, the one after it and the
+    /// one before, and a string can give all three without being taken apart first.
+    public static func safeCut(_ source: String, at index: Int, sealed: Bool = false) -> Int {
+        scan(source, count: source.count, at: index, sealed: sealed)
+    }
+
+    /// A marker is a slot, not a string: seven of them exist, and naming one by building a
+    /// `String` at every asterisk is an allocation for a fact the type system already holds.
+    private enum Marker: Int {
+        case backtick, star, underscore, doubleStar, doubleUnderscore, doubleTilde, bracket
+
+        static let count = 7
+    }
+
+    private static func scan<C: Collection>(
+        _ characters: C, count: Int, at index: Int, sealed: Bool
+    ) -> Int where C.Element == Character {
+        let limit = min(index, count)
+        guard limit > 0, !sealed else { return max(0, limit) }
+        var pending = [Int?](repeating: nil, count: Marker.count)
+
+        func toggle(_ marker: Marker, at position: Int) {
+            pending[marker.rawValue] = pending[marker.rawValue] == nil ? position : nil
         }
 
-        var index = 0
-        while index < limit {
-            let character = characters[index]
-            let next: Character? = index + 1 < limit ? characters[index + 1] : nil
-            let previous: Character? = index > 0 ? characters[index - 1] : nil
+        var cursor = characters.startIndex
+        var position = 0
+        var previous: Character?
+        while position < limit {
+            let character = characters[cursor]
+            let next: Character? =
+                position + 1 < limit ? characters[characters.index(after: cursor)] : nil
+            var step = 1
             switch character {
             case "`":
-                toggle("`", at: index)
-                index += 1
+                toggle(.backtick, at: position)
             case "*", "_":
                 let doubled = next == character
-                let token = doubled ? String(repeating: character, count: 2) : String(character)
                 if !doubled, character == "_",
                     previous?.isLetter == true || previous?.isNumber == true
                 {
-                    index += 1
-                    continue
+                    break
                 }
-                if !doubled, next == " " || next == nil {
-                    index += 1
-                    continue
+                if !doubled, next == " " || next == nil { break }
+                let marker: Marker
+                switch (character, doubled) {
+                case ("*", false): marker = .star
+                case ("*", true): marker = .doubleStar
+                case (_, false): marker = .underscore
+                default: marker = .doubleUnderscore
                 }
-                toggle(token, at: index)
-                index += doubled ? 2 : 1
+                toggle(marker, at: position)
+                step = doubled ? 2 : 1
             case "~":
-                guard next == "~" else {
-                    index += 1
-                    continue
-                }
-                toggle("~~", at: index)
-                index += 2
+                guard next == "~" else { break }
+                toggle(.doubleTilde, at: position)
+                step = 2
             case "[":
-                pending["["] = index
-                index += 1
+                pending[Marker.bracket.rawValue] = position
             case ")":
-                pending["["] = nil
-                index += 1
+                pending[Marker.bracket.rawValue] = nil
             default:
-                index += 1
+                break
+            }
+            for _ in 0..<step {
+                previous = characters[cursor]
+                cursor = characters.index(after: cursor)
+                position += 1
+                if position >= limit { break }
             }
         }
-        guard let earliest = pending.values.filter({ $0 >= limit - window }).min() else {
-            return limit
+        var earliest: Int?
+        for open in pending {
+            guard let open, open >= limit - window else { continue }
+            if earliest == nil || open < earliest! { earliest = open }
         }
-        return earliest
+        return earliest ?? limit
     }
 }
 
@@ -333,7 +361,6 @@ public struct LiveCascade: Sendable {
     public private(set) var revealed = 0
     public private(set) var total = 0
     public private(set) var phase: Double = 0
-    private var characters: [Character] = []
     private var cadence: StreamCadence
     private let tuning: CadenceTuning
 
@@ -351,10 +378,10 @@ public struct LiveCascade: Sendable {
     /// its closer and no answer ever flashes its punctuation.
     public static func renderable(_ source: String, sealed: Bool) -> String {
         guard !sealed else { return source }
-        let characters = Array(source)
-        let cut = CascadeGate.safeCut(characters, at: characters.count)
-        guard cut < characters.count else { return source }
-        return String(characters[..<cut])
+        let count = source.count
+        let cut = CascadeGate.safeCut(source, at: count)
+        guard cut < count else { return source }
+        return String(source.prefix(cut))
     }
 
     /// Points the wave at the row the stream is writing into, with that row's rendered text.
@@ -362,7 +389,6 @@ public struct LiveCascade: Sendable {
     public mutating func focus(_ id: String?, rendered: String, sealed: Bool, at time: Double) {
         guard let id else {
             self.id = nil
-            characters = []
             revealed = 0
             total = 0
             cadence = StreamCadence(tuning: tuning)
@@ -370,8 +396,7 @@ public struct LiveCascade: Sendable {
         }
         if id != self.id {
             self.id = id
-            characters = Array(rendered)
-            total = characters.count
+            total = rendered.count
             cadence = StreamCadence(tuning: tuning)
             if total > Self.adoptLimit || sealed {
                 cadence.adopt(total)
@@ -382,8 +407,7 @@ public struct LiveCascade: Sendable {
             phase = StreamCascade.phase(at: time)
             return
         }
-        characters = Array(rendered)
-        total = characters.count
+        total = rendered.count
         cadence.observe(available: total, sealed: sealed)
         revealed = min(revealed, total)
     }

@@ -1,8 +1,25 @@
 #include "include/CGtkShim.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
+/// How a Swift closure that a signal was holding is let go of.
+///
+/// The closure arrives here as a retained Swift object behind a raw pointer, and C cannot release
+/// one. So Swift hands over the release once, at startup, and the shim calls it when GObject
+/// finishes with the closure — which is when the handler is disconnected or the object it was on
+/// is finalized, and by then nothing can call the handler again. Without it every signal
+/// connection leaked its closure for the life of the process, and the transcript, the sidebar and
+/// every popover connect a fresh one each time they are built.
+static void (*tailscode_box_release)(void *) = NULL;
+
+void tailscode_set_box_release(void (*release)(void *)) { tailscode_box_release = release; }
+
+static void tailscode_box_destroy(gpointer data, GClosure *closure) {
+    (void)closure;
+    if (data && tailscode_box_release) tailscode_box_release(data);
+}
+
 void tailscode_connect(gpointer instance, const char *signal, GCallback handler, gpointer data) {
-    g_signal_connect_data(instance, signal, handler, data, NULL, 0);
+    g_signal_connect_data(instance, signal, handler, data, tailscode_box_destroy, 0);
 }
 
 typedef struct {
@@ -90,6 +107,14 @@ static gboolean tailscode_key_trampoline(
     return box->handler(keyval, (guint)state, box->data);
 }
 
+static void tailscode_key_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeKey *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
 void tailscode_connect_key(
     GtkWidget *widget, gboolean (*handler)(guint keyval, guint state, void *), void *data) {
     TailscodeKey *box = g_new0(TailscodeKey, 1);
@@ -98,7 +123,8 @@ void tailscode_connect_key(
     GtkEventController *controller = gtk_event_controller_key_new();
     gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
     g_signal_connect_data(
-        controller, "key-pressed", G_CALLBACK(tailscode_key_trampoline), box, NULL, 0);
+        controller, "key-pressed", G_CALLBACK(tailscode_key_trampoline), box,
+        tailscode_key_destroy, 0);
     gtk_widget_add_controller(widget, controller);
 }
 
@@ -340,11 +366,17 @@ GType tailscode_chat_ref_get_type(void) {
     return (GType)once;
 }
 
+/// A row the pointer can pick up. The content provider is made with a reference of its own, and
+/// the drag source takes one more rather than taking that one over — so it has to be let go of
+/// here, or every chat row the sidebar builds leaves a provider and its payload behind, and the
+/// sidebar builds all of them again on every list change.
 void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload) {
     GtkDragSource *source = gtk_drag_source_new();
     gtk_drag_source_set_actions(source, GDK_ACTION_COPY);
-    gtk_drag_source_set_content(
-        source, gdk_content_provider_new_typed(tailscode_chat_ref_get_type(), payload));
+    GdkContentProvider *content =
+        gdk_content_provider_new_typed(tailscode_chat_ref_get_type(), payload);
+    gtk_drag_source_set_content(source, content);
+    g_object_unref(content);
     GdkPaintable *ghost = gtk_widget_paintable_new(widget);
     gtk_drag_source_set_icon(source, ghost, 0, 0);
     g_object_unref(ghost);
@@ -455,13 +487,23 @@ static void tailscode_notify_trampoline(GObject *object, GParamSpec *pspec, gpoi
     box->handler(box->data);
 }
 
+static void tailscode_notify_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeNotify *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
 void tailscode_connect_notify(
     gpointer instance, const char *property, void (*handler)(void *), void *data) {
     TailscodeNotify *box = g_new0(TailscodeNotify, 1);
     box->handler = handler;
     box->data = data;
     char *signal = g_strdup_printf("notify::%s", property);
-    g_signal_connect_data(instance, signal, G_CALLBACK(tailscode_notify_trampoline), box, NULL, 0);
+    g_signal_connect_data(
+        instance, signal, G_CALLBACK(tailscode_notify_trampoline), box, tailscode_notify_destroy,
+        0);
     g_free(signal);
 }
 
@@ -1157,7 +1199,7 @@ void tailscode_orb_set(
         memcpy(orb->stops, stops, (size_t)count * 3 * sizeof(float));
         orb->stop_count = count;
     }
-    gtk_widget_queue_draw(area);
+    gtk_gl_area_queue_render(GTK_GL_AREA(area));
 }
 
 #ifdef TAILSCODE_HAS_MPV

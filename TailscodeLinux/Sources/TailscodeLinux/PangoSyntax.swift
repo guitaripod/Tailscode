@@ -15,6 +15,13 @@ import TailscodeCore
 enum PangoSyntax {
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: String] = [:]
+    nonisolated(unsafe) private static var cacheBytes = 0
+    /// A block streams in a character at a time, so every arrival is a different key and the memo
+    /// fills with five hundred prefixes of the same block. Five hundred entries is a small number
+    /// and, of a file being written into the transcript, a large amount of memory — so the bound
+    /// is also in bytes.
+    private static let cacheLimit = 512
+    private static let cacheByteLimit = 8 << 20
 
     /// Rendering runs once per block per streamed state and a long conversation replays the same
     /// blocks on every token, so the answer is remembered. The palette is part of the key: a theme
@@ -32,8 +39,13 @@ enum PangoSyntax {
         let rendered = tokens.isEmpty ? PangoMarkdown.escape(source) : markup(source, tokens, palette)
 
         cacheLock.lock()
-        if cache.count > 512 { cache.removeAll(keepingCapacity: true) }
-        cache[key] = rendered
+        if cache.count > cacheLimit || cacheBytes > cacheByteLimit {
+            cache.removeAll(keepingCapacity: true)
+            cacheBytes = 0
+        }
+        if cache.updateValue(rendered, forKey: key) == nil {
+            cacheBytes += key.utf8.count + rendered.utf8.count
+        }
         cacheLock.unlock()
         return rendered
     }

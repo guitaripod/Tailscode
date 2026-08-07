@@ -17,9 +17,21 @@ swift build -c release --manifest-cache none 2>&1 | grep -E "error:|Build comple
 BUILT=$PWD/.build/release/tailscode
 [ -x "$BUILT" ] || { echo "no binary at $BUILT"; exit 1; }
 
+# The app is single-instance on the session bus, so launching it while the old one is still alive
+# remote-activates the process already running — the script then finds a tailscode, says
+# "restarted", and leaves the person on the binary they just replaced. So the old process is waited
+# out by pid before anything is installed.
+OLD_PIDS=$(pgrep -f "$BIN_DIR/tailscode$" || true)
 WAS_RUNNING=no
-pgrep -f "$BIN_DIR/tailscode$" >/dev/null 2>&1 && WAS_RUNNING=yes
-pkill -f "$BIN_DIR/tailscode$" 2>/dev/null || true
+[ -n "$OLD_PIDS" ] && WAS_RUNNING=yes
+for pid in $OLD_PIDS; do kill "$pid" 2>/dev/null || true; done
+for _ in $(seq 1 50); do
+    still=""
+    for pid in $OLD_PIDS; do kill -0 "$pid" 2>/dev/null && still="yes"; done
+    [ -z "$still" ] && break
+    sleep 0.2
+done
+for pid in $OLD_PIDS; do kill -9 "$pid" 2>/dev/null || true; done
 
 mkdir -p "$BIN_DIR" "$APPS_DIR"
 install -m 0755 "$BUILT" "$BIN_DIR/tailscode"
@@ -35,5 +47,10 @@ echo "installed $("$BIN_DIR/tailscode" --version 2>/dev/null || echo "$BIN_DIR/t
 if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
     nohup "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
     sleep 2
-    pgrep -f "$BIN_DIR/tailscode$" >/dev/null && echo "restarted"
+    NEW_PIDS=$(pgrep -f "$BIN_DIR/tailscode$" || true)
+    for pid in $NEW_PIDS; do
+        case " $OLD_PIDS " in *" $pid "*) ;; *) echo "restarted (pid $pid)"; exit 0 ;; esac
+    done
+    echo "NOT restarted — the old process is still what is running" >&2
+    exit 1
 fi

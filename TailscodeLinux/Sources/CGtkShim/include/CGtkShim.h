@@ -8,6 +8,11 @@
 /// lifetime rules are easier to get right in C than through an imported function pointer.
 void tailscode_connect(gpointer instance, const char *signal, GCallback handler, gpointer data);
 
+/// How the shim lets go of a Swift closure a signal was holding. Registered once at startup; the
+/// closure is released when GObject finishes with the connection, which is the only moment at
+/// which the handler is provably never called again.
+void tailscode_set_box_release(void (*release)(void *));
+
 /// Runs `handler(data)` once on the GLib main context, then frees nothing — the Swift side owns
 /// `data` and releases it inside the handler.
 void tailscode_on_main(void (*handler)(void *), void *data);

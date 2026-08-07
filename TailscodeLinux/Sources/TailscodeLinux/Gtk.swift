@@ -37,10 +37,25 @@ enum Gtk {
         init(_ work: @escaping @Sendable () -> Void) { self.work = work }
     }
 
-    /// Connects a signal to a Swift closure. The closure is retained for the life of the process,
-    /// which is the right lifetime for a window's own controls and avoids a class of
-    /// use-after-free that is much harder to see than a leak.
+    /// How a connected closure is let go of: GObject hands it back when the handler is
+    /// disconnected or the object it was on is finalized, and that is the one moment at which the
+    /// handler can never run again. Installed once, before the first connection.
+    ///
+    /// The closures used to be kept for the life of the process, which is the right lifetime for a
+    /// window's own controls and the wrong one for everything the app builds and rebuilds — a
+    /// transcript row, a sidebar row, the rows a popover makes fresh on every open. Those are made
+    /// in their thousands over a session and each one kept a closure nobody could ever call again.
+    private static let releaseInstalled: Bool = {
+        tailscode_set_box_release { raw in
+            guard let raw else { return }
+            Unmanaged<AnyObject>.fromOpaque(raw).release()
+        }
+        return true
+    }()
+
+    /// Connects a signal to a Swift closure, which lives exactly as long as the connection does.
     static func connect(_ instance: UnsafeMutableRawPointer, _ signal: String, _ handler: @escaping @Sendable () -> Void) {
+        _ = releaseInstalled
         let box = Unmanaged.passRetained(Box(handler)).toOpaque()
         let callback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void = {
             _, raw in
@@ -59,6 +74,7 @@ enum Gtk {
         _ instance: UnsafeMutableRawPointer, _ signal: String,
         _ handler: @escaping @Sendable () -> Void
     ) {
+        _ = releaseInstalled
         let box = Unmanaged.passRetained(Box(handler)).toOpaque()
         let callback:
             @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> gboolean = {
@@ -151,6 +167,7 @@ enum Gtk {
         _ instance: UnsafeMutableRawPointer, property: String,
         _ handler: @escaping @Sendable () -> Void
     ) {
+        _ = releaseInstalled
         let box = Unmanaged.passRetained(Box(handler)).toOpaque()
         tailscode_connect_notify(
             instance, property,
@@ -166,6 +183,7 @@ enum Gtk {
         _ widget: UnsafeMutablePointer<GtkWidget>,
         _ handler: @escaping @Sendable (UInt32, UInt32) -> Bool
     ) {
+        _ = releaseInstalled
         let box = Unmanaged.passRetained(KeyBox(handler)).toOpaque()
         let callback: @convention(c) (guint, guint, UnsafeMutableRawPointer?) -> gboolean = {
             keyval, state, raw in

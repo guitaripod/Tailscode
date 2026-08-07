@@ -657,6 +657,9 @@ final class ChatPane: @unchecked Sendable {
         turnStartedAt = nil
         context.expanded = []
         context.subagentRows = [:]
+        context.liveReasoning = [:]
+        context.agentFacts = [:]
+        context.workflowRuns = [:]
         inFlightImages = []
         inFlightSubagents = []
         attachments = []
@@ -1187,8 +1190,7 @@ final class ChatPane: @unchecked Sendable {
         let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
-            guard rows[last].key == cascade.key, Self.cascadeMarkup(for: rows[last]) != nil
-            else { return false }
+            guard rows[last].key == cascade.key else { return false }
         case (.reasoning, .reasoning(let text)):
             guard TranscriptRow.restateReasoning(
                 widget, text: text, key: rows[last].key, context: context)
@@ -1263,9 +1265,14 @@ final class ChatPane: @unchecked Sendable {
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, but a live row is painted
     /// through Pango's own parser — so a link is dressed as what the label would have made of it,
     /// and becomes a real link again the moment the row settles and is rendered the ordinary way.
+    /// Prose that carries no link is handed back exactly as it came, because the dressing below
+    /// rewrites a string the size of the whole answer and most answers have nothing in them to
+    /// rewrite. Returning the markup itself costs nothing at all; building an identical copy of it
+    /// costs the answer, every time somebody asks.
     static func cascadeMarkup(for row: TranscriptRow) -> String? {
         switch row.kind {
         case .agentProse(_, let markup):
+            guard markup.contains("<a href=\"") else { return markup }
             let accent = MatrixTheme.palette.accent
             var text = markup.replacingOccurrences(of: "</a>", with: "</span>")
             while let open = text.range(of: "<a href=\""),

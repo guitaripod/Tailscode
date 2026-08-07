@@ -1191,17 +1191,16 @@ public enum SelfTest {
         let rainbow = CascadeTint.edge(for: palette, ultracode: true, phase: 0.5)
         try expect(rainbow.count == 7 && rainbow.hasPrefix("#"), "ultracode leads with a colour")
         let spark = CascadeTint.spark(for: palette, edge: edge)
+        let inks = CascadeTint.Inks(settled: palette.text, edge: edge, spark: spark)
         for distance in 0..<StreamCascade.span {
             let painted = CascadeTint.paint(
-                StreamCascade.sample(distance: distance, phase: 0.3), settled: palette.text,
-                edge: edge, spark: spark)
+                StreamCascade.sample(distance: distance, phase: 0.3), inks: inks)
             try expect(painted.alpha >= 1, "a glyph must never be painted invisible")
             try expect(painted.rgb <= 0xff_ffff, "the wave produced a colour outside 24 bits")
             checks += 1
         }
         let settled = CascadeTint.paint(
-            StreamCascade.sample(distance: StreamCascade.span * 4, phase: 0.3),
-            settled: palette.text, edge: edge, spark: spark)
+            StreamCascade.sample(distance: StreamCascade.span * 4, phase: 0.3), inks: inks)
         try expect(
             settled.alpha == 65535, "a glyph the wave has passed must be fully opaque again")
         checks += 1
