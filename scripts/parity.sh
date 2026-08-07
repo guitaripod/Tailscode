@@ -15,8 +15,6 @@ CHECK=0
 [[ "${1:-}" == "--check" ]] && CHECK=1
 errors=()
 
-say() { [[ $CHECK -eq 0 ]] && echo "$@" || true; }
-
 mapfile -t caps < <(awk '/^public enum AppCapability/,/^}/' "$CORE" | sed -n 's/^ *case \([A-Za-z]*\)$/\1/p')
 [[ ${#caps[@]} -gt 0 ]] || { echo "parity: could not parse AppCapability cases from $CORE" >&2; exit 1; }
 
@@ -28,10 +26,14 @@ declare -A KIND ANCHOR NOTE
 for c in "${CLIENTS[@]}"; do
   mf="${MANIFESTS[$c]}"
   [[ -f "$mf" ]] || { echo "parity: missing manifest $mf" >&2; exit 1; }
-  grep -nE '(^|[^A-Za-z])default *:' "$mf" >/dev/null && errors+=("$c: 'default:' found in $mf — the switch must stay exhaustive, one case per line")
-  grep -nE 'case \.[A-Za-z]+ *,' "$mf" >/dev/null && errors+=("$c: grouped cases found in $mf — one case per line so the script can parse evidence")
+  if grep -nE '(^|[^A-Za-z])default *:' "$mf" >/dev/null; then
+    errors+=("$c: 'default:' found in $mf — the switch must stay exhaustive, one case per line")
+  fi
+  if grep -nE 'case \.[A-Za-z]+ *,' "$mf" >/dev/null; then
+    errors+=("$c: grouped cases found in $mf — one case per line so the script can parse evidence")
+  fi
   for cap in "${caps[@]}"; do
-    line=$(grep -A3 -E "case \.$cap:( |$)" "$mf" | tr '\n' ' ' \
+    line=$({ grep -A3 -E "case \.$cap:( |$)" "$mf" || true; } | tr '\n' ' ' \
       | sed -e 's/( */(/g' -e 's/  */ /g' -e 's/^ *//')
     line=${line%% case .*}
     if [[ -z "$line" ]]; then
