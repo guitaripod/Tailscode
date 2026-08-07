@@ -164,6 +164,27 @@ import Testing
         #expect(after.color.distance(to: swapped.live) < 0.01)
     }
 
+    @Test("A body going still holds its place while the satellites retract")
+    func stillnessNeverTeleports() {
+        var field = PresenceField(colors: colors)
+        field.set(signal: PresenceSignal.aggregate([.working, .working, .working]))
+        var previous = field.frame(at: 0)
+        for tick in 1...420 { previous = field.frame(at: Double(tick) / 60) }
+        field.set(signal: PresenceSignal.aggregate([.failed]))
+        var frame = previous
+        for tick in 421...1200 {
+            frame = field.frame(at: Double(tick) / 60)
+            for (index, blob) in frame.blobs.enumerated() where index < previous.blobs.count {
+                let step = max(
+                    abs(blob.x - previous.blobs[index].x), abs(blob.y - previous.blobs[index].y))
+                #expect(step < 0.06)
+            }
+            previous = frame
+        }
+        #expect(frame.settled)
+        #expect(frame.blobs.count == 1)
+    }
+
     @Test("The capability's spec exists and says alpha")
     func capabilityIsSpecified() {
         let definition = CapabilityRegistry.definition(for: .presenceOrb)

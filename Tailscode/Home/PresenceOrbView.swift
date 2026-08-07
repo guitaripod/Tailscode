@@ -129,9 +129,12 @@ final class PresenceOrbView: UIView {
         wake()
     }
 
+    /// Disabling must stop the clock, not just the pixels: a hidden view's display link runs on,
+    /// and an animated signal never settles, so hiding alone would spend the battery the setting
+    /// exists to protect.
     func setEnabled(_ enabled: Bool) {
         isHidden = !enabled
-        if enabled { wake() }
+        if enabled { wake() } else { metalView.isPaused = true }
     }
 
     private func wake() {

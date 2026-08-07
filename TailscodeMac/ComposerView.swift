@@ -64,8 +64,18 @@ final class ComposerView: NSView {
             effort: chosenEffort, draft: textView.string, inFlightInvoked: ultracodeInFlight)
     }
 
+    /// The hub hears the flip so the presence orb wears the same rainbow the moment the word is
+    /// typed — a 10-second listing poll is no clock for a power turning on under the caret.
+    var onAuraChanged: (() -> Void)?
+    private var auraWasActive = false
+
     private func refreshAura() {
-        aura.setActive(auraActive)
+        let active = auraActive
+        aura.setActive(active)
+        if active != auraWasActive {
+            auraWasActive = active
+            onAuraChanged?()
+        }
     }
 
     static var sendOnReturn: Bool {

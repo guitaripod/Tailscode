@@ -29,6 +29,7 @@ final class MainWindow: @unchecked Sendable {
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private let orb = OrbPainter()
     private var orbTarget: SessionEntry?
+    private var orbKinds: [ActivityKind?] = []
     private var usageTask: Task<Void, Never>?
 
     private var splitWidget: UnsafeMutablePointer<GtkWidget>?
@@ -882,6 +883,15 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// One cheap re-read of the last aggregate, for the fact that changes without a listing —
+    /// the ultracode aura lighting or dying under a draft. The full render feeds `orbKinds`;
+    /// this keeps the rainbow honest between renders.
+    func refreshOrb() {
+        orb.update(
+            signal: PresenceSignal.aggregate(
+                orbKinds, ultracode: splitHost.panes.values.contains { $0.auraActive }))
+    }
+
     /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
     /// what the list would say actually differs from what it says now, and only the first
     /// screenful or two are built.
@@ -912,10 +922,8 @@ final class MainWindow: @unchecked Sendable {
         orbTarget =
             rows.first { $0.state == .awaitingApproval }?.entry
             ?? rows.first { $0.state == .live }?.entry
-        orb.update(
-            signal: PresenceSignal.aggregate(
-                rows.map { $0.state.activity },
-                ultracode: splitHost.panes.values.contains { $0.auraActive }))
+        orbKinds = rows.map { $0.state.activity }
+        refreshOrb()
         Notifier.shared.observeListing(
             rows.map {
                 ActivityObservation(

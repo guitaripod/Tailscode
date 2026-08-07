@@ -223,6 +223,7 @@ public struct PresenceField: Sendable {
     private var rainbow: Double
     private var weights: [Double]
     private var lastTime: TimeInterval?
+    private var heldTime: TimeInterval = 0
 
     public init(colors: PresenceColors) {
         self.signal = PresenceSignal()
@@ -284,9 +285,11 @@ public struct PresenceField: Sendable {
             }
         }
 
+        if moving { heldTime = time }
+
         let aura = Ultracode.aura(at: time)
         return PresenceFrame(
-            blobs: blobs(at: moving ? time : 0),
+            blobs: blobs(at: heldTime),
             color: color,
             energy: energy,
             intensity: motion.intensity(at: time),
@@ -307,7 +310,10 @@ public struct PresenceField: Sendable {
     /// The core at the origin and each satellite on its own slow orbit. Angles come from the
     /// clock, spaced by the golden angle and drifting in alternating directions at slightly
     /// different rates, so the arrangement never repeats and never looks dealt from a template.
-    /// A time of zero is the resting arrangement — what reduced motion and stillness show.
+    /// A time of zero is the resting arrangement — what reduced motion shows from the start.
+    /// A body going still is drawn at the last moving instant rather than at rest: the orbit
+    /// freezes where it is and each satellite retracts along its own held angle, because every
+    /// parameter glides and a position that teleported would be the one exception.
     private func blobs(at time: TimeInterval) -> [PresenceFrame.Blob] {
         var result = [
             PresenceFrame.Blob(x: 0, y: 0, radius: PresenceTuning.coreRadius, weight: 1)

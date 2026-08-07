@@ -534,9 +534,7 @@ final class SidebarViewController: NSViewController {
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
         known = models
-        orb.update(
-            signal: PresenceSignal.aggregate(
-                models.map { $0.state.activity }, ultracode: ultracodeSource?() ?? false))
+        refreshOrb()
         selection.prune(to: models.map(\.entry))
         MacNotifier.shared.observeListing(
             models.map {
@@ -949,6 +947,16 @@ final class SidebarViewController: NSViewController {
 
     @objc private func orbSettingChanged() {
         orb.setEnabled(PresenceOrbSetting.isEnabled)
+        refreshOrb()
+    }
+
+    /// One cheap re-read of the last aggregate, for the fact that changes without a listing —
+    /// the ultracode aura lighting or dying under a draft. The full render feeds `known`; this
+    /// keeps the rainbow honest between renders.
+    func refreshOrb() {
+        orb.update(
+            signal: PresenceSignal.aggregate(
+                known.map { $0.state.activity }, ultracode: ultracodeSource?() ?? false))
     }
 
     /// A touch on the orb goes to the conversation that most needs the person: a turn stopped to
