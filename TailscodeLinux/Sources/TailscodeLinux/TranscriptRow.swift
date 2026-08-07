@@ -523,7 +523,7 @@ struct TranscriptRow: Hashable {
     }
 
     static func thoughtHeader(_ text: String) -> String {
-        Localized.text("⌄ Thought · %@ words", "\(text.split(separator: " ").count)")
+        Localized.text("Thought · %@ words", "\(text.split(separator: " ").count)")
     }
 
     /// A thought growing under its own disclosure, written into the widget it already has. The
@@ -539,7 +539,7 @@ struct TranscriptRow: Hashable {
             return g_type_check_instance_is_a(instance, gtk_label_get_type()) != 0
         }
         guard let button = gtk_widget_get_first_child(widget),
-            let header = gtk_button_get_child(ptr(button)), isLabel(header)
+            let header = Gtk.disclosureHeader(button), isLabel(header)
         else { return false }
         context.liveReasoning[key] = text
         gtk_label_set_text(op(header), thoughtHeader(text))

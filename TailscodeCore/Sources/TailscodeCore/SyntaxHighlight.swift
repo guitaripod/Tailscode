@@ -47,17 +47,37 @@ struct SyntaxGrammar: Sendable {
         }
     }
 
+    /// A hole in a string where code goes: `\(name)` in Swift, `${…}` in a shell or a template
+    /// literal, a bare `$VAR` where the shell needs no braces. A `close` of nil means the hole ends
+    /// where the identifier does.
+    struct Interpolation: Sendable {
+        let open: String
+        let close: String?
+
+        init(_ open: String, _ close: String? = nil) {
+            self.open = open
+            self.close = close
+        }
+    }
+
     struct Quote: Sendable {
         let open: String
         let close: String
         let escape: Character?
         let multiline: Bool
+        /// Only the quote styles that actually interpolate carry these, which is why a shell's
+        /// single quotes leave `$HOME` alone and its double quotes do not.
+        let interpolations: [Interpolation]
 
-        init(_ open: String, _ close: String? = nil, escape: Character? = "\\", multiline: Bool = false) {
+        init(
+            _ open: String, _ close: String? = nil, escape: Character? = "\\",
+            multiline: Bool = false, interpolations: [Interpolation] = []
+        ) {
             self.open = open
             self.close = close ?? open
             self.escape = escape
             self.multiline = multiline
+            self.interpolations = interpolations
         }
     }
 
@@ -244,6 +264,61 @@ private struct Scanner {
         }
     }
 
+    /// A string, emitted as the runs it is actually made of. A quote that interpolates is not one
+    /// colour: `"deploying ${TARGET} now"` is two pieces of text with a piece of code between them,
+    /// and colouring the variable as string is how a reader misses that the line has a hole in it.
+    /// The hole is checked before the escape, because Swift's `\(` opens one with the same
+    /// character that escapes.
+    private mutating func scanString(_ quote: SyntaxGrammar.Quote, _ extras: Set<Character>) {
+        var runStart = offset
+        advance(quote.open.count)
+        while !isAtEnd {
+            if let hole = quote.interpolations.first(where: { matches($0.open) }) {
+                emit(from: runStart, .string)
+                let holeStart = offset
+                consumeInterpolation(hole, extras)
+                emit(from: holeStart, .attribute)
+                runStart = offset
+                continue
+            }
+            if let escape = quote.escape, peek() == escape {
+                advance(2)
+                continue
+            }
+            if !quote.multiline, peek() == "\n" { break }
+            if matches(quote.close) {
+                advance(quote.close.count)
+                break
+            }
+            advance()
+        }
+        emit(from: runStart, .string)
+    }
+
+    private mutating func consumeInterpolation(
+        _ hole: SyntaxGrammar.Interpolation, _ extras: Set<Character>
+    ) {
+        advance(hole.open.count)
+        guard let close = hole.close else {
+            _ = consumeIdentifier(extras)
+            return
+        }
+        var depth = 1
+        while !isAtEnd, depth > 0 {
+            if matches(hole.open) {
+                depth += 1
+                advance(hole.open.count)
+                continue
+            }
+            if matches(close) {
+                depth -= 1
+                advance(close.count)
+                continue
+            }
+            advance()
+        }
+    }
+
     private static func isIdentifierStart(_ character: Character, _ extras: Set<Character>) -> Bool {
         character.isLetter || extras.contains(character)
     }
@@ -315,8 +390,7 @@ private struct Scanner {
             }
 
             if let quote = grammar.quotes.first(where: { matches($0.open) }) {
-                consumeQuote(quote)
-                emit(from: start, .string)
+                scanString(quote, grammar.identifierExtras)
                 continue
             }
 
@@ -761,7 +835,10 @@ enum Grammars {
     static let swift = SyntaxGrammar(
         lineComments: ["///", "//"],
         blocks: [SyntaxGrammar.Block("/*", "*/", nests: true)],
-        quotes: [SyntaxGrammar.Quote("\"\"\"", multiline: true), SyntaxGrammar.Quote("\"")],
+        quotes: [
+            SyntaxGrammar.Quote("\"\"\"", multiline: true, interpolations: [.init("\\(", ")")]),
+            SyntaxGrammar.Quote("\"", interpolations: [.init("\\(", ")")]),
+        ],
         keywords: [
             "actor", "as", "associatedtype", "async", "await", "borrowing", "break", "case",
             "catch", "class", "consuming", "continue", "convenience", "default", "defer", "deinit",
@@ -804,8 +881,10 @@ enum Grammars {
     static let javascript = SyntaxGrammar(
         lineComments: ["//"],
         blocks: cBlocks,
-        quotes: [SyntaxGrammar.Quote("`", multiline: true), SyntaxGrammar.Quote("\""),
-            SyntaxGrammar.Quote("'")],
+        quotes: [
+            SyntaxGrammar.Quote("`", multiline: true, interpolations: [.init("${", "}")]),
+            SyntaxGrammar.Quote("\""), SyntaxGrammar.Quote("'"),
+        ],
         keywords: [
             "abstract", "as", "async", "await", "break", "case", "catch", "class", "const",
             "continue", "declare", "default", "delete", "do", "else", "enum", "export", "extends",
@@ -915,8 +994,12 @@ enum Grammars {
     static let kotlin = SyntaxGrammar(
         lineComments: ["//"],
         blocks: [SyntaxGrammar.Block("/*", "*/", nests: true)],
-        quotes: [SyntaxGrammar.Quote("\"\"\"", multiline: true), SyntaxGrammar.Quote("\""),
-            SyntaxGrammar.Quote("'")],
+        quotes: [
+            SyntaxGrammar.Quote(
+                "\"\"\"", multiline: true, interpolations: [.init("${", "}"), .init("$")]),
+            SyntaxGrammar.Quote("\"", interpolations: [.init("${", "}"), .init("$")]),
+            SyntaxGrammar.Quote("'"),
+        ],
         keywords: [
             "abstract", "actual", "as", "break", "by", "catch", "class", "companion", "const",
             "constructor", "continue", "crossinline", "data", "delegate", "do", "else", "enum",
@@ -938,7 +1021,8 @@ enum Grammars {
         lineComments: ["///", "//"],
         blocks: cBlocks,
         quotes: [SyntaxGrammar.Quote("@\"", "\"", escape: nil, multiline: true),
-            SyntaxGrammar.Quote("$\"", "\""), SyntaxGrammar.Quote("\""),
+            SyntaxGrammar.Quote("$\"", "\"", interpolations: [.init("{", "}")]),
+            SyntaxGrammar.Quote("\""),
             SyntaxGrammar.Quote("'")],
         keywords: [
             "abstract", "as", "async", "await", "base", "break", "case", "catch", "checked",
@@ -962,7 +1046,10 @@ enum Grammars {
     static let ruby = SyntaxGrammar(
         lineComments: ["#"],
         blocks: [SyntaxGrammar.Block("=begin", "=end")],
-        quotes: [SyntaxGrammar.Quote("\""), SyntaxGrammar.Quote("'"), SyntaxGrammar.Quote("%w(", ")")],
+        quotes: [
+            SyntaxGrammar.Quote("\"", interpolations: [.init("#{", "}")]),
+            SyntaxGrammar.Quote("'"), SyntaxGrammar.Quote("%w(", ")"),
+        ],
         keywords: [
             "alias", "and", "begin", "break", "case", "class", "def", "defined?", "do", "else",
             "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next", "nil", "not",
@@ -976,8 +1063,11 @@ enum Grammars {
 
     static let shell = SyntaxGrammar(
         lineComments: ["#"],
-        quotes: [SyntaxGrammar.Quote("\"", multiline: true),
-            SyntaxGrammar.Quote("'", escape: nil, multiline: true)],
+        quotes: [
+            SyntaxGrammar.Quote(
+                "\"", multiline: true, interpolations: [.init("${", "}"), .init("$")]),
+            SyntaxGrammar.Quote("'", escape: nil, multiline: true),
+        ],
         keywords: [
             "case", "do", "done", "elif", "else", "esac", "fi", "for", "function", "if", "in",
             "return", "select", "then", "time", "until", "while", "export", "local", "readonly",
@@ -996,7 +1086,10 @@ enum Grammars {
     static let php = SyntaxGrammar(
         lineComments: ["//", "#"],
         blocks: cBlocks,
-        quotes: cQuotes,
+        quotes: [
+            SyntaxGrammar.Quote("\"", interpolations: [.init("${", "}"), .init("$")]),
+            SyntaxGrammar.Quote("'"),
+        ],
         keywords: [
             "abstract", "and", "array", "as", "break", "callable", "case", "catch", "class",
             "clone", "const", "continue", "declare", "default", "do", "echo", "else", "elseif",
@@ -1058,8 +1151,11 @@ enum Grammars {
 
     static let elixir = SyntaxGrammar(
         lineComments: ["#"],
-        quotes: [SyntaxGrammar.Quote("\"\"\"", multiline: true), SyntaxGrammar.Quote("\""),
-            SyntaxGrammar.Quote("'")],
+        quotes: [
+            SyntaxGrammar.Quote("\"\"\"", multiline: true, interpolations: [.init("#{", "}")]),
+            SyntaxGrammar.Quote("\"", interpolations: [.init("#{", "}")]),
+            SyntaxGrammar.Quote("'"),
+        ],
         keywords: [
             "after", "and", "case", "catch", "cond", "def", "defexception", "defimpl", "defmacro",
             "defmodule", "defp", "defprotocol", "defstruct", "do", "else", "end", "false", "fn",

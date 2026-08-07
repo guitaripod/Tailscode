@@ -78,35 +78,47 @@ enum MacMarkdown {
             style.color = .secondaryLabelColor
             let quoted = NSMutableAttributedString(string: "│ ", attributes: attributes(style))
             quoted.append(inline(body, base: style))
-            return quoted
+            return indented(quoted, first: 12, rest: 12)
         }
         if let marker = bulletMarker(trimmed) {
             let body = String(trimmed.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
-            let pad = String(repeating: " ", count: min(8, indent))
             let glyph = indent >= 2 ? "◦" : "•"
-            let line = NSMutableAttributedString(string: pad, attributes: attributes(Style()))
             var accent = Style()
             accent.color = .controlAccentColor
-            line.append(NSAttributedString(string: glyph, attributes: attributes(accent)))
-            line.append(NSAttributedString(string: " ", attributes: attributes(Style())))
+            let line = NSMutableAttributedString(
+                string: "\(glyph)  ", attributes: attributes(accent))
             line.append(inline(body, base: Style()))
-            return line
+            let depth = CGFloat(min(8, indent)) * 6
+            return indented(line, first: depth, rest: depth + 14)
         }
         if let number = numberedMarker(trimmed) {
             let body = String(trimmed.dropFirst(number.count)).trimmingCharacters(in: .whitespaces)
-            let pad = String(repeating: " ", count: min(8, indent))
-            let line = NSMutableAttributedString(string: pad, attributes: attributes(Style()))
+            let label = number.trimmingCharacters(in: .whitespaces)
             var accent = Style()
             accent.color = .controlAccentColor
-            line.append(
-                NSAttributedString(
-                    string: number.trimmingCharacters(in: .whitespaces),
-                    attributes: attributes(accent)))
-            line.append(NSAttributedString(string: " ", attributes: attributes(Style())))
+            let line = NSMutableAttributedString(
+                string: "\(label) ", attributes: attributes(accent))
             line.append(inline(body, base: Style()))
-            return line
+            let depth = CGFloat(min(8, indent)) * 6
+            return indented(line, first: depth, rest: depth + CGFloat(label.count + 1) * 8)
         }
         return inline(raw, base: Style())
+    }
+
+    /// A list item is one paragraph with two left edges: the glyph sits at `first`, everything the
+    /// line wraps onto sits at `rest`. Padding it with spaces instead — which is all a single Pango
+    /// label can do — puts the second line of an item back under the bullet, where it reads as a
+    /// new item rather than the rest of this one.
+    private static func indented(
+        _ line: NSMutableAttributedString, first: CGFloat, rest: CGFloat
+    ) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.firstLineHeadIndent = first
+        paragraph.headIndent = rest
+        paragraph.paragraphSpacing = 3
+        line.addAttribute(
+            .paragraphStyle, value: paragraph, range: NSRange(location: 0, length: line.length))
+        return line
     }
 
     private static func bulletMarker(_ line: String) -> String? {

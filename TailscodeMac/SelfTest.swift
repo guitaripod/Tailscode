@@ -275,6 +275,26 @@ enum SelfTest {
             return found
         }
 
+        func paragraph(in rendered: NSAttributedString, over needle: String)
+            -> NSParagraphStyle?
+        {
+            let range = (rendered.string as NSString).range(of: needle)
+            guard range.location != NSNotFound else { return nil }
+            return rendered.attributes(at: range.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        }
+
+        let listed = MacMarkdown.render("- first item\n- second item\n\nplain line")
+        let item = paragraph(in: listed, over: "first item")
+        try expect(item != nil, "a list item is its own paragraph")
+        try expect(
+            (item?.headIndent ?? 0) > (item?.firstLineHeadIndent ?? 0),
+            "a wrapped list line hangs past its bullet instead of returning to the margin")
+        try expect((item?.paragraphSpacing ?? 0) > 0, "items are spaced apart, not run together")
+        try expect(
+            paragraph(in: listed, over: "plain line") == nil, "prose is not indented like a list")
+        try expect(!listed.string.contains("- first"), "the marker is replaced by its glyph")
+
         let bold = MacMarkdown.render("**bold** here")
         try expect(
             weight(font(attributes(in: bold, over: "bold")))

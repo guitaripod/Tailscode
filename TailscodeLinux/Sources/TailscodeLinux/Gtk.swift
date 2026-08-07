@@ -412,7 +412,14 @@ enum Gtk {
         let button = gtk_button_new()!
         addClass(button, "flat")
         addClass(button, "disclosure")
-        gtk_button_set_child(ptr(button), header)
+        let row = box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let chevron = label(
+            expanded ? Self.chevronOpen : Self.chevronShut, css: "disclosure-chevron",
+            selectable: false)
+        gtk_box_append(ptr(row), chevron)
+        gtk_widget_set_hexpand(header, 1)
+        gtk_box_append(ptr(row), header)
+        gtk_button_set_child(ptr(button), row)
         gtk_box_append(ptr(column), button)
         let slot = Slot()
         if expanded {
@@ -421,12 +428,18 @@ enum Gtk {
             slot.bits = UInt(bitPattern: body)
         }
         let columnBits = UInt(bitPattern: column)
+        let chevronBits = UInt(bitPattern: chevron)
+        @Sendable func mark(_ open: Bool) {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: chevronBits) else { return }
+            gtk_label_set_text(op(raw), open ? Self.chevronOpen : Self.chevronShut)
+        }
         connect(UnsafeMutableRawPointer(button), "clicked") {
             if slot.bits == 0 {
                 guard let raw = UnsafeMutableRawPointer(bitPattern: columnBits) else { return }
                 let body = makeBody()
                 gtk_box_append(ptr(raw), body)
                 slot.bits = UInt(bitPattern: body)
+                mark(true)
                 onToggle(true)
                 return
             }
@@ -434,9 +447,25 @@ enum Gtk {
             let body: UnsafeMutablePointer<GtkWidget> = ptr(raw)
             let showing = gtk_widget_get_visible(body) != 0
             gtk_widget_set_visible(body, showing ? 0 : 1)
+            mark(!showing)
             onToggle(!showing)
         }
         return column
+    }
+
+    /// A row that opens says so, and says which way it is. Both glyphs are one cell wide, because a
+    /// mark that changes width moves the words beside it every time somebody expands a row.
+    static let chevronShut = "▸"
+    static let chevronOpen = "▾"
+
+    /// The header a `disclosure` was built around, past the chevron the shared shape adds. A caller
+    /// that writes into its own header — a thought counting its words as it grows — has to reach it
+    /// through the wrapper rather than assume the button's child is its label.
+    static func disclosureHeader(_ button: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>?
+    {
+        guard let row = gtk_button_get_child(ptr(button)) else { return nil }
+        return gtk_widget_get_last_child(row)
     }
 
     /// A button that opens a popover of rows. One shape serves the actions menu, the model picker

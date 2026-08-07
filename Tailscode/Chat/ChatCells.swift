@@ -341,6 +341,7 @@ final class TextBubbleCell: UICollectionViewCell {
                     let paragraph = NSMutableParagraphStyle()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
+                    paragraph.paragraphSpacing = Self.listItemSpacing
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
                     edits.append((
                         NSRange(location: substringRange.location + indentDepth, length: 2),
@@ -350,6 +351,7 @@ final class TextBubbleCell: UICollectionViewCell {
                     let paragraph = NSMutableParagraphStyle()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + CGFloat(digits + 1) * 8
+                    paragraph.paragraphSpacing = Self.listItemSpacing
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
                 } else if trimmedStart.hasPrefix("> ") {
                     let paragraph = NSMutableParagraphStyle()
@@ -377,6 +379,11 @@ final class TextBubbleCell: UICollectionViewCell {
         renderCache.setObject(result, forKey: key)
         return result
     }
+
+    /// A list reads as a list when the gap between two items is bigger than the gap inside one.
+    /// Equal spacing everywhere is what makes a wrapped item look like two items — the hanging
+    /// indent says where an item continues, and this says where the next one starts.
+    static let listItemSpacing: CGFloat = 3
 
     /// The digit count of a `1. ` / `12) ` ordered-list marker, or nil when
     /// the line is not a list item — used to hang wrapped lines past the number.

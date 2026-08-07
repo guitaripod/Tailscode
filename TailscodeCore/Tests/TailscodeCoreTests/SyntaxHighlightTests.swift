@@ -123,10 +123,42 @@ import Testing
     }
 
     @Test func shellVariablesAndBracedExpansionsAreMarked() {
-        let source = "echo \"$HOME and ${XDG_CONFIG_HOME}\""
-        #expect(text(source, "bash", role: .attribute).isEmpty)
         let bare = "cp $SRC ${DEST}/out"
         #expect(text(bare, "bash", role: .attribute) == ["$SRC", "${DEST}"])
+    }
+
+    /// A quote that interpolates is not one colour. The variable is code sitting inside text, and
+    /// colouring it as string is how a reader misses that the line has a hole in it.
+    @Test func interpolationBreaksOutOfTheString() {
+        let shell = "echo \"home is $HOME and ${XDG_CONFIG_HOME} ok\""
+        #expect(text(shell, "bash", role: .attribute) == ["$HOME", "${XDG_CONFIG_HOME}"])
+        #expect(
+            text(shell, "bash", role: .string) == ["\"home is ", " and ", " ok\""])
+
+        let swift = #"print("hi \(name), you are \(age) years old")"#
+        #expect(text(swift, "swift", role: .attribute) == [#"\(name)"#, #"\(age)"#])
+
+        let template = "const s = `a ${x + 1} b ${f(`${y}`)} c`"
+        #expect(text(template, "javascript", role: .attribute) == ["${x + 1}", "${f(`${y}`)}"])
+
+        let ruby = "puts \"count: #{items.size}\""
+        #expect(text(ruby, "ruby", role: .attribute) == ["#{items.size}"])
+    }
+
+    /// The shells are the reason interpolation lives on the quote and not on the language: single
+    /// quotes are literal, and a `$` inside them is a dollar sign.
+    @Test func singleQuotesDoNotInterpolate() {
+        let source = "echo '$HOME stays put'"
+        #expect(text(source, "bash", role: .attribute).isEmpty)
+        #expect(text(source, "bash", role: .string) == ["'$HOME stays put'"])
+    }
+
+    /// Swift's interpolation opens with the same character that escapes, so the hole has to be
+    /// checked first — otherwise `\(` reads as an escaped paren and the whole tail is string.
+    @Test func swiftEscapeAndInterpolationDoNotCollide() {
+        let source = #"let s = "a \" b \(value) c""#
+        #expect(text(source, "swift", role: .attribute) == [#"\(value)"#])
+        #expect(text(source, "swift", role: .string) == [#""a \" b "#, #" c""#])
     }
 
     @Test func sqlKeywordsAreCaseInsensitive() {

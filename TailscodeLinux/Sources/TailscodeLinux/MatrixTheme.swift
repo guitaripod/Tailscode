@@ -414,6 +414,12 @@ enum MatrixTheme {
         }
         .disclosure { padding: 0; min-height: 0; }
         .disclosure:hover { background-color: \(canvasRaised); }
+        .disclosure-chevron {
+            color: \(textDim);
+            font-family: monospace;
+            font-size: \(m(0.78));
+        }
+        .disclosure:hover .disclosure-chevron { color: \(accent); }
 
         .card {
             background-color: \(canvasRaised);
