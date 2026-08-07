@@ -1,4 +1,5 @@
 import CAdw
+import CGtkShim
 import Foundation
 import TailscodeCore
 
@@ -36,15 +37,21 @@ enum SidebarRow {
     /// the click landed, so the caller can open a menu under the pointer. The row is also the
     /// handle a pointer picks the chat up by: it carries its own identity to whichever pane it is
     /// dragged onto.
+    ///
+    /// The mark lives in a button of its own beside the chat rather than inside it, because a
+    /// press inside a `GtkButton` belongs to that button: a marker drawn into the row would open
+    /// the conversation every time someone tried to select it.
     static func make(
-        _ model: SessionRowModel, focused: Bool,
+        _ model: SessionRowModel, focused: Bool, marked: Bool = false,
         onOpen: @escaping @Sendable () -> Void,
+        onMark: @escaping @Sendable () -> Void = {},
         onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "session-row")
         if focused { Gtk.addClass(button, "row-focused") }
+        if marked { Gtk.addClass(button, "row-marked") }
 
         let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
@@ -88,6 +95,34 @@ enum SidebarRow {
             button,
             payload: PaneDragPayload(
                 profileID: model.entry.profileID, sessionID: model.entry.session.id).encoded)
+        gtk_widget_set_hexpand(button, 1)
+
+        let holder = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(holder, "session-row-holder")
+        gtk_box_append(ptr(holder), makeMark(marked: marked, onMark: onMark))
+        gtk_box_append(ptr(holder), button)
+        return holder
+    }
+
+    /// The mark itself: quiet until the pointer is over the row or the chat is actually marked,
+    /// so a list nobody is selecting in does not wear a column of empty boxes. It states which it
+    /// is in its accessible name too — an opacity is not a label a screen reader can read.
+    private static func makeMark(
+        marked: Bool, onMark: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "row-mark")
+        if marked { Gtk.addClass(button, "row-mark-on") }
+        let glyph = Gtk.label(marked ? "☑" : "☐", css: "row-mark-glyph", selectable: false)
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_button_set_child(ptr(button), glyph)
+        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        let label =
+            marked ? Localized.text("Marked — click to unmark") : Localized.text("Mark this chat")
+        gtk_widget_set_tooltip_text(button, label)
+        tailscode_set_accessible_label(button, label)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onMark)
         return button
     }
 

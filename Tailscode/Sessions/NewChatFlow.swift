@@ -1,68 +1,48 @@
-import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
+import TailscodeCore
 import UIKit
 
-/// The one way a chat starts anywhere in the app: pick the project directory
-/// with the server's file browser when the backend can list files, fall back
-/// to a typed path, create the session, and hand the entry back.
+/// The one way a chat starts anywhere in the app: `NewChatViewController` as a sheet, which asks
+/// both halves of the question — which machine, which folder — on one screen. Callers keep handing
+/// in the server they think is meant; the modal pre-chooses it and lets it be changed.
 @MainActor
 enum NewChatFlow {
     static func begin(
         from presenter: UIViewController,
         profile: ConnectionProfile,
         viewModel: SessionListViewModel,
-        onOpen: @escaping (SessionEntry) -> Void
+        onOpen: @escaping @MainActor (SessionEntry) -> Void
     ) {
-        guard let backend = viewModel.backend(forProfileID: profile.id),
-            let fileBackend = backend as? (any FileBrowsingBackend),
-            backend.capabilities.supportsFileBrowsing
-        else {
-            promptForPath(from: presenter, profile: profile, viewModel: viewModel, onOpen: onOpen)
-            return
-        }
-        let browser = FileBrowserViewController(backend: fileBackend, profileID: profile.id)
-        browser.onSelect = { [weak presenter] path in
-            guard let presenter else { return }
-            presenter.presentedViewController?.dismiss(animated: true) {
-                Task {
-                    guard let entry = await viewModel.newSession(on: profile, directory: path)
-                    else { return }
-                    onOpen(entry)
-                }
-            }
-        }
-        presenter.present(UINavigationController(rootViewController: browser), animated: true)
+        let chooser = NewChatViewController(viewModel: viewModel, preferredServer: profile.id)
+        chooser.onStart = onOpen
+        present(chooser, from: presenter)
     }
 
-    private static func promptForPath(
+    /// The same screen used only to answer "where", for Home's docked composer: it creates the
+    /// session when the message is sent, so it wants the server and folder rather than a chat.
+    static func chooseDirectory(
         from presenter: UIViewController,
         profile: ConnectionProfile,
         viewModel: SessionListViewModel,
-        onOpen: @escaping (SessionEntry) -> Void
+        onChoose: @escaping @MainActor (String, String?) -> Void
     ) {
-        let alert = UIAlertController(
-            title: String(localized: "New Chat"),
-            message: String(localized: "Enter a directory path on the server"),
-            preferredStyle: .alert)
-        alert.addTextField { textField in
-            textField.placeholder = "/path/to/project"
-            textField.autocorrectionType = .no
-            textField.autocapitalizationType = .none
-            textField.keyboardType = .URL
+        let chooser = NewChatViewController(
+            viewModel: viewModel, preferredServer: profile.id, purpose: .choose)
+        chooser.onChoose = onChoose
+        present(chooser, from: presenter)
+    }
+
+    /// A sheet rather than a full-screen push: the list stays behind it, and it opens at the large
+    /// detent because a keyboard over the medium one leaves two rows of the answer visible.
+    private static func present(_ chooser: NewChatViewController, from presenter: UIViewController) {
+        let nav = UINavigationController(rootViewController: chooser)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.selectedDetentIdentifier = .large
+            sheet.prefersGrabberVisible = true
+            sheet.prefersScrollingExpandsWhenScrolledToEdge = true
         }
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Create"), style: .default) { [weak alert] _ in
-            let trimmed = alert?.textFields?.first?.text?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let directory = trimmed?.isEmpty == false ? trimmed : nil
-            Task {
-                guard let entry = await viewModel.newSession(on: profile, directory: directory)
-                else { return }
-                onOpen(entry)
-            }
-        })
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        presenter.present(alert, animated: true)
+        presenter.present(nav, animated: true)
     }
 }

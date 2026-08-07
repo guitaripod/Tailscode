@@ -3,6 +3,13 @@ import CodingAgentKit
 import CodingAgentKitApple
 import TailscodeCore
 
+/// One chat and the machine that can remove it, paired before the fan-out so the concurrent half
+/// never has to reach back into the directory from off the main actor.
+private struct DeleteTarget: Sendable {
+    let entry: SessionEntry
+    let backend: any CodingAgentBackend
+}
+
 /// The chat list: every conversation on every configured server, grouped LIVE NOW / SAVED /
 /// RECENT, filterable, archivable — the Linux sidebar's semantics spoken through an NSTableView
 /// kept transparent over the system sidebar glass.
@@ -23,6 +30,11 @@ final class SidebarViewController: NSViewController {
     /// is a fact about the focused pane, not about this list's last click — an empty pane must
     /// be able to receive the row the previous pane still shows.
     var focusedSessionID: (() -> String?)?
+    /// What the open panes know first-hand about the conversations they are streaming, keyed on
+    /// `(profileID, sessionID)`. A listing reports `active` for the seconds a turn is literally
+    /// open on the server and never reports a turn that stopped to ask something, so the chat a
+    /// person is talking in right now leads LIVE NOW from here rather than from the next sweep.
+    var presenceSource: (() -> [String: SessionPresence])?
 
     private(set) var showingArchive = false
 
@@ -31,16 +43,27 @@ final class SidebarViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let rowMenu = NSMenu()
     private let usageFooter = UsageFooterView()
+    private let bulkBar = SidebarBulkBar()
 
     private(set) var entries: [SessionEntry] = []
     private var unreachable: [String] = []
     private var visible: [SessionRowModel] = []
+    /// Every row the list knows about, before the filter and the archive view narrow it — what a
+    /// bulk verb acts on, so a mark survives a keystroke in the filter field.
+    private var known: [SessionRowModel] = []
     private var rows: [SidebarRow] = []
+    /// The chats a verb is about to act on. Ephemeral by design: a gesture in progress, cleared
+    /// by escape, by the verb that consumed it, and by any row that leaves the listing.
+    private var selection = ChatSelection()
+    private var lastPresence: [String: SessionPresence] = [:]
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing —
     /// the 10-second refresh, the session-list stream, a stale request already in flight — keeps
     /// reporting the session until the delete lands, and each report would resurrect the row; the
     /// tombstone outlives them all and is lifted only once the post-delete refresh has
-    /// reconciled, or the delete failed and the row should genuinely return.
+    /// reconciled, or the delete failed and the row should genuinely return. Keyed on
+    /// `(profileID, sessionID)` like every other store here, because a selection spanning two
+    /// servers can hold the same session id twice and a tombstone on the bare id would take the
+    /// other machine's row out of the list with it.
     private var pendingDeletes: Set<String> = []
     /// A chat created a heartbeat ago is kept in the list by hand until the server's own listing
     /// carries it — a bridge that answers from a sweep a second old would otherwise blink the
@@ -88,9 +111,19 @@ final class SidebarViewController: NSViewController {
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
+        bulkBar.isHidden = true
+        bulkBar.onAction = { [weak self] action in self?.applyBulk(action) }
+        bulkBar.onClear = { [weak self] in self?.clearMarks() }
+
+        let footer = NSStackView(views: [bulkBar, usageFooter])
+        footer.orientation = .vertical
+        footer.alignment = .width
+        footer.spacing = MacTheme.Spacing.xs
+        footer.translatesAutoresizingMaskIntoConstraints = false
+
         container.addSubview(searchField)
         container.addSubview(scrollView)
-        container.addSubview(usageFooter)
+        container.addSubview(footer)
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(
                 equalTo: container.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
@@ -103,12 +136,12 @@ final class SidebarViewController: NSViewController {
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.bottomAnchor.constraint(
-                equalTo: usageFooter.topAnchor, constant: -MacTheme.Spacing.xs),
-            usageFooter.leadingAnchor.constraint(
+                equalTo: footer.topAnchor, constant: -MacTheme.Spacing.xs),
+            footer.leadingAnchor.constraint(
                 equalTo: container.leadingAnchor, constant: MacTheme.Spacing.m),
-            usageFooter.trailingAnchor.constraint(
+            footer.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.m),
-            usageFooter.bottomAnchor.constraint(
+            footer.bottomAnchor.constraint(
                 equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.s),
         ])
         view = container
@@ -149,7 +182,7 @@ final class SidebarViewController: NSViewController {
 
     func refresh() async {
         ServerDirectory.shared.reload()
-        let (fresh, down) = await ServerDirectory.shared.entries()
+        let (fresh, down) = await ServerDirectory.shared.entries(knownDirectories: recentDirectories)
         if !fresh.isEmpty { SessionListCache.save(fresh) }
         SavedChatStore.reconcile(with: fresh)
         applyEntries(fresh, unreachable: down)
@@ -163,8 +196,8 @@ final class SidebarViewController: NSViewController {
     /// A fresh listing landed: the hub restates any chooser standing on the old one.
     var onEntriesChanged: (() -> Void)?
 
-    /// The directories chats already work in, newest first — what the new-chat sheet offers, so
-    /// + then Enter starts a conversation where the last one worked.
+    /// The directories chats already work in, newest first — the seed for the per-project walk a
+    /// listing needs, and the same places the new-chat chooser ranks.
     var recentDirectories: [String] {
         var seen = Set<String>()
         return entries.compactMap(\.session.directory).filter { seen.insert($0).inserted }
@@ -274,6 +307,64 @@ final class SidebarViewController: NSViewController {
         } else {
             SessionSeenStore.markUnread(entry.session.id, updatedAt: entry.session.updatedAt)
         }
+        render()
+    }
+
+    /// How many chats a verb would act on right now — read by the menu bar so Delete says what it
+    /// would delete before it is opened.
+    var markedCount: Int { selection.count }
+
+    /// Space: the row under the keyboard cursor joins the set, or leaves it.
+    func toggleMarkUnderCursor() {
+        guard cursor < visible.count else { return }
+        selection.toggle(visible[cursor].entry)
+        lastSidebar = nil
+        render()
+    }
+
+    /// ⌃a: everything the list is showing, or — pressed again with all of it already held —
+    /// nothing. The archive view and the filter decide what "shown" means, so select-all never
+    /// reaches a row the eye cannot see.
+    func toggleMarkAllShown() {
+        selection.toggleAll(in: visible.map(\.entry))
+        lastSidebar = nil
+        render()
+    }
+
+    /// Escape clears the marks before it means anything else, so the way out of a gesture is the
+    /// same key everywhere in the app. Answers whether there was anything to clear.
+    @discardableResult
+    func clearMarks() -> Bool {
+        guard !selection.isEmpty else { return false }
+        selection.clear()
+        lastSidebar = nil
+        render()
+        return true
+    }
+
+    /// `x`, and the menu bar's Delete: every marked chat, or the one under the cursor when
+    /// nothing is marked — the single-row delete is the same gesture with a set of one.
+    func presentDeleteFromKeyboard() {
+        let marked = markedModels
+        if !marked.isEmpty {
+            presentBulkDelete(marked)
+            return
+        }
+        guard cursor < visible.count else { return }
+        let entry = visible[cursor].entry
+        guard let backend = backend(for: entry) else {
+            onNotice?(Localized.text("That server is not configured."))
+            return
+        }
+        presentDelete(entry: entry, backend: backend)
+    }
+
+    /// A pane's stream said something new. The list only rebuilds when what it would say about a
+    /// conversation actually changed, because a running turn reports on every chunk and rebuilding
+    /// the whole table per chunk is the one thing this list must never do.
+    func notePresenceChanged() {
+        let presence = presenceSource?() ?? [:]
+        guard presence != lastPresence else { return }
         render()
     }
 
@@ -411,7 +502,9 @@ final class SidebarViewController: NSViewController {
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
         let needle = filter.lowercased()
-        var models = entries.filter { !pendingDeletes.contains($0.session.id) }.map {
+        let presence = presenceSource?() ?? [:]
+        lastPresence = presence
+        var models = entries.filter { !pendingDeletes.contains(ChatSelection.key($0)) }.map {
             SessionRowModel(
                 entry: $0,
                 unreachable: unreachable.contains(
@@ -419,9 +512,12 @@ final class SidebarViewController: NSViewController {
                 unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id),
                 pinned: SessionPinStore.contains(
-                    profileID: $0.profileID, sessionID: $0.session.id))
+                    profileID: $0.profileID, sessionID: $0.session.id),
+                presence: presence[ChatSelection.key($0)] ?? .unobserved)
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
+        known = models
+        selection.prune(to: models.map(\.entry))
         MacNotifier.shared.observeListing(
             models.map {
                 ActivityObservation(
@@ -452,9 +548,11 @@ final class SidebarViewController: NSViewController {
         let snapshot = (
             visible, unreachable, filter,
             "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
+                + "|\(selection.keys.sorted().joined(separator: ","))"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
+        renderBulkBar()
 
         var next: [SidebarRow] = []
         if !unreachable.isEmpty {
@@ -480,7 +578,7 @@ final class SidebarViewController: NSViewController {
                 next.append(.header(title, members.count))
                 for model in members {
                     guard built < sidebarLimit else { break }
-                    next.append(.session(model))
+                    next.append(.session(model, marked: selection.contains(model.entry)))
                     built += 1
                 }
             }
@@ -528,7 +626,7 @@ final class SidebarViewController: NSViewController {
 
     private func rowIndex(of sessionID: String) -> Int? {
         rows.firstIndex {
-            if case .session(let model) = $0 { return model.entry.session.id == sessionID }
+            if case .session(let model, _) = $0 { return model.entry.session.id == sessionID }
             return false
         }
     }
@@ -551,34 +649,178 @@ final class SidebarViewController: NSViewController {
         }
     }
 
+    /// One chat's delete is the bulk delete with a set of one, so the tombstone, the optimistic
+    /// removal and the way a refusal is reported have exactly one implementation.
     private func deleteOptimistically(_ entry: SessionEntry, backend: any CodingAgentBackend) {
-        let sessionID = entry.session.id
-        pendingDeletes.insert(sessionID)
-        entries.removeAll { $0.profileID == entry.profileID && $0.session.id == sessionID }
-        if freshlyCreated?.session.id == sessionID { freshlyCreated = nil }
-        onDeleted?(entry)
-        if selectedID == sessionID {
+        delete([DeleteTarget(entry: entry, backend: backend)])
+    }
+
+    /// Optimistic on confirm, concurrent behind it: the rows leave before the round trip, every
+    /// server is asked at once rather than in turn, and what came back is reported in one sentence
+    /// from `BulkChatCopy` — a partial failure that said nothing would read as a delete that
+    /// silently skipped. Tombstones are keyed on the `(profile, session)` pair and lifted only
+    /// once the refresh behind the request has reconciled.
+    private func delete(_ targets: [DeleteTarget]) {
+        guard !targets.isEmpty else { return }
+        let keys = Set(targets.map { ChatSelection.key($0.entry) })
+        pendingDeletes.formUnion(keys)
+        entries.removeAll { keys.contains(ChatSelection.key($0)) }
+        if let fresh = freshlyCreated, keys.contains(ChatSelection.key(fresh)) {
+            freshlyCreated = nil
+        }
+        for target in targets { onDeleted?(target.entry) }
+        if let openID = selectedID, targets.contains(where: { $0.entry.session.id == openID }) {
             selectedID = nil
             if let next = entries.first { open(next) }
         }
+        lastSidebar = nil
         render()
         Task { [weak self] in
-            let failure: String?
-            do {
-                try await backend.deleteSession(sessionID)
-                failure = nil
-            } catch {
-                failure = "\(error)"
-            }
+            let outcome = await Self.fanOutDelete(targets)
             guard let self else { return }
-            if failure == nil { await self.refresh() }
-            self.pendingDeletes.remove(sessionID)
-            if let failure {
-                self.onNotice?(Localized.text("Could not delete: %@", failure))
-                self.render()
-                await self.refresh()
-            }
+            if outcome.deleted > 0 { await self.refresh() }
+            self.pendingDeletes.subtract(keys)
+            guard !outcome.isClean else { return }
+            if let sentence = BulkChatCopy.outcome(outcome) { self.onNotice?(sentence) }
+            self.lastSidebar = nil
+            self.render()
+            await self.refresh()
         }
+    }
+
+    private nonisolated static func fanOutDelete(_ targets: [DeleteTarget]) async
+        -> BulkChatOutcome
+    {
+        await withTaskGroup(of: String?.self) { group in
+            for target in targets {
+                group.addTask {
+                    do {
+                        try await target.backend.deleteSession(target.entry.session.id)
+                        return nil
+                    } catch {
+                        return "\(error)"
+                    }
+                }
+            }
+            var deleted = 0
+            var reasons: [String] = []
+            for await failure in group {
+                if let failure { reasons.append(failure) } else { deleted += 1 }
+            }
+            return BulkChatOutcome(
+                deleted: deleted, failed: reasons.count, reason: reasons.first)
+        }
+    }
+
+    /// The marked chats in the order the list is drawing them, so a confirm dialog names them the
+    /// way the eye just read them — taken from everything the list knows rather than from what the
+    /// filter is showing, because a mark made before a keystroke in the filter field is still a
+    /// mark the person made.
+    private var markedModels: [SessionRowModel] {
+        known.filter { selection.contains($0.entry) }
+    }
+
+    private func renderBulkBar() {
+        let marked = markedModels
+        bulkBar.isHidden = marked.isEmpty
+        guard !marked.isEmpty else { return }
+        bulkBar.render(count: marked.count, actions: Self.bulkActions(for: marked))
+    }
+
+    /// What the verbs mean for what is held. A set that is entirely archived offers to unarchive,
+    /// an entirely saved set offers to unsave, and a set holding anything unread offers to mark it
+    /// read — a button must never do the opposite of the word on it.
+    private static func bulkActions(for models: [SessionRowModel]) -> [BulkChatAction] {
+        let archived = models.allSatisfy {
+            ArchivedChatStore.contains(
+                profileID: $0.entry.profileID, sessionID: $0.entry.session.id)
+        }
+        let saved = models.allSatisfy(\.saved)
+        let unread = models.contains { $0.unread }
+        return [
+            .delete, archived ? .unarchive : .archive, saved ? .unsave : .save,
+            unread ? .markRead : .markUnread,
+        ]
+    }
+
+    private func applyBulk(_ action: BulkChatAction) {
+        let marked = markedModels
+        guard !marked.isEmpty else { return }
+        switch action {
+        case .delete:
+            presentBulkDelete(marked)
+        case .archive, .unarchive:
+            let wanted = action == .archive
+            for model in marked {
+                let archived = ArchivedChatStore.contains(
+                    profileID: model.entry.profileID, sessionID: model.entry.session.id)
+                guard archived != wanted else { continue }
+                ArchivedChatStore.toggle(
+                    profileID: model.entry.profileID, sessionID: model.entry.session.id)
+            }
+            finishBulk()
+        case .save:
+            for model in marked where !model.saved { SavedChatStore.save(model.entry) }
+            finishBulk()
+        case .unsave:
+            for model in marked {
+                SavedChatStore.remove(
+                    profileID: model.entry.profileID, sessionID: model.entry.session.id)
+            }
+            finishBulk()
+        case .markRead:
+            for model in marked { SessionSeenStore.markSeen(model.entry.session.id) }
+            finishBulk()
+        case .markUnread:
+            for model in marked {
+                SessionSeenStore.markUnread(
+                    model.entry.session.id, updatedAt: model.entry.session.updatedAt)
+            }
+            finishBulk()
+        }
+    }
+
+    /// A verb that acted on the whole set ends the set: the marks are a gesture in progress, and
+    /// leaving them held invites the next verb to act on rows that already changed.
+    private func finishBulk() {
+        selection.clear()
+        lastSidebar = nil
+        render()
+    }
+
+    private func presentBulkDelete(_ models: [SessionRowModel]) {
+        guard !models.isEmpty else { return }
+        let count = models.count
+        MacDialogs.confirm(
+            on: view.window,
+            title: BulkChatCopy.title(.delete, count: count),
+            body: BulkChatCopy.message(count: count, titles: models.map(\.title)),
+            confirmLabel: BulkChatCopy.confirm(.delete, count: count)
+        ) { [weak self] in
+            guard let self else { return }
+            let targets = models.compactMap { model in
+                self.backend(for: model.entry).map {
+                    DeleteTarget(entry: model.entry, backend: $0)
+                }
+            }
+            self.selection.clear()
+            guard !targets.isEmpty else {
+                self.onNotice?(Localized.text("That server is not configured."))
+                self.lastSidebar = nil
+                self.render()
+                return
+            }
+            self.delete(targets)
+        }
+    }
+
+    private func backend(for entry: SessionEntry) -> (any CodingAgentBackend)? {
+        guard
+            let profile = ServerDirectory.shared.profiles.first(where: {
+                $0.id == entry.profileID
+            })
+        else { return nil }
+        return ServerDirectory.shared.backend(for: profile)
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -597,7 +839,7 @@ final class SidebarViewController: NSViewController {
         let index = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard index >= 0, index < rows.count else { return }
         switch rows[index] {
-        case .session(let model):
+        case .session(let model, _):
             open(model.entry)
         case .more:
             sidebarLimit += 200
@@ -621,7 +863,7 @@ extension SidebarViewController: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
         -> (any NSPasteboardWriting)?
     {
-        guard case .session(let model) = rows[row] else { return nil }
+        guard case .session(let model, _) = rows[row] else { return nil }
         let payload = PaneDragPayload(
             profileID: model.entry.profileID, sessionID: model.entry.session.id)
         let item = NSPasteboardItem()
@@ -647,7 +889,7 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionSync else { return }
         let row = tableView.selectedRow
-        guard row >= 0, row < rows.count, case .session(let model) = rows[row],
+        guard row >= 0, row < rows.count, case .session(let model, _) = rows[row],
             let index = visible.firstIndex(where: {
                 $0.entry.session.id == model.entry.session.id
             })
@@ -665,7 +907,7 @@ extension SidebarViewController: NSMenuDelegate {
         menuModel = nil
         menuBackend = nil
         let row = tableView.clickedRow
-        guard row >= 0, row < rows.count, case .session(let model) = rows[row] else { return }
+        guard row >= 0, row < rows.count, case .session(let model, _) = rows[row] else { return }
         menuModel = model
         let entry = model.entry
         if let profile = ServerDirectory.shared.profiles.first(where: { $0.id == entry.profileID }) {
@@ -674,6 +916,12 @@ extension SidebarViewController: NSMenuDelegate {
         if entry.session.id != selectedID {
             menu.addItem(menuItem(Localized.text("Open"), action: #selector(menuOpen)))
         }
+        menu.addItem(
+            menuItem(
+                selection.contains(entry)
+                    ? Localized.text("Unmark") : Localized.text("Mark"),
+                subtitle: Localized.text("Act on several chats at once"),
+                action: #selector(menuToggleMarked)))
         menu.addItem(
             menuItem(
                 Localized.text("Open in a new split"),
@@ -740,6 +988,12 @@ extension SidebarViewController: NSMenuDelegate {
                     subtitle: Localized.text("Remove the session from its server"),
                     destructive: true, action: #selector(menuDelete)))
         }
+        guard selection.count > 1 else { return }
+        menu.addItem(
+            menuItem(
+                BulkChatCopy.button(.delete, count: selection.count) + "…",
+                subtitle: Localized.text("Every marked chat, on every server they are on"),
+                destructive: true, action: #selector(menuDeleteMarked)))
     }
 
     private func menuItem(
@@ -763,6 +1017,17 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuOpenInSplit() {
         guard let model = menuModel else { return }
         onOpenInSplit?(model.entry)
+    }
+
+    @objc private func menuToggleMarked() {
+        guard let model = menuModel else { return }
+        selection.toggle(model.entry)
+        lastSidebar = nil
+        render()
+    }
+
+    @objc private func menuDeleteMarked() {
+        presentBulkDelete(markedModels)
     }
 
     @objc private func menuToggleSaved() {

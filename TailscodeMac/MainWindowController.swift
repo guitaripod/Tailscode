@@ -207,6 +207,7 @@ final class MainWindowController: NSWindowController {
             focused = .transcript
             transcript.focusComposer()
         case .leaveInsert:
+            if sidebar.clearMarks() { return true }
             transcript.setFindShown(false)
             transcript.composer.dismissCompletion()
             window?.makeFirstResponder(nil)
@@ -232,9 +233,12 @@ final class MainWindowController: NSWindowController {
                 currentBackend.capabilities.supportsForking
             else { return true }
             sidebar.fork(entry: currentEntry, backend: currentBackend)
+        case .toggleMarked:
+            sidebar.toggleMarkUnderCursor()
+        case .toggleMarkAll:
+            sidebar.toggleMarkAllShown()
         case .deleteSelected:
-            guard let currentEntry, let currentBackend else { return true }
-            sidebar.presentDelete(entry: currentEntry, backend: currentBackend)
+            sidebar.presentDeleteFromKeyboard()
         case .copySessionID:
             guard let currentEntry else { return true }
             copyToPasteboard(currentEntry.session.id)
@@ -427,20 +431,19 @@ final class MainWindowController: NSWindowController {
     /// - Parameter profile: the server the sheet opens on, when the question has already been
     ///   answered somewhere else — a pane's chooser — so it is never asked twice.
     func presentNewChat(on profile: ConnectionProfile? = nil) {
-        let all = ServerDirectory.shared.profiles
-        guard !all.isEmpty else {
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else {
             presentServers()
             return
         }
-        let profiles =
-            profile.map { chosen in [chosen] + all.filter { $0.id != chosen.id } } ?? all
-        let recents = sidebar.recentDirectories
+        let entries = sidebar.allEntries
+        let down = sidebar.unreachableServers
         Task { [weak self] in
             let locals = await Task.detached { NewChatSheet.localAddresses }.value
             guard let self, let window = self.window else { return }
             NewChatSheet.present(
-                on: window, profiles: profiles, recentDirectories: recents,
-                localAddresses: locals
+                on: window, profiles: profiles, entries: entries, unreachable: down,
+                localAddresses: locals, preferredServer: profile?.id
             ) { [weak self] profile, directory in
                 self?.createChat(on: profile, directory: directory)
             }
@@ -496,6 +499,7 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
+        sidebar.presenceSource = { [weak self] in self?.observedPresence() ?? [:] }
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
         }
@@ -509,7 +513,10 @@ final class MainWindowController: NSWindowController {
         splitPanes.onChatDropped = { [weak self] pane, payload, zone in
             self?.pane(pane, received: payload, zone: zone) ?? false
         }
-        sidebar.onEntriesChanged = { [weak self] in self?.restateChoosers() }
+        sidebar.onEntriesChanged = { [weak self] in
+            self?.restateChoosers()
+            self?.resolvePendingBindings()
+        }
         filesPane.onOpen = { [weak self] path in
             self?.transcript.composer.insertText("@\(path) ")
         }
@@ -519,13 +526,14 @@ final class MainWindowController: NSWindowController {
     /// toasts land in the shared queue, and its band steers the pane it belongs to.
     private func makePane() -> TranscriptViewController {
         let pane = TranscriptViewController()
-        pane.onState = { [weak pane] state in
+        pane.onState = { [weak self, weak pane] state in
             guard let pane, let entry = pane.currentEntry else { return }
             MacNotifier.shared.observeConversation(
                 profileID: entry.profileID, sessionID: entry.session.id,
                 title: entry.session.hasPlaceholderTitle
                     ? Localized.text("New conversation") : entry.session.title,
                 state: state)
+            self?.sidebar.notePresenceChanged()
         }
         pane.onToast = { [weak self] text in self?.toast(text) }
         pane.onVideoChanged = { [weak self] in self?.splitPanes.persist() }
@@ -539,6 +547,22 @@ final class MainWindowController: NSWindowController {
         }
         pane.quotasForStatus = { [weak self] in self?.lastQuotas.map(\.1) ?? [] }
         return pane
+    }
+
+    /// What every pane on screen knows first-hand about the conversation it is streaming, keyed
+    /// the way the stores are keyed. This is what makes LIVE NOW honest: the server's listing
+    /// reports `active` only for the seconds a turn is literally open on it and never reports a
+    /// turn that stopped to ask for an approval, so a chat being talked in right now would
+    /// otherwise be findable only by recency.
+    private func observedPresence() -> [String: SessionPresence] {
+        var observed: [String: SessionPresence] = [:]
+        splitPanes.eachPane { pane in
+            guard let entry = pane.currentEntry else { return }
+            let presence = pane.presence
+            guard presence != .unobserved else { return }
+            observed[SessionPinStore.key(entry.profileID, entry.session.id)] = presence
+        }
+        return observed
     }
 
     /// Every pane showing a deleted session empties with an explanation; the sidebar's own flow

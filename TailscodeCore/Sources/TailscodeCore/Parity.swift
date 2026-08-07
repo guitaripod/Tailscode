@@ -21,6 +21,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case savedChats
     case archivedChats
     case deleteSession
+    case bulkSelection
     case renameSession
     case forkSession
     case listFilter
@@ -324,7 +325,12 @@ public enum CapabilityRegistry {
                 "The server screen reads /update through BridgeUpdater, offers the commits it would bring, and follows the restart; a refused connection mid-update is the restart, not a failure."),
         CapabilityDefinition(
             id: .newChat, area: "servers", title: "New conversation",
-            spec: "Starting a chat picks server, working directory, and agent in one flow."),
+            spec:
+                "Starting a chat picks server and working directory in one modal built on NewChatChooser: the folders this device already knows for that server — starred, recent, and the ones its own chats work in — ranked against what is being typed by FuzzyRank, each row saying where it came from, with the typed path always offered as a row of its own so a folder nobody has used yet needs no special gesture. The server last used is pre-chosen, not re-asked. Keyboard-first in two modes: while typing, ⌃n/⌃p walk, tab completes, ⌃s switches server and esc reaches the verbs; in normal mode j/k walk, g/G jump, 1–9 pick outright, i types, f stars, enter starts and esc closes — the grammar written on screen, never a form with unranked buttons under a text field."),
+        CapabilityDefinition(
+            id: .bulkSelection, area: "chat list", title: "Several chats at once",
+            spec:
+                "The chat list can hold a selection and act on all of it: mark rows (space, or the client's own editing mode), mark every row shown or none (⌃a), then delete, archive, save or mark read in one gesture. The set is ChatSelection, keyed on the (profile, session) pair and pruned as the listing moves under it, and the words come from BulkChatCopy so every client names the count the same way. A delete confirms first, naming what goes; rows leave immediately and a partial failure reports what survived — never a silent skip, and never a set that outlives the rows it points at."),
         CapabilityDefinition(
             id: .keyboardShortcuts, area: "app", title: "The shared shortcut registry",
             spec:

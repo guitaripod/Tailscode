@@ -312,6 +312,12 @@ final class HomeViewController: UIViewController {
             .compactMap { $0 }
     }
 
+    /// Opens the add-server flow from wherever the app is, so the Home screen
+    /// quick action reaches the same screen as the demo-mode menu's own entry.
+    func presentServerSetup() {
+        presentSetup()
+    }
+
     private func presentSetup() {
         Theme.Haptics.tap()
         let setup = ServerSetupViewController(mode: .addServer)
@@ -803,7 +809,7 @@ final class HomeViewController: UIViewController {
         composerBar.focus()
     }
 
-    private func pushSaved() {
+    func pushSaved() {
         Theme.Haptics.tap()
         navigationController?.pushViewController(SavedChatsViewController(), animated: true)
     }
@@ -1263,26 +1269,14 @@ extension HomeViewController: HomeComposerBarDelegate {
                     self?.setComposeTarget(profile: profile, directory: directory)
                 }
             })
-            let backend = viewModel.backend(forProfileID: profile.id)
-            if backend is any FileBrowsingBackend,
-                backend?.capabilities.supportsFileBrowsing == true
-            {
-                children.append(
-                    UIAction(
-                        title: String(localized: "Browse…"),
-                        image: UIImage(systemName: "folder.badge.plus")
-                    ) {
-                        [weak self] _ in self?.browseComposeTarget(profile: profile)
-                    })
-            } else {
-                children.append(
-                    UIAction(
-                        title: String(localized: "Enter path…"),
-                        image: UIImage(systemName: "character.cursor.ibeam")
-                    ) {
-                        [weak self] _ in self?.promptComposePath(profile: profile)
-                    })
-            }
+            children.append(
+                UIAction(
+                    title: String(localized: "Somewhere else…"),
+                    subtitle: String(localized: "Search folders, browse, or type a path"),
+                    image: UIImage(systemName: "folder.badge.plus")
+                ) {
+                    [weak self] _ in self?.chooseComposeTarget(profile: profile)
+                })
             if viewModel.servers.count == 1 {
                 return UIMenu(options: .displayInline, children: children)
             }
@@ -1326,43 +1320,19 @@ extension HomeViewController: HomeComposerBarDelegate {
         focusComposer()
     }
 
-    private func browseComposeTarget(profile: ConnectionProfile) {
-        guard
-            let backend = viewModel.backend(forProfileID: profile.id) as? (any FileBrowsingBackend)
-        else { return }
-        let browser = FileBrowserViewController(backend: backend, profileID: profile.id)
-        browser.onSelect = { [weak self] path in
-            guard let self else { return }
-            self.presentedViewController?.dismiss(animated: true) {
-                self.setComposeTarget(profile: profile, directory: path)
-                self.composerBar.focus()
-            }
+    /// "Somewhere else" is one screen, not two: the same `NewChatViewController` the chat list
+    /// opens, asked only for the answer. Browsing the server's tree is one of its rows, so a
+    /// server that can list its files and one that cannot are the same gesture here. Never opens
+    /// a bare path prompt as the fallback.
+    private func chooseComposeTarget(profile: ConnectionProfile) {
+        NewChatFlow.chooseDirectory(from: self, profile: profile, viewModel: viewModel) {
+            [weak self] profileID, directory in
+            guard let self,
+                let picked = self.viewModel.servers.first(where: { $0.id == profileID })
+            else { return }
+            self.setComposeTarget(profile: picked, directory: directory)
+            self.composerBar.focus()
         }
-        present(UINavigationController(rootViewController: browser), animated: true)
-    }
-
-    private func promptComposePath(profile: ConnectionProfile) {
-        let alert = UIAlertController(
-            title: String(localized: "Project directory"),
-            message: String(localized: "Enter a directory path on \(profile.name)"),
-            preferredStyle: .alert)
-        alert.addTextField { textField in
-            textField.placeholder = "/path/to/project"
-            textField.autocorrectionType = .no
-            textField.autocapitalizationType = .none
-            textField.keyboardType = .URL
-        }
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Use"), style: .default) {
-                [weak self, weak alert] _ in
-            let trimmed = alert?.textFields?.first?.text?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let trimmed, !trimmed.isEmpty else { return }
-            self?.setComposeTarget(profile: profile, directory: trimmed)
-            self?.composerBar.focus()
-        })
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        present(alert, animated: true)
     }
 
     /// The session is created only now, on commit; the composer keeps the

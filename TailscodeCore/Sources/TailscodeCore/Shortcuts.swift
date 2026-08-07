@@ -255,8 +255,14 @@ public enum ShortcutRegistry {
             id: "chat.fork", title: Localized.text("Fork this chat"), category: .chats,
             action: .forkSelected, contexts: [.normal], defaults: ["F"]),
         .init(
-            id: "chat.delete", title: Localized.text("Delete this chat…"), category: .chats,
-            action: .deleteSelected, contexts: [.normal], defaults: ["x"]),
+            id: "chat.mark", title: Localized.text("Mark / unmark this chat"), category: .chats,
+            action: .toggleMarked, contexts: [.normal], defaults: ["space"]),
+        .init(
+            id: "chat.markAll", title: Localized.text("Mark every chat shown / none"),
+            category: .chats, action: .toggleMarkAll, contexts: [.normal], defaults: ["ctrl+a"]),
+        .init(
+            id: "chat.delete", title: Localized.text("Delete this chat, or every marked one…"),
+            category: .chats, action: .deleteSelected, contexts: [.normal], defaults: ["x"]),
         .init(
             id: "chat.copyID", title: Localized.text("Copy the session ID"), category: .chats,
             action: .copySessionID, contexts: [.normal], defaults: ["y y"]),
@@ -406,7 +412,7 @@ public enum ShortcutRegistry {
 /// the prefixes that start a two-key sequence, the approval overlay, and — for the cheatsheet —
 /// what every action actually ended up bound to after the rebinding file had its say.
 public struct ShortcutSet: Sendable {
-    public enum Resolution: Sendable {
+    public enum Resolution: Sendable, Equatable {
         case run(KeyAction)
         case pending([KeyChord])
         case unbound
@@ -649,6 +655,8 @@ public enum KeyAction: Equatable, Sendable {
     case renameSelected
     case forkSelected
     case deleteSelected
+    case toggleMarked
+    case toggleMarkAll
     case copySessionID
     case copyProjectPath
     case splitPane(SplitAxis)

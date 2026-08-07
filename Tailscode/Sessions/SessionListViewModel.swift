@@ -174,13 +174,16 @@ final class SessionListViewModel {
     /// untouched, which is what lets a doubted server be re-checked on its own.
     private func refresh(_ targets: [Source], deadline: Duration) async {
         var fresh: [String: [SessionEntry]] = [:]
+        let known = Set(entries.compactMap(\.session.directory))
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
             for source in targets {
                 group.addTask {
                     do {
                         return (
                             source,
-                            .success(try await Self.listWithDeadline(source, deadline: deadline))
+                            .success(
+                                try await Self.listWithDeadline(
+                                    source, knownDirectories: known, deadline: deadline))
                         )
                     } catch {
                         return (source, .failure(error))
@@ -315,16 +318,73 @@ final class SessionListViewModel {
         }
     }
 
+    /// Takes the row off the list first and tells the server after, because a delete that waits on
+    /// a tailnet round trip reads as a tap that did nothing. A refusal reloads the listing, which
+    /// resurfaces the conversation the server still holds — a deleted row must never sit on screen
+    /// waiting, and a failed delete must never leave the list pretending it worked.
     func delete(_ entry: SessionEntry) async {
         guard let backend = backend(for: entry) else { return }
+        entries.removeAll { $0 == entry }
+        forgetLocally(entry)
+        SessionListCache.save(entries)
+        onChange?()
         do {
             try await backend.deleteSession(entry.session.id)
-            entries.removeAll { $0 == entry }
-            SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
-            onChange?()
         } catch {
             onError?(Self.readable(error))
             await load()
+        }
+    }
+
+    /// Deletes a whole selection, fanning the requests out concurrently rather than queueing one
+    /// round trip per chat: every row leaves at once and the servers are told in parallel, so
+    /// clearing a week of dead conversations costs one wait instead of thirty. The answer counts
+    /// what survived and carries the first failure's reason, since a fan-out that fails usually
+    /// fails the same way for every row; a partial failure is never reported as a clean run.
+    func delete(_ targets: [SessionEntry]) async -> BulkChatOutcome {
+        let deletable = targets.filter { backend(for: $0) != nil }
+        guard !deletable.isEmpty else { return BulkChatOutcome(deleted: 0, failed: 0, reason: nil) }
+        let doomed = Set(deletable)
+        entries.removeAll { doomed.contains($0) }
+        for entry in deletable { forgetLocally(entry) }
+        SessionListCache.save(entries)
+        onChange?()
+        let results = await withTaskGroup(of: (Int, String?).self) { group in
+            for (index, entry) in deletable.enumerated() {
+                guard let backend = backend(for: entry) else { continue }
+                let sessionID = entry.session.id
+                group.addTask {
+                    do {
+                        try await backend.deleteSession(sessionID)
+                        return (index, nil)
+                    } catch {
+                        return (index, Self.readable(error))
+                    }
+                }
+            }
+            var collected: [(Int, String?)] = []
+            for await result in group { collected.append(result) }
+            return collected.sorted { $0.0 < $1.0 }
+        }
+        let failures = results.compactMap(\.1)
+        if !failures.isEmpty { await load() }
+        AppLogger.session.info(
+            "bulk delete: \(results.count - failures.count) removed, \(failures.count) failed")
+        return BulkChatOutcome(
+            deleted: results.count - failures.count, failed: failures.count, reason: failures.first)
+    }
+
+    /// Everything this device kept about a deleted conversation goes with it: a bookmark, an
+    /// archive entry or a pin left behind would keep listing, hiding or reserving a place at the
+    /// top of the list for a session no server has any more. Never leaves a local store pointing
+    /// at a chat that is gone.
+    private func forgetLocally(_ entry: SessionEntry) {
+        SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
+        if ArchivedChatStore.contains(profileID: entry.profileID, sessionID: entry.session.id) {
+            ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+        }
+        if SessionPinStore.contains(profileID: entry.profileID, sessionID: entry.session.id) {
+            SessionPinStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
         }
     }
 
@@ -346,10 +406,12 @@ final class SessionListViewModel {
     private static let confirmationDeadline: Duration = .seconds(20)
 
     private static func listWithDeadline(
-        _ source: Source, deadline: Duration
+        _ source: Source, knownDirectories: Set<String>, deadline: Duration
     ) async throws -> [AgentSession] {
         try await withThrowingTaskGroup(of: [AgentSession].self) { group in
-            group.addTask { try await source.backend.listSessions() }
+            group.addTask {
+                try await source.backend.listAllSessions(knownDirectories: Array(knownDirectories))
+            }
             group.addTask {
                 try await Task.sleep(for: deadline)
                 throw SourceTimeout()
@@ -360,7 +422,7 @@ final class SessionListViewModel {
         }
     }
 
-    static func readable(_ error: Error) -> String {
+    nonisolated static func readable(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? String(describing: error)
     }
 }

@@ -290,6 +290,11 @@ void tailscode_clipboard_read_image(
     gdk_clipboard_read_texture_async(clipboard, NULL, tailscode_clipboard_read_done, box);
 }
 
+void tailscode_set_accessible_label(GtkWidget *widget, const char *label) {
+    gtk_accessible_update_property(
+        GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+}
+
 double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor) {
     graphene_rect_t bounds;
     if (!gtk_widget_compute_bounds(widget, ancestor, &bounds)) return -1;

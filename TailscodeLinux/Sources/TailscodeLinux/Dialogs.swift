@@ -203,102 +203,47 @@ enum Dialogs {
     }
 
     /// A new conversation needs a server and a directory; everything else the agent works out.
-    /// The entry opens focused and pre-filled with the last directory, so + then Enter starts a
-    /// chat where the last one worked. When the chosen server is this same machine, Browse… opens
-    /// the desktop's own folder chooser — the one place a native picker tells the truth; for a
-    /// remote server it stays hidden rather than offering the wrong disk.
+    /// The question is asked by ``NewChatWindow`` over the shared `NewChatChooser`; what this
+    /// function owns is the translation from this desktop's own facts into it — which profiles
+    /// exist, which of them is this same machine, and what "Browse…" can mean.
+    ///
+    /// Only a local server offers to browse: the desktop's own folder chooser is the one place a
+    /// native picker tells the truth, and pointing it at this disk on behalf of a machine across
+    /// the tailnet would offer folders that are not there.
     static func newChat(
         parent: UnsafeMutablePointer<GtkWidget>?,
         profiles: [ConnectionProfile],
-        recentDirectories: [String],
+        entries: [SessionEntry],
+        preferredServer: String?,
         localAddresses: Set<String>,
         onCreate: @escaping @Sendable (ConnectionProfile, String?) -> Void
     ) {
         guard !profiles.isEmpty else { return }
-        let (window, content) = Self.window(
-            title: Localized.text("New conversation"), parent: parent, width: 520)
-
-        let entry = gtk_entry_new()!
-        let entryBits = UInt(bitPattern: entry)
-        let windowBits = UInt(bitPattern: window)
-        let browse = Gtk.button(Localized.text("Browse…")) {
-            guard let entryRaw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-            let entry: UnsafeMutablePointer<GtkWidget> = ptr(entryRaw)
-            let parent = UnsafeMutableRawPointer(bitPattern: windowBits).map {
-                raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
-            }
-            Gtk.selectFolder(parent: parent, initial: browseSeed(entryText(entry))) { picked in
-                guard let picked,
-                    let raw = UnsafeMutableRawPointer(bitPattern: entryBits)
-                else { return }
-                gtk_editable_set_text(op(raw), picked)
-            }
+        let byID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+        let local = Set(
+            profiles.filter { isLocal($0, localAddresses: localAddresses) }.map(\.id))
+        let servers = profiles.map { profile in
+            NewChatServer(
+                profileID: profile.id, name: profile.name, backend: profile.backend,
+                address: ServerLabel.address(profile), canBrowse: local.contains(profile.id),
+                isLocal: local.contains(profile.id))
         }
-        let browseBits = UInt(bitPattern: browse)
-
-        let chosen = Selection<ConnectionProfile>(profiles[0])
-        if profiles.count > 1 {
-            gtk_box_append(
-                ptr(content), Gtk.label(Localized.text("SERVER"), css: "section-header", selectable: false))
-            let serverButton = Gtk.menuButton(ServerLabel.display(profiles[0])) {
-                profiles.map { profile in
-                    (ServerLabel.display(profile), ServerLabel.address(profile),
-                     { chosen.value = profile })
+        let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
+        NewChatWindow.present(
+            servers: servers, entries: entries, preferredServer: preferredServer, parent: parent,
+            onBrowse: { _, typed, deliver in
+                let host = UnsafeMutableRawPointer(bitPattern: parentBits).map {
+                    raw -> UnsafeMutablePointer<GtkWidget> in ptr(raw)
                 }
-            }
-            let serverButtonBits = UInt(bitPattern: serverButton)
-            chosen.onChange = { profile in
-                guard let server = UnsafeMutableRawPointer(bitPattern: serverButtonBits),
-                    let browseRaw = UnsafeMutableRawPointer(bitPattern: browseBits)
-                else { return }
-                gtk_menu_button_set_label(op(server), ServerLabel.display(profile))
-                gtk_widget_set_visible(
-                    ptr(browseRaw), isLocal(profile, localAddresses: localAddresses) ? 1 : 0)
-            }
-            gtk_box_append(ptr(content), serverButton)
-        }
-
-        gtk_box_append(
-            ptr(content),
-            Gtk.label(Localized.text("DIRECTORY"), css: "section-header", selectable: false))
-        gtk_entry_set_placeholder_text(
-            ptr(entry), Localized.text("Where the agent works, e.g. ~/Dev/thing"))
-        if let first = recentDirectories.first { gtk_editable_set_text(op(entry), first) }
-        gtk_widget_set_hexpand(entry, 1)
-
-        let start: @Sendable () -> Void = {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-            let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-            let directory = entryText(entry)
-            close(entry)
-            onCreate(chosen.value, directory.isEmpty ? nil : directory)
-        }
-        Gtk.connect(UnsafeMutableRawPointer(entry), "activate", start)
-
-        let directoryRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(directoryRow), entry)
-        gtk_box_append(ptr(directoryRow), browse)
-        gtk_box_append(ptr(content), directoryRow)
-        gtk_widget_set_visible(
-            browse, isLocal(profiles[0], localAddresses: localAddresses) ? 1 : 0)
-
-        for directory in recentDirectories.prefix(6) {
-            let row = Gtk.button(directory, css: ["flat", "answer-option"]) {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-                gtk_editable_set_text(op(raw), directory)
-            }
-            gtk_widget_set_halign(row, GTK_ALIGN_START)
-            gtk_box_append(ptr(content), row)
-        }
-
-        gtk_box_append(
-            ptr(content),
-            buttonRow(
-                window: window,
-                confirm: Gtk.button(Localized.text("Start"), css: ["suggested-action"], onClick: start)))
-        gtk_window_present(ptr(window))
-        gtk_widget_grab_focus(entry)
-        gtk_editable_select_region(op(entry), 0, -1)
+                Gtk.selectFolder(parent: host, initial: browseSeed(typed)) { picked in
+                    guard let picked else { return }
+                    deliver(picked)
+                }
+            },
+            onStart: { profileID, directory in
+                guard let profile = byID[profileID] else { return }
+                onCreate(profile, directory)
+            })
     }
 
     /// This machine answering its own tailnet address is still this machine: a profile is local
@@ -342,11 +287,5 @@ enum Dialogs {
             })
         gtk_box_append(ptr(row), confirm)
         return row
-    }
-
-    final class Selection<Value: Sendable>: @unchecked Sendable {
-        var value: Value { didSet { onChange?(value) } }
-        var onChange: (@Sendable (Value) -> Void)?
-        init(_ value: Value) { self.value = value }
     }
 }

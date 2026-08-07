@@ -63,12 +63,31 @@ final class TranscriptViewController: NSViewController {
     /// written back exactly as an opened conversation writes it back.
     var onVideoChanged: (() -> Void)?
     private var lastState: ConversationState?
+    /// The facts the band last drew, kept so the chat list can borrow the step the turn is on
+    /// rather than scanning the transcript for it a second time.
+    private var lastFacts: StatusFacts?
 
     /// What this pane is showing, read by the hub and the tiling host: the focused pane's entry
     /// is the window's "current chat", and a restored layout rebinds by these.
     var currentEntry: SessionEntry? { entry }
     var currentBackend: (any CodingAgentBackend)? { backend }
     var currentState: ConversationState? { lastState }
+
+    /// What this pane knows first-hand about the conversation it is streaming, for the chat list's
+    /// LIVE NOW. A turn stopped on a permission or a question is still a turn in flight and is the
+    /// one the person most needs to find, so it outranks merely running; a failure is only
+    /// reported once nothing is running, and the step is the tool the band is already naming.
+    /// Nothing is inferred here that the pane's own state does not already say.
+    var presence: SessionPresence {
+        guard let state = lastState else { return .unobserved }
+        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
+            return .awaitingApproval
+        }
+        if state.status == .running || state.compaction?.isRunning == true {
+            return .running(lastFacts?.runningTool)
+        }
+        return state.lastFailure == nil ? .unobserved : .failed
+    }
 
     let cascade = CascadePainter()
     private(set) var renderedRows: [TranscriptRow] = []
@@ -872,6 +891,7 @@ final class TranscriptViewController: NSViewController {
     /// status and steering the turn are one gesture rather than two.
     private func updateStatus() {
         guard let state = lastState else {
+            lastFacts = nil
             statusBand.render(facts: nil, notice: notice)
             bandGlass?.isHidden = !statusBand.hasContent
             return
@@ -886,6 +906,7 @@ final class TranscriptViewController: NSViewController {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas)
+        lastFacts = facts
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
         bandGlass?.isHidden = !statusBand.hasContent

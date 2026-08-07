@@ -3,30 +3,43 @@ import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
 
-/// Every conversation across every server in one flat, recency-sorted list —
-/// filter chips stand in for the old collapsible per-server sections, so
-/// finding a chat is scroll-or-search instead of expand-and-hunt.
+/// Every conversation across every server in one list, grouped into the shared sections —
+/// PINNED, LIVE NOW, SAVED, RECENT — with filter chips narrowing what is grouped, so finding a
+/// chat is scroll-or-search instead of expand-and-hunt.
 @MainActor
 final class SessionListViewController: UIViewController {
-    private enum Section: Hashable { case pinned, main }
-
     private enum ChatFilter: Equatable {
         case all, live, profile(String)
     }
 
     private let viewModel: SessionListViewModel
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Section, SessionEntry>!
+    private var dataSource: UICollectionViewDiffableDataSource<SessionSection, SessionEntry>!
     private let refreshControl = UIRefreshControl()
     private let searchController = UISearchController(searchResultsController: nil)
     private let chipBar = UIScrollView()
     private let chipStack = UIStackView()
     private let unreachableLabel = UILabel()
+    private let selectionBar = Theme.Glass.view()
+    private let selectionStack = UIStackView()
+    private var bulkButtons: [BulkChatAction: UIButton] = [:]
     private var filter: ChatFilter
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var searchQuery = ""
     var keyCursor: Int?
+
+    /// The rows the list is drawing, flattened across every section in the order the eye reads
+    /// them. The keyboard cursor, select-all and the pruning of a held selection all address this
+    /// one list, because an `IndexPath` into a sectioned snapshot is not a position a person has.
+    private var visibleEntries: [SessionEntry] = []
+
+    /// Each visible row's derived state, keyed the way every store here is keyed, so a cell reads
+    /// what `SessionRowModel` already decided instead of re-deciding it per configure.
+    private var rowModels: [String: SessionRowModel] = [:]
+
+    private var selection = ChatSelection()
+    private var isSelecting = false
 
     init(filterProfileID: String? = nil) {
         let sources = ConnectionController.shared.allBackends().map {
@@ -47,6 +60,7 @@ final class SessionListViewController: UIViewController {
         configureSearch()
         configureChipBar()
         configureCollectionView()
+        configureSelectionBar()
         configureDataSource()
         bind()
         contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
@@ -131,7 +145,20 @@ final class SessionListViewController: UIViewController {
         navigationItem.hidesSearchBarWhenScrolling = false
     }
 
+    /// Rebuilds both bars wholesale on every change, which is why the Select button and the
+    /// selecting-mode bars live here: anything hung on `navigationItem` from somewhere else is
+    /// wiped the next time the listing moves. Never add a bar item outside this method.
     private func updateComposeButton() {
+        guard !isSelecting else {
+            navigationItem.leftBarButtonItem = selectAllItem()
+            navigationItem.rightBarButtonItems = [
+                UIBarButtonItem(
+                    systemItem: .done,
+                    primaryAction: UIAction { [weak self] _ in self?.setSelecting(false) })
+            ]
+            return
+        }
+        navigationItem.leftBarButtonItem = nil
         let servers = viewModel.servers
         let compose = UIImage(systemName: "square.and.pencil")
         let composeItem: UIBarButtonItem
@@ -165,7 +192,25 @@ final class SessionListViewController: UIViewController {
             archived.accessibilityLabel = String(localized: "Archived chats")
             items.append(archived)
         }
+        if !viewModel.entries.isEmpty {
+            let select = UIBarButtonItem(
+                image: UIImage(systemName: "checklist"),
+                primaryAction: UIAction { [weak self] _ in self?.setSelecting(true) })
+            select.accessibilityLabel = String(localized: "Select chats")
+            items.append(select)
+        }
         navigationItem.rightBarButtonItems = items
+    }
+
+    private func selectAllItem() -> UIBarButtonItem {
+        let everything = !visibleEntries.isEmpty
+            && visibleEntries.allSatisfy { selection.contains($0) }
+        let item = UIBarButtonItem(
+            title: everything
+                ? String(localized: "Deselect All") : String(localized: "Select All"),
+            primaryAction: UIAction { [weak self] _ in self?.toggleMarkAll() })
+        item.isEnabled = !visibleEntries.isEmpty
+        return item
     }
 
     /// Counts archived rows in the current listing rather than the raw store, mirroring the
@@ -289,7 +334,8 @@ final class SessionListViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         config.headerMode = .supplementary
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath)
+            guard let self, !self.isSelecting,
+                let entry = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
             var actions: [UIContextualAction] = []
             if self.viewModel.supportsMultipleSessions(entry) {
@@ -320,7 +366,8 @@ final class SessionListViewController: UIViewController {
             return config
         }
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, let entry = self.dataSource.itemIdentifier(for: indexPath)
+            guard let self, !self.isSelecting,
+                let entry = self.dataSource.itemIdentifier(for: indexPath)
             else { return nil }
             let isSaved = SavedChatStore.contains(entry)
             let save = UIContextualAction(
@@ -351,95 +398,261 @@ final class SessionListViewController: UIViewController {
         ])
     }
 
+    /// The verbs a held selection can be given, on a bar of their own at the bottom of the list.
+    /// Every label is `BulkChatCopy.button`, so this client says "Delete 4" exactly the way the
+    /// desktops say it and never phrases a count of its own. The bar is out of the layout
+    /// entirely while nothing is being selected — an idle strip must never cost the list a row.
+    private func configureSelectionBar() {
+        selectionBar.isHidden = true
+        selectionBar.alpha = 0
+        selectionBar.translatesAutoresizingMaskIntoConstraints = false
+        selectionStack.axis = .horizontal
+        selectionStack.distribution = .fillEqually
+        selectionStack.alignment = .fill
+        selectionStack.spacing = Theme.Spacing.xs
+        selectionStack.translatesAutoresizingMaskIntoConstraints = false
+        for action in [BulkChatAction.delete, .archive, .save, .markRead] {
+            let button = bulkButton(action)
+            bulkButtons[action] = button
+            selectionStack.addArrangedSubview(button)
+        }
+        selectionBar.contentView.addSubview(selectionStack)
+        view.addSubview(selectionBar)
+        NSLayoutConstraint.activate([
+            selectionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            selectionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            selectionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            selectionStack.topAnchor.constraint(
+                equalTo: selectionBar.contentView.topAnchor, constant: Theme.Spacing.s),
+            selectionStack.leadingAnchor.constraint(
+                equalTo: selectionBar.contentView.leadingAnchor, constant: Theme.Spacing.s),
+            selectionStack.trailingAnchor.constraint(
+                equalTo: selectionBar.contentView.trailingAnchor, constant: -Theme.Spacing.s),
+            selectionStack.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Theme.Spacing.s),
+        ])
+    }
+
+    private func bulkButton(_ action: BulkChatAction) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.image = UIImage(systemName: Self.bulkSymbol(action))
+        config.imagePlacement = .top
+        config.imagePadding = Theme.Spacing.xs
+        config.titleLineBreakMode = .byWordWrapping
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4)
+        config.baseForegroundColor =
+            action.isDestructive ? Theme.Color.danger : Theme.Color.accent
+        let button = UIButton(configuration: config)
+        button.titleLabel?.textAlignment = .center
+        button.addAction(
+            UIAction { [weak self] _ in self?.performBulk(action) }, for: .touchUpInside)
+        return button
+    }
+
+    private static func bulkSymbol(_ action: BulkChatAction) -> String {
+        switch action {
+        case .delete: return "trash"
+        case .archive: return "archivebox"
+        case .unarchive: return "tray.and.arrow.up"
+        case .save: return "bookmark"
+        case .unsave: return "bookmark.slash"
+        case .markRead: return "envelope.open"
+        case .markUnread: return "envelope.badge"
+        }
+    }
+
+    /// Enters or leaves the editing mode. Leaving always drops the marks: a selection is a gesture
+    /// in progress, and one that outlived the bar that could act on it would delete rows nobody
+    /// can see are marked.
+    private func setSelecting(_ selecting: Bool) {
+        guard isSelecting != selecting else { return }
+        isSelecting = selecting
+        if !selecting { selection.clear() }
+        Theme.Haptics.tap()
+        updateComposeButton()
+        updateSelectionBar()
+        refreshVisibleRows()
+    }
+
+    private func updateSelectionBar() {
+        let marked = selection.resolve(in: visibleEntries)
+        for (action, button) in bulkButtons {
+            let count = targets(for: action, in: marked).count
+            var config = button.configuration
+            var title = AttributedString(BulkChatCopy.button(action, count: count))
+            title.font = UIFont.preferredFont(forTextStyle: .caption1)
+            config?.attributedTitle = title
+            button.configuration = config
+            button.isEnabled = count > 0
+            button.accessibilityLabel = BulkChatCopy.button(action, count: count)
+        }
+        navigationItem.leftBarButtonItem = isSelecting ? selectAllItem() : nil
+        syncSelectionBarVisibility()
+    }
+
+    /// Brings the verbs in and out with the mode, and gives the list back the strip they take, so
+    /// the last row is never left under the bar. Reduced motion gets the same end state without
+    /// the fade — a bar appearing is information, not decoration.
+    private func syncSelectionBarVisibility() {
+        let shown = isSelecting
+        let settled = { [weak self] in
+            guard let self else { return }
+            self.selectionBar.isHidden = !shown
+            if shown { self.view.layoutIfNeeded() }
+            let inset = shown ? self.selectionBar.bounds.height : 0
+            self.collectionView.contentInset.bottom = inset
+            self.collectionView.verticalScrollIndicatorInsets.bottom = inset
+        }
+        guard selectionBar.isHidden == shown else {
+            settled()
+            return
+        }
+        if shown { selectionBar.isHidden = false }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            selectionBar.alpha = shown ? 1 : 0
+            settled()
+            return
+        }
+        UIView.animate(withDuration: 0.2) { [weak self] in
+            self?.selectionBar.alpha = shown ? 1 : 0
+        } completion: { _ in settled() }
+    }
+
+    /// The marked chats a verb would actually touch: delete only counts the ones whose server can
+    /// delete, and every other verb only counts the rows it would change, so a button offering to
+    /// save an already-saved selection is disabled rather than a no-op.
+    private func targets(for action: BulkChatAction, in marked: [SessionEntry]) -> [SessionEntry] {
+        switch action {
+        case .delete:
+            return marked.filter { viewModel.supportsMultipleSessions($0) }
+        case .archive:
+            return marked.filter {
+                !ArchivedChatStore.contains(profileID: $0.profileID, sessionID: $0.session.id)
+            }
+        case .unarchive:
+            return marked.filter {
+                ArchivedChatStore.contains(profileID: $0.profileID, sessionID: $0.session.id)
+            }
+        case .save:
+            return marked.filter { !SavedChatStore.contains($0) }
+        case .unsave:
+            return marked.filter { SavedChatStore.contains($0) }
+        case .markRead:
+            let unread = SessionSeenStore.unreadEvaluator()
+            return marked.filter { unread($0.session.id, $0.session.updatedAt) }
+        case .markUnread:
+            let unread = SessionSeenStore.unreadEvaluator()
+            return marked.filter { !unread($0.session.id, $0.session.updatedAt) }
+        }
+    }
+
+    /// One verb applied to the whole marked set. Everything but a delete is device-local and
+    /// instant, so it happens and the mode ends; a delete is irreversible and asks first.
+    private func performBulk(_ action: BulkChatAction) {
+        let marked = targets(for: action, in: selection.resolve(in: visibleEntries))
+        guard !marked.isEmpty else { return }
+        guard !action.isDestructive else {
+            confirmBulkDelete(marked)
+            return
+        }
+        apply(action, to: marked)
+        Theme.Haptics.success()
+        setSelecting(false)
+        applySnapshot()
+    }
+
+    /// The device-local half of a bulk verb, applied row by row through the same stores a single
+    /// row action uses, so a set is never a second code path with its own idea of what archiving
+    /// means. Delete is not here: it is the one verb that has to ask the server.
+    private func apply(_ action: BulkChatAction, to marked: [SessionEntry]) {
+        for entry in marked {
+            switch action {
+            case .delete:
+                continue
+            case .archive, .unarchive:
+                ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+            case .save:
+                SavedChatStore.save(entry)
+            case .unsave:
+                SavedChatStore.remove(profileID: entry.profileID, sessionID: entry.session.id)
+            case .markRead:
+                SessionSeenStore.markSeen(entry.session.id)
+            case .markUnread:
+                SessionSeenStore.markUnread(entry.session.id, updatedAt: entry.session.updatedAt)
+            }
+        }
+    }
+
+    /// A delete names what goes before it goes, in `BulkChatCopy`'s words, and reports a partial
+    /// failure afterwards. A clean run says nothing — the rows are gone, which is the whole report
+    /// — but a run that skipped some must never pass for a run that worked.
+    private func confirmBulkDelete(_ marked: [SessionEntry]) {
+        let titles = marked.map { Self.displayTitle($0.session.title) }
+        let alert = UIAlertController(
+            title: BulkChatCopy.title(.delete, count: marked.count),
+            message: BulkChatCopy.message(count: marked.count, titles: titles),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(
+                title: BulkChatCopy.confirm(.delete, count: marked.count), style: .destructive
+            ) { [weak self] _ in
+                guard let self else { return }
+                Theme.Haptics.warning()
+                self.setSelecting(false)
+                Task { [weak self] in
+                    guard let self else { return }
+                    let outcome = await self.viewModel.delete(marked)
+                    guard let report = BulkChatCopy.outcome(outcome) else { return }
+                    Theme.Haptics.error()
+                    let failure = UIAlertController(
+                        title: String(localized: "Not everything was deleted"),
+                        message: report, preferredStyle: .alert)
+                    failure.addAction(
+                        UIAlertAction(title: String(localized: "OK"), style: .default))
+                    self.present(failure, animated: true)
+                }
+            })
+        present(alert, animated: true)
+    }
+
+    private func toggleMark(_ entry: SessionEntry) {
+        Theme.Haptics.selection()
+        selection.toggle(entry)
+        updateSelectionBar()
+        refreshRow(entry)
+    }
+
+    private func toggleMarkAll() {
+        Theme.Haptics.selection()
+        selection.toggleAll(in: visibleEntries)
+        updateSelectionBar()
+        refreshVisibleRows()
+    }
+
+    private func refreshRow(_ entry: SessionEntry) {
+        var snapshot = dataSource.snapshot()
+        guard snapshot.indexOfItem(entry) != nil else { return }
+        snapshot.reconfigureItems([entry])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    private func refreshVisibleRows() {
+        var snapshot = dataSource.snapshot()
+        guard !snapshot.itemIdentifiers.isEmpty else { return }
+        snapshot.reconfigureItems(snapshot.itemIdentifiers)
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
     private func configureDataSource() {
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, SessionEntry> {
             [weak self] cell, _, entry in
-            guard self != nil else { return }
-            var content = UIListContentConfiguration.subtitleCell()
-            content.text = Self.displayTitle(entry.session.title)
-            content.textProperties.font = Theme.Font.body()
-            content.textProperties.numberOfLines = 1
-
-            var parts: [String] = [entry.profileName]
-            if let dir = entry.session.directory {
-                parts.append((dir as NSString).lastPathComponent)
-            }
-            if let badge = ModelBadge.text(for: entry.session) {
-                parts.append(badge)
-            }
-            parts.append(Self.relativeDate(entry.session.updatedAt))
-            let meta = parts.joined(separator: " · ")
-            let working = entry.session.isWorking
-            content.secondaryText = working ? entry.session.agentTask ?? meta : meta
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-            content.secondaryTextProperties.color =
-                working && entry.session.agentTask != nil
-                ? Theme.Color.accent : Theme.Color.tertiaryLabel
-            content.secondaryTextProperties.numberOfLines = 1
-
-            content.textToSecondaryTextVerticalPadding = 2
-            content.prefersSideBySideTextAndSecondaryText = false
-
-            let isLive = entry.session.isActive == true
-                || SessionActivity.shared.status(for: entry.session.id) != .idle
-            content.image = UIImage(systemName: entry.backendType.symbolName)?
-                .withTintColor(
-                    isLive ? Theme.Color.success : entry.backendType.brandColor,
-                    renderingMode: .alwaysOriginal)
-            content.imageProperties.maximumSize = CGSize(width: 20, height: 20)
-            content.imageProperties.reservedLayoutSize = CGSize(width: 20, height: 20)
-            content.imageToTextPadding = Theme.Spacing.m
-            cell.contentConfiguration = content
-
-            var accessories: [UICellAccessory] = []
-            if SessionPinStore.contains(
-                profileID: entry.profileID, sessionID: entry.session.id)
-            {
-                let pin = UIImageView(image: UIImage(systemName: "pin.fill"))
-                pin.tintColor = Theme.Color.accent
-                pin.contentMode = .scaleAspectFit
-                pin.frame = CGRect(x: 0, y: 0, width: 13, height: 13)
-                accessories.append(.customView(
-                    configuration: .init(
-                        customView: pin, placement: .trailing(displayed: .always),
-                        maintainsFixedSize: true)))
-            }
-            if let pill = Self.statusPill(for: entry.session.id) {
-                accessories.append(pill)
-            } else if isLive {
-                let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
-                dot.backgroundColor = Theme.Color.success
-                dot.layer.cornerRadius = 4
-                accessories.append(.customView(
-                    configuration: .init(customView: dot, placement: .trailing(displayed: .always))))
-            } else if SessionSeenStore.unreadEvaluator()(
-                entry.session.id, entry.session.updatedAt)
-            {
-                let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
-                dot.backgroundColor = Theme.Color.accent
-                dot.layer.cornerRadius = 4
-                accessories.append(.customView(
-                    configuration: .init(customView: dot, placement: .trailing(displayed: .always))))
-            }
-            accessories.append(.disclosureIndicator())
-            cell.accessories = accessories
-
-            switch SessionActivity.shared.status(for: entry.session.id) {
-            case .running:
-                cell.accessibilityValue = String(localized: "Agent running")
-            case .awaitingApproval:
-                cell.accessibilityValue = String(localized: "Awaiting approval")
-            case .idle:
-                if isLive {
-                    cell.accessibilityValue = String(localized: "Live")
-                } else if SessionSeenStore.unreadEvaluator()(
-                    entry.session.id, entry.session.updatedAt)
-                {
-                    cell.accessibilityValue = String(localized: "Unread")
-                } else {
-                    cell.accessibilityValue = nil
-                }
-            }
+            guard let self else { return }
+            let row = self.rowModels[ChatSelection.key(entry)]
+                ?? SessionRowModel(
+                    entry: entry, unreachable: false, unread: false, saved: false,
+                    presence: self.presence(for: entry))
+            self.configure(cell, with: row)
         }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
@@ -448,20 +661,131 @@ final class SessionListViewController: UIViewController {
         }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
-        ) { view, _, indexPath in
+        ) { [weak self] view, _, indexPath in
+            guard let self else { return }
             let sections = self.dataSource.snapshot().sectionIdentifiers
             guard sections.indices.contains(indexPath.section) else { return }
-            switch sections[indexPath.section] {
-            case .pinned:
-                var content = UIListContentConfiguration.prominentInsetGroupedHeader()
-                content.text = String(localized: "PINNED")
-                view.contentConfiguration = content
-            case .main:
-                view.contentConfiguration = nil
-            }
+            var content = UIListContentConfiguration.prominentInsetGroupedHeader()
+            content.text = sections[indexPath.section].title
+            view.contentConfiguration = content
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
+        }
+    }
+
+    /// One row, drawn from what `SessionRowModel` already decided. The pill, the tint and the
+    /// snippet all read the row's `state` rather than re-asking the listing, which is what keeps a
+    /// conversation this device is streaming looking live in the list and in the section it sits
+    /// in. Never re-derives liveness inside a cell.
+    private func configure(_ cell: UICollectionViewListCell, with row: SessionRowModel) {
+        let entry = row.entry
+        var content = UIListContentConfiguration.subtitleCell()
+        content.text = Self.displayTitle(entry.session.title)
+        content.textProperties.font = Theme.Font.body()
+        content.textProperties.numberOfLines = 1
+
+        var parts: [String] = [entry.profileName]
+        if let dir = entry.session.directory {
+            parts.append((dir as NSString).lastPathComponent)
+        }
+        if let badge = ModelBadge.text(for: entry.session) {
+            parts.append(badge)
+        }
+        parts.append(Self.relativeDate(entry.session.updatedAt))
+        let meta = parts.joined(separator: " · ")
+        content.secondaryText = row.snippet ?? meta
+        content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+        content.secondaryTextProperties.color =
+            row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent
+        content.secondaryTextProperties.numberOfLines = 1
+        content.textToSecondaryTextVerticalPadding = 2
+        content.prefersSideBySideTextAndSecondaryText = false
+
+        content.image = UIImage(systemName: entry.backendType.symbolName)?
+            .withTintColor(
+                Self.tint(for: row.state) ?? entry.backendType.brandColor,
+                renderingMode: .alwaysOriginal)
+        content.imageProperties.maximumSize = CGSize(width: 20, height: 20)
+        content.imageProperties.reservedLayoutSize = CGSize(width: 20, height: 20)
+        content.imageToTextPadding = Theme.Spacing.m
+        cell.contentConfiguration = content
+
+        var background = UIBackgroundConfiguration.listCell()
+        if isSelecting, selection.contains(entry) {
+            background.backgroundColor = Theme.Color.accent.withAlphaComponent(0.18)
+        }
+        cell.backgroundConfiguration = background
+
+        var accessories: [UICellAccessory] = []
+        if isSelecting {
+            accessories.append(Self.markAccessory(marked: selection.contains(entry)))
+        }
+        if row.pinned {
+            let pin = UIImageView(image: UIImage(systemName: "pin.fill"))
+            pin.tintColor = Theme.Color.accent
+            pin.contentMode = .scaleAspectFit
+            pin.frame = CGRect(x: 0, y: 0, width: 13, height: 13)
+            accessories.append(.customView(
+                configuration: .init(
+                    customView: pin, placement: .trailing(displayed: .always),
+                    maintainsFixedSize: true)))
+        }
+        if let pill = Self.statusPill(for: row.state) {
+            accessories.append(pill)
+        } else if row.unread {
+            accessories.append(Self.dot(Theme.Color.accent))
+        }
+        if !isSelecting { accessories.append(.disclosureIndicator()) }
+        cell.accessories = accessories
+        cell.accessibilityValue = Self.spoken(row, marked: isSelecting && selection.contains(entry))
+    }
+
+    /// What a row says out loud: the mark first while selecting, because in an editing mode
+    /// whether this chat is going with the next verb outranks what it is doing. Never leaves a
+    /// marked row indistinguishable from an unmarked one to VoiceOver.
+    private static func spoken(_ row: SessionRowModel, marked: Bool) -> String? {
+        var parts: [String] = []
+        if marked { parts.append(String(localized: "Selected")) }
+        switch row.state {
+        case .awaitingApproval: parts.append(String(localized: "Awaiting approval"))
+        case .live: parts.append(String(localized: "Agent running"))
+        case .failed: parts.append(String(localized: "Last turn failed"))
+        case .offline: parts.append(String(localized: "Server unreachable"))
+        case .idle: break
+        }
+        if row.unread { parts.append(String(localized: "Unread")) }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    private static func markAccessory(marked: Bool) -> UICellAccessory {
+        let mark = UIImageView(
+            image: UIImage(
+                systemName: marked ? "checkmark.square.fill" : "square",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)))
+        mark.tintColor = marked ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        mark.contentMode = .scaleAspectFit
+        mark.frame = CGRect(x: 0, y: 0, width: 22, height: 22)
+        return .customView(
+            configuration: .init(
+                customView: mark, placement: .leading(displayed: .always),
+                maintainsFixedSize: true))
+    }
+
+    private static func dot(_ color: UIColor) -> UICellAccessory {
+        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 8, height: 8))
+        dot.backgroundColor = color
+        dot.layer.cornerRadius = 4
+        return .customView(
+            configuration: .init(customView: dot, placement: .trailing(displayed: .always)))
+    }
+
+    private static func tint(for state: SessionRowState) -> UIColor? {
+        switch state {
+        case .live, .awaitingApproval: return Theme.Color.success
+        case .failed: return Theme.Color.danger
+        case .offline: return Theme.Color.tertiaryLabel
+        case .idle: return nil
         }
     }
 
@@ -498,12 +822,12 @@ final class SessionListViewController: UIViewController {
         rebuildChips()
     }
 
+    /// A turn starting or stopping moves the row between sections, not just its pill, so the whole
+    /// snapshot is rebuilt rather than the visible cells reloaded — a chat that just went live must
+    /// arrive in LIVE NOW, never wear a spinner down in RECENT.
     private func reconfigureActivity() {
         guard dataSource != nil else { return }
-        var snapshot = dataSource.snapshot()
-        guard !snapshot.sectionIdentifiers.isEmpty else { return }
-        snapshot.reloadSections(snapshot.sectionIdentifiers)
-        dataSource.apply(snapshot, animatingDifferences: false)
+        applySnapshot()
     }
 
     private func updateUnreachableNotice() {
@@ -520,9 +844,14 @@ final class SessionListViewController: UIViewController {
         }
     }
 
+    /// Whether the row would land in LIVE NOW, asked the same way `groupIntoSections` asks it, so
+    /// the Live chip's count and the section's contents can never disagree. Never re-reads
+    /// liveness off the listing alone once this device is watching the turn itself.
     private func isLive(_ entry: SessionEntry) -> Bool {
-        entry.session.isActive == true
-            || SessionActivity.shared.status(for: entry.session.id) != .idle
+        switch presence(for: entry) {
+        case .running, .awaitingApproval: return true
+        case .failed, .unobserved: return entry.session.isWorking
+        }
     }
 
     private func filteredEntries() -> [SessionEntry] {
@@ -547,35 +876,79 @@ final class SessionListViewController: UIViewController {
         }
     }
 
+    /// What this device is watching first-hand, so a row is live the moment a turn starts here
+    /// rather than when the server's next sweep agrees, and a turn stopped for an approval says so.
+    private func presence(for entry: SessionEntry) -> SessionPresence {
+        switch SessionActivity.shared.status(for: entry.session.id) {
+        case .running: return .running(SessionActivity.shared.liveDetail(for: entry.session.id))
+        case .awaitingApproval: return .awaitingApproval
+        case .idle: return .unobserved
+        }
+    }
+
+    private func rowModel(for entry: SessionEntry, saved: Set<String>, unreachable: Set<String>)
+        -> SessionRowModel
+    {
+        SessionRowModel(
+            entry: entry,
+            unreachable: unreachable.contains(entry.profileID),
+            unread: SessionSeenStore.unreadEvaluator()(entry.session.id, entry.session.updatedAt),
+            saved: saved.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
+            pinned: SessionPinStore.contains(
+                profileID: entry.profileID, sessionID: entry.session.id),
+            presence: presence(for: entry))
+    }
+
+    /// The listing as the shared `groupIntoSections` groups it — PINNED, LIVE NOW, SAVED, RECENT,
+    /// with empty sections dropped so no heading ever sits over nothing. Every row carries the
+    /// presence this device knows first-hand, which is what puts the conversation being streamed
+    /// right now in LIVE NOW instead of waiting for the server's next sweep to agree.
+    private func sectionedRows(for entries: [SessionEntry]) -> [(SessionSection, [SessionRowModel])]
+    {
+        let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
+        let unreachable = Set(viewModel.unreachable)
+        return groupIntoSections(
+            entries.map { rowModel(for: $0, saved: saved, unreachable: unreachable) })
+    }
+
+    /// The flattened order the sections draw becomes `visibleEntries` — the one list the keyboard
+    /// cursor, select-all and the held selection all address, because an `IndexPath` into a
+    /// sectioned snapshot is not a position a person has.
     private func applySnapshot() {
         let entries = filteredEntries()
-        let pinnedKeys = SessionPinStore.all()
-        let isPinned: (SessionEntry) -> Bool = {
-            pinnedKeys.contains(SessionPinStore.key($0.profileID, $0.session.id))
+        let sections = sectionedRows(for: entries)
+        let rows = sections.flatMap(\.1)
+
+        rowModels = Dictionary(
+            rows.map { (SessionPinStore.key($0.entry.profileID, $0.entry.session.id), $0) },
+            uniquingKeysWith: { first, _ in first })
+        visibleEntries = rows.map(\.entry)
+        selection.prune(to: visibleEntries)
+
+        var snapshot = NSDiffableDataSourceSnapshot<SessionSection, SessionEntry>()
+        for (section, members) in sections {
+            snapshot.appendSections([section])
+            snapshot.appendItems(members.map(\.entry), toSection: section)
         }
-        let pinnedEntries = entries.filter(isPinned).sorted {
-            guard
-                let a = SessionPinStore.rank(
-                    profileID: $0.profileID, sessionID: $0.session.id),
-                let b = SessionPinStore.rank(
-                    profileID: $1.profileID, sessionID: $1.session.id)
-            else { return false }
-            return a < b
-        }
-        let rest = entries.filter { !isPinned($0) }
-        var snapshot = NSDiffableDataSourceSnapshot<Section, SessionEntry>()
-        if !pinnedEntries.isEmpty {
-            snapshot.appendSections([.pinned])
-            snapshot.appendItems(pinnedEntries, toSection: .pinned)
-        }
-        snapshot.appendSections([.main])
-        snapshot.appendItems(rest, toSection: .main)
         let existing = Set(dataSource.snapshot().itemIdentifiers)
-        let retained = entries.filter { existing.contains($0) }
+        let retained = visibleEntries.filter { existing.contains($0) }
         if !retained.isEmpty { snapshot.reconfigureItems(retained) }
         dataSource.apply(snapshot, animatingDifferences: hasAppeared)
         refreshControl.endRefreshing()
+        clampKeyCursor()
+        updateSelectionBar()
         updateEmptyState(itemCount: snapshot.numberOfItems)
+    }
+
+    /// A cursor that outlived the row it pointed at must land somewhere real, not address a row a
+    /// re-sort put somewhere else.
+    private func clampKeyCursor() {
+        guard let keyCursor else { return }
+        guard !visibleEntries.isEmpty else {
+            self.keyCursor = nil
+            return
+        }
+        self.keyCursor = min(keyCursor, visibleEntries.count - 1)
     }
 
     private func updateEmptyState(itemCount: Int) {
@@ -715,47 +1088,58 @@ final class SessionListViewController: UIViewController {
             .withTintColor(backend.brandColor, renderingMode: .alwaysOriginal)
     }
 
-    private static func statusPill(for sessionID: String) -> UICellAccessory? {
-        switch SessionActivity.shared.status(for: sessionID) {
-        case .idle:
-            return nil
-        case .running:
+    /// The row's own word for what it is doing, taken from `SessionRowState.pill` so the phone
+    /// says NEEDS YOU where the desktops say NEEDS YOU. A running turn is a spinner instead — it
+    /// is the one state that is still moving — and idle is silence, never a pill reading "idle".
+    private static func statusPill(for state: SessionRowState) -> UICellAccessory? {
+        if state == .live {
             let spinner = UIActivityIndicatorView(style: .medium)
             spinner.color = Theme.Color.accent
             spinner.startAnimating()
             spinner.sizeToFit()
             return .customView(
                 configuration: .init(customView: spinner, placement: .trailing(displayed: .always)))
-        case .awaitingApproval:
-            let label = UILabel()
-            label.text = String(localized: "APPROVAL")
-            label.font = UIFontMetrics(forTextStyle: .caption2)
-                .scaledFont(for: .systemFont(ofSize: 10, weight: .bold))
-            label.adjustsFontForContentSizeCategory = true
-            label.textColor = Theme.Color.warning
-            label.sizeToFit()
-            let padH: CGFloat = 7
-            let padV: CGFloat = 3
-            let margin: CGFloat = 8
-            let pill = UIView(
-                frame: CGRect(x: margin, y: 0, width: label.bounds.width + padH * 2,
-                    height: label.bounds.height + padV * 2))
-            label.frame.origin = CGPoint(x: padH, y: padV)
-            pill.addSubview(label)
-            pill.backgroundColor = UIColor { traits in
-                Theme.Color.warning.withAlphaComponent(0.15)
-                    .blended(over: Theme.Color.secondaryBackground, traits: traits)
-            }
-            pill.layer.cornerRadius = pill.bounds.height / 2
-            pill.layer.cornerCurve = .continuous
-            let wrapper = UIView(
-                frame: CGRect(
-                    x: 0, y: 0, width: pill.bounds.width + margin + 6, height: pill.bounds.height))
-            wrapper.addSubview(pill)
-            return .customView(
-                configuration: .init(
-                    customView: wrapper, placement: .trailing(displayed: .always),
-                    maintainsFixedSize: true))
+        }
+        guard let pill = state.pill else { return nil }
+        let color = pillColor(state)
+        let label = UILabel()
+        label.text = pill.text
+        label.font = UIFontMetrics(forTextStyle: .caption2)
+            .scaledFont(for: .systemFont(ofSize: 10, weight: .bold))
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = color
+        label.sizeToFit()
+        let padH: CGFloat = 7
+        let padV: CGFloat = 3
+        let margin: CGFloat = 8
+        let badge = UIView(
+            frame: CGRect(x: margin, y: 0, width: label.bounds.width + padH * 2,
+                height: label.bounds.height + padV * 2))
+        label.frame.origin = CGPoint(x: padH, y: padV)
+        badge.addSubview(label)
+        badge.backgroundColor = UIColor { traits in
+            color.withAlphaComponent(0.15)
+                .blended(over: Theme.Color.secondaryBackground, traits: traits)
+        }
+        badge.layer.cornerRadius = badge.bounds.height / 2
+        badge.layer.cornerCurve = .continuous
+        let wrapper = UIView(
+            frame: CGRect(
+                x: 0, y: 0, width: badge.bounds.width + margin + 6, height: badge.bounds.height))
+        wrapper.addSubview(badge)
+        return .customView(
+            configuration: .init(
+                customView: wrapper, placement: .trailing(displayed: .always),
+                maintainsFixedSize: true))
+    }
+
+    private static func pillColor(_ state: SessionRowState) -> UIColor {
+        switch state {
+        case .awaitingApproval: return Theme.Color.warning
+        case .failed: return Theme.Color.danger
+        case .offline: return Theme.Color.secondaryLabel
+        case .live: return Theme.Color.success
+        case .idle: return Theme.Color.tertiaryLabel
         }
     }
 
@@ -783,6 +1167,18 @@ final class SessionListViewController: UIViewController {
     #if DEBUG
         var tourScrollView: UIScrollView { collectionView }
 
+        func tourSelect(_ count: Int) {
+            setSelecting(true)
+            for entry in visibleEntries.prefix(count) { selection.insert(entry) }
+            updateSelectionBar()
+            refreshVisibleRows()
+        }
+
+        func tourNewChat() {
+            guard let profile = viewModel.servers.first else { return }
+            startChat(on: profile)
+        }
+
         func tourOpen(_ sessionID: String) {
             guard let entry = viewModel.entries.first(where: { $0.session.id == sessionID })
             else { return }
@@ -805,6 +1201,11 @@ extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
+        keyCursor = visibleEntries.firstIndex(of: entry)
+        guard !isSelecting else {
+            toggleMark(entry)
+            return
+        }
         openChat(for: entry)
     }
 
@@ -812,7 +1213,7 @@ extension SessionListViewController: UICollectionViewDelegate {
         _ collectionView: UICollectionView,
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first,
+        guard !isSelecting, let indexPath = indexPaths.first,
             let entry = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
@@ -1221,9 +1622,13 @@ extension SessionListViewController: KeyActionHost {
         case .selectFirst:
             moveCursor(to: 0)
         case .selectLast:
-            moveCursor(to: max(0, dataSource.snapshot().numberOfItems - 1))
+            moveCursor(to: max(0, visibleEntries.count - 1))
         case .openSelected:
             guard let entry = cursorEntry() else { return false }
+            guard !isSelecting else {
+                toggleMark(entry)
+                return true
+            }
             SessionSeenStore.markSeen(entry.session.id)
             openChat(for: entry)
         case .scrollDown:
@@ -1238,16 +1643,22 @@ extension SessionListViewController: KeyActionHost {
             searchController.isActive = true
             searchController.searchBar.searchTextField.becomeFirstResponder()
         case .leaveInsert:
+            if !selection.isEmpty {
+                selection.clear()
+                updateSelectionBar()
+                refreshVisibleRows()
+                return true
+            }
+            if isSelecting {
+                setSelecting(false)
+                return true
+            }
             guard searchController.isActive else { return false }
             searchController.isActive = false
             becomeFirstResponder()
         case .newChat:
-            guard let profile = viewModel.servers.first else { return false }
-            if viewModel.servers.count == 1 {
-                startChat(on: profile)
-            } else {
-                presentServerChoice()
-            }
+            guard let profile = preferredServer() else { return false }
+            startChat(on: profile)
         case .toggleSaved:
             guard let entry = cursorEntry() else { return false }
             Theme.Haptics.tap()
@@ -1270,7 +1681,20 @@ extension SessionListViewController: KeyActionHost {
                 return false
             }
             forkAndOpen(entry)
+        case .toggleMarked:
+            guard let entry = cursorEntry() else { return false }
+            if !isSelecting { setSelecting(true) }
+            toggleMark(entry)
+        case .toggleMarkAll:
+            guard !visibleEntries.isEmpty else { return false }
+            if !isSelecting { setSelecting(true) }
+            toggleMarkAll()
         case .deleteSelected:
+            let marked = targets(for: .delete, in: selection.resolve(in: visibleEntries))
+            guard marked.isEmpty else {
+                confirmBulkDelete(marked)
+                return true
+            }
             guard let entry = cursorEntry(), viewModel.supportsMultipleSessions(entry) else {
                 return false
             }
@@ -1295,37 +1719,33 @@ extension SessionListViewController: KeyActionHost {
         return true
     }
 
+    /// The cursor is a flat position over every row on screen, not an offset into one section: a
+    /// pinned chat or a LIVE NOW heading used to leave the keyboard verbs acting on a row the
+    /// person was not looking at. Never addresses a snapshot by a hardcoded section.
     private func cursorEntry() -> SessionEntry? {
-        guard let keyCursor else { return nil }
-        return dataSource.itemIdentifier(for: IndexPath(item: keyCursor, section: 0))
+        guard let keyCursor, visibleEntries.indices.contains(keyCursor) else { return nil }
+        return visibleEntries[keyCursor]
     }
 
     private func moveCursor(by delta: Int) {
-        let count = dataSource.snapshot().numberOfItems
+        let count = visibleEntries.count
         guard count > 0 else { return }
         moveCursor(to: max(0, min(count - 1, (keyCursor ?? (delta > 0 ? -1 : count)) + delta)))
     }
 
     private func moveCursor(to index: Int) {
-        let count = dataSource.snapshot().numberOfItems
-        guard count > 0, (0..<count).contains(index) else { return }
+        guard visibleEntries.indices.contains(index) else { return }
         keyCursor = index
+        guard let indexPath = dataSource.indexPath(for: visibleEntries[index]) else { return }
         collectionView.selectItem(
-            at: IndexPath(item: index, section: 0), animated: true,
-            scrollPosition: .centeredVertically)
+            at: indexPath, animated: true, scrollPosition: .centeredVertically)
     }
 
-    private func presentServerChoice() {
-        let sheet = UIAlertController(
-            title: String(localized: "New chat on…"), message: nil, preferredStyle: .actionSheet)
-        for profile in viewModel.servers {
-            sheet.addAction(
-                UIAlertAction(title: profile.name, style: .default) { [weak self] _ in
-                    self?.startChat(on: profile)
-                })
-        }
-        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = view
-        present(sheet, animated: true)
+    /// The machine a new chat opens on before anyone chooses: the one the last chat was started
+    /// on, since one machine is the overwhelmingly common answer and the modal can still switch.
+    /// Never asks the server question ahead of the modal that already asks it.
+    private func preferredServer() -> ConnectionProfile? {
+        let remembered = AppPreferences.lastComposeTarget?.profileID
+        return viewModel.servers.first { $0.id == remembered } ?? viewModel.servers.first
     }
 }

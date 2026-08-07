@@ -76,6 +76,11 @@ double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);
 /// shim: the property write is a varargs `g_object_set`).
 void tailscode_set_text_scale(double scale);
 
+/// Names a control for assistive technology. A button whose only child is a glyph has nothing an
+/// AT can read, and `gtk_accessible_update_property` is variadic, so it cannot be called from
+/// Swift directly.
+void tailscode_set_accessible_label(GtkWidget *widget, const char *label);
+
 /// The widget that currently holds focus inside `root`, or NULL — how a key handler tells the
 /// prompt box apart from the search field without guessing from the event.
 GtkWidget *tailscode_focused_widget(GtkWidget *root);

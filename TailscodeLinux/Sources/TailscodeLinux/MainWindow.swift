@@ -46,8 +46,13 @@ final class MainWindow: @unchecked Sendable {
     private var knownProfiles: [ConnectionProfile] = []
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing
     /// keeps reporting the session until the delete lands, and each report would resurrect the
-    /// row; the tombstone outlives them all.
+    /// row; the tombstone outlives them all. Keyed on `(profileID, sessionID)` like every store
+    /// here, because a bulk delete spanning two servers meets the same session id twice and a bare
+    /// id would take the wrong row off the wrong machine.
     private var pendingDeletes: Set<String> = []
+    /// The chats marked for a verb, an ephemeral gesture rather than a preference — pruned to what
+    /// the list is actually drawing every time it re-renders.
+    private var marks = ChatSelection()
     private var showingArchive = false
     private var sidebarScroller: UnsafeMutablePointer<GtkWidget>?
     private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
@@ -188,6 +193,25 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo()
+                case "mark":
+                    if let index = Int(argument), index < self.visible.count {
+                        self.toggleMark(self.visible[index].entry)
+                    } else {
+                        self.toggleMarkAtCursor()
+                    }
+                    FileHandle.standardOutput.write(Data("MARK \(self.marksSummary)\n".utf8))
+                case "markall":
+                    self.toggleMarkAll()
+                    FileHandle.standardOutput.write(Data("MARK \(self.marksSummary)\n".utf8))
+                case "bulk":
+                    self.perform(bulk: BulkChatAction(rawValue: argument) ?? .archive)
+                    FileHandle.standardOutput.write(Data("BULK \(self.marksSummary)\n".utf8))
+                case "sections":
+                    let described = self.visible.map { "\($0.state):\($0.title)" }
+                        .joined(separator: " | ")
+                    FileHandle.standardOutput.write(Data("SECTIONS \(described)\n".utf8))
+                case "gallery":
+                    self.activePane.driverOpenGallery()
                 case "newchat":
                     Task { [weak self] in
                         let profiles = await ServerDirectory.shared.profiles()
@@ -731,7 +755,8 @@ final class MainWindow: @unchecked Sendable {
     func refresh() async {
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
-        let (entries, unreachable) = await ServerDirectory.shared.entries()
+        let known = self.entries.compactMap(\.session.directory)
+        let (entries, unreachable) = await ServerDirectory.shared.entries(knownDirectories: known)
         if !entries.isEmpty { SessionListCache.save(entries) }
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
@@ -804,7 +829,10 @@ final class MainWindow: @unchecked Sendable {
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
         let needle = filter.lowercased()
-        var rows = entries.filter { !pendingDeletes.contains($0.session.id) }.map {
+        let presence = observedPresence()
+        var rows = entries.filter {
+            !pendingDeletes.contains(SessionPinStore.key($0.profileID, $0.session.id))
+        }.map {
             SessionRowModel(
                 entry: $0,
                 unreachable: unreachable.contains(
@@ -812,7 +840,9 @@ final class MainWindow: @unchecked Sendable {
                 unread: unread($0.session.id, $0.session.updatedAt),
                 saved: saved.contains($0.session.id),
                 pinned: SessionPinStore.contains(
-                    profileID: $0.profileID, sessionID: $0.session.id))
+                    profileID: $0.profileID, sessionID: $0.session.id),
+                presence: presence[SessionPinStore.key($0.profileID, $0.session.id)]
+                    ?? .unobserved)
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
         Notifier.shared.observeListing(
@@ -840,11 +870,12 @@ final class MainWindow: @unchecked Sendable {
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
         visible = sections.flatMap(\.1)
+        marks.prune(to: visible.map(\.entry))
         syncCursorToSelection()
 
         let snapshot = (
             visible, unreachable, filter,
-            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)"
+            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
@@ -861,6 +892,7 @@ final class MainWindow: @unchecked Sendable {
                     Localized.text("%@ unreachable — showing what was last seen",
                         unreachable.joined(separator: ", "))))
         }
+        if !marks.isEmpty { gtk_box_append(ptr(sidebarBanner), makeSelectionBar()) }
 
         Gtk.removeChildren(of: sidebarList)
         if showingArchive {
@@ -894,8 +926,12 @@ final class MainWindow: @unchecked Sendable {
                     ptr(sidebarList),
                     SidebarRow.make(
                         row, focused: row.entry.session.id == selectedID,
+                        marked: marks.contains(row.entry),
                         onOpen: { [weak self] in
                             self?.open(row.entry)
+                        },
+                        onMark: { [weak self] in
+                            Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
                         },
                         onMenu: { [weak self] bits, x, y in
                             self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
@@ -931,6 +967,230 @@ final class MainWindow: @unchecked Sendable {
         }
         Gtk.margins(button, top: 6, bottom: 10)
         gtk_box_append(ptr(sidebarList), button)
+    }
+
+    /// What the panes on screen are watching, keyed on `(profileID, sessionID)` like every store
+    /// here, so a conversation this window is streaming reaches LIVE NOW without waiting for the
+    /// server's next sweep. Two panes on one chat resolve to the louder answer: a pane that knows
+    /// nothing must never overwrite the one that knows a turn is running.
+    private func observedPresence() -> [String: SessionPresence] {
+        var observed: [String: SessionPresence] = [:]
+        splitHost.eachPane { pane in
+            guard let entry = pane.entry else { return }
+            let key = SessionPinStore.key(entry.profileID, entry.session.id)
+            let presence = pane.presence
+            guard Self.loudness(presence) > Self.loudness(observed[key] ?? .unobserved) else {
+                return
+            }
+            observed[key] = presence
+        }
+        return observed
+    }
+
+    private static func loudness(_ presence: SessionPresence) -> Int {
+        switch presence {
+        case .unobserved: return 0
+        case .failed: return 1
+        case .running: return 2
+        case .awaitingApproval: return 3
+        }
+    }
+
+    /// One line describing the selection, for the headless driver: how many are held, and which
+    /// rows they are in the order the list is drawing them.
+    private var marksSummary: String {
+        let titles = marks.resolve(in: visible.map(\.entry)).map { entry in
+            SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false).title
+        }
+        return "\(marks.count) [\(titles.joined(separator: " | "))]"
+    }
+
+    private func makeSelectionBar() -> UnsafeMutablePointer<GtkWidget> {
+        SidebarSelectionBar.make(
+            count: marks.count,
+            onClear: { [weak self] in
+                Gtk.onMain { [weak self] in _ = self?.clearMarks() }
+            },
+            onAction: { [weak self] action in
+                Gtk.onMain { [weak self] in self?.perform(bulk: action) }
+            })
+    }
+
+    private func toggleMark(_ entry: SessionEntry) {
+        marks.toggle(entry)
+        lastSidebar = nil
+        renderSidebar()
+    }
+
+    /// `space` marks the row the keyboard is on, which is the row the eye is on — the cursor, not
+    /// whichever chat a background pane happens to be holding.
+    private func toggleMarkAtCursor() {
+        guard cursor < visible.count else { return }
+        toggleMark(visible[cursor].entry)
+    }
+
+    private func toggleMarkAll() {
+        marks.toggleAll(in: visible.map(\.entry))
+        lastSidebar = nil
+        renderSidebar()
+    }
+
+    /// Answers whether there were marks to drop, so escape can spend itself on the selection and
+    /// leave the rest of what it means — leaving insert, closing the finder — for the next press.
+    @discardableResult
+    private func clearMarks() -> Bool {
+        guard !marks.isEmpty else { return false }
+        marks.clear()
+        lastSidebar = nil
+        renderSidebar()
+        return true
+    }
+
+    private func perform(bulk action: BulkChatAction) {
+        let chosen = marks.resolve(in: visible.map(\.entry))
+        guard !chosen.isEmpty else { return }
+        switch action {
+        case .delete: confirmBulkDelete(chosen)
+        case .archive, .unarchive, .save, .unsave, .markRead, .markUnread:
+            applyLocalBulk(action, to: chosen)
+        }
+    }
+
+    /// The verbs that only change what this device remembers land at once and without a dialog:
+    /// nothing leaves the server, and every one of them is undone by the same row action that set
+    /// it. The set is spent by the verb, because a selection that outlived its gesture would make
+    /// the next `x` mean something nobody chose.
+    private func applyLocalBulk(_ action: BulkChatAction, to chosen: [SessionEntry]) {
+        for entry in chosen {
+            switch action {
+            case .archive: setArchived(true, entry)
+            case .unarchive: setArchived(false, entry)
+            case .save: setSaved(true, entry)
+            case .unsave: setSaved(false, entry)
+            case .markRead: SessionSeenStore.markSeen(entry.session.id)
+            case .markUnread:
+                SessionSeenStore.markUnread(
+                    entry.session.id, updatedAt: entry.session.updatedAt)
+            case .delete: continue
+            }
+        }
+        marks.clear()
+        SettingsFile.capture()
+        lastSidebar = nil
+        renderSidebar()
+        toast(BulkChatCopy.confirm(action, count: chosen.count))
+    }
+
+    private func setArchived(_ archived: Bool, _ entry: SessionEntry) {
+        guard
+            ArchivedChatStore.contains(profileID: entry.profileID, sessionID: entry.session.id)
+                != archived
+        else { return }
+        _ = ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
+    }
+
+    private func setSaved(_ saved: Bool, _ entry: SessionEntry) {
+        guard SavedChatStore.contains(entry) != saved else { return }
+        _ = SavedChatStore.toggle(entry)
+    }
+
+    /// A bulk delete states what it is about to remove before it removes anything — three chats by
+    /// name, thirty as a number — because it reaches the servers and nothing here can undo it.
+    private func confirmBulkDelete(_ chosen: [SessionEntry]) {
+        let titles = chosen.map {
+            SessionRowModel(entry: $0, unreachable: false, unread: false, saved: false).title
+        }
+        Dialogs.confirm(
+            title: BulkChatCopy.title(.delete, count: chosen.count),
+            body: BulkChatCopy.message(count: chosen.count, titles: titles),
+            confirmLabel: BulkChatCopy.confirm(.delete, count: chosen.count), parent: window
+        ) { [weak self] in
+            Gtk.onMain { [weak self] in self?.startBulkDelete(chosen) }
+        }
+    }
+
+    /// Optimistic on confirm, like the single-row delete: the rows leave the list at once, every
+    /// pane holding one of them is emptied or moved on, and the deletes go out together rather
+    /// than in series — seven sessions across two servers is seven round trips nobody should
+    /// watch queue up. The tombstones lift only after the refresh, so a delete the server has not
+    /// acknowledged cannot be re-listed back into the list.
+    private func startBulkDelete(_ chosen: [SessionEntry]) {
+        let doomed = Set(chosen.map { SessionPinStore.key($0.profileID, $0.session.id) })
+        pendingDeletes.formUnion(doomed)
+        entries.removeAll { doomed.contains(SessionPinStore.key($0.profileID, $0.session.id)) }
+        if let fresh = freshlyCreated,
+            doomed.contains(SessionPinStore.key(fresh.profileID, fresh.session.id))
+        {
+            freshlyCreated = nil
+        }
+        marks.clear()
+        let sessionIDs = Set(chosen.map(\.session.id))
+        let active = activePane
+        splitHost.eachPane { pane in
+            guard let id = pane.sessionID, sessionIDs.contains(id) else { return }
+            if pane === active, let next = self.entries.first {
+                pane.open(next)
+            } else {
+                pane.reset(placeholder: Localized.text("That conversation was deleted."))
+            }
+        }
+        lastSidebar = nil
+        renderSidebar()
+
+        Task { [weak self] in
+            let outcome = await Self.deleteConcurrently(chosen)
+            await self?.refresh()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.pendingDeletes.subtract(doomed)
+                if let report = BulkChatCopy.outcome(outcome) {
+                    self.activePane.setNotice(report)
+                    Trace.mark("bulk delete: \(report)")
+                }
+                self.lastSidebar = nil
+                self.renderSidebar()
+            }
+        }
+    }
+
+    /// Every delete at once, counted rather than thrown: three of seven failing has no precedent
+    /// as a single error, so the first failure's reason speaks for the rest — a fan-out that fails
+    /// almost always fails the same way for every row.
+    private static func deleteConcurrently(_ chosen: [SessionEntry]) async -> BulkChatOutcome {
+        let profiles = await ServerDirectory.shared.profiles()
+        var backends: [String: any CodingAgentBackend] = [:]
+        for profile in profiles where chosen.contains(where: { $0.profileID == profile.id }) {
+            backends[profile.id] = await ServerDirectory.shared.backend(for: profile)
+        }
+        return await withTaskGroup(of: String?.self) { group in
+            for entry in chosen {
+                guard let backend = backends[entry.profileID] else {
+                    group.addTask { Localized.text("that server is not configured any more") }
+                    continue
+                }
+                let sessionID = entry.session.id
+                group.addTask {
+                    do {
+                        try await backend.deleteSession(sessionID)
+                        return nil
+                    } catch {
+                        return "\(error)"
+                    }
+                }
+            }
+            var deleted = 0
+            var failed = 0
+            var reason: String?
+            for await failure in group {
+                guard let failure else {
+                    deleted += 1
+                    continue
+                }
+                failed += 1
+                if reason == nil { reason = failure }
+            }
+            return BulkChatOutcome(deleted: deleted, failed: failed, reason: reason)
+        }
     }
 
     private func toggleArchived(_ entry: SessionEntry) {
@@ -1195,16 +1455,9 @@ final class MainWindow: @unchecked Sendable {
                     self.presentServers()
                     return
                 }
-                let ordered =
-                    profile.map { chosen in
-                        [chosen] + profiles.filter { $0.id != chosen.id }
-                    } ?? profiles
-                var seen = Set<String>()
-                let recents = self.entries.compactMap(\.session.directory).filter {
-                    seen.insert($0).inserted
-                }
                 Dialogs.newChat(
-                    parent: self.window, profiles: ordered, recentDirectories: recents,
+                    parent: self.window, profiles: profiles, entries: self.entries,
+                    preferredServer: profile?.id ?? (pane ?? self.activePane).entry?.profileID,
                     localAddresses: localAddresses
                 ) { [weak self, weak pane] profile, directory in
                     self?.createChat(on: profile, directory: directory, into: pane)
@@ -1336,7 +1589,7 @@ final class MainWindow: @unchecked Sendable {
         ) { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.pendingDeletes.insert(sessionID)
+                self.pendingDeletes.insert(SessionPinStore.key(entry.profileID, sessionID))
                 self.entries.removeAll {
                     $0.profileID == entry.profileID && $0.session.id == sessionID
                 }
@@ -1363,7 +1616,7 @@ final class MainWindow: @unchecked Sendable {
                 if failure == nil { await self?.refresh() }
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
-                    self.pendingDeletes.remove(sessionID)
+                    self.pendingDeletes.remove(SessionPinStore.key(entry.profileID, sessionID))
                     if let failure {
                         self.activePane.setNotice(Localized.text("Could not delete: %@", failure))
                         self.renderSidebar()
@@ -1405,11 +1658,31 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// While marks are held the menu leads with what they can be spent on, and each verb says so
+    /// in its own detail line — a right click that landed on an unmarked row must never read as
+    /// acting on that row when the selection is what it would take.
+    private func bulkMenuRows()
+        -> [(title: String, detail: String?, action: @Sendable () -> Void)]
+    {
+        guard !marks.isEmpty else { return [] }
+        let count = marks.count
+        return SidebarSelectionBar.offered.map { action in
+            (
+                BulkChatCopy.button(action, count: count),
+                Localized.text("%@ marked", "\(count)"),
+                { [weak self] in
+                    Gtk.onMain { [weak self] in self?.perform(bulk: action) }
+                }
+            )
+        }
+    }
+
     private func rowMenuRows(
         _ row: SessionRowModel, backend: (any CodingAgentBackend)?
     ) -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
         let entry = row.entry
         var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = []
+        rows += bulkMenuRows()
         if entry.session.id != activePane.sessionID {
             rows.append(
                 (Localized.text("Open"), nil,
@@ -1605,6 +1878,7 @@ final class MainWindow: @unchecked Sendable {
             focus(.transcript)
             activePane.focusComposer()
         case .leaveInsert:
+            if clearMarks() { return true }
             let pane = activePane
             if pane.findShown { pane.setFindShown(false) }
             pane.dismissCompletion()
@@ -1654,10 +1928,9 @@ final class MainWindow: @unchecked Sendable {
             {
                 fork(entry: entry, backend: backend)
             }
-        case .deleteSelected:
-            if let entry = activePane.entry, let backend = activePane.backend {
-                presentDelete(entry: entry, backend: backend)
-            }
+        case .deleteSelected: deleteMarkedOrCursor()
+        case .toggleMarked: toggleMarkAtCursor()
+        case .toggleMarkAll: toggleMarkAll()
         case .copySessionID:
             if let entry = activePane.entry {
                 Gtk.copyToClipboard(entry.session.id)
@@ -1684,6 +1957,28 @@ final class MainWindow: @unchecked Sendable {
             splitHost.exchangeActive()
         }
         return true
+    }
+
+    /// `x` means every marked chat when any are marked and the row under the cursor when none are
+    /// — one key, so a selection never needs a second gesture to be spent. The single-row path
+    /// keeps its own confirm, which names the server the chat is being taken from; it must never
+    /// silently delete whatever a background pane was holding.
+    private func deleteMarkedOrCursor() {
+        guard marks.isEmpty else {
+            perform(bulk: .delete)
+            return
+        }
+        guard cursor < visible.count else { return }
+        let entry = visible[cursor].entry
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            guard let profile = profiles.first(where: { $0.id == entry.profileID }),
+                let backend = await ServerDirectory.shared.backend(for: profile)
+            else { return }
+            Gtk.onMain { [weak self] in
+                self?.presentDelete(entry: entry, backend: backend)
+            }
+        }
     }
 
     private func toggleUnreadSelected() {

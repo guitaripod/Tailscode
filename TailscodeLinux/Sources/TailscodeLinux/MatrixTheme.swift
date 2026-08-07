@@ -268,6 +268,41 @@ enum MatrixTheme {
         }
         .row-focused .row-title, .row-focused .row-title-unread { color: \(text); }
         .row-focused .row-detail { opacity: 0.85; }
+        .row-marked, .row-marked:hover, .row-marked:active {
+            background-color: alpha(\(accent), 0.20);
+        }
+        .row-mark {
+            padding: 0 2px;
+            min-width: 18px;
+            min-height: 18px;
+            border: none;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            opacity: 0.18;
+        }
+        .session-row-holder:hover .row-mark { opacity: 0.75; }
+        .row-mark-on, .session-row-holder:hover .row-mark-on { opacity: 1; }
+        .row-mark-glyph { font-size: \(c(0.82)); }
+        .row-mark-on .row-mark-glyph { color: \(accent); }
+        .selection-bar {
+            background-color: alpha(\(accent), 0.10);
+            border: 1px solid alpha(\(accent), 0.45);
+            border-radius: 6px;
+        }
+        .selection-count {
+            font-family: monospace;
+            font-size: \(m(0.82));
+            font-weight: 700;
+            color: \(accent);
+        }
+        .selection-verb {
+            font-size: \(c(0.78));
+            padding: 2px 6px;
+            border: 1px solid alpha(\(text), 0.20);
+            border-radius: 4px;
+        }
+        .selection-verb:hover { border-color: \(accent); }
         .row-title { font-size: \(c(0.92)); color: \(text); }
         .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
         .row-detail { font-size: \(c(0.78)); opacity: 0.65; font-family: monospace; }

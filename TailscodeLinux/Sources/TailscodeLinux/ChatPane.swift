@@ -118,6 +118,28 @@ final class ChatPane: @unchecked Sendable {
     var sessionID: String? { entry?.session.id }
     var auraActive: Bool { ultracodeAuraTask != nil }
 
+    /// What this pane is watching first-hand, for the chat list's own LIVE NOW.
+    ///
+    /// A listing reports `active` only for the seconds a turn is literally open on the server, so
+    /// the pane streaming a conversation is the only witness that can say it is running now, that
+    /// it stopped to ask something, or that its last turn failed. The order is the status band's
+    /// own — a failure outranks everything, a question or an approval outranks merely being busy —
+    /// and the step is the running tool `StatusFacts` already named, so the row and the band never
+    /// speak two vocabularies for one turn.
+    var presence: SessionPresence {
+        guard let state = lastState else { return .unobserved }
+        if state.lastFailure != nil { return .failed }
+        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
+            return .awaitingApproval
+        }
+        if state.status == .running || state.compaction?.isRunning == true {
+            return .running(bandState.facts.runningTool)
+        }
+        return .unobserved
+    }
+
+    private var lastPresence: SessionPresence = .unobserved
+
     init(id: PaneID, host: MainWindow) {
         self.id = id
         self.host = host
@@ -497,9 +519,27 @@ final class ChatPane: @unchecked Sendable {
         gtk_label_set_text(op(identityLabel), "\(title) · \(server)")
     }
 
-    /// Opens the gallery over every picture in the conversation, landed on the one clicked.
-    private func presentImage(key: String, name: String) {
+    /// The drive-run equivalent of clicking a picture: the gallery over every image in the
+    /// conversation, on the first one. The harness reads the `GALLERY` lines it prints.
+    func driverOpenGallery() {
         let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
+            guard case .file(let reference) = row.kind,
+                (reference.mime ?? "").hasPrefix("image/")
+            else { return nil }
+            let name =
+                reference.filename
+                ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "image"
+            return ImageGallery.Item(key: row.key, name: name, reference: reference)
+        }
+        guard let first = items.first else {
+            FileHandle.standardOutput.write(Data("GALLERY none (\(lastFullRows.count) rows)\n".utf8))
+            return
+        }
+        presentImage(key: first.key, name: first.name)
+    }
+
+    /// Opens the gallery over every picture in the conversation, landed on the one clicked.
+    private func presentImage(key: String, name: String) {        let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
             guard case .file(let reference) = row.kind,
                 (reference.mime ?? "").hasPrefix("image/")
             else { return nil }
@@ -1244,6 +1284,18 @@ final class ChatPane: @unchecked Sendable {
         gtk_button_set_label(
             ptr(sendButton), running ? Localized.text("⏎ queue") : Localized.text("⏎ send"))
         gtk_widget_set_visible(stopButton, running ? 1 : 0)
+        notePresenceChange()
+    }
+
+    /// Tells the window when what this pane is watching has actually changed, which is what puts
+    /// the conversation being talked in into LIVE NOW without waiting for the server's sweep. Only
+    /// a change is reported: a running turn applies state many times a second, and rebuilding two
+    /// hundred sidebar rows per lump is the stutter the list spent a rewrite removing.
+    private func notePresenceChange() {
+        let now = presence
+        guard now != lastPresence else { return }
+        lastPresence = now
+        Gtk.onMain { [weak self] in self?.host?.scheduleSidebarRender() }
     }
 
     /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
@@ -2439,7 +2491,9 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame.
-    /// The decode happens off the main context.
+    /// The decode happens off the main context, and the texture is downsampled — the transcript
+    /// shows a reference, not the original, and the original costs megabytes of VRAM a bubble has
+    /// no use for. The gallery decodes the original itself, one page at a time.
     private func fetchImage(_ reference: FileReference, key: String) {
         guard !inFlightImages.contains(key) else { return }
         inFlightImages.insert(key)
@@ -2451,17 +2505,23 @@ final class ChatPane: @unchecked Sendable {
                 if let data { ImageCache.save(data, for: reference) }
             }
             guard let data else { return }
-            let bits: UInt = data.withUnsafeBytes { buffer in
+            let decoded: (bits: UInt, width: Int32, height: Int32) = data.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress else { return (0, 0, 0) }
+                var width: Int32 = 0
+                var height: Int32 = 0
                 guard
-                    let texture = tailscode_texture_from_bytes(
-                        buffer.baseAddress, gsize(buffer.count))
-                else { return UInt(0) }
-                return UInt(bitPattern: texture)
+                    let texture = tailscode_texture_scaled(
+                        base, gsize(buffer.count), TranscriptContext.bubbleMaxDimension,
+                        &width, &height)
+                else { return (0, 0, 0) }
+                return (UInt(bitPattern: texture), width, height)
             }
-            guard bits != 0 else { return }
+            guard decoded.bits != 0 else { return }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.context.store(textureBits: bits, data: data, forKey: key)
+                self.context.store(
+                    textureBits: decoded.bits, data: data,
+                    dimensions: (decoded.width, decoded.height), forKey: key)
                 self.replaceRows { $0.key == key }
             }
         }

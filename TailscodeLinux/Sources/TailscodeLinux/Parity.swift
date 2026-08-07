@@ -10,7 +10,8 @@ enum ParityManifest {
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
         case .sessionSections: return .implemented("groupIntoSections")
-        case .sessionRowStatus: return .implemented("SessionRowModel")
+        case .sessionRowStatus: return .implemented("observedPresence")
+        case .bulkSelection: return .implemented("SidebarSelectionBar")
         case .sessionPinning: return .implemented("pill-pinned")
         case .unreadTracking: return .implemented("toggleUnreadSelected")
         case .savedChats: return .implemented("SavedChatStore")
@@ -62,7 +63,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("diagnose")
         case .serverSignIn: return .implemented("SignInDialog")
         case .serverSelfUpdate: return .implemented("renderSoftware")
-        case .newChat: return .implemented("presentNewChat")
+        case .newChat: return .implemented("NewChatWindow")
         case .keyboardShortcuts: return .implemented("installKeymap")
         case .shortcutCheatsheet: return .implemented("helpOverlay")
         case .fileBrowser: return .implemented("FileTree")

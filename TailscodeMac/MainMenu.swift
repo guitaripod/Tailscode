@@ -88,7 +88,14 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Copy Session ID"), #selector(copySessionID), ""))
         menu.addItem(tagged(.copyPath, Localized.text("Copy Project Path"), #selector(copyProjectPath), ""))
         menu.addItem(.separator())
-        menu.addItem(item(Localized.text("Delete…"), #selector(deleteChat), "\u{08}"))
+        menu.addItem(
+            item(
+                Localized.text("Mark / Unmark"), #selector(toggleMarked), "m",
+                [.command, .shift]))
+        menu.addItem(
+            item(Localized.text("Select All Chats"), #selector(markAll), "a", [.command, .shift]))
+        menu.addItem(.separator())
+        menu.addItem(tagged(.delete, Localized.text("Delete…"), #selector(deleteChat), "\u{08}"))
         return holder(menu)
     }
 
@@ -175,6 +182,7 @@ final class MainMenu: NSObject {
         case rename
         case fork
         case copyPath
+        case delete
     }
 
     private func holder(_ menu: NSMenu) -> NSMenuItem {
@@ -215,6 +223,8 @@ final class MainMenu: NSObject {
     @objc private func copySessionID() { hub.perform(.copySessionID) }
     @objc private func copyProjectPath() { hub.perform(.copyProjectPath) }
     @objc private func deleteChat() { hub.perform(.deleteSelected) }
+    @objc private func toggleMarked() { hub.perform(.toggleMarked) }
+    @objc private func markAll() { hub.perform(.toggleMarkAll) }
     @objc private func toggleSidebar() { hub.perform(.toggleSidebar) }
     @objc private func toggleFiles() { hub.perform(.toggleFiles) }
     @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
@@ -240,7 +250,10 @@ final class MainMenu: NSObject {
 extension MainMenu: NSMenuItemValidation {
     /// The chat verbs answer for the chat that is open: absent one, they dim; Save and Mark
     /// Unread also flip their titles to describe the state they would leave behind, and Rename
-    /// and Fork answer for what the server can actually do.
+    /// and Fork answer for what the server can actually do. Held marks outrank the open chat for
+    /// the one verb a set changes the meaning of: Delete says how many it would take and stays
+    /// reachable without an open chat, so the number is read before the menu is chosen, never
+    /// after.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let treeVerbs: Set<Selector> = [
             #selector(closeSplit), #selector(zoomSplit), #selector(focusSplitLeft),
@@ -250,13 +263,18 @@ extension MainMenu: NSMenuItemValidation {
         if let action = menuItem.action, treeVerbs.contains(action) {
             return hub.splitPanes.paneCount > 1
         }
+        let marked = hub.sidebar.markedCount
         let chatVerbs: Set<Selector> = [
             #selector(send), #selector(stop), #selector(toggleSaved), #selector(toggleArchived),
             #selector(toggleUnread), #selector(rename), #selector(fork),
             #selector(copySessionID), #selector(copyProjectPath), #selector(deleteChat),
-            #selector(find),
+            #selector(toggleMarked), #selector(find),
         ]
         guard let action = menuItem.action, chatVerbs.contains(action) else { return true }
+        if action == #selector(deleteChat), marked > 0 {
+            menuItem.title = BulkChatCopy.button(.delete, count: marked) + "…"
+            return true
+        }
         guard let entry = hub.currentEntry else { return false }
         switch Tag(rawValue: menuItem.tag) {
         case .save:
@@ -279,6 +297,8 @@ extension MainMenu: NSMenuItemValidation {
             return hub.currentBackend?.capabilities.supportsForking == true
         case .copyPath:
             return entry.session.directory != nil
+        case .delete:
+            menuItem.title = Localized.text("Delete…")
         case nil:
             break
         }

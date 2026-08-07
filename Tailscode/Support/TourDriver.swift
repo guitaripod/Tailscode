@@ -48,6 +48,12 @@
             Task { await driver.modelWalk() }
         }
 
+        static func startChatsWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.chatsWalk() }
+        }
+
         private let window: UIWindow
 
         private init(window: UIWindow) { self.window = window }
@@ -276,6 +282,33 @@
             guard let query = Self.modelQueries[state] else { return }
             modelPicker?.tourSearch(query)
             AppLogger.ui.info("modelwalk: query=\(query)")
+        }
+
+        /// The chat list's own surfaces, each held still long enough to be photographed: the
+        /// sectioned list, a held selection with its verbs, and the new-conversation modal in both
+        /// of the chooser's modes.
+        private func chatsWalk() async {
+            let state = ProcessInfo.processInfo.environment["TAILSCODE_CHATS_STATE"] ?? "sections"
+            AppLogger.ui.info("chatswalk: state=\(state)")
+            await hold(1.5)
+            home?.tourPushChats()
+            await hold(2.0)
+            switch state {
+            case "select":
+                list?.tourSelect(3)
+            case "newchat", "newchatquery", "newchatnormal":
+                list?.tourNewChat()
+                await hold(1.5)
+                if state == "newchatquery" { newChat?.tourType("dev") }
+                if state == "newchatnormal" { newChat?.tourLeaveField() }
+            default:
+                break
+            }
+            AppLogger.ui.info("chatswalk: settled")
+        }
+
+        private var newChat: NewChatViewController? {
+            presentedNav?.viewControllers.compactMap { $0 as? NewChatViewController }.last
         }
 
         private static let modelQueries: [String: String] = [

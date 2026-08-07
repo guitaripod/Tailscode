@@ -9,13 +9,14 @@ enum ParityManifest {
 
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
-        case .sessionSections: return .implemented("HomeSection")
+        case .sessionSections: return .implemented("sectionedRows")
         case .sessionRowStatus: return .implemented("statusPill")
         case .sessionPinning: return .implemented("togglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatsViewController")
         case .archivedChats: return .implemented("ArchivedChatsViewController")
         case .deleteSession: return .implemented("confirmDelete")
+        case .bulkSelection: return .implemented("performBulk")
         case .renameSession: return .implemented("promptRename")
         case .forkSession: return .implemented("forkConversation")
         case .listFilter: return .implemented("filteredEntries")
@@ -62,7 +63,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverSignIn: return .implemented("ServerSignInViewController")
         case .serverSelfUpdate: return .implemented("BridgeUpdater")
-        case .newChat: return .implemented("NewChatFlow")
+        case .newChat: return .implemented("NewChatViewController")
         case .keyboardShortcuts: return .implemented("KeyBridge")
         case .shortcutCheatsheet: return .implemented("ShortcutCheatsheetViewController")
         case .fileBrowser: return .implemented("FileBrowserViewController")

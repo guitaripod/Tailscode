@@ -93,6 +93,22 @@ enum SelfTest {
             failures += 1
         }
 
+        let newChatFailures = NewChatChooserCheck.run()
+        if newChatFailures.isEmpty {
+            report("new chat: folders rank, modes swap, keys behave")
+        } else {
+            report("new chat: \(newChatFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let selectionFailures = ChatSelectionCheck.run()
+        if selectionFailures.isEmpty {
+            report("chat selection: two servers stay two chats, copy counts once")
+        } else {
+            report("chat selection: \(selectionFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let modelFailures = ModelChooserCheck.run()
         if modelFailures.isEmpty {
             report("model chooser: providers fold, ranking holds, keys behave")
@@ -474,6 +490,10 @@ enum SelfTest {
         try expect(action(set, chord("J", shift: true), .normal) == .selectNext, "J selects")
         try expect(action(set, chord("e"), .normal) == .archiveSelected, "e archives")
         try expect(action(set, chord("x"), .normal) == .deleteSelected, "x deletes")
+        try expect(action(set, chord(" "), .normal) == .toggleMarked, "space marks a chat")
+        try expect(
+            action(set, chord("a", control: true), .normal) == .toggleMarkAll,
+            "ctrl+a marks every chat shown")
         try expect(
             action(set, KeyChord.canonical(keyval: Keymap.enter, state: 0), .normal)
                 == .openSelected, "enter opens")

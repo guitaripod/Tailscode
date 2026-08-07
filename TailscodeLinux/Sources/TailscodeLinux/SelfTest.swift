@@ -143,6 +143,22 @@ public enum SelfTest {
             failures += 1
         }
 
+        let newChatFailures = NewChatChooserCheck.run()
+        if newChatFailures.isEmpty {
+            report("new chat: folders rank, servers cycle, both modes behave")
+        } else {
+            report("new chat: \(newChatFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let selectionFailures = ChatSelectionCheck.run()
+        if selectionFailures.isEmpty {
+            report("chat selection: marks key on the server, prune, and say what they did")
+        } else {
+            report("chat selection: \(selectionFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         do {
             try checkSettingsFile()
             report("settings file: survives a reinstall")

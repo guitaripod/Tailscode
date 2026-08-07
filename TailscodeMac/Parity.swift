@@ -10,12 +10,13 @@ enum ParityManifest {
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
         case .sessionSections: return .implemented("groupIntoSections")
-        case .sessionRowStatus: return .implemented("SessionRowModel")
+        case .sessionRowStatus: return .implemented("observedPresence")
         case .sessionPinning: return .implemented("menuTogglePinned")
         case .unreadTracking: return .implemented("markUnread")
         case .savedChats: return .implemented("SavedChatStore")
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
+        case .bulkSelection: return .implemented("SidebarBulkBar")
         case .renameSession: return .implemented("renameSession")
         case .forkSession: return .implemented("forkSession")
         case .listFilter: return .implemented("searchField")

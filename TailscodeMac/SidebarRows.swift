@@ -9,7 +9,10 @@ enum SidebarRow: Equatable {
     case banner(String)
     case backLink
     case header(String, Int)
-    case session(SessionRowModel)
+    /// - Parameter marked: whether the row is held by the bulk selection. It travels in the row
+    ///   value rather than being read from the store at configure time, so the table's diff sees a
+    ///   mark land the same way it sees a title change.
+    case session(SessionRowModel, marked: Bool)
     case more(Int)
     case archived(Int)
     case empty(String)
@@ -21,9 +24,9 @@ enum SidebarRow: Equatable {
 enum SidebarCellFactory {
     static func view(for row: SidebarRow, in tableView: NSTableView) -> NSView {
         switch row {
-        case .session(let model):
+        case .session(let model, let marked):
             let cell = reuse("session", in: tableView) { SidebarSessionCell() }
-            cell.configure(with: model)
+            cell.configure(with: model, marked: marked)
             return cell
         case .header(let title, let count):
             let cell = reuse("header", in: tableView) { SidebarHeaderCell() }
@@ -76,6 +79,8 @@ final class SidebarSessionCell: NSView {
 
     init() {
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = MacTheme.Radius.control
         glyph.font = MacTheme.Font.body()
         glyph.translatesAutoresizingMaskIntoConstraints = false
 
@@ -114,10 +119,18 @@ final class SidebarSessionCell: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(with model: SessionRowModel) {
-        glyph.stringValue = model.state.glyph.text
+    /// - Parameter marked: a marked row wears the accent wash and lends its glyph column to the
+    ///   check, because the mark is the only thing about the row that a verb is about to act on;
+    ///   the state it was in is still spoken by its pill, so nothing a marked row says is lost.
+    func configure(with model: SessionRowModel, marked: Bool) {
+        layer?.backgroundColor =
+            marked
+            ? MacTheme.Color.accent.withAlphaComponent(0.16).cgColor : NSColor.clear.cgColor
+        setAccessibilityLabel(model.title)
+        setAccessibilityValue(marked ? Localized.text("Marked") : "")
+        glyph.stringValue = marked ? "✓" : model.state.glyph.text
         glyph.font = MacTheme.Font.body()
-        glyph.textColor = Self.glyphColor(model.state)
+        glyph.textColor = marked ? MacTheme.Color.accent : Self.glyphColor(model.state)
         title.stringValue = model.title
         title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
         detail.stringValue = model.snippet ?? model.detail
@@ -220,6 +233,119 @@ final class SidebarHeaderCell: NSView {
     func configure(title: String, count: Int) {
         self.title.stringValue = title
         self.count.stringValue = "\(count)"
+    }
+}
+
+/// What is held, and the verbs that act on all of it.
+///
+/// It appears only while chats are marked, and every word on it comes from `BulkChatCopy` so this
+/// Mac names a count exactly the way the phone and the Linux desktop do. Content rather than
+/// chrome: the sidebar is already the system's own glass and glass never stacks on glass, so this
+/// is a tinted strip inside the list, never a second material floating over it.
+@MainActor
+final class SidebarBulkBar: NSView {
+    var onAction: ((BulkChatAction) -> Void)?
+    var onClear: (() -> Void)?
+
+    private let badge = NSTextField(labelWithString: "")
+    private let verbs = NSStackView()
+    private let secondary = NSStackView()
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = MacTheme.Radius.control
+        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.12).cgColor
+
+        badge.font = MacTheme.Font.mono(11)
+        badge.textColor = MacTheme.Color.accent
+        badge.setContentHuggingPriority(.required, for: .horizontal)
+
+        let clear = NSButton(title: "✕", target: self, action: #selector(clearMarks))
+        clear.isBordered = false
+        clear.bezelStyle = .accessoryBar
+        clear.font = MacTheme.Font.caption()
+        clear.contentTintColor = MacTheme.Color.secondaryLabel
+        clear.toolTip = Localized.text("Clear the marks")
+        clear.setAccessibilityLabel(Localized.text("Clear the marks"))
+        clear.setContentHuggingPriority(.required, for: .horizontal)
+
+        verbs.orientation = .horizontal
+        verbs.spacing = MacTheme.Spacing.xs
+        verbs.alignment = .centerY
+        secondary.orientation = .horizontal
+        secondary.spacing = MacTheme.Spacing.xs
+        secondary.alignment = .centerY
+        secondary.distribution = .fillProportionally
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let top = NSStackView(views: [badge, verbs, spacer, clear])
+        top.orientation = .horizontal
+        top.spacing = MacTheme.Spacing.xs
+        top.alignment = .centerY
+
+        let column = NSStackView(views: [top, secondary])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.xs
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.s),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
+            column.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.xs),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -MacTheme.Spacing.xs),
+            top.widthAnchor.constraint(equalTo: column.widthAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// - Parameter actions: the destructive verb first, then the three that flip with what is
+    ///   held, so a button never offers the opposite of what its own word says.
+    func render(count: Int, actions: [BulkChatAction]) {
+        badge.stringValue = "\(count)"
+        badge.setAccessibilityLabel("\(count)")
+        for stack in [verbs, secondary] {
+            for view in stack.arrangedSubviews {
+                stack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+        }
+        for action in actions {
+            let button = self.button(action, count: count)
+            if action.isDestructive {
+                verbs.addArrangedSubview(button)
+            } else {
+                secondary.addArrangedSubview(button)
+            }
+        }
+    }
+
+    private func button(_ action: BulkChatAction, count: Int) -> NSButton {
+        let title = BulkChatCopy.button(action, count: count)
+        let button = NSButton(title: title, target: self, action: #selector(verbPicked))
+        button.isBordered = false
+        button.bezelStyle = .accessoryBar
+        button.font = MacTheme.Font.caption()
+        button.contentTintColor =
+            action.isDestructive ? MacTheme.Color.danger : MacTheme.Color.accent
+        button.lineBreakMode = .byTruncatingTail
+        button.toolTip = title
+        button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
+        return button
+    }
+
+    @objc private func verbPicked(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue, let action = BulkChatAction(rawValue: raw)
+        else { return }
+        onAction?(action)
+    }
+
+    @objc private func clearMarks() {
+        onClear?()
     }
 }
 
