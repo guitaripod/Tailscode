@@ -4,20 +4,9 @@ import Foundation
 /// One candidate for a partly-typed `/word`, carrying why it matched so a client can show the
 /// person which letters it read. The range is over `command.name`, never the leading slash.
 public struct SlashMatch: Sendable, Hashable {
-    public enum Kind: Int, Sendable, Comparable {
-        /// The whole name, typed out.
-        case exact = 0
-        /// The name starts with what was typed.
-        case prefix = 1
-        /// A `namespace:name` segment starts with it — `/plan` finding `project:planner`.
-        case segment = 2
-        /// The letters appear together somewhere inside the name.
-        case inner = 3
-        /// The letters appear in order but not together — `/gm` finding `git:merge`.
-        case scattered = 4
-
-        public static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
-    }
+    /// The shared tiers: a slash name and a directory path are found the same way, and the one
+    /// ranking they agree on lives in `FuzzyRank`.
+    public typealias Kind = FuzzyTier
 
     public let command: AgentCommand
     public let kind: Kind
@@ -78,63 +67,8 @@ public enum SlashCompletion {
     /// Tried best-first, so a run at the front of a `namespace:name` segment always outranks the
     /// same letters found loose in the middle of some other command.
     private static func classify(_ command: AgentCommand, needle: String) -> SlashMatch? {
-        let name = Array(command.name.lowercased())
-        let letters = Array(needle)
-        if name == letters {
-            return SlashMatch(command: command, kind: .exact, highlight: Array(0..<name.count))
-        }
-        if let start = run(of: letters, in: name), start == 0 {
-            return span(command, kind: .prefix, start: start, length: letters.count)
-        }
-        if let start = segmentStart(of: letters, in: name) {
-            return span(command, kind: .segment, start: start, length: letters.count)
-        }
-        if let start = run(of: letters, in: name) {
-            return span(command, kind: .inner, start: start, length: letters.count)
-        }
-        if let scattered = subsequence(of: letters, in: name) {
-            return SlashMatch(command: command, kind: .scattered, highlight: scattered)
-        }
-        return nil
-    }
-
-    private static func span(
-        _ command: AgentCommand, kind: SlashMatch.Kind, start: Int, length: Int
-    ) -> SlashMatch {
-        SlashMatch(command: command, kind: kind, highlight: Array(start..<(start + length)))
-    }
-
-    private static func run(of letters: [Character], in name: [Character]) -> Int? {
-        guard !letters.isEmpty, letters.count <= name.count else { return nil }
-        for start in 0...(name.count - letters.count)
-        where Array(name[start..<(start + letters.count)]) == letters {
-            return start
-        }
-        return nil
-    }
-
-    /// A `namespace:name` command answers to its bare second half too, so `/planner` reaches
-    /// `project:planner` without anyone having to remember which plugin contributed it.
-    private static func segmentStart(of letters: [Character], in name: [Character]) -> Int? {
-        var cursor = 0
-        while let colon = name[cursor...].firstIndex(of: ":") {
-            let start = name.index(after: colon)
-            guard start + letters.count <= name.count else { return nil }
-            if Array(name[start..<(start + letters.count)]) == letters { return start }
-            cursor = start
-        }
-        return nil
-    }
-
-    private static func subsequence(of letters: [Character], in name: [Character]) -> [Int]? {
-        var hits: [Int] = []
-        var index = 0
-        for letter in letters {
-            guard let found = name[index...].firstIndex(of: letter) else { return nil }
-            hits.append(found)
-            index = found + 1
-        }
-        return hits
+        guard let hit = FuzzyRank.hit(needle, in: command.name) else { return nil }
+        return SlashMatch(command: command, kind: hit.tier, highlight: hit.highlight)
     }
 
     /// The query the composer is asking to complete: the whole text is `/word` so far. Past the
