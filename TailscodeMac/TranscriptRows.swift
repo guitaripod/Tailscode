@@ -410,7 +410,7 @@ struct TranscriptRow: Hashable {
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         let tag = RowKit.label(
-            language ?? "text", font: MacTheme.Font.caption(),
+            SyntaxHighlighter.displayName(for: language), font: MacTheme.Font.caption(),
             color: MacTheme.Color.tertiaryLabel)
         header.addArrangedSubview(tag)
         header.addArrangedSubview(RowKit.spacer())
@@ -422,13 +422,10 @@ struct TranscriptRow: Hashable {
             })
         column.addArrangedSubview(header)
 
-        let text = RowKit.wrapping(body, font: MacTheme.Font.mono(12), color: MacTheme.Color.label)
+        let text = RowKit.code(body, language: language)
         let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
-        if lines > 18, body.count > 600 {
-            column.addArrangedSubview(RowKit.heightCappedScroll(around: text, max: 320))
-        } else {
-            column.addArrangedSubview(text)
-        }
+        let scrolled = RowKit.codeScroll(around: text, cap: lines > 18 && body.count > 600 ? 320 : nil)
+        column.addArrangedSubview(scrolled)
         return column
     }
 
@@ -563,6 +560,54 @@ enum RowKit {
             view.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
         ])
         return wrap
+    }
+
+    /// A fenced block, lexed by the shared highlighter and painted in this theme's colours. The
+    /// label does not wrap: a long line runs off the right and is scrolled to, because a line of
+    /// code that reflowed is a line you cannot read and cannot count.
+    static func code(_ body: String, language: String?) -> NSTextField {
+        let font = MacTheme.Font.mono(12)
+        let text = NSMutableAttributedString(
+            string: body,
+            attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
+        for token in SyntaxHighlighter.tokens(body, language: language) {
+            let range = NSRange(location: token.offset, length: token.length)
+            guard NSMaxRange(range) <= text.length else { continue }
+            text.addAttribute(
+                .foregroundColor, value: MacTheme.Color.syntax(token.role), range: range)
+        }
+        let label = NSTextField(labelWithAttributedString: text)
+        label.lineBreakMode = .byClipping
+        label.isSelectable = true
+        label.maximumNumberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return label
+    }
+
+    /// The pane a code block lives in: as tall as the code up to an optional cap, as wide as the
+    /// column, and scrolling in whichever direction the code actually overflows.
+    static func codeScroll(around content: NSView, cap: CGFloat?) -> NSView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasHorizontalScroller = true
+        scroll.hasVerticalScroller = cap != nil
+        scroll.autohidesScrollers = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let clip = FlippedClip()
+        clip.drawsBackground = false
+        scroll.contentView = clip
+        scroll.documentView = content
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            content.topAnchor.constraint(equalTo: clip.topAnchor),
+            content.trailingAnchor.constraint(greaterThanOrEqualTo: clip.trailingAnchor),
+        ])
+        if let cap { scroll.heightAnchor.constraint(lessThanOrEqualToConstant: cap).isActive = true }
+        let fit = scroll.heightAnchor.constraint(equalTo: content.heightAnchor)
+        fit.priority = .defaultHigh
+        fit.isActive = true
+        return scroll
     }
 
     /// Output boxes stop growing at a cap and scroll inside themselves, so one chatty tool cannot

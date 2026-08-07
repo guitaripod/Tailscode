@@ -203,16 +203,16 @@ enum Gtk {
 
     /// A label whose text is Pango markup rather than plain text — the transcript's prose, with the
     /// markdown resolved into emphasis instead of shown as punctuation.
-    static func markupLabel(_ markup: String, css: String? = nil)
+    static func markupLabel(_ markup: String, css: String? = nil, wrap: Bool = true)
         -> UnsafeMutablePointer<GtkWidget>
     {
         let widget = gtk_label_new(nil)!
         let label: OpaquePointer = op(widget)
         gtk_label_set_markup(label, markup)
         gtk_label_set_xalign(label, 0)
-        gtk_label_set_wrap(label, 1)
+        gtk_label_set_wrap(label, wrap ? 1 : 0)
         gtk_label_set_selectable(label, 1)
-        gtk_label_set_wrap_mode(label, PANGO_WRAP_WORD_CHAR)
+        if wrap { gtk_label_set_wrap_mode(label, PANGO_WRAP_WORD_CHAR) }
         gtk_label_set_ellipsize(label, PANGO_ELLIPSIZE_NONE)
         if let css { addClass(widget, css) }
         return widget

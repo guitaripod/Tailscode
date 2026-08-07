@@ -87,6 +87,31 @@ enum ThemePalette {
         }
     }
 
+    /// The theme's own colour for a syntax role. Deriving one costs an OKLab walk against the code
+    /// background, and a provider is asked again for every glyph run in every visible block, so the
+    /// whole table is derived once per palette and kept — the same trade the palette cache makes.
+    nonisolated(unsafe) private static var syntaxTables: [String: [SyntaxRole: String]] = [:]
+
+    nonisolated static func syntax(_ role: SyntaxRole, system: UIColor) -> UIColor {
+        UIColor { traits in
+            guard let palette = traits.palette else { return system.resolvedColor(with: traits) }
+            let key = "\(traits.themeID)/\(palette.isDark)"
+            lock.lock()
+            let table: [SyntaxRole: String]
+            if let hit = syntaxTables[key] {
+                table = hit
+            } else {
+                table = SyntaxPalette.table(for: palette)
+                syntaxTables[key] = table
+            }
+            lock.unlock()
+            guard let hex = table[role], let color = UIColor(hex: hex) else {
+                return system.resolvedColor(with: traits)
+            }
+            return color
+        }
+    }
+
     /// A slot at reduced opacity, for fills that are meant to read as a wash of a signal rather
     /// than the signal itself.
     nonisolated static func color(

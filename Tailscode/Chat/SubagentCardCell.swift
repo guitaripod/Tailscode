@@ -482,7 +482,8 @@ final class SubagentCardCell: UICollectionViewCell {
         label.lineBreakMode = .byCharWrapping
         label.font = Theme.Font.mono(11)
         label.textColor = Theme.Color.label
-        label.text = block.source
+        label.attributedText = CodeBlockCell.highlightedCode(
+            block.source, language: block.language, font: Theme.Font.mono(11))
         label.translatesAutoresizingMaskIntoConstraints = false
         let box = UIView()
         box.backgroundColor = Theme.Color.codeBackground

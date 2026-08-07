@@ -44,8 +44,31 @@ enum Theme {
         static let onAccent = ThemePalette.color(\.onAccent, system: .white)
         static let findHit = ThemePalette.color(
             \.findHit, system: UIColor.systemYellow.withAlphaComponent(0.35))
-        static let codeNumber = ThemePalette.color(\.info, system: .systemTeal)
-        static let codeKeyword = ThemePalette.color(\.special, system: .systemPink)
+        /// One colour per syntax role, resolved from the theme the app is wearing. The mapping is
+        /// the shared one — a keyword is the standing mark, a name is an identity, a diff reuses
+        /// addition and subtraction — so a block of code looks like the same block on all three
+        /// clients. "System" has no palette to derive from, so it falls back to the platform's own
+        /// colours rather than to a stock syntax theme none of Apple's materials were drawn for.
+        static func syntax(_ role: SyntaxRole) -> UIColor { syntaxColors[role] ?? label }
+
+        private static let syntaxColors: [SyntaxRole: UIColor] = SyntaxRole.allCases.reduce(
+            into: [:]
+        ) { table, role in
+            table[role] = ThemePalette.syntax(role, system: systemSyntax(role))
+        }
+
+        private static func systemSyntax(_ role: SyntaxRole) -> UIColor {
+            switch role {
+            case .plain: return .label
+            case .keyword, .attribute: return .systemPink
+            case .type, .function: return .systemTeal
+            case .string: return .systemOrange
+            case .number: return .systemPurple
+            case .comment: return .secondaryLabel
+            case .added: return .systemGreen
+            case .removed: return .systemRed
+            }
+        }
         static let claude = ThemePalette.color(
             \.brandClaude,
             system: UIColor { traits in

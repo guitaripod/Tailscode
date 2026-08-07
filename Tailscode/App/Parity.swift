@@ -29,6 +29,7 @@ enum ParityManifest {
         case .usageGauges: return .implemented("QuotaCard")
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
         case .markdownRendering: return .implemented("TextBubbleCell")
+        case .syntaxHighlighting: return .implemented("CodeBlockCell.highlightedCode")
         case .streamingGrowth: return .implemented("reconfigureItems")
         case .streamCascade: return .implemented("CascadeDriver")
         case .toolRows: return .implemented("ToolStepRenderer")

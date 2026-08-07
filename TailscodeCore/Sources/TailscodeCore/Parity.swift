@@ -34,6 +34,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case usageGauges
     case quotaExhaustion
     case markdownRendering
+    case syntaxHighlighting
     case streamingGrowth
     case streamCascade
     case toolRows
@@ -202,6 +203,10 @@ public enum CapabilityRegistry {
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:
                 "Assistant prose renders headings, emphasis, lists, links, inline code and fenced code from the shared grammar; never raw markdown source."),
+        CapabilityDefinition(
+            id: .syntaxHighlighting, area: "transcript", title: "Code is coloured by what it is",
+            spec:
+                "A fenced block is lexed by SyntaxHighlighter — one shared, toolkit-free pass over ~60 language tags — and painted through SyntaxPalette, which derives every role from the theme's own slots on its own code background: keywords wear special, names wear info, strings wear warn, numbers wear accentDim, comments are textDim blended toward the canvas, and a diff needs no colours of its own because accent and danger already mean addition and subtraction. Comments and strings are claimed before anything else, so a `//` inside a string is not a comment and a keyword inside a comment is not a keyword; an unterminated run claims the rest of the block, which is what a block still being streamed looks like. A block's header wears the canonical language name and an unknown fence tag keeps its own spelling and renders plain rather than being guessed at. Code scrolls horizontally and is never reflowed — code that rewraps is code you cannot read."),
         CapabilityDefinition(
             id: .streamingGrowth, area: "transcript", title: "Parts grow in place",
             spec:

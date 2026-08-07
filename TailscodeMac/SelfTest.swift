@@ -30,6 +30,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkCode()
+            report("code: \(checks) claims hold — roles colour, lines never fold")
+        } catch {
+            report("code: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCascade()
             report("cascade: \(checks) prefixes reveal cleanly")
         } catch {
@@ -321,6 +329,61 @@ enum SelfTest {
 
     /// The rule a press is routed by, over real views in a real window: two panes side by side
     /// with a gap between them for the divider, and one hidden the way a zoom hides it.
+    /// A code block is the one row whose layout is a claim: it must colour by role, and it must
+    /// run off the right rather than reflow. A build cannot catch a label that quietly went back
+    /// to wrapping, so the widths are measured here instead of looked at.
+    private static func checkCode() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("code case failed: \(label)") }
+            checks += 1
+        }
+        func colour(in rendered: NSAttributedString, over needle: String) -> NSColor? {
+            let range = (rendered.string as NSString).range(of: needle)
+            guard range.location != NSNotFound else { return nil }
+            return rendered.attributes(at: range.location, effectiveRange: nil)[.foregroundColor]
+                as? NSColor
+        }
+
+        let source = "let name = \"a string\" // trailing note\nfunc go() -> Int { 42 }"
+        let label = RowKit.code(source, language: "swift")
+        let rendered = label.attributedStringValue
+        try expect(rendered.string == source, "the block is the bytes it was given")
+
+        let keyword = colour(in: rendered, over: "let")
+        let text = colour(in: rendered, over: "name")
+        let string = colour(in: rendered, over: "\"a string\"")
+        let comment = colour(in: rendered, over: "// trailing note")
+        try expect(keyword != nil && keyword != text, "a keyword is not prose")
+        try expect(string != nil && string != keyword, "a string is not a keyword")
+        try expect(comment != nil && comment != string, "a comment is not a string")
+
+        try expect(label.maximumNumberOfLines == 0, "every line of the block is drawn")
+        try expect(label.lineBreakMode == .byClipping, "a long line is clipped, never wrapped")
+
+        let narrow: CGFloat = 120
+        let wide = RowKit.code(String(repeating: "x", count: 400), language: "swift")
+        let scroll = RowKit.codeScroll(around: wide, cap: nil)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: narrow, height: 400))
+        host.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: host.topAnchor),
+        ])
+        host.layoutSubtreeIfNeeded()
+        try expect(wide.frame.width > narrow, "a long line runs past the pane instead of folding")
+        try expect(wide.frame.height > 0 && wide.frame.height < 200, "one long line stays one line")
+
+        let diff = RowKit.code("-let old = 1\n+let new = 2", language: "diff").attributedStringValue
+        let removed = colour(in: diff, over: "-let old = 1")
+        let added = colour(in: diff, over: "+let new = 2")
+        try expect(removed != nil && added != nil && removed != added, "a diff reads by its column")
+
+        try expect(SyntaxHighlighter.displayName(for: "py") == "python", "a fence tag is resolved")
+        return checks
+    }
+
     private static func checkPaneHitTest() throws -> Int {
         var checks = 0
         func expect(_ condition: Bool, _ label: String) throws {

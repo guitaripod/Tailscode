@@ -475,7 +475,8 @@ struct TranscriptRow: Hashable {
         Gtk.addClass(column, "code-block")
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let tag = Gtk.label(language ?? "text", css: "code-header", selectable: false)
+        let tag = Gtk.label(
+            SyntaxHighlighter.displayName(for: language), css: "code-header", selectable: false)
         gtk_widget_set_hexpand(tag, 1)
         gtk_box_append(ptr(header), tag)
         let bytes = body
@@ -489,17 +490,18 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(column), header)
 
         let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
-        let text = Gtk.label(body, css: "code-body", wrap: true)
+        let text = Gtk.markupLabel(
+            PangoSyntax.render(body, language: language, palette: MatrixTheme.palette),
+            css: "code-body", wrap: false)
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_propagate_natural_width(op(scroller), 0)
         if lines > 18, body.count > 600 {
-            let scroller = gtk_scrolled_window_new()!
-            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
             gtk_scrolled_window_set_max_content_height(op(scroller), 320)
-            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
-            gtk_scrolled_window_set_child(op(scroller), text)
-            gtk_box_append(ptr(column), scroller)
-        } else {
-            gtk_box_append(ptr(column), text)
         }
+        gtk_scrolled_window_set_child(op(scroller), text)
+        gtk_box_append(ptr(column), scroller)
         return column
     }
 

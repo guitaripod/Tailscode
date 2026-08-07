@@ -50,6 +50,26 @@ enum MacTheme {
         static var findHit: NSColor {
             ThemePalette.color(\.findHit, system: NSColor.systemYellow.withAlphaComponent(0.35))
         }
+        /// One colour per syntax role, on the same mapping the other two clients draw from — a
+        /// keyword is the standing mark, a name is an identity, a diff reuses addition and
+        /// subtraction. "System" has no palette to derive from and falls back to the platform's
+        /// own colours rather than to a stock syntax theme.
+        static func syntax(_ role: SyntaxRole) -> NSColor {
+            ThemePalette.syntax(role, system: systemSyntax(role))
+        }
+
+        private static func systemSyntax(_ role: SyntaxRole) -> NSColor {
+            switch role {
+            case .plain: return .labelColor
+            case .keyword, .attribute: return .systemPink
+            case .type, .function: return .systemTeal
+            case .string: return .systemOrange
+            case .number: return .systemPurple
+            case .comment: return .secondaryLabelColor
+            case .added: return .systemGreen
+            case .removed: return .systemRed
+            }
+        }
         static var claude: NSColor {
             ThemePalette.color(
                 \.brandClaude,

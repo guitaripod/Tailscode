@@ -29,6 +29,7 @@ enum ParityManifest {
         case .usageGauges: return .implemented("usage-footer")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("PangoMarkdown")
+        case .syntaxHighlighting: return .implemented("PangoSyntax")
         case .streamingGrowth: return .implemented("applyRows")
         case .streamCascade: return .implemented("CascadePainter")
         case .toolRows: return .implemented("ToolRowView")

@@ -681,7 +681,7 @@ final class CodeBlockCell: UICollectionViewCell {
         self.source = block.source
         self.onToggle = onToggle
         codeScroll.setContentOffset(.zero, animated: false)
-        langLabel.text = (block.language ?? "code").lowercased()
+        langLabel.text = SyntaxHighlighter.displayName(for: block.language)
         var copyConfig = copyButton.configuration ?? .plain()
         copyConfig.image = UIImage(
             systemName: "doc.on.doc", withConfiguration:
@@ -726,38 +726,7 @@ final class CodeBlockCell: UICollectionViewCell {
         (1...count).map { "\($0)" }.joined(separator: "\n")
     }
 
-    private static let languageKeywordRegexes: [String: NSRegularExpression] = {
-        let patterns: [([String], String)] = [
-            (["swift"],
-                "\\b(func|var|let|class|struct|enum|protocol|extension|import|return|if|else|guard|switch|case|default|for|while|repeat|in|break|continue|throw|throws|try|catch|do|where|as|is|nil|true|false|self|super|init|deinit|public|private|internal|fileprivate|open|static|final|override|mutating|nonmutating|associatedtype|typealias|some|any|async|await|actor|nonisolated|Task)\\b"),
-            (["python", "py"],
-                "\\b(def|return|if|elif|else|for|while|import|from|class|try|except|raise|pass|with|as|in|is|not|and|or|True|False|None|yield|lambda|async|await)\\b"),
-            (["javascript", "js", "typescript", "ts"],
-                "\\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|throw|try|catch|class|extends|import|export|default|new|this|typeof|instanceof|async|await|of|in|from|true|false|null|undefined)\\b"),
-            (["rust", "rs"],
-                "\\b(fn|let|mut|impl|trait|enum|struct|match|if|else|loop|while|for|in|return|use|mod|pub|self|super|where|as|move|async|await|unsafe|dyn|ref|type|true|false|None|Some|Ok|Err|Box|Vec|String|Option|Result)\\b"),
-        ]
-        var result: [String: NSRegularExpression] = [:]
-        for (aliases, pattern) in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-            for alias in aliases { result[alias] = regex }
-        }
-        return result
-    }()
-
-    private static let hashCommentLanguages: Set<String> = [
-        "python", "py", "sh", "bash", "shell", "zsh", "ruby", "rb", "yaml", "yml", "toml",
-    ]
-
-    private static let slashStringOrCommentRegex = try? NSRegularExpression(
-        pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")|//[^\\n]*|/\\*[\\s\\S]*?\\*/")
-
-    private static let hashStringOrCommentRegex = try? NSRegularExpression(
-        pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")|#[^\\n]*")
-
-    private static let numberRegex = try? NSRegularExpression(pattern: "\\b\\d+\\.?\\d*\\b")
-
-    private static let monoFont = Theme.Font.mono(12)
+    static let monoFont = Theme.Font.mono(12)
 
     private static let highlightCache: NSCache<NSString, NSAttributedString> = {
         let cache = NSCache<NSString, NSAttributedString>()
@@ -765,56 +734,28 @@ final class CodeBlockCell: UICollectionViewCell {
         return cache
     }()
 
-    /// Strings and comments are lexed in a single alternation pass so the
-    /// earliest match wins — a `//` inside a string literal is not a comment
-    /// and quotes inside a comment do not open a string. Keyword and number
-    /// passes then skip those claimed ranges so nothing recolors inside them.
-    static func highlightedCode(_ source: String, language: String?) -> NSAttributedString {
-        let lowerLang = (language ?? "").lowercased()
-        let length = (source as NSString).length
-        guard length <= 30_000 else {
-            return NSAttributedString(string: source, attributes: [
-                .font: monoFont, .foregroundColor: Theme.Color.label,
-            ])
-        }
-        let key = "\(lowerLang)#\(source)" as NSString
+    /// The shared lexer's tokens, painted in this theme's colours. Nothing about which run is a
+    /// keyword is decided here — that answer is Core's, and the Linux and Mac clients ask it the
+    /// same question, which is what keeps one block of code looking like itself on three screens.
+    ///
+    /// The cache needs no theme in its key: the colours put in are dynamic, so the text system
+    /// resolves them against the trait collection of whatever draws them, and a cached block
+    /// repaints itself when the theme changes rather than going stale.
+    static func highlightedCode(
+        _ source: String, language: String?, font: UIFont = monoFont
+    ) -> NSAttributedString {
+        let key = "\(font.pointSize)#\(language ?? "")#\(source)" as NSString
         if let cached = highlightCache.object(forKey: key) { return cached }
         let result = NSMutableAttributedString(string: source, attributes: [
-            .font: monoFont, .foregroundColor: Theme.Color.label,
+            .font: font, .foregroundColor: Theme.Color.label,
         ])
-        let range = NSRange(location: 0, length: length)
-
-        var claimed: [NSRange] = []
-        let literalRegex = hashCommentLanguages.contains(lowerLang)
-            ? hashStringOrCommentRegex : slashStringOrCommentRegex
-        for match in literalRegex?.matches(in: source, range: range) ?? [] {
-            let isString = match.range(at: 1).location != NSNotFound
+        let length = result.length
+        for token in SyntaxHighlighter.tokens(source, language: language) {
+            let range = NSRange(location: token.offset, length: token.length)
+            guard NSMaxRange(range) <= length else { continue }
             result.addAttribute(
-                .foregroundColor,
-                value: isString ? Theme.Color.warning : Theme.Color.tertiaryLabel,
-                range: match.range)
-            claimed.append(match.range)
+                .foregroundColor, value: Theme.Color.syntax(token.role), range: range)
         }
-
-        func apply(_ regex: NSRegularExpression?, color: UIColor) {
-            var claimedIndex = 0
-            for match in regex?.matches(in: source, range: range) ?? [] {
-                while claimedIndex < claimed.count,
-                    claimed[claimedIndex].location + claimed[claimedIndex].length
-                        <= match.range.location
-                {
-                    claimedIndex += 1
-                }
-                if claimedIndex < claimed.count,
-                    NSIntersectionRange(claimed[claimedIndex], match.range).length > 0
-                {
-                    continue
-                }
-                result.addAttribute(.foregroundColor, value: color, range: match.range)
-            }
-        }
-        apply(numberRegex, color: Theme.Color.codeNumber)
-        apply(languageKeywordRegexes[lowerLang], color: Theme.Color.codeKeyword)
         highlightCache.setObject(result, forKey: key)
         return result
     }

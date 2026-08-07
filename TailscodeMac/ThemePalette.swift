@@ -64,6 +64,42 @@ enum ThemePalette {
         return made
     }
 
+    /// The theme's own colour for a syntax role. Deriving one costs an OKLab walk against the code
+    /// background and a dynamic provider is asked again on every draw, so the whole table is
+    /// derived once per palette and kept, the same way the palettes themselves are.
+    nonisolated(unsafe) private static var syntaxTables: [String: [SyntaxRole: String]] = [:]
+    nonisolated(unsafe) private static var syntaxColours: [String: NSColor] = [:]
+
+    static func syntax(_ role: SyntaxRole, system: NSColor) -> NSColor {
+        let id = ThemeSelection.themeID
+        let key = "\(id)/\(role.rawValue)"
+        lock.lock()
+        if let hit = syntaxColours[key] {
+            lock.unlock()
+            return hit
+        }
+        lock.unlock()
+        let made = NSColor(name: nil) { appearance in
+            guard let palette = palette(themeID: id, dark: appearance.isDark) else { return system }
+            let tableKey = "\(id)/\(palette.isDark)"
+            lock.lock()
+            let table: [SyntaxRole: String]
+            if let hit = syntaxTables[tableKey] {
+                table = hit
+            } else {
+                table = SyntaxPalette.table(for: palette)
+                syntaxTables[tableKey] = table
+            }
+            lock.unlock()
+            guard let hex = table[role], let colour = NSColor(hex: hex) else { return system }
+            return colour
+        }
+        lock.lock()
+        syntaxColours[key] = made
+        lock.unlock()
+        return made
+    }
+
     /// A slot walked partway into another, for the register AppKit has and a palette does not.
     static func blended(
         _ slot: KeyPath<Palette, String> & Sendable, toward other: KeyPath<Palette, String> & Sendable,

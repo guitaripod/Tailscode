@@ -48,6 +48,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkSyntax()
+            report("syntax: \(checks) claims hold — code colours and never becomes markup")
+        } catch {
+            report("syntax: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCascade()
             report("cascade: \(checks) prefixes reveal cleanly")
         } catch {
@@ -1023,6 +1031,51 @@ public enum SelfTest {
             throw SelfTestFailure("interruption rows wrong: \(rows.map(\.kind))")
         }
         return cases.count + 1
+    }
+
+    /// Pango markup is a string, so a code block is one escape away from a parse error that empties
+    /// the label: a `<` in a C++ template or an `&&` in a shell line has to arrive as text. Colour
+    /// is checked in the same pass, because a block that escapes correctly and colours nothing is
+    /// also a failure.
+    private static func checkSyntax() throws -> Int {
+        var checks = 0
+        let palette = MatrixTheme.palette
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("syntax case failed: \(label)") }
+            checks += 1
+        }
+        func render(_ source: String, _ language: String?) -> String {
+            PangoSyntax.render(source, language: language, palette: palette)
+        }
+
+        let keyword = SyntaxPalette.hex(.keyword, in: palette)
+        let swift = render("let a = 1", "swift")
+        try expect(swift.contains("<span foreground=\"\(keyword)\">let</span>"), "a keyword is a span")
+
+        let templated = render("std::vector<int> v; a && b;", "cpp")
+        try expect(templated.contains("&lt;"), "a template's opening angle is text")
+        try expect(templated.contains("&gt;"), "a template's closing angle is text")
+        try expect(templated.contains("&amp;&amp;"), "an ampersand pair is text")
+        try expect(!templated.contains("<int>"), "no run of code becomes a tag")
+
+        let shell = render("grep -r 'a<b' $SRC && cp ${DEST}/x .", "bash")
+        try expect(shell.contains("&lt;"), "a shell comparison is text")
+        try expect(
+            shell.contains(SyntaxPalette.hex(.attribute, in: palette)), "a variable is marked")
+
+        let unknown = render("<not code>", "brainfuck")
+        try expect(unknown == "&lt;not code&gt;", "an unknown language is escaped and left plain")
+
+        let comment = render("# just a note", "python")
+        try expect(
+            comment.contains(SyntaxPalette.hex(.comment, in: palette)), "a comment is quiet")
+
+        let diff = render("-old\n+new", "diff")
+        try expect(diff.contains(SyntaxPalette.hex(.added, in: palette)), "an addition is affirmed")
+        try expect(diff.contains(SyntaxPalette.hex(.removed, in: palette)), "a removal is danger")
+
+        try expect(SyntaxHighlighter.displayName(for: "rs") == "rust", "a fence tag is resolved")
+        return checks
     }
 
     private static func checkMarkup() throws -> Int {
