@@ -12,11 +12,14 @@ extension ChatPane {
     ///
     /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
     /// without its closer. How much of what it rendered is actually on screen is the painter's
-    /// business, applied to the widget after the diff has built it.
+    /// business, applied to the widget after the diff has built it — and if the painter will not
+    /// take the row (reduced motion, markup the parser refuses) the cut goes with it: a prefix
+    /// nothing is going to reveal is just an answer with its last words missing.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
         let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
         let released = cascade.key
-        guard let live, let source = live.streamedText else {
+        if let abandoned, abandoned != live?.key { self.abandoned = nil }
+        guard let live, let source = live.streamedText, live.key != abandoned else {
             cascade.release()
             if let released { settleCascade(on: released, in: rows) }
             return rows
@@ -33,6 +36,10 @@ extension ChatPane {
         cascade.focus(
             row.key, markup: markup, sealed: !running,
             ultracode: auraActive || ultracodeInFlight, clock: transcriptBox)
+        guard cascade.key == row.key else {
+            if let released { settleCascade(on: released, in: rows) }
+            return rows
+        }
         lastStreamedKey = row.key
         if let released, released != cascade.key { settleCascade(on: released, in: paced) }
         return paced

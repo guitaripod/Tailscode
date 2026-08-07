@@ -57,6 +57,19 @@ final class CascadePainter: @unchecked Sendable {
     /// What to do with a frame that changed something. The pane repaints exactly the live row.
     var onFrame: (() -> Void)?
 
+    /// What to do with a reveal that stopped moving while it still owed the reader text. The pane
+    /// hands that row back whole.
+    var onStalled: (() -> Void)?
+
+    private var watching = false
+    private var watchedReveal = -1
+    private var stillFrames = 0
+    /// How often the second clock looks, and how many looks in a row a motionless reveal gets
+    /// before the row is given up. Long enough that a slow hand is never mistaken for a stopped
+    /// one — the pacer's own floor moves the reveal every frame while it owes anything at all.
+    private static let watchInterval: UInt32 = 400
+    private static let watchStrikes = 3
+
     var key: String? { live.id }
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
@@ -89,6 +102,7 @@ final class CascadePainter: @unchecked Sendable {
         }
         live.focus(id, rendered: rendered, sealed: sealed, at: Self.now)
         start(on: clock)
+        watch()
     }
 
     func release() {
@@ -120,6 +134,45 @@ final class CascadePainter: @unchecked Sendable {
     /// look like, and what a client with reduced motion sees from the start.
     func settle(_ label: UnsafeMutablePointer<GtkWidget>, markup: String) {
         _ = tailscode_label_reveal(label, markup, -1, 0, nil, nil)
+    }
+
+    /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
+    ///
+    /// The reveal moves on the display's clock, and the display's clock is not this app's to
+    /// promise: a compositor stops sending frames to a window nobody is looking at, and a frame
+    /// that runs long starves whatever is under it. Either way the reveal simply stops, and a row
+    /// that stopped being revealed is a row holding half a sentence with nothing coming to finish
+    /// it — the settle it is waiting for rides on the same main loop that just stopped delivering.
+    /// So the wave also keeps a timeout, which no frame clock can take down: a reveal that still
+    /// owes text and has not moved for three looks is given up and the row handed over whole.
+    private func watch() {
+        guard !watching else { return }
+        watching = true
+        watchedReveal = -1
+        stillFrames = 0
+        look()
+    }
+
+    private func look() {
+        Gtk.after(Self.watchInterval) { [weak self] in
+            guard let self, self.watching else { return }
+            guard self.live.isActive else {
+                self.watching = false
+                return
+            }
+            if self.live.isSettled || self.live.revealed != self.watchedReveal {
+                self.stillFrames = 0
+            } else {
+                self.stillFrames += 1
+            }
+            self.watchedReveal = self.live.revealed
+            guard self.stillFrames < Self.watchStrikes else {
+                self.watching = false
+                self.onStalled?()
+                return
+            }
+            self.look()
+        }
     }
 
     /// The widget driving the clock is referenced for as long as a tick is installed. A pane can

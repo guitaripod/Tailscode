@@ -19,6 +19,8 @@ final class ChatPane: @unchecked Sendable {
     /// The row the wave last had its hands on. A reveal is a prefix painted straight into a label,
     /// so the row it was painting is the one row that can be left holding half a sentence.
     var lastStreamedKey: String?
+    /// A row the wave gave up on, which it may not take back while the stream is still in it.
+    var abandoned: String?
     let transcriptBox = Gtk.box(
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
@@ -168,6 +170,7 @@ final class ChatPane: @unchecked Sendable {
         buildRoot()
         wireContext()
         cascade.onFrame = { [weak self] in self?.paintCascade() }
+        cascade.onStalled = { [weak self] in self?.giveUpCascade() }
     }
 
     /// The vadjustment's `changed` signal fires when the content's extent moves — including while
@@ -918,7 +921,7 @@ final class ChatPane: @unchecked Sendable {
         } else {
             applyRows(
                 pacedByCascade(windowed, running: state.status == .running), appended: appended)
-            if state.status != .running { settleStreamedTail(in: windowed) }
+            settleStreamedTail(in: windowed)
             paintCascade()
         }
         renderPendingCards(state)
@@ -1200,28 +1203,56 @@ final class ChatPane: @unchecked Sendable {
 
 
 
-    /// A row that stopped being written ends up whole, whatever the wave was doing when the turn
-    /// ended. Settling is normally the release path's job, but it can only settle the row it still
-    /// holds: a key that changed as the message completed, a widget rebuilt between frames, or a
-    /// turn that ended in the same update its last words arrived in all leave the painter holding
-    /// nothing, and then no other code path would ever put the rest of the sentence back — the
-    /// answer would sit truncated until the chat was reopened.
+    /// A row that stopped being written ends up whole, whatever the wave was doing when it let go.
+    ///
+    /// Settling is normally the release path's job, but that path can only settle the row the
+    /// painter still holds: a key that changed as the message completed, a widget rebuilt between
+    /// frames, a turn that ended in the same update its last words arrived in, or a painter that
+    /// declined the row all leave it holding nothing. So the pane remembers the row the wave last
+    /// had its hands on and hands it back the first state where the wave is no longer on it —
+    /// which is any state at all, not only one that says the turn is over. A stream that simply
+    /// stops sending never says that, and the reveal is a prefix painted into the row's own label:
+    /// the rows are equal by then, so the diff sees nothing to do and nothing else would ever put
+    /// the rest of the sentence back.
     private func settleStreamedTail(in rows: [TranscriptRow]) {
-        guard let key = lastStreamedKey else { return }
+        guard let key = lastStreamedKey, key != cascade.key else { return }
         lastStreamedKey = nil
         settleCascade(on: key, in: rows)
+    }
+
+    /// The reveal stopped moving while it still owed the reader text — the frame clock died under
+    /// it, or the words stopped arriving. Either way the hand is not coming back, so the row is
+    /// given up and shown whole rather than left mid-sentence.
+    ///
+    /// Given up means for good, for as long as that row is the one being written: taking it back
+    /// on the next arrival would start its reveal again from nothing, and an answer that snapped
+    /// to whole and then rewound would be a worse lie than the stall.
+    private func giveUpCascade() {
+        let key = cascade.key ?? lastStreamedKey
+        cascade.release()
+        lastStreamedKey = nil
+        abandoned = key
+        guard let key else { return }
+        settleCascade(on: key, in: lastFullRows)
     }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
     /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
     /// the heat of a stream that stopped — the row has to be handed back whole by hand.
+    ///
+    /// Whole means the row's own words, which is what the pane last received and never what the
+    /// pacer handed the widget: the paced copy is cut at the last position where no markdown token
+    /// is half-open, and settling from it would bake that cut into the finished answer.
     func settleCascade(on key: String, in rows: [TranscriptRow]) {
         guard let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
         else { return }
-        let row = rows.last(where: { $0.key == key }) ?? renderedRows[index]
+        let row =
+            lastFullRows.last(where: { $0.key == key })
+            ?? rows.last(where: { $0.key == key })
+            ?? renderedRows[index]
         guard let markup = Self.cascadeMarkup(for: row) else { return }
         cascade.settle(label, markup: markup)
     }

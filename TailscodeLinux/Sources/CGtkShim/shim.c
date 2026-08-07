@@ -17,11 +17,20 @@ static gboolean tailscode_idle_trampoline(gpointer raw) {
     return G_SOURCE_REMOVE;
 }
 
+/// Work handed to the main context — every arriving state, every stream update, every settle —
+/// runs at `G_PRIORITY_DEFAULT`, above the frame clock rather than behind it.
+///
+/// A plain `g_idle_add` is `G_PRIORITY_DEFAULT_IDLE`, which sits *below* `GDK_PRIORITY_REDRAW`.
+/// A live answer holds the frame clock at the display's rate for as long as it is being written,
+/// and the only thing that ever stops it is a state arriving to say the turn is over — so at idle
+/// priority the transcript queues behind the animation it is there to end, and a frame that runs
+/// long enough starves it. That is a stream feeding a paint that outranks it, and it reads as an
+/// answer stuck mid-sentence.
 void tailscode_on_main(void (*handler)(void *), void *data) {
     TailscodeIdle *box = g_new0(TailscodeIdle, 1);
     box->handler = handler;
     box->data = data;
-    g_idle_add(tailscode_idle_trampoline, box);
+    g_idle_add_full(G_PRIORITY_DEFAULT, tailscode_idle_trampoline, box, NULL);
 }
 
 void tailscode_after(guint ms, void (*handler)(void *), void *data) {
