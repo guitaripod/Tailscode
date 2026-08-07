@@ -111,18 +111,53 @@ final class AppCoordinator: NSObject {
 
     private var pendingSessionLink: (url: URL, parkedAt: Date)?
     private var pendingComposeFocus = false
+    private var pendingShortcut: ShortcutTarget?
 
-    /// The New Chat icon quick action: focus the Home composer, or park the
-    /// intent when it arrives before the main UI exists (cold launch).
+    /// The quick actions the Home screen offers on a long press. Every target
+    /// lands on the same destination as its in-app tap; one that arrives before
+    /// the main UI exists (a cold launch, or before any server is set up) is
+    /// parked and delivered on the next route to Home, so a press is never
+    /// dropped while the app is still standing up.
     @discardableResult
-    func handleShortcut(_ type: String) -> Bool {
-        guard type == "com.guitaripod.tailscode.compose" else { return false }
-        if let home {
-            home.focusComposer()
-        } else {
-            pendingComposeFocus = true
+    func handleShortcut(_ item: UIApplicationShortcutItem) -> Bool {
+        let target: ShortcutTarget
+        switch item.type {
+        case HomeQuickActions.newChat: target = .compose
+        case HomeQuickActions.saved: target = .saved
+        case HomeQuickActions.usage: target = .usage
+        case HomeQuickActions.addServer: target = .addServer
+        case HomeQuickActions.resume:
+            guard let sessionID = item.userInfo?["sessionID"] as? String else { return false }
+            target = .resume(sessionID: sessionID)
+        default: return false
         }
+        perform(target)
         return true
+    }
+
+    private enum ShortcutTarget {
+        case compose
+        case saved
+        case usage
+        case addServer
+        case resume(sessionID: String)
+    }
+
+    private func perform(_ target: ShortcutTarget) {
+        switch target {
+        case .compose:
+            if let home { home.focusComposer() } else { pendingComposeFocus = true }
+        case .saved:
+            if let home { home.pushSaved() } else { pendingShortcut = .saved }
+        case .usage:
+            if let home { home.pushUsage() } else { pendingShortcut = .usage }
+        case .addServer:
+            if let home { home.presentServerSetup() } else { pendingShortcut = .addServer }
+        case .resume(let sessionID):
+            if let home { home.openSession(withID: sessionID) } else {
+                pendingShortcut = .resume(sessionID: sessionID)
+            }
+        }
     }
 
     /// The root only ever changes across one boundary: having a server or not.
@@ -249,6 +284,10 @@ final class AppCoordinator: NSObject {
         if pendingComposeFocus {
             pendingComposeFocus = false
             home?.focusComposer()
+        }
+        if let pendingShortcut {
+            self.pendingShortcut = nil
+            perform(pendingShortcut)
         }
     }
 

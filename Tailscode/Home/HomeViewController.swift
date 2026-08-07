@@ -450,6 +450,7 @@ final class HomeViewController: UIViewController {
         await viewModel.load()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
+        HomeQuickActions.refresh(entries: viewModel.entries)
         updateComposer()
         applySnapshot()
         startEnrichment(force: reason == .user)

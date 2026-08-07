@@ -86,6 +86,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case videoSlot
     case browserSlot
     case hapticFeedback
+    case homeQuickActions
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -384,6 +385,10 @@ public enum CapabilityRegistry {
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:
                 "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it."),
+        CapabilityDefinition(
+            id: .homeQuickActions, area: "app", title: "Home screen quick actions",
+            spec:
+                "Long-pressing the app icon offers a jump list: New Chat focuses the composer, Saved chats opens the device-local bookmarks, Usage opens the quota panel, Add Server starts the setup screen, and a dynamic Resume item tracks the most recent session and opens it. Every action lands on the same destination as its in-app tap, and one that arrives before the main UI exists (a cold launch, or before any server is set up) is parked and delivered the moment Home appears."),
         CapabilityDefinition(
             id: .browserSlot, area: "splits", title: "Browser slot in the split grid",
             spec:

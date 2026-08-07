@@ -81,6 +81,7 @@ enum ParityManifest {
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("MacNotifier")
         case .hapticFeedback: return .gap("nothing calls NSHapticFeedbackManager yet; a Force Touch trackpad can tick, but it is only felt while a hand is on it and it takes no strength, so the setting the phone owns has no meaning here until the cues are wired")
+        case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         }
     }
 }

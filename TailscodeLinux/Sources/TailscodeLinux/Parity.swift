@@ -81,6 +81,7 @@ enum ParityManifest {
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("Notifier")
         case .hapticFeedback: return .notApplicable("nothing under a desktop vibrates; a keyboard and a monitor have no actuator to drive, and the cues a phone gives a hand are carried here by the status band and the notifier")
+        case .homeQuickActions: return .notApplicable("there is no springboard on a desktop to long-press; the app launches into its window, where every destination the phone's quick actions reach is already one click away")
         }
     }
 }

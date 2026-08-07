@@ -56,6 +56,15 @@ targets:
           - UIApplicationShortcutItemType: com.guitaripod.tailscode.compose
             UIApplicationShortcutItemTitle: New Chat
             UIApplicationShortcutItemIconSymbolName: square.and.pencil
+          - UIApplicationShortcutItemType: com.guitaripod.tailscode.saved
+            UIApplicationShortcutItemTitle: Saved Chats
+            UIApplicationShortcutItemIconSymbolName: bookmark
+          - UIApplicationShortcutItemType: com.guitaripod.tailscode.usage
+            UIApplicationShortcutItemTitle: Usage
+            UIApplicationShortcutItemIconSymbolName: gauge.with.dots.needle.50percent
+          - UIApplicationShortcutItemType: com.guitaripod.tailscode.connect
+            UIApplicationShortcutItemTitle: Add Server
+            UIApplicationShortcutItemIconSymbolName: server.rack
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:
