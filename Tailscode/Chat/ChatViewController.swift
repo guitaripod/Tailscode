@@ -62,7 +62,10 @@ final class ChatViewController: UIViewController {
     private var streamingActivityID: String?
     private var expandedAgentGroups: Set<String> = []
     private let navTitleContainer = UIView()
-    private let navSpinner = UIActivityIndicatorView(style: .medium)
+    /// What the turn is doing, in the same symbol and the same motion the desks use — a terminal
+    /// while a shell runs, a raised hand while it waits on you. A bare spinner said only that
+    /// something was happening, which is the one thing the reader could already see.
+    private let navBadge = ActivityBadgeView(pointSize: 12)
     private let attachmentStrip = UIStackView()
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
@@ -91,6 +94,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        ActivityInbox.clear(sessionID: viewModel.session.id)
         title = navDisplayTitle
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.backButtonDisplayMode = .minimal
@@ -112,9 +116,14 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(sceneWillResign),
-            name: UIApplication.willResignActiveNotification, object: nil)
+        for name: Notification.Name in [
+            UIApplication.willResignActiveNotification,
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification,
+        ] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(flushDraft), name: name, object: nil)
+        }
         collectionView.alpha = 0
         revealFallback = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
@@ -181,9 +190,8 @@ final class ChatViewController: UIViewController {
                 }
             }
         #endif
-        if let draft = UserDefaults.standard.string(forKey: draftKey), !draft.isEmpty {
-            composer.setDraft(draft, focus: false)
-        }
+        let draft = DraftStore.text(for: draftScope)
+        if !draft.isEmpty { composer.setDraft(draft, focus: false) }
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
             Task { await loadModels() }
         }
@@ -263,7 +271,7 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         cascade.release()
-        saveDraft()
+        flushDraft()
         SessionSeenStore.markSeen(viewModel.session.id)
         viewModel.stopSubagentTracking()
         if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
@@ -283,18 +291,32 @@ final class ChatViewController: UIViewController {
             : viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var draftKey: String { "tailscode.draft.\(viewModel.contextID)/\(viewModel.session.id)" }
-
-    @objc private func saveDraft() {
-        let text = composer.currentText
-        if text.isEmpty {
-            UserDefaults.standard.removeObject(forKey: draftKey)
-        } else {
-            UserDefaults.standard.set(text, forKey: draftKey)
-        }
+    /// The composer writes for this conversation, so what is in it belongs to the chat rather than
+    /// to the screen showing it: the same pairing `SessionEntry` uses for identity.
+    private var draftScope: DraftScope {
+        .chat(profileID: viewModel.contextID, sessionID: viewModel.session.id)
     }
 
-    @objc private func sceneWillResign() { saveDraft() }
+    private var compactionDraftScope: DraftScope {
+        .compaction(profileID: viewModel.contextID, sessionID: viewModel.session.id)
+    }
+
+    private var goalDraftScope: DraftScope {
+        .goal(profileID: viewModel.contextID, sessionID: viewModel.session.id)
+    }
+
+    /// A free-typed answer belongs to the one question it answers, and a request can carry several
+    /// — so the row's own identity carries the question's place inside it. Both survive a relaunch
+    /// because both are read back off the transcript rather than held in memory.
+    private func answerDraftScope(for request: QuestionRequest, questionIndex: Int) -> DraftScope {
+        .answer(
+            profileID: viewModel.contextID, sessionID: viewModel.session.id,
+            questionID: "\(request.id)#\(questionIndex)")
+    }
+
+    /// Every keystroke is already recorded, so this only closes the store's coalescing window by
+    /// hand where the process is about to stop being asked.
+    @objc private func flushDraft() { DraftStore.flush() }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -542,10 +564,15 @@ final class ChatViewController: UIViewController {
                     "The agent keeps working until this is true, and won't stop early. You can close the app."
             ),
             preferredStyle: .alert)
+        let scope = goalDraftScope
         alert.addTextField { field in
             field.placeholder = String(localized: "the test suite passes")
             field.autocapitalizationType = .none
             field.returnKeyType = .go
+            field.text = DraftStore.text(for: scope)
+            field.addAction(
+                UIAction { [weak field] _ in DraftStore.record(field?.text ?? "", for: scope) },
+                for: .editingChanged)
         }
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
@@ -554,6 +581,7 @@ final class ChatViewController: UIViewController {
                 guard let condition = alert?.textFields?.first?.text?
                     .trimmingCharacters(in: .whitespacesAndNewlines), !condition.isEmpty
                 else { return }
+                DraftStore.clear(scope)
                 self?.viewModel.setGoal(condition)
             })
         present(alert, animated: true)
@@ -700,11 +728,17 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    /// The match wears the palette's own search wash behind an accent edge — a ring alone is easy
+    /// to lose in a long transcript, and the wash is the one slot authored for exactly this.
     private func decorateFindRing(_ cell: UICollectionViewCell, on: Bool) {
         cell.layer.cornerRadius = on ? 10 : 0
         cell.layer.cornerCurve = .continuous
         cell.layer.borderWidth = on ? 2 : 0
-        cell.layer.borderColor = on ? Theme.Color.accent.withAlphaComponent(0.6).cgColor : nil
+        cell.layer.borderColor =
+            on
+            ? Theme.Color.accent.withAlphaComponent(0.6).resolvedColor(with: traitCollection).cgColor
+            : nil
+        cell.backgroundColor = on ? Theme.Color.findHit : nil
     }
 
     /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
@@ -713,7 +747,8 @@ final class ChatViewController: UIViewController {
         let sheet = CompactPreflightViewController(
             messageCount: viewModel.state.messages.count(where: { $0.role != .system }),
             lastCompaction: viewModel.lastCompaction,
-            initialInstruction: instruction
+            initialInstruction: instruction,
+            draftScope: compactionDraftScope
         ) { [weak self] instructions in
             self?.viewModel.compact(instructions: instructions)
         }
@@ -784,13 +819,11 @@ final class ChatViewController: UIViewController {
     }
 
     private func configureNavTitleView() {
-        navSpinner.hidesWhenStopped = true
-        navSpinner.color = Theme.Color.secondaryLabel
         navStatusLabel.font = .preferredFont(forTextStyle: .footnote)
         navStatusLabel.textColor = Theme.Color.secondaryLabel
         navStatusLabel.adjustsFontSizeToFitWidth = true
         navStatusLabel.minimumScaleFactor = 0.8
-        let stack = UIStackView(arrangedSubviews: [navSpinner, navStatusLabel])
+        let stack = UIStackView(arrangedSubviews: [navBadge, navStatusLabel])
         stack.axis = .horizontal
         stack.spacing = Theme.Spacing.s
         stack.alignment = .center
@@ -1151,7 +1184,8 @@ final class ChatViewController: UIViewController {
             Theme.Haptics.error()
             if self.composer.currentText.isEmpty {
                 self.composer.setDraft(text, focus: false)
-                self.saveDraft()
+                DraftStore.record(text, for: self.draftScope)
+                self.flushDraft()
                 self.presentToast(
                     String(localized: "Not sent — your message is back in the composer."))
             } else {
@@ -1322,7 +1356,8 @@ final class ChatViewController: UIViewController {
                 title: viewModel.title,
                 body: permission.toolName.map { String(localized: "Approval needed: \($0)") }
                     ?? String(localized: "Approval needed."),
-                identifier: "perm:\(permission.id)", sessionID: viewModel.session.id)
+                identifier: "perm:\(permission.id)", sessionID: viewModel.session.id,
+                profileID: viewModel.contextID, activity: .needsApproval)
         }
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
@@ -1332,7 +1367,8 @@ final class ChatViewController: UIViewController {
                 title: viewModel.title,
                 body: question.questions.first?.question
                     ?? String(localized: "The agent has a question."),
-                identifier: "question:\(question.id)", sessionID: viewModel.session.id)
+                identifier: "question:\(question.id)", sessionID: viewModel.session.id,
+                profileID: viewModel.contextID, activity: .needsAnswer)
         }
         updateBanner(for: state)
         updateGoalChip(for: state)
@@ -1572,8 +1608,9 @@ final class ChatViewController: UIViewController {
         updateContextChip()
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: viewModel.trackedSubagents,
-            usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate)
-        let text: String?
+            usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate,
+            queued: viewModel.queued.count)
+        var text: String?
         var color = Theme.Color.secondaryLabel
         switch facts.phase {
         case .idle, .offline, .connecting:
@@ -1594,8 +1631,11 @@ final class ChatViewController: UIViewController {
         case .failed:
             text = nil
         }
+        if let phase = text, facts.queued > 0 {
+            text = phase + " · " + ActivityKind.queued(facts.queued).bandWord
+        }
         guard let text else {
-            navSpinner.stopAnimating()
+            navBadge.activity = nil
             navigationItem.titleView = nil
             turnStartedAt = nil
             elapsedTicker?.cancel()
@@ -1616,7 +1656,7 @@ final class ChatViewController: UIViewController {
             navTitleContainer.frame = CGRect(x: 0, y: 0, width: 190, height: 30)
             navigationItem.titleView = navTitleContainer
         }
-        navSpinner.startAnimating()
+        navBadge.activity = facts.activity
         if lastStatusPhaseText != text {
             lastStatusPhaseText = text
             UIView.transition(
@@ -2342,12 +2382,17 @@ final class ChatViewController: UIViewController {
 
     private func promptCustomAnswer(for request: QuestionRequest, questionIndex: Int) {
         let item = request.questions[questionIndex]
+        let scope = answerDraftScope(for: request, questionIndex: questionIndex)
+        let remembered = questionSelection.custom[questionIndex] ?? ""
         let alert = UIAlertController(
             title: item.header.isEmpty ? String(localized: "Your answer") : item.header,
             message: item.question, preferredStyle: .alert)
         alert.addTextField { field in
             field.placeholder = String(localized: "Type your answer")
-            field.text = self.questionSelection.custom[questionIndex]
+            field.text = remembered.isEmpty ? DraftStore.text(for: scope) : remembered
+            field.addAction(
+                UIAction { [weak field] _ in DraftStore.record(field?.text ?? "", for: scope) },
+                for: .editingChanged)
         }
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
@@ -2356,6 +2401,7 @@ final class ChatViewController: UIViewController {
             guard let self else { return }
             let text = alert.textFields?.first?.text?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            DraftStore.clear(scope)
             questionSelection.custom[questionIndex] = text.isEmpty ? nil : text
             let fastPath = request.questions.count == 1 && !item.multiple
             if fastPath, let answers = questionSelection.answers(for: request) {
@@ -2579,7 +2625,7 @@ final class ChatViewController: UIViewController {
             return
         }
         composer.clear()
-        UserDefaults.standard.removeObject(forKey: draftKey)
+        DraftStore.clear(draftScope)
         viewModel.run(command, arguments: arguments)
     }
 
@@ -3035,7 +3081,7 @@ extension ChatViewController: ComposerViewDelegate {
             resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText)
         {
         case .compactPreflight(let instruction):
-            UserDefaults.standard.removeObject(forKey: draftKey)
+            DraftStore.clear(draftScope)
             SlashRecents.record("compact")
             presentCompactPreflight(instruction: instruction)
         case .run(let command, let arguments):
@@ -3053,11 +3099,12 @@ extension ChatViewController: ComposerViewDelegate {
         userScrolledUp = false
         animateNextRender = true
         isHandingOffEmptyState = !emptyState.isHidden && emptyState.alpha > 0
-        UserDefaults.standard.removeObject(forKey: draftKey)
+        DraftStore.clear(draftScope)
         viewModel.send(text, model: model, effort: effort, attachments: attachments)
     }
 
     func composerTextDidChange(_ text: String) {
+        DraftStore.record(text, for: draftScope)
         updateCommandPalette(for: text)
         guard !isApplyingEnhancedPrompt else { return }
         enhancement.updateInput(text)
@@ -3225,7 +3272,7 @@ extension ChatViewController: PromptEnhanceOverlayDelegate {
         isApplyingEnhancedPrompt = true
         composer.setDraft(prompt.text, focus: true)
         isApplyingEnhancedPrompt = false
-        saveDraft()
+        flushDraft()
         overlay.requestDismiss()
     }
 

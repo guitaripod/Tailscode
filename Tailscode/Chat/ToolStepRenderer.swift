@@ -123,7 +123,7 @@ final class ToolStepRenderer {
             if let title = summary.title {
                 column.addArrangedSubview(
                     Self.bodyLabel(
-                        attributed: Self.summaryLine("questionmark.bubble", .systemYellow, title),
+                        attributed: Self.summaryLine("questionmark.bubble", Theme.Color.warning, title),
                         lines: 4))
             }
             if let answer = summary.detail {

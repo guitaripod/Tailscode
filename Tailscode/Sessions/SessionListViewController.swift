@@ -139,8 +139,11 @@ final class SessionListViewController: UIViewController {
     private func configureSearch() {
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
+        searchController.searchBar.delegate = self
         searchController.searchBar.placeholder = String(
-            localized: "Search chats, projects, servers")
+            localized: "Filter chats — return to search inside")
+        searchController.searchBar.returnKeyType = .search
+        searchController.searchBar.enablesReturnKeyAutomatically = false
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
     }
@@ -780,13 +783,11 @@ final class SessionListViewController: UIViewController {
             configuration: .init(customView: dot, placement: .trailing(displayed: .always)))
     }
 
+    /// The leading server mark takes the state's own tone, so a row that needs you reads amber
+    /// from its first pixel to its last. Idle keeps the backend's brand — nothing is happening, so
+    /// the only thing worth saying is which agent this is.
     private static func tint(for state: SessionRowState) -> UIColor? {
-        switch state {
-        case .live, .awaitingApproval: return Theme.Color.success
-        case .failed: return Theme.Color.danger
-        case .offline: return Theme.Color.tertiaryLabel
-        case .idle: return nil
-        }
+        state.activity?.icon.tone.color
     }
 
     private func bind() {
@@ -1089,19 +1090,24 @@ final class SessionListViewController: UIViewController {
     }
 
     /// The row's own word for what it is doing, taken from `SessionRowState.pill` so the phone
-    /// says NEEDS YOU where the desktops say NEEDS YOU. A running turn is a spinner instead — it
-    /// is the one state that is still moving — and idle is silence, never a pill reading "idle".
+    /// says NEEDS YOU where the desktops say NEEDS YOU, wearing the same symbol and the same
+    /// motion the desks give it: a running turn breathes, a turn stopped for you knocks twice, a
+    /// failure holds still. Idle is silence, never a pill reading "idle".
+    ///
+    /// A running turn is the badge alone. It is the state a list has most of, and a row of capsules
+    /// reading LIVE down the whole screen is a wall of words where a moving dot is a glance.
     private static func statusPill(for state: SessionRowState) -> UICellAccessory? {
-        if state == .live {
-            let spinner = UIActivityIndicatorView(style: .medium)
-            spinner.color = Theme.Color.accent
-            spinner.startAnimating()
-            spinner.sizeToFit()
+        guard let activity = state.activity else { return nil }
+        let badge = ActivityBadgeView(pointSize: 11)
+        badge.activity = activity
+        guard let pill = state.pill, state != .live else {
+            badge.frame = CGRect(x: 0, y: 0, width: 22, height: 22)
             return .customView(
-                configuration: .init(customView: spinner, placement: .trailing(displayed: .always)))
+                configuration: .init(
+                    customView: badge, placement: .trailing(displayed: .always),
+                    maintainsFixedSize: true))
         }
-        guard let pill = state.pill else { return nil }
-        let color = pillColor(state)
+        let color = activity.icon.tone.color
         let label = UILabel()
         label.text = pill.text
         label.font = UIFontMetrics(forTextStyle: .caption2)
@@ -1112,35 +1118,34 @@ final class SessionListViewController: UIViewController {
         let padH: CGFloat = 7
         let padV: CGFloat = 3
         let margin: CGFloat = 8
-        let badge = UIView(
-            frame: CGRect(x: margin, y: 0, width: label.bounds.width + padH * 2,
+        let glyphWidth: CGFloat = 15
+        let capsule = UIView(
+            frame: CGRect(
+                x: margin, y: 0, width: label.bounds.width + glyphWidth + padH * 2,
                 height: label.bounds.height + padV * 2))
-        label.frame.origin = CGPoint(x: padH, y: padV)
-        badge.addSubview(label)
-        badge.backgroundColor = UIColor { traits in
+        badge.frame = CGRect(
+            x: padH - 1, y: 0, width: glyphWidth, height: capsule.bounds.height)
+        label.frame.origin = CGPoint(x: padH + glyphWidth, y: padV)
+        capsule.addSubview(badge)
+        capsule.addSubview(label)
+        capsule.backgroundColor = UIColor { traits in
             color.withAlphaComponent(0.15)
                 .blended(over: Theme.Color.secondaryBackground, traits: traits)
         }
-        badge.layer.cornerRadius = badge.bounds.height / 2
-        badge.layer.cornerCurve = .continuous
+        capsule.layer.cornerRadius = capsule.bounds.height / 2
+        capsule.layer.cornerCurve = .continuous
+        capsule.isAccessibilityElement = true
+        capsule.accessibilityLabel = activity.spoken
+        badge.isAccessibilityElement = false
         let wrapper = UIView(
             frame: CGRect(
-                x: 0, y: 0, width: badge.bounds.width + margin + 6, height: badge.bounds.height))
-        wrapper.addSubview(badge)
+                x: 0, y: 0, width: capsule.bounds.width + margin + 6,
+                height: capsule.bounds.height))
+        wrapper.addSubview(capsule)
         return .customView(
             configuration: .init(
                 customView: wrapper, placement: .trailing(displayed: .always),
                 maintainsFixedSize: true))
-    }
-
-    private static func pillColor(_ state: SessionRowState) -> UIColor {
-        switch state {
-        case .awaitingApproval: return Theme.Color.warning
-        case .failed: return Theme.Color.danger
-        case .offline: return Theme.Color.secondaryLabel
-        case .live: return Theme.Color.success
-        case .idle: return Theme.Color.tertiaryLabel
-        }
     }
 
     @objc private func refresh() { Task { await viewModel.load() } }
@@ -1150,6 +1155,28 @@ final class SessionListViewController: UIViewController {
         NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { [weak self] entry in
             self?.openChat(for: entry)
         }
+    }
+
+    /// A result opens the conversation it names, on the server it happened on. The listing may not
+    /// carry it — a chat this device has not listed lately — so one the list cannot resolve says so
+    /// instead of doing nothing.
+    private func openSearchResult(profileID: String, sessionID: String) {
+        guard let entry = viewModel.entries.first(where: {
+            $0.profileID == profileID && $0.session.id == sessionID
+        }) else {
+            Theme.Haptics.warning()
+            let alert = UIAlertController(
+                title: String(localized: "Not in the listing"),
+                message: String(
+                    localized: "That chat is not in this server's listing right now."),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
+            present(alert, animated: true)
+            return
+        }
+        navigationController?.popViewController(animated: false)
+        SessionSeenStore.markSeen(entry.session.id)
+        openChat(for: entry)
     }
 
     private func openChat(for entry: SessionEntry) {
@@ -1332,6 +1359,32 @@ extension SessionListViewController: UISearchResultsUpdating {
     }
 }
 
+/// The search bar narrows the rows it already holds while it is typed in, and searches what was
+/// actually said when it is submitted. The two are different questions and the second one takes a
+/// network, so it gets a screen of its own rather than replacing the list under the keyboard.
+extension SessionListViewController: UISearchBarDelegate {
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let query = searchBar.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard TranscriptSearch.isSearchable(query) else { return }
+        Theme.Haptics.tap()
+        searchBar.resignFirstResponder()
+        let entries = viewModel.entries
+        let sources = viewModel.servers.compactMap { profile in
+            viewModel.backend(forProfileID: profile.id).map {
+                TranscriptSearch.Source(
+                    profileID: profile.id,
+                    name: ServerLabel.display(name: profile.name, backend: profile.backend),
+                    backend: $0,
+                    entries: entries.filter { $0.profileID == profile.id })
+            }
+        }
+        navigationController?.pushViewController(
+            TranscriptSearchViewController(query: query, sources: sources) { [weak self] profileID, sessionID in
+                self?.openSearchResult(profileID: profileID, sessionID: sessionID)
+            }, animated: true)
+    }
+}
+
 final class FileBrowserViewController: UIViewController {
     var onSelect: ((String) -> Void)?
 
@@ -1384,7 +1437,7 @@ final class FileBrowserViewController: UIViewController {
         let favButton = UIBarButtonItem(
             image: UIImage(systemName: favImage), style: .plain, target: self,
             action: #selector(toggleFavorite))
-        favButton.tintColor = isFavorite ? .systemYellow : nil
+        favButton.tintColor = isFavorite ? Theme.Color.special : nil
         if path != "." {
             navigationItem.rightBarButtonItems = [navigationItem.rightBarButtonItem!, favButton]
         }
@@ -1452,7 +1505,7 @@ final class FileBrowserViewController: UIViewController {
                 content.text = (favPath as NSString).lastPathComponent
                 content.secondaryText = favPath
                 content.image = UIImage(systemName: "star.fill")
-                content.imageProperties.tintColor = .systemYellow
+                content.imageProperties.tintColor = Theme.Color.special
                 content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             case .recent(let recentPath):

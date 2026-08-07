@@ -286,20 +286,54 @@ final class SplitHost: @unchecked Sendable {
         }
     }
 
-    /// Positions from ratios. A paned that has not been allocated yet reports no extent, which
-    /// is why this runs on the next idle and once more shortly after a rebuild.
+    /// Positions from ratios, walked top-down with each child's extent computed from the position
+    /// its parent was just given — a nested paned only learns its new allocation at the next
+    /// layout pass, so reading extents back mid-walk would apply an inner ratio to an arrangement
+    /// the outer divider is about to stop having. The tree that has not been allocated yet
+    /// reports no extent, which is why this runs on the next idle and once more shortly after a
+    /// rebuild.
     func applyRatios() {
-        for (id, bits) in splitWidgets {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits),
-                let ratio = layout.ratio(of: id)
-            else { continue }
-            let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-            let horizontal =
-                gtk_orientable_get_orientation(op(paned)) == GTK_ORIENTATION_HORIZONTAL
-            let extent = horizontal ? gtk_widget_get_width(paned) : gtk_widget_get_height(paned)
-            guard extent > 50 else { continue }
-            gtk_paned_set_position(op(paned), Int32((Double(extent) * ratio).rounded()))
+        let width = Double(gtk_widget_get_width(treeBox))
+        let height = Double(gtk_widget_get_height(treeBox))
+        guard width > 50, height > 50 else { return }
+        applyRatios(layout.root, width: width, height: height)
+    }
+
+    private func applyRatios(_ node: SplitNode, width: Double, height: Double) {
+        guard case .split(let id, let axis, let ratio, let first, let second) = node,
+            let bits = splitWidgets[id],
+            let raw = UnsafeMutableRawPointer(bitPattern: bits)
+        else { return }
+        let paned: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        let horizontal = axis == .horizontal
+        let extent = horizontal ? width : height
+        let handle = handleThickness(of: paned, horizontal: horizontal)
+        let position = ((extent - handle) * ratio).rounded()
+        gtk_paned_set_position(op(paned), Int32(position))
+        let remainder = extent - handle - position
+        if horizontal {
+            applyRatios(first, width: position, height: height)
+            applyRatios(second, width: remainder, height: height)
+        } else {
+            applyRatios(first, width: width, height: position)
+            applyRatios(second, width: width, height: remainder)
         }
+    }
+
+    /// The separator's share of a paned's extent, measured from what the children were actually
+    /// given rather than assumed from CSS. Clamped because a paned mid-rebuild or mid-zoom has
+    /// children whose stale allocations would otherwise read as a handle the size of the gap.
+    private func handleThickness(
+        of paned: UnsafeMutablePointer<GtkWidget>, horizontal: Bool
+    ) -> Double {
+        guard let start = gtk_paned_get_start_child(op(paned)),
+            let end = gtk_paned_get_end_child(op(paned))
+        else { return 0 }
+        let total = horizontal ? gtk_widget_get_width(paned) : gtk_widget_get_height(paned)
+        let first = horizontal ? gtk_widget_get_width(start) : gtk_widget_get_height(start)
+        let second = horizontal ? gtk_widget_get_width(end) : gtk_widget_get_height(end)
+        guard first > 0, second > 0 else { return 0 }
+        return Double(min(8, max(0, total - first - second)))
     }
 
     /// Ratios from positions, on the same slow tick the window's own dividers use —

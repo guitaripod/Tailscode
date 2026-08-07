@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 import UserNotifications
 
@@ -60,19 +61,33 @@ enum NotificationManager {
     /// withdrawn once its request is no longer pending.
     static func withdraw(identifiers: [String]) {
         guard !identifiers.isEmpty else { return }
+        ActivityInbox.withdraw(identifiers)
         let center = UNUserNotificationCenter.current()
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
+    /// - Parameters:
+    ///   - activity: what happened in the session, when the notice is about one. A notice raised
+    ///     is also a notice that can be missed — a banner lasts seconds whether or not anybody was
+    ///     looking — so anything named here is written into `ActivityInbox` by the same decision
+    ///     that banners it: suppressed by preference means never raised, so never missed.
     static func notify(
-        kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil
+        kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil,
+        profileID: String? = nil, activity: MissedActivity.Reason? = nil
     ) {
         guard kind.isEnabled else {
             AppLogger.lifecycle.info("notification suppressed by preference: \(identifier)")
             return
         }
         guard UIApplication.shared.applicationState != .active else { return }
+        if let activity, let sessionID {
+            ActivityInbox.record([
+                MissedActivity(
+                    identifier: identifier, profileID: profileID ?? "", sessionID: sessionID,
+                    title: title, body: body, reason: activity)
+            ])
+        }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

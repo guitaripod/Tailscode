@@ -1,32 +1,76 @@
 import AppKit
 import CodingAgentKit
+import TailscodeCore
 
 /// The desktop half of the design tokens. Values are the same numbers the iOS `Theme` uses; only
 /// the types differ. Chrome is material and quiet, the transcript is flat and opaque — the two
 /// never borrow each other's surfaces.
 enum MacTheme {
+    /// The colours, named by what they mean rather than what they are — the same vocabulary the
+    /// desktop's `Palette` is written in. Each is computed rather than stored, because a theme is
+    /// a second axis AppKit has no trait for: the token has to be asked again after a change, and
+    /// `ThemePalette` is what remembers the answer in between.
     enum Color {
-        static let label = NSColor.labelColor
-        static let secondaryLabel = NSColor.secondaryLabelColor
-        static let tertiaryLabel = NSColor.tertiaryLabelColor
-        static let separator = NSColor.separatorColor
-        static let canvas = NSColor.textBackgroundColor
-        static let accent = NSColor.controlAccentColor
-        static let success = NSColor.systemGreen
-        static let warning = NSColor.systemOrange
-        static let danger = NSColor.systemRed
+        static var label: NSColor { ThemePalette.color(\.text, system: .labelColor) }
+        static var secondaryLabel: NSColor {
+            ThemePalette.color(\.textDim, system: .secondaryLabelColor)
+        }
+        /// The third register has no slot of its own: it is the dim one walked a third of the way
+        /// back into the canvas. It sits below the contrast floor by construction, so it carries
+        /// ornament — a chevron, a rule, a count beside a fact — and never a fact alone.
+        static var tertiaryLabel: NSColor {
+            ThemePalette.blended(\.textDim, toward: \.canvas, 0.35, system: .tertiaryLabelColor)
+        }
+        static var separator: NSColor { ThemePalette.color(\.rule, system: .separatorColor) }
+        static var canvas: NSColor { ThemePalette.color(\.canvas, system: .textBackgroundColor) }
+        /// Every raised content surface: cards, code blocks, gauge tracks, chips.
+        static var canvasRaised: NSColor {
+            ThemePalette.color(\.canvasRaised, system: .quaternarySystemFill)
+        }
+        static var codeBackground: NSColor {
+            ThemePalette.color(\.codeBg, system: .quaternarySystemFill)
+        }
+        static var subagentBackground: NSColor {
+            ThemePalette.color(\.subagentBg, system: .quinarySystemFill)
+        }
+        static var accent: NSColor { ThemePalette.color(\.accent, system: .controlAccentColor) }
+        /// Affirmation. A palette spends one colour on motion and affirmation together, so under a
+        /// theme a finished step and a running one are the same hue and are told apart by their
+        /// glyph — which is the contract the desktop has always kept.
+        static var success: NSColor { ThemePalette.color(\.accent, system: .systemGreen) }
+        static var warning: NSColor { ThemePalette.color(\.warn, system: .systemOrange) }
+        static var danger: NSColor { ThemePalette.color(\.danger, system: .systemRed) }
         /// Identity of what the agent touched — subagents, tools, files, modes.
-        static let info = NSColor.systemIndigo
+        static var info: NSColor { ThemePalette.color(\.info, system: .systemIndigo) }
         /// Standing marks on a conversation — the goal, a compaction seam, a saved chat.
-        static let mark = NSColor.systemPurple
-        static let claude = NSColor(
-            name: nil,
-            dynamicProvider: { appearance in
-                appearance.isDark
-                    ? NSColor(red: 0.90, green: 0.55, blue: 0.42, alpha: 1)
-                    : NSColor(red: 0.80, green: 0.42, blue: 0.29, alpha: 1)
-            })
-        static let opencode = NSColor.systemTeal
+        static var mark: NSColor { ThemePalette.color(\.special, system: .systemPurple) }
+        /// Ink on a signal fill. Never white: on a light palette the canvas is the ink, and the
+        /// pairing is one of the seventeen rules `Palette.contrastContract` proves.
+        static var onAccent: NSColor { ThemePalette.color(\.onAccent, system: .white) }
+        static var findHit: NSColor {
+            ThemePalette.color(\.findHit, system: NSColor.systemYellow.withAlphaComponent(0.35))
+        }
+        static var claude: NSColor {
+            ThemePalette.color(
+                \.brandClaude,
+                system: NSColor(
+                    name: nil,
+                    dynamicProvider: { appearance in
+                        appearance.isDark
+                            ? NSColor(red: 0.90, green: 0.55, blue: 0.42, alpha: 1)
+                            : NSColor(red: 0.80, green: 0.42, blue: 0.29, alpha: 1)
+                    }))
+        }
+        static var opencode: NSColor {
+            ThemePalette.color(\.brandOpencode, system: .systemTeal)
+        }
+
+        /// Ink for anything that sits *on* a pane of glass. Glass flips between light and dark on
+        /// its own, against whatever content is behind it and regardless of what the app decided it
+        /// was, and AppKit derives the material's vibrancy from these colours in particular — a
+        /// palette hex here would neither flip nor gain vibrancy.
+        static let onGlass = NSColor.labelColor
+        static let onGlassSecondary = NSColor.secondaryLabelColor
 
         static func brand(_ agent: AgentType) -> NSColor {
             agent == .claudeCode ? claude : opencode
@@ -76,6 +120,49 @@ enum MacTheme {
 
         static func reset() {
             UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    /// Where the theme is installed, which is nowhere near the glass.
+    ///
+    /// Liquid Glass is a material: it samples the content beneath it and derives its own light or
+    /// dark register, its tone range and its vibrancy from what it finds. The way a palette reaches
+    /// the composer's capsule is that the transcript behind it went warm. Nothing here paints a
+    /// material, and no palette slot maps to one.
+    ///
+    /// The Mac has no `window.tintColor` — `controlAccentColor` is read-only and the user's system
+    /// accent replaces an app's — so the accent reaches AppKit's own controls per control, and only
+    /// where the app was already colouring one. Under "System" none of that runs and the window is
+    /// the plain AppKit window it has always been.
+    @MainActor
+    enum Chrome {
+        /// Posted after the palette has changed and the tokens have been rebuilt. The window
+        /// listens and restyles itself the way it does for a change of type scale, because AppKit
+        /// has no trait to invalidate and a `CGColor` in a layer will otherwise keep the colour it
+        /// was born with.
+        static let didRepaint = Notification.Name("tailscode.mac.theme.didRepaint")
+
+        static func apply() {
+            ThemePalette.invalidate()
+            NSApp?.appearance = appearance
+            for window in NSApp?.windows ?? [] { window.appearance = appearance }
+            NotificationCenter.default.post(name: didRepaint, object: nil)
+        }
+
+        static func adopt(_ window: NSWindow) {
+            window.appearance = appearance
+        }
+
+        /// Which of the theme's two faces to wear. Nothing pinned is `nil`, which is AppKit's own
+        /// way of saying "follow the system" — and the palette face is then read back off the
+        /// appearance that results, so the canvas and the glass can never disagree about which one
+        /// is in force.
+        static var appearance: NSAppearance? {
+            switch ThemeSelection.appearance.pinnedDark {
+            case .some(true): return NSAppearance(named: .darkAqua)
+            case .some(false): return NSAppearance(named: .aqua)
+            case .none: return nil
+            }
         }
     }
 

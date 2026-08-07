@@ -184,6 +184,33 @@ void tailscode_remove_tick(GtkWidget *widget, guint id);
 /// they want from a cascade, and the answer is the text.
 gboolean tailscode_animations_enabled(void);
 
+/// The ultracode aura, drawn rather than themed: a drawing area to lay over the prompt box, whose
+/// perimeter carries the rainbow round and round under a soft glow. A CSS gradient cannot travel
+/// around a box — its angle sweeps across the whole rectangle, so the colour crosses the corners
+/// instead of running along the edge — and reloading a provider every frame restyles the entire
+/// display to repaint one border. The area never takes input.
+GtkWidget *tailscode_aura_new(void);
+
+/// One frame: where the rainbow's head sits (`phase`, wrapping at 1), how brightly the glow burns
+/// (`glow`, 0–1), and the stops themselves as flat RGB triples in 0–1.
+void tailscode_aura_set(
+    GtkWidget *area, double phase, double glow, const double *rgb, int stop_count);
+
+/// The presence orb's canvas: a GL area whose every frame is one metaball field rasterised by a
+/// fragment shader. The shader draws exactly what Core's `PresenceField` handed over and adds
+/// nothing — no motion, no colour choice, no state lives on this side. A machine whose GL cannot
+/// compile the program reports not-ready and the tile clears to the canvas colour instead.
+GtkWidget *tailscode_orb_new(void);
+gboolean tailscode_orb_ready(GtkWidget *area);
+
+/// One frame: blobs as x/y/radius/weight quads in the orb's unit space, the body ink and the
+/// canvas behind it as RGB in 0–1, the breath (`intensity`), the glow budget (`energy`), and the
+/// ultracode rim (`rainbow` 0–1 over the shared stops, head at `rainbow_phase`).
+void tailscode_orb_set(
+    GtkWidget *area, const float *blobs, int blob_count, const float *color, float energy,
+    float intensity, float rainbow, float rainbow_phase, float rainbow_glow, const float *stops,
+    int stop_count, const float *background);
+
 /// The video slot's player. libmpv draws into a GL area the pane owns, so a stream is a widget in
 /// the split tree rather than a window floating over it — Wayland gives a client no way to place
 /// an external window inside another, and a pane that cannot be tiled is not a pane. Compiled out

@@ -80,6 +80,14 @@ public enum SelfTest {
         }
 
         do {
+            try checkActivityMotion()
+            report("activity: \(ActivityKind.everyState.count) states move as they mean")
+        } catch {
+            report("activity: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {
@@ -132,6 +140,38 @@ public enum SelfTest {
             report("pane chooser: servers, chats and keys behave")
         } else {
             report("pane chooser: \(chooserFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let boardFailures = WatchChooserCheck.run()
+        if boardFailures.isEmpty {
+            report("watch board: sections compact, sources report, keys leave the box alone")
+        } else {
+            report("watch board: \(boardFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let accountFailures = WatchAccountsCheck.run()
+        if accountFailures.isEmpty {
+            report("watch accounts: rows state a fact first, and the flow shows one code")
+        } else {
+            report("watch accounts: \(accountFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkWatchAccounts()
+            report("watch sign-in: \(checks) states, tokens kept where secrets go")
+        } catch {
+            report("watch sign-in: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkWatchDirectory()
+            report("watch directory: \(checks) shapes read into rows")
+        } catch {
+            report("watch directory: \(error)")
             failures += 1
         }
 
@@ -561,6 +601,117 @@ public enum SelfTest {
 
     static var playerState: String {
         tailscode_mpv_available() != 0 ? "available" : "missing libmpv"
+    }
+
+    /// What the board owes its clients, proved on the payloads the two sources actually send
+    /// rather than on the network: the shapes are pinned here so a site changing one is a failing
+    /// selftest instead of a pane that quietly shows nothing.
+    /// That an account survives being written and read back through the same store a server
+    /// password uses, and that a signed-out box is signed out rather than half-signed-in. Runs
+    /// against a throwaway file so the box's own accounts are never touched.
+    private static func checkWatchAccounts() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("watch sign-in: \(label)") }
+            checks += 1
+        }
+
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tailscode-watch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let secrets = FileSecretStore(url: scratch.appendingPathComponent("secrets.json"))
+        MediaAccounts.install(secrets)
+        defer { MediaAccounts.install(FileSecretStore()) }
+
+        let source = MediaSource.twitch
+        MediaAccounts.signOut(source)
+        try expect(!MediaAccounts.isSignedIn(source), "a fresh box is signed out")
+        try expect(MediaAccounts.account(for: source) == nil, "and names nobody")
+
+        let tokens = OAuthTokens(
+            access: "a", refresh: "r", expiresAt: Date().addingTimeInterval(3600), scope: "s")
+        let account = MediaAccount(source: source, name: "Marcus", handle: "marcus")
+        MediaAccounts.remember(tokens, account)
+        try expect(MediaAccounts.isSignedIn(source), "remembering signs it in")
+        try expect(MediaAccounts.account(for: source)?.name == "Marcus", "and names the account")
+        try expect(MediaAccounts.tokens(for: source)?.access == "a", "with a token that reads back")
+        try expect(
+            try secrets.value(for: "tailscode.watch.oauth.twitch") != nil,
+            "kept where this box keeps a secret, not in the settings file")
+        try expect(
+            UserDefaults.standard.string(forKey: "tailscode.watch.oauth.twitch") == nil,
+            "and never in plain defaults")
+
+        MediaAccounts.signOut(source)
+        try expect(!MediaAccounts.isSignedIn(source), "signing out signs it out")
+        try expect(
+            try secrets.value(for: "tailscode.watch.oauth.twitch") == nil,
+            "and takes the token with it")
+
+        let rows = WatchAccounts.rows()
+        try expect(rows.count == 2, "settings offers both sites")
+        try expect(
+            rows.first { $0.source == .twitch }?.action == .signIn(.twitch),
+            "Twitch is signable in with nothing configured")
+        try expect(
+            WatchAccounts.summary == Localized.text("Not signed in to either site"),
+            "and a signed-out box says so plainly")
+        return checks
+    }
+
+    private static func checkWatchDirectory() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("watch directory: \(label)") }
+            checks += 1
+        }
+
+        let twitch = """
+            {"login":"caedrel","displayName":"Caedrel","profileImageURL":"https://cdn/a.png",\
+            "stream":{"title":"LCK","viewersCount":36579,"createdAt":"2026-08-07T07:30:10Z",\
+            "game":{"name":"League of Legends"},"previewImageURL":"https://cdn/p.jpg",\
+            "freeformTags":[{"name":"English"}]}}
+            """
+        let user = try JSONSerialization.jsonObject(with: Data(twitch.utf8)) as? [String: Any]
+        try expect(user != nil, "a Twitch channel is JSON")
+        let entry = TwitchDirectory.entry(from: user ?? [:], now: Date())
+        try expect(entry?.channel.name == "Caedrel", "and reads into a named channel")
+        try expect(entry?.isLive == true, "that is live")
+        try expect(entry?.badge == "37K", "wearing its audience")
+        try expect(entry?.stream?.thumbnail != nil, "with a picture to draw")
+        try expect(entry?.target == .twitch("caedrel"), "opening the channel it names")
+
+        let youtube = """
+            {"c":{"videoRenderer":{"videoId":"abc","title":{"runs":[{"text":"radio"}]},\
+            "ownerText":{"runs":[{"text":"Lofi Girl"}]},\
+            "viewCountText":{"runs":[{"text":"12,304"},{"text":" watching"}]},\
+            "badges":[{"metadataBadgeRenderer":{"style":"BADGE_STYLE_TYPE_LIVE_NOW"}}],\
+            "thumbnail":{"thumbnails":[{"url":"https://i/big.jpg"}]}}}}
+            """
+        let page = try JSONSerialization.jsonObject(with: Data(youtube.utf8)) as? [String: Any]
+        let found = YouTubeDirectory.rows(in: page ?? [:], limit: 4)
+        try expect(found.count == 1, "a YouTube page gives up its live row")
+        try expect(found.first?.stream?.viewers == 12304, "with the count it printed")
+
+        let channel = MediaChannel(source: .twitch, handle: "caedrel", name: "Caedrel")
+        var board = WatchChooser(watchlist: [channel], followed: [channel])
+        try expect(board.rows.count == 1, "the list this device owns is a board on its own")
+        board.filled(live: MediaFeed(entries: [entry].compactMap { $0 }))
+        try expect(board.sections.first?.id == WatchChooser.liveID, "and what is on leads it")
+        try expect(board.rows.first?.thumbnail != nil, "carrying the picture a row draws")
+
+        let summary = WatchSummary(feed: MediaFeed(entries: [entry].compactMap { $0 }), followed: 1)
+        var chooser = PaneChooser(
+            servers: [
+                PaneChooserServer(
+                    profileID: "p", name: "arch", backend: .claudeCode, address: "100.0.0.1:4098")
+            ], entries: [])
+        chooser.watchSummary = summary
+        let watchRow = chooser.rows.first { $0.action == .watch }
+        try expect(watchRow?.detail == summary.detail, "and the pane row says the same thing")
+        try expect(watchRow?.note == VideoNotice.splitCostLine, "without losing what it costs")
+        return checks
     }
 
     private static func checkVideoSlot() throws -> Int {
@@ -1177,6 +1328,47 @@ public enum SelfTest {
         guard !css.contains(".seg-offline { color: \(palette.danger)") else {
             throw SelfTestFailure("\(palette.name): offline is drawn as a failure")
         }
+        for kind in ActivityKind.everyState {
+            let icon = kind.icon
+            guard css.contains(".\(icon.glyphCSS) {") else {
+                throw SelfTestFailure(
+                    "\(palette.name): \(kind) draws .\(icon.glyphCSS) and nothing styles it")
+            }
+            guard css.contains(".\(icon.bandCSS) {") else {
+                throw SelfTestFailure(
+                    "\(palette.name): \(kind) bands .\(icon.bandCSS) and nothing styles it")
+            }
+        }
+    }
+
+    /// The moving half of the same contract: work has to move, an answer the agent is waiting for
+    /// has to move differently, and anything settled has to hold perfectly still — stillness is
+    /// how a reader tells a stopped turn from a slow one. Asserted here rather than left to the
+    /// eye, because a glyph that quietly stops breathing looks exactly like a session that ended.
+    private static func checkActivityMotion() throws {
+        for kind in ActivityKind.everyState where kind.isInFlight {
+            guard kind.icon.motion.isAnimated else {
+                throw SelfTestFailure("\(kind) is in flight and holds still")
+            }
+        }
+        for kind in [ActivityKind.failed, .offline, .queued(2)] where kind.icon.motion.isAnimated {
+            throw SelfTestFailure("\(kind) is settled and moves anyway")
+        }
+        guard ActivityKind.working.icon.motion != ActivityKind.needsApproval.icon.motion else {
+            throw SelfTestFailure("a running turn and one waiting on the reader move alike")
+        }
+        for kind in ActivityKind.everyState
+        where kind.icon.motion.honoring(reduceMotion: true) != .still {
+            throw SelfTestFailure("\(kind) keeps moving when the desk asked for no motion")
+        }
+        let spread = stride(from: 0.0, to: ActivityTuning.sweepPeriod, by: 0.02)
+            .map { ActivityKind.compacting.icon.glyph(at: $0) }
+        guard Set(spread) == Set(ActivityIcon.sweepCycle) else {
+            throw SelfTestFailure("a sweep does not reach every frame it owns")
+        }
+        guard SessionRowState.live.activity == .working,
+            SessionRowState.idle.activity == nil
+        else { throw SelfTestFailure("a row's state and its activity disagree") }
     }
 
     /// A picture must come back byte-identical, keyed to its server file — and two different

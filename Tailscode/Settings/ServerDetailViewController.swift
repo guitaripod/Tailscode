@@ -197,7 +197,7 @@ final class ServerDetailViewController: UIViewController {
         case .isDefault:
             content.text = String(localized: "Default server")
             content.image = UIImage(systemName: "star.fill")
-            content.imageProperties.tintColor = .systemYellow
+            content.imageProperties.tintColor = Theme.Color.special
             cell.accessories = [.checkmark()]
         case .defaultModel:
             content.text = String(localized: "Default model")

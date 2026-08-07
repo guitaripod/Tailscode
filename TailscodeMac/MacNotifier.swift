@@ -45,6 +45,7 @@ final class MacNotifier: NSObject {
         let (alerts, withdrawals) = watch.observeConversation(
             profileID: profileID, sessionID: sessionID, title: title, state: state)
         if !withdrawals.isEmpty {
+            ActivityInbox.withdraw(withdrawals)
             let center = UNUserNotificationCenter.current()
             center.removeDeliveredNotifications(withIdentifiers: withdrawals)
             center.removePendingNotificationRequests(withIdentifiers: withdrawals)
@@ -52,8 +53,12 @@ final class MacNotifier: NSObject {
         deliver(alerts)
     }
 
+    /// Raised and written down in one step: a notice nobody happened to be at the screen for is
+    /// the whole event lost otherwise, so what banners also goes to the list that keeps it until
+    /// someone looks.
     private func deliver(_ alerts: [ActivityAlert]) {
         guard !NSApp.isActive else { return }
+        var raised: [ActivityAlert] = []
         for alert in alerts {
             switch alert.reason {
             case .turnEnded:
@@ -62,7 +67,9 @@ final class MacNotifier: NSObject {
                 guard Self.notifyNeedsYou else { continue }
             }
             send(alert)
+            raised.append(alert)
         }
+        ActivityInbox.record(raised)
     }
 
     private func send(_ alert: ActivityAlert) {

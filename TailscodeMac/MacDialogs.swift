@@ -30,16 +30,29 @@ enum MacDialogs {
     /// One line of text in, two buttons out. Serves rename, the compact preflight, and every
     /// prompt like them. The field is the first responder, so Enter confirms without a reach for
     /// the mouse.
+    ///
+    /// - Parameter draft: which prompt box this is, when what is typed here outlives the sheet.
+    ///   Given one, the field opens on whatever was last typed into it, records every change, and
+    ///   lets it go on confirm — cancelling keeps it, because cancelling is not deciding against
+    ///   the words. Left out, the sheet forgets what was typed the moment it closes, which is what
+    ///   a rename wants.
     static func prompt(
         on window: NSWindow?, title: String, body: String? = nil, placeholder: String,
         initial: String = "", confirmLabel: String, destructive: Bool = false,
+        draft: DraftScope? = nil,
         onConfirm: @escaping @MainActor (String) -> Void
     ) {
         let alert = NSAlert()
         alert.alertStyle = destructive ? .warning : .informational
         alert.messageText = title
         if let body { alert.informativeText = body }
-        let field = NSTextField(string: initial)
+        let field: NSTextField
+        if let draft {
+            field = DraftingField(
+                scope: draft, initial: initial.isEmpty ? DraftStore.text(for: draft) : initial)
+        } else {
+            field = NSTextField(string: initial)
+        }
         field.placeholderString = placeholder
         field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
         alert.accessoryView = field
@@ -49,6 +62,7 @@ enum MacDialogs {
         alert.addButton(withTitle: Localized.text("Cancel"))
         let finish: @MainActor (NSApplication.ModalResponse) -> Void = { response in
             guard response == .alertFirstButtonReturn else { return }
+            if let draft { DraftStore.clear(draft) }
             onConfirm(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         guard let window else {
@@ -98,4 +112,26 @@ enum MacDialogs {
 
 private final class TopAnchoredClipView: NSClipView {
     override var isFlipped: Bool { true }
+}
+
+/// A one-line field whose text belongs to a box rather than to the sheet it is standing in: it
+/// records what is typed as it is typed, so a `/compact` instruction or a goal condition survives
+/// the sheet being dismissed, the window being closed, or the app being quit. The one who confirms
+/// clears it — nothing else does, because a sheet closing is not an answer.
+final class DraftingField: NSTextField, NSTextFieldDelegate {
+    private let scope: DraftScope
+
+    init(scope: DraftScope, initial: String) {
+        self.scope = scope
+        super.init(frame: .zero)
+        stringValue = initial
+        delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func controlTextDidChange(_ obj: Notification) {
+        DraftStore.record(stringValue, for: scope)
+    }
 }

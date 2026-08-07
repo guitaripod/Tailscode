@@ -89,6 +89,13 @@ enum Connect {
     }
 }
 
+/// The two video sites' tokens belong wherever this Mac already keeps a secret, which is the same
+/// data-protection Keychain the connection profiles put their passwords in — one service, one
+/// store, no second place for a credential to be. Handed over before anything reads an account:
+/// an uninstalled store makes every account read as signed out, which is a feature quietly missing
+/// rather than a failure.
+MediaAccounts.install(KeychainSecretStore())
+
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()

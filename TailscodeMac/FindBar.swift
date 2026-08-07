@@ -27,7 +27,7 @@ final class FindBar: NSView {
         field.widthAnchor.constraint(equalToConstant: 220).isActive = true
 
         countLabel.font = MacTheme.Font.caption()
-        countLabel.textColor = MacTheme.Color.secondaryLabel
+        countLabel.textColor = MacTheme.Color.onGlassSecondary
 
         let previous = symbolButton("chevron.up", tip: Localized.text("Previous match")) {
             [weak self] in self?.onStep?(-1)

@@ -127,7 +127,7 @@ final class PillsRow: NSView {
         let background: NSColor =
             switch mode {
             case .insert: MacTheme.Color.accent.withAlphaComponent(0.25)
-            case .normal: NSColor.quaternaryLabelColor
+            case .normal: MacTheme.Color.tertiaryLabel
             case .visual, .visualLine: MacTheme.Color.warning.withAlphaComponent(0.3)
             }
         vimBadgeWrap.layer?.backgroundColor = background.cgColor

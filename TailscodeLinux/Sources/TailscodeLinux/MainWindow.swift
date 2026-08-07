@@ -27,6 +27,8 @@ final class MainWindow: @unchecked Sendable {
 
     private var sidebarLimit = 60
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+    private let orb = OrbPainter()
+    private var orbTarget: SessionEntry?
     private var usageTask: Task<Void, Never>?
 
     private var splitWidget: UnsafeMutablePointer<GtkWidget>?
@@ -59,12 +61,20 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarScrollTarget: Double?
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
+    private var watchSummary: WatchSummary?
+    private var watchCheckedAt: Date?
+    private var watchCheck: Task<Void, Never>?
     private var lastQuotas: [(String, UsageQuota)] = []
 
     /// Quotas the panes read for used-up surfaces — same numbers the sidebar footer shows.
     func quotasForStatus() -> [UsageQuota] { lastQuotas.map(\.1) }
     private var cursor = 0
     private var filter = ""
+    /// The results of the last submitted search, and whether one is in flight. A list that is
+    /// looking must say so: silence while a fleet answers is indistinguishable from nothing found.
+    private var searchBoard: TranscriptSearch.Board?
+    private var searchRunning = false
+    private var searchTask: Task<Void, Never>?
     var pendingChords: [KeyChord] = []
     private(set) var shortcuts = ShortcutSet.load()
     private var focused: Pane = .chats
@@ -100,6 +110,7 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         Task.detached { DesktopIntegration.ensureInstalled() }
+        observeMissedActivity()
 
         splitHost = SplitHost(host: self)
         if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
@@ -145,6 +156,9 @@ final class MainWindow: @unchecked Sendable {
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
         installPressRouting(on: window)
+        Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
+            self?.stashDrafts()
+        }
         Notifier.shared.attach(app: app) { [weak self] sessionID in
             self?.openSession(withID: sessionID)
         }
@@ -193,6 +207,8 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo()
+                case "orb":
+                    FileHandle.standardOutput.write(Data("ORB \(self.orb.stateLine)\n".utf8))
                 case "mark":
                     if let index = Int(argument), index < self.visible.count {
                         self.toggleMark(self.visible[index].entry)
@@ -373,6 +389,44 @@ final class MainWindow: @unchecked Sendable {
                         index, pane in "\(index):\(pane.videoSummary ?? "chat")"
                     }.joined(separator: " | ")
                     FileHandle.standardOutput.write(Data("VIDEO \(described)\n".utf8))
+                case "accounts":
+                    let described = WatchAccounts.rows().map {
+                        "\($0.title)=\($0.actionTitle)[\($0.detail)]"
+                    }.joined(separator: " | ")
+                    FileHandle.standardOutput.write(Data("ACCOUNTS \(described)\n".utf8))
+                case "signin":
+                    let source = MediaSource(rawValue: argument) ?? .twitch
+                    WatchSignInDialog.present(parent: self.window, source: source) {}
+                    FileHandle.standardOutput.write(
+                        Data("SIGNIN \(source.rawValue) opened\n".utf8))
+                case "board":
+                    FileHandle.standardOutput.write(
+                        Data("BOARD \(self.activePane.watchBoardSummary ?? "-")\n".utf8))
+                case "bkey":
+                    let keyval: UInt32
+                    var state: UInt32 = 0
+                    switch argument {
+                    case "up": keyval = Keymap.up
+                    case "down": keyval = Keymap.down
+                    case "enter": keyval = Keymap.enter
+                    case "tab": keyval = Keymap.tab
+                    case "esc": keyval = Keymap.escape
+                    case "follow": keyval = 0x66; state = KeyChord.controlMask
+                    case "reload": keyval = 0x72; state = KeyChord.controlMask
+                    default: keyval = argument.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+                    }
+                    var handled = false
+                    if let chord = KeyChord.canonical(keyval: keyval, state: state) {
+                        handled = self.activePane.handleWatchChord(chord)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "BKEY \(argument) handled=\(handled) \(self.activePane.watchBoardSummary ?? "-")\n"
+                                .utf8))
+                case "btype":
+                    self.activePane.driveWatchQuery(argument)
+                    FileHandle.standardOutput.write(
+                        Data("BTYPE \(self.activePane.watchBoardSummary ?? "-")\n".utf8))
                 case "vkey":
                     let keyval = argument == "space"
                         ? UInt32(0x20)
@@ -493,10 +547,14 @@ final class MainWindow: @unchecked Sendable {
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_search_entry_set_placeholder_text(op(searchEntry), Localized.text("Filter chats  /"))
+        gtk_search_entry_set_placeholder_text(
+            op(searchEntry), Localized.text("Filter chats  /   ⏎ to search inside"))
         Gtk.margins(searchEntry, top: 4, bottom: 4, leading: 6, trailing: 6)
         Gtk.connect(UnsafeMutableRawPointer(searchEntry), "search-changed") { [weak self] in
             self?.applyFilterFromEntry()
+        }
+        Gtk.connect(UnsafeMutableRawPointer(searchEntry), "activate") { [weak self] in
+            Gtk.onMain { [weak self] in self?.runTranscriptSearch() }
         }
         gtk_box_append(ptr(column), searchEntry)
         gtk_box_append(ptr(column), sidebarBanner)
@@ -515,6 +573,12 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_cursor_from_name(usageBox, "pointer")
         gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
         Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
+        gtk_widget_set_tooltip_text(orb.widget, Localized.text("Nothing is running"))
+        Gtk.onRelease(orb.widget) { [weak self] in
+            guard let self, let entry = self.orbTarget else { return }
+            self.open(entry)
+        }
+        gtk_box_append(ptr(column), orb.widget)
         gtk_box_append(ptr(column), usageBox)
 
         adw_toolbar_view_set_content(op(toolbar), column)
@@ -845,6 +909,13 @@ final class MainWindow: @unchecked Sendable {
                     ?? .unobserved)
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        orbTarget =
+            rows.first { $0.state == .awaitingApproval }?.entry
+            ?? rows.first { $0.state == .live }?.entry
+        orb.update(
+            signal: PresenceSignal.aggregate(
+                rows.map { $0.state.activity },
+                ultracode: splitHost.panes.values.contains { $0.auraActive }))
         Notifier.shared.observeListing(
             rows.map {
                 ActivityObservation(
@@ -873,9 +944,10 @@ final class MainWindow: @unchecked Sendable {
         marks.prune(to: visible.map(\.entry))
         syncCursorToSelection()
 
+        let missed = ActivityInbox.ordered(limit: 5)
         let snapshot = (
             visible, unreachable, filter,
-            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))"
+            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
@@ -895,6 +967,34 @@ final class MainWindow: @unchecked Sendable {
         if !marks.isEmpty { gtk_box_append(ptr(sidebarBanner), makeSelectionBar()) }
 
         Gtk.removeChildren(of: sidebarList)
+        if searchRunning || searchBoard != nil {
+            renderSearchResults()
+            return
+        }
+        if !showingArchive, !missed.shown.isEmpty {
+            gtk_box_append(
+                ptr(sidebarList),
+                SidebarRow.missedHeader(count: missed.total) {
+                    Gtk.onMain { [weak self] in
+                        ActivityInbox.clearAll()
+                        self?.renderSidebar()
+                    }
+                })
+            for item in missed.shown {
+                let sessionID = item.sessionID
+                gtk_box_append(
+                    ptr(sidebarList),
+                    SidebarRow.missed(item) { [weak self] in
+                        Gtk.onMain { [weak self] in self?.openMissed(sessionID: sessionID) }
+                    })
+            }
+            if missed.total > missed.shown.count {
+                gtk_box_append(
+                    ptr(sidebarList),
+                    SidebarRow.empty(
+                        Localized.text("… %@ more", "\(missed.total - missed.shown.count)")))
+            }
+        }
         if showingArchive {
             gtk_box_append(
                 ptr(sidebarList),
@@ -1242,9 +1342,123 @@ final class MainWindow: @unchecked Sendable {
 
     private func applyFilterFromEntry() {
         guard let raw = gtk_editable_get_text(op(searchEntry)) else { return }
-        filter = String(cString: raw)
+        let text = String(cString: raw)
+        // Typing again is the way back to the list: results are about words that were submitted,
+        // and leaving them up while the box says something else would be a lie about both.
+        if searchBoard != nil || searchRunning { leaveTranscriptSearch(render: false) }
+        filter = text
         cursor = 0
         renderSidebar()
+    }
+
+    /// Enter searches what was actually said, everywhere. The filter above it is titles-only and
+    /// instant; this asks every machine at once and takes as long as the slowest one, so the list
+    /// says it is looking rather than appearing to have found nothing.
+    private func runTranscriptSearch() {
+        let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TranscriptSearch.isSearchable(query) else { return }
+        searchTask?.cancel()
+        searchRunning = true
+        searchBoard = nil
+        lastSidebar = nil
+        renderSidebar()
+        // The listing is read here, on the GLib main loop, and carried into the task. Nothing on
+        // this client may hop to the Swift main actor: GTK runs its own loop and the main-actor
+        // executor is never drained, so an `await MainActor.run` here simply never returns.
+        let listed = entries
+        searchTask = Task {
+            let sources = await Self.searchSources(entries: listed)
+            guard !Task.isCancelled else { return }
+            let board = await TranscriptSearch.run(query: query, sources: sources)
+            guard !Task.isCancelled else { return }
+            Gtk.onMain { [weak self] in
+                guard let self, self.searchRunning else { return }
+                self.searchRunning = false
+                self.searchBoard = board
+                self.lastSidebar = nil
+                self.renderSidebar()
+            }
+        }
+    }
+
+    /// One source per configured server, carrying the sessions this device has already listed so a
+    /// backend that cannot search inside its own conversations still contributes their titles.
+    private static func searchSources(entries: [SessionEntry]) async -> [TranscriptSearch.Source] {
+        var sources: [TranscriptSearch.Source] = []
+        for profile in await ServerDirectory.shared.profiles() {
+            guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
+            sources.append(
+                TranscriptSearch.Source(
+                    profileID: profile.id,
+                    name: ServerLabel.display(name: profile.name, backend: profile.backend),
+                    backend: backend,
+                    entries: entries.filter { $0.profileID == profile.id }))
+        }
+        return sources
+    }
+
+    /// The list, replaced by what was found. A result is a place to go back to on the machine it
+    /// happened on, so opening one aims the active pane at that server's own session.
+    private func renderSearchResults() {
+        let query = searchBoard?.query ?? filter
+        let rows = searchBoard?.rows ?? []
+        gtk_box_append(
+            ptr(sidebarList),
+            SidebarRow.searchHeader(
+                query: query, count: rows.count, running: searchRunning
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in self?.leaveTranscriptSearch() }
+            })
+        if searchRunning {
+            gtk_box_append(ptr(sidebarList), SidebarRow.empty(Localized.text("Asking every server…")))
+            return
+        }
+        if let caveat = searchBoard.flatMap(TranscriptSearch.caveat) {
+            gtk_box_append(ptr(sidebarList), SidebarRow.banner(caveat))
+        }
+        guard !rows.isEmpty else {
+            gtk_box_append(
+                ptr(sidebarList),
+                SidebarRow.empty(Localized.text("Nothing said “%@”", query)))
+            return
+        }
+        for result in rows.prefix(sidebarLimit) {
+            let profileID = result.profileID
+            let sessionID = result.sessionID
+            gtk_box_append(
+                ptr(sidebarList),
+                SidebarRow.searchResult(result) { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        self?.openSearchResult(profileID: profileID, sessionID: sessionID)
+                    }
+                })
+        }
+    }
+
+    /// A result opens the conversation it names. The listing may not carry it — a chat on a server
+    /// this device has not listed lately, or one the filter had already excluded — so a session the
+    /// list cannot resolve says so instead of doing nothing.
+    private func openSearchResult(profileID: String, sessionID: String) {
+        guard let entry = entries.first(where: {
+            $0.profileID == profileID && $0.session.id == sessionID
+        }) else {
+            toast(Localized.text("That chat is not in this server's listing right now."))
+            return
+        }
+        leaveTranscriptSearch(render: false)
+        gtk_editable_set_text(op(searchEntry), "")
+        filter = ""
+        open(entry)
+        renderSidebar()
+    }
+
+    private func leaveTranscriptSearch(render: Bool = true) {
+        searchTask?.cancel()
+        searchTask = nil
+        searchRunning = false
+        searchBoard = nil
+        lastSidebar = nil
+        if render { renderSidebar() }
     }
 
     /// A bookmark must still list and explain itself when its server is unreachable, its session
@@ -1263,6 +1477,14 @@ final class MainWindow: @unchecked Sendable {
                 host: chat.profileName, backendType: chat.backend, session: session)
             return SessionRowModel(entry: entry, unreachable: true, unread: false, saved: true)
         }
+    }
+
+    /// The window closing is the last moment every open composer still exists to be read. A pane
+    /// that is merely closed stashes itself, but the last one never closes and the window taking
+    /// the whole app down would take what is typed in all of them with it.
+    func stashDrafts() {
+        splitHost.eachPane { $0.stashDraft() }
+        DraftStore.flush()
     }
 
     /// What a second launch gets: the window that exists, brought forward. Never a second one —
@@ -1299,6 +1521,31 @@ final class MainWindow: @unchecked Sendable {
     private func open(_ entry: SessionEntry) {
         freshlyCreated = nil
         activePane.open(entry)
+    }
+
+    /// The missed list is about a machine you walked away from, so it is worth nothing unless it
+    /// survives the app being closed — and `UserDefaults` on Linux is keyed to the running
+    /// executable, which makes it a cache rather than storage. `SettingsFile` is the durable copy,
+    /// so every change to the list is written through to it.
+    private func observeMissedActivity() {
+        NotificationCenter.default.addObserver(
+            forName: ActivityInbox.didChange, object: nil, queue: nil
+        ) { _ in
+            SettingsFile.capture()
+        }
+    }
+
+    /// A missed notice is a place to go back to. The chat may have been deleted or its server
+    /// removed since, in which case the notice is stale and goes rather than sitting there
+    /// failing to open.
+    private func openMissed(sessionID: String) {
+        guard let entry = entries.first(where: { $0.session.id == sessionID }) else {
+            ActivityInbox.clear(sessionID: sessionID)
+            renderSidebar()
+            return
+        }
+        open(entry)
+        renderSidebar()
     }
 
     /// A pane with nothing in it asks which server, then what on it — the question the chat list
@@ -1347,8 +1594,33 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func chooserModel(preferredServer: String?) -> PaneChooser {
-        PaneChooser(
+        var model = PaneChooser(
             servers: chooserServers, entries: entries, preferredServer: preferredServer)
+        model.watchSummary = watchSummary
+        checkWhatIsOn()
+        return model
+    }
+
+    /// What is live among the channels this device follows, so the chooser's watch row can name
+    /// them rather than name the two sites. Checked at most once a minute and never on the way to
+    /// drawing: the row starts as it always read and improves when the answer lands.
+    private func checkWhatIsOn() {
+        let channels = WatchStore.watchlist(limit: 12)
+        let signedIn = MediaSource.allCases.contains(where: MediaAccounts.isSignedIn)
+        guard !channels.isEmpty || signedIn else { return }
+        if let checked = watchCheckedAt, Date().timeIntervalSince(checked) < 60 { return }
+        guard watchCheck == nil else { return }
+        watchCheckedAt = Date()
+        watchCheck = Task { [weak self] in
+            let feed = await MediaFollowing().live(local: channels)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.watchCheck = nil
+                self.watchSummary = WatchSummary(
+                    feed: feed, followed: WatchStore.channels().count)
+                self.restateChoosers()
+            }
+        }
     }
 
     private var chooserServers: [PaneChooserServer] {
@@ -1362,9 +1634,10 @@ final class MainWindow: @unchecked Sendable {
 
     private func restateChoosers() {
         let servers = chooserServers
+        let summary = watchSummary
         splitHost.eachPane { pane in
             guard pane.chooserShown else { return }
-            pane.restateChooser(servers: servers, entries: entries)
+            pane.restateChooser(servers: servers, entries: entries, watching: summary)
         }
     }
 
@@ -1555,7 +1828,8 @@ final class MainWindow: @unchecked Sendable {
     func presentCompactPreflight(for pane: ChatPane, initialInstruction: String = "") {
         guard let conversation = pane.conversation else { return }
         Dialogs.compactPreflight(
-            parent: window, initialInstruction: initialInstruction
+            parent: window, initialInstruction: initialInstruction,
+            draft: pane.compactionScope
         ) { instruction in
             Task { try? await conversation.compact(instructions: instruction) }
         }
@@ -1804,6 +2078,9 @@ final class MainWindow: @unchecked Sendable {
             if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
                 self.activePane.handleChooserChord(chord)
             {
+                return true
+            }
+            if self.pendingChords.isEmpty, self.activePane.handleWatchChord(chord) {
                 return true
             }
             if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,
@@ -2077,6 +2354,7 @@ final class MainWindow: @unchecked Sendable {
         }
         terminal.setFontScale(Preferences.terminalScale)
         terminal.applyPalette(MatrixTheme.palette)
+        orb.applyTheme()
         splitHost.eachPane { $0.applyLayoutPreferences() }
         splitHost.applyRatios()
     }
@@ -2144,6 +2422,9 @@ final class MainWindow: @unchecked Sendable {
             },
             onReloadShortcuts: { [weak self] in
                 Gtk.onMain { [weak self] in self?.reloadShortcuts() }
+            },
+            onOrbChanged: { [weak self] in
+                Gtk.onMain { [weak self] in self?.orb.applyEnabled() }
             })
     }
 

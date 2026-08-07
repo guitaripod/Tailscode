@@ -1,5 +1,4 @@
 import Foundation
-import TailscodeCore
 
 /// The colors of one appearance, named by what they mean rather than what they are: the transcript
 /// canvas and its raised surfaces, the two text registers, and the handful of signal colors every
@@ -15,48 +14,48 @@ import TailscodeCore
 /// Solarized's are tuned for equal luminance, which on its own light base reads at 3:1 — and the
 /// choice is between quoting them faithfully and being legible. This does both: the hue and chroma
 /// are the theme's, only the lightness is the app's, and only where it had to be.
-struct Palette: Equatable {
-    let name: String
-    let isDark: Bool
-    let canvas: String
-    let canvasRaised: String
-    let rule: String
-    var text: String
+public struct Palette: Equatable, Sendable {
+    public let name: String
+    public let isDark: Bool
+    public let canvas: String
+    public let canvasRaised: String
+    public let rule: String
+    public var text: String
     /// The secondary register: idle rows, ages, output, anything that is context rather than fact.
-    var textDim: String
+    public var textDim: String
     /// Motion and affirmation: a running glyph, a live pill, `+` in a diff, the prompt rule.
-    var accent: String
+    public var accent: String
     /// The same family, one step quieter — insert mode, notices, a gauge nowhere near its wall.
-    var accentDim: String
+    public var accentDim: String
     /// Attention: this needs you, or this is degraded. Approvals, questions, reconnecting, a quota
     /// near its wall, a signed-out agent. Never motion.
-    var warn: String
+    public var warn: String
     /// Failure and subtraction: a failed turn, an errored tool, `-` in a diff.
-    var danger: String
+    public var danger: String
     /// Identity of what the agent touched: tool names, file paths, attachments, subagents, modes.
-    var info: String
+    public var info: String
     /// Standing marks on the conversation: the goal, a compaction seam, a saved chat.
-    var special: String
-    let codeBg: String
-    let subagentBg: String
-    let findHit: String
+    public var special: String
+    public let codeBg: String
+    public let subagentBg: String
+    public let findHit: String
     /// Text set on a signal-filled surface — the vim badge, the jump pill, a state pill. Always the
     /// canvas itself, so a fill that reads against the canvas reads against its own ink too.
-    let onAccent: String
+    public let onAccent: String
     /// The agents' own colours, for the quota cards that name them. Authored once and corrected per
     /// palette, which is how Claude's terracotta survives a cream canvas and xAI stays monochrome.
-    var brandClaude: String
-    var brandOpencode: String
-    var brandGrok: String
+    public var brandClaude: String
+    public var brandOpencode: String
+    public var brandGrok: String
     /// The shell pane wears the theme too: sixteen ANSI colors plus its own fg/bg, because a
     /// terminal that stays black inside a Solarized window is a hole in the design. These stay
     /// exactly as published — a terminal's colours are a contract with what runs inside it, and
     /// `ls --color` is not the app's text to make readable.
-    let terminalFg: String
-    let terminalBg: String
-    let ansi: [String]
+    public let terminalFg: String
+    public let terminalBg: String
+    public let ansi: [String]
 
-    init(
+    public init(
         name: String, isDark: Bool,
         canvas: String, canvasRaised: String, rule: String,
         text: String, textDim: String,
@@ -94,7 +93,7 @@ struct Palette: Equatable {
 
     /// The palette as the app actually draws it: every slot walked to its contrast floor, and only
     /// the ones that fell short moved at all.
-    func corrected() -> Palette {
+    public func corrected() -> Palette {
         var copy = self
         func fix(_ color: String, _ ratio: Double) -> String {
             Contrast.adjusted(color, on: canvas, ratio: ratio) ?? color
@@ -117,7 +116,7 @@ struct Palette: Equatable {
     /// register and purely graphical marks are held to the lower bar; anything that spells out a
     /// fact is held to the higher one. `onAccent` is the canvas, so a fill is checked by the same
     /// arithmetic that checked the text.
-    var contrastContract: [(slot: String, color: String, against: String, ratio: Double)] {
+    public var contrastContract: [(slot: String, color: String, against: String, ratio: Double)] {
         [
             ("text", text, canvas, Contrast.readable),
             ("textDim", textDim, canvas, Contrast.secondary),
@@ -143,30 +142,30 @@ struct Palette: Equatable {
 /// One identity in two appearances. A theme is picked once and then follows the desktop between
 /// light and dark, rather than being two unrelated choices — Rosé Pine's own Dawn is what Rosé Pine
 /// looks like in daylight, and pairing it with someone else's light theme was never the intent.
-struct AppTheme: Equatable {
-    let id: String
-    let name: String
+public struct AppTheme: Equatable, Sendable {
+    public let id: String
+    public let name: String
     /// One line for the picker: what this theme is, not a list of its colours.
-    let blurb: String
-    let dark: Palette
-    let light: Palette
+    public let blurb: String
+    public let dark: Palette
+    public let light: Palette
 
-    func palette(dark: Bool) -> Palette { dark ? self.dark : light }
+    public func palette(dark: Bool) -> Palette { dark ? self.dark : light }
 
-    static let all: [AppTheme] = [
+    public static let all: [AppTheme] = [
         .rosePine, .tokyoNight, .everforest, .gruvbox, .nord, .solarized, .phosphor,
     ]
 
-    static let fallback = AppTheme.rosePine
+    public static let fallback = AppTheme.rosePine
 
-    static func named(_ id: String?) -> AppTheme {
+    public static func named(_ id: String?) -> AppTheme {
         guard let id, let theme = all.first(where: { $0.id == id }) else { return fallback }
         return theme
     }
 }
 
 extension AppTheme {
-    static let rosePine = AppTheme(
+    public static let rosePine = AppTheme(
         id: "rosepine", name: "Rosé Pine",
         blurb: Localized.text("Soho vibes — muted plum and foam, with Dawn for daylight"),
         dark: Palette(
@@ -198,7 +197,7 @@ extension AppTheme {
                 "#56949f", "#907aa9", "#d7827e", "#575279",
             ]))
 
-    static let tokyoNight = AppTheme(
+    public static let tokyoNight = AppTheme(
         id: "tokyonight", name: "Tokyo Night",
         blurb: Localized.text("Neon over deep indigo — the city at night, and Day when it isn't"),
         dark: Palette(
@@ -230,7 +229,7 @@ extension AppTheme {
                 "#2e7de9", "#9854f1", "#007197", "#3760bf",
             ]))
 
-    static let everforest = AppTheme(
+    public static let everforest = AppTheme(
         id: "everforest", name: "Everforest",
         blurb: Localized.text("Low-contrast forest greens, easy on the eyes for a long session"),
         dark: Palette(
@@ -262,7 +261,7 @@ extension AppTheme {
                 "#3a94c5", "#df69ba", "#35a77c", "#4f585e",
             ]))
 
-    static let gruvbox = AppTheme(
+    public static let gruvbox = AppTheme(
         id: "gruvbox", name: "Gruvbox",
         blurb: Localized.text("Retro warmth — earthy browns under bright, unapologetic accents"),
         dark: Palette(
@@ -294,7 +293,7 @@ extension AppTheme {
                 "#076678", "#8f3f71", "#427b58", "#3c3836",
             ]))
 
-    static let nord = AppTheme(
+    public static let nord = AppTheme(
         id: "nord", name: "Nord",
         blurb: Localized.text("Arctic blues, calm and even — Polar Night and Snow Storm"),
         dark: Palette(
@@ -330,7 +329,7 @@ extension AppTheme {
                 "#81a1c1", "#b48ead", "#88c0d0", "#2e3440",
             ]))
 
-    static let solarized = AppTheme(
+    public static let solarized = AppTheme(
         id: "solarized", name: "Solarized",
         blurb: Localized.text("Ethan Schoonover's tuned pair — the same accents on both bases"),
         dark: Palette(
@@ -366,7 +365,7 @@ extension AppTheme {
     /// The one that is ours. A coding agent answering from another machine over a private network
     /// is a terminal at the end of a long wire, so this is that terminal: a phosphor tube in the
     /// dark, and the printout it produced in the morning.
-    static let phosphor = AppTheme(
+    public static let phosphor = AppTheme(
         id: "phosphor", name: "Phosphor",
         blurb: Localized.text("A green CRT at 3am, and the paper it printed by morning"),
         dark: Palette(
@@ -403,8 +402,8 @@ extension AppTheme {
 /// authored — each with what it measures against its own canvas, and a mark on the ones the
 /// corrector had to move. A palette is a claim about legibility; this is the claim, checkable
 /// without a display or an eye.
-enum ThemeReport {
-    static func text() -> String {
+public enum ThemeReport {
+    public static func text() -> String {
         var lines: [String] = []
         for theme in AppTheme.all {
             lines.append("\(theme.name) [\(theme.id)] — \(theme.blurb)")
@@ -433,9 +432,10 @@ enum ThemeReport {
         return named.map { name, was, now, needs in
             let ratio = Contrast.ratio(now, on: corrected.canvas) ?? 0
             let moved = was == now ? "        " : " \(was)→"
-            return String(
-                format: "%-10s%@%@  %5.2f:1  (needs %.1f)", (name as NSString).utf8String!, moved,
-                now, ratio, needs)
+            return name.withCString { cName in
+                String(
+                    format: "%-10s%@%@  %5.2f:1  (needs %.1f)", cName, moved, now, ratio, needs)
+            }
         }
     }
 }

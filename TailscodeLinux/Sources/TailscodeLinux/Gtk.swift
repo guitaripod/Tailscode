@@ -51,6 +51,26 @@ enum Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// A signal GTK asks a question of rather than merely announces — `close-request` being the
+    /// one that matters here. The handler answers "carry on", so watching a window close never
+    /// changes whether it closes; a void closure would leave the answer to whatever happened to
+    /// be in the return register.
+    static func observe(
+        _ instance: UnsafeMutableRawPointer, _ signal: String,
+        _ handler: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback:
+            @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> gboolean = {
+                _, raw in
+                guard let raw else { return 0 }
+                Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+                return 0
+            }
+        tailscode_connect(
+            instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
+    }
+
     /// A plain click (release with nothing selected) on any widget. The shim owns the gesture;
     /// the box leaks by design, like every other signal closure here — rows live as long as the
     /// transcript does.

@@ -52,7 +52,7 @@ final class UltracodeAura {
             layout()
             spin()
             breathe()
-            host.layer.shadowColor = UIColor.systemPurple.cgColor
+            host.layer.shadowColor = Theme.Color.special.resolvedColor(with: host.traitCollection).cgColor
             host.layer.shadowOpacity = 0.25
             host.layer.shadowRadius = 14
             host.layer.shadowOffset = .zero
@@ -97,7 +97,7 @@ final class UltracodeAura {
         let turn = CABasicAnimation(keyPath: "transform.rotation.z")
         turn.fromValue = 0
         turn.toValue = 2 * Double.pi
-        turn.duration = 4
+        turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
         gradient.add(turn, forKey: "spin")
     }
@@ -106,8 +106,8 @@ final class UltracodeAura {
         guard !UIAccessibility.isReduceMotionEnabled else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1.0
-        pulse.toValue = 0.72
-        pulse.duration = 1.6
+        pulse.toValue = Ultracode.auraBreathFloor
+        pulse.duration = Ultracode.auraBreathSeconds
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
         container.add(pulse, forKey: "breathe")

@@ -38,6 +38,8 @@ targets:
         weak: true
       - sdk: FoundationModels.framework
         weak: true
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
     info:
       path: Tailscode/Info.plist
       properties:

@@ -38,6 +38,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkTheme()
+            report("theme: \(checks) palettes reach AppKit and keep their meanings")
+        } catch {
+            report("theme: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {
@@ -58,6 +66,22 @@ enum SelfTest {
             report("video slot: \(checks) answers, resolver \(VideoResolver.tool() ?? "missing")")
         } catch {
             report("video slot: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkWatchBoard()
+            report("watch board: \(checks) rows, badges and pictures draw")
+        } catch {
+            report("watch board: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkWatchAccounts()
+            report("watch accounts: \(checks) rows and sign-in steps render")
+        } catch {
+            report("watch accounts: \(error)")
             failures += 1
         }
 
@@ -114,6 +138,22 @@ enum SelfTest {
             report("model chooser: providers fold, ranking holds, keys behave")
         } else {
             report("model chooser: \(modelFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let watchFailures = WatchChooserCheck.run()
+        if watchFailures.isEmpty {
+            report("watch directory: sections compact, keys stay off the letters")
+        } else {
+            report("watch directory: \(watchFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let accountFailures = WatchAccountsCheck.run()
+        if accountFailures.isEmpty {
+            report("watch accounts: each site states itself, the device flow keeps its shape")
+        } else {
+            report("watch accounts: \(accountFailures.joined(separator: " · "))")
             failures += 1
         }
 
@@ -322,6 +362,53 @@ enum SelfTest {
         return checks
     }
 
+    /// The catalog is proved as arithmetic in Core; what this checks is the half Core cannot see —
+    /// that a saved id reaches an `NSColor` on this toolkit, that both faces of a theme come back
+    /// different, that the accent the cascade leads with is the accent the tokens hand out, and
+    /// that no two meanings collapsed into one colour on the way across.
+    private static func checkTheme() throws -> Int {
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+        }
+        var checks = 0
+        try expect(
+            ThemePalette.palette(themeID: ThemeSelection.systemID, dark: true) == nil,
+            "the system choice resolved to a palette")
+        for theme in AppTheme.all {
+            let night = ThemePalette.palette(themeID: theme.id, dark: true)
+            let day = ThemePalette.palette(themeID: theme.id, dark: false)
+            try expect(night?.name == theme.dark.name, "\(theme.id) does not reach its night")
+            try expect(day?.name == theme.light.name, "\(theme.id) does not reach its day")
+            try expect(
+                NSColor(hex: theme.dark.corrected().accent) != nil,
+                "\(theme.id) has an accent AppKit cannot make")
+            checks += 1
+        }
+        for face in [NSAppearance(named: .darkAqua), NSAppearance(named: .aqua)] {
+            guard let face else { throw SelfTestFailure("AppKit has no such appearance") }
+            var resolved: [String: String] = [:]
+            face.performAsCurrentDrawingAppearance {
+                resolved = [
+                    "accent": CascadeTint.hex(MacTheme.Color.accent),
+                    "warning": CascadeTint.hex(MacTheme.Color.warning),
+                    "danger": CascadeTint.hex(MacTheme.Color.danger),
+                    "info": CascadeTint.hex(MacTheme.Color.info),
+                    "mark": CascadeTint.hex(MacTheme.Color.mark),
+                ]
+            }
+            try expect(
+                Set(resolved.values).count == resolved.count,
+                "two meanings wear one colour under \(face.name.rawValue)")
+            checks += 1
+        }
+        try expect(
+            CascadeTint.hex(CascadeTint.edge(ultracode: false, phase: 0.5))
+                == CascadeTint.hex(MacTheme.Color.accent),
+            "the wave leads with an accent the tokens do not know")
+        checks += 1
+        return checks
+    }
+
     /// The paced reveal, checked where it can actually go wrong on this toolkit: every prefix the
     /// renderer is allowed to see must produce text that has already eaten its own punctuation —
     /// an answer that flashes its asterisks as each `**bold**` closes is the artefact that makes a
@@ -371,7 +458,9 @@ enum SelfTest {
         checks += 3
 
         let edge = CascadeTint.edge(ultracode: false, phase: 0.5)
-        try expect(edge == MacTheme.Color.accent, "a plain turn leads with the system accent")
+        try expect(
+            CascadeTint.hex(edge) == CascadeTint.hex(MacTheme.Color.accent),
+            "a plain turn leads with the app's own accent")
         let shown = full.length / 2
         let tail = CascadeTail(
             revealed: shown, span: StreamCascade.span, phase: 0.3, edge: edge,
@@ -638,6 +727,189 @@ enum SelfTest {
         return checks
     }
 
+    /// The board an empty video slot draws, checked as the facts a row is rendered from: the badge
+    /// it wears, the picture it offers, the star it earns, and the two rows — an expander and a
+    /// note — that carry no picture at all. The keys matter as much as the rows here, because the
+    /// same keystrokes are typing into the box above the board: a letter must never be the board's.
+    private static func checkWatchBoard() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("watch board: \(label)") }
+            checks += 1
+        }
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let now = start.addingTimeInterval(3600)
+        let caedrel = MediaChannel(source: .twitch, handle: "caedrel", name: "Caedrel")
+        let quiet = MediaChannel(source: .twitch, handle: "quietone", name: "Quiet One")
+        let live = MediaEntry(
+            channel: caedrel,
+            stream: MediaStream(
+                title: "LCK", category: "League of Legends", viewers: 36579, startedAt: start,
+                thumbnail: "https://example.dev/preview.jpg", tags: ["English"]),
+            checkedAt: now)
+
+        var board = WatchChooser(watchlist: [caedrel, quiet], followed: [caedrel])
+        try expect(!board.heading.isEmpty, "the board names what it is showing")
+        try expect(!board.hint.isEmpty, "and says which keys move it")
+        try expect(
+            board.notice == VideoNotice.splitCost, "and carries what a stream costs the grid")
+        board.filled(live: MediaFeed(entries: [live]))
+        board.tick(now)
+        guard let onAir = board.sections.first, let row = onAir.rows.first else {
+            throw SelfTestFailure("watch board: the board drew no rows")
+        }
+        try expect(row.title == "Caedrel", "the row is the channel, named as a person would")
+        try expect(row.badge == .live("37K"), "a live row wears its audience")
+        try expect(row.detail == "LCK", "the line under the name is what is on")
+        try expect(
+            row.note?.hasPrefix("League of Legends") == true,
+            "and the dimmer line under that is the context, without the count said twice")
+        try expect(row.thumbnail != nil, "a live row offers a picture to draw")
+        try expect(row.isFollowed, "a followed channel earns its star")
+        try expect(board.focused?.id == row.id, "the cursor starts on the first row it can press")
+
+        guard board.sections.count > 1, let offAir = board.sections.last,
+            let quietRow = offAir.rows.first
+        else { throw SelfTestFailure("watch board: the offline half of the list vanished") }
+        board.focus(section: offAir.id, offset: 0)
+        try expect(
+            board.focused?.id == quietRow.id,
+            "a press maps through its section and its offset inside it")
+        try expect(quietRow.badge == .offline(Localized.text("offline")), "an offline row says so")
+
+        let popular = (0..<6).map { index in
+            MediaEntry(
+                channel: MediaChannel(source: .twitch, handle: "t\(index)", name: "Top \(index)"),
+                stream: MediaStream(title: "on", viewers: 1000 - index))
+        }
+        board.filled(top: MediaFeed(entries: popular))
+        let expanders = board.rows.filter { row in
+            if case .expander = row.kind { return true }
+            return false
+        }
+        guard let expander = expanders.first else {
+            throw SelfTestFailure("watch board: a compacted section offered no expander")
+        }
+        try expect(expander.thumbnail == nil, "a row that stands for a list carries no picture")
+        try expect(expander.badge == nil, "and no badge")
+        try expect(expander.isActivatable, "but it is still a row to press")
+
+        var failing = WatchChooser(watchlist: [caedrel], followed: [])
+        failing.filled(live: MediaFeed(failures: ["Twitch did not answer"]))
+        guard let note = failing.rows.first(where: { $0.kind == .note }) else {
+            throw SelfTestFailure("watch board: a source that failed said nothing")
+        }
+        try expect(!note.isActivatable, "a note is text the board owed, not something to press")
+        try expect(failing.focused?.id != note.id, "so the cursor never stops on one")
+
+        var typed = WatchChooser(watchlist: [caedrel], followed: [])
+        typed.type("kamet0")
+        try expect(typed.rows.first?.isPrimary == true, "what was typed leads its own answer")
+        try expect(
+            typed.rows.first?.kind == .typed(.twitch("kamet0")),
+            "and means exactly what the box has always meant")
+        try expect(typed.pendingSearch == "kamet0", "the sources are owed a question")
+
+        guard let letter = KeyChord.canonical(keyval: 0x61, state: 0),
+            let down = KeyChord.canonical(keyval: Keymap.down, state: 0),
+            let follow = KeyChord.canonical(keyval: 0x66, state: KeyChord.controlMask)
+        else { throw SelfTestFailure("watch board: a keystroke would not resolve") }
+        try expect(
+            WatchChooser.command(for: letter) == nil, "a letter belongs to the box being typed in")
+        try expect(WatchChooser.command(for: down) == .down, "the arrows belong to the board")
+        try expect(WatchChooser.command(for: follow) == .follow, "ctrl+f follows what is focused")
+
+        let first = "https://example.dev/one.jpg"
+        let second = "https://example.dev/two.jpg"
+        try expect(
+            MediaThumbDisk.identity(for: first) != MediaThumbDisk.identity(for: second),
+            "two pictures never share one cache slot")
+        let bytes = Data((0..<256).map { UInt8($0 % 251) })
+        MediaThumbDisk.save(bytes, for: first)
+        try expect(MediaThumbDisk.load(first) == bytes, "a thumbnail round-trips on disk")
+        try expect(MediaThumbDisk.load(second) == nil, "an unfetched picture loads nothing")
+        return checks
+    }
+
+    /// The settings section and the sign-in sheet, checked as the facts they are drawn from: two
+    /// rows in a stable order, each one a statement before it is a control, a Twitch that needs
+    /// nothing registered, a YouTube that says at length what it needs when this build was given no
+    /// application for it — and a flow whose heading, code and one button change together as it
+    /// moves, because the sheet renders nothing else.
+    private static func checkWatchAccounts() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("watch accounts: \(label)") }
+            checks += 1
+        }
+
+        try expect(
+            MediaAccounts.isInstalled,
+            "the Keychain is handed over before anything reads an account")
+        try expect(
+            !WatchAccounts.heading.isEmpty && !WatchAccounts.description.isEmpty,
+            "the section says what signing in is for")
+        try expect(!WatchAccounts.summary.isEmpty, "and states in one line who is signed in")
+
+        let rows = WatchAccounts.rows()
+        try expect(rows.count == MediaSource.allCases.count, "one row per site")
+        try expect(rows.map(\.source) == [.twitch, .youtube], "in the order the sites are listed")
+        try expect(
+            rows.allSatisfy { !$0.title.isEmpty && !$0.detail.isEmpty && !$0.actionTitle.isEmpty },
+            "each row names itself, states itself, and titles its own button")
+
+        guard let twitch = rows.first(where: { $0.source == .twitch }),
+            let youtube = rows.first(where: { $0.source == .youtube })
+        else { throw SelfTestFailure("watch accounts: a site drew no row") }
+        try expect(
+            MediaAccounts.authority(for: .twitch).isConfigured,
+            "Twitch's device flow needs no application registered")
+        try expect(twitch.note == nil, "so its row owes no explanation under it")
+        try expect(
+            twitch.isSignedIn || twitch.action == .signIn(.twitch),
+            "and a signed-out Twitch offers the one button that fixes that")
+        if MediaAccounts.authority(for: .youtube).isConfigured {
+            try expect(youtube.note == nil, "a configured YouTube explains nothing either")
+        } else {
+            try expect(
+                youtube.action == .configure(.youtube),
+                "an unregistered YouTube says what it needs rather than offering a button that fails")
+            try expect(youtube.note?.isEmpty == false, "and says it at length")
+            try expect(
+                youtube.note?.contains("TAILSCODE_YOUTUBE_CLIENT_ID") == true,
+                "naming the variables the alert's Copy button hands over")
+        }
+
+        var flow = WatchSignIn(source: .twitch)
+        try expect(flow.step == .starting && !flow.isFinished, "a flow starts by asking")
+        try expect(flow.code == nil && flow.link == nil, "with no code to print and nothing to open")
+        try expect(flow.instruction?.isEmpty == false, "but says what it is doing meanwhile")
+        let prompt = DevicePrompt(
+            deviceCode: "device", userCode: "WXYZ-1234",
+            verificationURL: "https://www.twitch.tv/activate?device-code=WXYZ-1234", interval: 5,
+            expiresAt: Date(timeIntervalSince1970: 4_000_000_000))
+        flow.began(prompt)
+        try expect(flow.code == "WXYZ-1234", "then prints the code the site will ask for")
+        try expect(flow.link == prompt.verificationURL, "and opens where it is confirmed")
+        try expect(
+            flow.actionTitle == Localized.text("Open %@", MediaSource.twitch.label),
+            "which is what the one button is titled")
+        flow.granted(MediaAccount(source: .twitch, name: "Marcus", handle: "marcus"))
+        try expect(flow.isFinished, "granting finishes it")
+        try expect(
+            flow.heading == Localized.text("Signed in as %@", "Marcus"), "and names the account")
+        try expect(flow.code == nil, "taking the code back down")
+        try expect(
+            flow.actionTitle == Localized.text("Done"), "and leaving one button, which closes")
+        var refused = WatchSignIn(source: .youtube)
+        refused.failed("Google would not answer")
+        try expect(refused.detail == "Google would not answer", "a failure states its own reason")
+        try expect(refused.isFinished, "with no polling left running behind it")
+        try expect(
+            refused.actionTitle == Localized.text("Try again"), "and one button that asks again")
+        return checks
+    }
 
     /// A page is a pane, so what it holds has to read back the same after a restart, and a browsing
     /// pane must leave the keyboard to the page except for the chords a browser owns.

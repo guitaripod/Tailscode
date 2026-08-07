@@ -16,6 +16,7 @@ public enum ParityClient: String, CaseIterable, Sendable {
 public enum AppCapability: String, CaseIterable, Sendable {
     case sessionSections
     case sessionRowStatus
+    case activityIconography
     case sessionPinning
     case unreadTracking
     case savedChats
@@ -25,6 +26,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case renameSession
     case forkSession
     case listFilter
+    case transcriptSearch
     case autoOpenLastSession
     case liveListUpdates
     case rowContextActions
@@ -84,10 +86,14 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case firstRunSetup
     case demoMode
     case activityNotifications
+    case missedActivity
     case videoSlot
+    case watchDirectory
+    case watchAccounts
     case browserSlot
     case hapticFeedback
     case homeQuickActions
+    case presenceOrb
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -132,6 +138,10 @@ public enum CapabilityRegistry {
             spec:
                 "Every row states what it is doing via SessionRowState: live, needs-you, offline, failed each get a pill/glyph; silence is reserved for idle. The state is resolved once in SessionRowModel from the listing and from what this device is watching first-hand (SessionPresence) — a turn running here is live before the server's next sweep agrees, and a turn that stopped for an approval says so instead of reading as merely busy."),
         CapabilityDefinition(
+            id: .activityIconography, area: "chat list", title: "A busy session looks busy",
+            spec:
+                "Every state that is not idle has one identity across all three clients, authored once in ActivityKind: a symbol (Apple) and a one-column glyph (text), a tone drawn from four meanings — live, attention, danger, quiet — a word, a sentence for a screen reader, and a motion. The motion is part of the meaning and comes from the shared clock maths in ActivityMotion/ActivityPulse: work breathes on one slow swell, a turn stopped for the person knocks twice and rests, something being turned over sweeps, and anything settled — failed, offline, queued, idle — holds perfectly still, because stillness is how a reader tells a stopped turn from a slow one. Everything animates off the display's own clock (CADisplayLink / gtk tick callback) read as absolute time, never a counter, so every badge on screen swells in unison and one that appears mid-turn arrives in time. A frame may change light, and a sweep's one glyph; it may never change a size layout depends on. Reduced motion drops the movement and nothing else — glyph, word and colour still carry the state. Surfaces that must wear it: the chat list row (which knows only that a turn is open, so it says exactly that), and the chat's own status surface, which reads the turn down to what it is doing — the tool that is out on the machine, with that tool's own symbol, whether the answer has started arriving, a fan-out counted as agents rather than named as a call."),
+        CapabilityDefinition(
             id: .sessionPinning, area: "chat list", title: "Pinned chats lead the list",
             spec:
                 "A chat pins to the top of the list on this device (SessionPinStore, ordered). Pinned rows lead in a PINNED section ahead of every other section, keep their state pill, and pin order is the order the pins were made; unpinning returns the row to recency order. A row action pins and unpins. Device-local by design, like the archive."),
@@ -160,6 +170,10 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .listFilter, area: "chat list", title: "Filter the list by text",
             spec: "Typing filters rows by title/project/server without losing section structure."),
+        CapabilityDefinition(
+            id: .transcriptSearch, area: "chat list", title: "Search inside every conversation",
+            spec:
+                "The filter matches titles; this searches what was actually said. Submitting the query runs TranscriptSearch.run across every connected server at once — the bridge reads the CLI's own transcripts on its own machine (GET /search), so prose, the model's reasoning, the command a tool ran and what it answered are all findable — and the answers merge into one ranked list rather than a pile per server: a title that says the words first, then a conversation with the words in it, then recency. Each row names the chat, its project and server, and quotes the places it matched with the register each was in (answer/you/thinking/output/tool name), and says how many more places matched. Coverage is stated, never implied: a backend that cannot search inside is matched on the titles this device holds and labelled as such, a server that stopped early or never answered is named in TranscriptSearch.caveat, and an empty result therefore means nothing was found rather than nothing was looked at. Opening a result opens that conversation on its own server; leaving the results returns the list exactly as it was."),
         CapabilityDefinition(
             id: .autoOpenLastSession, area: "chat list", title: "Reopen the last chat on launch",
             spec: "Launch restores the previously open conversation instead of an empty pane."),
@@ -272,8 +286,9 @@ public enum CapabilityRegistry {
             spec:
                 "Files and images attach via the shared AttachmentIntake (size-capped), show as removable chips, and ride out with send."),
         CapabilityDefinition(
-            id: .drafts, area: "composer", title: "Per-session drafts",
-            spec: "Unsent composer text persists per session under tailscode.draft.<id> and restores on return."),
+            id: .drafts, area: "composer", title: "Nothing typed is ever lost",
+            spec:
+                "Every prompt box persists what is in it as it is typed, and hands it back on return — not only the chat composer but Home's, the /compact instruction, the goal condition and a free-typed answer to a question. The shared DraftStore keys each box by what it is writing to (DraftScope: a chat by profile and session, Home by the compose target it would start in) so a draft follows its conversation across panes, clients and restarts rather than the window it was typed in. Recording is per keystroke and the write is coalesced onto a quiet moment (DraftStore.quietSeconds), off the caller's thread and into the store's own file — a burst of typing costs one write, and the last word still lands without anyone remembering to save. Clients flush by hand where the process is about to stop being asked (resign, terminate, window or pane close), sending clears the draft immediately so a crash cannot hand a sent prompt back, and the store is bounded by recency so a device that has typed into hundreds of chats never carries a write proportional to all of them."),
         CapabilityDefinition(
             id: .sendQueue, area: "composer", title: "Send during a live turn queues",
             spec:
@@ -293,7 +308,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .ultracodeAura, area: "composer", title: "Ultracode looks unlocked",
             spec:
-                "Picking the ultracode tier, typing the word into the draft, or a turn in flight that was sent with it wraps the composer in the shared animated rainbow aura (Ultracode.auraActive over Ultracode.rainbowStops) — special powers visibly on before the prompt is sent — and the effort menu presents ultracode as a power (Ultracode.menuTitle/menuSubtitle), not another level."),
+                "Picking the ultracode tier, typing the word into the draft, or a turn in flight that was sent with it wraps the composer in the shared animated rainbow aura (Ultracode.auraActive over Ultracode.rainbowStops) — special powers visibly on before the prompt is sent — and the effort menu presents ultracode as a power (Ultracode.menuTitle/menuSubtitle), not another level. The rainbow travels around the edge and the glow breathes under it, both on the shared periods (Ultracode.auraTurnSeconds/auraBreathSeconds/auraBreathFloor, or Ultracode.aura(at:) where the client paints its own frames), off a clock rather than a counter so a dropped frame costs a frame and not the rhythm. Reduced motion keeps the aura lit and stops it moving: a power being on is a fact, not a flourish."),
         CapabilityDefinition(
             id: .stopTurn, area: "composer", title: "Stop the turn",
             spec: "A visible control cancels the current turn via cancelCurrentTurn."),
@@ -367,7 +382,7 @@ public enum CapabilityRegistry {
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),
         CapabilityDefinition(
             id: .themePicker, area: "app", title: "Theme",
-            spec: "Where the client owns its chrome (Linux GTK), a named theme is chosen and persists under tailscode.theme; each theme carries its own light and dark appearance and follows the desktop between them unless pinned, and every colour a label draws from clears WCAG contrast on its own canvas. Where the OS owns the materials (iOS Liquid Glass, macOS system glass), the app follows the system appearance and accent rather than painting a parallel palette that would fight the chrome."),
+            spec: "One catalog of named themes (AppTheme.all in Core), chosen on every client and persisted under tailscode.theme, with light or dark pinned separately under tailscode.appearance because picking Gruvbox should not also decide whether it is night. Each theme carries its own two appearances and follows the system between them unless pinned; every slot is published through Palette.corrected(), which walks lightness in OKLab until the colour clears WCAG on its own canvas, so a theme that cannot be made readable fails the build (ThemeTests). The slots are meanings, not decorations — accent is motion, warn is attention, danger is failure, info is what the agent touched, special is a standing mark — and no client may spend one on a second meaning. Where the client paints every pixel (Linux GTK) the palette is the whole window. Where the OS owns the materials (iOS and macOS Liquid Glass) the palette owns the content layer only and the glass is left alone to drink from it: no bar, sidebar or glass surface takes a palette background, ink that sits on glass stays a system colour so it flips with the material, and the palette reaches the chrome through the app tint and through the canvas the chrome floats over. Those two clients also offer System — the platform's own colours, and their default — because an app whose materials Apple drew has a real answer to give when someone wants no theme at all."),
         CapabilityDefinition(
             id: .settingsSurface, area: "app", title: "Settings",
             spec: "App preferences live on one discoverable surface, persisted under the shared tailscode.* keys."),
@@ -392,9 +407,17 @@ public enum CapabilityRegistry {
             spec:
                 "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it."),
         CapabilityDefinition(
+            id: .missedActivity, area: "app", title: "What happened while you were away",
+            spec:
+                "A notification is a thing that appears for seconds and is then gone whether or not anybody saw it, so every alert the client raises is also written down in ActivityInbox and listed until it is looked at: what happened, in which chat, on which server, how long ago, with the ones still blocking a turn first. Opening the chat clears its own entries — a glance at the list is not looking, or the list would empty itself as it was drawn — and an approval or question answered on the server leaves the list by the same withdrawal that takes the notification back, so it can never send someone to a chat that is waiting on nothing. The list offers to clear itself whole, and says nothing at all when there is nothing to say."),
+        CapabilityDefinition(
             id: .homeQuickActions, area: "app", title: "Home screen quick actions",
             spec:
                 "Long-pressing the app icon offers a jump list: New Chat focuses the composer, Saved chats opens the device-local bookmarks, Usage opens the quota panel, Add Server starts the setup screen, and a dynamic Resume item tracks the most recent session and opens it. Every action lands on the same destination as its in-app tap, and one that arrives before the main UI exists (a cold launch, or before any server is set up) is parked and delivered the moment Home appears."),
+        CapabilityDefinition(
+            id: .presenceOrb, area: "app", title: "A presence with a body (alpha)",
+            spec:
+                "The aggregate of everything this device watches, worn as one small GPU-rendered creature on the app's main surface — off by default, opt-in from settings under the shared tailscode.presenceOrb key (PresenceOrbSetting), and labeled alpha wherever it is offered. The whole behaviour is the shared simulation: PresenceSignal.aggregate distils every conversation's ActivityKind to one tone, one motion and a count, and PresenceField turns that into the frame a client rasterises with a shader and adds nothing to — a breathing core, one satellite per open turn emerging onto its own slow orbit, colour from the palette's own tone slots (the platform's colours under System). The mapping is the meaning and it obeys the activity doctrine: work breathes on the shared swell, a turn waiting on the person knocks twice on the attention tone, a failure holds the danger colour perfectly still — a broken thing is never animated into looking busy, or cute — and idle is a dim body at rest. Ultracode rims it with the shared rainbow on the shared aura clock. Every parameter approaches its target on a short time constant, from absolute time, so a state may change in a frame but the body always arrives. When a frame reports itself settled the client stops its clock and the GPU goes quiet; reduced motion shows each state's resting arrangement and loses nothing else. Touching the orb opens the conversation that most needs the person, and a screen reader gets the whole state in words (PresenceSignal.spoken)."),
         CapabilityDefinition(
             id: .browserSlot, area: "splits", title: "Browser slot in the split grid",
             spec:
@@ -403,6 +426,14 @@ public enum CapabilityRegistry {
             id: .videoSlot, area: "splits", title: "Video slot in the split grid",
             spec:
                 "A pane can hold a stream instead of a chat. VideoTarget reads a channel, a link or words; the slot plays it inside the grid, and every split verb treats it like any other pane — it splits, the dividers resize it, zoom hides its siblings, closing it hands the space back, and the layout snapshot restores what it was watching. An empty slot asks what to watch, a playing one states the stream's own title in its identity strip, and VideoCommand answers space/m/e/arrows without taking keys from the chat panes. What it costs the grid is stated rather than discovered: VideoNotice's line rides the chooser row that offers a stream and the empty slot's own body, and a playing slot keeps the short of it at the end of its identity strip until it is paused."),
+        CapabilityDefinition(
+            id: .watchAccounts, area: "splits", title: "Signing in to Twitch and YouTube",
+            spec:
+                "Signing in is what lets the board list the channels somebody already follows, and it is never a condition of the board working. Both sites are entered through the OAuth device flow (WatchSignIn, toolkit-free): the app asks the site for a short code, the person confirms it in their own browser, and no password is ever typed into this app — the tokens land in whatever the platform gave the app for secrets (Keychain on Apple, the 0600 file store on Linux) as one blob per site, and the display name lands in ordinary settings so a row can draw itself without unlocking anything. Twitch needs no registered application because its own web client's device flow accepts the same client id the signed-out directory already reads with; YouTube will only answer a registered app, so a build given none says exactly what is missing and how to supply it rather than offering a button that fails. Signed in, Twitch answers every followed channel's live state in one request and YouTube answers who is subscribed while the free path still answers which of them are live — quota is never spent on a question the signed-out board already answers. A settings section (WatchAccounts.rows) states each site as a fact first: the account when there is one, what signing in would add when there is not. An account that expires past refreshing signs itself out and says so; the board keeps working on the signed-out paths."),
+        CapabilityDefinition(
+            id: .watchDirectory, area: "splits", title: "What's on, before anything is chosen",
+            spec:
+                "An empty video slot is a board of what is actually on, not a text box. WatchChooser holds it toolkit-free: the channels this device follows (WatchStore, device-local, listing itself with names and sources even when no source answers), what is live among them with audience and uptime, what is popular now, and the categories to browse — each section compact by default and expanding in place behind one row that says how many it is holding. Typing turns the board into an answer for those words: what they would open leads, and what the sources found live for them follows, while VideoTarget.classify keeps a typed channel behaving exactly as it always did. Both sources are read without an account (Twitch's public GraphQL, YouTube's own web JSON, yt-dlp for a single channel's live state), and an account only ever adds to that, every fetch is the client's to schedule, and a source that cannot answer says which one failed as a row rather than leaving a silent gap. The keys are the ones a text field cannot want — arrows, enter, tab to expand, ctrl+f to follow, esc to step back — because the same box is being typed into. The pane chooser's watch row reports the same fact in one line: WatchSummary names who is live instead of naming the two sites."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

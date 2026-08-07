@@ -17,6 +17,11 @@ public struct StatusFacts: Sendable {
     }
 
     public var phase: Phase = .idle
+    /// The same moment stated in the vocabulary every client draws and animates from. The phase
+    /// says which of nine situations the turn is in; this says what is *happening* — the tool that
+    /// is out on the machine, whether the answer has started arriving — and carries the icon and
+    /// the motion with it. Nil exactly when nothing is running.
+    public var activity: ActivityKind?
     public var elapsed: TimeInterval?
     public var runningTool: String?
     public var agents: [SubagentSummary] = []
@@ -63,7 +68,7 @@ public struct StatusFacts: Sendable {
     public static func from(
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
-        quotas: [UsageQuota] = []
+        quotas: [UsageQuota] = [], queued: Int = 0
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
@@ -89,8 +94,10 @@ public struct StatusFacts: Sendable {
                 }
             }
         }
+        facts.activity = Self.activity(for: facts.phase, in: state, agents: agents)
         if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
         facts.runningTool = Self.runningTool(in: state)
+        facts.queued = queued
         facts.agents = agents
         facts.contextTokens = contextTokens
         facts.lastCostUSD = usage?.costUSD
@@ -102,6 +109,35 @@ public struct StatusFacts: Sendable {
         }
         facts.attachments = attachments
         return facts
+    }
+
+    /// The phase read down to what is actually happening. A fan-out is the one case where the
+    /// tool in flight is the wrong answer: a `Task` call that spawned six agents is six agents
+    /// working, and saying "Task" would hide the only number the reader wants.
+    private static func activity(
+        for phase: Phase, in state: ConversationState, agents: [SubagentSummary]
+    ) -> ActivityKind? {
+        switch phase {
+        case .idle: return nil
+        case .offline: return .offline
+        case .connecting: return .connecting
+        case .reconnecting: return .reconnecting
+        case .failed: return .failed
+        case .compacting: return .compacting
+        case .awaitingApproval: return .needsApproval
+        case .awaitingAnswer: return .needsAnswer
+        case .working:
+            let active = agents.filter(\.isActive).count
+            guard let kind = ActivityKind.inFlight(in: state) else {
+                return active > 0 ? .delegating(active: active) : .working
+            }
+            if active > 0, case .usingTool(_, let tool) = kind,
+                tool == .subagent || tool == .workflow
+            {
+                return .delegating(active: active)
+            }
+            return kind
+        }
     }
 
     private static func runningTool(in state: ConversationState) -> String? {
@@ -142,6 +178,18 @@ public struct StatusFacts: Sendable {
         public let text: String
         public let css: String
         public let kind: Kind
+        /// The state this segment is about, when it is about one. A client that can animate draws
+        /// the icon and lets the text carry only words; a client that cannot still has the glyph
+        /// already inside `text`, so nothing is lost by ignoring it.
+        public let icon: ActivityIcon?
+
+        public init(id: String, text: String, css: String, kind: Kind, icon: ActivityIcon? = nil) {
+            self.id = id
+            self.text = text
+            self.css = css
+            self.kind = kind
+            self.icon = icon
+        }
 
         public var action: Action? {
             if case .act(let action) = kind { return action }
@@ -161,39 +209,32 @@ public struct StatusFacts: Sendable {
         case .idle:
             result.append(Segment(id: "phase", text: Localized.text("ready"), css: "seg-idle", kind: .plain))
         case .working:
-            var text = "◐"
-            if let elapsed { text += " " + Self.clock(elapsed) }
-            if let runningTool { text += " · " + runningTool }
-            result.append(Segment(id: "phase", text: text, css: "seg-live", kind: .act(.stop)))
+            let kind = activity ?? runningTool.map { .usingTool(name: $0, kind: .other) } ?? .working
+            result.append(
+                Self.phase(kind, elapsed: elapsed, kind: .act(.stop)))
         case .compacting:
-            result.append(
-                Segment(id: "phase", text: Localized.text("◐ compacting"), css: "seg-warn", kind: .plain))
+            result.append(Self.phase(.compacting, elapsed: elapsed, kind: .plain))
         case .awaitingApproval:
-            result.append(
-                Segment(
-                    id: "phase", text: Localized.text("⏸ y / a / n"), css: "seg-warn",
-                    kind: .act(.scrollToPending)))
+            result.append(Self.phase(.needsApproval, kind: .act(.scrollToPending)))
         case .awaitingAnswer:
-            result.append(
-                Segment(
-                    id: "phase", text: Localized.text("⏸ answer"), css: "seg-warn",
-                    kind: .act(.scrollToPending)))
+            result.append(Self.phase(.needsAnswer, kind: .act(.scrollToPending)))
         case .connecting:
-            result.append(
-                Segment(id: "phase", text: Localized.text("· connecting"), css: "seg-dim", kind: .plain))
+            result.append(Self.phase(.connecting, kind: .plain))
         case .reconnecting:
-            result.append(
-                Segment(id: "phase", text: Localized.text("· reconnecting"), css: "seg-warn", kind: .plain))
+            result.append(Self.phase(.reconnecting, kind: .plain))
         case .offline:
-            result.append(
-                Segment(
-                    id: "phase", text: Localized.text("✗ offline"), css: "seg-offline",
-                    kind: .act(.reconnect)))
+            result.append(Self.phase(.offline, kind: .act(.reconnect)))
         case .failed(let message):
             result.append(
                 Segment(
-                    id: "phase", text: "✗ " + String(message.prefix(60)), css: "seg-error",
-                    kind: .plain))
+                    id: "phase",
+                    text: ActivityKind.failed.icon.glyph + " " + String(message.prefix(60)),
+                    css: ActivityKind.failed.icon.bandCSS, kind: .plain,
+                    icon: ActivityKind.failed.icon))
+        }
+
+        if queued > 0 {
+            result.append(Self.phase(.queued(queued), kind: .plain, id: "queued"))
         }
 
         if !agents.isEmpty {
@@ -203,7 +244,8 @@ public struct StatusFacts: Sendable {
             result.append(
                 Segment(
                     id: "agents", text: text, css: activeAgents > 0 ? "seg-agents" : "seg-dim",
-                    kind: .menu(agentRows)))
+                    kind: .menu(agentRows),
+                    icon: activeAgents > 0 ? ActivityKind.delegating(active: activeAgents).icon : nil))
         }
 
         if let contextTokens {
@@ -260,6 +302,19 @@ public struct StatusFacts: Sendable {
             result.append(Segment(id: "attach", text: "📎 \(attachments)", css: "seg-dim", kind: .plain))
         }
         return result
+    }
+
+    /// One state, written the band's way: its glyph, its word, and the clock when a clock is
+    /// running. Built here rather than at each call site so the icon a client animates and the
+    /// glyph inside the text can never drift apart.
+    private static func phase(
+        _ activity: ActivityKind, elapsed: TimeInterval? = nil, kind: Segment.Kind,
+        id: String = "phase"
+    ) -> Segment {
+        var text = activity.icon.glyph + " " + activity.bandWord
+        if let elapsed { text += " · " + Self.clock(elapsed) }
+        return Segment(
+            id: id, text: text, css: activity.icon.bandCSS, kind: kind, icon: activity.icon)
     }
 
     /// One row per subagent: what it is, whether it is still working, and how long ago it last

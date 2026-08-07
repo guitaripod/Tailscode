@@ -352,7 +352,7 @@ private final class StepCard: UIView {
         marker.text = "\(number)"
         marker.font = Theme.Font.headline()
         marker.textAlignment = .center
-        marker.textColor = .white
+        marker.textColor = Theme.Color.onAccent
         marker.backgroundColor = Theme.Color.accent
         marker.layer.cornerRadius = 13
         marker.clipsToBounds = true

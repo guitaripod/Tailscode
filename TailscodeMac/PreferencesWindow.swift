@@ -4,8 +4,8 @@ import TailscodeCore
 /// The settings window: every knob the Mac app has, live — nothing here needs an OK, because the
 /// only honest way to pick a behavior is to watch it change. The keys are the same
 /// `tailscode.*` defaults the Linux desktop and the phone read, so a preference is a fact about
-/// the person, not about the toolkit. Appearance and type size have no rows here: the system
-/// appearance and ⌘± own those on the Mac.
+/// the person, not about the toolkit. Type size has no row here — ⌘± owns it — but the theme does:
+/// it is the one preference whose result is the window you are picking it in.
 @MainActor
 final class PreferencesWindow: NSWindowController {
     private let onComposerChanged: @MainActor () -> Void
@@ -13,6 +13,12 @@ final class PreferencesWindow: NSWindowController {
     private let onReloadShortcuts: @MainActor () -> Void
     private let linesLabel = NSTextField(labelWithString: "")
     private let windowLabel = NSTextField(labelWithString: "")
+    private let watchAccounts = NSStackView()
+    /// The block the accounts notification calls. A block observer is held by the notification
+    /// centre rather than by this window, so it outlives the window unless it is handed back —
+    /// `nonisolated(unsafe)` because `deinit` is the one place that must reach it and `deinit` is
+    /// not on the main actor.
+    private nonisolated(unsafe) var accountsWatch: (any NSObjectProtocol)?
 
     init(
         onComposerChanged: @escaping @MainActor () -> Void,
@@ -30,6 +36,16 @@ final class PreferencesWindow: NSWindowController {
         super.init(window: window)
         window.contentView = makeContent()
         window.center()
+        accountsWatch = NotificationCenter.default.addObserver(
+            forName: MediaAccounts.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.renderWatchAccounts() }
+        }
+    }
+
+    deinit {
+        guard let accountsWatch else { return }
+        NotificationCenter.default.removeObserver(accountsWatch)
     }
 
     @available(*, unavailable)
@@ -84,6 +100,22 @@ final class PreferencesWindow: NSWindowController {
             column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         }
 
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Appearance")))
+        column.addArrangedSubview(
+            popUpRow(
+                title: Localized.text("Theme"),
+                subtitle: Localized.text("The canvas the glass floats over, and every signal on it"),
+                options: Self.themeTitles,
+                selected: Self.themeIndex, action: #selector(themeChanged)))
+        column.addArrangedSubview(
+            popUpRow(
+                title: Localized.text("Light or dark"),
+                subtitle: Localized.text("Which of the theme's two faces it wears"),
+                options: ThemeAppearance.allCases.map(\.title),
+                selected: ThemeAppearance.allCases.firstIndex(of: ThemeSelection.appearance) ?? 0,
+                action: #selector(appearanceChanged)))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Prompt box")))
         column.addArrangedSubview(
             switchRow(
@@ -142,6 +174,16 @@ final class PreferencesWindow: NSWindowController {
                 button: test))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(WatchAccounts.heading))
+        column.addArrangedSubview(
+            indented(MacDialogs.detailLabel(WatchAccounts.description, wraps: true), by: 0))
+        watchAccounts.orientation = .vertical
+        watchAccounts.alignment = .leading
+        watchAccounts.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(watchAccounts)
+        renderWatchAccounts()
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Keyboard")))
         let edit = NSButton(
             title: Localized.text("Edit"), target: self, action: #selector(editShortcuts))
@@ -158,10 +200,23 @@ final class PreferencesWindow: NSWindowController {
                     "Unknown keys and conflicts are reported rather than guessed at"),
                 button: reload))
 
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Alpha")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Presence orb"),
+                subtitle: Localized.text(
+                    "A GPU-rendered creature at the foot of the chat list, breathing what every conversation is doing; may cost battery"),
+                value: PresenceOrbSetting.isEnabled, action: #selector(presenceOrbChanged)))
+
         for view in column.arrangedSubviews where view is NSStackView {
             view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48).isActive = true
         }
         return MacDialogs.scrollColumn(holding: column)
+    }
+
+    @objc private func presenceOrbChanged(_ sender: NSButton) {
+        PresenceOrbSetting.setEnabled(sender.state == .on)
     }
 
     @objc private func leaveDemo() {
@@ -215,6 +270,167 @@ final class PreferencesWindow: NSWindowController {
 
     @objc private func reloadShortcuts() {
         onReloadShortcuts()
+    }
+
+    /// The two video accounts, drawn and redrawn in place. Signing in or out rewrites everything a
+    /// row says, and this window is built once and kept for the life of the app — so the section
+    /// empties and refills itself rather than the window being rebuilt around it. The width
+    /// constraint `makeContent` applies runs exactly once, over the column's own children, and
+    /// never sees a row made later: each one is given the same constraint as it is made.
+    private func renderWatchAccounts() {
+        for view in watchAccounts.arrangedSubviews { view.removeFromSuperview() }
+        for row in WatchAccounts.rows() {
+            let button = NSButton(
+                title: row.actionTitle, target: self, action: #selector(watchAccountPressed))
+            button.identifier = NSUserInterfaceItemIdentifier(row.id)
+            let view = buttonRow(title: row.title, subtitle: row.detail, button: button)
+            watchAccounts.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+            guard let note = row.note else { continue }
+            let caption = MacDialogs.detailLabel(note, wraps: true)
+            watchAccounts.addArrangedSubview(caption)
+            caption.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+        }
+    }
+
+    /// The row is read again at the moment it is pressed rather than captured when it was drawn:
+    /// an account can land or expire while the window sits open, and the button must mean what the
+    /// row says now.
+    @objc private func watchAccountPressed(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue,
+            let row = WatchAccounts.rows().first(where: { $0.id == id })
+        else { return }
+        switch row.action {
+        case .signIn(let source):
+            guard let window else { return }
+            WatchSignInSheet.present(on: window, source: source) { [weak self] in
+                self?.renderWatchAccounts()
+            }
+        case .signOut(let source):
+            MediaAccounts.signOut(source)
+            renderWatchAccounts()
+        case .configure:
+            explainWatchAccount(row)
+        }
+    }
+
+    /// The one step of this feature that happens somewhere else. Google will only run its device
+    /// flow for an application registered to somebody, so the alert states why, links the console,
+    /// and takes the client id and secret right there — a requirement explained but not actionable
+    /// is a dead end wearing a button.
+    private func explainWatchAccount(_ row: WatchAccountRow) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = YouTubeSetup.heading
+        alert.informativeText =
+            ([YouTubeSetup.why] + YouTubeSetup.steps.enumerated().map { "\($0.offset + 1). \($0.element)" })
+            .joined(separator: "\n\n")
+
+        let current = MediaClientConfig.youtube
+        let identity = NSTextField(string: current?.id ?? "")
+        identity.placeholderString = YouTubeSetup.idPrompt
+        identity.font = MacTheme.Font.mono(11)
+        let secret = NSSecureTextField(string: current?.secret ?? "")
+        secret.placeholderString = YouTubeSetup.secretPrompt
+        secret.font = MacTheme.Font.mono(11)
+        let fields = NSStackView(views: [identity, secret])
+        fields.orientation = .vertical
+        fields.alignment = .leading
+        fields.spacing = MacTheme.Spacing.xs
+        fields.frame = NSRect(x: 0, y: 0, width: 320, height: 56)
+        identity.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        secret.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        alert.accessoryView = fields
+
+        alert.addButton(withTitle: Localized.text("Save"))
+        alert.addButton(withTitle: Localized.text("Open the console"))
+        alert.addButton(withTitle: Localized.text("Close"))
+        let finish: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                let typedID = identity.stringValue
+                let typedSecret = secret.stringValue
+                guard YouTubeSetup.looksValid(id: typedID, secret: typedSecret) else {
+                    self?.rejectWatchClient()
+                    return
+                }
+                MediaClientConfig.setYouTube(id: typedID, secret: typedSecret)
+                self?.renderWatchAccounts()
+            case .alertSecondButtonReturn:
+                if let url = URL(string: YouTubeSetup.consoleURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            default:
+                return
+            }
+        }
+        guard let window else {
+            finish(alert.runModal())
+            return
+        }
+        alert.beginSheetModal(for: window, completionHandler: finish)
+    }
+
+    /// A pasted mistake is caught here rather than at the end of a sign-in that would fail for a
+    /// reason nobody could connect back to this box.
+    private func rejectWatchClient() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = YouTubeSetup.rejection
+        alert.addButton(withTitle: Localized.text("Close"))
+        guard let window else {
+            alert.runModal()
+            return
+        }
+        alert.beginSheetModal(for: window, completionHandler: nil)
+    }
+
+    /// The catalog with the platform's own answer at its head — "System" is not a theme, it is the
+    /// choice to have none, and on a Mac whose materials Apple drew that is a real answer.
+    private static var themeIDs: [String] { [ThemeSelection.systemID] + AppTheme.all.map(\.id) }
+
+    private static var themeTitles: [String] {
+        [Localized.text("System — macOS's own colours, under Liquid Glass")]
+            + AppTheme.all.map { "\($0.name) — \($0.blurb)" }
+    }
+
+    private static var themeIndex: Int {
+        themeIDs.firstIndex(of: ThemeSelection.themeID) ?? 0
+    }
+
+    @objc private func themeChanged(_ sender: NSPopUpButton) {
+        ThemeSelection.setThemeID(Self.themeIDs[sender.indexOfSelectedItem])
+        MacTheme.Chrome.apply()
+    }
+
+    @objc private func appearanceChanged(_ sender: NSPopUpButton) {
+        ThemeSelection.setAppearance(ThemeAppearance.allCases[sender.indexOfSelectedItem])
+        MacTheme.Chrome.apply()
+    }
+
+    private func popUpRow(
+        title: String, subtitle: String, options: [String], selected: Int, action: Selector
+    ) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = MacTheme.Font.body()
+        let popUp = NSPopUpButton()
+        popUp.addItems(withTitles: options)
+        popUp.selectItem(at: min(selected, max(0, options.count - 1)))
+        popUp.target = self
+        popUp.action = action
+        popUp.setContentHuggingPriority(.required, for: .horizontal)
+        let filler = NSView()
+        filler.setContentHuggingPriority(.init(1), for: .horizontal)
+        let row = NSStackView(views: [label, filler, popUp])
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        let detail = MacDialogs.detailLabel(subtitle, wraps: true)
+        let column = NSStackView(views: [row, indented(detail, by: 0)])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        return column
     }
 
     private func switchRow(

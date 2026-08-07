@@ -28,15 +28,28 @@ public enum SessionRowState: Equatable, Sendable {
         }
     }
 
-    public var glyph: (text: String, css: String) {
+    /// The row's state in the vocabulary every client animates from. A listing can say that a turn
+    /// is open but never what it is doing, so a live row is `.working` rather than a guess between
+    /// thinking and writing; a chat this device is streaming says more, in its own chrome.
+    /// Idle has no activity at all — the absence is the point, and a badge reading "idle" is noise.
+    public var activity: ActivityKind? {
         switch self {
-        case .awaitingApproval: return ("⏸", "glyph-needs")
-        case .live: return ("◐", "glyph-running")
-        case .idle: return ("·", "glyph-pending")
-        case .offline: return ("⚠", "glyph-pending")
-        case .failed: return ("✗", "glyph-error")
+        case .awaitingApproval: return .needsApproval
+        case .live: return .working
+        case .failed: return .failed
+        case .offline: return .offline
+        case .idle: return nil
         }
     }
+
+    /// What the glyph column draws, including for idle — a row that is doing nothing still holds
+    /// its column, so a list of mixed states keeps one straight edge down its left side.
+    public var icon: ActivityIcon {
+        activity?.icon
+            ?? ActivityIcon(symbol: "circle", glyph: "·", tone: .quiet, motion: .still)
+    }
+
+    public var glyph: (text: String, css: String) { (icon.glyph, icon.glyphCSS) }
 
     /// Whether the row belongs in LIVE NOW. A turn that stopped to ask something is still a turn
     /// in flight — it is the one the person most needs to find — so it leads the section rather

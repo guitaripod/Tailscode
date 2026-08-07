@@ -9,6 +9,17 @@ import TailscodeCore
 /// file, not in the executable-keyed defaults store a reinstall abandons.
 SettingsFile.load()
 
+/// Read after the file and before anything opens a composer, in that order: the store adopts what
+/// 1.9 left in the defaults, and only then is the settings file told to stop carrying keys that
+/// have moved out of it into the store's own.
+DraftStore.warm()
+SettingsFile.forget(prefix: "tailscode.draft.")
+
+/// The two video sites' tokens belong wherever this box keeps a secret, which on a session with no
+/// keyring is a 0600 file. Handed over before anything reads an account: an uninstalled store makes
+/// every account read as signed out, which is a feature quietly missing rather than a failure.
+MediaAccounts.install(FileSecretStore())
+
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
     dispatchMain()
@@ -83,6 +94,13 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
     let window = MainWindow()
     mainWindow = window
     window.present(in: app)
+}
+
+/// Whatever the last window did not get to write. `close-request` covers the ordinary quit while
+/// the composers still exist to be read; this is the backstop for every other way the loop ends,
+/// and it touches no widget because by here there may be none left.
+Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
+    DraftStore.flush()
 }
 
 let status = g_application_run(ptr(app), 0, nil)

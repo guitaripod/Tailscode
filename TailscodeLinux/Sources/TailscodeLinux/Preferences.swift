@@ -99,6 +99,19 @@ enum Preferences {
         write(min(2.5, max(0.6, (value * 20).rounded() / 20)), forKey: "tailscode.scale.terminal")
     }
 
+    /// Whether the presence orb lives at the foot of the sidebar. The choice itself is Core's
+    /// (`PresenceOrbSetting`, one key on every client); this end makes the write durable and lets
+    /// the harness light the orb with an environment variable instead of a click.
+    static var presenceOrb: Bool {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_ORB"] { return raw == "1" }
+        return PresenceOrbSetting.isEnabled
+    }
+
+    static func setPresenceOrb(_ value: Bool) {
+        PresenceOrbSetting.setEnabled(value)
+        write(value ? true : nil, forKey: PresenceOrbSetting.defaultsKey)
+    }
+
     static var sendOnReturn: Bool {
         defaults.object(forKey: "tailscode.sendOnReturn") as? Bool ?? true
     }
@@ -178,41 +191,25 @@ enum Preferences {
         }
     }
 
-    /// Which theme the canvas wears. Stored by id rather than by index, so reordering the catalog
-    /// or dropping a theme cannot silently repaint someone's window — an unknown id falls back.
-    static var themeID: String {
-        defaults.string(forKey: "tailscode.theme") ?? AppTheme.fallback.id
-    }
+    /// Which theme the canvas wears, and which of its two faces. The choice itself belongs to
+    /// `ThemeSelection` so all three clients read the same two keys; this end only makes the write
+    /// durable, because a desktop's defaults do not survive a reinstall.
+    static var themeID: String { ThemeSelection.themeID }
 
-    static var theme: AppTheme { AppTheme.named(themeID) }
+    static var theme: AppTheme { ThemeSelection.theme }
 
     static func setTheme(_ theme: AppTheme) {
-        write(theme.id == AppTheme.fallback.id ? nil : theme.id, forKey: "tailscode.theme")
+        ThemeSelection.setTheme(theme)
+        write(theme.id == AppTheme.fallback.id ? nil : theme.id, forKey: ThemeSelection.themeKey)
     }
 
-    /// Which of a theme's two appearances to wear: the desktop's own preference by default, or
-    /// pinned. Independent of *which* theme — picking Gruvbox should not also decide whether it is
-    /// night, and pinning light should not throw away the theme.
-    enum Appearance: String, CaseIterable {
-        case system
-        case light
-        case dark
+    typealias Appearance = ThemeAppearance
 
-        var title: String {
-            switch self {
-            case .system: return Localized.text("Follow the system")
-            case .light: return Localized.text("Always light")
-            case .dark: return Localized.text("Always dark")
-            }
-        }
-    }
-
-    static var appearance: Appearance {
-        Appearance(rawValue: defaults.string(forKey: "tailscode.appearance") ?? "") ?? .system
-    }
+    static var appearance: Appearance { ThemeSelection.appearance }
 
     static func setAppearance(_ value: Appearance) {
-        write(value == .system ? nil : value.rawValue, forKey: "tailscode.appearance")
+        ThemeSelection.setAppearance(value)
+        write(value == .system ? nil : value.rawValue, forKey: ThemeSelection.appearanceKey)
     }
 
     /// Tells libadwaita which scheme to run, which restyles the chrome and flips
@@ -238,7 +235,8 @@ enum SettingsDialog {
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?,
         onLayoutChanged: @escaping @Sendable () -> Void,
-        onReloadShortcuts: @escaping @Sendable () -> Void
+        onReloadShortcuts: @escaping @Sendable () -> Void,
+        onOrbChanged: @escaping @Sendable () -> Void
     ) {
         let window = adw_preferences_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Settings"))
@@ -437,6 +435,9 @@ enum SettingsDialog {
                 Notifier.shared.sendTest()
             })
 
+        let watch = group(WatchAccounts.heading, on: page, description: WatchAccounts.description)
+        renderWatchAccounts(into: watch, parent: page)
+
         let keyboard = group(
             Localized.text("Keyboard"), on: page,
             description: Localized.text(
@@ -462,7 +463,79 @@ enum SettingsDialog {
                 onReloadShortcuts()
             })
 
+        let alpha = group(
+            Localized.text("Alpha"), on: page,
+            description: Localized.text(
+                "Early work, off by default: it may cost battery, change shape, or leave"))
+        adw_preferences_group_add(
+            ptr(alpha),
+            switchRow(
+                title: Localized.text("Presence orb"),
+                subtitle: Localized.text(
+                    "A GPU-rendered creature at the foot of the chat list, breathing what every conversation is doing"),
+                value: Preferences.presenceOrb
+            ) { value in
+                Preferences.setPresenceOrb(value)
+                onOrbChanged()
+            })
+
         gtk_window_present(ptr(window))
+    }
+
+    /// The two video accounts, drawn and redrawn in place. A row's whole content changes the moment
+    /// somebody signs in or out, and the settings window is built once — so the group takes back
+    /// exactly the rows it put there and adds fresh ones, rather than the window being rebuilt.
+    private static func renderWatchAccounts(
+        into group: UnsafeMutablePointer<GtkWidget>, parent: UnsafeMutablePointer<GtkWidget>,
+        added: WatchRowsHeld = WatchRowsHeld()
+    ) {
+        for bits in added.rows {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+            adw_preferences_group_remove(ptr(group), ptr(raw))
+        }
+        added.rows = []
+
+        let groupBits = UInt(bitPattern: group)
+        let parentBits = UInt(bitPattern: parent)
+        let refill: @Sendable () -> Void = {
+            Gtk.onMain {
+                guard let groupRaw = UnsafeMutableRawPointer(bitPattern: groupBits),
+                    let parentRaw = UnsafeMutableRawPointer(bitPattern: parentBits)
+                else { return }
+                renderWatchAccounts(into: ptr(groupRaw), parent: ptr(parentRaw), added: added)
+            }
+        }
+        for row in WatchAccounts.rows() {
+            let source = row.source
+            let note = row.note
+            let subtitle = note.map { "\(row.detail)\n\($0)" } ?? row.detail
+            let built = buttonRow(row.title, subtitle: subtitle, label: row.actionTitle) {
+                switch row.action {
+                case .signIn:
+                    Gtk.onMain {
+                        guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else {
+                            return
+                        }
+                        WatchSignInDialog.present(
+                            parent: ptr(raw), source: source, onFinished: refill)
+                    }
+                case .signOut:
+                    MediaAccounts.signOut(source)
+                    SettingsFile.capture()
+                    refill()
+                case .configure:
+                    Gtk.onMain {
+                        guard let raw = UnsafeMutableRawPointer(bitPattern: parentBits) else {
+                            return
+                        }
+                        YouTubeSetupDialog.present(parent: ptr(raw), onSaved: refill)
+                    }
+                }
+            }
+            adw_action_row_set_subtitle_lines(ptr(built), 0)
+            adw_preferences_group_add(ptr(group), ptr(built))
+            added.rows.append(UInt(bitPattern: built))
+        }
     }
 
     private static func group(
@@ -538,4 +611,11 @@ enum SettingsDialog {
         adw_action_row_add_suffix(ptr(row), button)
         return row
     }
+}
+
+/// The account rows the settings group currently owns, so a refill takes back exactly what it put
+/// there. Adwaita's group keeps its rows in an internal list box, so walking children to find them
+/// finds the wrong widgets.
+final class WatchRowsHeld: @unchecked Sendable {
+    var rows: [UInt] = []
 }

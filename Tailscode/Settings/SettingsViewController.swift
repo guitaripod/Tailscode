@@ -30,6 +30,7 @@ final class SettingsViewController: UIViewController {
     private enum Toggle: Hashable {
         case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity
         case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
+        case presenceOrb
 
         var title: String {
             switch self {
@@ -42,6 +43,7 @@ final class SettingsViewController: UIViewController {
             case .notifyUsage: return String(localized: "Usage warnings")
             case .serverPush: return String(localized: "Push from servers")
             case .liveActivities: return String(localized: "Live Activities")
+            case .presenceOrb: return String(localized: "Presence orb")
             }
         }
 
@@ -68,6 +70,11 @@ final class SettingsViewController: UIViewController {
                         "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed"
                 )
             case .liveActivities: return String(localized: "Live turn progress on the Lock Screen")
+            case .presenceOrb:
+                return String(
+                    localized:
+                        "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery"
+                )
             }
         }
 
@@ -82,20 +89,22 @@ final class SettingsViewController: UIViewController {
             case .notifyUsage: return "gauge.with.needle"
             case .serverPush: return "antenna.radiowaves.left.and.right"
             case .liveActivities: return "rectangle.inset.filled.badge.record"
+            case .presenceOrb: return "circle.hexagongrid.circle"
             }
         }
 
         var tint: UIColor {
             switch self {
-            case .autoExpandThinking: return .systemPurple
-            case .sendOnReturn: return .systemTeal
+            case .autoExpandThinking: return ThemePalette.color(\.special, system: .systemPurple)
+            case .sendOnReturn: return ThemePalette.color(\.info, system: .systemTeal)
             case .promptEnhancement: return Theme.Color.accent
-            case .compactActivity: return .systemOrange
+            case .compactActivity: return ThemePalette.color(\.info, system: .systemOrange)
             case .notifyTurnComplete: return Theme.Color.success
             case .notifyApprovals: return Theme.Color.warning
-            case .notifyUsage: return .systemIndigo
+            case .notifyUsage: return Theme.Color.info
             case .serverPush: return Theme.Color.accent
-            case .liveActivities: return .systemPink
+            case .liveActivities: return Theme.Color.special
+            case .presenceOrb: return Theme.Color.special
             }
         }
 
@@ -110,6 +119,7 @@ final class SettingsViewController: UIViewController {
             case .notifyUsage: return AppPreferences.notifyUsageWarnings
             case .serverPush: return AppPreferences.pushAlertsEnabled
             case .liveActivities: return AppPreferences.liveActivitiesEnabled
+            case .presenceOrb: return PresenceOrbSetting.isEnabled
             }
         }
 
@@ -127,6 +137,7 @@ final class SettingsViewController: UIViewController {
                 AppPreferences.pushAlertsEnabled = value
                 PushRegistrar.applyPreference()
             case .liveActivities: AppPreferences.liveActivitiesEnabled = value
+            case .presenceOrb: PresenceOrbSetting.setEnabled(value)
             }
         }
     }
@@ -272,6 +283,12 @@ final class SettingsViewController: UIViewController {
         center.addObserver(
             self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        center.addObserver(
+            self, selector: #selector(themeChanged), name: ThemeSelection.didChange, object: nil)
+    }
+
+    @objc private func themeChanged() {
+        reconfigure([.appearance])
     }
 
     /// The two facts that live outside the app — the system notification
@@ -464,7 +481,7 @@ final class SettingsViewController: UIViewController {
                 localized: "Remove the sample servers and connect your own")
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "play.slash")
-            content.imageProperties.tintColor = .systemOrange
+            content.imageProperties.tintColor = ThemePalette.color(\.info, system: .systemOrange)
         case .tailnetStatus:
             content.text = "Tailscale"
             if let tailnetAddress {
@@ -486,7 +503,7 @@ final class SettingsViewController: UIViewController {
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "key")
-            content.imageProperties.tintColor = .systemIndigo
+            content.imageProperties.tintColor = Theme.Color.info
             cell.accessories = [.disclosureIndicator()]
         case .tailnetScan:
             content.text = String(localized: "Last discovery")
@@ -563,13 +580,15 @@ final class SettingsViewController: UIViewController {
                 : String(localized: "Off")
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "hand.tap")
-            content.imageProperties.tintColor = .systemPink
+            content.imageProperties.tintColor = Theme.Color.special
             cell.accessories = [strengthBadge(), .disclosureIndicator()]
         case .appearance:
             content.text = String(localized: "Theme")
-            content.image = UIImage(systemName: "circle.lefthalf.filled")
-            content.imageProperties.tintColor = .systemIndigo
-            cell.accessories = [.customView(configuration: appearanceAccessory())]
+            content.secondaryText = Self.themeSummary
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "paintpalette")
+            content.imageProperties.tintColor = Theme.Color.special
+            cell.accessories = [.disclosureIndicator()]
         case .pro:
             content.text = "Tailscode Pro"
             if ProStore.shared.isPro {
@@ -580,7 +599,7 @@ final class SettingsViewController: UIViewController {
                 content.secondaryText = String(
                     localized: "Unlimited servers, concurrent Live Activities, support development")
                 content.image = UIImage(systemName: "sparkles")
-                content.imageProperties.tintColor = .systemPurple
+                content.imageProperties.tintColor = Theme.Color.special
             }
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
@@ -730,12 +749,13 @@ final class SettingsViewController: UIViewController {
         return .customView(configuration: .init(customView: label, placement: .trailing()))
     }
 
-    private func appearanceAccessory() -> UICellAccessory.CustomViewConfiguration {
-        let button = UIButton(configuration: .plain())
-        button.showsMenuAsPrimaryAction = true
-        Self.style(button, title: AppPreferences.appearance.title)
-        button.menu = appearanceMenu()
-        return .init(customView: button, placement: .trailing())
+    /// The row states the choice rather than offering it: which identity, and which of its two
+    /// faces. Both are one screen away, where they can be seen instead of read.
+    private static var themeSummary: String {
+        let identity = ThemeSelection.usesSystemPalette
+            ? String(localized: "System") : ThemeSelection.theme.name
+        guard ThemeSelection.appearance != .system else { return identity }
+        return "\(identity) · \(ThemeSelection.appearance.title)"
     }
 
     /// The inline trailing menu button shared by every value row.
@@ -749,19 +769,6 @@ final class SettingsViewController: UIViewController {
         config.imagePadding = 4
         config.baseForegroundColor = Theme.Color.secondaryLabel
         button.configuration = config
-    }
-
-    private func appearanceMenu() -> UIMenu {
-        UIMenu(
-            children: AppPreferences.Appearance.allCases.map { option in
-                UIAction(
-                    title: option.title, state: AppPreferences.appearance == option ? .on : .off
-                ) { [weak self] _ in
-                    AppPreferences.appearance = option
-                    AppPreferences.applyAppearance()
-                    self?.reconfigure([.appearance])
-                }
-            })
     }
 
     private static let monthlyCapPresets: [Double] = [40, 60]
@@ -903,7 +910,7 @@ final class SettingsViewController: UIViewController {
                     .toggle(.compactActivity), .toggle(.sendOnReturn), .keyboardShortcuts,
                 ]
             ),
-            (.appearance, [.appearance]),
+            (.appearance, [.appearance, .toggle(.presenceOrb)]),
             (.pro, [.pro]),
             (.diagnostics, [.viewLogs, .testAll, .copyDiagnostics, .emailDiagnostics]),
             (.about, [.version, .source, .privacy, .support, .licenses]),
@@ -1033,7 +1040,9 @@ final class SettingsViewController: UIViewController {
                 comment: "search keywords")
         case .appearance:
             return String(
-                localized: "theme appearance dark light mode", comment: "search keywords")
+                localized:
+                    "theme appearance dark light mode colour color palette rose pine tokyo night everforest gruvbox nord solarized phosphor",
+                comment: "search keywords")
         case .pro:
             return String(
                 localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
@@ -1261,7 +1270,11 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .haptics:
             Theme.Haptics.tap()
             navigationController?.pushViewController(HapticsViewController(), animated: true)
-        case .appearance, .toggle, .version, .goMonthlyCap, .goBillingDay, .tailnetScan:
+        case .appearance:
+            Theme.Haptics.tap()
+            let picker = ThemePickerViewController()
+            navigationController?.pushViewController(picker, animated: true)
+        case .toggle, .version, .goMonthlyCap, .goBillingDay, .tailnetScan:
             break
         }
     }

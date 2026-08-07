@@ -83,7 +83,7 @@ final class TailnetLinkView: UIView {
             bottomAnchor.constraint(equalTo: phoneNode.bottomAnchor).withPriority(.defaultLow),
         ])
 
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TailnetLinkView, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: TailnetLinkView, _) in
             view.applyState()
         }
         NotificationCenter.default.addObserver(
@@ -259,7 +259,7 @@ private final class TailnetNodeView: UIView {
             caption.bottomAnchor.constraint(equalTo: bottomAnchor),
             widthAnchor.constraint(greaterThanOrEqualTo: circle.widthAnchor),
         ])
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TailnetNodeView, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: TailnetNodeView, _) in
             view.applyTint()
         }
         applyTint()
@@ -375,7 +375,7 @@ final class SetupStepCard: UIView {
             column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.l),
         ])
         self.headerText = headerText
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SetupStepCard, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: SetupStepCard, _) in
             view.applyStatus(animated: false)
         }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
@@ -715,7 +715,7 @@ final class AgentChoiceCard: UIControl {
         ])
         accessibilityTraits = .button
         accessibilityLabel = "\(title). \(detail)"
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: AgentChoiceCard, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: AgentChoiceCard, _) in
             view.applySelection()
         }
         applySelection()

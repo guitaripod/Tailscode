@@ -233,6 +233,7 @@ final class BannerView: UIView {
             systemName: symbol,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
         icon.tintColor = color
+        Theme.Glass.tint(glass, with: color)
         guard !visible else { return }
         visible = true
         isHidden = false
@@ -359,7 +360,7 @@ final class ToastView: UIView {
 
         label.text = message
         label.font = .preferredFont(forTextStyle: .subheadline)
-        label.textColor = Theme.Color.label
+        label.textColor = Theme.Color.onGlass
         label.textAlignment = .center
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false

@@ -13,7 +13,9 @@ enum MacMarkdown {
 
     /// Rendering runs once per prose segment per streamed state, and a long conversation replays
     /// the same three hundred segments on every token — so the answer is remembered. Colors are
-    /// semantic and resolve at draw time, so appearance changes never stale the cache.
+    /// semantic and resolve at draw time, so appearance changes never stale the cache — but a
+    /// theme is not an appearance and AppKit has no trait for it, so a change of identity drops
+    /// the memo by hand.
     /// A growing prefix is a different string every frame, so the stream cascade renders with
     /// `cache: false` — remembering sixty renderings a second of text nobody will ask for again
     /// would evict the three hundred settled segments the memo exists for.
@@ -33,6 +35,10 @@ enum MacMarkdown {
         if cache.count > 4096 { cache.removeAll(keepingCapacity: true) }
         cache[text] = rendered
         return rendered
+    }
+
+    static func invalidate() {
+        cache.removeAll(keepingCapacity: true)
     }
 
     /// One inline span's whole styling, carried through the walk so nested emphasis composes

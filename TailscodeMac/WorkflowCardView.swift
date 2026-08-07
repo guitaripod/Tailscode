@@ -54,7 +54,7 @@ enum WorkflowCardView {
         body.spacing = 6
         body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
         body.wantsLayer = true
-        body.layer?.backgroundColor = NSColor.quinarySystemFill.cgColor
+        body.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
         body.layer?.cornerRadius = MacTheme.Radius.control
         guard let run else {
             body.addArrangedSubview(

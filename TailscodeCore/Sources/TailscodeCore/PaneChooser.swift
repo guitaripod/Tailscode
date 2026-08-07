@@ -100,6 +100,10 @@ public struct PaneChooser: Sendable, Equatable {
     public private(set) var serverID: String?
     public private(set) var cursor: Int
     public private(set) var showsEveryChat = false
+    /// What is on right now among the channels this device follows, when the app has checked.
+    /// Set from outside because the check is a network round trip and the chooser is a value type;
+    /// nil simply leaves the watch row saying what it always said.
+    public var watchSummary: WatchSummary?
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -169,19 +173,25 @@ public struct PaneChooser: Sendable, Equatable {
                     action: .back, title: Localized.text("Another server…"),
                     detail: Localized.text("%@ configured", "\(servers.count)")))
         }
-        rows.append(Self.watchRow)
+        rows.append(watchRow)
         rows.append(Self.browseRow)
         return rows
     }
 
     /// A pane does not have to hold a conversation. The same question that asks which machine also
     /// offers the one answer that is not a machine at all — a stream, in this pane, in the grid.
-    /// It says what it costs here rather than after the fact: a player repaints its pane every
-    /// frame, and the split verbs share that machine.
-    static let watchRow = PaneChooserRow(
-        action: .watch, title: Localized.text("Watch something…"),
-        detail: Localized.text("Twitch or YouTube, in this pane"),
-        note: VideoNotice.splitCostLine)
+    ///
+    /// The row reports rather than labels: once this device knows what is on among the channels it
+    /// follows, the line under it names them instead of naming the two sites. It still says what it
+    /// costs here rather than after the fact — a player repaints its pane every frame, and the
+    /// split verbs share that machine.
+    var watchRow: PaneChooserRow {
+        PaneChooserRow(
+            action: .watch, title: Localized.text("Watch something…"),
+            detail: watchSummary?.detail ?? Localized.text("Twitch or YouTube, in this pane"),
+            badge: watchSummary?.badge.map { .live($0) },
+            note: VideoNotice.splitCostLine)
+    }
 
     /// The other answer that is not a machine: a page, in the grid, beside the work it belongs to.
     static let browseRow = PaneChooserRow(
@@ -207,7 +217,7 @@ public struct PaneChooser: Sendable, Equatable {
                 action: .chooseServer(server.profileID), title: server.title,
                 detail: [server.address, Localized.text("%@ chats", "\(count)")].joined(
                     separator: " · "), badge: badge)
-        } + [Self.watchRow, Self.browseRow]
+        } + [watchRow, Self.browseRow]
     }
 
     private func chats(on profileID: String) -> [SessionEntry] {
@@ -268,6 +278,7 @@ public struct PaneChooser: Sendable, Equatable {
     /// listing still has one at that index.
     public func restated(servers: [PaneChooserServer], entries: [SessionEntry]) -> PaneChooser {
         var next = PaneChooser(servers: servers, entries: entries, preferredServer: serverID)
+        next.watchSummary = watchSummary
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }

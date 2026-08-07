@@ -81,8 +81,12 @@ final class Notifier: @unchecked Sendable {
         deliver(alerts, windowActive: windowActive)
     }
 
+    /// Raised and written down in one step: a notice nobody happened to be at the screen for is
+    /// the whole event lost otherwise, so what goes to the desktop also goes to the list that
+    /// keeps it until someone looks.
     private func deliver(_ alerts: [ActivityAlert], windowActive: Bool) {
         guard !windowActive else { return }
+        var raised: [ActivityAlert] = []
         for alert in alerts {
             switch alert.reason {
             case .turnEnded:
@@ -91,7 +95,9 @@ final class Notifier: @unchecked Sendable {
                 guard Self.notifyNeedsYou else { continue }
             }
             send(alert)
+            raised.append(alert)
         }
+        ActivityInbox.record(raised)
     }
 
     private func send(_ alert: ActivityAlert) {
@@ -111,7 +117,9 @@ final class Notifier: @unchecked Sendable {
     /// An approval or question notice left standing after it was answered is a lie the user
     /// taps into and finds nothing.
     func withdraw(_ identifiers: [String]) {
-        guard !identifiers.isEmpty, let app = application else { return }
+        guard !identifiers.isEmpty else { return }
+        ActivityInbox.withdraw(identifiers)
+        guard let app = application else { return }
         for identifier in identifiers {
             g_application_withdraw_notification(app, identifier)
         }

@@ -128,7 +128,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         enhanceBadge.image = UIImage(
             systemName: "sparkles",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
-        enhanceBadge.tintColor = .white
+        enhanceBadge.tintColor = Theme.Color.onAccent
         enhanceBadge.backgroundColor = Theme.Color.accent
         enhanceBadge.contentMode = .center
         enhanceBadge.layer.cornerRadius = 8
@@ -187,7 +187,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         focusTap.delegate = self
         addGestureRecognizer(focusTap)
 
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: ComposerView, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: ComposerView, _) in
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
         }
 
@@ -214,7 +214,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
         config.baseBackgroundColor =
             showStop ? Theme.Color.danger : (hasText ? Theme.Color.accent : Theme.Color.separator)
-        config.baseForegroundColor = .white
+        config.baseForegroundColor = Theme.Color.onAccent
         sendButton.configuration = config
         sendButton.isEnabled = isBusy || hasText
         sendButton.accessibilityLabel =

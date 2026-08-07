@@ -162,7 +162,7 @@ enum ImageRowView {
         } else {
             let frame = NSView()
             frame.wantsLayer = true
-            frame.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+            frame.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
             frame.layer?.cornerRadius = 6
             frame.translatesAutoresizingMaskIntoConstraints = false
             let label = RowKit.label(

@@ -179,8 +179,10 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         root = Self.settingRatio(clamped, of: split, in: root)
     }
 
-    /// Gives every pane its fair share: each subtree's ratio becomes its leaf count's share,
-    /// so three panes in a row end up a third each no matter how the tree nests.
+    /// Gives every pane its fair share, the way vim's `ctrl+w =` does: each divider splits by how
+    /// many pane-widths each side needs along its own axis, so three panes in a row end up a third
+    /// each however the tree nests, while a lone pane beside a stack keeps half the window rather
+    /// than being squeezed to the stack's leaf count.
     public mutating func equalize() {
         root = Self.equalizing(root)
     }
@@ -360,12 +362,23 @@ public struct SplitLayout: Sendable, Equatable, Codable {
         switch node {
         case .pane: return node
         case .split(let id, let axis, _, let first, let second):
-            let share =
-                Double(leaves(of: first).count)
-                / Double(leaves(of: first).count + leaves(of: second).count)
+            let head = span(of: first, along: axis)
+            let tail = span(of: second, along: axis)
             return .split(
-                id: id, axis: axis, ratio: share, first: equalizing(first),
+                id: id, axis: axis, ratio: head / (head + tail), first: equalizing(first),
                 second: equalizing(second))
+        }
+    }
+
+    /// How many pane-widths a subtree needs along `axis`: a split along it adds its sides, a
+    /// split across it stacks them into the wider one's footprint.
+    private static func span(of node: SplitNode, along axis: SplitAxis) -> Double {
+        switch node {
+        case .pane: return 1
+        case .split(_, let own, _, let first, let second):
+            let head = span(of: first, along: axis)
+            let tail = span(of: second, along: axis)
+            return own == axis ? head + tail : max(head, tail)
         }
     }
 

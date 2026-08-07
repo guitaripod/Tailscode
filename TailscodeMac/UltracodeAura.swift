@@ -54,14 +54,16 @@ final class UltracodeAura {
         if active {
             layout()
             spin()
+            breathe()
             if restoredBorderColor == nil { restoredBorderColor = hostLayer.borderColor }
             hostLayer.borderColor = NSColor.clear.cgColor
-            hostLayer.shadowColor = NSColor.systemPurple.cgColor
+            hostLayer.shadowColor = MacTheme.Color.mark.cgColor
             hostLayer.shadowOpacity = 0.3
             hostLayer.shadowRadius = 12
             hostLayer.shadowOffset = .zero
         } else {
             gradient.removeAllAnimations()
+            container.removeAnimation(forKey: "breathe")
             if let restoredBorderColor { hostLayer.borderColor = restoredBorderColor }
             restoredBorderColor = nil
             hostLayer.shadowOpacity = 0
@@ -102,8 +104,22 @@ final class UltracodeAura {
         let turn = CABasicAnimation(keyPath: "transform.rotation.z")
         turn.fromValue = 0
         turn.toValue = 2 * Double.pi
-        turn.duration = 4
+        turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
         gradient.add(turn, forKey: "spin")
+    }
+
+    /// The turn says a power is on; the breath says it is still on. Both run on the shared
+    /// periods, which are deliberately not multiples of each other — two cycles that divide evenly
+    /// lock into a beat, and the aura starts reading as a machine counting rather than light.
+    private func breathe() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1.0
+        pulse.toValue = Ultracode.auraBreathFloor
+        pulse.duration = Ultracode.auraBreathSeconds
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        container.add(pulse, forKey: "breathe")
     }
 }

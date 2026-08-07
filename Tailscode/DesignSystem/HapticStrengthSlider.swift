@@ -74,7 +74,7 @@ final class HapticStrengthSlider: UIControl {
         glassHost.addSubview(track)
 
         gradient.colors = [
-            (UIColor(named: "AccentColor") ?? .systemBlue).cgColor, UIColor.systemPink.cgColor,
+            Theme.Color.accent.cgColor, Theme.Color.special.cgColor,
         ]
         gradient.startPoint = CGPoint(x: 0, y: 0.5)
         gradient.endPoint = CGPoint(x: 1, y: 0.5)
@@ -86,7 +86,7 @@ final class HapticStrengthSlider: UIControl {
 
         thumb.clipsToBounds = false
         thumb.layer.cornerCurve = .continuous
-        thumb.layer.borderColor = UIColor.systemBackground.withAlphaComponent(0.9).cgColor
+        thumb.layer.borderColor = Theme.Color.background.withAlphaComponent(0.9).cgColor
         thumb.layer.borderWidth = 2
         thumb.layer.shadowColor = UIColor.black.cgColor
         thumb.layer.shadowOpacity = 0.28
@@ -100,7 +100,7 @@ final class HapticStrengthSlider: UIControl {
         accessibilityLabel = String(localized: "Haptic strength")
         updateAccessibility()
         applyColors()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: HapticStrengthSlider, _) in view.applyColors()
         }
     }
@@ -110,10 +110,10 @@ final class HapticStrengthSlider: UIControl {
     private func applyColors() {
         gradient.colors = [
             Theme.Color.accent.resolvedColor(with: traitCollection).cgColor,
-            UIColor.systemPink.resolvedColor(with: traitCollection).cgColor,
+            Theme.Color.special.resolvedColor(with: traitCollection).cgColor,
         ]
         thumb.layer.borderColor =
-            UIColor.systemBackground.resolvedColor(with: traitCollection)
+            Theme.Color.background.resolvedColor(with: traitCollection)
             .withAlphaComponent(0.9).cgColor
     }
 

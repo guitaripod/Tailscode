@@ -195,7 +195,7 @@ final class SlashCommandPalette: UIView {
         label.text = title.uppercased()
         label.font = .preferredFont(forTextStyle: .caption2)
         label.adjustsFontForContentSizeCategory = true
-        label.textColor = Theme.Color.tertiaryLabel
+        label.textColor = Theme.Color.onGlassSecondary
         let container = UIView()
         label.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(label)
@@ -225,12 +225,12 @@ final class SlashCommandPalette: UIView {
         title.text = String(localized: "No command called /\(query)")
         title.font = Theme.Font.subheadline()
         title.adjustsFontForContentSizeCategory = true
-        title.textColor = Theme.Color.label
+        title.textColor = Theme.Color.onGlass
         let detail = UILabel()
         detail.text = String(localized: "Send it and it goes as an ordinary message.")
         detail.font = .preferredFont(forTextStyle: .caption2)
         detail.adjustsFontForContentSizeCategory = true
-        detail.textColor = Theme.Color.secondaryLabel
+        detail.textColor = Theme.Color.onGlassSecondary
         detail.numberOfLines = 2
 
         let column = UIStackView(arrangedSubviews: [title, detail])
@@ -278,7 +278,7 @@ final class SlashRowView: UIControl {
     }
 
     private func build() {
-        let tint = command.runsOnServer ? Theme.Color.accent : Theme.Color.secondaryLabel
+        let tint = command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlassSecondary
 
         highlightLayer.backgroundColor = Theme.Color.accent.withAlphaComponent(0.16)
         highlightLayer.layer.cornerRadius = 10
@@ -303,7 +303,7 @@ final class SlashRowView: UIControl {
         subtitleLabel.text = subtitleText
         subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
         subtitleLabel.adjustsFontForContentSizeCategory = true
-        subtitleLabel.textColor = Theme.Color.secondaryLabel
+        subtitleLabel.textColor = Theme.Color.onGlassSecondary
         subtitleLabel.numberOfLines = 1
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.isHidden = subtitleText.isEmpty
@@ -354,7 +354,7 @@ final class SlashRowView: UIControl {
         let base = Theme.Font.subheadline()
         let string = NSMutableAttributedString(
             string: command.title,
-            attributes: [.font: base, .foregroundColor: Theme.Color.label])
+            attributes: [.font: base, .foregroundColor: Theme.Color.onGlass])
         let bold =
             UIFont(
                 descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor,
@@ -371,7 +371,7 @@ final class SlashRowView: UIControl {
                     string: " \(hint)",
                     attributes: [
                         .font: Theme.Font.mono(11),
-                        .foregroundColor: Theme.Color.tertiaryLabel,
+                        .foregroundColor: Theme.Color.onGlassSecondary,
                     ]))
         }
         return string
@@ -395,7 +395,7 @@ final class SlashArgumentView: UIView {
             image: UIImage(
                 systemName: command.symbol,
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)))
-        icon.tintColor = command.runsOnServer ? Theme.Color.accent : Theme.Color.secondaryLabel
+        icon.tintColor = command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlassSecondary
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -409,7 +409,7 @@ final class SlashArgumentView: UIView {
         detail.text = command.subtitle.isEmpty ? nil : command.subtitle
         detail.font = .preferredFont(forTextStyle: .caption2)
         detail.adjustsFontForContentSizeCategory = true
-        detail.textColor = Theme.Color.secondaryLabel
+        detail.textColor = Theme.Color.onGlassSecondary
         detail.numberOfLines = 2
         detail.isHidden = command.subtitle.isEmpty
 
@@ -442,7 +442,7 @@ final class SlashArgumentView: UIView {
             string: command.title,
             attributes: [
                 .font: Theme.Font.subheadline(),
-                .foregroundColor: command.runsOnServer ? Theme.Color.accent : Theme.Color.label,
+                .foregroundColor: command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlass,
             ])
         let trailing =
             typed.isEmpty
@@ -455,7 +455,7 @@ final class SlashArgumentView: UIView {
                 attributes: [
                     .font: Theme.Font.mono(12),
                     .foregroundColor: typed.isEmpty
-                        ? Theme.Color.tertiaryLabel : Theme.Color.secondaryLabel,
+                        ? Theme.Color.onGlassSecondary : Theme.Color.onGlass,
                 ]))
         return name
     }

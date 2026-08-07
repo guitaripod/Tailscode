@@ -30,6 +30,30 @@ public enum Ultracode {
         effort == effortLevel || invokes(draft) || inFlightInvoked
     }
 
+    /// How long one full turn of the aura takes, and how long one breath of its
+    /// glow does. Deliberately not a multiple of each other: two cycles that
+    /// divide evenly lock into a visible beat, and the aura reads as a machine
+    /// counting rather than something lit.
+    public static let auraTurnSeconds: Double = 4
+    public static let auraBreathSeconds: Double = 1.6
+
+    /// The dimmest the glow ever goes. A breath that reaches zero is a blink,
+    /// and the aura is a state — it must never look like it switched off.
+    public static let auraBreathFloor: Double = 0.72
+
+    /// Where the rainbow's head sits and how brightly the glow burns at a given
+    /// moment, for a client that paints its own frames rather than handing the
+    /// animation to a compositor. Derived from the clock rather than from a
+    /// counter the caller increments: a dropped frame then costs a frame, not
+    /// the phase, so the aura runs at the same speed whatever the renderer is
+    /// doing.
+    public static func aura(at time: Double) -> (phase: Double, glow: Double) {
+        let phase = (time / auraTurnSeconds).truncatingRemainder(dividingBy: 1)
+        let breath = (time / (auraBreathSeconds * 2)).truncatingRemainder(dividingBy: 1)
+        let eased = 0.5 - 0.5 * cos(breath * 2 * Double.pi)
+        return (phase < 0 ? phase + 1 : phase, auraBreathFloor + (1 - auraBreathFloor) * eased)
+    }
+
     /// The rainbow, as RGB stops (0–1) ending where they began so a rotating
     /// gradient meets itself seamlessly. Every client renders these exact
     /// stops: the aura is one effect that happens to run on three toolkits.

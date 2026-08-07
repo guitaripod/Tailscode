@@ -18,7 +18,7 @@
         override func viewDidLoad() {
             super.viewDidLoad()
             title = alt ? "Widget Preview · Alt" : "Widget Preview"
-            view.backgroundColor = UIColor.systemGray5
+            view.backgroundColor = Theme.Color.assistantBubble
             let host = UIHostingController(rootView: WidgetPreviewGrid(alt: alt))
             host.view.backgroundColor = .clear
             addChild(host)

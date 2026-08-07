@@ -142,7 +142,8 @@ private let catalog = [
     }
 }
 
-@Suite(.serialized) struct SlashRecentsTests {
+extension DeviceStores {
+    @Suite struct SlashRecentsTests {
     @Test func mostRecentFirstWithoutRepeats() {
         SlashRecents.clear()
         SlashRecents.record("review")
@@ -159,4 +160,5 @@ private let catalog = [
         #expect(SlashRecents.surviving(in: catalog) == ["review"])
         SlashRecents.clear()
     }
+}
 }

@@ -267,7 +267,7 @@ enum ToolRowView {
         block.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         block.translatesAutoresizingMaskIntoConstraints = false
         block.wantsLayer = true
-        block.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        block.layer?.backgroundColor = MacTheme.Color.codeBackground.cgColor
         block.layer?.cornerRadius = 8
         for line in lines.prefix(80) {
             let added = line.prefix == "+"
@@ -287,8 +287,15 @@ enum ToolRowView {
         return block
     }
 
+    /// The row's mark: still for work that is over, turning for work still out on the machine —
+    /// the same ring the status band turns, on the same clock.
     static func glyphLabel(_ status: ToolStatus) -> NSTextField {
-        RowKit.label(glyph(status), font: MacTheme.Font.mono(11), color: tint(status))
+        let label = ActivityMarkLabel(frame: .zero)
+        label.stringValue = glyph(status)
+        label.font = MacTheme.Font.mono(11)
+        label.textColor = tint(status)
+        label.mark(status.activityIcon)
+        return label
     }
 
     static func glyph(_ status: ToolStatus) -> String {
@@ -406,7 +413,7 @@ enum SubagentRowView {
             body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             body.translatesAutoresizingMaskIntoConstraints = false
             body.wantsLayer = true
-            body.layer?.backgroundColor = NSColor.quinarySystemFill.cgColor
+            body.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
             body.layer?.cornerRadius = MacTheme.Radius.control
             guard let context else { return RowKit.inset(body, leading: 26) }
             if let rows = context.subagentRows[call.id] {

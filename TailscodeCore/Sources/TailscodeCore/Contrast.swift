@@ -30,6 +30,14 @@ public enum Contrast {
         return luminance(rgb)
     }
 
+    /// A palette's hex as channels, for the toolkits that want a colour type rather than a string.
+    /// Nothing about a slot's meaning survives the trip, so the caller keeps the slot and only the
+    /// arithmetic crosses.
+    public static func channels(_ hex: String) -> (red: Double, green: Double, blue: Double)? {
+        guard let rgb = RGB(hex) else { return nil }
+        return (rgb.red, rgb.green, rgb.blue)
+    }
+
     /// Two colours mixed in OKLab rather than in sRGB, because a gradient between them is walked a
     /// character at a time by the stream cascade and sRGB midpoints go grey: green to red passes
     /// through mud, blue to yellow through a dead middle. OKLab keeps the walk the colour the eye

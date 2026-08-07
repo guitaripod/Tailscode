@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import UIKit
 import UserNotifications
@@ -71,6 +72,7 @@ enum DiagnosticsReport {
         lines.append("[App]")
         lines.append("Pro: \(ProStore.shared.isPro)")
         lines.append("Appearance: \(AppPreferences.appearance.title)")
+        lines.append("Theme: \(ThemeSelection.themeID)")
         lines.append("Compact agent steps: \(AppPreferences.compactActivity)")
         lines.append("Log file: \(LogFileWriter.shared.currentURL.lastPathComponent)")
         return lines.joined(separator: "\n")

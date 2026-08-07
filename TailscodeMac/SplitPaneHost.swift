@@ -388,18 +388,28 @@ final class SplitPaneHost: NSViewController {
         }
     }
 
-    /// Positions from ratios, asserted after layout so the split has an extent to divide.
+    /// Positions from ratios, asserted after layout so the split has an extent to divide, and
+    /// walked outermost-first with a layout pass after each divider — a nested split only learns
+    /// its new extent once its parent's position has actually landed, so any other order divides
+    /// an extent the tree is about to stop having.
     func applyRatios() {
         suppressCapture = true
         defer { suppressCapture = false }
         view.layoutSubtreeIfNeeded()
-        for (id, splitView) in splitViews {
-            guard let ratio = layout.ratio(of: id) else { continue }
-            let extent =
-                splitView.isVertical ? splitView.bounds.width : splitView.bounds.height
-            guard extent > 50 else { continue }
-            splitView.setPosition(extent * ratio, ofDividerAt: 0)
+        applyRatios(layout.root)
+    }
+
+    private func applyRatios(_ node: SplitNode) {
+        guard case .split(let id, _, let ratio, let first, let second) = node else { return }
+        if let splitView = splitViews[id] {
+            let extent = splitView.isVertical ? splitView.bounds.width : splitView.bounds.height
+            if extent > 50 {
+                splitView.setPosition((extent - splitView.dividerThickness) * ratio, ofDividerAt: 0)
+                splitView.layoutSubtreeIfNeeded()
+            }
         }
+        applyRatios(first)
+        applyRatios(second)
     }
 
     /// A divider drag settles into the model as a ratio, exactly the way the window's own

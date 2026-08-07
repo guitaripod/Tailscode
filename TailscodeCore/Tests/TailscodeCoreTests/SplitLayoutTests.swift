@@ -106,8 +106,8 @@ struct SplitLayoutTests {
         #expect(layout.ratio(of: id) == 0.3)
     }
 
-    @Test("Equalize gives every pane its leaf-count share")
-    func equalizeSharesByLeafCount() {
+    @Test("Equalize gives a row of panes a third each")
+    func equalizeSharesRowEvenly() {
         var layout = SplitLayout()
         let a = layout.focusedPane
         let b = layout.split(a, axis: .horizontal)!
@@ -118,6 +118,47 @@ struct SplitLayoutTests {
 
         #expect(widths.count == 3)
         for width in widths { #expect(abs(width - 1.0 / 3.0) < 1e-9) }
+    }
+
+    @Test("Equalize keeps half the window for a pane beside a stack")
+    func equalizePaneBesideStackKeepsHalf() {
+        var layout = SplitLayout()
+        let a = layout.focusedPane
+        let b = layout.split(a, axis: .horizontal)!
+        layout.split(b, axis: .vertical)
+
+        layout.equalize()
+        let frames = layout.frames()
+
+        #expect(abs(frames[a]!.width - 0.5) < 1e-9)
+        #expect(abs(frames[a]!.height - 1.0) < 1e-9)
+        let stacked = layout.paneIDs.filter { $0 != a }
+        for id in stacked {
+            #expect(abs(frames[id]!.width - 0.5) < 1e-9)
+            #expect(abs(frames[id]!.height - 0.5) < 1e-9)
+        }
+    }
+
+    @Test("Equalize squares up a two-by-two grid")
+    func equalizeSquaresGrid() {
+        var layout = SplitLayout()
+        let a = layout.focusedPane
+        let b = layout.split(a, axis: .horizontal)!
+        layout.split(a, axis: .vertical)
+        layout.split(b, axis: .vertical)
+        guard case .split(let rootID, _, _, _, _) = layout.root else {
+            Issue.record("a split root was expected")
+            return
+        }
+        layout.setRatio(0.8, of: rootID)
+
+        layout.equalize()
+        let frames = layout.frames()
+
+        for id in layout.paneIDs {
+            #expect(abs(frames[id]!.width - 0.5) < 1e-9)
+            #expect(abs(frames[id]!.height - 0.5) < 1e-9)
+        }
     }
 
     @Test("Zoom toggles and any structural change clears it")

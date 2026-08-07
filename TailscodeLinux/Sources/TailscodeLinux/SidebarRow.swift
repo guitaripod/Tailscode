@@ -25,6 +25,141 @@ enum SidebarRow {
         return label
     }
 
+    /// The heading over what happened while nobody was here, with the way to dismiss the lot. The
+    /// clear lives in the header rather than on each row: the list is read all at once or not at
+    /// all, and a per-row dismiss turns catching up into filing.
+    static func missedHeader(count: Int, onClear: @escaping @Sendable () -> Void)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let label = Gtk.label(
+            Localized.text("MISSED"), css: "section-header", selectable: false)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(row), label)
+        let clear = Gtk.button(Localized.text("clear"), css: ["flat", "dim"], onClick: onClear)
+        gtk_widget_set_valign(clear, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(
+            clear, Localized.text("Clear all %@ missed notices", "\(count)"))
+        gtk_box_append(ptr(row), clear)
+        return row
+    }
+
+    /// One thing that happened out of sight: what it was, in which chat, and how long ago.
+    static func missed(_ item: MissedActivity, onOpen: @escaping @Sendable () -> Void)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "session-row")
+
+        let glyph = Gtk.label(
+            item.isBlocking ? "⏸" : "✓", css: item.isBlocking ? "glyph-needs" : "glyph-done",
+            selectable: false)
+        gtk_widget_set_valign(glyph, GTK_ALIGN_START)
+        Gtk.margins(glyph, top: 3)
+
+        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let title = Gtk.label(item.title, css: "row-title", selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_box_append(ptr(titleRow), title)
+        if item.isBlocking {
+            gtk_box_append(ptr(titleRow), makePill(item.kindLabel.uppercased(), css: "pill-needs"))
+        }
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(ptr(column), titleRow)
+        gtk_box_append(
+            ptr(column),
+            Gtk.label(
+                "\(item.body) · \(StatusFacts.age(Date().timeIntervalSince(item.at))) ago",
+                css: "row-detail", selectable: false))
+        gtk_widget_set_hexpand(column, 1)
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(row, top: 4, bottom: 4, leading: 4, trailing: 4)
+        gtk_box_append(ptr(row), glyph)
+        gtk_box_append(ptr(row), column)
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_hexpand(button, 1)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
+        return button
+    }
+
+    /// The heading over what was found, with the way back to the list. It names the query rather
+    /// than saying "results", because the words that were searched for are the only thing that
+    /// makes a result list readable a minute later.
+    static func searchHeader(
+        query: String, count: Int, running: Bool, onLeave: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let label = Gtk.label(
+            running
+                ? Localized.text("SEARCHING “%@”", query)
+                : Localized.text("“%@” · %@", query, "\(count)"),
+            css: "section-header", selectable: false)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(row), label)
+        let leave = Gtk.button(Localized.text("back"), css: ["flat", "dim"], onClick: onLeave)
+        gtk_widget_set_valign(leave, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(leave, Localized.text("Back to the chat list"))
+        gtk_box_append(ptr(row), leave)
+        return row
+    }
+
+    /// One conversation the words were found in: what it is, where it lives, and the places it
+    /// said them — each quoted under the register it was in, so an answer, a thought and a shell
+    /// command are told apart at a glance rather than read for.
+    static func searchResult(
+        _ result: TranscriptSearch.Row, onOpen: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "session-row")
+
+        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let title = Gtk.label(result.title, css: "row-title", selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_box_append(ptr(titleRow), title)
+        if result.isTitleOnly {
+            gtk_box_append(ptr(titleRow), makePill(Localized.text("TITLE"), css: "pill-offline"))
+        }
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(ptr(column), titleRow)
+        gtk_box_append(
+            ptr(column),
+            Gtk.label(
+                [result.project, result.profileName].compactMap { $0 }.joined(separator: " · "),
+                css: "row-detail", selectable: false))
+        for match in result.matches.prefix(3) {
+            let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            let kind = Gtk.label(TranscriptSearch.label(for: match), css: "tool-name", selectable: false)
+            gtk_label_set_ellipsize(op(kind), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_valign(kind, GTK_ALIGN_START)
+            gtk_box_append(ptr(line), kind)
+            let quote = Gtk.label(match.text, css: "row-detail", selectable: false)
+            gtk_widget_set_hexpand(quote, 1)
+            gtk_box_append(ptr(line), quote)
+            gtk_box_append(ptr(column), line)
+        }
+        if result.total > result.matches.count {
+            gtk_box_append(
+                ptr(column),
+                Gtk.label(
+                    Localized.text("… %@ more in this chat", "\(result.total - result.matches.count)"),
+                    css: "dim", selectable: false))
+        }
+        gtk_widget_set_hexpand(column, 1)
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(row, top: 6, bottom: 6, leading: 4, trailing: 4)
+        gtk_box_append(ptr(row), column)
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_hexpand(button, 1)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
+        return button
+    }
+
     static func empty(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
         let label = Gtk.label(text, css: "dim", selectable: false)
         Gtk.margins(label, top: 20, bottom: 20, leading: 12, trailing: 12)
@@ -56,6 +191,10 @@ enum SidebarRow {
         let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
         Gtk.margins(glyph, top: 3)
+        ActivityPulse.apply(model.state.activity?.icon, to: glyph)
+        if let spoken = model.state.activity?.spoken {
+            gtk_widget_set_tooltip_text(glyph, spoken)
+        }
 
         let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let title = Gtk.label(

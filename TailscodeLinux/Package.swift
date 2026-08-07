@@ -35,14 +35,13 @@ var appDependencies: [Target.Dependency] = [
 var appSettings: [SwiftSetting] = [.swiftLanguageMode(.v6)]
 var shimDependencies: [Target.Dependency] = ["CAdw", "CGdkPixbuf"]
 var shimSettings: [CSetting] = []
-var shimLinkerSettings: [LinkerSetting] = []
+var shimLinkerSettings: [LinkerSetting] = [.linkedLibrary("epoxy")]
 var targets: [Target] = []
 
 if hasMpv {
     appSettings.append(.define("HAS_MPV"))
     shimDependencies.append("CMpv")
     shimSettings.append(.define("TAILSCODE_HAS_MPV", to: "1"))
-    shimLinkerSettings.append(.linkedLibrary("epoxy"))
     targets.append(
         .systemLibrary(
             name: "CMpv", pkgConfig: "mpv",

@@ -70,9 +70,12 @@ enum CascadeTint {
 
     /// The specular colour the band pushes toward: brighter than the accent in the dark, denser in
     /// the light, so a sweep reads as light passing over the words either way.
+    /// Under a theme the extreme is the palette's own ink rather than white or near-black, because
+    /// a spark that leaves the palette reads as a defect in the glyph rather than as light.
     static func spark(for edge: NSColor) -> NSColor {
         let hex = hex(edge)
-        let toward = appearance.isDark ? "#ffffff" : "#101014"
+        let toward =
+            ThemePalette.current?.text ?? (appearance.isDark ? "#ffffff" : "#101014")
         return colour(Contrast.blend(hex, toward, 0.5) ?? hex)
     }
 

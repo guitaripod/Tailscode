@@ -254,6 +254,7 @@ final class TranscriptViewController: NSViewController {
         inFlightSubagents = []
         echoedPrompt = nil
         clearUnseen()
+        ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
         lastFullRows = []
@@ -391,10 +392,16 @@ final class TranscriptViewController: NSViewController {
     var videoTarget: VideoTarget? { video?.target }
     var videoSummary: String? { video?.summary }
 
+    /// True while a slot is still asking what to watch. The board that asks lives under a text
+    /// field, so its keys arrive in the insert context and the window has to offer them anyway.
+    var isChoosingStream: Bool { video?.isAsking == true }
+
     /// A slot answers its own keys while it is focused; everything it does not claim goes on to
-    /// the shortcut table, so the chat panes lose nothing to a slot in the grid.
+    /// the shortcut table, so the chat panes lose nothing to a slot in the grid. While it is still
+    /// asking, the keys belong to the board rather than to the player it does not have yet.
     func handleVideoChord(_ chord: KeyChord) -> Bool {
-        guard let video, !video.isAsking else { return false }
+        guard let video else { return false }
+        guard !video.isAsking else { return video.handleBoard(chord) }
         guard let command = VideoCommand.command(for: chord) else { return false }
         video.handle(command)
         return true
@@ -430,8 +437,11 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// A closing pane stops talking to the world before its views go: a cancelled stream is the
-    /// difference between a closed pane and a leak that keeps rendering into nothing.
+    /// difference between a closed pane and a leak that keeps rendering into nothing. What was
+    /// half-typed into it is written first — closing a pane is not a decision to throw a prompt
+    /// away, and the chat it belongs to can be opened again anywhere.
     func shutdownPane() {
+        composer.stashDraft()
         cascade.release()
         page?.shutdown()
         video?.shutdown()
@@ -658,7 +668,7 @@ final class TranscriptViewController: NSViewController {
     private func configureJumpPill() -> NSView {
         jumpButton.isBordered = false
         jumpButton.font = MacTheme.Font.emphasis()
-        jumpButton.contentTintColor = MacTheme.Color.label
+        jumpButton.contentTintColor = MacTheme.Color.onGlass
         jumpButton.target = self
         jumpButton.action = #selector(jumpToBottom)
         let padded = NSStackView(views: [jumpButton])
@@ -756,7 +766,7 @@ final class TranscriptViewController: NSViewController {
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
     /// instruction for what the summary must keep — so it always opens this preflight first.
     func presentCompactPreflight(initialInstruction: String = "") {
-        guard let conversation else { return }
+        guard let conversation, let entry else { return }
         MacDialogs.prompt(
             on: view.window,
             title: Localized.text("Compact this conversation?"),
@@ -764,7 +774,8 @@ final class TranscriptViewController: NSViewController {
                 "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."),
             placeholder: Localized.text("What must the summary keep? (optional)"),
             initial: initialInstruction,
-            confirmLabel: Localized.text("Compact"), destructive: true
+            confirmLabel: Localized.text("Compact"), destructive: true,
+            draft: .compaction(profileID: entry.profileID, sessionID: entry.session.id)
         ) { instruction in
             Task {
                 try? await conversation.compact(
@@ -1089,13 +1100,16 @@ final class TranscriptViewController: NSViewController {
     /// The goal in a sheet rather than a bare command: what stands, whether it is met, and the
     /// two things you can do about it — restate it or abandon it.
     func presentGoalSheet() {
-        guard let conversation, let window = view.window else { return }
+        guard let conversation, let entry, let window = view.window else { return }
         let hasGoal = lastState?.goal != nil
         let alert = NSAlert()
         alert.messageText = Localized.text("Change the goal")
         alert.informativeText = Localized.text(
             "The agent pursues the goal across turns and reports when it is met.")
-        let field = NSTextField(string: lastState?.goal?.condition ?? "")
+        let scope = DraftScope.goal(profileID: entry.profileID, sessionID: entry.session.id)
+        let standing = lastState?.goal?.condition ?? ""
+        let field = DraftingField(
+            scope: scope, initial: standing.isEmpty ? DraftStore.text(for: scope) : standing)
         field.placeholderString = Localized.text("What must become true?")
         field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
         alert.accessoryView = field
@@ -1111,6 +1125,7 @@ final class TranscriptViewController: NSViewController {
                 let condition = field.stringValue.trimmingCharacters(
                     in: .whitespacesAndNewlines)
                 guard !condition.isEmpty else { return }
+                DraftStore.clear(scope)
                 Task { try? await conversation.setGoal(condition) }
             } else if hasGoal, response == .alertSecondButtonReturn {
                 Task { try? await conversation.clearGoal() }
@@ -1121,6 +1136,12 @@ final class TranscriptViewController: NSViewController {
     /// Re-renders every row at the current type scale: the builder's memo and the per-session
     /// row snapshots hold rendering baked at the old size, so both are dropped before the
     /// rebuild.
+    /// The pane's own opaque surfaces, which are `CGColor` in a layer and so keep whatever colour
+    /// they were given until they are given another.
+    func applyPaneColours() {
+        view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+    }
+
     func applyUIScale() {
         rowBuilder.invalidate()
         sessionRows = [:]
@@ -1159,9 +1180,15 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// A fresh listing under an open chooser: the same question, answered with what is true now.
-    func restateChooser(servers: [PaneChooserServer], entries: [SessionEntry]) {
+    /// - Parameter watch: what is on among the channels this device follows, when the check has
+    ///   landed since the question was asked; nil leaves the watch row saying what it already said.
+    func restateChooser(
+        servers: [PaneChooserServer], entries: [SessionEntry], watch: WatchSummary?
+    ) {
         guard let current = chooser else { return }
-        chooser = current.restated(servers: servers, entries: entries)
+        var next = current.restated(servers: servers, entries: entries)
+        next.watchSummary = watch ?? next.watchSummary
+        chooser = next
         renderChooser()
     }
 
@@ -1476,7 +1503,7 @@ final class TranscriptViewController: NSViewController {
         }
         for question in state.pendingQuestions {
             pendingStack.addArrangedSubview(
-                PendingCards.question(question) { [weak self] answers in
+                PendingCards.question(question, in: entry) { [weak self] answers in
                     self?.answer(question, answers: answers)
                 })
         }
@@ -1672,6 +1699,7 @@ final class TranscriptViewController: NSViewController {
         rowView.layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.6).cgColor
         rowView.layer?.borderWidth = 2
         rowView.layer?.cornerRadius = 6
+        rowView.layer?.backgroundColor = MacTheme.Color.findHit.cgColor
         highlightedView = rowView
         guard scroll else { return }
         followsBottom = false
@@ -1682,6 +1710,7 @@ final class TranscriptViewController: NSViewController {
 
     private func clearFindHighlight() {
         highlightedView?.layer?.borderWidth = 0
+        highlightedView?.layer?.backgroundColor = nil
         highlightedView = nil
     }
 

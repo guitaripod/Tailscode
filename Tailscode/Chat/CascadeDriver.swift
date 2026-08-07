@@ -95,9 +95,12 @@ enum CascadeTint {
 
     /// The specular colour the band pushes toward: brighter than the accent in the dark, denser in
     /// the light, so a sweep reads as light passing over the words either way.
+    /// Under a theme the extreme is the palette's own ink rather than white or near-black, because
+    /// a spark that leaves the palette reads as a defect in the glyph rather than as light.
     static func spark(for edge: UIColor, traits: UITraitCollection) -> UIColor {
         let hex = hex(edge, traits)
-        let toward = traits.userInterfaceStyle == .light ? "#101014" : "#ffffff"
+        let toward =
+            traits.palette?.text ?? (traits.userInterfaceStyle == .light ? "#101014" : "#ffffff")
         return colour(Contrast.blend(hex, toward, 0.5) ?? hex)
     }
 

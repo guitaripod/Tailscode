@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// Tracks the live status of sessions across the app so the list can show pills and completion
@@ -67,14 +68,37 @@ final class SessionActivity {
             return
         }
         statuses[sessionID] = status
-        if status == .idle, previous != .idle, !remotePushCovers(profileID: profileID) {
-            NotificationManager.notify(
-                kind: .turnComplete,
-                title: title, body: String(localized: "Your agent finished."),
-                identifier: "done:\(sessionID)",
-                sessionID: sessionID)
+        if status == .idle, previous != .idle {
+            let body = String(localized: "Your agent finished.")
+            if remotePushCovers(profileID: profileID) {
+                recordMissed(
+                    identifier: "done:\(sessionID)", profileID: profileID, sessionID: sessionID,
+                    title: title, body: body)
+            } else {
+                NotificationManager.notify(
+                    kind: .turnComplete,
+                    title: title, body: body,
+                    identifier: "done:\(sessionID)",
+                    sessionID: sessionID, profileID: profileID, activity: .turnEnded)
+            }
         }
         NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    /// A turn the bridge's own push already announced still happened, and is still something that
+    /// can be missed — the notification came from somewhere else, but it lasts exactly as long.
+    /// Only while the app is away: a turn that ends under your eyes is not news.
+    private func recordMissed(
+        identifier: String, profileID: String, sessionID: String, title: String, body: String
+    ) {
+        guard AppPreferences.notifyTurnComplete,
+            UIApplication.shared.applicationState != .active
+        else { return }
+        ActivityInbox.record([
+            MissedActivity(
+                identifier: identifier, profileID: profileID, sessionID: sessionID, title: title,
+                body: body, reason: .turnEnded)
+        ])
     }
 
     private var lastLiveTick: Date = .distantPast

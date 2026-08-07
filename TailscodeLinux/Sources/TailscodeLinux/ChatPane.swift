@@ -15,6 +15,7 @@ final class ChatPane: @unchecked Sendable {
 
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let identityLabel = Gtk.label("", css: "pane-identity", selectable: false)
+    private var identityActivity: ActivityKind?
     let transcriptBox = Gtk.box(
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
@@ -89,6 +90,7 @@ final class ChatPane: @unchecked Sendable {
     private var freshlyCreatedID: String?
     private var inFlightImages: Set<String> = []
     private var inFlightSubagents: Set<String> = []
+    private var lastRecordedDraft = ""
 
     private(set) var entry: SessionEntry?
     /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
@@ -111,12 +113,25 @@ final class ChatPane: @unchecked Sendable {
     private var completionCursor = 0
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
-    private var ultracodeAuraTask: Task<Void, Never>?
-    private var ultracodeAuraAngle = 0
+    private let aura = AuraPainter()
     var ultracodeInFlight = false
 
     var sessionID: String? { entry?.session.id }
-    var auraActive: Bool { ultracodeAuraTask != nil }
+    var auraActive: Bool { aura.isActive }
+
+    /// Which prompt box this pane's composer is: the conversation, never the pane, so what was
+    /// half-typed here is waiting in whichever pane opens that chat next.
+    var draftScope: DraftScope? {
+        guard let entry else { return nil }
+        return .chat(profileID: entry.profileID, sessionID: entry.session.id)
+    }
+
+    /// The `/compact` instruction is its own box, kept apart from the prompt being written: what
+    /// the summary must keep is not what you were about to say.
+    var compactionScope: DraftScope? {
+        guard let entry else { return nil }
+        return .compaction(profileID: entry.profileID, sessionID: entry.session.id)
+    }
 
     /// What this pane is watching first-hand, for the chat list's own LIVE NOW.
     ///
@@ -259,9 +274,14 @@ final class ChatPane: @unchecked Sendable {
             self?.growComposer()
             self?.updateSlashCompletion()
             self?.refreshUltracodeAura()
+            self?.recordDraft()
         }
 
-        gtk_box_append(ptr(row), scroller)
+        let auraHost = gtk_overlay_new()!
+        gtk_overlay_set_child(op(auraHost), scroller)
+        gtk_overlay_add_overlay(op(auraHost), aura.widget)
+        gtk_widget_set_hexpand(auraHost, 1)
+        gtk_box_append(ptr(row), auraHost)
 
         Gtk.acceptFileDrops(on: row) { [weak self] paths in
             self?.attach(paths: paths)
@@ -485,6 +505,28 @@ final class ChatPane: @unchecked Sendable {
         return true
     }
 
+    /// One line of the board for the headless driver: its sections, its rows and where the cursor
+    /// is, so a change to what an empty slot offers is provable without a screenshot.
+    var watchBoardSummary: String? {
+        guard let video, video.isAsking else { return nil }
+        return video.boardSummary
+    }
+
+    /// Types into the slot's own prompt from the driver, which is how the board's search half is
+    /// exercised without an input harness pushing keys at an X server.
+    func driveWatchQuery(_ text: String) {
+        video?.driveQuery(text)
+    }
+
+    /// The board an empty slot shows, offered its keys before the box it is typed into gets them.
+    /// This one is asked in every key context rather than only in normal: the prompt has the
+    /// keyboard while the board is up, so the arrows, Enter, Tab, Escape and the deliberate control
+    /// chords would never arrive if the board waited for the transcript to be the focused region.
+    func handleWatchChord(_ chord: KeyChord) -> Bool {
+        guard let video, video.isAsking else { return false }
+        return video.handleBoardChord(chord)
+    }
+
     /// Everything the pane draws for a conversation, out of the way while it holds a stream —
     /// walked rather than named so a new piece of chat chrome cannot forget to hide itself.
     private func setChatFurnitureVisible(_ visible: Bool) {
@@ -498,25 +540,40 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// A pane wears what it is doing in its own identity strip, so a grid of four says which one
+    /// is working without the reader having to find and read four status bands. The strip is what
+    /// a pane is; the band is what its turn is; this is the one fact both have to agree on.
     private func refreshIdentity() {
         if let page {
-            gtk_label_set_text(op(identityLabel), "\(page.slot.title) · \(page.slot.subtitle)")
+            setIdentity("\(page.slot.title) · \(page.slot.subtitle)", activity: nil)
             return
         }
         if let video {
-            gtk_label_set_text(
-                op(identityLabel), "\(video.slot.title) · \(video.slot.subtitle)")
+            setIdentity("\(video.slot.title) · \(video.slot.subtitle)", activity: nil)
             return
         }
         guard let entry else {
-            gtk_label_set_text(op(identityLabel), Localized.text("No conversation"))
+            setIdentity(Localized.text("No conversation"), activity: nil)
             return
         }
         let title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         let server = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-        gtk_label_set_text(op(identityLabel), "\(title) · \(server)")
+        setIdentity("\(title) · \(server)", activity: identityActivity)
+    }
+
+    private func setIdentity(_ text: String, activity: ActivityKind?) {
+        guard let activity else {
+            ActivityPulse.apply(nil, to: identityLabel)
+            gtk_label_set_text(op(identityLabel), text)
+            return
+        }
+        let line = activity.icon.glyph + " " + text
+        gtk_label_set_text(op(identityLabel), line)
+        ActivityPulse.apply(activity.icon, to: identityLabel, text: line) { [identityLabel] frame in
+            gtk_label_set_text(op(identityLabel), frame)
+        }
     }
 
     /// The drive-run equivalent of clicking a picture: the gallery over every image in the
@@ -563,8 +620,14 @@ final class ChatPane: @unchecked Sendable {
     /// see the original single-pane implementation's reasoning: decoded textures survive,
     /// subagent transcripts do not, a freshly created session paints ready, rows fold off the
     /// main context, and the paint never waits on a statistic about it.
+    ///
+    /// A chat is which server as well as which session. The same bridge added twice mints two
+    /// profiles and lists one server's sessions under both, so a session id alone would call the
+    /// second copy the chat already open — leaving the pane naming the wrong server and writing
+    /// its drafts under it.
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
-        guard sessionID != entry.session.id else { return }
+        guard sessionID != entry.session.id || self.entry?.profileID != entry.profileID
+        else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
         chooser = nil
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
@@ -591,6 +654,7 @@ final class ChatPane: @unchecked Sendable {
         echoedPrompt = nil
         renderAttachments()
         clearUnseen()
+        ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
         lastFullRows = []
@@ -598,7 +662,7 @@ final class ChatPane: @unchecked Sendable {
         followsBottom = true
         gtk_widget_set_visible(earlierButton, 0)
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
-        restoreDraft(for: entry.session.id)
+        restoreDraft(for: entry)
         streamTask?.cancel()
         if let remembered = host?.rememberedRows(for: entry.session.id) {
             placeholderShown = true
@@ -686,7 +750,13 @@ final class ChatPane: @unchecked Sendable {
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
     /// never a stale transcript that looks alive.
+    ///
+    /// The composer goes with the conversation. What was half-typed is stashed while it still has
+    /// a scope to be stashed under, and the box is then emptied rather than left holding words it
+    /// no longer has anywhere to send — a prompt that survives the chat it was for is a prompt the
+    /// next Enter drops in silence.
     func reset(placeholder: String) {
+        stashDraft()
         streamTask?.cancel()
         streamTask = nil
         agentStreamTask?.cancel()
@@ -695,6 +765,7 @@ final class ChatPane: @unchecked Sendable {
         tickerTask?.cancel()
         tickerTask = nil
         entry = nil
+        clearComposer()
         backend = nil
         conversation = nil
         lastState = nil
@@ -720,11 +791,10 @@ final class ChatPane: @unchecked Sendable {
         streamTask?.cancel()
         agentStreamTask?.cancel()
         tickerTask?.cancel()
-        ultracodeAuraTask?.cancel()
+        aura.setActive(false)
         streamTask = nil
         agentStreamTask = nil
         tickerTask = nil
-        ultracodeAuraTask = nil
     }
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
@@ -868,15 +938,20 @@ final class ChatPane: @unchecked Sendable {
     var chooserSummary: String? {
         guard let chooser else { return nil }
         let rows = chooser.rows.enumerated().map { index, row in
-            "\(index == chooser.cursor ? "*" : "")\(row.title)"
+            let badge = row.badge.map { " (\($0.text))" } ?? ""
+            return "\(index == chooser.cursor ? "*" : "")\(row.title)\(badge) — \(row.detail)"
         }
         return "\(chooser.heading) [\(rows.joined(separator: " | "))]"
     }
 
     /// A fresh listing under an open chooser: the same question, answered with what is true now.
-    func restateChooser(servers: [PaneChooserServer], entries: [SessionEntry]) {
+    func restateChooser(
+        servers: [PaneChooserServer], entries: [SessionEntry], watching: WatchSummary? = nil
+    ) {
         guard let current = chooser else { return }
-        chooser = current.restated(servers: servers, entries: entries)
+        var next = current.restated(servers: servers, entries: entries)
+        if let watching { next.watchSummary = watching }
+        chooser = next
         renderChooser()
     }
 
@@ -1221,7 +1296,7 @@ final class ChatPane: @unchecked Sendable {
         for question in state.pendingQuestions {
             gtk_box_append(
                 ptr(pendingBox),
-                PendingCards.question(question) { [weak self] answers in
+                PendingCards.question(question, in: entry) { [weak self] answers in
                     self?.answer(question, answers: answers)
                 })
         }
@@ -1276,6 +1351,10 @@ final class ChatPane: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas)
+        if identityActivity != facts.activity {
+            identityActivity = facts.activity
+            refreshIdentity()
+        }
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: bandNotice) {
             [weak self] action in
@@ -1652,33 +1731,8 @@ final class ChatPane: @unchecked Sendable {
         "\(entry.profileID)/\(entry.session.id)"
     }
 
-    /// The visible half of ultracode: while the tier is picked, the word is in the draft, or a
-    /// summoned turn still runs, the composer's border turns rainbow and keeps turning.
-    private func ultracodeAura(_ active: Bool) {
-        guard active != (ultracodeAuraTask != nil) else { return }
-        guard let composerScroller else { return }
-        if active {
-            Gtk.addClass(composerScroller, "composer-ultracode")
-            MatrixTheme.applyUltracodeAura(angle: ultracodeAuraAngle)
-            ultracodeAuraTask = Task.detached { [weak self] in
-                while !Task.isCancelled {
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.ultracodeAuraTask != nil else { return }
-                        self.ultracodeAuraAngle = (self.ultracodeAuraAngle + 6) % 360
-                        MatrixTheme.applyUltracodeAura(angle: self.ultracodeAuraAngle)
-                    }
-                    try? await Task.sleep(for: .milliseconds(90))
-                }
-            }
-        } else {
-            ultracodeAuraTask?.cancel()
-            ultracodeAuraTask = nil
-            gtk_widget_remove_css_class(composerScroller, "composer-ultracode")
-        }
-    }
-
     private func refreshUltracodeAura() {
-        ultracodeAura(
+        aura.setActive(
             Ultracode.auraActive(
                 effort: chosenEffort, draft: composerText(), inFlightInvoked: ultracodeInFlight))
     }
@@ -2268,19 +2322,43 @@ final class ChatPane: @unchecked Sendable {
         return String(cString: raw)
     }
 
-    /// Half-typed prompts follow their conversation, not the pane: switching chats stashes what
-    /// was in the composer and restores whatever was stashed for the chat being opened.
-    func stashDraft() {
-        guard let sessionID else { return }
-        let text = composerText()
-        let key = "tailscode.draft.\(sessionID)"
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        SettingsFile.set(trimmed.isEmpty ? nil : text, forKey: key)
+    /// Empties the prompt box and the vim document that shadows it, without touching any stored
+    /// draft: called where the pane has already let go of the conversation the text belonged to.
+    private func clearComposer() {
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), "", 0)
+        lastRecordedDraft = ""
+        vim.reset(to: "", cursor: 0, mode: .insert)
+        updateVimBadge()
     }
 
-    private func restoreDraft(for sessionID: String) {
-        let draft = UserDefaults.standard.string(forKey: "tailscode.draft.\(sessionID)") ?? ""
+    /// What is in the composer right now, recorded as it is typed. The store is built to be told
+    /// on every keystroke, so nothing here throttles it a second time.
+    private func recordDraft() {
+        guard let draftScope else { return }
+        let text = composerText()
+        lastRecordedDraft = text
+        DraftStore.record(text, for: draftScope)
+    }
+
+    /// Half-typed prompts follow their conversation, not the pane: switching chats stashes what
+    /// was in the composer and restores whatever was stashed for the chat being opened. Called
+    /// where the pane is about to stop being asked, so the write happens now rather than on the
+    /// next quiet moment that may never come.
+    ///
+    /// Two panes can hold the same chat, and a scope is the conversation's rather than the pane's,
+    /// so a pane that has not been typed into since it last recorded has nothing to say about that
+    /// draft: it writes only when its own buffer has moved, and the pane still being typed into
+    /// keeps the text. The flush is unconditional — someone else's newer edit is still owed a disk.
+    func stashDraft() {
+        if composerText() != lastRecordedDraft { recordDraft() }
+        DraftStore.flush()
+    }
+
+    private func restoreDraft(for entry: SessionEntry) {
+        let draft = DraftStore.text(
+            for: .chat(profileID: entry.profileID, sessionID: entry.session.id))
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), draft, -1)
+        lastRecordedDraft = draft
         vim.reset(to: draft, cursor: draft.count, mode: .insert)
         updateVimBadge()
     }
@@ -2293,9 +2371,7 @@ final class ChatPane: @unchecked Sendable {
         guard !text.isEmpty || !outgoing.isEmpty, let conversation else { return }
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
-        if let sessionID {
-            SettingsFile.set(nil, forKey: "tailscode.draft.\(sessionID)")
-        }
+        if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
         if handleSlashCommand(text) { return }

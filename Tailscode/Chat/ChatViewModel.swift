@@ -868,6 +868,10 @@ final class ChatViewModel {
         onModelChange?()
     }
 
+    /// What the turn is doing, in the Live Activity's own vocabulary. What it *is* is decided once
+    /// in `ActivityKind.inFlight`, so the badge in the navigation bar, the row in the list and the
+    /// card on the lock screen can never disagree about the same second; the wording stays here,
+    /// because a lock screen has room for a sentence where a band has room for a word.
     static func liveStatus(for state: ConversationState) -> (
         phase: AppActivityController.Phase, text: String, tool: String?, toolCount: Int
     ) {
@@ -876,23 +880,21 @@ final class ChatViewModel {
             if case .tool(let call) = part.kind { return call }
             return nil
         }
-        let runningTool = tools.last { $0.status == .running }
-        let lastTool = (runningTool ?? tools.last).map(\.name)
-        if state.pendingQuestions.first != nil {
+        let lastTool = (tools.last { $0.status == .running } ?? tools.last).map(\.name)
+        switch ActivityKind.inFlight(in: state) {
+        case .needsAnswer:
             return (.approval, String(localized: "Waiting for your answer"), lastTool, tools.count)
-        }
-        if state.pendingPermissions.first != nil {
+        case .needsApproval:
             return (.approval, String(localized: "Awaiting your approval"), lastTool, tools.count)
-        }
-        if let runningTool {
-            return (.tool, String(localized: "Running \(runningTool.name)"), lastTool, tools.count)
-        }
-        if let last, last.role == .assistant, last.completedAt == nil,
-            case .text(let text)? = last.parts.last?.kind, !text.isEmpty
-        {
+        case .usingTool(let name, _):
+            return (.tool, String(localized: "Running \(name)"), lastTool, tools.count)
+        case .compacting:
+            return (.tool, String(localized: "Compacting…"), lastTool, tools.count)
+        case .writing:
             return (.responding, String(localized: "Writing…"), lastTool, tools.count)
+        default:
+            return (.thinking, String(localized: "Thinking…"), lastTool, tools.count)
         }
-        return (.thinking, String(localized: "Thinking…"), lastTool, tools.count)
     }
 
     static func readable(_ error: Error) -> String {

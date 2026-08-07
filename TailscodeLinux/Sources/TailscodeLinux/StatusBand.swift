@@ -99,15 +99,36 @@ enum StatusBand {
     private static func update(
         _ widget: UnsafeMutablePointer<GtkWidget>, segment: StatusFacts.Segment
     ) {
-        switch segment.kind {
-        case .plain: gtk_label_set_text(op(widget), segment.text)
-        case .act: gtk_button_set_label(ptr(widget), segment.text)
-        case .menu: gtk_menu_button_set_label(op(widget), segment.text)
-        }
+        write(segment.text, to: widget, kind: segment.kind)
         for css in StatusFacts.Segment.allCSS where css != segment.css {
             gtk_widget_remove_css_class(widget, css)
         }
         Gtk.addClass(widget, segment.css)
+        animate(widget, segment: segment)
+    }
+
+    /// A fact that is about something happening moves the way that thing moves — the turn's own
+    /// segment breathes, a compaction sweeps, an approval knocks twice — and a fact that is merely
+    /// a number holds still. The band redraws every second regardless; the swell runs on the frame
+    /// clock underneath that, so the words tick once a second while the light is continuous.
+    private static func animate(
+        _ widget: UnsafeMutablePointer<GtkWidget>, segment: StatusFacts.Segment
+    ) {
+        let kind = segment.kind
+        ActivityPulse.apply(segment.icon, to: widget, text: segment.text) { text in
+            write(text, to: widget, kind: kind)
+        }
+    }
+
+    private static func write(
+        _ text: String, to widget: UnsafeMutablePointer<GtkWidget>,
+        kind: StatusFacts.Segment.Kind
+    ) {
+        switch kind {
+        case .plain: gtk_label_set_text(op(widget), text)
+        case .act: gtk_button_set_label(ptr(widget), text)
+        case .menu: gtk_menu_button_set_label(op(widget), text)
+        }
     }
 
     /// A menu segment's rows are read at open time, so a list opened mid-turn is the list as it
@@ -116,18 +137,19 @@ enum StatusBand {
         _ segment: StatusFacts.Segment, state: State,
         perform: @escaping @Sendable (StatusFacts.Action) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
+        let widget: UnsafeMutablePointer<GtkWidget>
         switch segment.kind {
         case .plain:
             let label = Gtk.label(segment.text, css: segment.css, selectable: false)
             Gtk.addClass(label, "seg")
             gtk_label_set_max_width_chars(op(label), 48)
-            return label
+            widget = label
         case .act(let action):
             let button = Gtk.button(segment.text, css: ["flat", "seg", segment.css]) {
                 perform(action)
             }
             clamp(button)
-            return button
+            widget = button
         case .menu:
             let id = segment.id
             let button = Gtk.menuButton(segment.text, css: ["flat", "seg", segment.css]) {
@@ -137,7 +159,9 @@ enum StatusBand {
                 }
             }
             clamp(button)
-            return button
+            widget = button
         }
+        animate(widget, segment: segment)
+        return widget
     }
 }

@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import UIKit
 
@@ -16,30 +17,26 @@ extension AgentType {
 /// to semantic colors, so a glance at an activity card tells the story. The
 /// classification itself comes from the Kit's `ToolCallSummary`.
 enum ToolIconography {
+    /// The symbol comes from the shared vocabulary rather than a second copy here, so the terminal
+    /// a shell wears in a tool row is the terminal the status badge shows while that shell runs.
     static func symbol(for kind: ToolCallSummary.Kind) -> String {
-        switch kind {
-        case .shell: return "terminal"
-        case .fileEdit, .fileWrite: return "pencil.line"
-        case .fileRead: return "doc.text"
-        case .fileSearch: return "magnifyingglass"
-        case .webSearch, .webFetch: return "globe"
-        case .taskTracking: return "checklist"
-        case .subagent, .workflow: return "person.2"
-        case .skill: return "wand.and.stars"
-        case .question: return "questionmark.bubble"
-        case .other: return "wrench.and.screwdriver"
-        }
+        ActivityKind.symbol(forTool: kind)
     }
 
+    /// A tool's colour is its meaning, and under a theme there are only so many meanings to spend.
+    /// The system palette can afford a hue per kind because it has the whole spectrum and no
+    /// contract; a theme has five signals that each carry exactly one thing, and everything the
+    /// agent reached out and touched is one thing — `info`. What stays separate is what is not a
+    /// tool at all: a question is attention, and a plan is motion.
     static func tint(for kind: ToolCallSummary.Kind) -> UIColor {
         switch kind {
-        case .shell: return .systemOrange
-        case .fileEdit, .fileWrite: return .systemPurple
-        case .webSearch, .webFetch: return .systemIndigo
-        case .fileRead, .fileSearch: return .systemTeal
-        case .subagent, .workflow: return .systemPink
+        case .shell: return ThemePalette.color(\.info, system: .systemOrange)
+        case .fileEdit, .fileWrite: return ThemePalette.color(\.info, system: .systemPurple)
+        case .webSearch, .webFetch: return ThemePalette.color(\.info, system: .systemIndigo)
+        case .fileRead, .fileSearch: return ThemePalette.color(\.info, system: .systemTeal)
+        case .subagent, .workflow: return ThemePalette.color(\.info, system: .systemPink)
         case .taskTracking, .skill: return Theme.Color.accent
-        case .question: return .systemYellow
+        case .question: return ThemePalette.color(\.warn, system: .systemYellow)
         case .other: return Theme.Color.secondaryLabel
         }
     }

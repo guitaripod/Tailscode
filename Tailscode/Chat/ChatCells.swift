@@ -247,10 +247,10 @@ final class TextBubbleCell: UICollectionViewCell {
             ]
         } else if isUser {
             bubble.backgroundColor = Theme.Color.userBubble
-            textView.textColor = .white
+            textView.textColor = Theme.Color.onAccent
             textView.font = Theme.Font.body()
             textView.text = text
-            textView.linkTextAttributes = [.foregroundColor: UIColor.white]
+            textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
             bubble.backgroundColor = Theme.Color.assistantBubble
             textView.textColor = Theme.Color.label
@@ -546,7 +546,7 @@ final class PermissionCell: UICollectionViewCell {
         var config = filled ? UIButton.Configuration.filled() : UIButton.Configuration.tinted()
         config.title = title
         config.baseBackgroundColor = tint
-        config.baseForegroundColor = filled ? .white : tint
+        config.baseForegroundColor = filled ? Theme.Color.onAccent : tint
         config.cornerStyle = .large
         config.buttonSize = .medium
         button.configuration = config
@@ -846,7 +846,7 @@ final class CodeBlockCell: UICollectionViewCell {
 /// Folds a run of consecutive agent actions (thinking + tool calls) into one compact,
 /// collapsible cell so the transcript stays clean; expand to see each step.
 /// Collapsed, the run reads as a slim glass strip — status glyph, what the tools were,
-/// a spinner while the work is live — and only grows into the roomy card when opened.
+/// the turning ring while the work is live — and only grows into the roomy card when opened.
 final class ActivityGroupCell: UICollectionViewCell {
     static let reuseID = "ActivityGroupCell"
 
@@ -856,7 +856,7 @@ final class ActivityGroupCell: UICollectionViewCell {
     private let iconView = UIImageView()
     private let summaryLabel = UILabel()
     private let chevron = UIImageView()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let liveMark = ActivityBadgeView(pointSize: 11)
     private let stack = UIStackView()
     private let toggle = UIButton(type: .system)
     private let renderer = ToolStepRenderer()
@@ -906,8 +906,7 @@ final class ActivityGroupCell: UICollectionViewCell {
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
-        spinner.hidesWhenStopped = true
-        spinner.translatesAutoresizingMaskIntoConstraints = false
+        liveMark.translatesAutoresizingMaskIntoConstraints = false
 
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
@@ -918,7 +917,7 @@ final class ActivityGroupCell: UICollectionViewCell {
         toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [tile, summaryLabel, spinner, chevron, stack, toggle].forEach(container.addSubview)
+        [tile, summaryLabel, liveMark, chevron, stack, toggle].forEach(container.addSubview)
         tile.addSubview(iconView)
 
         tileTopInset = tile.topAnchor.constraint(equalTo: container.topAnchor, constant: 7)
@@ -950,10 +949,10 @@ final class ActivityGroupCell: UICollectionViewCell {
 
             summaryLabel.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: Theme.Spacing.s),
             summaryLabel.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            spinner.leadingAnchor.constraint(
+            liveMark.leadingAnchor.constraint(
                 greaterThanOrEqualTo: summaryLabel.trailingAnchor, constant: Theme.Spacing.s),
-            spinner.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            chevron.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: Theme.Spacing.s),
+            liveMark.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            chevron.leadingAnchor.constraint(equalTo: liveMark.trailingAnchor, constant: Theme.Spacing.s),
             chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
             chevron.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             chevron.widthAnchor.constraint(equalToConstant: 12),
@@ -1004,7 +1003,8 @@ final class ActivityGroupCell: UICollectionViewCell {
             ? String(localized: "Double tap to hide agent steps")
             : String(localized: "Double tap to show agent steps")
         chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
-        if streaming { spinner.startAnimating() } else { spinner.stopAnimating() }
+        liveMark.show(
+            streaming ? .openWork : nil, spoken: String(localized: "Still working"))
 
         let isCompact = compact && !expanded
         tileTopInset.constant = isCompact ? 7 : 10

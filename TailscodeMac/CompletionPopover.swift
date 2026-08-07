@@ -96,7 +96,7 @@ final class CompletionPopover: NSView {
             let hidden = namingMatches.count - (end - start)
             let more = RowKit.label(
                 "… \(hidden) more", font: MacTheme.Font.caption(),
-                color: MacTheme.Color.tertiaryLabel)
+                color: MacTheme.Color.onGlassSecondary)
             column.addArrangedSubview(RowKit.inset(more, leading: MacTheme.Spacing.s))
         }
         isHidden = false
@@ -105,7 +105,7 @@ final class CompletionPopover: NSView {
     private func paintArguments(_ command: AgentCommand, typed: String) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let title = RowKit.label(
-            "/\(command.name)", font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+            "/\(command.name)", font: MacTheme.Font.emphasis(), color: MacTheme.Color.onGlass)
         let lines = NSStackView(views: [title])
         lines.orientation = .vertical
         lines.alignment = .leading
@@ -119,13 +119,13 @@ final class CompletionPopover: NSView {
             lines.addArrangedSubview(
                 RowKit.label(
                     command.details, font: MacTheme.Font.caption(),
-                    color: MacTheme.Color.secondaryLabel))
+                    color: MacTheme.Color.onGlassSecondary))
         }
         if !typed.isEmpty {
             lines.addArrangedSubview(
                 RowKit.label(
                     Localized.text("Writing: %@", typed), font: MacTheme.Font.caption(),
-                    color: MacTheme.Color.tertiaryLabel))
+                    color: MacTheme.Color.onGlassSecondary))
         }
         lines.edgeInsets = NSEdgeInsets(
             top: 4, left: MacTheme.Spacing.s, bottom: 4, right: MacTheme.Spacing.s)
@@ -137,7 +137,7 @@ final class CompletionPopover: NSView {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let message = RowKit.label(
             Localized.text("No command named “%@”", query),
-            font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel)
+            font: MacTheme.Font.body(), color: MacTheme.Color.onGlassSecondary)
         message.lineBreakMode = .byWordWrapping
         message.maximumNumberOfLines = 3
         message.preferredMaxLayoutWidth = 360
@@ -167,24 +167,24 @@ final class CompletionPopover: NSView {
         _ command: AgentCommand, selected: Bool, pick: AgentCommand
     ) -> NSView {
         let name = RowKit.label(
-            "/\(command.name)", font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+            "/\(command.name)", font: MacTheme.Font.emphasis(), color: MacTheme.Color.onGlass)
         let lines = NSStackView(views: [name])
         lines.orientation = .vertical
         lines.alignment = .leading
         lines.spacing = 1
         if let hint = command.argumentHint, !hint.isEmpty {
             lines.addArrangedSubview(
-                RowKit.label(hint, font: MacTheme.Font.mono(10), color: MacTheme.Color.tertiaryLabel))
+                RowKit.label(hint, font: MacTheme.Font.mono(10), color: MacTheme.Color.onGlassSecondary))
         }
         if !command.details.isEmpty {
             let detail = RowKit.label(
                 command.details, font: MacTheme.Font.caption(),
-                color: MacTheme.Color.secondaryLabel)
+                color: MacTheme.Color.onGlassSecondary)
             lines.addArrangedSubview(detail)
         }
         if let scope = command.scope, !scope.isEmpty {
             lines.addArrangedSubview(
-                RowKit.label(scope, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                RowKit.label(scope, font: MacTheme.Font.caption(), color: MacTheme.Color.onGlassSecondary))
         }
         lines.edgeInsets = NSEdgeInsets(
             top: 3, left: MacTheme.Spacing.s, bottom: 3, right: MacTheme.Spacing.s)

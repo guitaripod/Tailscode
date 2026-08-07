@@ -15,8 +15,8 @@ final class PaneDropHighlightView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
-        layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.7).cgColor
+        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.22).cgColor
+        layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.7).cgColor
         layer?.borderWidth = 1.5
         layer?.cornerRadius = 8
         isHidden = true

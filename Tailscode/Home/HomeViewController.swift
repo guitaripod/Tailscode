@@ -16,6 +16,8 @@ final class HomeViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
+    private let orbView = PresenceOrbView()
+    private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
     private var savedChats: [SavedChat] = SavedChatStore.all()
     private var opencodeQuota: UsageQuota?
@@ -26,6 +28,8 @@ final class HomeViewController: UIViewController {
     private var modelChoices: [String: ModelChoice] = [:]
     private var resolvingModels: Set<String> = []
     private var appliedComposerState: String?
+    private var composerDraftScope: DraftScope?
+    private var resolvedComposeTarget: (profileID: String, directory: String?)?
 
     init() {
         let sources = ConnectionController.shared.allBackends().map {
@@ -226,6 +230,9 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(savedDidChange),
             name: SavedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(activityDidChange),
+            name: ActivityInbox.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(archiveDidChange),
             name: ArchivedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
@@ -237,6 +244,13 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),
             name: ConnectionController.didChange, object: nil)
+        for name: Notification.Name in [
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification,
+        ] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(flushDraft), name: name, object: nil)
+        }
     }
 
     @objc private func activityDidChange() { applySnapshot() }
@@ -248,6 +262,7 @@ final class HomeViewController: UIViewController {
     /// and any in-flight chat intact through something as small as a rename.
     @objc private func connectionsDidChange() {
         viewModel.refreshSources()
+        resolvedComposeTarget = nil
         updateDemoBadge()
         updateComposeButton()
         updateComposer()
@@ -260,7 +275,12 @@ final class HomeViewController: UIViewController {
         startLiveRefresh()
     }
 
-    @objc private func sceneWillResign() { stopLiveRefresh() }
+    @objc private func sceneWillResign() {
+        stopLiveRefresh()
+        DraftStore.flush()
+    }
+
+    @objc private func flushDraft() { DraftStore.flush() }
 
     @objc private func openSettings() {
         view.endEditing(true)
@@ -565,6 +585,11 @@ final class HomeViewController: UIViewController {
                     toSection: .alerts)
             }
         }
+        let missed = ActivityInbox.ordered(limit: 4).shown
+        if !missed.isEmpty {
+            snapshot.appendSections([.missed])
+            snapshot.appendItems(missed.map(HomeItem.missed), toSection: .missed)
+        }
         let live = viewModel.entries.filter(isLive)
             .sorted { lhs, rhs in
                 let lhsBlocked = presence(for: lhs) == .needsInput
@@ -629,7 +654,21 @@ final class HomeViewController: UIViewController {
         if !carried.isEmpty { snapshot.reconfigureItems(carried) }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
         updateEmptyState(itemCount: snapshot.numberOfItems)
+        applyOrbState()
         consumePendingDeepLink()
+    }
+
+    /// A missed notice is a place to go back to. The chat may have been deleted or its server
+    /// removed since, in which case the notice is stale and goes rather than sitting there
+    /// failing to open.
+    private func openMissed(_ item: MissedActivity) {
+        guard let entry = viewModel.entries.first(where: { $0.session.id == item.sessionID })
+        else {
+            ActivityInbox.clear(sessionID: item.sessionID)
+            applySnapshot()
+            return
+        }
+        openChat(for: entry)
     }
 
     /// Home lists a saved chat only while it is something you can actually open.
@@ -887,6 +926,7 @@ final class HomeViewController: UIViewController {
             case .live: return Self.liveSection()
             case .projects: return Self.projectsSection()
             case .alerts: return Self.listSection(withHeader: false)
+            case .missed: return Self.listSection()
             case .saved, .recent, .usage: return Self.listSection()
             }
         }
@@ -925,6 +965,53 @@ final class HomeViewController: UIViewController {
             composerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             composerBar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
+        configureOrb()
+    }
+
+    private func configureOrb() {
+        orbView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(orbView)
+        NSLayoutConstraint.activate([
+            orbView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            orbView.bottomAnchor.constraint(equalTo: composerBar.topAnchor, constant: -10),
+            orbView.widthAnchor.constraint(equalToConstant: 76),
+            orbView.heightAnchor.constraint(equalToConstant: 76),
+        ])
+        orbView.setEnabled(PresenceOrbSetting.isEnabled)
+        orbView.onTap = { [weak self] in
+            guard let self, let entry = self.orbTarget else { return }
+            self.openChat(for: entry)
+        }
+        composerBar.onAuraChanged = { [weak self] in self?.applyOrbState() }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(orbSettingChanged),
+            name: PresenceOrbSetting.didChange, object: nil)
+    }
+
+    @objc private func orbSettingChanged() {
+        orbView.setEnabled(PresenceOrbSetting.isEnabled)
+        applyOrbState()
+    }
+
+    /// The orb reads the same board the list draws: what this device is streaming first-hand
+    /// wins, the listing's own working flag counts, and every unreachable server rests one quiet
+    /// weight on the body. The conversation a tap opens is the one that most needs the person.
+    private func applyOrbState() {
+        guard PresenceOrbSetting.isEnabled else { return }
+        var kinds: [ActivityKind?] = viewModel.entries.map { entry in
+            switch SessionActivity.shared.status(for: entry.session.id) {
+            case .awaitingApproval: return .needsApproval
+            case .running: return .working
+            case .idle: return isLive(entry) ? .working : nil
+            }
+        }
+        kinds += viewModel.unreachable.map { _ in ActivityKind.offline }
+        orbTarget =
+            viewModel.entries.first {
+                SessionActivity.shared.status(for: $0.session.id) == .awaitingApproval
+            } ?? viewModel.entries.first { isLive($0) }
+        orbView.update(
+            signal: PresenceSignal.aggregate(kinds, ultracode: composerBar.auraIsActive))
     }
 
     private static func liveSection() -> NSCollectionLayoutSection {
@@ -984,6 +1071,9 @@ final class HomeViewController: UIViewController {
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             cell, _, card in cell.configure(card)
         }
+        let missedCell = UICollectionView.CellRegistration<MissedActivityCell, MissedActivity> {
+            cell, _, item in cell.configure(item)
+        }
         let liveCell = UICollectionView.CellRegistration<LiveSessionCell, LiveCard> {
             cell, _, card in cell.configure(card)
         }
@@ -1012,6 +1102,9 @@ final class HomeViewController: UIViewController {
             case .alert(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: alertCell, for: indexPath, item: card)
+            case .missed(let item):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: missedCell, for: indexPath, item: item)
             case .live(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: liveCell, for: indexPath, item: card)
@@ -1045,6 +1138,15 @@ final class HomeViewController: UIViewController {
             switch section {
             case .alerts:
                 break
+            case .missed:
+                view.configure(
+                    title: String(localized: "Missed"),
+                    actionTitle: String(localized: "Clear")
+                ) {
+                    Theme.Haptics.tap()
+                    ActivityInbox.clearAll()
+                    self.applySnapshot()
+                }
             case .live:
                 view.configure(title: String(localized: "Live now"))
             case .projects:
@@ -1082,12 +1184,54 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {}
 
+    func homeComposerTextDidChange(_ text: String) {
+        guard let scope = composerDraftScope else { return }
+        DraftStore.record(text, for: scope)
+    }
+
+    /// Home's composer has no session to belong to, so what is written in it belongs to where it
+    /// is aimed: re-aiming the chip stashes the text under the destination it was written for and
+    /// hands back whatever was left unsent for the new one, the way switching chats does in a pane.
+    private func syncComposerDraft(to scope: DraftScope) {
+        guard composerDraftScope != scope else { return }
+        let carried = composerBar.rawText
+        guard let previous = composerDraftScope else {
+            composerDraftScope = scope
+            if composerBar.currentText.isEmpty {
+                composerBar.setText(DraftStore.text(for: scope))
+            } else {
+                DraftStore.record(carried, for: scope)
+            }
+            return
+        }
+        DraftStore.record(carried, for: previous)
+        composerDraftScope = scope
+        composerBar.setText(DraftStore.text(for: scope))
+    }
+
+    /// Where the next message goes. A target the user chose is stored and authoritative; everything
+    /// else is a guess drawn from the chat list, which re-sorts by itself every time another device
+    /// finishes a turn or a poll lands. Re-deriving the guess on each of those would move the
+    /// destination — and with it the scope the composer's draft is filed under — with nobody
+    /// touching the phone, so the guess is made once and kept until a real retarget or a change to
+    /// the servers themselves.
     private var composeTarget: (profileID: String, directory: String?)? {
         if let stored = AppPreferences.lastComposeTarget,
             viewModel.servers.contains(where: { $0.id == stored.profileID })
         {
             return stored
         }
+        if let memo = resolvedComposeTarget,
+            viewModel.servers.contains(where: { $0.id == memo.profileID })
+        {
+            return memo
+        }
+        let resolved = resolveComposeTarget()
+        resolvedComposeTarget = resolved
+        return resolved
+    }
+
+    private func resolveComposeTarget() -> (profileID: String, directory: String?)? {
         if let recent = viewModel.entries.first(where: { $0.session.directory != nil }) {
             return (recent.profileID, recent.session.directory)
         }
@@ -1105,6 +1249,8 @@ extension HomeViewController: HomeComposerBarDelegate {
         guard let target = composeTarget,
             let profile = viewModel.servers.first(where: { $0.id == target.profileID })
         else { return }
+        syncComposerDraft(
+            to: .home(profileID: target.profileID, directory: target.directory))
         let project = target.directory.map { ($0 as NSString).lastPathComponent }
         let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
         let modelLabel = modelChipLabel(for: profile)
@@ -1305,6 +1451,7 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     private func setComposeTarget(profile: ConnectionProfile, directory: String?) {
         AppPreferences.lastComposeTarget = (profile.id, directory)
+        resolvedComposeTarget = nil
         if let directory { FileBrowserRecents.record(directory, for: profile.id) }
         Theme.Haptics.selection()
         updateComposer()
@@ -1363,6 +1510,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             AppPreferences.lastComposeTarget = target
             composerBar.setSending(false)
             composerBar.clearText()
+            DraftStore.clear(.home(profileID: target.profileID, directory: target.directory))
             view.endEditing(true)
             Theme.Haptics.success()
             openChat(for: entry, seeding: modelChoices[profile.id])?.send(text)
@@ -1377,6 +1525,8 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
+        case .missed(let item):
+            openMissed(item)
         case .live(let card):
             openChat(for: card.entry)
         case .project(let card):
@@ -1433,7 +1583,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .alert, .usage, .placeholder, .usagePlaceholder:
+        case .alert, .missed, .usage, .placeholder, .usagePlaceholder:
             return nil
         }
     }

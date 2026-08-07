@@ -52,14 +52,16 @@ enum PendingCards {
     /// collected answers go out through the caller, which routes them by message or by API as the
     /// backend demands.
     static func question(
-        _ request: QuestionRequest,
+        _ request: QuestionRequest, in entry: SessionEntry?,
         submit: @escaping @Sendable ([[String]]) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-question")
 
-        let collector = AnswerCollector(request: request, submit: submit)
+        let collector = AnswerCollector(
+            request: request, profileID: entry?.profileID ?? "",
+            sessionID: entry?.session.id ?? request.sessionID, submit: submit)
 
         for (index, item) in request.questions.enumerated() {
             let section = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
@@ -91,7 +93,15 @@ enum PendingCards {
                 gtk_entry_set_placeholder_text(
                     ptr(entry), Localized.text("Your own answer…"))
                 Gtk.addClass(entry, "mono")
+                let scope = collector.draftScope(question: index)
+                gtk_editable_set_text(op(entry), DraftStore.text(for: scope))
                 let entryBits = UInt(bitPattern: entry)
+                Gtk.connect(UnsafeMutableRawPointer(entry), "changed") {
+                    guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
+                        let text = gtk_editable_get_text(op(raw))
+                    else { return }
+                    DraftStore.record(String(cString: text), for: scope)
+                }
                 Gtk.connect(UnsafeMutableRawPointer(entry), "activate") {
                     guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
                         let text = gtk_editable_get_text(op(raw))
@@ -126,14 +136,29 @@ enum PendingCards {
     /// them. Lives as long as its card does; the card is rebuilt when the ask resolves.
     private final class AnswerCollector: @unchecked Sendable {
         private let request: QuestionRequest
+        private let profileID: String
+        private let sessionID: String
         private let submit: @Sendable ([[String]]) -> Void
         private var chosen: [Int: [String]] = [:]
         private var custom: [Int: String] = [:]
         private var options: [String: UInt] = [:]
 
-        init(request: QuestionRequest, submit: @escaping @Sendable ([[String]]) -> Void) {
+        init(
+            request: QuestionRequest, profileID: String, sessionID: String,
+            submit: @escaping @Sendable ([[String]]) -> Void
+        ) {
             self.request = request
+            self.profileID = profileID
+            self.sessionID = sessionID
             self.submit = submit
+        }
+
+        /// A question outlives a restart because it is derived from the transcript, so a free-typed
+        /// answer half-written for it does too — keyed by the ask and which of its questions.
+        func draftScope(question: Int) -> DraftScope {
+            .answer(
+                profileID: profileID, sessionID: sessionID,
+                questionID: "\(request.id)#\(question)")
         }
 
         func register(question: Int, option: String, widget: UnsafeMutablePointer<GtkWidget>) {
@@ -141,6 +166,7 @@ enum PendingCards {
         }
 
         func submitSingle(_ answer: String) {
+            forgetDrafts()
             submit([[answer]])
         }
 
@@ -165,6 +191,7 @@ enum PendingCards {
         }
 
         func submitAll() {
+            forgetDrafts()
             var answers: [[String]] = []
             for index in request.questions.indices {
                 var selected = chosen[index] ?? []
@@ -173,6 +200,12 @@ enum PendingCards {
                 answers.append(selected)
             }
             submit(answers)
+        }
+
+        private func forgetDrafts() {
+            for index in request.questions.indices {
+                DraftStore.clear(draftScope(question: index))
+            }
         }
 
         private func restyle(_ question: Int) {

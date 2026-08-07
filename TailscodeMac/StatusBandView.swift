@@ -19,6 +19,9 @@ final class StatusBandView: NSView {
     private var facts = StatusFacts()
     private var widgets: [String: NSView] = [:]
     private var kinds: [String: String] = [:]
+    /// One hand per fact that is about something happening. Kept beside the widgets so a segment
+    /// that leaves the band takes its clock with it.
+    private var pulses: [String: ActivityPulse] = [:]
 
     init() {
         super.init(frame: .zero)
@@ -58,6 +61,8 @@ final class StatusBandView: NSView {
             view.removeFromSuperview()
             widgets[id] = nil
             kinds[id] = nil
+            pulses[id]?.stop()
+            pulses[id] = nil
         }
 
         var index = 0
@@ -69,10 +74,18 @@ final class StatusBandView: NSView {
                 continue
             }
             if let stale = widgets[segment.id] { stale.removeFromSuperview() }
+            pulses[segment.id]?.stop()
             let view = make(segment)
             stack.insertArrangedSubview(view, at: index)
             widgets[segment.id] = view
             kinds[segment.id] = tag
+            pulses[segment.id] = ActivityPulse(view: view) { [weak self, weak view] frame in
+                guard let self, let view,
+                    let text = self.facts.segments.first(where: { $0.id == segment.id })?.text
+                else { return }
+                self.write(frame + text.dropFirst(), to: view, css: segment.css)
+            }
+            animate(segment)
             index += 1
         }
 
@@ -108,12 +121,24 @@ final class StatusBandView: NSView {
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
+        write(segment.text, to: view, css: segment.css)
+        animate(segment)
+    }
+
+    private func write(_ text: String, to view: NSView, css: String) {
         if let label = view as? NSTextField {
-            label.stringValue = segment.text
-            label.textColor = Self.color(for: segment.css)
+            label.stringValue = text
+            label.textColor = Self.color(for: css)
         } else if let button = view as? BandButton {
-            button.attributedTitle = Self.title(segment.text, css: segment.css)
+            button.attributedTitle = Self.title(text, css: css)
         }
+    }
+
+    /// A fact about something happening moves the way that thing moves; a fact that is a number
+    /// holds still. The band's words tick once a second underneath, so the light is the only thing
+    /// that is continuous.
+    private func animate(_ segment: StatusFacts.Segment) {
+        pulses[segment.id]?.apply(segment.icon)
     }
 
     private func make(_ segment: StatusFacts.Segment) -> NSView {

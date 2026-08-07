@@ -677,6 +677,146 @@ void tailscode_remove_tick(GtkWidget *widget, guint id) {
     gtk_widget_remove_tick_callback(widget, id);
 }
 
+#define TAILSCODE_AURA_STOPS 16
+#define TAILSCODE_AURA_SEGMENTS 128
+
+typedef struct {
+    double phase;
+    double glow;
+    double stops[TAILSCODE_AURA_STOPS * 3];
+    int stop_count;
+} TailscodeAura;
+
+/// Where a point sits on the rectangle's edge, `u` being how far around the perimeter it is.
+static void tailscode_aura_point(
+    double x, double y, double w, double h, double u, double *out_x, double *out_y) {
+    double perimeter = 2 * (w + h);
+    double distance = (u - floor(u)) * perimeter;
+    if (distance < w) {
+        *out_x = x + distance;
+        *out_y = y;
+        return;
+    }
+    distance -= w;
+    if (distance < h) {
+        *out_x = x + w;
+        *out_y = y + distance;
+        return;
+    }
+    distance -= h;
+    if (distance < w) {
+        *out_x = x + w - distance;
+        *out_y = y + h;
+        return;
+    }
+    distance -= w;
+    *out_x = x;
+    *out_y = y + h - distance;
+}
+
+/// The rainbow sampled at `t`, wrapping — the same walk over the same stops the shared
+/// `StreamCascade.rainbow` does, so the edge of the prompt box and the writing in the transcript
+/// are lit by one rainbow rather than two that merely resemble each other.
+static void tailscode_aura_colour(
+    const TailscodeAura *aura, double t, double *red, double *green, double *blue) {
+    if (aura->stop_count < 2) {
+        *red = *green = *blue = 1;
+        return;
+    }
+    t = t - floor(t);
+    double position = t * (double)(aura->stop_count - 1);
+    int index = (int)position;
+    if (index > aura->stop_count - 2) index = aura->stop_count - 2;
+    double mix = position - (double)index;
+    const double *from = &aura->stops[index * 3];
+    const double *to = &aura->stops[(index + 1) * 3];
+    *red = from[0] + (to[0] - from[0]) * mix;
+    *green = from[1] + (to[1] - from[1]) * mix;
+    *blue = from[2] + (to[2] - from[2]) * mix;
+}
+
+/// One lap of the rainbow around the rectangle `inset` in from the allocation, stroked `width`
+/// wide at `alpha`. The perimeter is walked in short segments because cairo cannot run a gradient
+/// along a path; corners are inserted into whichever segment straddles them, so the colour turns
+/// the corner instead of cutting it.
+static void tailscode_aura_lap(
+    cairo_t *cr, const TailscodeAura *aura, int allocation_width, int allocation_height,
+    double inset, double width, double alpha) {
+    double x = inset, y = inset;
+    double w = (double)allocation_width - inset * 2, h = (double)allocation_height - inset * 2;
+    if (w <= 1 || h <= 1 || alpha <= 0) return;
+    double perimeter = 2 * (w + h);
+    double corners[3] = {w / perimeter, (w + h) / perimeter, (2 * w + h) / perimeter};
+    cairo_set_line_width(cr, width);
+    for (int segment = 0; segment < TAILSCODE_AURA_SEGMENTS; segment++) {
+        double from = (double)segment / TAILSCODE_AURA_SEGMENTS;
+        double to = (double)(segment + 1) / TAILSCODE_AURA_SEGMENTS;
+        double red, green, blue, px, py;
+        tailscode_aura_colour(aura, from + aura->phase, &red, &green, &blue);
+        cairo_set_source_rgba(cr, red, green, blue, alpha);
+        tailscode_aura_point(x, y, w, h, from, &px, &py);
+        cairo_move_to(cr, px, py);
+        for (int corner = 0; corner < 3; corner++) {
+            if (corners[corner] <= from || corners[corner] >= to) continue;
+            tailscode_aura_point(x, y, w, h, corners[corner], &px, &py);
+            cairo_line_to(cr, px, py);
+        }
+        tailscode_aura_point(x, y, w, h, to >= 1 ? 0.9999999 : to, &px, &py);
+        cairo_line_to(cr, px, py);
+        cairo_stroke(cr);
+    }
+}
+
+/// The glow falls inside the line rather than around it: the area is laid over the prompt box and
+/// gets exactly its allocation, so a halo centred on the edge would lose its outer half and the
+/// breath would stop being visible at all. It has to stay shallow for the same reason — a prompt
+/// box is one line tall to begin with, and a bloom deep enough to look generous on a wide window
+/// meets itself in the middle and floods the box with colour instead of lighting its edge.
+static void tailscode_aura_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    (void)area;
+    TailscodeAura *aura = raw;
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    tailscode_aura_lap(cr, aura, width, height, 4.0, 8.0, 0.10 * aura->glow);
+    tailscode_aura_lap(cr, aura, width, height, 1.75, 3.5, 0.20 * aura->glow);
+    tailscode_aura_lap(cr, aura, width, height, 1.0, 2.0, aura->glow);
+}
+
+/// The ultracode aura, drawn rather than themed.
+///
+/// A CSS gradient cannot travel around a box — its angle sweeps across the whole rectangle, so
+/// the colour crosses the corners instead of running along the edge — and reloading a provider
+/// every frame restyles the entire display to repaint one border. So the aura is its own drawing
+/// area laid over the prompt box: the perimeter is walked in short segments, each stroked in the
+/// rainbow colour at its own place in the sweep, under a wider soft pass that carries the glow.
+/// It never takes input, so the prompt box underneath behaves exactly as it did without it.
+GtkWidget *tailscode_aura_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeAura *aura = g_new0(TailscodeAura, 1);
+    aura->glow = 1.0;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-aura", aura, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_aura_draw, aura, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+void tailscode_aura_set(
+    GtkWidget *area, double phase, double glow, const double *rgb, int stop_count) {
+    if (!area) return;
+    TailscodeAura *aura = g_object_get_data(G_OBJECT(area), "tailscode-aura");
+    if (!aura) return;
+    aura->phase = phase;
+    aura->glow = glow;
+    if (rgb && stop_count > 1) {
+        int count = stop_count > TAILSCODE_AURA_STOPS ? TAILSCODE_AURA_STOPS : stop_count;
+        for (int index = 0; index < count * 3; index++) aura->stops[index] = rgb[index];
+        aura->stop_count = count;
+    }
+    gtk_widget_queue_draw(area);
+}
+
 /// Prose wraps at the pane's width, and a label that stops wrapping runs off the edge of the
 /// window. Setting a label's text is not supposed to disturb that, but the reveal sets it a
 /// hundred times a second and one silent reset is a paragraph nobody can read — so the properties
@@ -778,9 +918,244 @@ int tailscode_label_reveal(
     return total;
 }
 
+#include <epoxy/gl.h>
+
+#define TAILSCODE_ORB_BLOBS 8
+#define TAILSCODE_ORB_STOPS 8
+
+typedef struct {
+    gboolean ready;
+    gboolean failed;
+    GLuint program;
+    GLuint vao;
+    GLint u_size, u_blobs, u_blob_count, u_color, u_energy, u_intensity;
+    GLint u_rainbow, u_rainbow_phase, u_rainbow_glow, u_stops, u_stop_count, u_background;
+    float blobs[TAILSCODE_ORB_BLOBS * 4];
+    int blob_count;
+    float color[3];
+    float background[3];
+    float energy, intensity, rainbow, rainbow_phase, rainbow_glow;
+    float stops[TAILSCODE_ORB_STOPS * 3];
+    int stop_count;
+} TailscodeOrb;
+
+/* One fullscreen triangle; the whole picture is the fragment shader. */
+static const char *tailscode_orb_vertex_body =
+    "void main() {\n"
+    "    vec2 corner = vec2(float((gl_VertexID & 1) << 2) - 1.0,\n"
+    "                       float((gl_VertexID & 2) << 1) - 1.0);\n"
+    "    gl_Position = vec4(corner, 0.0, 1.0);\n"
+    "}\n";
+
+/* The field is a smooth-min union of the circles Core handed over — the shader rasterises the
+   frame and adds nothing: no motion, no colour choice, no state lives here. */
+static const char *tailscode_orb_fragment_body =
+    "uniform vec2 u_size;\n"
+    "uniform vec4 u_blobs[8];\n"
+    "uniform int u_blob_count;\n"
+    "uniform vec3 u_color;\n"
+    "uniform float u_energy;\n"
+    "uniform float u_intensity;\n"
+    "uniform float u_rainbow;\n"
+    "uniform float u_rainbow_phase;\n"
+    "uniform float u_rainbow_glow;\n"
+    "uniform vec3 u_stops[8];\n"
+    "uniform int u_stop_count;\n"
+    "uniform vec3 u_background;\n"
+    "float orb_smin(float a, float b, float k) {\n"
+    "    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);\n"
+    "    return mix(b, a, h) - k * h * (1.0 - h);\n"
+    "}\n"
+    "vec3 orb_rainbow(float t) {\n"
+    "    float span = t * float(u_stop_count - 1);\n"
+    "    int low = int(floor(span));\n"
+    "    int high = low + 1 < u_stop_count ? low + 1 : u_stop_count - 1;\n"
+    "    return mix(u_stops[low], u_stops[high], fract(span));\n"
+    "}\n"
+    "void main() {\n"
+    "    vec2 p = (2.0 * gl_FragCoord.xy - u_size) / min(u_size.x, u_size.y);\n"
+    "    float d = 1000.0;\n"
+    "    for (int i = 0; i < 8; i++) {\n"
+    "        if (i >= u_blob_count) break;\n"
+    "        float part = length(p - u_blobs[i].xy) - u_blobs[i].z;\n"
+    "        d = orb_smin(d, part, 0.19);\n"
+    "    }\n"
+    "    float body = 1.0 - smoothstep(-0.008, 0.012, d);\n"
+    "    float depth = smoothstep(0.0, -0.34, d);\n"
+    "    vec3 ink = u_color * mix(1.08, 0.72, depth) * (0.6 + 0.4 * u_intensity);\n"
+    "    float halo = exp(max(d, 0.0) * -5.5) * (1.0 - body);\n"
+    "    vec3 shade = u_background + u_color * halo * 0.36 * u_energy * u_intensity;\n"
+    "    shade = mix(shade, ink, body);\n"
+    "    if (u_rainbow > 0.001) {\n"
+    "        float angle = fract(atan(p.y, p.x) / 6.28318530718 + 0.5 + u_rainbow_phase);\n"
+    "        float rim = 1.0 - smoothstep(0.0, 0.05, abs(d + 0.01));\n"
+    "        shade += orb_rainbow(angle) * rim * u_rainbow * u_rainbow_glow * 0.9;\n"
+    "    }\n"
+    "    orb_output = vec4(shade, 1.0);\n"
+    "}\n";
+
+static GLuint tailscode_orb_compile(GLenum kind, const char *prefix, const char *body) {
+    GLuint shader = glCreateShader(kind);
+    const char *sources[2] = {prefix, body};
+    glShaderSource(shader, 2, sources, NULL);
+    glCompileShader(shader);
+    GLint ok = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[1024] = {0};
+        glGetShaderInfoLog(shader, sizeof(log) - 1, NULL, log);
+        g_warning("tailscode orb shader: %s", log);
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+static void tailscode_orb_realize(GtkWidget *widget, gpointer raw) {
+    TailscodeOrb *orb = raw;
+    gtk_gl_area_make_current(GTK_GL_AREA(widget));
+    if (gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
+        orb->failed = TRUE;
+        return;
+    }
+    gboolean desktop = epoxy_is_desktop_gl();
+    const char *vertex_prefix =
+        desktop ? "#version 150\n" : "#version 300 es\nprecision highp float;\n";
+    const char *fragment_prefix = desktop
+        ? "#version 150\nout vec4 orb_output;\n"
+        : "#version 300 es\nprecision highp float;\nout vec4 orb_output;\n";
+    GLuint vertex = tailscode_orb_compile(GL_VERTEX_SHADER, vertex_prefix,
+        tailscode_orb_vertex_body);
+    GLuint fragment = tailscode_orb_compile(GL_FRAGMENT_SHADER, fragment_prefix,
+        tailscode_orb_fragment_body);
+    if (!vertex || !fragment) {
+        if (vertex) glDeleteShader(vertex);
+        if (fragment) glDeleteShader(fragment);
+        orb->failed = TRUE;
+        return;
+    }
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertex);
+    glAttachShader(program, fragment);
+    glLinkProgram(program);
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        char log[1024] = {0};
+        glGetProgramInfoLog(program, sizeof(log) - 1, NULL, log);
+        g_warning("tailscode orb link: %s", log);
+        glDeleteProgram(program);
+        orb->failed = TRUE;
+        return;
+    }
+    orb->program = program;
+    glGenVertexArrays(1, &orb->vao);
+    orb->u_size = glGetUniformLocation(program, "u_size");
+    orb->u_blobs = glGetUniformLocation(program, "u_blobs");
+    orb->u_blob_count = glGetUniformLocation(program, "u_blob_count");
+    orb->u_color = glGetUniformLocation(program, "u_color");
+    orb->u_energy = glGetUniformLocation(program, "u_energy");
+    orb->u_intensity = glGetUniformLocation(program, "u_intensity");
+    orb->u_rainbow = glGetUniformLocation(program, "u_rainbow");
+    orb->u_rainbow_phase = glGetUniformLocation(program, "u_rainbow_phase");
+    orb->u_rainbow_glow = glGetUniformLocation(program, "u_rainbow_glow");
+    orb->u_stops = glGetUniformLocation(program, "u_stops");
+    orb->u_stop_count = glGetUniformLocation(program, "u_stop_count");
+    orb->u_background = glGetUniformLocation(program, "u_background");
+    orb->ready = TRUE;
+    orb->failed = FALSE;
+}
+
+static void tailscode_orb_unrealize(GtkWidget *widget, gpointer raw) {
+    TailscodeOrb *orb = raw;
+    if (!orb->ready) return;
+    gtk_gl_area_make_current(GTK_GL_AREA(widget));
+    if (!gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
+        glDeleteProgram(orb->program);
+        glDeleteVertexArrays(1, &orb->vao);
+    }
+    orb->program = 0;
+    orb->vao = 0;
+    orb->ready = FALSE;
+}
+
+static gboolean tailscode_orb_render(GtkGLArea *area, GdkGLContext *context, gpointer raw) {
+    (void)context;
+    TailscodeOrb *orb = raw;
+    glClearColor(orb->background[0], orb->background[1], orb->background[2], 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (!orb->ready) return TRUE;
+    int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+    float width = (float)(gtk_widget_get_width(GTK_WIDGET(area)) * scale);
+    float height = (float)(gtk_widget_get_height(GTK_WIDGET(area)) * scale);
+    glUseProgram(orb->program);
+    glBindVertexArray(orb->vao);
+    glUniform2f(orb->u_size, width, height);
+    glUniform4fv(orb->u_blobs, TAILSCODE_ORB_BLOBS, orb->blobs);
+    glUniform1i(orb->u_blob_count, orb->blob_count);
+    glUniform3fv(orb->u_color, 1, orb->color);
+    glUniform1f(orb->u_energy, orb->energy);
+    glUniform1f(orb->u_intensity, orb->intensity);
+    glUniform1f(orb->u_rainbow, orb->rainbow);
+    glUniform1f(orb->u_rainbow_phase, orb->rainbow_phase);
+    glUniform1f(orb->u_rainbow_glow, orb->rainbow_glow);
+    glUniform3fv(orb->u_stops, TAILSCODE_ORB_STOPS, orb->stops);
+    glUniform1i(orb->u_stop_count, orb->stop_count);
+    glUniform3fv(orb->u_background, 1, orb->background);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    return TRUE;
+}
+
+GtkWidget *tailscode_orb_new(void) {
+    GtkWidget *area = gtk_gl_area_new();
+    gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(area), FALSE);
+    gtk_gl_area_set_has_stencil_buffer(GTK_GL_AREA(area), FALSE);
+    TailscodeOrb *orb = g_new0(TailscodeOrb, 1);
+    orb->blob_count = 0;
+    orb->intensity = 1.0f;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-orb", orb, g_free);
+    g_signal_connect(area, "realize", G_CALLBACK(tailscode_orb_realize), orb);
+    g_signal_connect(area, "unrealize", G_CALLBACK(tailscode_orb_unrealize), orb);
+    g_signal_connect(area, "render", G_CALLBACK(tailscode_orb_render), orb);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+gboolean tailscode_orb_ready(GtkWidget *area) {
+    if (!area) return FALSE;
+    TailscodeOrb *orb = g_object_get_data(G_OBJECT(area), "tailscode-orb");
+    return orb && !orb->failed;
+}
+
+void tailscode_orb_set(
+    GtkWidget *area, const float *blobs, int blob_count, const float *color, float energy,
+    float intensity, float rainbow, float rainbow_phase, float rainbow_glow, const float *stops,
+    int stop_count, const float *background) {
+    if (!area) return;
+    TailscodeOrb *orb = g_object_get_data(G_OBJECT(area), "tailscode-orb");
+    if (!orb) return;
+    orb->blob_count = blob_count > TAILSCODE_ORB_BLOBS ? TAILSCODE_ORB_BLOBS : blob_count;
+    if (blobs) memcpy(orb->blobs, blobs, (size_t)orb->blob_count * 4 * sizeof(float));
+    if (color) memcpy(orb->color, color, 3 * sizeof(float));
+    if (background) memcpy(orb->background, background, 3 * sizeof(float));
+    orb->energy = energy;
+    orb->intensity = intensity;
+    orb->rainbow = rainbow;
+    orb->rainbow_phase = rainbow_phase;
+    orb->rainbow_glow = rainbow_glow;
+    if (stops && stop_count > 1) {
+        int count = stop_count > TAILSCODE_ORB_STOPS ? TAILSCODE_ORB_STOPS : stop_count;
+        memcpy(orb->stops, stops, (size_t)count * 3 * sizeof(float));
+        orb->stop_count = count;
+    }
+    gtk_widget_queue_draw(area);
+}
+
 #ifdef TAILSCODE_HAS_MPV
 #include <epoxy/egl.h>
-#include <epoxy/gl.h>
 #include <locale.h>
 #include <epoxy/glx.h>
 #include <mpv/client.h>

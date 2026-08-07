@@ -44,6 +44,10 @@ final class SidebarViewController: NSViewController {
     private let rowMenu = NSMenu()
     private let usageFooter = UsageFooterView()
     private let bulkBar = SidebarBulkBar()
+    private let orb = PresenceOrbView()
+    /// Whether any open pane's composer is burning the ultracode aura, answered by the hub — the
+    /// orb wears the same rainbow the moment the word is typed anywhere.
+    var ultracodeSource: (() -> Bool)?
 
     private(set) var entries: [SessionEntry] = []
     private var unreachable: [String] = []
@@ -71,6 +75,11 @@ final class SidebarViewController: NSViewController {
     private var freshlyCreated: SessionEntry?
     private var sidebarLimit = 60
     private var filter = ""
+    /// The results of the last submitted search, and whether one is in flight. A list that is
+    /// looking must say so: silence while a fleet answers is indistinguishable from nothing found.
+    private var searchBoard: TranscriptSearch.Board?
+    private var searchRunning = false
+    private var searchTask: Task<Void, Never>?
     private var cursor = 0
     private var selectedID: String?
     private var lastSidebar: ([SessionRowModel], [String], String, String)?
@@ -83,11 +92,12 @@ final class SidebarViewController: NSViewController {
     override func loadView() {
         let container = NSView()
 
-        searchField.placeholderString = Localized.text("Filter chats")
+        searchField.placeholderString = Localized.text("Filter chats  ⏎ to search inside")
         searchField.sendsWholeSearchString = false
         searchField.sendsSearchStringImmediately = true
         searchField.target = self
         searchField.action = #selector(filterChanged)
+        searchField.delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
 
         tableView.headerView = nil
@@ -115,7 +125,14 @@ final class SidebarViewController: NSViewController {
         bulkBar.onAction = { [weak self] action in self?.applyBulk(action) }
         bulkBar.onClear = { [weak self] in self?.clearMarks() }
 
-        let footer = NSStackView(views: [bulkBar, usageFooter])
+        orb.setEnabled(PresenceOrbSetting.isEnabled)
+        orb.heightAnchor.constraint(equalToConstant: 76).isActive = true
+        orb.onOpen = { [weak self] in self?.openOrbTarget() }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(orbSettingChanged), name: PresenceOrbSetting.didChange,
+            object: nil)
+
+        let footer = NSStackView(views: [orb, bulkBar, usageFooter])
         footer.orientation = .vertical
         footer.alignment = .width
         footer.spacing = MacTheme.Spacing.xs
@@ -517,6 +534,9 @@ final class SidebarViewController: NSViewController {
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
         known = models
+        orb.update(
+            signal: PresenceSignal.aggregate(
+                models.map { $0.state.activity }, ultracode: ultracodeSource?() ?? false))
         selection.prune(to: models.map(\.entry))
         MacNotifier.shared.observeListing(
             models.map {
@@ -545,16 +565,31 @@ final class SidebarViewController: NSViewController {
         visible = sections.flatMap(\.1)
         syncCursorToSelection()
 
+        let missed = ActivityInbox.ordered(limit: 5)
         let snapshot = (
             visible, unreachable, filter,
             "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
                 + "|\(selection.keys.sorted().joined(separator: ","))"
+                + "|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
         renderBulkBar()
 
         var next: [SidebarRow] = []
+        if searchRunning || searchBoard != nil {
+            rows = searchRows()
+            tableView.reloadData()
+            return
+        }
+        if !showingArchive, !missed.shown.isEmpty {
+            next.append(.missedHeader(missed.total))
+            next.append(contentsOf: missed.shown.map(SidebarRow.missed))
+            if missed.total > missed.shown.count {
+                next.append(
+                    .empty(Localized.text("… %@ more", "\(missed.total - missed.shown.count)")))
+            }
+        }
         if !unreachable.isEmpty {
             next.append(
                 .banner(
@@ -830,9 +865,100 @@ final class SidebarViewController: NSViewController {
     }
 
     @objc private func filterChanged() {
+        // Typing again is the way back to the list: results are about words that were submitted,
+        // and leaving them up while the box says something else would be a lie about both.
+        if searchBoard != nil || searchRunning { leaveTranscriptSearch(render: false) }
         filter = searchField.stringValue
         cursor = 0
         render()
+    }
+
+    /// Enter searches what was actually said, everywhere. The filter above it is titles-only and
+    /// instant; this asks every machine at once and takes as long as the slowest one, so the list
+    /// says it is looking rather than appearing to have found nothing.
+    private func runTranscriptSearch() {
+        let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TranscriptSearch.isSearchable(query) else { return }
+        searchTask?.cancel()
+        searchRunning = true
+        searchBoard = nil
+        lastSidebar = nil
+        render()
+        let listed = entries
+        searchTask = Task { [weak self] in
+            let sources = ServerDirectory.shared.profiles.compactMap { profile in
+                ServerDirectory.shared.backend(for: profile).map {
+                    TranscriptSearch.Source(
+                        profileID: profile.id,
+                        name: ServerLabel.display(name: profile.name, backend: profile.backend),
+                        backend: $0,
+                        entries: listed.filter { $0.profileID == profile.id })
+                }
+            }
+            let board = await TranscriptSearch.run(query: query, sources: sources)
+            guard !Task.isCancelled else { return }
+            self?.searchRunning = false
+            self?.searchBoard = board
+            self?.lastSidebar = nil
+            self?.render()
+        }
+    }
+
+    /// The list, replaced by what was found.
+    private func searchRows() -> [SidebarRow] {
+        let query = searchBoard?.query ?? filter
+        var next: [SidebarRow] = [.searchHeader(query, searchBoard?.rows.count ?? 0, searchRunning)]
+        if searchRunning {
+            next.append(.empty(Localized.text("Asking every server…")))
+            return next
+        }
+        if let caveat = searchBoard.flatMap(TranscriptSearch.caveat) { next.append(.banner(caveat)) }
+        guard let found = searchBoard?.rows, !found.isEmpty else {
+            next.append(.empty(Localized.text("Nothing said “%@”", query)))
+            return next
+        }
+        next.append(contentsOf: found.prefix(sidebarLimit).map(SidebarRow.searchResult))
+        return next
+    }
+
+    private func leaveTranscriptSearch(render shouldRender: Bool = true) {
+        searchTask?.cancel()
+        searchTask = nil
+        searchRunning = false
+        searchBoard = nil
+        lastSidebar = nil
+        if shouldRender { render() }
+    }
+
+    /// A result opens the conversation it names. The listing may not carry it — a chat on a server
+    /// this device has not listed lately — so one the list cannot resolve says so instead of
+    /// doing nothing.
+    private func openSearchResult(profileID: String, sessionID: String) {
+        guard let entry = entries.first(where: {
+            $0.profileID == profileID && $0.session.id == sessionID
+        }) else {
+            onToast?(Localized.text("That chat is not in this server's listing right now."))
+            return
+        }
+        leaveTranscriptSearch(render: false)
+        searchField.stringValue = ""
+        filter = ""
+        open(entry)
+        render()
+    }
+
+    @objc private func orbSettingChanged() {
+        orb.setEnabled(PresenceOrbSetting.isEnabled)
+    }
+
+    /// A touch on the orb goes to the conversation that most needs the person: a turn stopped to
+    /// ask first, then whatever is running.
+    private func openOrbTarget() {
+        guard
+            let target = known.first(where: { $0.state == .awaitingApproval })
+                ?? known.first(where: { $0.state == .live })
+        else { return }
+        open(target.entry)
     }
 
     @objc private func rowClicked() {
@@ -849,9 +975,50 @@ final class SidebarViewController: NSViewController {
             setArchiveShown(true)
         case .backLink:
             setArchiveShown(false)
-        case .banner, .header, .empty:
+        case .missed(let item):
+            openMissed(sessionID: item.sessionID)
+        case .searchResult(let result):
+            openSearchResult(profileID: result.profileID, sessionID: result.sessionID)
+        case .searchHeader:
+            leaveTranscriptSearch()
+        case .banner, .header, .empty, .missedHeader:
             break
         }
+    }
+
+    /// A missed notice is a place to go back to. The chat may have been deleted or its server
+    /// removed since, in which case the notice is stale and goes rather than sitting there
+    /// failing to open.
+    private func openMissed(sessionID: String) {
+        guard let entry = entries.first(where: { $0.session.id == sessionID }) else {
+            ActivityInbox.clear(sessionID: sessionID)
+            lastSidebar = nil
+            render()
+            return
+        }
+        open(entry)
+        lastSidebar = nil
+        render()
+    }
+
+    private func clearMissed() {
+        ActivityInbox.clearAll()
+        lastSidebar = nil
+        render()
+    }
+}
+
+/// Enter in the filter field is the search. `NSSearchField`'s own action fires on every keystroke
+/// when the string is sent immediately, so the submit has to be taken from the text view's
+/// insert-newline command rather than from the action.
+extension SidebarViewController: NSSearchFieldDelegate {
+    func control(
+        _ control: NSControl, textView: NSTextView, doCommandBy selector: Selector
+    ) -> Bool {
+        guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
+        filter = searchField.stringValue
+        runTranscriptSearch()
+        return true
     }
 }
 
@@ -876,7 +1043,9 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
     {
-        SidebarCellFactory.view(for: rows[row], in: tableView)
+        SidebarCellFactory.view(for: rows[row], in: tableView) { [weak self] in
+            self?.clearMissed()
+        }
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {

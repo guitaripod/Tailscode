@@ -3,11 +3,12 @@ import CodingAgentKit
 import UIKit
 
 enum HomeSection: Hashable {
-    case alerts, live, saved, projects, recent, usage
+    case alerts, missed, live, saved, projects, recent, usage
 }
 
 enum HomeItem: Hashable {
     case alert(ServerAlertCard)
+    case missed(MissedActivity)
     case live(LiveCard)
     case saved(SavedCard)
     case project(ProjectCard)
@@ -15,6 +16,79 @@ enum HomeItem: Hashable {
     case usage(QuotaCard)
     case placeholder(Int)
     case usagePlaceholder(Int)
+}
+
+/// One thing that happened while the app was away, as a way back into the chat
+/// it happened in. Blocking first, then by when — the same order the desktops
+/// put them in, because it is the order they matter in.
+final class MissedActivityCell: GlassCardCell {
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
+    private let chevron = UIImageView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.numberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.textColor = Theme.Color.secondaryLabel
+        detailLabel.numberOfLines = 1
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        chevron.image = UIImage(
+            systemName: "chevron.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        chevron.tintColor = Theme.Color.tertiaryLabel
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        [iconView, titleLabel, detailLabel, chevron].forEach(contentView.addSubview)
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 22),
+
+            titleLabel.topAnchor.constraint(
+                equalTo: contentView.topAnchor, constant: Theme.Spacing.s + 2),
+            titleLabel.leadingAnchor.constraint(
+                equalTo: iconView.trailingAnchor, constant: Theme.Spacing.m),
+            titleLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: chevron.leadingAnchor, constant: -Theme.Spacing.s),
+
+            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            detailLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: chevron.leadingAnchor, constant: -Theme.Spacing.s),
+            detailLabel.bottomAnchor.constraint(
+                equalTo: contentView.bottomAnchor, constant: -(Theme.Spacing.s + 2)),
+
+            chevron.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            chevron.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ item: MissedActivity) {
+        iconView.image = UIImage(
+            systemName: item.isBlocking ? "pause.circle.fill" : "checkmark.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
+        iconView.tintColor = item.isBlocking ? Theme.Color.warning : Theme.Color.accent
+        titleLabel.text = item.title
+        detailLabel.text =
+            "\(item.kindLabel) · \(StatusFacts.age(Date().timeIntervalSince(item.at)))"
+        accessibilityLabel = "\(item.title). \(item.kindLabel)."
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+    }
 }
 
 /// A bookmarked conversation on Home. Reads from the saved snapshot rather than
@@ -224,7 +298,7 @@ class GlassCardCell: UICollectionViewCell {
 }
 
 final class LiveSessionCell: GlassCardCell {
-    private let dot = UIView()
+    private let dot = ActivityBadgeView(pointSize: 9)
     private let stateLabel = UILabel()
     private let ageLabel = UILabel()
     private let titleLabel = UILabel()
@@ -233,7 +307,6 @@ final class LiveSessionCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        dot.layer.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
 
         stateLabel.font = .systemFont(ofSize: 10, weight: .heavy)
@@ -258,8 +331,8 @@ final class LiveSessionCell: GlassCardCell {
         NSLayoutConstraint.activate([
             dot.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             dot.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m + 2),
-            dot.widthAnchor.constraint(equalToConstant: 8),
-            dot.heightAnchor.constraint(equalToConstant: 8),
+            dot.widthAnchor.constraint(equalToConstant: 14),
+            dot.heightAnchor.constraint(equalToConstant: 14),
             stateLabel.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: Theme.Spacing.xs),
             stateLabel.centerYAnchor.constraint(equalTo: dot.centerYAnchor),
             stateLabel.trailingAnchor.constraint(
@@ -284,13 +357,22 @@ final class LiveSessionCell: GlassCardCell {
         titleLabel.text = card.title
         detailLabel.text = card.detail
         ageLabel.text = card.age
-        let (color, state): (UIColor, String) =
+        let activity: ActivityKind =
             switch card.presence {
-            case .needsInput: (Theme.Color.warning, String(localized: "NEEDS YOU"))
-            case .working: (Theme.Color.success, String(localized: "LIVE"))
-            case .syncing: (Theme.Color.tertiaryLabel, String(localized: "SYNCING"))
+            case .needsInput: .needsApproval
+            case .working: .working
+            case .syncing: .connecting
             }
-        applyPresence(color: color, state: state, animated: presence != nil && presence != card.presence)
+        let state: String =
+            switch card.presence {
+            case .needsInput: String(localized: "NEEDS YOU")
+            case .working: String(localized: "LIVE")
+            case .syncing: String(localized: "SYNCING")
+            }
+        dot.activity = activity
+        applyPresence(
+            color: activity.icon.tone.color, state: state,
+            animated: presence != nil && presence != card.presence)
         presence = card.presence
         accessibilityLabel = String(
             localized: "\(state): \(card.title), \(card.detail), \(card.age) ago")
@@ -301,13 +383,13 @@ final class LiveSessionCell: GlassCardCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         presence = nil
+        dot.prepareForReuse()
     }
 
     /// A card that settles from SYNCING to LIVE, or lights up as NEEDS YOU,
     /// dissolves between the two rather than swapping mid-glance.
     private func applyPresence(color: UIColor, state: String, animated: Bool) {
-        let apply = { [dot, stateLabel] in
-            dot.backgroundColor = color
+        let apply = { [stateLabel] in
             stateLabel.textColor = color
             stateLabel.text = state
         }
@@ -320,18 +402,6 @@ final class LiveSessionCell: GlassCardCell {
             animations: apply)
     }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        guard window != nil else { return }
-        dot.layer.removeAnimation(forKey: "pulse")
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.fromValue = 1.0
-        pulse.toValue = 0.3
-        pulse.duration = 0.9
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        dot.layer.add(pulse, forKey: "pulse")
-    }
 }
 
 /// A project is a directory you've chatted in; tapping one aims the docked
@@ -479,8 +549,11 @@ final class RecentSessionCell: GlassCardCell {
         unreadBadge.backgroundColor = Theme.Color.accent
         unreadBadge.layer.cornerRadius = 4.5
         unreadBadge.layer.borderWidth = 1.5
-        unreadBadge.layer.borderColor = Theme.Color.groupedBackground.cgColor
         unreadBadge.translatesAutoresizingMaskIntoConstraints = false
+        paintBadgeRing()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
+            (view: Self, _) in view.paintBadgeRing()
+        }
 
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
@@ -524,6 +597,13 @@ final class RecentSessionCell: GlassCardCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The dot's ring is the list's own background punched out around it, and a `CGColor` keeps
+    /// whichever colour that was when it was read — so it is repainted rather than merely set.
+    private func paintBadgeRing() {
+        unreadBadge.layer.borderColor =
+            Theme.Color.groupedBackground.resolvedColor(with: traitCollection).cgColor
+    }
 
     func configure(_ card: RecentCard) {
         apply(

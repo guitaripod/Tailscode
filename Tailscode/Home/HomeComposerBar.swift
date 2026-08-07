@@ -5,6 +5,7 @@ import UIKit
 protocol HomeComposerBarDelegate: AnyObject {
     func homeComposer(_ bar: HomeComposerBar, didSend text: String)
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar)
+    func homeComposerTextDidChange(_ text: String)
 }
 
 /// Home's docked "start a chat" bar: a glass surface carrying two retargetable
@@ -37,9 +38,18 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         didSet { refreshAura() }
     }
 
+    /// Whether the power is visibly on — the same fact the aura draws, offered outward so the
+    /// presence orb can wear the rainbow the moment the word is typed.
+    private(set) var auraIsActive = false
+    var onAuraChanged: (() -> Void)?
+
     private func refreshAura() {
-        aura.setActive(
-            Ultracode.auraActive(effort: ultracodeEffort, draft: textView.text ?? ""))
+        let active = Ultracode.auraActive(effort: ultracodeEffort, draft: textView.text ?? "")
+        aura.setActive(active)
+        if active != auraIsActive {
+            auraIsActive = active
+            onAuraChanged?()
+        }
     }
 
     override init(frame: CGRect) {
@@ -232,6 +242,20 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textViewDidChange(textView)
     }
 
+    var currentText: String { trimmed }
+
+    /// Exactly what is in the bar, indentation and trailing newlines included. A draft stashed on
+    /// the way to another destination has to come back as the keystrokes it was, not as the message
+    /// `currentText` would have sent.
+    var rawText: String { textView.text }
+
+    /// Puts text in the bar without asking for the keyboard: handing back what was left unsent is
+    /// not the same gesture as starting to type.
+    func setText(_ text: String) {
+        textView.text = text
+        textViewDidChange(textView)
+    }
+
     func focus() {
         textView.becomeFirstResponder()
     }
@@ -247,10 +271,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     #if DEBUG
         var tourText: String { textView.text }
 
-        func tourSetText(_ text: String) {
-            textView.text = text
-            textViewDidChange(textView)
-        }
+        func tourSetText(_ text: String) { setText(text) }
     #endif
 
     @objc private func focusInput() { textView.becomeFirstResponder() }
@@ -276,7 +297,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
         config.baseBackgroundColor =
             hasText || isSending ? Theme.Color.accent : Theme.Color.separator
-        config.baseForegroundColor = .white
+        config.baseForegroundColor = Theme.Color.onAccent
         sendButton.configuration = config
         sendButton.isEnabled = hasText && !isSending
         sendButton.accessibilityLabel = String(localized: "Send")
@@ -308,6 +329,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         updateHeight()
         updateSendButton()
         refreshAura()
+        delegate?.homeComposerTextDidChange(textView.text)
     }
 
     override func layoutSubviews() {

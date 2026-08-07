@@ -36,6 +36,10 @@ final class ComposerView: NSView {
     private var backend: (any CodingAgentBackend)?
     private var lastState: ConversationState?
     private var running = false
+    /// The text this composer last handed the draft store. Two panes can hold the same chat, and
+    /// so the same scope, over two independent text views — only the one whose box has moved since
+    /// it last recorded has anything left to say about that draft.
+    private var lastRecordedDraft = ""
     private var attachments: [PendingAttachment] = []
     private var pastedImageCount = 0
     private var models: [ModelInfo] = []
@@ -144,7 +148,7 @@ final class ComposerView: NSView {
         dismissCompletion()
         sendButton.title = Localized.text("Send")
         pills.setStopShown(false)
-        restoreDraft(for: entry.session.id)
+        restoreDraft(for: entry)
         refreshPills()
         loadSessionExtras(entry: entry, backend: backend)
     }
@@ -172,9 +176,7 @@ final class ComposerView: NSView {
         let outgoing = attachments
         guard !text.isEmpty || !outgoing.isEmpty else { return }
         setEditorText("", caretAtEnd: true)
-        if let entry {
-            UserDefaults.standard.removeObject(forKey: "tailscode.draft.\(entry.session.id)")
-        }
+        if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimUI()
         dismissCompletion()
@@ -198,15 +200,25 @@ final class ComposerView: NSView {
         pills.popUpCommandMenu()
     }
 
+    /// Which conversation the words in the box belong to. A draft follows its chat rather than the
+    /// pane it was typed in, and the same session id on two servers is two different chats.
+    private var draftScope: DraftScope? {
+        entry.map { DraftScope.chat(profileID: $0.profileID, sessionID: $0.session.id) }
+    }
+
+    /// Writes what is in the box out now rather than on the store's next quiet moment: this is
+    /// called where the composer is about to stop being asked — a chat switch, a closing pane, a
+    /// quit — and the coalescing window is longer than any of them. Every keystroke already
+    /// records, so there is a draft to contribute only when this box has moved since; a pane
+    /// sitting on text another pane has since edited leaves the newer draft alone and merely
+    /// puts it on disk.
     func stashDraft() {
-        guard let entry else { return }
-        let key = "tailscode.draft.\(entry.session.id)"
         let text = textView.string
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
-        } else {
-            UserDefaults.standard.set(text, forKey: key)
+        if let draftScope, text != lastRecordedDraft {
+            DraftStore.record(text, for: draftScope)
+            lastRecordedDraft = text
         }
+        DraftStore.flush()
     }
 
     func applyVim(_ key: VimKey) {
@@ -772,8 +784,16 @@ final class ComposerView: NSView {
         editorContentChanged()
     }
 
+    /// Every path that changes what is in the box lands here — a keystroke, a vim edit, a
+    /// completion accepted — so it is also where the draft is recorded. Recording is a dictionary
+    /// write and the store coalesces the file write itself, so nothing here is throttled.
     private func editorContentChanged() {
         placeholderLabel.isHidden = !textView.string.isEmpty
+        if let draftScope {
+            let text = textView.string
+            DraftStore.record(text, for: draftScope)
+            lastRecordedDraft = text
+        }
         scheduleMeasure()
         updateSlashCompletion()
         refreshAura()
@@ -863,9 +883,11 @@ final class ComposerView: NSView {
         accept(command)
     }
 
-    private func restoreDraft(for sessionID: String) {
-        let draft = UserDefaults.standard.string(forKey: "tailscode.draft.\(sessionID)") ?? ""
+    private func restoreDraft(for entry: SessionEntry) {
+        let draft = DraftStore.text(
+            for: .chat(profileID: entry.profileID, sessionID: entry.session.id))
         setEditorText(draft, caretAtEnd: true)
+        lastRecordedDraft = draft
         vim.reset(to: draft, cursor: draft.count, mode: .insert)
         updateVimUI()
     }

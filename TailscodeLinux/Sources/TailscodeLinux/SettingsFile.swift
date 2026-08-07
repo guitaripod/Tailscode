@@ -14,12 +14,11 @@ enum SettingsFile {
     private static let dataKey = "__data"
 
     /// Keys written by the shared stores rather than by this app's own settings — bookmarks, seen
-    /// state, per-session drafts and model choices. Captured by prefix because their key space is
-    /// per session.
+    /// state and model choices. Captured by prefix because their key space is per session.
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
-        "tailscode.effort.", "tailscode.recentModels", "tailscode.draft.",
-        "tailscode.archived.",
+        "tailscode.effort.", "tailscode.recentModels",
+        "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
     ]
 
     private nonisolated(unsafe) static var state: [String: Any] = [:]
@@ -68,6 +67,21 @@ enum SettingsFile {
         where capturedPrefixes.contains(where: { key.hasPrefix($0) }) {
             if state[key] == nil, isEmpty(value) { continue }
             state[key] = value
+        }
+        save()
+    }
+
+    /// Lets go of a key space this file no longer keeps. `capture()` only ever adds, so state that
+    /// has moved into a store of its own would otherwise be handed back from here forever — and a
+    /// draft restored from an obsolete key is the app appearing to un-send what was sent.
+    static func forget(prefix: String) {
+        let defaults = UserDefaults.standard
+        let stale = Set(state.keys).union(defaults.dictionaryRepresentation().keys)
+            .filter { $0.hasPrefix(prefix) }
+        guard !stale.isEmpty else { return }
+        for key in stale {
+            state.removeValue(forKey: key)
+            defaults.removeObject(forKey: key)
         }
         save()
     }

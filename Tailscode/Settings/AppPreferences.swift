@@ -11,27 +11,30 @@ enum AppPreferences {
         defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
     }
 
-    enum Appearance: String, CaseIterable {
-        case system, light, dark
-        var title: String {
-            switch self {
-            case .system: return String(localized: "System")
-            case .light: return String(localized: "Light")
-            case .dark: return String(localized: "Dark")
-            }
-        }
-        var style: UIUserInterfaceStyle {
-            switch self {
-            case .system: return .unspecified
-            case .light: return .light
-            case .dark: return .dark
-            }
-        }
+    typealias Appearance = ThemeAppearance
+
+    /// Light or dark is half of one choice, and the theme is the other half — both belong to
+    /// `ThemeSelection`, under the two keys every client reads. The phone got here first with a key
+    /// of its own, so an install that already pinned an appearance keeps it.
+    static var appearance: Appearance {
+        get { ThemeSelection.appearance }
+        set { ThemeSelection.setAppearance(newValue) }
     }
 
-    static var appearance: Appearance {
-        get { Appearance(rawValue: defaults.string(forKey: "pref.appearance") ?? "") ?? .system }
-        set { defaults.set(newValue.rawValue, forKey: "pref.appearance") }
+    static var theme: AppTheme? {
+        ThemeSelection.usesSystemPalette ? nil : ThemeSelection.theme
+    }
+
+    /// Called once before any window exists: the client's own default is the system's own colours,
+    /// and a pin written under the old key is carried across.
+    static func adoptThemeDefaults() {
+        ThemeSelection.fallbackID = ThemeSelection.systemID
+        guard let legacy = defaults.string(forKey: "pref.appearance") else { return }
+        defaults.removeObject(forKey: "pref.appearance")
+        guard defaults.string(forKey: ThemeSelection.appearanceKey) == nil,
+            let pinned = ThemeAppearance(rawValue: legacy)
+        else { return }
+        ThemeSelection.setAppearance(pinned)
     }
 
     static var autoExpandThinking: Bool {
@@ -143,12 +146,6 @@ enum AppPreferences {
 
     @MainActor
     static func applyAppearance() {
-        let style = appearance.style
-        for scene in UIApplication.shared.connectedScenes {
-            guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows {
-                window.overrideUserInterfaceStyle = style
-            }
-        }
+        Theme.Chrome.apply()
     }
 }

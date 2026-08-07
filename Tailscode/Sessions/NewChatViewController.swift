@@ -316,7 +316,7 @@ final class NewChatViewController: UIViewController {
 
     private static func tint(for origin: NewChatOrigin) -> UIColor {
         switch origin {
-        case .favorite: return .systemYellow
+        case .favorite: return Theme.Color.special
         case .recent: return Theme.Color.secondaryLabel
         case .project: return Theme.Color.accent
         case .typed: return Theme.Color.accent

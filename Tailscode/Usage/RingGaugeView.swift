@@ -40,7 +40,7 @@ final class RingGaugeView: UIView {
         ])
 
         refreshColors()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: RingGaugeView, _: UITraitCollection) in
             view.refreshColors()
         }

@@ -17,8 +17,20 @@ final class AppCoordinator: NSObject {
 
     func start() {
         SessionSeenStore.bootstrapIfNeeded()
-        window.tintColor = Theme.Color.accent
-        window.overrideUserInterfaceStyle = AppPreferences.appearance.style
+        DraftStore.warm()
+        AppPreferences.adoptThemeDefaults()
+        #if DEBUG
+            if let id = ProcessInfo.processInfo.environment["TAILSCODE_THEME"] {
+                ThemeSelection.setThemeID(id)
+            }
+            if let face = ProcessInfo.processInfo.environment["TAILSCODE_APPEARANCE"],
+                let appearance = ThemeAppearance(rawValue: face)
+            {
+                ThemeSelection.setAppearance(appearance)
+            }
+        #endif
+        Theme.Chrome.adopt(window)
+        Theme.Chrome.apply()
         #if DEBUG
             if CommandLine.arguments.contains(where: { $0.hasPrefix("--widget-preview") }) {
                 window.rootViewController = UINavigationController(

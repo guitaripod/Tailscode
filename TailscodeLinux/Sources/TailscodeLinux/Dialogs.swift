@@ -171,7 +171,7 @@ enum Dialogs {
     /// for what the summary must keep — so the preflight says all three.
     static func compactPreflight(
         parent: UnsafeMutablePointer<GtkWidget>?, initialInstruction: String = "",
-        onCompact: @escaping @Sendable (String?) -> Void
+        draft: DraftScope?, onCompact: @escaping @Sendable (String?) -> Void
     ) {
         let (window, content) = Self.window(
             title: Localized.text("Compact this conversation?"), parent: parent, width: 520)
@@ -184,10 +184,20 @@ enum Dialogs {
         let entry = gtk_entry_new()!
         gtk_entry_set_placeholder_text(
             ptr(entry), Localized.text("What must the summary keep? (optional)"))
-        gtk_editable_set_text(op(entry), initialInstruction)
+        let seeded = initialInstruction.isEmpty
+            ? draft.map { DraftStore.text(for: $0) } ?? "" : initialInstruction
+        gtk_editable_set_text(op(entry), seeded)
         gtk_box_append(ptr(content), entry)
 
         let entryBits = UInt(bitPattern: entry)
+        if let draft {
+            Gtk.connect(UnsafeMutableRawPointer(entry), "changed") {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
+                    let text = gtk_editable_get_text(op(raw))
+                else { return }
+                DraftStore.record(String(cString: text), for: draft)
+            }
+        }
         gtk_box_append(
             ptr(content),
             buttonRow(
@@ -196,6 +206,7 @@ enum Dialogs {
                     guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
                     let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
                     let instruction = entryText(entry)
+                    if let draft { DraftStore.clear(draft) }
                     close(entry)
                     onCompact(instruction.isEmpty ? nil : instruction)
                 }))

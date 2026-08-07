@@ -47,7 +47,7 @@ enum UsageFormat {
         let clamped = min(max(fraction, 0), 1)
         let track = NSView()
         track.wantsLayer = true
-        track.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        track.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         track.layer?.cornerRadius = height / 2
         track.translatesAutoresizingMaskIntoConstraints = false
         let bar = NSView()
@@ -293,7 +293,7 @@ final class UsagePanelViewController: NSViewController {
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
             right: MacTheme.Spacing.m)
         card.wantsLayer = true
-        card.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         card.layer?.cornerRadius = MacTheme.Radius.control
         card.translatesAutoresizingMaskIntoConstraints = false
 
@@ -390,7 +390,7 @@ final class UsagePanelViewController: NSViewController {
         wrap.layer?.backgroundColor =
             (live
                 ? MacTheme.Color.success.withAlphaComponent(0.15)
-                : NSColor.quaternarySystemFill).cgColor
+                : MacTheme.Color.canvasRaised).cgColor
         wrap.translatesAutoresizingMaskIntoConstraints = false
         wrap.addSubview(label)
         NSLayoutConstraint.activate([

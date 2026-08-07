@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import UIKit
 
@@ -8,19 +9,25 @@ import UIKit
 final class CompactPreflightViewController: UIViewController {
     private let messageCount: Int
     private let lastCompaction: Compaction?
+    private let draftScope: DraftScope
     private let onCompact: (String?) -> Void
     private let instructions = UITextField()
     private let scroll = UIScrollView()
 
+    /// A typed-out `/compact keep the failing tests` arrives as the instruction and wins; with
+    /// nothing typed the field hands back whatever was last left here, because cancelling this
+    /// sheet is the ordinary way to leave it and must not cost the sentence someone composed.
     init(
         messageCount: Int, lastCompaction: Compaction?, initialInstruction: String = "",
-        onCompact: @escaping (String?) -> Void
+        draftScope: DraftScope, onCompact: @escaping (String?) -> Void
     ) {
         self.messageCount = messageCount
         self.lastCompaction = lastCompaction
+        self.draftScope = draftScope
         self.onCompact = onCompact
         super.init(nibName: nil, bundle: nil)
-        instructions.text = initialInstruction
+        instructions.text =
+            initialInstruction.isEmpty ? DraftStore.text(for: draftScope) : initialInstruction
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -160,6 +167,11 @@ final class CompactPreflightViewController: UIViewController {
         instructions.addAction(
             UIAction { [weak self] _ in self?.instructions.resignFirstResponder() },
             for: .editingDidEndOnExit)
+        instructions.addAction(
+            UIAction { [weak self] _ in
+                guard let self else { return }
+                DraftStore.record(instructions.text ?? "", for: draftScope)
+            }, for: .editingChanged)
 
         let field = UIView()
         field.backgroundColor = Theme.Color.secondaryBackground
@@ -212,6 +224,7 @@ final class CompactPreflightViewController: UIViewController {
                 guard let self else { return }
                 Theme.Haptics.send()
                 let text = self.instructions.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+                DraftStore.clear(self.draftScope)
                 self.dismiss(animated: true) { [onCompact = self.onCompact] in
                     onCompact(text?.isEmpty == false ? text : nil)
                 }

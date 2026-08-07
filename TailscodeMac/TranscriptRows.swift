@@ -403,7 +403,7 @@ struct TranscriptRow: Hashable {
         column.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
         column.translatesAutoresizingMaskIntoConstraints = false
         column.wantsLayer = true
-        column.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        column.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         column.layer?.cornerRadius = 8
 
         let header = NSStackView()

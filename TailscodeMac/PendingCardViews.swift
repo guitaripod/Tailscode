@@ -51,8 +51,13 @@ enum PendingCards {
     /// One question item at a time, which keeps the single-select fast path a single click. The
     /// collected answers go out through the caller, which routes them by message or by API as the
     /// backend demands.
+    ///
+    /// - Parameter chat: whose conversation is being asked, so a half-typed answer of your own is
+    ///   kept: the question outlives a restart because it is derived from the transcript, and the
+    ///   words being written towards it have to outlive one too.
     static func question(
-        _ request: QuestionRequest, submit: @escaping ([[String]]) -> Void
+        _ request: QuestionRequest, in chat: SessionEntry?,
+        submit: @escaping ([[String]]) -> Void
     ) -> NSView {
         let card = cardColumn()
         let collector = AnswerCollector(request: request, submit: submit)
@@ -90,7 +95,13 @@ enum PendingCards {
             }
 
             if item.custom || item.options.isEmpty {
-                let field = AnswerField(single: single, collector: collector, question: index)
+                let scope = chat.map {
+                    DraftScope.answer(
+                        profileID: $0.profileID, sessionID: $0.session.id,
+                        questionID: "\(request.id):\(index)")
+                }
+                let field = AnswerField(
+                    single: single, collector: collector, question: index, draft: scope)
                 section.addArrangedSubview(field)
                 field.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
             }
@@ -130,7 +141,7 @@ enum PendingCards {
             right: MacTheme.Spacing.m)
         card.translatesAutoresizingMaskIntoConstraints = false
         card.wantsLayer = true
-        card.layer?.backgroundColor = NSColor.quinarySystemFill.cgColor
+        card.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
         card.layer?.cornerRadius = MacTheme.Radius.card
         card.layer?.borderWidth = 1
         card.layer?.borderColor = MacTheme.Color.separator.cgColor
@@ -152,6 +163,7 @@ enum PendingCards {
         private var chosen: [Int: [String]] = [:]
         private var custom: [Int: String] = [:]
         private var buttons: [String: NSButton] = [:]
+        private var drafts: [Int: DraftScope] = [:]
 
         init(request: QuestionRequest, submit: @escaping ([[String]]) -> Void) {
             self.request = request
@@ -162,7 +174,14 @@ enum PendingCards {
             buttons["\(question):\(option)"] = button
         }
 
+        /// Which box a free-typed answer is being written into, so the answer going out — by a
+        /// click on an option, by Enter, or by the Answer button — is what lets its draft go.
+        func register(question: Int, draft scope: DraftScope) {
+            drafts[question] = scope
+        }
+
         func submitSingle(_ answer: String) {
+            forgetDrafts()
             submit([[answer]])
         }
 
@@ -194,7 +213,13 @@ enum PendingCards {
                 if selected.isEmpty { selected = [Localized.text("(no answer)")] }
                 answers.append(selected)
             }
+            forgetDrafts()
             submit(answers)
+        }
+
+        private func forgetDrafts() {
+            for scope in drafts.values { DraftStore.clear(scope) }
+            drafts = [:]
         }
 
         private func restyle(_ question: Int) {
@@ -204,22 +229,26 @@ enum PendingCards {
                 guard let button = buttons["\(question):\(option.label)"] else { continue }
                 let isOn = selected.contains(option.label)
                 button.bezelColor = isOn ? MacTheme.Color.accent : nil
-                button.contentTintColor = isOn ? .white : nil
+                button.contentTintColor = isOn ? MacTheme.Color.onAccent : nil
             }
         }
     }
 
     /// The free-form answer: Enter submits on the single fast path, or records the text for the
-    /// Answer button on a multi ask.
+    /// Answer button on a multi ask. What is typed here is also written to the draft store as it
+    /// is typed, because the card is rebuilt from the transcript on every launch and an answer
+    /// half-written when the app closed has nowhere else to live.
     private final class AnswerField: NSTextField, NSTextFieldDelegate {
         private let single: Bool
         private weak var collector: AnswerCollector?
         private let question: Int
+        private let draft: DraftScope?
 
-        init(single: Bool, collector: AnswerCollector, question: Int) {
+        init(single: Bool, collector: AnswerCollector, question: Int, draft: DraftScope?) {
             self.single = single
             self.collector = collector
             self.question = question
+            self.draft = draft
             super.init(frame: .zero)
             placeholderString = Localized.text("Your own answer…")
             font = MacTheme.Font.mono(12)
@@ -227,10 +256,23 @@ enum PendingCards {
             target = self
             action = #selector(entered)
             delegate = self
+            if let draft {
+                collector.register(question: question, draft: draft)
+                restore(DraftStore.text(for: draft), into: collector)
+            }
         }
 
         @available(*, unavailable)
         required init?(coder: NSCoder) { fatalError() }
+
+        /// A restored answer has to reach the collector as well as the field: on a multi ask the
+        /// Answer button reads what was collected, not what a text field happens to be showing.
+        private func restore(_ text: String, into collector: AnswerCollector) {
+            guard !text.isEmpty else { return }
+            stringValue = text
+            guard !single else { return }
+            collector.setCustom(question: question, answer: text)
+        }
 
         @objc private func entered() {
             let answer = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -243,10 +285,10 @@ enum PendingCards {
         }
 
         func controlTextDidChange(_ obj: Notification) {
+            let answer = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let draft { DraftStore.record(answer, for: draft) }
             guard !single else { return }
-            collector?.setCustom(
-                question: question,
-                answer: stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            collector?.setCustom(question: question, answer: answer)
         }
     }
 }

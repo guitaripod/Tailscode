@@ -86,7 +86,7 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
                 systemName: "xmark.circle.fill",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)),
             for: .normal)
-        dismissButton.tintColor = Theme.Color.tertiaryLabel
+        dismissButton.tintColor = Theme.Color.onGlassSecondary
         dismissButton.accessibilityLabel = String(localized: "Dismiss")
         dismissButton.translatesAutoresizingMaskIntoConstraints = false
         dismissButton.addAction(UIAction { [weak self] _ in self?.requestDismiss() }, for: .touchUpInside)
@@ -104,7 +104,7 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
                 systemName: "doc.on.doc",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)),
             for: .normal)
-        copyButton.tintColor = Theme.Color.secondaryLabel
+        copyButton.tintColor = Theme.Color.onGlassSecondary
         copyButton.accessibilityLabel = String(localized: "Copy")
         copyButton.addAction(UIAction { [weak self] _ in self?.useCopy() }, for: .touchUpInside)
 
@@ -116,7 +116,7 @@ final class PromptEnhanceOverlay: UIView, UIGestureRecognizerDelegate {
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))
         use.imagePadding = Theme.Spacing.xs
         use.baseBackgroundColor = Theme.Color.accent
-        use.baseForegroundColor = .white
+        use.baseForegroundColor = Theme.Color.onAccent
         useButton.configuration = use
         useButton.accessibilityLabel = String(localized: "Use this prompt")
         useButton.addAction(UIAction { [weak self] _ in self?.useCurrent() }, for: .touchUpInside)

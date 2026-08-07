@@ -40,6 +40,9 @@ final class MainWindowController: NSWindowController {
     private var lastQuotas: [(String, UsageQuota)] = []
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
+    private var watchFeed: MediaFeed?
+    private var watchCheckedAt: Date?
+    private var watchLoad: Task<Void, Never>?
     private lazy var toasts = ToastPresenter { [weak self] in self?.transcript.toastAnchor }
 
     init() {
@@ -48,6 +51,7 @@ final class MainWindowController: NSWindowController {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.title = "Tailscode"
+        MacTheme.Chrome.adopt(window)
         super.init(window: window)
         wireChildren()
         splitPanes.bootstrap()
@@ -65,6 +69,11 @@ final class MainWindowController: NSWindowController {
             self?.resolvePendingBindings()
         }
         startUsagePolling()
+        NotificationCenter.default.addObserver(
+            forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyTheme() }
+        }
         if !shortcuts.issues.isEmpty {
             setNotice(
                 Localized.text("Keybindings: %@", shortcuts.issues.joined(separator: " · ")))
@@ -76,6 +85,13 @@ final class MainWindowController: NSWindowController {
 
     func open(_ entry: SessionEntry) {
         sidebar.open(entry)
+    }
+
+    /// What every pane is half-way through writing, put down on disk. The app delegate asks for
+    /// this where the process is about to stop being asked — resigning active, quitting — because
+    /// a draft is only ever lost in the moment nobody thought to save it.
+    func stashComposerDrafts() {
+        splitPanes.eachPane { $0.composer.stashDraft() }
     }
 
     func handleDidBecomeActive() {
@@ -342,6 +358,18 @@ final class MainWindowController: NSWindowController {
         sidebar.applyUIScale()
     }
 
+    /// A theme change is a restyle of everything, and AppKit has no trait to invalidate for it: a
+    /// `CGColor` in a layer and a rendering in a memo both keep the colour they were born with. So
+    /// the window takes the same road it takes for a change of type scale — drop what was baked,
+    /// rebuild what was drawn — and the two paths stay one path on purpose.
+    private func applyTheme() {
+        MacMarkdown.invalidate()
+        window?.appearance = MacTheme.Chrome.appearance
+        applyUIScale()
+        transcript.applyPaneColours()
+        splitPanes.eachPane { $0.applyPaneColours() }
+    }
+
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
     /// sidebar refreshed behind every change.
     func presentServers() {
@@ -373,9 +401,39 @@ final class MainWindowController: NSWindowController {
     /// A pane with nothing in it asks which server, then what on it — the question the chat list
     /// cannot ask, at the moment a split makes it worth asking.
     func presentChooser(in pane: TranscriptViewController, preferring serverID: String? = nil) {
-        pane.showChooser(
-            PaneChooser(
-                servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID))
+        var chooser = PaneChooser(
+            servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
+        chooser.watchSummary = watchSummary
+        pane.showChooser(chooser)
+        refreshWatchFeed()
+    }
+
+    /// What is on among the channels this device follows and the ones a signed-in account does, so
+    /// the pane's watch row reports rather than labels. The answer is round trips to somebody
+    /// else's site, so it is cached and re-asked at most once a minute however many empty panes ask
+    /// the question.
+    private var watchSummary: WatchSummary? {
+        guard let watchFeed else { return nil }
+        return WatchSummary(feed: watchFeed, followed: WatchStore.channels().count)
+    }
+
+    private func refreshWatchFeed() {
+        guard watchLoad == nil else { return }
+        if let watchCheckedAt, Date().timeIntervalSince(watchCheckedAt) < 60 { return }
+        let channels = WatchStore.watchlist()
+        guard !channels.isEmpty || WatchAccounts.rows().contains(where: \.isSignedIn) else {
+            return
+        }
+        watchCheckedAt = Date()
+        watchLoad = Task { [weak self] in
+            let feed = await Task.detached(priority: .utility) {
+                await MediaFollowing().live(local: channels)
+            }.value
+            guard let self else { return }
+            self.watchLoad = nil
+            self.watchFeed = feed
+            self.restateChoosers()
+        }
     }
 
     private var chooserServers: [PaneChooserServer] {
@@ -391,9 +449,10 @@ final class MainWindowController: NSWindowController {
     private func restateChoosers() {
         let servers = chooserServers
         let entries = sidebar.allEntries
+        let watch = watchSummary
         splitPanes.eachPane { pane in
             guard pane.chooserShown else { return }
-            pane.restateChooser(servers: servers, entries: entries)
+            pane.restateChooser(servers: servers, entries: entries, watch: watch)
         }
     }
 
@@ -499,6 +558,11 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
+        sidebar.ultracodeSource = { [weak self] in
+            var active = false
+            self?.splitPanes.eachPane { active = active || $0.composer.auraActive }
+            return active
+        }
         sidebar.presenceSource = { [weak self] in self?.observedPresence() ?? [:] }
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
@@ -800,7 +864,8 @@ final class MainWindowController: NSWindowController {
         {
             return nil
         }
-        if context == .normal, focused == .transcript, pendingChords.isEmpty,
+        if focused == .transcript, pendingChords.isEmpty,
+            context == .normal || transcript.isChoosingStream,
             transcript.handleVideoChord(chord)
         {
             return nil

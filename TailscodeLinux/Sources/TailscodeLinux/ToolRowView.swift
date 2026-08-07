@@ -43,7 +43,7 @@ enum ToolRowView {
         let worst: ToolStatus = calls.contains { $0.status == .error }
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
         gtk_box_append(
-            ptr(header), Gtk.label(glyph(worst), css: glyphClass(worst), selectable: false))
+            ptr(header), mark(worst))
         gtk_box_append(
             ptr(header),
             Gtk.label(
@@ -111,8 +111,7 @@ enum ToolRowView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(row), Gtk.label(glyph(call.status), css: glyphClass(call.status), selectable: false))
+        gtk_box_append(ptr(row), mark(call.status))
         gtk_box_append(ptr(row), Gtk.label(call.name, css: "tool-name", selectable: false))
 
         var detail = summary.title ?? call.title ?? ""
@@ -254,6 +253,15 @@ enum ToolRowView {
         return block
     }
 
+    /// The row's mark: a still glyph for work that is over, and the turning ring for work that is
+    /// still out on the machine — the same ring the band shows, on the same clock, so a running
+    /// row and the status above it turn together.
+    static func mark(_ status: ToolStatus) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(glyph(status), css: glyphClass(status), selectable: false)
+        ActivityPulse.apply(status.activityIcon, to: label)
+        return label
+    }
+
     static func glyph(_ status: ToolStatus) -> String {
         switch status {
         case .completed: return "⏺"
@@ -284,11 +292,7 @@ enum SubagentRowView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(header),
-            Gtk.label(
-                ToolRowView.glyph(call.status), css: ToolRowView.glyphClass(call.status),
-                selectable: false))
+        gtk_box_append(ptr(header), ToolRowView.mark(call.status))
         gtk_box_append(ptr(header), Gtk.label("▸ agent", css: "tool-name", selectable: false))
         let title = call.summary.title ?? call.title ?? call.name
         let label = Gtk.label(
