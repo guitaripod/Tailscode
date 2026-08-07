@@ -525,7 +525,7 @@ final class ServerDetailViewController: UIViewController {
                 health.healthy ? String(localized: "Healthy") : String(localized: "Unhealthy")
             serverVersion = health.version
             ServerHealthMonitor.record(health.healthy, for: profile.id)
-            sessionCount = (try? await backend.listSessions())?.count
+            sessionCount = (try? await backend.listAllSessions(knownDirectories: []))?.count
             if profile.backend == .openCode {
                 modelCount = try? await backend.availableModels().count
                 latestVersion = await fetchLatestOpencodeRelease()

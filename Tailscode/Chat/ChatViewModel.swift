@@ -119,8 +119,9 @@ final class ChatViewModel {
         Task {
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !manuallyRenamed,
-                let fresh = try? await backend.listSessions()
-                    .first(where: { $0.id == session.id }),
+                let fresh = try? await backend.listAllSessions(
+                    knownDirectories: session.directory.map { [$0] } ?? []
+                ).first(where: { $0.id == session.id }),
                 !fresh.hasPlaceholderTitle, fresh.title != displayTitle
             else { return }
             displayTitle = fresh.title

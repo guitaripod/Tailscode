@@ -88,8 +88,10 @@ final class ServerDirectory {
 
     /// Every session on every configured server, as one list — the same merge the Linux desktop
     /// and the phone speak, so all three clients agree on what a row is. A server that does not
-    /// answer is named in `unreachable` rather than silently shortening the list.
-    func entries() async -> (entries: [SessionEntry], unreachable: [String]) {
+    /// answer is named in `unreachable` rather than silently shortening the list. `knownDirectories`
+    /// seed the per-project walk: a chat the list already knows lives in a place worth asking
+    /// about even when the server does not report a project for it.
+    func entries(knownDirectories: [String] = []) async -> (entries: [SessionEntry], unreachable: [String]) {
         var collected: [SessionEntry] = []
         var down: [String] = []
         for profile in profiles {
@@ -98,7 +100,7 @@ final class ServerDirectory {
                 continue
             }
             do {
-                let sessions = try await backend.listSessions()
+                let sessions = try await backend.listAllSessions(knownDirectories: knownDirectories)
                 collected += sessions.map {
                     SessionEntry(
                         profileID: profile.id, profileName: profile.name,

@@ -83,8 +83,12 @@ public actor ServerDirectory {
     }
 
     /// Every session on every configured server, as one list — the same shape the phone's list
-    /// speaks, so the sidebar and a future shared view model agree on what a row is.
-    public func entries() async -> (entries: [SessionEntry], unreachable: [String]) {
+    /// speaks, so the sidebar and a future shared view model agree on what a row is. `knownDirectories`
+    /// seed the per-project walk: a chat the list already knows lives in a place worth asking
+    /// about even when the server does not report a project for it.
+    public func entries(
+        knownDirectories: [String] = []
+    ) async -> (entries: [SessionEntry], unreachable: [String]) {
         var collected: [SessionEntry] = []
         var down: [String] = []
         for profile in cached {
@@ -93,7 +97,7 @@ public actor ServerDirectory {
                 continue
             }
             do {
-                let sessions = try await backend.listSessions()
+                let sessions = try await backend.listAllSessions(knownDirectories: knownDirectories)
                 collected += sessions.map {
                     SessionEntry(
                         profileID: profile.id, profileName: profile.name,
