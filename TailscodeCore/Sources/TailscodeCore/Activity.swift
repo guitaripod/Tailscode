@@ -199,6 +199,20 @@ public struct ActivityIcon: Sendable, Equatable {
     /// being written above it.
     public static let openWork = ActivityIcon(
         symbol: "circle.dotted", glyph: "◐", cycle: sweepCycle, tone: .live, motion: .turning)
+
+    /// The mark of nothing happening. A row doing nothing still holds its column, so idle has a
+    /// face here rather than each list inventing its own dot.
+    public static let idle = ActivityIcon(symbol: "circle", glyph: "·", tone: .quiet, motion: .still)
+}
+
+/// The one-column marks written into prose — a goal met, an agent finished, a thing still being
+/// worked at. Authored beside the icons so a ✓ inside a sentence is the ✓ the inbox row wears.
+public enum StatusMark {
+    public static let done = "✓"
+    public static let failed = "✗"
+    public static let pursued = "⦿"
+    public static let idle = "·"
+    public static let open = "◐"
 }
 
 extension ToolStatus {
@@ -265,7 +279,7 @@ public enum ActivityKind: Sendable, Equatable {
                 symbol: "hand.raised", glyph: "⏸", tone: .attention, motion: .attention)
         case .needsAnswer:
             return ActivityIcon(
-                symbol: "questionmark.bubble", glyph: "⏸", tone: .attention, motion: .attention)
+                symbol: "questionmark.bubble", glyph: "?", tone: .attention, motion: .attention)
         case .queued:
             return ActivityIcon(symbol: "hourglass", glyph: "⋯", tone: .quiet, motion: .still)
         case .connecting:
@@ -380,6 +394,27 @@ public enum ActivityKind: Sendable, Equatable {
         case .skill: return "wand.and.stars"
         case .question: return "questionmark.bubble"
         case .other: return "wrench.and.screwdriver"
+        }
+    }
+
+    /// The slot a tool's colour comes from, named here so the meaning is decided once: everything
+    /// the agent reached out and touched is `info`, a standing capability is `accent`, a question
+    /// is `attention`, and a tool nobody classified stays muted rather than borrowing a meaning.
+    public enum ToolTintSlot: Sendable, Equatable {
+        case info
+        case accent
+        case attention
+        case muted
+    }
+
+    public static func tintSlot(forTool kind: ToolCallSummary.Kind) -> ToolTintSlot {
+        switch kind {
+        case .shell, .fileEdit, .fileWrite, .fileRead, .fileSearch, .webSearch, .webFetch,
+            .subagent, .workflow:
+            return .info
+        case .taskTracking, .skill: return .accent
+        case .question: return .attention
+        case .other: return .muted
         }
     }
 

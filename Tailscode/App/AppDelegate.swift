@@ -13,6 +13,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ).first
         ProStore.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        NotificationManager.registerCategories()
         endOrphanedActivitiesIfForeground(application)
         UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()

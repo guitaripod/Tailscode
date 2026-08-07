@@ -1,0 +1,34 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="100" y1="100" x2="924" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4C8DFF"/>
+      <stop offset="0.5" stop-color="#3355E6"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+    <filter id="plateShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#10163A" flood-opacity="0.35"/>
+    </filter>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#10163A" flood-opacity="0.28"/>
+    </filter>
+    <clipPath id="plate">
+      <rect x="100" y="100" width="824" height="824" rx="185" ry="185"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#plateShadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#bg)"/>
+  </g>
+
+  <g clip-path="url(#plate)">
+    <line x1="641" y1="641" x2="726" y2="726" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round" opacity="0.38"/>
+    <circle cx="744" cy="744" r="37" fill="#FFFFFF" opacity="0.92"/>
+
+    <g filter="url(#cardShadow)">
+      <path d="M 399 290 H 625 A 126 126 0 0 1 751 416 V 551 A 126 126 0 0 1 625 677 H 464 L 341 754 V 616 A 126 126 0 0 1 341 596 V 416 A 126 126 0 0 1 399 290 Z" fill="#FFFFFF"/>
+    </g>
+
+    <polyline points="425,416 535,485 425,554" fill="none" stroke="#2563EB" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="564" y1="551" x2="664" y2="551" stroke="#2563EB" stroke-width="44" stroke-linecap="round"/>
+  </g>
+</svg>

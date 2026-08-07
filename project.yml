@@ -144,6 +144,8 @@ targets:
         product: CodingAgentKit
       - package: CodingAgentKit
         product: CodingAgentKitApple
+      - package: TailscodeCore
+        product: TailscodeCore
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework
       - sdk: ActivityKit.framework
@@ -219,6 +221,8 @@ targets:
     deploymentTarget: "26.0"
     sources:
       - path: TailscodeMac
+      - path: TailscodeMac/Resources/AppIcon.icns
+        buildPhase: resources
     dependencies:
       - package: CodingAgentKit
         product: CodingAgentKit
@@ -234,6 +238,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: "GPL-3.0"
+        CFBundleIconFile: AppIcon
         CFBundleURLTypes:
           - CFBundleURLName: com.guitaripod.tailscode
             CFBundleURLSchemes: [tailscode]

@@ -1,6 +1,7 @@
 import ActivityKit
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 
 @MainActor
 final class AppActivityController {
@@ -54,9 +55,11 @@ final class AppActivityController {
             sessionTitle: sessionTitle.isEmpty ? String(localized: "Agent session") : sessionTitle,
             serverName: serverName)
         let startedAt = Date()
+        let thinking = ActivityKind.thinking.icon
         let state = ChatActivityAttributes.ContentState(
             phase: .thinking, statusText: String(localized: "Thinking…"), lastTool: nil, toolCount: 0,
-            startedAt: startedAt, endedAt: nil, title: nil)
+            startedAt: startedAt, endedAt: nil, title: nil, symbol: thinking.symbol,
+            tone: thinking.tone.rawValue)
         do {
             let activity = try Activity.request(
                 attributes: attr,
@@ -91,7 +94,7 @@ final class AppActivityController {
 
     func update(
         sessionID: String, phase: Phase, statusText: String, lastTool: String?, toolCount: Int,
-        title: String? = nil
+        icon: ActivityIcon, title: String? = nil
     ) {
         guard var entry = entries[sessionID] else { return }
         let becameApproval = phase == .approval && entry.lastPhase != .approval
@@ -101,7 +104,7 @@ final class AppActivityController {
         let newState = ChatActivityAttributes.ContentState(
             phase: phase, statusText: statusText, lastTool: lastTool,
             toolCount: entry.lastToolCount, startedAt: entry.startedAt, endedAt: nil,
-            title: entry.latestTitle)
+            title: entry.latestTitle, symbol: icon.symbol, tone: icon.tone.rawValue)
         let staleSoon = Date().timeIntervalSince(entry.lastPushedAt) > 600
         guard becameApproval || staleSoon || newState != entry.lastState else {
             entries[sessionID] = entry
@@ -131,6 +134,7 @@ final class AppActivityController {
     func end(sessionID: String, outcome: Phase = .done, statusText: String? = nil) {
         guard let entry = entries.removeValue(forKey: sessionID) else { return }
         let endedAt = Date()
+        let face: AlertFace = outcome == .error ? .turnFailed : .turnEnded
         let final = ChatActivityAttributes.ContentState(
             phase: outcome,
             statusText: statusText
@@ -138,7 +142,8 @@ final class AppActivityController {
                     outcome: outcome, toolCount: entry.lastToolCount,
                     duration: endedAt.timeIntervalSince(entry.startedAt)),
             lastTool: nil, toolCount: entry.lastToolCount, startedAt: entry.startedAt,
-            endedAt: endedAt, title: entry.latestTitle)
+            endedAt: endedAt, title: entry.latestTitle, symbol: face.symbol,
+            tone: face.tone.rawValue)
         enqueue(sessionID, entry.activity) { act in
             await act.end(
                 ActivityContent(state: final, staleDate: .now),

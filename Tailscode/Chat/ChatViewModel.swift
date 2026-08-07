@@ -129,7 +129,8 @@ final class ChatViewModel {
                 let live = Self.liveStatus(for: state)
                 AppActivityController.shared.update(
                     sessionID: session.id, phase: live.phase, statusText: live.text,
-                    lastTool: live.tool, toolCount: live.toolCount, title: fresh.title)
+                    lastTool: live.tool, toolCount: live.toolCount, icon: live.icon,
+                    title: fresh.title)
             }
             onTitleChange?()
         }
@@ -489,7 +490,7 @@ final class ChatViewModel {
             let live = Self.liveStatus(for: state)
             AppActivityController.shared.update(
                 sessionID: session.id, phase: live.phase, statusText: live.text,
-                lastTool: live.tool, toolCount: live.toolCount,
+                lastTool: live.tool, toolCount: live.toolCount, icon: live.icon,
                 title: AgentSession.isPlaceholderTitle(displayTitle) ? nil : displayTitle)
         } else if (state.status == .idle || state.status == .stable), activityLive, turnSawRunning {
             AppActivityController.shared.end(
@@ -873,7 +874,8 @@ final class ChatViewModel {
     /// card on the lock screen can never disagree about the same second; the wording stays here,
     /// because a lock screen has room for a sentence where a band has room for a word.
     static func liveStatus(for state: ConversationState) -> (
-        phase: AppActivityController.Phase, text: String, tool: String?, toolCount: Int
+        phase: AppActivityController.Phase, text: String, tool: String?, toolCount: Int,
+        icon: ActivityIcon
     ) {
         let last = state.messages.last
         let tools = (last?.parts ?? []).compactMap { part -> ToolCall? in
@@ -881,19 +883,33 @@ final class ChatViewModel {
             return nil
         }
         let lastTool = (tools.last { $0.status == .running } ?? tools.last).map(\.name)
-        switch ActivityKind.inFlight(in: state) {
+        let activity = ActivityKind.inFlight(in: state) ?? .thinking
+        switch activity {
         case .needsAnswer:
-            return (.approval, String(localized: "Waiting for your answer"), lastTool, tools.count)
+            return (
+                .approval, String(localized: "Waiting for your answer"), lastTool, tools.count,
+                activity.icon
+            )
         case .needsApproval:
-            return (.approval, String(localized: "Awaiting your approval"), lastTool, tools.count)
+            return (
+                .approval, String(localized: "Awaiting your approval"), lastTool, tools.count,
+                activity.icon
+            )
         case .usingTool(let name, _):
-            return (.tool, String(localized: "Running \(name)"), lastTool, tools.count)
+            return (
+                .tool, String(localized: "Running \(name)"), lastTool, tools.count, activity.icon
+            )
         case .compacting:
-            return (.tool, String(localized: "Compacting…"), lastTool, tools.count)
+            return (.tool, String(localized: "Compacting…"), lastTool, tools.count, activity.icon)
         case .writing:
-            return (.responding, String(localized: "Writing…"), lastTool, tools.count)
+            return (
+                .responding, String(localized: "Writing…"), lastTool, tools.count, activity.icon
+            )
         default:
-            return (.thinking, String(localized: "Thinking…"), lastTool, tools.count)
+            return (
+                .thinking, String(localized: "Thinking…"), lastTool, tools.count,
+                ActivityKind.thinking.icon
+            )
         }
     }
 

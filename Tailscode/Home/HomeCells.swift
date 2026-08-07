@@ -78,10 +78,11 @@ final class MissedActivityCell: GlassCardCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ item: MissedActivity) {
+        let face = item.reason.face
         iconView.image = UIImage(
-            systemName: item.isBlocking ? "pause.circle.fill" : "checkmark.circle.fill",
+            systemName: face.symbol,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
-        iconView.tintColor = item.isBlocking ? Theme.Color.warning : Theme.Color.accent
+        iconView.tintColor = face.tone.color
         titleLabel.text = item.title
         detailLabel.text =
             "\(item.kindLabel) · \(StatusFacts.age(Date().timeIntervalSince(item.at)))"

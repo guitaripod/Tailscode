@@ -243,9 +243,10 @@ public struct StatusFacts: Sendable {
         }
 
         if !agents.isEmpty {
+            let done = StatusMark.done
             let text = activeAgents > 0
-                ? "▸ \(activeAgents)" + (finishedAgents > 0 ? " · \(finishedAgents)✓" : "")
-                : "▸ \(finishedAgents)✓"
+                ? "▸ \(activeAgents)" + (finishedAgents > 0 ? " · \(finishedAgents)\(done)" : "")
+                : "▸ \(finishedAgents)\(done)"
             result.append(
                 Segment(
                     id: "agents", text: text, css: activeAgents > 0 ? "seg-agents" : "seg-dim",
@@ -293,7 +294,7 @@ public struct StatusFacts: Sendable {
         }
 
         if let goal {
-            let glyph = goalMet ? "✓" : goalFailed ? "✗" : "⦿"
+            let glyph = goalMet ? StatusMark.done : goalFailed ? StatusMark.failed : StatusMark.pursued
             let css = goalMet ? "seg-idle" : goalFailed ? "seg-error" : "seg-goal"
             let state = goalMet
                 ? Localized.text("met") : goalFailed ? Localized.text("failed") : Localized.text("being pursued")
@@ -353,12 +354,12 @@ public struct StatusFacts: Sendable {
         var rows = working.map { agent in
             let name = agent.agentType ?? SubagentSummary.untitled
             return Segment.Row(
-                title: "◐ \(name) — \(trimmed(agent.title))",
+                title: "\(StatusMark.open) \(name) — \(trimmed(agent.title))",
                 detail: Self.liveDetail(agent),
                 action: .agent(agent.toolUseID ?? agent.id))
         }
         rows += restShown.map { agent in
-            let glyph = agent.isCompleted ? "✓" : "·"
+            let glyph = agent.isCompleted ? StatusMark.done : StatusMark.idle
             let name = agent.agentType ?? SubagentSummary.untitled
             let age = Self.age(Date().timeIntervalSince(agent.updatedAt))
             let state = agent.isCompleted

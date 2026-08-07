@@ -275,9 +275,10 @@ final class SidebarMissedCell: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(with item: MissedActivity) {
-        glyph.stringValue = item.isBlocking ? "⏸" : "✓"
+        let face = item.reason.face
+        glyph.stringValue = face.glyph
         glyph.textColor =
-            item.isBlocking ? MacTheme.Color.warning : MacTheme.Color.accent.withAlphaComponent(0.72)
+            item.isBlocking ? face.tone.color : face.tone.color.withAlphaComponent(0.72)
         title.stringValue = item.title
         title.font = item.isBlocking ? MacTheme.Font.emphasis() : MacTheme.Font.body()
         detail.stringValue =

@@ -4,6 +4,7 @@ import Foundation
 public struct MissedActivity: Codable, Hashable, Sendable, Identifiable {
     public enum Reason: String, Codable, Hashable, Sendable {
         case turnEnded
+        case turnFailed
         case needsApproval
         case needsAnswer
     }
@@ -35,12 +36,13 @@ public struct MissedActivity: Codable, Hashable, Sendable, Identifiable {
     public var kindLabel: String {
         switch reason {
         case .turnEnded: return Localized.text("finished")
+        case .turnFailed: return Localized.text("failed")
         case .needsApproval: return Localized.text("needs approval")
         case .needsAnswer: return Localized.text("has a question")
         }
     }
 
-    public var isBlocking: Bool { reason != .turnEnded }
+    public var isBlocking: Bool { reason == .needsApproval || reason == .needsAnswer }
 }
 
 /// What happened while you were away.
@@ -151,6 +153,7 @@ public enum ActivityInbox {
         static func from(_ reason: ActivityAlert.Reason) -> MissedActivity.Reason {
             switch reason {
             case .turnEnded: return .turnEnded
+            case .turnFailed: return .turnFailed
             case .needsApproval: return .needsApproval
             case .needsAnswer: return .needsAnswer
             }

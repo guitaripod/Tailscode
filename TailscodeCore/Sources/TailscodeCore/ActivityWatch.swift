@@ -7,6 +7,7 @@ import Foundation
 public struct ActivityAlert: Equatable, Sendable {
     public enum Reason: Equatable, Sendable {
         case turnEnded
+        case turnFailed
         case needsApproval
         case needsAnswer
     }
@@ -17,6 +18,23 @@ public struct ActivityAlert: Equatable, Sendable {
     public let title: String
     public let body: String
     public let reason: Reason
+    /// The request an approval alert is about, carried whole so a client that can put buttons on
+    /// a notification can answer it from there — the tap needs the same object the in-app sheet
+    /// would have been given.
+    public let permission: PermissionRequest?
+
+    init(
+        profileID: String, sessionID: String, identifier: String, title: String, body: String,
+        reason: Reason, permission: PermissionRequest? = nil
+    ) {
+        self.profileID = profileID
+        self.sessionID = sessionID
+        self.identifier = identifier
+        self.title = title
+        self.body = body
+        self.reason = reason
+        self.permission = permission
+    }
 }
 
 /// One row of what the chat list already knows, reduced to the bit that can produce an edge.
@@ -94,7 +112,7 @@ public struct ActivityWatch: Sendable {
                     body: failed
                         ? Localized.text("The turn failed.")
                         : Localized.text("Your agent finished."),
-                    reason: .turnEnded))
+                    reason: failed ? .turnFailed : .turnEnded))
         }
         openWasRunning[key] = isRunning
 
@@ -109,7 +127,7 @@ public struct ActivityWatch: Sendable {
                     identifier: "perm:\(permission.id)",
                     title: title,
                     body: Localized.text("Approval needed: %@", tool),
-                    reason: .needsApproval))
+                    reason: .needsApproval, permission: permission))
         }
 
         let questions = state.pendingQuestions

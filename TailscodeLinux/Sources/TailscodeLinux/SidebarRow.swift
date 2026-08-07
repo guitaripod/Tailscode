@@ -52,8 +52,11 @@ enum SidebarRow {
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "session-row")
 
+        let face = item.reason.face
         let glyph = Gtk.label(
-            item.isBlocking ? "⏸" : "✓", css: item.isBlocking ? "glyph-needs" : "glyph-done",
+            face.glyph,
+            css: item.isBlocking
+                ? face.tone.glyphCSS : item.reason == .turnFailed ? "glyph-error" : "glyph-done",
             selectable: false)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
         Gtk.margins(glyph, top: 3)

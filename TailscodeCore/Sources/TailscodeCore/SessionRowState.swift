@@ -45,8 +45,7 @@ public enum SessionRowState: Equatable, Sendable {
     /// What the glyph column draws, including for idle — a row that is doing nothing still holds
     /// its column, so a list of mixed states keeps one straight edge down its left side.
     public var icon: ActivityIcon {
-        activity?.icon
-            ?? ActivityIcon(symbol: "circle", glyph: "·", tone: .quiet, motion: .still)
+        activity?.icon ?? .idle
     }
 
     public var glyph: (text: String, css: String) { (icon.glyph, icon.glyphCSS) }

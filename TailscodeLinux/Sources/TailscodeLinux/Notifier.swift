@@ -14,6 +14,15 @@ final class Notifier: @unchecked Sendable {
     private var appBits: UInt = 0
     private var watch = ActivityWatch()
 
+    /// Everything an approval button needs to answer from outside the window, carried through the
+    /// notification as one string the action handler can decode.
+    private struct DecisionPayload: Codable {
+        let profileID: String
+        let identifier: String
+        let approve: Bool
+        let permission: PermissionRequest
+    }
+
     static var notifyTurnComplete: Bool {
         UserDefaults.standard.object(forKey: "pref.notify.turnComplete") as? Bool ?? true
     }
@@ -32,36 +41,54 @@ final class Notifier: @unchecked Sendable {
         SettingsFile.capture()
     }
 
-    /// Registers `app.open-session` and remembers the application, so alerts can be sent and
-    /// their taps routed. The variadic C setter cannot be called from Swift; the `_value`
-    /// variant with an explicit GVariant does the same job.
+    /// Registers `app.open-session` and `app.permission-decision` and remembers the application,
+    /// so alerts can be sent, their taps routed, and an approval's own buttons answered. The
+    /// variadic C setter cannot be called from Swift; the `_value` variant with an explicit
+    /// GVariant does the same job.
     func attach(
-        app: UnsafeMutablePointer<AdwApplication>, onOpen: @escaping @Sendable (String) -> Void
+        app: UnsafeMutablePointer<AdwApplication>, onOpen: @escaping @Sendable (String) -> Void,
+        onDecision: @escaping @Sendable (String, PermissionRequest, Bool, String) -> Void
     ) {
         let raw = UnsafeMutableRawPointer(app)
         appBits = UInt(bitPattern: raw)
+        addStringAction(app: raw, name: "open-session") { value in
+            Gtk.onMain { onOpen(value) }
+        }
+        addStringAction(app: raw, name: "permission-decision") { value in
+            guard let payload = try? JSONDecoder().decode(
+                DecisionPayload.self, from: Data(value.utf8))
+            else { return }
+            Gtk.onMain {
+                onDecision(
+                    payload.profileID, payload.permission, payload.approve, payload.identifier)
+            }
+        }
+    }
+
+    private func addStringAction(
+        app: UnsafeMutableRawPointer, name: String, handle: @escaping @Sendable (String) -> Void
+    ) {
         let type = g_variant_type_new("s")
         defer { g_variant_type_free(type) }
-        guard let action = g_simple_action_new("open-session", type) else { return }
-        let handler = Unmanaged.passRetained(OpenBox(onOpen)).toOpaque()
+        guard let action = g_simple_action_new(name, type) else { return }
+        let handler = Unmanaged.passRetained(StringBox(handle)).toOpaque()
         let callback:
             @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutableRawPointer?) -> Void = {
                 _, parameter, raw in
                 guard let raw, let parameter else { return }
                 guard let cString = g_variant_get_string(parameter, nil) else { return }
-                let sessionID = String(cString: cString)
-                let open = Unmanaged<OpenBox>.fromOpaque(raw).takeUnretainedValue().open
-                Gtk.onMain { open(sessionID) }
+                let value = String(cString: cString)
+                Unmanaged<StringBox>.fromOpaque(raw).takeUnretainedValue().handle(value)
             }
         tailscode_connect(
             UnsafeMutableRawPointer(action), "activate",
             unsafeBitCast(callback, to: GCallback.self), handler)
-        g_action_map_add_action(op(raw), op(UnsafeMutableRawPointer(action)))
+        g_action_map_add_action(op(app), op(UnsafeMutableRawPointer(action)))
     }
 
-    private final class OpenBox: @unchecked Sendable {
-        let open: @Sendable (String) -> Void
-        init(_ open: @escaping @Sendable (String) -> Void) { self.open = open }
+    private final class StringBox: @unchecked Sendable {
+        let handle: @Sendable (String) -> Void
+        init(_ handle: @escaping @Sendable (String) -> Void) { self.handle = handle }
     }
 
     /// Turn-end edges across the listing, skipping the open session — its own stream reports it.
@@ -89,7 +116,7 @@ final class Notifier: @unchecked Sendable {
         var raised: [ActivityAlert] = []
         for alert in alerts {
             switch alert.reason {
-            case .turnEnded:
+            case .turnEnded, .turnFailed:
                 guard Self.notifyTurnComplete else { continue }
             case .needsApproval, .needsAnswer:
                 guard Self.notifyNeedsYou else { continue }
@@ -102,14 +129,30 @@ final class Notifier: @unchecked Sendable {
 
     private func send(_ alert: ActivityAlert) {
         guard let app = application else { return }
+        let face = alert.reason.face
         let notification = g_notification_new(alert.title)
         g_notification_set_body(notification, alert.body)
-        if alert.reason != .turnEnded {
+        if let icon = g_themed_icon_new(face.themedIcon) {
+            g_notification_set_icon(notification, op(UnsafeMutableRawPointer(icon)))
+            g_object_unref(UnsafeMutableRawPointer(icon))
+        }
+        if alert.reason == .needsApproval || alert.reason == .needsAnswer {
             g_notification_set_priority(notification, G_NOTIFICATION_PRIORITY_HIGH)
         }
         let target = g_variant_new_string(alert.sessionID)
         g_notification_set_default_action_and_target_value(
             notification, "app.open-session", target)
+        if let permission = alert.permission {
+            for action in face.category.actions {
+                let payload = DecisionPayload(
+                    profileID: alert.profileID, identifier: alert.identifier,
+                    approve: action.id == AlertCategory.approveActionID, permission: permission)
+                guard let encoded = try? JSONEncoder().encode(payload) else { continue }
+                let value = g_variant_new_string(String(decoding: encoded, as: UTF8.self))
+                g_notification_add_button_with_target_value(
+                    notification, action.title, "app.permission-decision", value)
+            }
+        }
         g_application_send_notification(app, alert.identifier, notification)
         g_object_unref(notification.map { UnsafeMutableRawPointer($0) })
     }

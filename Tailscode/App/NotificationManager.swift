@@ -1,3 +1,4 @@
+import CodingAgentKit
 import TailscodeCore
 import UIKit
 import UserNotifications
@@ -9,15 +10,41 @@ enum NotificationManager {
     /// Every alert the app raises itself, each behind its own preference so a
     /// user who only wants approval pings isn't opted into the rest.
     enum Kind {
-        case turnComplete, approval, usage
+        case turnComplete, approval, question, usage
 
         var isEnabled: Bool {
             switch self {
             case .turnComplete: return AppPreferences.notifyTurnComplete
-            case .approval: return AppPreferences.notifyApprovals
+            case .approval, .question: return AppPreferences.notifyApprovals
             case .usage: return AppPreferences.notifyUsageWarnings
             }
         }
+
+        var face: AlertFace {
+            switch self {
+            case .turnComplete: return .turnEnded
+            case .approval: return .needsApproval
+            case .question: return .needsAnswer
+            case .usage: return .usage
+            }
+        }
+    }
+
+    /// Tells the system what each kind of notification is and which buttons it carries, from the
+    /// same catalog every client reads — an approval arrives wearing Approve and Deny, everything
+    /// else answers only to being opened.
+    static func registerCategories() {
+        let categories = AlertCategory.allCases.map { category in
+            UNNotificationCategory(
+                identifier: category.rawValue,
+                actions: category.actions.map { action in
+                    UNNotificationAction(
+                        identifier: action.id, title: action.title,
+                        options: action.isDestructive ? [.destructive] : [])
+                },
+                intentIdentifiers: [])
+        }
+        UNUserNotificationCenter.current().setNotificationCategories(Set(categories))
     }
 
     static func requestAuthorizationIfNeeded() {
@@ -68,13 +95,16 @@ enum NotificationManager {
     }
 
     /// - Parameters:
+    ///   - permission: the request an approval is about, carried whole so the notification's own
+    ///     Approve and Deny buttons can answer it without opening the app.
     ///   - activity: what happened in the session, when the notice is about one. A notice raised
     ///     is also a notice that can be missed — a banner lasts seconds whether or not anybody was
     ///     looking — so anything named here is written into `ActivityInbox` by the same decision
     ///     that banners it: suppressed by preference means never raised, so never missed.
     static func notify(
         kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil,
-        profileID: String? = nil, activity: MissedActivity.Reason? = nil
+        profileID: String? = nil, permission: PermissionRequest? = nil,
+        activity: MissedActivity.Reason? = nil
     ) {
         guard kind.isEnabled else {
             AppLogger.lifecycle.info("notification suppressed by preference: \(identifier)")
@@ -88,14 +118,64 @@ enum NotificationManager {
                     title: title, body: body, reason: activity)
             ])
         }
+        let face = kind.face
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
-        if let sessionID { content.userInfo = ["sessionID": sessionID] }
+        content.categoryIdentifier = face.category.rawValue
+        var userInfo: [String: Any] = [:]
+        if let sessionID {
+            userInfo["sessionID"] = sessionID
+            content.threadIdentifier = sessionID
+        }
+        if let profileID { userInfo["profileID"] = profileID }
+        if let permission, let encoded = try? JSONEncoder().encode(permission) {
+            userInfo["permission"] = String(decoding: encoded, as: UTF8.self)
+        }
+        content.userInfo = userInfo
+        if let attachment = faceAttachment(face) {
+            content.attachments = [attachment]
+        }
         let request = UNNotificationRequest(
             identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// The kind's face as a thumbnail, so a glance at a stack of banners separates the finished
+    /// from the waiting before a word is read. Written fresh per notification because the system
+    /// takes ownership of the file it is handed.
+    private static func faceAttachment(_ face: AlertFace) -> UNNotificationAttachment? {
+        let image = faceImage(face)
+        guard let data = image.pngData() else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alert-face-\(UUID().uuidString).png")
+        do {
+            try data.write(to: url)
+            return try UNNotificationAttachment(identifier: "face", url: url)
+        } catch {
+            AppLogger.lifecycle.error("notification face attachment failed: \(error)")
+            return nil
+        }
+    }
+
+    private static func faceImage(_ face: AlertFace) -> UIImage {
+        let side: CGFloat = 256
+        let size = CGSize(width: side, height: side)
+        let tint = face.tone.color
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            tint.withAlphaComponent(0.18).setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+            let config = UIImage.SymbolConfiguration(pointSize: side * 0.42, weight: .semibold)
+            guard
+                let symbol = UIImage(systemName: face.symbol, withConfiguration: config)?
+                    .withTintColor(tint, renderingMode: .alwaysOriginal)
+            else { return }
+            let rect = CGRect(
+                x: (side - symbol.size.width) / 2, y: (side - symbol.size.height) / 2,
+                width: symbol.size.width, height: symbol.size.height)
+            symbol.draw(in: rect)
+        }
     }
 
     /// Proves the whole delivery path end to end from Settings — authorization,
@@ -108,6 +188,10 @@ enum NotificationManager {
         content.body = String(
             localized: "Notifications are working. This is what a finished turn looks like.")
         content.sound = .default
+        content.categoryIdentifier = AlertCategory.turn.rawValue
+        if let attachment = faceAttachment(.turnEnded) {
+            content.attachments = [attachment]
+        }
         let request = UNNotificationRequest(
             identifier: "test:\(UUID().uuidString)",
             content: content,
@@ -117,7 +201,9 @@ enum NotificationManager {
     }
 }
 
-/// Routes notification taps to the session they concern.
+/// Routes notification taps to the session they concern, and answers an approval's own buttons
+/// without ever opening the app — the decision travels straight to the server the request came
+/// from.
 final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = NotificationRouter()
 
@@ -138,17 +224,53 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
-        let sessionID = response.notification.request.content.userInfo["sessionID"] as? String
-        if let sessionID, let url = URL(string: "tailscode://session/\(sessionID)") {
-            Task { @MainActor in
+        didReceive response: UNNotificationResponse
+    ) async {
+        let content = response.notification.request.content
+        let payload = content.userInfo["permission"] as? String
+        let profileID = content.userInfo["profileID"] as? String
+        let sessionID = content.userInfo["sessionID"] as? String
+        let identifier = response.notification.request.identifier
+        switch response.actionIdentifier {
+        case AlertCategory.approveActionID, AlertCategory.denyActionID:
+            let approve = response.actionIdentifier == AlertCategory.approveActionID
+            await Self.decide(
+                payload: payload, profileID: profileID, identifier: identifier, approve: approve)
+        default:
+            guard let sessionID, let url = URL(string: "tailscode://session/\(sessionID)")
+            else { return }
+            await MainActor.run {
                 let scene = UIApplication.shared.connectedScenes
                     .compactMap { $0.delegate as? SceneDelegate }.first
                 scene?.routeDeepLink(url)
             }
         }
-        completionHandler()
+    }
+
+    /// The lock-screen answer: rebuild the backend the request came from and respond by name.
+    /// Failure leaves the request standing — the inbox entry and the in-app banner still know
+    /// about it, and resolving it from inside the chat stays possible.
+    @MainActor
+    private static func decide(
+        payload: String?, profileID: String?, identifier: String, approve: Bool
+    ) async {
+        guard let payload,
+            let permission = try? JSONDecoder().decode(
+                PermissionRequest.self, from: Data(payload.utf8)),
+            let profileID,
+            let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID }),
+            let backend = ConnectionController.shared.makeBackend(for: profile)
+        else {
+            AppLogger.session.error("notification decision: no backend for stored payload")
+            return
+        }
+        do {
+            try await backend.respond(to: permission, decision: approve ? .once : .reject)
+            NotificationManager.withdraw(identifiers: [identifier])
+            AppLogger.session.info(
+                "notification decision \(approve ? "approved" : "denied"): \(permission.id)")
+        } catch {
+            AppLogger.session.error("notification decision failed: \(error)")
+        }
     }
 }

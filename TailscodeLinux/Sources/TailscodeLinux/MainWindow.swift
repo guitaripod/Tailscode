@@ -160,9 +160,16 @@ final class MainWindow: @unchecked Sendable {
         Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
             self?.stashDrafts()
         }
-        Notifier.shared.attach(app: app) { [weak self] sessionID in
-            self?.openSession(withID: sessionID)
-        }
+        Notifier.shared.attach(
+            app: app,
+            onOpen: { [weak self] sessionID in
+                self?.openSession(withID: sessionID)
+            },
+            onDecision: { profileID, permission, approve, identifier in
+                MainWindow.decideFromNotification(
+                    profileID: profileID, permission: permission, approve: approve,
+                    identifier: identifier)
+            })
         applyPanePreferences()
         let cachedEntries = SessionListCache.load()
         if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: [], fromNetwork: false) }
@@ -1504,6 +1511,27 @@ final class MainWindow: @unchecked Sendable {
 
     /// A notification tap arrives here: raise the window, then bring the session it names to the
     /// eye — the pane already showing it if one is, else the focused pane.
+    /// The notification's own answer: rebuild the backend the request came from and respond by
+    /// name, without presenting the window. Failure leaves the request standing — the inbox entry
+    /// still knows about it and the chat can resolve it.
+    static func decideFromNotification(
+        profileID: String, permission: PermissionRequest, approve: Bool, identifier: String
+    ) {
+        Task {
+            guard
+                let profile = await ServerDirectory.shared.profiles()
+                    .first(where: { $0.id == profileID }),
+                let backend = await ServerDirectory.shared.backend(for: profile)
+            else { return }
+            do {
+                try await backend.respond(to: permission, decision: approve ? .once : .reject)
+                Gtk.onMain { Notifier.shared.withdraw([identifier]) }
+            } catch {
+                Trace.mark("notification decision failed: \(error)")
+            }
+        }
+    }
+
     func openSession(withID id: String) {
         if let window { gtk_window_present(ptr(window)) }
         if let pane = splitHost.pane(showing: id) {

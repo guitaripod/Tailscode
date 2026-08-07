@@ -1371,13 +1371,13 @@ final class ChatViewController: UIViewController {
                 body: permission.toolName.map { String(localized: "Approval needed: \($0)") }
                     ?? String(localized: "Approval needed."),
                 identifier: "perm:\(permission.id)", sessionID: viewModel.session.id,
-                profileID: viewModel.contextID, activity: .needsApproval)
+                profileID: viewModel.contextID, permission: permission, activity: .needsApproval)
         }
         if let question = pendingQuestion, question.id != lastNotifiedQuestionID {
             lastNotifiedQuestionID = question.id
             Theme.Haptics.needsYou()
             NotificationManager.notify(
-                kind: .approval,
+                kind: .question,
                 title: viewModel.title,
                 body: question.questions.first?.question
                     ?? String(localized: "The agent has a question."),

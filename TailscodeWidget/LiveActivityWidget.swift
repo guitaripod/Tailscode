@@ -1,30 +1,9 @@
 import ActivityKit
 import SwiftUI
+import TailscodeCore
 import WidgetKit
 
 extension ChatActivityAttributes.ContentState.Phase {
-    var symbol: String {
-        switch self {
-        case .thinking: return "sparkles"
-        case .tool: return "wrench.and.screwdriver.fill"
-        case .responding: return "text.cursor"
-        case .approval: return "hand.raised.fill"
-        case .done: return "checkmark"
-        case .error: return "exclamationmark.triangle.fill"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .thinking: return .blue
-        case .tool: return .purple
-        case .responding: return .teal
-        case .approval: return .orange
-        case .done: return .green
-        case .error: return .red
-        }
-    }
-
     var isTerminal: Bool { self == .done || self == .error }
 
     var label: String {
@@ -35,6 +14,50 @@ extension ChatActivityAttributes.ContentState.Phase {
         case .approval: return String(localized: "Needs approval")
         case .done: return String(localized: "Done")
         case .error: return String(localized: "Failed")
+        }
+    }
+
+    /// The face an activity started by an older app process falls back to, spelled in the same
+    /// vocabulary Core authors for these states.
+    var fallbackSymbol: String {
+        switch self {
+        case .thinking: return "brain"
+        case .tool: return "wrench.and.screwdriver"
+        case .responding: return "text.alignleft"
+        case .approval: return "hand.raised"
+        case .done: return "checkmark.circle"
+        case .error: return "exclamationmark.triangle"
+        }
+    }
+
+    var fallbackTone: ActivityTone {
+        switch self {
+        case .thinking, .tool, .responding, .done: return .live
+        case .approval: return .attention
+        case .error: return .danger
+        }
+    }
+}
+
+extension ChatActivityAttributes.ContentState {
+    /// The app computes the face where Core lives — a running shell wears the terminal here
+    /// exactly as it does in the transcript — and the widget only draws what it was handed.
+    var faceSymbol: String { symbol ?? phase.fallbackSymbol }
+
+    var faceTone: ActivityTone {
+        tone.flatMap(ActivityTone.init(rawValue:)) ?? phase.fallbackTone
+    }
+}
+
+extension ActivityTone {
+    /// The same four meanings every other badge resolves, in the island's own colours — no theme
+    /// reaches the Lock Screen.
+    var color: Color {
+        switch self {
+        case .live: return .green
+        case .attention: return .orange
+        case .danger: return .red
+        case .quiet: return .secondary
         }
     }
 }
@@ -59,7 +82,7 @@ struct LiveActivityWidget: Widget {
             let state = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    PhaseIcon(phase: state.phase, size: 36)
+                    PhaseIcon(state: state, size: 36)
                         .padding(.leading, 4)
                         .widgetURL(sessionURL(context))
                 }
@@ -80,10 +103,14 @@ struct LiveActivityWidget: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 6) {
                         if let tool = state.lastTool, !state.phase.isTerminal {
-                            Label(tool, systemImage: "terminal")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            Label(
+                                tool,
+                                systemImage: state.phase == .tool
+                                    ? state.faceSymbol : "wrench.and.screwdriver"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         }
                         Spacer()
                         if state.toolCount > 0 {
@@ -99,15 +126,15 @@ struct LiveActivityWidget: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: state.phase.symbol)
+                Image(systemName: state.faceSymbol)
                     .font(.caption2)
-                    .foregroundStyle(state.phase.tint.opacity(staleDim(context) ? 0.4 : 1))
+                    .foregroundStyle(state.faceTone.color.opacity(staleDim(context) ? 0.4 : 1))
                     .accessibilityLabel(state.phase.label)
             } compactTrailing: {
                 if state.phase.isTerminal || state.phase == .approval {
-                    Image(systemName: state.phase == .approval ? "exclamationmark" : state.phase.symbol)
+                    Image(systemName: state.faceSymbol)
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(state.phase.tint)
+                        .foregroundStyle(state.faceTone.color)
                         .accessibilityLabel(state.phase.label)
                 } else if context.isStale {
                     Image(systemName: "clock.badge.exclamationmark")
@@ -125,9 +152,9 @@ struct LiveActivityWidget: Widget {
                         .foregroundStyle(.secondary)
                 }
             } minimal: {
-                Image(systemName: state.phase.symbol)
+                Image(systemName: state.faceSymbol)
                     .font(.caption2)
-                    .foregroundStyle(state.phase.tint.opacity(staleDim(context) ? 0.4 : 1))
+                    .foregroundStyle(state.faceTone.color.opacity(staleDim(context) ? 0.4 : 1))
                     .accessibilityLabel(state.phase.label)
             }
         }
@@ -140,7 +167,7 @@ private struct LockScreenView: View {
     var body: some View {
         let state = context.state
         HStack(spacing: 12) {
-            PhaseIcon(phase: state.phase, size: 40)
+            PhaseIcon(state: state, size: 40)
             VStack(alignment: .leading, spacing: 3) {
                 Text(context.state.title ?? context.attributes.sessionTitle)
                     .font(.subheadline.weight(.semibold))
@@ -149,10 +176,14 @@ private struct LockScreenView: View {
                     .font(.caption)
                     .lineLimit(1)
                 if let tool = state.lastTool, !state.phase.isTerminal {
-                    Label(tool, systemImage: "terminal")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Label(
+                        tool,
+                        systemImage: state.phase == .tool
+                            ? state.faceSymbol : "wrench.and.screwdriver"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
@@ -169,16 +200,16 @@ private struct LockScreenView: View {
 }
 
 private struct PhaseIcon: View {
-    let phase: ChatActivityAttributes.ContentState.Phase
+    let state: ChatActivityAttributes.ContentState
     let size: CGFloat
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(phase.tint.opacity(0.18))
-            Image(systemName: phase.symbol)
+                .fill(state.faceTone.color.opacity(0.18))
+            Image(systemName: state.faceSymbol)
                 .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(phase.tint)
+                .foregroundStyle(state.faceTone.color)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -195,7 +226,7 @@ private struct StatusText: View {
                 .foregroundStyle(.secondary)
         } else {
             Text(state.statusText)
-                .foregroundStyle(state.phase.tint)
+                .foregroundStyle(state.faceTone.color)
         }
     }
 }
@@ -213,7 +244,7 @@ private struct ElapsedView: View {
             )
             .font(.subheadline.weight(.semibold))
             .monospacedDigit()
-            .foregroundStyle(state.phase.tint)
+            .foregroundStyle(state.faceTone.color)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .frame(maxWidth: 56)
