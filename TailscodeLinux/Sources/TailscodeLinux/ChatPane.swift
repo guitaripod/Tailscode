@@ -16,6 +16,9 @@ final class ChatPane: @unchecked Sendable {
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let identityLabel = Gtk.label("", css: "pane-identity", selectable: false)
     private var identityActivity: ActivityKind?
+    /// The row the wave last had its hands on. A reveal is a prefix painted straight into a label,
+    /// so the row it was painting is the one row that can be left holding half a sentence.
+    var lastStreamedKey: String?
     let transcriptBox = Gtk.box(
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
@@ -915,6 +918,7 @@ final class ChatPane: @unchecked Sendable {
         } else {
             applyRows(
                 pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            if state.status != .running { settleStreamedTail(in: windowed) }
             paintCascade()
         }
         renderPendingCards(state)
@@ -1195,6 +1199,18 @@ final class ChatPane: @unchecked Sendable {
     }
 
 
+
+    /// A row that stopped being written ends up whole, whatever the wave was doing when the turn
+    /// ended. Settling is normally the release path's job, but it can only settle the row it still
+    /// holds: a key that changed as the message completed, a widget rebuilt between frames, or a
+    /// turn that ended in the same update its last words arrived in all leave the painter holding
+    /// nothing, and then no other code path would ever put the rest of the sentence back — the
+    /// answer would sit truncated until the chat was reopened.
+    private func settleStreamedTail(in rows: [TranscriptRow]) {
+        guard let key = lastStreamedKey else { return }
+        lastStreamedKey = nil
+        settleCascade(on: key, in: rows)
+    }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
     /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep

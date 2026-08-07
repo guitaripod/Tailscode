@@ -33,6 +33,7 @@ extension ChatPane {
         cascade.focus(
             row.key, markup: markup, sealed: !running,
             ultracode: auraActive || ultracodeInFlight, clock: transcriptBox)
+        lastStreamedKey = row.key
         if let released, released != cascade.key { settleCascade(on: released, in: paced) }
         return paced
     }
