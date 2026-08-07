@@ -49,6 +49,10 @@ final class ChatViewController: UIViewController {
     private let agentsChip = UIButton(type: .system)
     private let goalChip = UIButton(type: .system)
     private let contextChip = UIButton(type: .system)
+    /// What the whole conversation has cost, beside its size — the two facts a long chat is
+    /// judged by. Tapping opens the account behind the number.
+    private let spendChip = UIButton(type: .system)
+    private var spend: SessionSpend?
     private let findBar = UIView()
     private let findField = UISearchTextField()
     private let findCountLabel = UILabel()
@@ -104,6 +108,7 @@ final class ChatViewController: UIViewController {
         configureAgentsChip()
         configureGoalChip()
         configureContextChip()
+        configureSpendChip()
         configureFindBar()
         configureNavTitleView()
         configureDataSource()
@@ -207,6 +212,7 @@ final class ChatViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if !composer.isEditing { becomeFirstResponder() }
+        refreshSpend()
     }
 
     override var canBecomeFirstResponder: Bool { true }
@@ -411,7 +417,12 @@ final class ChatViewController: UIViewController {
         composerAccessories.addArrangedSubview(agentsChip)
         contextChip.isHidden = true
         contextChip.translatesAutoresizingMaskIntoConstraints = false
-        composerAccessories.addArrangedSubview(contextChip)
+        spendChip.isHidden = true
+        spendChip.translatesAutoresizingMaskIntoConstraints = false
+        let chips = UIStackView(arrangedSubviews: [contextChip, spendChip])
+        chips.axis = .horizontal
+        chips.spacing = Theme.Spacing.xs
+        composerAccessories.addArrangedSubview(chips)
         view.addSubview(composerAccessories)
 
         NSLayoutConstraint.activate([
@@ -1343,7 +1354,10 @@ final class ChatViewController: UIViewController {
         syncFAB()
         noteUnread(orderedIDs.filter { previous[$0] == nil }.count)
         updateNavStatus(for: state)
-        if wasRunning && state.status != .running { Theme.Haptics.received() }
+        if wasRunning && state.status != .running {
+            Theme.Haptics.received()
+            refreshSpend()
+        }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id
@@ -1606,6 +1620,7 @@ final class ChatViewController: UIViewController {
             contextEstimate = StatusFacts.estimateContextTokens(state.messages)
         }
         updateContextChip()
+        updateSpendChip()
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: viewModel.trackedSubagents,
             usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate,
@@ -1700,6 +1715,59 @@ final class ChatViewController: UIViewController {
             localized: "Estimated conversation size. Opens compaction.")
         contextChip.addAction(
             UIAction { [weak self] _ in self?.presentCompactPreflight() }, for: .touchUpInside)
+    }
+
+    /// The conversation's price, once the server can account for it. It opens the whole account —
+    /// what each turn cost, where the money went between fresh tokens and cache, which model spent
+    /// it — because a number with no story behind it is a number nobody trusts.
+    private func configureSpendChip() {
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.image = UIImage(
+            systemName: "creditcard",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
+        config.imagePadding = 6
+        config.baseForegroundColor = Theme.Color.secondaryLabel
+        spendChip.configuration = config
+        spendChip.accessibilityHint = String(
+            localized: "What this conversation has cost. Opens the breakdown.")
+        spendChip.addAction(
+            UIAction { [weak self] _ in self?.presentSpend() }, for: .touchUpInside)
+    }
+
+    private func updateSpendChip() {
+        guard let spend, !spend.isEmpty else {
+            spendChip.isHidden = true
+            return
+        }
+        spendChip.configuration?.title = spend.badge
+        spendChip.isHidden = false
+    }
+
+    private func presentSpend() {
+        guard let spend, !spend.isEmpty else { return }
+        Theme.Haptics.tap()
+        let panel = SpendViewController(spend: spend, title: title ?? viewModel.session.title)
+        let nav = UINavigationController(rootViewController: panel)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        present(nav, animated: true)
+    }
+
+    /// Asked of the server on the same slow poll as the agents; a backend that cannot account for
+    /// the conversation falls back to whatever the transcript already in hand can be made to say.
+    private func refreshSpend() {
+        let sessionID = viewModel.session.id
+        Task { [weak self] in
+            guard let self else { return }
+            let report = try? await self.viewModel.backend.sessionSpend(sessionID)
+            guard self.viewModel.session.id == sessionID else { return }
+            self.spend = report.map(SessionSpend.init(report:))
+                ?? SessionSpend(messages: self.viewModel.state.messages)
+            self.updateSpendChip()
+        }
     }
 
     private func updateContextChip() {

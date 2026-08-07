@@ -19,6 +19,11 @@ public enum ModelBadge {
         return "\(name) · \(effort)"
     }
 
+    /// The family name alone, for a legend or a table where the effort is not the point.
+    public static func shortName(_ raw: String) -> String {
+        familyName(raw) ?? raw
+    }
+
     private static func familyName(_ raw: String) -> String? {
         let id = raw.lowercased()
         let families = [

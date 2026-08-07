@@ -29,6 +29,10 @@ public struct StatusFacts: Sendable {
     public var finishedAgents: Int { agents.filter(\.isCompleted).count }
     public var contextTokens: Int?
     public var lastCostUSD: Double?
+    /// What the whole conversation has cost, when the server can account for it. The band shows
+    /// this in place of the last turn's price — a turn's cost is a curiosity, a session's is a
+    /// fact you act on — and clicking it opens the whole account.
+    public var spend: SessionSpend?
     public var lastTurnTokens: Int?
     public var goal: String?
     public var goalMet = false
@@ -68,7 +72,7 @@ public struct StatusFacts: Sendable {
     public static func from(
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
-        quotas: [UsageQuota] = [], queued: Int = 0
+        quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
@@ -98,6 +102,7 @@ public struct StatusFacts: Sendable {
         if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
         facts.runningTool = Self.runningTool(in: state)
         facts.queued = queued
+        facts.spend = spend
         facts.agents = agents
         facts.contextTokens = contextTokens
         facts.lastCostUSD = usage?.costUSD
@@ -265,7 +270,10 @@ public struct StatusFacts: Sendable {
                             action: .compact),
                     ])))
         }
-        if let lastCostUSD, lastCostUSD > 0 {
+        if let spend, !spend.isEmpty {
+            result.append(
+                Segment(id: "cost", text: spend.badge, css: "seg-dim", kind: .act(.spend)))
+        } else if let lastCostUSD, lastCostUSD > 0 {
             result.append(
                 Segment(
                     id: "cost", text: String(format: "$%.2f", lastCostUSD), css: "seg-dim",
@@ -405,8 +413,14 @@ public struct StatusFacts: Sendable {
         return shared >= 24 ? shared : 0
     }
 
+    /// Counts read in the largest unit that still says something: a conversation that has read a
+    /// hundred million cache tokens must not report "104857.6k", which is a number nobody can see
+    /// the size of.
     public static func tokens(_ count: Int) -> String {
-        count >= 1000 ? String(format: "%.1fk", Double(count) / 1000) : "\(count)"
+        if count >= 1_000_000_000 { return String(format: "%.1fB", Double(count) / 1_000_000_000) }
+        if count >= 1_000_000 { return String(format: "%.1fM", Double(count) / 1_000_000) }
+        if count >= 1000 { return String(format: "%.1fk", Double(count) / 1000) }
+        return "\(count)"
     }
 
     /// An age reads in the largest sensible unit — "2m", "3h", "2d" — where a stopwatch reading
@@ -426,6 +440,7 @@ public struct StatusFacts: Sendable {
 
     public enum Action: Equatable, Sendable {
         case stop
+        case spend
         case compact
         case goal
         case scrollToPending

@@ -60,6 +60,7 @@ enum ParityManifest {
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBand")
         case .usagePanel: return .implemented("UsagePanel")
+        case .sessionSpend: return .implemented("SpendPanel")
         case .toasts: return .implemented("toastOverlay")
         case .serverManagement: return .implemented("ServerManager")
         case .connectDiagnosis: return .implemented("diagnose")

@@ -80,6 +80,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkSpend()
+            report("spend: \(checks) numbers hold, and the panel can be built")
+        } catch {
+            report("spend: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkActivityMotion()
             report("activity: \(ActivityKind.everyState.count) states move as they mean")
         } catch {
@@ -1339,6 +1347,53 @@ public enum SelfTest {
                     "\(palette.name): \(kind) bands .\(icon.bandCSS) and nothing styles it")
             }
         }
+    }
+
+    /// What a conversation cost is money on a screen, so the arithmetic is asserted rather than
+    /// eyeballed: the bars are relative to the priciest turn, the tiers add up to the total, and
+    /// an estimate says so in the badge itself.
+    private static func checkSpend() throws -> Int {
+        let start = Date(timeIntervalSince1970: 1_780_000_000)
+        func turn(_ minute: Int, _ cost: Double, output: Int = 1000) -> SessionSpendReport.Turn {
+            SessionSpendReport.Turn(
+                at: start.addingTimeInterval(Double(minute) * 60), seconds: 30,
+                model: "claude-opus-5", calls: 2,
+                tokens: SessionSpendReport.Tokens(output: output, cacheRead: output * 40),
+                costUSD: cost, prompt: "turn \(minute)")
+        }
+        let turns = [turn(0, 1), turn(30, 4), turn(90, 1)]
+        var tokens = SessionSpendReport.Tokens()
+        for item in turns {
+            tokens.output += item.tokens.output
+            tokens.cacheRead += item.tokens.cacheRead
+        }
+        let spend = SessionSpend(
+            report: SessionSpendReport(
+                costUSD: 6, tokens: tokens, turns: turns,
+                byModel: [
+                    SessionSpendReport.ModelShare(
+                        model: "claude-opus-5", turns: 3, tokens: tokens, costUSD: 6)
+                ],
+                startedAt: turns.first?.at, endedAt: turns.last?.at))
+
+        guard spend.badge == "~$6.00" else { throw SelfTestFailure("badge: \(spend.badge)") }
+        guard spend.turns.map(\.share) == [0.25, 1, 0.25] else {
+            throw SelfTestFailure("bars are not relative to the priciest turn")
+        }
+        let tierMoney = spend.tiers.reduce(0) { $0 + $1.costUSD }
+        guard abs(tierMoney - spend.costUSD) < 0.0001 else {
+            throw SelfTestFailure("tiers add up to \(tierMoney), not \(spend.costUSD)")
+        }
+        guard spend.priciest?.costUSD == 4, spend.turnCount == 3 else {
+            throw SelfTestFailure("the expensive turn is not the one that cost most")
+        }
+        guard let rate = spend.perHourUSD, abs(rate - 4) < 0.0001 else {
+            throw SelfTestFailure("an hour and a half of six dollars is not \(spend.perHourUSD ?? 0)")
+        }
+        guard !spend.headline.isEmpty, spend.source.contains(Localized.text("Estimated")) else {
+            throw SelfTestFailure("the panel does not say where its numbers came from")
+        }
+        return spend.turns.count + spend.tiers.count + spend.headline.count
     }
 
     /// The moving half of the same contract: work has to move, an answer the agent is waiting for

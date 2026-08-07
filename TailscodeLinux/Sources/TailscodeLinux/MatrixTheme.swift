@@ -737,6 +737,10 @@ enum MatrixTheme {
         .usage-detail-key { color: \(textDim); font-size: 0.85rem; }
         .usage-detail-value { color: \(text); font-size: 0.85rem; }
         .usage-source { color: \(textDim); font-size: 0.75rem; }
+        .spend-total { color: \(text); font-weight: 700; font-size: 1.6rem; }
+        .spend-caption { color: \(textDim); font-size: 0.72rem; letter-spacing: 0.06em; }
+        .spend-bar { background-color: \(accentDim); border-radius: 2px; }
+        .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
         .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """

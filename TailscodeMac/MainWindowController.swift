@@ -37,6 +37,7 @@ final class MainWindowController: NSWindowController {
     private var mouseMonitor: Any?
     private var usageTask: Task<Void, Never>?
     private var usagePopover: NSPopover?
+    private var spendPopover: NSPopover?
     private var lastQuotas: [(String, UsageQuota)] = []
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
@@ -348,9 +349,26 @@ final class MainWindowController: NSWindowController {
             pane.scrollToNewestAgent()
         case .agent(let id):
             pane.scrollToAgent(id)
+        case .spend:
+            presentSpend(for: pane)
         case .reconnect:
             pane.reconnect()
         }
+    }
+
+    /// The account behind the price, in a popover off the band itself — the number is where the
+    /// question was asked, so the answer belongs there rather than in a window of its own.
+    private func presentSpend(for pane: TranscriptViewController) {
+        guard let spend = pane.spend else { return }
+        spendPopover?.close()
+        let panel = SpendPanelViewController(
+            spend: spend, title: pane.currentEntry?.session.title ?? Localized.text("This conversation"))
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = panel
+        let anchor = pane.bandAnchor
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        spendPopover = popover
     }
 
     private func applyUIScale() {
@@ -590,6 +608,7 @@ final class MainWindowController: NSWindowController {
     /// toasts land in the shared queue, and its band steers the pane it belongs to.
     private func makePane() -> TranscriptViewController {
         let pane = TranscriptViewController()
+        pane.composer.onAuraChanged = { [weak self] in self?.sidebar.refreshOrb() }
         pane.onState = { [weak self, weak pane] state in
             guard let pane, let entry = pane.currentEntry else { return }
             MacNotifier.shared.observeConversation(

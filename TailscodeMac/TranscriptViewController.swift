@@ -34,6 +34,8 @@ final class TranscriptViewController: NSViewController {
     private let pendingStack = NSStackView()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
+    /// What a popover opened from a band fact points at.
+    var bandAnchor: NSView { statusBand }
     private var bandGlass: NSView?
     private let authBanner = NSStackView()
     private var authGlass: NSView?
@@ -120,6 +122,9 @@ final class TranscriptViewController: NSViewController {
     private var highlightedView: NSView?
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
+    /// What the whole conversation has cost, asked of the server on the same slow poll as the
+    /// agents; a backend that cannot account for it leaves the band on the last turn's price.
+    private(set) var spend: SessionSpend?
     private var contextEstimate: Int?
     private var countedMessages = -1
     private var notice: String?
@@ -916,7 +921,8 @@ final class TranscriptViewController: NSViewController {
         let quotas = quotasForStatus?() ?? []
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
-            attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas)
+            attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
+            spend: spend)
         lastFacts = facts
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
@@ -966,8 +972,11 @@ final class TranscriptViewController: NSViewController {
         Task { [weak self] in
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
+            let report = (try? await backend.sessionSpend(sessionID)) ?? nil
             guard let self, self.entry?.session.id == sessionID else { return }
             self.usage = usage
+            self.spend = report.map(SessionSpend.init(report:))
+                ?? SessionSpend(messages: self.lastState?.messages ?? [])
             if let agents {
                 self.applyAgentSummaries(agents)
             } else {

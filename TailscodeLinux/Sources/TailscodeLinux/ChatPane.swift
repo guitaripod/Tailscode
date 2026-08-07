@@ -25,6 +25,10 @@ final class ChatPane: @unchecked Sendable {
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
     private var usage: AgentUsage?
+    /// What the whole conversation has cost, asked of the server on the same slow poll as the
+    /// agents. A backend that cannot account for it leaves this nil and the band falls back to the
+    /// last turn's price.
+    private var spend: SessionSpend?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
     private var notice: String?
@@ -1350,7 +1354,8 @@ final class ChatPane: @unchecked Sendable {
         let quotas = host?.quotasForStatus() ?? []
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
-            attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas)
+            attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
+            spend: spend)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -1394,6 +1399,11 @@ final class ChatPane: @unchecked Sendable {
         case .scrollToPending: scroll(toEnd: true)
         case .scrollToAgents: scrollToNewestAgent()
         case .agent(let id): scrollToAgent(id)
+        case .spend:
+            guard let spend else { return }
+            SpendPanel.present(
+                parent: host?.windowWidget, spend: spend,
+                title: entry.map { $0.session.title } ?? Localized.text("This conversation"))
         case .reconnect:
             guard let conversation else { return }
             Task { await conversation.reconnect() }
@@ -1510,9 +1520,12 @@ final class ChatPane: @unchecked Sendable {
         Task { [weak self] in
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
+            let report = (try? await backend.sessionSpend(sessionID)) ?? nil
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.usage = usage
+                self.spend = report.map(SessionSpend.init(report:))
+                    ?? SessionSpend(messages: self.lastState?.messages ?? [])
                 if let agents {
                     self.applyAgentFacts(agents)
                 } else {
@@ -1732,9 +1745,11 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func refreshUltracodeAura() {
+        let was = aura.isActive
         aura.setActive(
             Ultracode.auraActive(
                 effort: chosenEffort, draft: composerText(), inFlightInvoked: ultracodeInFlight))
+        if aura.isActive != was { host?.refreshOrb() }
     }
 
     /// On the server first — what this machine will actually resolve — then what the app itself
