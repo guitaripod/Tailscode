@@ -1,6 +1,5 @@
 import CodingAgentKit
 import Foundation
-import TailscodeCore
 
 /// What a row in the chat list is currently saying.
 ///
@@ -38,6 +37,31 @@ public enum SessionRowState: Equatable, Sendable {
         case .failed: return ("✗", "glyph-error")
         }
     }
+
+    /// Whether the row belongs in LIVE NOW. A turn that stopped to ask something is still a turn
+    /// in flight — it is the one the person most needs to find — so it leads the section rather
+    /// than falling back into recency with everything that finished hours ago.
+    public var isInFlight: Bool {
+        self == .live || self == .awaitingApproval
+    }
+}
+
+/// What this device knows about a session first-hand, which a listing cannot tell it.
+///
+/// A listing is a poll of another machine: it reports `active` for the seconds a turn is literally
+/// open on the server and says nothing about a turn that stopped to ask permission, nothing about
+/// one that failed, and nothing at all in the window between the local stream starting a turn and
+/// the server's next sweep. A client that is streaming a conversation knows all of that already,
+/// so it hands it in here instead of leaving the row to guess from a stale flag.
+public enum SessionPresence: Sendable, Equatable {
+    /// Nothing on this device is watching it; the listing is the only witness.
+    case unobserved
+    /// A turn is running here, optionally with the step it is on.
+    case running(String?)
+    /// A turn is running here and is waiting to be answered.
+    case awaitingApproval
+    /// The last turn this device watched ended in a failure.
+    case failed
 }
 
 /// Everything one row needs, derived once so the widget builder has no logic in it.
@@ -52,14 +76,18 @@ public struct SessionRowModel: Equatable, Sendable {
     /// What the agent is working on, when it is working — the line a busy row leads with.
     public let snippet: String?
 
+    /// - Parameter presence: what this device is watching first-hand. First-hand beats the
+    ///   listing in both directions: a turn running here is live before the server's sweep agrees,
+    ///   and a server that missed a listing cannot make a conversation this device is streaming
+    ///   look offline.
     public init(
-        entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool = false
+        entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool = false,
+        presence: SessionPresence = .unobserved
     ) {
         self.entry = entry
         self.unread = unread
         self.saved = saved
         self.pinned = pinned
-        self.snippet = entry.session.isWorking ? entry.session.agentTask : nil
         self.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
@@ -68,13 +96,30 @@ public struct SessionRowModel: Equatable, Sendable {
         self.detail = [
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
-        if unreachable {
-            self.state = .offline
-        } else if entry.session.isActive == true {
-            self.state = .live
-        } else {
-            self.state = .idle
+        self.state = Self.resolve(entry: entry, unreachable: unreachable, presence: presence)
+        switch presence {
+        case .running(let step) where step?.isEmpty == false:
+            self.snippet = step
+        default:
+            self.snippet = entry.session.isWorking ? entry.session.agentTask : nil
         }
+    }
+
+    /// The order the row's five states are decided in. What this device watched wins over what the
+    /// listing remembered, an unreachable server outranks a flag it can no longer vouch for, and
+    /// `isWorking` — not the bare `isActive` — is the listing's own answer, so a session whose
+    /// subagents are still out counts as live.
+    private static func resolve(
+        entry: SessionEntry, unreachable: Bool, presence: SessionPresence
+    ) -> SessionRowState {
+        switch presence {
+        case .awaitingApproval: return .awaitingApproval
+        case .running: return .live
+        case .failed where !unreachable: return .failed
+        case .failed, .unobserved: break
+        }
+        if unreachable { return .offline }
+        return entry.session.isWorking ? .live : .idle
     }
 
     /// Compact and monospace-friendly, so a column of them lines up: seconds, minutes, hours, days.
@@ -110,7 +155,14 @@ public enum SessionSection: String, CaseIterable, Sendable {
 /// never shows a heading with nothing under it. Pinned rows lead in their own section, in the
 /// order the pins were made, and keep their state pill — a pinned live session reads as pinned
 /// *and* live, never as one or the other.
+///
+/// Membership is decided on `(profileID, sessionID)` rather than the bare session id, because the
+/// same id on two servers is two different chats: keying on the id alone let one machine's live
+/// conversation swallow another machine's row out of every section below it.
 public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
+    func key(_ row: SessionRowModel) -> String {
+        SessionPinStore.key(row.entry.profileID, row.entry.session.id)
+    }
     let pinned = rows.filter { $0.pinned }.sorted {
         guard
             let a = SessionPinStore.rank(
@@ -120,18 +172,12 @@ public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [S
         else { return false }
         return a < b
     }
-    let pinnedIDs = Set(pinned.map(\.entry.session.id))
-    let live = rows.filter {
-        ($0.state == .live || $0.state == .awaitingApproval)
-            && !pinnedIDs.contains($0.entry.session.id)
-    }
-    let liveIDs = Set(live.map(\.entry.session.id))
-    let saved = rows.filter {
-        $0.saved && !liveIDs.contains($0.entry.session.id)
-            && !pinnedIDs.contains($0.entry.session.id)
-    }
-    let seen = liveIDs.union(saved.map(\.entry.session.id)).union(pinnedIDs)
-    let recent = rows.filter { !seen.contains($0.entry.session.id) }
+    var seen = Set(pinned.map(key))
+    let live = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }
+    seen.formUnion(live.map(key))
+    let saved = rows.filter { $0.saved && !seen.contains(key($0)) }
+    seen.formUnion(saved.map(key))
+    let recent = rows.filter { !seen.contains(key($0)) }
     return [(.pinned, pinned), (.live, live), (.saved, saved), (.recent, recent)]
         .filter { !$0.1.isEmpty }
 }

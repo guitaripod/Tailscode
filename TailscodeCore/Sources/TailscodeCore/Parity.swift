@@ -125,11 +125,11 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .sessionSections, area: "chat list", title: "Sessions grouped into sections",
             spec:
-                "The list groups rows into LIVE NOW / SAVED / RECENT via groupIntoSections, dropping empty sections so no heading ever sits over nothing."),
+                "The list groups rows into PINNED / LIVE NOW / SAVED / RECENT via groupIntoSections, dropping empty sections so no heading ever sits over nothing. A conversation with a turn in flight — running, or stopped to ask something — leads the list in LIVE NOW rather than being findable only by sorting on recency; membership is decided on the (profile, session) pair, never a bare session id."),
         CapabilityDefinition(
             id: .sessionRowStatus, area: "chat list", title: "Row state pill and glyph",
             spec:
-                "Every row states what it is doing via SessionRowState: live, needs-you, offline, failed each get a pill/glyph; silence is reserved for idle."),
+                "Every row states what it is doing via SessionRowState: live, needs-you, offline, failed each get a pill/glyph; silence is reserved for idle. The state is resolved once in SessionRowModel from the listing and from what this device is watching first-hand (SessionPresence) — a turn running here is live before the server's next sweep agrees, and a turn that stopped for an approval says so instead of reading as merely busy."),
         CapabilityDefinition(
             id: .sessionPinning, area: "chat list", title: "Pinned chats lead the list",
             spec:
