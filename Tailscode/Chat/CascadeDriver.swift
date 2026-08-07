@@ -31,6 +31,30 @@ struct CascadeTail {
         return slice
     }
 
+    /// Repaints the wave over a text view's existing storage when the glyphs did not change since
+    /// the last frame: only colours move, so nothing re-measures and no line can re-wrap under
+    /// the reader. Text that arrived must go through `paint` — a different length is a new
+    /// paragraph.
+    func repaint(_ storage: NSMutableAttributedString, base: NSAttributedString, settled: UIColor) {
+        let total = base.length
+        guard total > 0, storage.length == total else { return }
+        let shown = min(max(revealed, 0), total)
+        let bandStart = max(0, shown - span)
+        storage.beginEditing()
+        base.enumerateAttributes(
+            in: NSRange(location: bandStart, length: total - bandStart), options: []
+        ) { attributes, range, _ in
+            storage.setAttributes(attributes, range: range)
+        }
+        if shown < total {
+            storage.addAttribute(
+                .foregroundColor, value: UIColor.clear,
+                range: NSRange(location: shown, length: total - shown))
+        }
+        tint(storage, upTo: shown, settled: settled)
+        storage.endEditing()
+    }
+
     /// The wave tints what is already there rather than replacing it: a keyword in a code block, a
     /// link, an inline code span all keep their own colour as the settled end of the blend, so a
     /// glyph leaving the wave lands on the colour it would have had if it had never been in one.
@@ -127,11 +151,6 @@ final class CascadeDriver {
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
     var revealed: Int { live.revealed }
-    /// Whether the last frame moved the reveal or only the band. A frame that changed no glyph
-    /// count changes no height either, so it can repaint the cell in place instead of going
-    /// through the data source — which is the difference between a shimmer that costs nothing and
-    /// one that re-diffs the transcript a hundred times a second.
-    private(set) var revealMoved = false
 
     static var motionAllowed: Bool { !UIAccessibility.isReduceMotionEnabled }
 
@@ -176,9 +195,7 @@ final class CascadeDriver {
     }
 
     @objc private func tick(_ link: CADisplayLink) {
-        let before = live.revealed
         guard live.advance(to: link.timestamp) else { return }
-        revealMoved = live.revealed != before
         onFrame?()
         if !live.isActive { stop() }
     }

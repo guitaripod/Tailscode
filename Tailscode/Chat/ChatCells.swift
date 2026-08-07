@@ -85,9 +85,12 @@ final class TextBubbleCell: UICollectionViewCell {
     private let textView = UITextView()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
+    private var textInsetLeading: NSLayoutConstraint!
+    private var textInsetTrailing: NSLayoutConstraint!
     private var maxWidth: NSLayoutConstraint!
     private var timestampLeading: NSLayoutConstraint?
     private var timestampTrailing: NSLayoutConstraint?
+    private var bubbleTop: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -111,23 +114,35 @@ final class TextBubbleCell: UICollectionViewCell {
             equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
         trailingPin = bubble.trailingAnchor.constraint(
             equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
+        textInsetLeading = textView.leadingAnchor.constraint(
+            equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m)
+        textInsetTrailing = textView.trailingAnchor.constraint(
+            equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m)
         maxWidth = bubble.widthAnchor.constraint(
             lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.82)
+        bubbleTop = bubble.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
 
         NSLayoutConstraint.activate([
-            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            bubbleTop,
             bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             maxWidth,
-            bubble.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            bubble.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            bubble.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor),
+            bubble.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
+            textInsetLeading,
+            textInsetTrailing,
             textView.topAnchor.constraint(equalTo: bubble.topAnchor, constant: Theme.Spacing.s),
             textView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s),
-            textView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: Theme.Spacing.m),
-            textView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -Theme.Spacing.m),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Extra gap above the bubble when this row opens a new turn; set by the
+    /// transcript so a turn breathes without re-templating the cell.
+    var turnInset: CGFloat = 0 {
+        didSet { bubbleTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     override func prepareForReuse() {
         super.prepareForReuse()
@@ -139,7 +154,17 @@ final class TextBubbleCell: UICollectionViewCell {
         timestampTrailing?.isActive = false
     }
 
+    /// The answer bubble hugs its text tighter than the other rows: the surface is
+    /// the point, so the chrome around the words shrinks to the tokens above.
+    private func applyHorizontalInsets(outer: CGFloat, inner: CGFloat) {
+        leadingPin.constant = outer
+        trailingPin.constant = -outer
+        textInsetLeading.constant = inner
+        textInsetTrailing.constant = -inner
+    }
+
     func configureError(_ text: String) {
+        applyHorizontalInsets(outer: Theme.Spacing.l, inner: Theme.Spacing.m)
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         maxWidth.isActive = true
@@ -172,6 +197,9 @@ final class TextBubbleCell: UICollectionViewCell {
 
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
+        applyHorizontalInsets(
+            outer: isUser || reasoning || timestamp ? Theme.Spacing.l : Theme.Spacing.s,
+            inner: isUser || reasoning || timestamp ? Theme.Spacing.m : Theme.Spacing.s)
 
         if timestamp {
             bubble.backgroundColor = .clear
@@ -237,8 +265,9 @@ final class TextBubbleCell: UICollectionViewCell {
         }
     }
 
-    /// A frame that moved only the band: the glyph count is unchanged, so nothing needs measuring
-    /// and the cell repaints itself without the data source hearing about it.
+    /// A frame of the wave. When the glyphs did not change, only colours move, so the storage is
+    /// re-tinted in place and nothing re-measures; when text arrived, the full render lands at
+    /// once. Either way the paragraph is measured once per arrival and never again.
     func applyCascade(_ cascade: CascadeTail, text: String, reasoning: Bool) {
         if reasoning {
             let string = NSAttributedString(
@@ -249,9 +278,15 @@ final class TextBubbleCell: UICollectionViewCell {
                     .foregroundColor: Theme.Color.secondaryLabel,
                 ])
             textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
+            return
+        }
+        let rendered = Self.rendered(text, color: Theme.Color.label)
+        if textView.textStorage.length == rendered.length,
+            textView.textStorage.string == rendered.string
+        {
+            cascade.repaint(textView.textStorage, base: rendered, settled: Theme.Color.label)
         } else {
-            textView.attributedText = cascade.paint(
-                Self.rendered(text, color: Theme.Color.label), settled: Theme.Color.label)
+            textView.attributedText = cascade.paint(rendered, settled: Theme.Color.label)
         }
     }
 
@@ -424,6 +459,7 @@ final class PermissionCell: UICollectionViewCell {
     private let alwaysButton = UIButton(type: .system)
     private let denyButton = UIButton(type: .system)
     private var onDecision: ((PermissionDecision) -> Void)?
+    private var barTop: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -473,8 +509,9 @@ final class PermissionCell: UICollectionViewCell {
         contentView.addSubview(detailLabel)
         contentView.addSubview(buttons)
 
+        barTop = bar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         NSLayoutConstraint.activate([
-            bar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            barTop,
             bar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             bar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             bar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
@@ -499,6 +536,11 @@ final class PermissionCell: UICollectionViewCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Extra gap above the card when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { barTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     private func configureButton(_ button: UIButton, title: String, tint: UIColor, filled: Bool) {
         var config = filled ? UIButton.Configuration.filled() : UIButton.Configuration.tinted()
@@ -537,6 +579,7 @@ final class CodeBlockCell: UICollectionViewCell {
     private let toggleButton = UIButton(type: .system)
     private var source = ""
     private var onToggle: (() -> Void)?
+    private var containerTop: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -590,11 +633,13 @@ final class CodeBlockCell: UICollectionViewCell {
 
         let content = codeScroll.contentLayoutGuide
         let frame = codeScroll.frameLayoutGuide
+        containerTop = container.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            containerTop,
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
-            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.s),
+            container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.s),
 
             langLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.s),
             langLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
@@ -623,6 +668,11 @@ final class CodeBlockCell: UICollectionViewCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Extra gap above the block when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     func configure(
         _ block: CodeBlock, expanded: Bool, cascade: CascadeTail? = nil,
@@ -1168,6 +1218,7 @@ final class QuestionCell: UICollectionViewCell {
     private var onSelectionChanged: ((Selection) -> Void)?
     private let submitButton = PrimaryButton(title: String(localized: "Answer"))
     private let skipButton = UIButton(type: .system)
+    private var glassTop: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1183,8 +1234,9 @@ final class QuestionCell: UICollectionViewCell {
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stack)
 
+        glassTop = glass.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         NSLayoutConstraint.activate([
-            glass.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            glassTop,
             glass.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             glass.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
             glass.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
@@ -1197,6 +1249,11 @@ final class QuestionCell: UICollectionViewCell {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Extra gap above the card when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { glassTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     func configure(
         request: QuestionRequest,

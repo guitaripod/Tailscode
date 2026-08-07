@@ -27,6 +27,7 @@ final class ImageBubbleCell: UICollectionViewCell {
     private let failure = UILabel()
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
+    private var bubbleTop: NSLayoutConstraint!
     private var imageBottomPin: NSLayoutConstraint!
     private var captionBottomPin: NSLayoutConstraint!
     private var ratio: NSLayoutConstraint?
@@ -35,6 +36,11 @@ final class ImageBubbleCell: UICollectionViewCell {
     private var originalData: Data?
 
     private static let maxHeight: CGFloat = 300
+
+    /// Extra gap above the bubble when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { bubbleTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     var displayedImage: UIImage? { imageView.image }
     var imageContainer: UIView { imageView }
@@ -93,12 +99,14 @@ final class ImageBubbleCell: UICollectionViewCell {
         let widthPin = bubble.widthAnchor.constraint(
             equalTo: contentView.widthAnchor, multiplier: 0.72)
         widthPin.priority = UILayoutPriority(999)
+        bubbleTop = bubble.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         imageBottomPin = imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
         captionBottomPin = caption.bottomAnchor.constraint(
             equalTo: bubble.bottomAnchor, constant: -Theme.Spacing.s)
         imageBottomPin.isActive = true
         NSLayoutConstraint.activate([
-            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            bubbleTop,
             bubble.bottomAnchor.constraint(
                 equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             widthPin,
@@ -153,6 +161,8 @@ final class ImageBubbleCell: UICollectionViewCell {
         localData: Data? = nil
     ) {
         let isUser = role == .user
+        leadingPin.constant = isUser ? Theme.Spacing.l : Theme.Spacing.s
+        trailingPin.constant = isUser ? -Theme.Spacing.l : -Theme.Spacing.s
         leadingPin.isActive = !isUser
         trailingPin.isActive = isUser
         self.file = file

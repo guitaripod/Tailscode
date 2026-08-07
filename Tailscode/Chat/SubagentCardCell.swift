@@ -103,6 +103,12 @@ final class SubagentGroupCell: UICollectionViewCell {
     private let chevron = UIImageView()
     private let toggle = UIButton(type: .system)
     private var onToggle: (() -> Void)?
+    private var containerTop: NSLayoutConstraint!
+
+    /// Extra gap above the card when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -155,13 +161,15 @@ final class SubagentGroupCell: UICollectionViewCell {
         [rail, iconView, column, spinner, chevron, toggle].forEach(container.addSubview)
         spinner.translatesAutoresizingMaskIntoConstraints = false
 
+        containerTop = container.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         NSLayoutConstraint.activate([
             glass.topAnchor.constraint(equalTo: container.topAnchor),
             glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            containerTop,
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             container.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l + Theme.Spacing.m),
@@ -234,6 +242,12 @@ final class SubagentCardCell: UICollectionViewCell {
     private let toggle = UIButton(type: .system)
     private let renderer = ToolStepRenderer()
     private var onToggle: (() -> Void)?
+    private var containerTop: NSLayoutConstraint!
+
+    /// Extra gap above the card when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { containerTop.constant = Theme.Spacing.xs + turnInset }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -315,13 +329,15 @@ final class SubagentCardCell: UICollectionViewCell {
         contentView.addSubview(container)
         [rail, iconView, column, chevron, toggle].forEach(container.addSubview)
 
+        containerTop = container.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         NSLayoutConstraint.activate([
             glass.topAnchor.constraint(equalTo: container.topAnchor),
             glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
+            containerTop,
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             container.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l + Theme.Spacing.m),

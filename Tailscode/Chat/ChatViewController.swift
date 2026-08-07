@@ -20,6 +20,7 @@ final class ChatViewController: UIViewController {
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []
+    private var renderedIDOrder: [String] = []
     private var pendingAttachments: [PromptAttachment] = []
     private var pendingPermission: PermissionRequest?
     private var pendingQuestion: QuestionRequest?
@@ -909,11 +910,13 @@ final class ChatViewController: UIViewController {
                         else { return }
                         self.viewModel.rejectQuestion(request)
                     })
+                cell.turnInset = self.turnGap(at: indexPath)
                 return cell
             }
             if id.hasPrefix("permission:"), let request = self.pendingPermission {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: PermissionCell.reuseID, for: indexPath) as! PermissionCell
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     title: request.toolName.map { String(localized: "Allow \($0)?") }
                         ?? String(localized: "Permission requested"),
@@ -935,6 +938,7 @@ final class ChatViewController: UIViewController {
             case .code(let block):
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     block, expanded: self.expandedReasoning.contains(id),
                     cascade: self.cascade.tail(for: id)
@@ -962,6 +966,7 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
                     as! WorkflowCardCell
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     run, at: self.workflowNow,
                     onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) })
@@ -970,6 +975,7 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: SubagentCardCell.reuseID, for: indexPath)
                     as! SubagentCardCell
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     card,
                     onToggle: { [weak self] in self?.toggleSubagent(card.agentID) },
@@ -979,6 +985,7 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: SubagentGroupCell.reuseID, for: indexPath)
                     as! SubagentGroupCell
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(group) { [weak self] in self?.toggleAgentGroup(group.id) }
                 return cell
             case .compaction(let compaction):
@@ -996,6 +1003,7 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
                 cell.delegate = self
                 cell.onLoaded = { [weak self] in self?.remeasureRow(row.id) }
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(file: file, role: row.role, backend: self.viewModel.backend)
                 return cell
             case .error(let text):
@@ -1026,27 +1034,24 @@ final class ChatViewController: UIViewController {
     ) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+        cell.turnInset = self.turnGap(at: indexPath)
         cell.configure(
             text: text, role: role, reasoning: reasoning, timestamp: timestamp, cascade: cascade)
         cell.linkDelegate = self
         return cell
     }
 
-    /// One frame of the wave. The live row is reconfigured on its own rather than through a fresh
-    /// render: the transcript above it has not changed, and re-deriving three hundred rows a
-    /// hundred times a second to repaint the last thirty characters of one of them is the cost
-    /// that makes people turn animations off.
+    /// One frame of the wave. The live row is repainted in place: the paragraph is measured once
+    /// when its text arrives and never again, so a frame that only moves colours — the reveal and
+    /// the band both — never touches the data source or the layout, and the transcript cannot
+    /// jump under the reader. Only a row with no cell on screen falls back to a reconfigure.
     private func repaintCascade() {
         guard let id = cascade.key else { return }
-        if !cascade.revealMoved, repaintLiveCellInPlace(id) { return }
+        if repaintLiveCellInPlace(id) { return }
         var snapshot = dataSource.snapshot()
         guard snapshot.itemIdentifiers.contains(id) else { return }
         snapshot.reconfigureItems([id])
-        let nearBottom = isNearBottom()
-        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
-            guard let self, nearBottom, !self.userScrolledUp else { return }
-            self.scrollToBottom(animated: false)
-        }
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
@@ -1076,9 +1081,9 @@ final class ChatViewController: UIViewController {
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
     }
 
-    /// The band moved but the glyph count did not, so the cell can be repainted where it stands.
-    /// False when the row is off screen or has no cell to talk to, and the caller falls back to
-    /// the data source.
+    /// One frame of the wave over the cell where it stands, so the data source never hears about
+    /// a colour change. False when the row is off screen or has no cell to talk to, and the
+    /// caller falls back to the data source.
     private func repaintLiveCellInPlace(_ id: String) -> Bool {
         guard let tail = cascade.tail(for: id), let row = rowsByID[id],
             let indexPath = dataSource.indexPath(for: id),
@@ -1224,6 +1229,7 @@ final class ChatViewController: UIViewController {
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
         Self.logPendingPhantom(state: state, viewModel: viewModel)
+        renderedIDOrder = ids
         let idSet = Set(ids)
         let entranceEligible = hasRevealed && !userScrolledUp
         let entranceBubbles =
@@ -1751,6 +1757,19 @@ final class ChatViewController: UIViewController {
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
         dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    /// The extra breathing room above a row that opens a new turn. Rows that
+    /// share their message and role stay tight, so a turn reads as one cluster
+    /// and the transcript moves in a rhythm instead of a uniform grid.
+    private func turnGap(at indexPath: IndexPath) -> CGFloat {
+        let order = renderedIDOrder
+        guard indexPath.item > 0, indexPath.item < order.count else { return 0 }
+        let previousID = order[indexPath.item - 1]
+        guard let previous = rowsByID[previousID] else { return Theme.Spacing.m }
+        guard let current = rowsByID[order[indexPath.item]] else { return Theme.Spacing.m }
+        return (current.messageID != previous.messageID || current.role != previous.role)
+            ? Theme.Spacing.m : 0
     }
 
     private func loadModels() async {

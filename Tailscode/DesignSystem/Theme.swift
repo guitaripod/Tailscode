@@ -11,7 +11,7 @@ enum Theme {
         static let tertiaryLabel = UIColor.tertiaryLabel
         static let accent = UIColor(named: "AccentColor") ?? .systemBlue
         static let userBubble = UIColor(named: "AccentColor") ?? .systemBlue
-        static let assistantBubble = UIColor.secondarySystemBackground
+        static let assistantBubble = UIColor.systemGray5
         static let reasoningBackground = UIColor.tertiarySystemFill
         static let codeBackground = UIColor.secondarySystemBackground
         static let separator = UIColor.separator

@@ -203,17 +203,21 @@ final class ModelPickerViewController: UIViewController {
         label.text = fact.tag.uppercased()
         label.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
         label.textColor = tint
-        label.backgroundColor = tint.withAlphaComponent(0.12)
-        label.layer.cornerRadius = 5
-        label.layer.masksToBounds = true
         label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        let width = max(46, CGFloat(label.text?.count ?? 0) * 7 + 12)
-        label.widthAnchor.constraint(greaterThanOrEqualToConstant: width).isActive = true
         label.accessibilityLabel = fact.label
+        label.sizeToFit()
+        let padH: CGFloat = 6
+        let padV: CGFloat = 3
+        let width = max(46, label.bounds.width + padH * 2)
+        let pill = UIView(
+            frame: CGRect(x: 0, y: 0, width: width, height: label.bounds.height + padV * 2))
+        label.frame = CGRect(x: padH, y: padV, width: width - padH * 2, height: label.bounds.height)
+        pill.addSubview(label)
+        pill.backgroundColor = tint.withAlphaComponent(0.12)
+        pill.layer.cornerRadius = 5
+        pill.layer.cornerCurve = .continuous
         return .customView(
-            configuration: .init(
-                customView: label, placement: .trailing(), reservedLayoutWidth: .custom(width)))
+            configuration: .init(customView: pill, placement: .trailing(), maintainsFixedSize: true))
     }
 
     /// The chevron opens the row onto the other providers that run the same model, in place —

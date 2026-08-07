@@ -26,7 +26,13 @@ final class WorkflowCardCell: UICollectionViewCell {
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let column = UIStackView()
     private var fillWidth: NSLayoutConstraint?
+    private var containerTop: NSLayoutConstraint!
     private var onAgentTap: ((String) -> Void)?
+
+    /// Extra gap above the card when this row opens a new turn.
+    var turnInset: CGFloat = 0 {
+        didSet { containerTop.constant = 4 + turnInset }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -113,12 +119,13 @@ final class WorkflowCardCell: UICollectionViewCell {
 
         let fillWidth = fill.widthAnchor.constraint(equalTo: track.widthAnchor, multiplier: 0)
         self.fillWidth = fillWidth
+        containerTop = container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4)
         NSLayoutConstraint.activate([
             container.leadingAnchor.constraint(
                 equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
             container.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            containerTop,
             container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
