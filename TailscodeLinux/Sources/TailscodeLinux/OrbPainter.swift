@@ -26,7 +26,7 @@ final class OrbPainter: @unchecked Sendable {
         gtk_widget_set_size_request(area, -1, 88)
         widget = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(widget, "presence-orb")
-        Gtk.margins(widget, top: 2, bottom: 2, leading: 10, trailing: 10)
+        Gtk.margins(widget, top: 0, bottom: 6, leading: 10, trailing: 10)
         gtk_widget_set_cursor_from_name(widget, "pointer")
         gtk_box_append(ptr(widget), area)
         gtk_widget_set_visible(widget, 0)
@@ -36,8 +36,8 @@ final class OrbPainter: @unchecked Sendable {
     private static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
 
     /// The palette's own tone slots, and nothing private: live is the accent, attention is warn,
-    /// failure is danger, rest is the dim register, and the tile clears to the canvas itself so
-    /// the orb floats on the sidebar rather than sitting in a box.
+    /// failure is danger, rest is the dim register. The area itself is transparent — the creature
+    /// floats on the sidebar's own background rather than sitting in a box of canvas colour.
     private static func inks() -> PresenceColors {
         let palette = MatrixTheme.palette
         func rgb(_ hex: String) -> PresenceRGB {
@@ -46,13 +46,6 @@ final class OrbPainter: @unchecked Sendable {
         return PresenceColors(
             live: rgb(palette.accent), attention: rgb(palette.warn),
             danger: rgb(palette.danger), quiet: rgb(palette.textDim))
-    }
-
-    private var background: [Float] {
-        guard let channels = Contrast.channels(MatrixTheme.palette.canvas) else {
-            return [0, 0, 0]
-        }
-        return [Float(channels.red), Float(channels.green), Float(channels.blue)]
     }
 
     func applyEnabled() {
@@ -128,15 +121,12 @@ final class OrbPainter: @unchecked Sendable {
         blobs.withUnsafeBufferPointer { blobBuffer in
             color.withUnsafeBufferPointer { colorBuffer in
                 stops.withUnsafeBufferPointer { stopBuffer in
-                    background.withUnsafeBufferPointer { backgroundBuffer in
-                        tailscode_orb_set(
-                            area, blobBuffer.baseAddress, Int32(frame.blobs.count),
-                            colorBuffer.baseAddress, Float(frame.energy),
-                            Float(frame.intensity), Float(frame.rainbow),
-                            Float(frame.rainbowPhase), Float(frame.rainbowGlow),
-                            stopBuffer.baseAddress, Int32(Ultracode.rainbowStops.count),
-                            backgroundBuffer.baseAddress)
-                    }
+                    tailscode_orb_set(
+                        area, blobBuffer.baseAddress, Int32(frame.blobs.count),
+                        colorBuffer.baseAddress, Float(frame.energy),
+                        Float(frame.intensity), Float(frame.rainbow),
+                        Float(frame.rainbowPhase), Float(frame.rainbowGlow),
+                        stopBuffer.baseAddress, Int32(Ultracode.rainbowStops.count))
                 }
             }
         }

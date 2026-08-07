@@ -579,8 +579,8 @@ final class MainWindow: @unchecked Sendable {
             guard let self, let entry = self.orbTarget else { return }
             self.open(entry)
         }
-        gtk_box_append(ptr(column), orb.widget)
         gtk_box_append(ptr(column), usageBox)
+        gtk_box_append(ptr(column), orb.widget)
 
         adw_toolbar_view_set_content(op(toolbar), column)
         sidebarColumn = column

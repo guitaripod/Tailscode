@@ -929,11 +929,10 @@ typedef struct {
     GLuint program;
     GLuint vao;
     GLint u_size, u_blobs, u_blob_count, u_color, u_energy, u_intensity;
-    GLint u_rainbow, u_rainbow_phase, u_rainbow_glow, u_stops, u_stop_count, u_background;
+    GLint u_rainbow, u_rainbow_phase, u_rainbow_glow, u_stops, u_stop_count;
     float blobs[TAILSCODE_ORB_BLOBS * 4];
     int blob_count;
     float color[3];
-    float background[3];
     float energy, intensity, rainbow, rainbow_phase, rainbow_glow;
     float stops[TAILSCODE_ORB_STOPS * 3];
     int stop_count;
@@ -948,7 +947,10 @@ static const char *tailscode_orb_vertex_body =
     "}\n";
 
 /* The field is a smooth-min union of the circles Core handed over — the shader rasterises the
-   frame and adds nothing: no motion, no colour choice, no state lives here. */
+   frame and adds nothing: no motion, no colour choice, no state lives here. Output is
+   premultiplied alpha over a transparent clear, so the creature floats on whatever the sidebar
+   draws behind it; the halo and rainbow are additive light (rgb past alpha), which premultiplied
+   compositing renders as glow rather than a tinted plate. */
 static const char *tailscode_orb_fragment_body =
     "uniform vec2 u_size;\n"
     "uniform vec4 u_blobs[8];\n"
@@ -961,7 +963,6 @@ static const char *tailscode_orb_fragment_body =
     "uniform float u_rainbow_glow;\n"
     "uniform vec3 u_stops[8];\n"
     "uniform int u_stop_count;\n"
-    "uniform vec3 u_background;\n"
     "float orb_smin(float a, float b, float k) {\n"
     "    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);\n"
     "    return mix(b, a, h) - k * h * (1.0 - h);\n"
@@ -984,14 +985,13 @@ static const char *tailscode_orb_fragment_body =
     "    float depth = smoothstep(0.0, -0.34, d);\n"
     "    vec3 ink = u_color * mix(1.08, 0.72, depth) * (0.6 + 0.4 * u_intensity);\n"
     "    float halo = exp(max(d, 0.0) * -5.5) * (1.0 - body);\n"
-    "    vec3 shade = u_background + u_color * halo * 0.36 * u_energy * u_intensity;\n"
-    "    shade = mix(shade, ink, body);\n"
+    "    vec3 shade = ink * body + u_color * halo * 0.36 * u_energy * u_intensity;\n"
     "    if (u_rainbow > 0.001) {\n"
     "        float angle = fract(atan(p.y, p.x) / 6.28318530718 + 0.5 + u_rainbow_phase);\n"
     "        float rim = 1.0 - smoothstep(0.0, 0.05, abs(d + 0.01));\n"
     "        shade += orb_rainbow(angle) * rim * u_rainbow * u_rainbow_glow * 0.9;\n"
     "    }\n"
-    "    orb_output = vec4(shade, 1.0);\n"
+    "    orb_output = vec4(shade, body);\n"
     "}\n";
 
 static GLuint tailscode_orb_compile(GLenum kind, const char *prefix, const char *body) {
@@ -1063,7 +1063,6 @@ static void tailscode_orb_realize(GtkWidget *widget, gpointer raw) {
     orb->u_rainbow_glow = glGetUniformLocation(program, "u_rainbow_glow");
     orb->u_stops = glGetUniformLocation(program, "u_stops");
     orb->u_stop_count = glGetUniformLocation(program, "u_stop_count");
-    orb->u_background = glGetUniformLocation(program, "u_background");
     orb->ready = TRUE;
     orb->failed = FALSE;
 }
@@ -1084,7 +1083,7 @@ static void tailscode_orb_unrealize(GtkWidget *widget, gpointer raw) {
 static gboolean tailscode_orb_render(GtkGLArea *area, GdkGLContext *context, gpointer raw) {
     (void)context;
     TailscodeOrb *orb = raw;
-    glClearColor(orb->background[0], orb->background[1], orb->background[2], 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     if (!orb->ready) return TRUE;
     int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
@@ -1103,7 +1102,6 @@ static gboolean tailscode_orb_render(GtkGLArea *area, GdkGLContext *context, gpo
     glUniform1f(orb->u_rainbow_glow, orb->rainbow_glow);
     glUniform3fv(orb->u_stops, TAILSCODE_ORB_STOPS, orb->stops);
     glUniform1i(orb->u_stop_count, orb->stop_count);
-    glUniform3fv(orb->u_background, 1, orb->background);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return TRUE;
 }
@@ -1133,14 +1131,13 @@ gboolean tailscode_orb_ready(GtkWidget *area) {
 void tailscode_orb_set(
     GtkWidget *area, const float *blobs, int blob_count, const float *color, float energy,
     float intensity, float rainbow, float rainbow_phase, float rainbow_glow, const float *stops,
-    int stop_count, const float *background) {
+    int stop_count) {
     if (!area) return;
     TailscodeOrb *orb = g_object_get_data(G_OBJECT(area), "tailscode-orb");
     if (!orb) return;
     orb->blob_count = blob_count > TAILSCODE_ORB_BLOBS ? TAILSCODE_ORB_BLOBS : blob_count;
     if (blobs) memcpy(orb->blobs, blobs, (size_t)orb->blob_count * 4 * sizeof(float));
     if (color) memcpy(orb->color, color, 3 * sizeof(float));
-    if (background) memcpy(orb->background, background, 3 * sizeof(float));
     orb->energy = energy;
     orb->intensity = intensity;
     orb->rainbow = rainbow;

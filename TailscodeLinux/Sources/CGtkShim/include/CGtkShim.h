@@ -198,18 +198,19 @@ void tailscode_aura_set(
 
 /// The presence orb's canvas: a GL area whose every frame is one metaball field rasterised by a
 /// fragment shader. The shader draws exactly what Core's `PresenceField` handed over and adds
-/// nothing — no motion, no colour choice, no state lives on this side. A machine whose GL cannot
-/// compile the program reports not-ready and the tile clears to the canvas colour instead.
+/// nothing — no motion, no colour choice, no state lives on this side. The area is transparent:
+/// the creature is composited over whatever the sidebar draws, so it wears no box of its own.
+/// A machine whose GL cannot compile the program reports not-ready and the area stays clear.
 GtkWidget *tailscode_orb_new(void);
 gboolean tailscode_orb_ready(GtkWidget *area);
 
-/// One frame: blobs as x/y/radius/weight quads in the orb's unit space, the body ink and the
-/// canvas behind it as RGB in 0–1, the breath (`intensity`), the glow budget (`energy`), and the
-/// ultracode rim (`rainbow` 0–1 over the shared stops, head at `rainbow_phase`).
+/// One frame: blobs as x/y/radius/weight quads in the orb's unit space, the body ink as RGB in
+/// 0–1, the breath (`intensity`), the glow budget (`energy`), and the ultracode rim (`rainbow`
+/// 0–1 over the shared stops, head at `rainbow_phase`).
 void tailscode_orb_set(
     GtkWidget *area, const float *blobs, int blob_count, const float *color, float energy,
     float intensity, float rainbow, float rainbow_phase, float rainbow_glow, const float *stops,
-    int stop_count, const float *background);
+    int stop_count);
 
 /// The video slot's player. libmpv draws into a GL area the pane owns, so a stream is a widget in
 /// the split tree rather than a window floating over it — Wayland gives a client no way to place

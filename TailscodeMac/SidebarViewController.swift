@@ -132,7 +132,7 @@ final class SidebarViewController: NSViewController {
             self, selector: #selector(orbSettingChanged), name: PresenceOrbSetting.didChange,
             object: nil)
 
-        let footer = NSStackView(views: [orb, bulkBar, usageFooter])
+        let footer = NSStackView(views: [bulkBar, usageFooter, orb])
         footer.orientation = .vertical
         footer.alignment = .width
         footer.spacing = MacTheme.Spacing.xs
