@@ -1,0 +1,5 @@
+module CGdkPixbuf [system] {
+    header "include/CGdkPixbuf.h"
+    link "gdk-pixbuf-2.0"
+    export *
+}

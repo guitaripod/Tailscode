@@ -21,6 +21,9 @@ final class ImageGallery: @unchecked Sendable {
     private let fetch: @Sendable (FileReference, String) -> Void
     private let notice: @Sendable (String) -> Void
     private let previousEar: (@Sendable (String) -> Void)?
+    /// A headless drive run reads what the gallery is actually painting: the texture resolution
+    /// and whether it is the page's original or the transcript's preview.
+    var reportState: (@Sendable (String) -> Void)?
 
     private var window: UnsafeMutablePointer<GtkWidget>?
     private let titleLabel = Gtk.label("", css: "row-title", selectable: false)
@@ -29,6 +32,11 @@ final class ImageGallery: @unchecked Sendable {
     private let scroller = gtk_scrolled_window_new()!
     private let zoomButton = gtk_button_new_with_label("")!
     private var oneToOne = false
+    /// The one full-resolution texture the gallery may own: the page being looked at. The
+    /// transcript cache keeps only downsampled previews, so the 1:1 zoom decodes the original
+    /// bytes on demand, and a paged-away page hands its texture back.
+    private var fullResKey: String?
+    private var fullResBits: UInt = 0
 
     static func present(
         items: [Item], startKey: String, parent: UnsafeMutablePointer<GtkWidget>?,
@@ -53,6 +61,11 @@ final class ImageGallery: @unchecked Sendable {
         self.fetch = fetch
         self.notice = notice
         self.previousEar = context.onImageStored
+        if ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil {
+            self.reportState = { line in
+                FileHandle.standardOutput.write(Data("\(line)\n".utf8))
+            }
+        }
     }
 
     private func presentWindow(parent: UnsafeMutablePointer<GtkWidget>?) {
@@ -122,7 +135,10 @@ final class ImageGallery: @unchecked Sendable {
             }
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [self] in
-            Gtk.onMain { self.context.onImageStored = self.previousEar }
+            Gtk.onMain {
+                self.context.onImageStored = self.previousEar
+                self.dropFullRes()
+            }
         }
         render()
         gtk_window_present(ptr(window))
@@ -147,9 +163,10 @@ final class ImageGallery: @unchecked Sendable {
         if let window { gtk_window_set_title(ptr(window), item.name) }
         Gtk.removeChildren(of: pictureHolder)
 
-        guard let bits = context.textures[item.key], bits != 0,
-            let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
-        else {
+        let fullBits = fullResKey == item.key ? fullResBits : 0
+        let previewBits = context.textures[item.key] ?? 0
+        let bits = fullBits != 0 ? fullBits : previewBits
+        guard bits != 0, let texture = OpaquePointer(bitPattern: Int(bitPattern: bits)) else {
             gtk_label_set_text(op(dimsLabel), "")
             let loading = Gtk.label(Localized.text("Loading…"), css: "dim", selectable: false)
             gtk_widget_set_hexpand(loading, 1)
@@ -162,8 +179,9 @@ final class ImageGallery: @unchecked Sendable {
 
         let width = tailscode_texture_width(texture)
         let height = tailscode_texture_height(texture)
+        let dims = fullBits != 0 ? (width, height) : (context.imageDimensions[item.key] ?? (width, height))
         gtk_label_set_text(
-            op(dimsLabel), "\(width)×\(height)" + (oneToOne ? "  ·  1:1" : ""))
+            op(dimsLabel), "\(dims.0)×\(dims.1)" + (oneToOne ? "  ·  1:1" : ""))
         gtk_button_set_label(
             ptr(zoomButton), oneToOne ? Localized.text("Fit") : Localized.text("1:1"))
 
@@ -183,6 +201,42 @@ final class ImageGallery: @unchecked Sendable {
         }
         Gtk.onRelease(picture) { [self] in Gtk.onMain { self.toggleZoom() } }
         gtk_box_append(ptr(pictureHolder), picture)
+        if fullBits == 0 { requestFullRes(item) }
+        reportState?(
+            "GALLERY key=\(item.key) tex=\(width)x\(height) orig=\(dims.0)x\(dims.1)"
+                + " full=\(fullBits != 0 ? 1 : 0) zoom=\(oneToOne ? 1 : 0)")
+    }
+
+    /// Decodes the page's original bytes off the main context, and swaps them in when they
+    /// land — the preview stays up until then, so a page turn is instant and then sharpens.
+    private func requestFullRes(_ item: Item) {
+        guard fullResKey != item.key, let data = context.imageData[item.key] else { return }
+        Task { [weak self] in
+            let bits: UInt = data.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress,
+                    let texture = tailscode_texture_from_bytes(base, gsize(buffer.count))
+                else { return UInt(0) }
+                return UInt(bitPattern: texture)
+            }
+            guard bits != 0 else { return }
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.dropFullRes()
+                self.fullResKey = item.key
+                self.fullResBits = bits
+                if item.key == self.items[self.index].key { self.render() }
+            }
+        }
+    }
+
+    private func dropFullRes() {
+        if fullResBits != 0,
+            let texture = OpaquePointer(bitPattern: Int(bitPattern: fullResBits))
+        {
+            g_object_unref(UnsafeMutableRawPointer(texture))
+        }
+        fullResKey = nil
+        fullResBits = 0
     }
 
     private func save() {

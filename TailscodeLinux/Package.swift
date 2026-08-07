@@ -33,7 +33,7 @@ var appDependencies: [Target.Dependency] = [
     .product(name: "TailscodeCore", package: "TailscodeCore"),
 ]
 var appSettings: [SwiftSetting] = [.swiftLanguageMode(.v6)]
-var shimDependencies: [Target.Dependency] = ["CAdw"]
+var shimDependencies: [Target.Dependency] = ["CAdw", "CGdkPixbuf"]
 var shimSettings: [CSetting] = []
 var shimLinkerSettings: [LinkerSetting] = []
 var targets: [Target] = []
@@ -73,6 +73,11 @@ targets += [
         name: "CAdw",
         pkgConfig: "libadwaita-1",
         providers: [.apt(["libadwaita-1-dev"]), .yum(["libadwaita-devel"])]
+    ),
+    .systemLibrary(
+        name: "CGdkPixbuf",
+        pkgConfig: "gdk-pixbuf-2.0",
+        providers: [.apt(["libgdk-pixbuf-2.0-dev"]), .yum(["gdk-pixbuf2-devel"])]
     ),
     .target(
         name: "CGtkShim", dependencies: shimDependencies, cSettings: shimSettings,

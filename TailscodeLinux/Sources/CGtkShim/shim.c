@@ -1,4 +1,5 @@
 #include "include/CGtkShim.h"
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 void tailscode_connect(gpointer instance, const char *signal, GCallback handler, gpointer data) {
     g_signal_connect_data(instance, signal, handler, data, NULL, 0);
@@ -105,6 +106,58 @@ GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len) {
     GBytes *bytes = g_bytes_new(data, len);
     GdkTexture *texture = gdk_texture_new_from_bytes(bytes, NULL);
     g_bytes_unref(bytes);
+    return texture;
+}
+
+static GdkPixbuf *tailscode_pixbuf_from_bytes(const void *data, gsize len, GError **error) {
+    GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+    if (!gdk_pixbuf_loader_write(loader, data, len, error)) {
+        g_object_unref(loader);
+        return NULL;
+    }
+    if (!gdk_pixbuf_loader_close(loader, error)) {
+        g_object_unref(loader);
+        return NULL;
+    }
+    GdkPixbuf *pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
+    if (pixbuf) g_object_ref(pixbuf);
+    g_object_unref(loader);
+    return pixbuf;
+}
+
+GdkTexture *tailscode_texture_scaled(
+    const void *data, gsize len, int max_dim, int *out_orig_w, int *out_orig_h) {
+    GBytes *bytes = g_bytes_new(data, len);
+    GError *error = NULL;
+    GdkPixbuf *pixbuf = tailscode_pixbuf_from_bytes(data, len, &error);
+    if (!pixbuf) {
+        g_clear_error(&error);
+        GdkTexture *texture = gdk_texture_new_from_bytes(bytes, NULL);
+        g_bytes_unref(bytes);
+        if (!texture) return NULL;
+        if (out_orig_w) *out_orig_w = gdk_texture_get_width(texture);
+        if (out_orig_h) *out_orig_h = gdk_texture_get_height(texture);
+        return texture;
+    }
+    g_bytes_unref(bytes);
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    if (out_orig_w) *out_orig_w = width;
+    if (out_orig_h) *out_orig_h = height;
+    GdkTexture *texture;
+    if (max_dim > 0 && (width > max_dim || height > max_dim)) {
+        double scale = (double)max_dim / (width > height ? width : height);
+        GdkPixbuf *scaled = gdk_pixbuf_scale_simple(
+            pixbuf, MAX(1, (int)(width * scale)), MAX(1, (int)(height * scale)),
+            GDK_INTERP_BILINEAR);
+        g_object_unref(pixbuf);
+        if (!scaled) return NULL;
+        texture = gdk_texture_new_for_pixbuf(scaled);
+        g_object_unref(scaled);
+    } else {
+        texture = gdk_texture_new_for_pixbuf(pixbuf);
+        g_object_unref(pixbuf);
+    }
     return texture;
 }
 

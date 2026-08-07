@@ -31,6 +31,14 @@ gboolean tailscode_focus_is_editable(GtkWidget *root);
 /// bytes are not a decodable image. The caller owns the returned reference.
 GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len);
 
+/// Decodes image bytes into a texture at most `max_dim` pixels on its long side, so a transcript
+/// bubble — a thumbnail at 220×140 — does not pin a full-resolution screenshot in VRAM. The
+/// original pixel size is reported back for the caption and the gallery's 1:1 zoom, whose
+/// texture the gallery decodes separately, one page at a time. NULL when the bytes are not a
+/// decodable image; the caller owns the returned reference.
+GdkTexture *tailscode_texture_scaled(
+    const void *data, gsize len, int max_dim, int *out_orig_w, int *out_orig_h);
+
 /// A picture widget over a texture, sized to fit its own allocation. `GDK_PAINTABLE` is a macro,
 /// which is why the cast lives here.
 GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
