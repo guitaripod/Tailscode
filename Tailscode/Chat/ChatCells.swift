@@ -795,10 +795,14 @@ final class CodeBlockCell: UICollectionViewCell {
 
 /// Folds a run of consecutive agent actions (thinking + tool calls) into one compact,
 /// collapsible cell so the transcript stays clean; expand to see each step.
+/// Collapsed, the run reads as a slim glass strip — status glyph, what the tools were,
+/// a spinner while the work is live — and only grows into the roomy card when opened.
 final class ActivityGroupCell: UICollectionViewCell {
     static let reuseID = "ActivityGroupCell"
 
     private let container = UIView()
+    private let glass = Theme.Glass.view()
+    private let tile = UIView()
     private let iconView = UIImageView()
     private let summaryLabel = UILabel()
     private let chevron = UIImageView()
@@ -808,13 +812,18 @@ final class ActivityGroupCell: UICollectionViewCell {
     private let renderer = ToolStepRenderer()
     private var onToggle: (() -> Void)?
 
+    private var topConstraint: NSLayoutConstraint!
+    private var tileTopInset: NSLayoutConstraint!
+    private var tileSize: NSLayoutConstraint!
+    private var iconSize: NSLayoutConstraint!
+    private var stackSpacing: NSLayoutConstraint!
+    private var stackBottomInset: NSLayoutConstraint!
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        container.layer.cornerRadius = Theme.Radius.card
         container.layer.cornerCurve = .continuous
         container.translatesAutoresizingMaskIntoConstraints = false
 
-        let glass = Theme.Glass.view()
         glass.isUserInteractionEnabled = false
         glass.layer.cornerRadius = Theme.Radius.card
         glass.layer.cornerCurve = .continuous
@@ -828,13 +837,13 @@ final class ActivityGroupCell: UICollectionViewCell {
             glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
         ])
 
+        tile.layer.cornerCurve = .continuous
+        tile.translatesAutoresizingMaskIntoConstraints = false
+
         iconView.tintColor = Theme.Color.accent
         iconView.contentMode = .scaleAspectFit
-        iconView.setContentHuggingPriority(.required, for: .horizontal)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        summaryLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
-        summaryLabel.textColor = Theme.Color.secondaryLabel
         summaryLabel.adjustsFontForContentSizeCategory = true
         summaryLabel.isAccessibilityElement = false
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -859,31 +868,50 @@ final class ActivityGroupCell: UICollectionViewCell {
         toggle.addTarget(self, action: #selector(toggleTapped(_:event:)), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [iconView, summaryLabel, spinner, chevron, stack, toggle].forEach(container.addSubview)
+        [tile, summaryLabel, spinner, chevron, stack, toggle].forEach(container.addSubview)
+        tile.addSubview(iconView)
+
+        tileTopInset = tile.topAnchor.constraint(equalTo: container.topAnchor, constant: 7)
+        tileSize = tile.widthAnchor.constraint(equalToConstant: 16)
+        iconSize = iconView.widthAnchor.constraint(equalToConstant: 15)
+        stackSpacing = stack.topAnchor.constraint(equalTo: tile.bottomAnchor, constant: 6)
+        stackBottomInset = stack.bottomAnchor.constraint(
+            equalTo: container.bottomAnchor, constant: -7)
+        topConstraint = container.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
 
         NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.xs),
-            container.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
-            container.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
+            topConstraint,
+            container.bottomAnchor.constraint(
+                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
+            container.leadingAnchor.constraint(
+                equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
+            container.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l),
 
-            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
-            iconView.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
-            iconView.widthAnchor.constraint(equalToConstant: 16),
-            iconView.heightAnchor.constraint(equalToConstant: 16),
-            summaryLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: Theme.Spacing.s),
-            summaryLabel.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
-            spinner.leadingAnchor.constraint(greaterThanOrEqualTo: summaryLabel.trailingAnchor, constant: Theme.Spacing.s),
-            spinner.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+            tileTopInset,
+            tile.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
+            tileSize,
+            tile.heightAnchor.constraint(equalTo: tile.widthAnchor),
+            iconView.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            iconSize,
+            iconView.heightAnchor.constraint(equalTo: iconView.widthAnchor),
+
+            summaryLabel.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: Theme.Spacing.s),
+            summaryLabel.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            spinner.leadingAnchor.constraint(
+                greaterThanOrEqualTo: summaryLabel.trailingAnchor, constant: Theme.Spacing.s),
+            spinner.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             chevron.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: Theme.Spacing.s),
             chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
-            chevron.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+            chevron.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             chevron.widthAnchor.constraint(equalToConstant: 12),
 
-            stack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: Theme.Spacing.s),
+            stackSpacing,
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.m),
+            stackBottomInset,
 
             toggle.topAnchor.constraint(equalTo: container.topAnchor),
             toggle.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -894,8 +922,14 @@ final class ActivityGroupCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// How much the whole card sits below the row before it; a turn boundary
+    /// breathes, rows inside the same turn stay tight.
+    var turnInset: CGFloat = 0 {
+        didSet { topConstraint.constant = Theme.Spacing.xs + turnInset }
+    }
+
     func configure(
-        steps: [ActivityStep], expanded: Bool, streaming: Bool,
+        steps: [ActivityStep], expanded: Bool, streaming: Bool, compact: Bool,
         onToggle: @escaping () -> Void, onToolTap: ((ToolCall) -> Void)? = nil,
         onLinkTap: ((URL) -> Void)? = nil
     ) {
@@ -910,7 +944,8 @@ final class ActivityGroupCell: UICollectionViewCell {
             systemName: streaming
                 ? "gearshape.2.fill" : (failed ? "exclamationmark.triangle.fill" : "sparkles"),
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
-        iconView.tintColor = failed ? Theme.Color.warning : Theme.Color.accent
+        let iconTint = failed ? Theme.Color.warning : Theme.Color.accent
+        iconView.tintColor = iconTint
         summaryLabel.text = Self.summary(steps, streaming: streaming)
         toggle.accessibilityLabel = summaryLabel.text
         toggle.accessibilityValue =
@@ -920,6 +955,23 @@ final class ActivityGroupCell: UICollectionViewCell {
             : String(localized: "Double tap to show agent steps")
         chevron.transform = expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         if streaming { spinner.startAnimating() } else { spinner.stopAnimating() }
+
+        let isCompact = compact && !expanded
+        tileTopInset.constant = isCompact ? 7 : 10
+        tileSize.constant = isCompact ? 16 : 26
+        iconSize.constant = isCompact ? 15 : 18
+        stackSpacing.constant = isCompact ? 6 : Theme.Spacing.s
+        stackBottomInset.constant = isCompact ? -7 : -Theme.Spacing.m
+        tile.layer.cornerRadius = isCompact ? 5 : 7
+        tile.backgroundColor = isCompact
+            ? .clear
+            : (failed ? Theme.Color.warning : Theme.Color.accent).withAlphaComponent(0.12)
+        container.layer.cornerRadius = isCompact ? 12 : Theme.Radius.card
+        glass.layer.cornerRadius = container.layer.cornerRadius
+        summaryLabel.font = isCompact
+            ? UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold)
+            : UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        summaryLabel.textColor = failed ? Theme.Color.warning : Theme.Color.secondaryLabel
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         stack.isHidden = !expanded

@@ -22,9 +22,14 @@ enum ToolRowView {
         }
     }
 
-    /// A run of tool calls as one line: what they were, how many, and the net diff — expanding in
-    /// place to the same rows compact mode folded away.
-    static func makeRun(_ calls: [ToolCall], key: String, context: TranscriptContext) -> NSView {
+    /// A run of agent steps — thoughts and tool calls in the order they happened — as one line:
+    /// what the tools were, how many, and the net diff, with the failures showing their glyph
+    /// even when folded. Expanding in place opens the same rows compact mode folded away.
+    static func makeRun(_ steps: [ActivityStep], key: String, context: TranscriptContext) -> NSView {
+        let calls = steps.compactMap { step -> ToolCall? in
+            if case .tool(let call) = step { return call }
+            return nil
+        }
         let header = NSStackView()
         header.orientation = .horizontal
         header.alignment = .firstBaseline
@@ -73,8 +78,14 @@ enum ToolRowView {
             body.alignment = .width
             body.spacing = 2
             body.translatesAutoresizingMaskIntoConstraints = false
-            for (index, call) in calls.enumerated() {
-                body.addArrangedSubview(make(call, key: "\(key):\(index)", context: context))
+            for (index, step) in steps.enumerated() {
+                switch step {
+                case .reasoning(let text):
+                    body.addArrangedSubview(
+                        reasoning(text, key: "\(key):r\(index)", context: context))
+                case .tool(let call):
+                    body.addArrangedSubview(make(call, key: "\(key):\(index)", context: context))
+                }
             }
             return RowKit.inset(body, leading: 16)
         }

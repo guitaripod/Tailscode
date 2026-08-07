@@ -35,6 +35,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case streamCascade
     case toolRows
     case toolDiffs
+    case compactActivity
     case imageParts
     case imageViewer
     case subagentCards
@@ -199,6 +200,10 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .toolDiffs, area: "transcript", title: "Edit tools render diffs",
             spec: "Edit/write tool calls show an added/removed line diff (ToolDiff), not raw JSON."),
+        CapabilityDefinition(
+            id: .compactActivity, area: "transcript", title: "Agent steps collapse to a slim line",
+            spec:
+                "A run of thinking and tool calls collapses to a single slim line naming the run at a glance — status glyph, step count, the tools involved — instead of a full-width card, and expands in place to the same detail either way. Where the client exposes the choice, the compact collapsed form is the default."),
         CapabilityDefinition(
             id: .imageParts, area: "transcript", title: "Pictures the agent hands over",
             spec:

@@ -114,9 +114,12 @@ enum Preferences {
         return defaults.bool(forKey: key)
     }
 
-    /// Whether a run of tool calls collapses to one line instead of taking one line each.
+    /// Whether the agent's thoughts and tool calls between two prompts fold to one line. On by
+    /// default, like the iOS app, so a turn reads as ask → answer until opened.
     static var compactTools: Bool {
-        flag("tailscode.compactTools", environment: "TAILSCODE_COMPACT")
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_COMPACT"] { return raw == "1" }
+        if defaults.object(forKey: "tailscode.compactTools") == nil { return true }
+        return defaults.bool(forKey: "tailscode.compactTools")
     }
 
     static func setCompactTools(_ value: Bool) {
@@ -352,8 +355,9 @@ enum SettingsDialog {
         adw_preferences_group_add(
             ptr(transcript),
             switchRow(
-                title: Localized.text("Compact tool calls"),
-                subtitle: Localized.text("A run of tool calls becomes one line you can open"),
+                title: Localized.text("Compact agent steps"),
+                subtitle: Localized.text(
+                    "Thinking and tool calls between prompts fold to one line you can open"),
                 value: Preferences.compactTools
             ) { value in
                 Preferences.setCompactTools(value)

@@ -30,6 +30,7 @@ enum ParityManifest {
         case .streamCascade: return .implemented("CascadeDriver")
         case .toolRows: return .implemented("ToolStepRenderer")
         case .toolDiffs: return .implemented("editDiff")
+        case .compactActivity: return .implemented("ActivityGroupCell")
         case .imageParts: return .implemented("ImageBubbleCell")
         case .imageViewer: return .implemented("ImageViewerViewController")
         case .subagentCards: return .implemented("SubagentCardCell")

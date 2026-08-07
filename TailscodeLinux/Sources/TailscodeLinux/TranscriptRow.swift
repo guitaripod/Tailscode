@@ -14,8 +14,12 @@ final class TranscriptContext: @unchecked Sendable {
     /// The row is updated in place instead, and a body opened afterwards reads the current text
     /// from here rather than the one its closure was built with.
     var liveReasoning: [String: String] = [:]
+    /// Preview textures and their original bytes and pixel size. The preview is downsampled to
+    /// `bubbleMaxDimension` so a transcript full of agent screenshots stays out of VRAM; the
+    /// bytes are kept for the gallery's 1:1 page and the save, and the size for the caption.
     var textures: [String: UInt] = [:]
     var imageData: [String: Data] = [:]
+    var imageDimensions: [String: (Int32, Int32)] = [:]
     var subagentRows: [String: [TranscriptRow]] = [:]
     /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
     /// inline agent card shows for progress while its transcript is still being written.
@@ -44,9 +48,20 @@ final class TranscriptContext: @unchecked Sendable {
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
 
+    /// The longest side a transcript picture is kept at. A 4K screenshot downsampled to this
+    /// side is ~10 MB of texture instead of ~33 MB, and the 1:1 pixel view never touches the
+    /// cache — the gallery decodes the original for the page it is showing, one at a time.
+    static let bubbleMaxDimension: Int32 = 1600
+
+    private static let textureByteCap = 256 * 1024 * 1024
+    private var previewBytes: [String: Int] = [:]
+    private var cachedBytes = 0
+
     /// Decoded pictures are kept across chat switches, bounded: past the cap the least recently
-    /// decoded is released — its bytes are still on disk, one frame away.
-    func store(textureBits: UInt, data: Data, forKey key: String) {
+    /// decoded is released — its bytes are still on disk, one frame away. The bound is on
+    /// preview texture bytes, not a count, because what it protects is VRAM: one giant
+    /// screenshot and one small logo are not the same cost.
+    func store(textureBits: UInt, data: Data, dimensions: (Int32, Int32), forKey key: String) {
         if let existing = textures[key], existing != 0,
             let stale = OpaquePointer(bitPattern: Int(bitPattern: existing))
         {
@@ -54,11 +69,15 @@ final class TranscriptContext: @unchecked Sendable {
         }
         textures[key] = textureBits
         imageData[key] = data
+        imageDimensions[key] = dimensions
+        let preview = Self.previewBytes(dimensions)
+        previewBytes[key] = preview
+        cachedBytes += preview
         onImageStored?(key)
         textureOrder.removeAll { $0 == key }
         textureOrder.append(key)
-        while textureOrder.count > 48 {
-            let evicted = textureOrder.removeFirst()
+        while cachedBytes > Self.textureByteCap, let evicted = textureOrder.first {
+            textureOrder.removeFirst()
             if let bits = textures[evicted], bits != 0,
                 let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
             {
@@ -66,7 +85,19 @@ final class TranscriptContext: @unchecked Sendable {
             }
             textures[evicted] = nil
             imageData[evicted] = nil
+            imageDimensions[evicted] = nil
+            cachedBytes -= previewBytes[evicted] ?? 0
+            previewBytes[evicted] = nil
         }
+    }
+
+    /// What a preview of `dimensions` costs in VRAM at `bubbleMaxDimension`.
+    private static func previewBytes(_ dimensions: (Int32, Int32)) -> Int {
+        let scale =
+            min(1, Double(bubbleMaxDimension) / Double(max(1, max(dimensions.0, dimensions.1))))
+        let width = max(1, Int(Double(dimensions.0) * scale))
+        let height = max(1, Int(Double(dimensions.1) * scale))
+        return width * height * 4
     }
 }
 
@@ -110,6 +141,14 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     }
 }
 
+/// One agent action in the order it happened — a thought or a tool call — folded together into a
+/// run row the same way the iOS app groups them, so the three clients read the middle of a turn
+/// alike.
+enum ActivityStep: Hashable {
+    case reasoning(String)
+    case tool(ToolCall)
+}
+
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
 /// agent's answer as prose at full measure, code as blocks that copy byte-exactly, edits as
 /// diffs, reasoning and tool output behind a disclosure, a compaction as a seam, a picture as
@@ -125,7 +164,7 @@ struct TranscriptRow: Hashable {
         case codeBlock(language: String?, body: String)
         case reasoning(String)
         case tool(ToolCall)
-        case toolRun([ToolCall])
+        case run([ActivityStep])
         case subagent(ToolCall)
         case workflow(ToolCall)
         case file(FileReference)
@@ -233,33 +272,48 @@ struct TranscriptRow: Hashable {
         return Preferences.compactTools ? fuse(all) : all
     }
 
-    /// Compact mode: a run of ordinary tool calls collapses to one line. Twelve greps in a row are
-    /// one fact — "it searched" — and spending twelve lines on them pushes the answer off the
-    /// screen. The run keeps every call inside it, one tap away, and anything that is not an
-    /// ordinary tool call (an error, a subagent, a picture) never joins a run.
+    /// Compact mode: everything the agent did between two messages — the thoughts and the tool
+    /// calls, failures included — folds to one line. Twelve greps, four edits and the thinking
+    /// around them are one fact: "it worked". The run keeps every step inside it, one tap away;
+    /// only what is its own card (a subagent, a workflow, a picture) never joins a run, and a run
+    /// with no tools stays its own thought rows so a lone reflection still reads as one.
     static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
-        var run: [ToolCall] = []
+        var run: [ActivityStep] = []
         var runKey = ""
 
         func flush() {
             guard !run.isEmpty else { return }
-            if run.count == 1 {
-                fused.append(TranscriptRow(key: runKey, kind: .tool(run[0])))
+            let tools = run.compactMap { step -> ToolCall? in
+                if case .tool(let call) = step { return call }
+                return nil
+            }
+            if tools.isEmpty {
+                for step in run {
+                    if case .reasoning(let text) = step {
+                        fused.append(TranscriptRow(key: runKey, kind: .reasoning(text)))
+                    }
+                }
+            } else if tools.count == 1, run.count == 1 {
+                fused.append(TranscriptRow(key: runKey, kind: .tool(tools[0])))
             } else {
-                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .toolRun(run)))
+                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .run(run)))
             }
             run = []
         }
 
         for row in rows {
-            if case .tool(let call) = row.kind, call.status != .error, !call.asksUserQuestion {
+            switch row.kind {
+            case .tool(let call):
                 if run.isEmpty { runKey = row.key }
-                run.append(call)
-                continue
+                run.append(.tool(call))
+            case .reasoning(let text):
+                if run.isEmpty { runKey = row.key }
+                run.append(.reasoning(text))
+            default:
+                flush()
+                fused.append(row)
             }
-            flush()
-            fused.append(row)
         }
         flush()
         return fused
@@ -308,8 +362,13 @@ struct TranscriptRow: Hashable {
             return "\(language ?? "") \(body)"
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
-        case .toolRun(let calls):
-            return calls.map(Self.searchText(for:)).joined(separator: " ")
+        case .run(let steps):
+            return steps.map { step -> String in
+                switch step {
+                case .reasoning(let text): return text
+                case .tool(let call): return Self.searchText(for: call)
+                }
+            }.joined(separator: " ")
         case .file(let reference):
             return reference.filename ?? reference.path ?? ""
         case .compaction(let compaction):
@@ -338,8 +397,8 @@ struct TranscriptRow: Hashable {
             return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
             return ToolRowView.make(call, key: key, context: context)
-        case .toolRun(let calls):
-            return ToolRowView.makeRun(calls, key: key, context: context)
+        case .run(let steps):
+            return ToolRowView.makeRun(steps, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
         case .workflow(let call):
@@ -444,7 +503,7 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    private static func reasoning(_ text: String, key: String, context: TranscriptContext)
+    static func reasoning(_ text: String, key: String, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
     {
         context.liveReasoning[key] = text
@@ -527,9 +586,10 @@ struct TranscriptRow: Hashable {
                 open?(key, name)
             }
             gtk_box_append(ptr(column), opener)
+            let dims = context.imageDimensions[key] ?? (width, height)
             gtk_box_append(
                 ptr(column),
-                Gtk.label("\(name) · \(width)×\(height)", css: "row-detail", selectable: false))
+                Gtk.label("\(name) · \(dims.0)×\(dims.1)", css: "row-detail", selectable: false))
         } else {
             let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(frame, "image-part")

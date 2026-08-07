@@ -55,7 +55,8 @@ final class PreferencesWindow: NSWindowController {
     }
 
     private var compactTools: Bool {
-        defaults.bool(forKey: "tailscode.compactTools")
+        if defaults.object(forKey: "tailscode.compactTools") == nil { return true }
+        return defaults.bool(forKey: "tailscode.compactTools")
     }
 
     private var transcriptWindow: Int {
@@ -106,8 +107,9 @@ final class PreferencesWindow: NSWindowController {
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Transcript")))
         column.addArrangedSubview(
             switchRow(
-                title: Localized.text("Compact tool calls"),
-                subtitle: Localized.text("A run of tool calls becomes one line you can open"),
+                title: Localized.text("Compact agent steps"),
+                subtitle: Localized.text(
+                    "Thinking and tool calls between prompts fold to one line you can open"),
                 value: compactTools, action: #selector(compactChanged)))
         column.addArrangedSubview(
             stepperRow(

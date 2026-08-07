@@ -39,6 +39,14 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.autoExpandThinking") }
     }
 
+    /// A collapsed run of agent steps renders as a slim line instead of a card;
+    /// ships on so transcripts stay out of the way unless someone asks to see
+    /// the roomier collapsed form.
+    static var compactActivity: Bool {
+        get { flag("pref.compactActivity", default: true) }
+        set { defaults.set(newValue, forKey: "pref.compactActivity") }
+    }
+
     static var hapticsEnabled: Bool {
         get { flag("pref.haptics", default: true) }
         set { defaults.set(newValue, forKey: "pref.haptics") }

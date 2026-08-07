@@ -74,6 +74,14 @@ final class TranscriptRowBuilder {
     }
 }
 
+/// One agent action in the order it happened — a thought or a tool call — folded together into a
+/// run row the same way the iOS app groups them, so the three clients read the middle of a turn
+/// alike.
+enum ActivityStep: Hashable {
+    case reasoning(String)
+    case tool(ToolCall)
+}
+
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
 /// agent's answer as prose at full measure, code as blocks that copy byte-exactly, edits as
 /// diffs, reasoning and tool output behind a disclosure, a compaction as a seam, a picture as
@@ -88,7 +96,7 @@ struct TranscriptRow: Hashable {
         case codeBlock(language: String?, body: String)
         case reasoning(String)
         case tool(ToolCall)
-        case toolRun([ToolCall])
+        case run([ActivityStep])
         case subagent(ToolCall)
         case workflow(ToolCall)
         case file(FileReference)
@@ -100,9 +108,11 @@ struct TranscriptRow: Hashable {
     let kind: Kind
 
     /// The same switch every desktop reads: an environment override for screenshots and headless
-    /// runs, then the shared `tailscode.*` default.
+    /// runs, then the shared `tailscode.*` default. On by default, like the iOS app, so a turn
+    /// reads as ask → answer until opened.
     static var compactTools: Bool {
         if let raw = ProcessInfo.processInfo.environment["TAILSCODE_COMPACT"] { return raw == "1" }
+        if UserDefaults.standard.object(forKey: "tailscode.compactTools") == nil { return true }
         return UserDefaults.standard.bool(forKey: "tailscode.compactTools")
     }
 
@@ -203,33 +213,48 @@ struct TranscriptRow: Hashable {
         return compactTools ? fuse(all) : all
     }
 
-    /// Compact mode: a run of ordinary tool calls collapses to one line. Twelve greps in a row are
-    /// one fact — "it searched" — and spending twelve lines on them pushes the answer off the
-    /// screen. The run keeps every call inside it, one click away, and anything that is not an
-    /// ordinary tool call (an error, a subagent, a picture) never joins a run.
+    /// Compact mode: everything the agent did between two messages — the thoughts and the tool
+    /// calls, failures included — folds to one line. Twelve greps, four edits and the thinking
+    /// around them are one fact: "it worked". The run keeps every step inside it, one click away;
+    /// only what is its own card (a subagent, a workflow, a picture) never joins a run, and a run
+    /// with no tools stays its own thought rows so a lone reflection still reads as one.
     static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
-        var run: [ToolCall] = []
+        var run: [ActivityStep] = []
         var runKey = ""
 
         func flush() {
             guard !run.isEmpty else { return }
-            if run.count == 1 {
-                fused.append(TranscriptRow(key: runKey, kind: .tool(run[0])))
+            let tools = run.compactMap { step -> ToolCall? in
+                if case .tool(let call) = step { return call }
+                return nil
+            }
+            if tools.isEmpty {
+                for step in run {
+                    if case .reasoning(let text) = step {
+                        fused.append(TranscriptRow(key: runKey, kind: .reasoning(text)))
+                    }
+                }
+            } else if tools.count == 1, run.count == 1 {
+                fused.append(TranscriptRow(key: runKey, kind: .tool(tools[0])))
             } else {
-                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .toolRun(run)))
+                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .run(run)))
             }
             run = []
         }
 
         for row in rows {
-            if case .tool(let call) = row.kind, call.status != .error, !call.asksUserQuestion {
+            switch row.kind {
+            case .tool(let call):
                 if run.isEmpty { runKey = row.key }
-                run.append(call)
-                continue
+                run.append(.tool(call))
+            case .reasoning(let text):
+                if run.isEmpty { runKey = row.key }
+                run.append(.reasoning(text))
+            default:
+                flush()
+                fused.append(row)
             }
-            flush()
-            fused.append(row)
         }
         flush()
         return fused
@@ -246,8 +271,13 @@ struct TranscriptRow: Hashable {
             return "\(language ?? "") \(body)"
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
-        case .toolRun(let calls):
-            return calls.map(Self.searchText(for:)).joined(separator: " ")
+        case .run(let steps):
+            return steps.map { step -> String in
+                switch step {
+                case .reasoning(let text): return text
+                case .tool(let call): return Self.searchText(for: call)
+                }
+            }.joined(separator: " ")
         case .file(let reference):
             return reference.filename ?? reference.path ?? ""
         case .compaction(let compaction):
@@ -276,8 +306,8 @@ struct TranscriptRow: Hashable {
             return ToolRowView.reasoning(text, key: key, context: context)
         case .tool(let call):
             return ToolRowView.make(call, key: key, context: context)
-        case .toolRun(let calls):
-            return ToolRowView.makeRun(calls, key: key, context: context)
+        case .run(let steps):
+            return ToolRowView.makeRun(steps, key: key, context: context)
         case .workflow(let call):
             return WorkflowCardView.make(call, key: key, context: context)
         case .subagent(let call):

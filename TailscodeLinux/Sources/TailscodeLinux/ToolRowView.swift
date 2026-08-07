@@ -29,11 +29,16 @@ enum ToolRowView {
         }
     }
 
-    /// A run of tool calls as one line: what they were, how many, and the net diff — expanding in
-    /// place to the same rows compact mode folded away.
-    static func makeRun(_ calls: [ToolCall], key: String, context: TranscriptContext)
+    /// A run of agent steps — thoughts and tool calls in the order they happened — as one line:
+    /// what the tools were, how many, and the net diff, with the failures showing their glyph
+    /// even when folded. Expanding in place opens the same rows compact mode folded away.
+    static func makeRun(_ steps: [ActivityStep], key: String, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
     {
+        let calls = steps.compactMap { step -> ToolCall? in
+            if case .tool(let call) = step { return call }
+            return nil
+        }
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let worst: ToolStatus = calls.contains { $0.status == .error }
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
@@ -75,8 +80,16 @@ enum ToolRowView {
         ) {
             let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
             Gtk.margins(body, leading: 16)
-            for (index, call) in calls.enumerated() {
-                gtk_box_append(ptr(body), make(call, key: "\(key):\(index)", context: context))
+            for (index, step) in steps.enumerated() {
+                switch step {
+                case .reasoning(let text):
+                    gtk_box_append(
+                        ptr(body),
+                        TranscriptRow.reasoning(text, key: "\(key):r\(index)", context: context))
+                case .tool(let call):
+                    gtk_box_append(
+                        ptr(body), make(call, key: "\(key):\(index)", context: context))
+                }
             }
             return body
         }

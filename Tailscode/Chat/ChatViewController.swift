@@ -950,9 +950,10 @@ final class ChatViewController: UIViewController {
                 let toolTap: ((ToolCall) -> Void)? =
                     self.viewModel.supportsSubagents
                     ? { [weak self] call in self?.revealSubagent(spawnedBy: call) } : nil
+                cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     steps: steps, expanded: self.expandedReasoning.contains(id),
-                    streaming: streaming,
+                    streaming: streaming, compact: AppPreferences.compactActivity,
                     onToggle: { [weak self] in self?.toggleReasoning(id) },
                     onToolTap: toolTap,
                     onLinkTap: { [weak self] url in self?.openWebLink(url) })
