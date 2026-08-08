@@ -64,6 +64,7 @@ enum ParityManifest {
         case .sessionSpend: return .implemented("SpendViewController")
         case .toasts: return .implemented("presentToast")
         case .serverManagement: return .implemented("ConnectionController")
+        case .tailnetDiscovery: return .implemented("DiscoveryViewController")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverSignIn: return .implemented("ServerSignInViewController")
         case .serverSelfUpdate: return .implemented("BridgeUpdater")

@@ -728,6 +728,171 @@ void tailscode_remove_tick(GtkWidget *widget, guint id) {
     gtk_widget_remove_tick_callback(widget, id);
 }
 
+#define TAILSCODE_RADAR_RINGS 4
+#define TAILSCODE_RADAR_SPARKS 64
+#define TAILSCODE_RADAR_WEDGES 48
+#define TAILSCODE_RADAR_INKS 4
+
+typedef struct {
+    double sweep;
+    double sweep_light;
+    double ping;
+    double ping_light;
+    double rings[TAILSCODE_RADAR_RINGS];
+    int ring_count;
+    /// angle, radius, light, scale, tone — five per spark, in Core's order.
+    double sparks[TAILSCODE_RADAR_SPARKS * 5];
+    int spark_count;
+    /// grid, ready, locked, pending, as RGB triples.
+    double ink[TAILSCODE_RADAR_INKS * 3];
+} TailscodeRadar;
+
+/// Screen coordinates for a place on the dial. Angle zero is straight up and the sweep turns the
+/// way a clock does, because that is the only radar anybody has ever seen.
+static void tailscode_radar_point(
+    double cx, double cy, double reach, double angle, double radius, double *x, double *y) {
+    *x = cx + sin(angle) * reach * radius;
+    *y = cy - cos(angle) * reach * radius;
+}
+
+/// The dial: rings at the distances Core named, and a faint cross so an empty tailnet still looks
+/// like an instrument rather than a blank circle.
+static void tailscode_radar_grid(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    const double *ink = &radar->ink[0];
+    cairo_set_line_width(cr, 1.0);
+    for (int index = 0; index < radar->ring_count; index++) {
+        double r = reach * radar->rings[index];
+        if (r <= 0.5) continue;
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.22);
+        cairo_arc(cr, cx, cy, r, 0, 2 * G_PI);
+        cairo_stroke(cr);
+    }
+    cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.13);
+    for (int spoke = 0; spoke < 4; spoke++) {
+        double x, y;
+        tailscode_radar_point(cx, cy, reach, spoke * G_PI / 2, 0.98, &x, &y);
+        cairo_move_to(cr, cx, cy);
+        cairo_line_to(cr, x, y);
+    }
+    cairo_stroke(cr);
+}
+
+/// The arm and the light it drags behind it. cairo cannot run a gradient along an arc, so the
+/// wake is laid down as narrow wedges whose alpha falls off the way Core's blip light does — the
+/// same curve, so the arm and the machines it crosses agree about where it has been.
+static void tailscode_radar_sweep(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    if (radar->sweep_light <= 0) return;
+    const double *ink = &radar->ink[3];
+    double span = 1.5;
+    for (int wedge = 0; wedge < TAILSCODE_RADAR_WEDGES; wedge++) {
+        double from = (double)wedge / TAILSCODE_RADAR_WEDGES * span;
+        double to = (double)(wedge + 1) / TAILSCODE_RADAR_WEDGES * span;
+        double alpha = exp(-from / 0.62) * 0.20 * radar->sweep_light;
+        if (alpha < 0.002) break;
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], alpha);
+        cairo_move_to(cr, cx, cy);
+        cairo_arc(
+            cr, cx, cy, reach * 0.98, radar->sweep - to - G_PI / 2,
+            radar->sweep - from - G_PI / 2);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+    double x, y;
+    tailscode_radar_point(cx, cy, reach, radar->sweep, 0.98, &x, &y);
+    cairo_set_line_width(cr, 1.4);
+    cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.85 * radar->sweep_light);
+    cairo_move_to(cr, cx, cy);
+    cairo_line_to(cr, x, y);
+    cairo_stroke(cr);
+}
+
+/// One machine: a filled dot inside its own soft halo, in the ink its state earns.
+static void tailscode_radar_sparks(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    for (int index = 0; index < radar->spark_count; index++) {
+        const double *spark = &radar->sparks[index * 5];
+        int tone = (int)spark[4];
+        if (tone < 0 || tone > 2) tone = 0;
+        const double *ink = &radar->ink[(tone + 1) * 3];
+        double light = spark[2];
+        double size = 3.2 * spark[3];
+        double x, y;
+        tailscode_radar_point(cx, cy, reach, spark[0], spark[1], &x, &y);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.18 * light);
+        cairo_arc(cr, x, y, size * 2.8, 0, 2 * G_PI);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], light);
+        cairo_arc(cr, x, y, size, 0, 2 * G_PI);
+        cairo_fill(cr);
+    }
+}
+
+static void tailscode_radar_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    (void)area;
+    TailscodeRadar *radar = raw;
+    double cx = width / 2.0, cy = height / 2.0;
+    double reach = (width < height ? width : height) / 2.0 - 3.0;
+    if (reach <= 4) return;
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    tailscode_radar_grid(cr, radar, cx, cy, reach);
+    tailscode_radar_sweep(cr, radar, cx, cy, reach);
+    if (radar->ping_light > 0) {
+        const double *ink = &radar->ink[3];
+        cairo_set_line_width(cr, 1.2);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], radar->ping_light);
+        cairo_arc(cr, cx, cy, reach * radar->ping, 0, 2 * G_PI);
+        cairo_stroke(cr);
+    }
+    tailscode_radar_sparks(cr, radar, cx, cy, reach);
+}
+
+GtkWidget *tailscode_radar_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeRadar *radar = g_new0(TailscodeRadar, 1);
+    for (int index = 0; index < TAILSCODE_RADAR_INKS * 3; index++) radar->ink[index] = 0.5;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-radar", radar, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_radar_draw, radar, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+void tailscode_radar_ink(GtkWidget *area, const double *rgb, int colour_count) {
+    if (!area || !rgb) return;
+    TailscodeRadar *radar = g_object_get_data(G_OBJECT(area), "tailscode-radar");
+    if (!radar) return;
+    int count = colour_count > TAILSCODE_RADAR_INKS ? TAILSCODE_RADAR_INKS : colour_count;
+    for (int index = 0; index < count * 3; index++) radar->ink[index] = rgb[index];
+}
+
+void tailscode_radar_set(
+    GtkWidget *area, double sweep, double sweep_light, double ping, double ping_light,
+    const double *rings, int ring_count, const double *sparks, int spark_count) {
+    if (!area) return;
+    TailscodeRadar *radar = g_object_get_data(G_OBJECT(area), "tailscode-radar");
+    if (!radar) return;
+    radar->sweep = sweep;
+    radar->sweep_light = sweep_light;
+    radar->ping = ping;
+    radar->ping_light = ping_light;
+    radar->ring_count = 0;
+    if (rings) {
+        int count = ring_count > TAILSCODE_RADAR_RINGS ? TAILSCODE_RADAR_RINGS : ring_count;
+        for (int index = 0; index < count; index++) radar->rings[index] = rings[index];
+        radar->ring_count = count;
+    }
+    radar->spark_count = 0;
+    if (sparks) {
+        int count = spark_count > TAILSCODE_RADAR_SPARKS ? TAILSCODE_RADAR_SPARKS : spark_count;
+        for (int index = 0; index < count * 5; index++) radar->sparks[index] = sparks[index];
+        radar->spark_count = count;
+    }
+    gtk_widget_queue_draw(area);
+}
+
 #define TAILSCODE_AURA_STOPS 16
 #define TAILSCODE_AURA_SEGMENTS 128
 

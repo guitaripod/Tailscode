@@ -69,6 +69,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case sessionSpend
     case toasts
     case serverManagement
+    case tailnetDiscovery
     case connectDiagnosis
     case serverSignIn
     case serverSelfUpdate
@@ -336,6 +337,10 @@ public enum CapabilityRegistry {
             id: .serverManagement, area: "servers", title: "Server profiles",
             spec:
                 "Add, probe, edit and remove server profiles; HostAddress normalizes anything typed; a password is asked for only once a server says it wants one."),
+        CapabilityDefinition(
+            id: .tailnetDiscovery, area: "servers", title: "The app finds its own servers",
+            spec:
+                "Setting a machine up is a scan, not a form: the tailnet's own peers are asked on both agent ports through the shared TailnetScanner, and everything that answers is offered as a row that adds itself — the machine's name, what answers there, its version, and whether it will want a password. The wait is drawn rather than spun: TailnetRadar is the shared arithmetic of a sweep that laps at one speed on every desk, each found machine taking a fixed place on the dial from its own name so a rescan puts it back where the reader last saw it, brightest as the arm crosses it and never darker than its resting light. A machine already configured says so instead of offering itself twice, a scan that finds nothing says which peers it asked, and reduced motion draws the same dial at rest with everything on it. Where the tailnet can be read locally it costs nothing to run; where it cannot, the scan asks for the credential it needs and says why."),
         CapabilityDefinition(
             id: .connectDiagnosis, area: "servers", title: "Failed probes name their cause",
             spec:

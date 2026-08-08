@@ -64,6 +64,9 @@ enum ParityManifest {
         case .sessionSpend: return .implemented("SpendPanelViewController")
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
+        case .tailnetDiscovery:
+            return .gap(
+                "The Mac types an address by hand. The scan itself is shared (TailnetScanner, TailnetRadar) and macOS can read the tailnet from the tailscale CLI exactly as the GTK client does, so this is work not yet done rather than a platform that cannot.")
         case .connectDiagnosis: return .implemented("diagnose")
         case .serverSignIn: return .implemented("SignInSheet")
         case .serverSelfUpdate: return .implemented("updateStatus")

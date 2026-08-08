@@ -27,6 +27,7 @@ final class ServerManager: @unchecked Sendable {
     private var window: UnsafeMutablePointer<GtkWidget>?
     private var configuredGroup: UnsafeMutablePointer<GtkWidget>?
     private var addGroup: UnsafeMutablePointer<GtkWidget>?
+    private var discovery: DiscoveryPanel?
     private var configuredRows: [UnsafeMutablePointer<GtkWidget>] = []
     private var rows: [String: ServerRow] = [:]
 
@@ -64,6 +65,15 @@ final class ServerManager: @unchecked Sendable {
         let page = adw_preferences_page_new()!
         adw_preferences_window_add(ptr(window), ptr(page))
         configuredGroup = makeConfiguredGroup(on: page)
+        let discovery = DiscoveryPanel(
+            onAdd: { [weak self] suggestion in
+                Gtk.onMain { [weak self] in self?.adopt(suggestion) }
+            },
+            onChanged: { [weak self] in
+                Gtk.onMain { [weak self] in self?.toast(Localized.text("Install command copied")) }
+            })
+        self.discovery = discovery
+        adw_preferences_page_add(ptr(page), ptr(discovery.group))
         addGroup = makeAddGroup(on: page)
 
         token = Self.hold(self)
@@ -178,6 +188,7 @@ final class ServerManager: @unchecked Sendable {
                     "\(profiles.count)"))
 
         guard !profiles.isEmpty else {
+            discovery?.setConfigured([])
             let row = adw_action_row_new()!
             adw_preferences_row_set_title(ptr(row), Localized.text("Nothing configured"))
             adw_preferences_row_set_use_markup(ptr(row), 0)
@@ -198,6 +209,7 @@ final class ServerManager: @unchecked Sendable {
             return
         }
 
+        discovery?.setConfigured(profiles)
         for profile in profiles {
             let row = makeRow(profile)
             if profile.id == expanding { adw_expander_row_set_expanded(ptr(row), 1) }
@@ -727,6 +739,50 @@ final class ServerManager: @unchecked Sendable {
     }
 
 
+    /// A machine the scan found, taken as it stands. Nothing is re-probed — the scanner already
+    /// got an answer out of that exact address — except when it wants a password, which the scan
+    /// cannot know, so the form is filled in and the person is asked for the one missing thing
+    /// rather than being handed a profile that will fail on its first turn.
+    private func adopt(_ suggestion: TailnetScanner.Suggestion) {
+        guard !suggestion.requiresAuth else {
+            if let addressRow {
+                gtk_editable_set_text(op(addressRow), suggestion.baseURL.absoluteString)
+            }
+            if let nameRow {
+                gtk_editable_set_text(op(nameRow), suggestion.recommendedProfileName)
+            }
+            if let agentRow {
+                adw_combo_row_set_selected(
+                    ptr(UnsafeMutableRawPointer(agentRow)),
+                    suggestion.backend == .openCode ? 1 : 0)
+            }
+            setStatus(
+                Localized.text("%@ wants a password", suggestion.recommendedProfileName),
+                detail: Localized.text(
+                    "It answered, so the address is right — type the password it was started with and probe."
+                ), tone: .warn)
+            if let passwordRow { gtk_widget_grab_focus(passwordRow) }
+            return
+        }
+        let profile = ConnectionProfile(
+            id: UUID().uuidString, name: suggestion.recommendedProfileName,
+            backend: suggestion.backend, baseURL: suggestion.baseURL,
+            username: ProbeSweep.username(for: suggestion.backend))
+        Task { [weak self] in
+            do {
+                try await ServerDirectory.shared.save(profile, password: nil)
+                self?.onChanged()
+                Gtk.onMain { [weak self] in
+                    self?.toast(Localized.text("Added %@", profile.name))
+                    self?.reload()
+                }
+            } catch {
+                let text = Localized.text("Could not save: %@", String(describing: error))
+                Gtk.onMain { [weak self] in self?.toast(text) }
+            }
+        }
+    }
+
     private func probeAndSave() {
         guard !probing, let addressRow, let nameRow, let passwordRow else { return }
         let raw = Dialogs.entryText(addressRow)
@@ -1166,6 +1222,7 @@ final class ServerManager: @unchecked Sendable {
         window = nil
         configuredGroup = nil
         addGroup = nil
+        discovery = nil
         configuredRows = []
         rows = [:]
         addressRow = nil

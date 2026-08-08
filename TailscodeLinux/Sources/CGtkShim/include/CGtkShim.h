@@ -189,6 +189,22 @@ void tailscode_remove_tick(GtkWidget *widget, guint id);
 /// they want from a cascade, and the answer is the text.
 gboolean tailscode_animations_enabled(void);
 
+/// The tailnet radar: a drawing area that shows a scan as a dial rather than a spinner. Every
+/// number it draws comes from Core's `TailnetRadar` — the sweep's angle, the ping ring, and each
+/// found machine's place and brightness — so the three clients search at one speed and put the
+/// same machine in the same place. The area never takes input.
+GtkWidget *tailscode_radar_new(void);
+
+/// The four inks, as RGB triples in 0-1: the grid, then a machine that is ready, one that wants a
+/// password, and one still being asked.
+void tailscode_radar_ink(GtkWidget *area, const double *rgb, int colour_count);
+
+/// One frame: the sweep's angle and light, the ping ring's radius and light, the fixed rings as
+/// fractions of the dial, and the sparks as angle/radius/light/scale/tone quintuples.
+void tailscode_radar_set(
+    GtkWidget *area, double sweep, double sweep_light, double ping, double ping_light,
+    const double *rings, int ring_count, const double *sparks, int spark_count);
+
 /// The ultracode aura, drawn rather than themed: a drawing area to lay over the prompt box, whose
 /// perimeter carries the rainbow round and round under a soft glow. A CSS gradient cannot travel
 /// around a box — its angle sweeps across the whole rectangle, so the colour crosses the corners

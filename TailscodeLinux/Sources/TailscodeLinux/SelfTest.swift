@@ -223,6 +223,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let radarFailures = checkRadar()
+        if radarFailures.isEmpty {
+            report("tailnet radar: the dial laps, lights and settles")
+        } else {
+            report("tailnet radar: \(radarFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         do {
             let checks = try checkPalettes()
             report("themes: \(checks) themes read in both appearances")
@@ -1271,6 +1279,38 @@ public enum SelfTest {
     /// renderings — a stale cache would paint light-mode prose in dark-mode colors, which no
     /// compiler catches. A theme that cannot be made readable fails the build rather than shipping
     /// as a pretty palette nobody can use.
+    /// The scan's picture, checked as arithmetic: a machine keeps the place its name gives it, the
+    /// sweep laps without a step at the seam, a blip is brightest under the arm and never dark
+    /// behind it, and a finished scan reports itself settled so the clock can stop.
+    private static func checkRadar() -> [String] {
+        var failures: [String] = []
+        let key = "macbook|claudeCode"
+        let angle = TailnetRadar.angle(for: key)
+        if angle != TailnetRadar.angle(for: key) { failures.append("a place that moves") }
+        if TailnetRadar.angle(for: "arch|openCode") == angle { failures.append("two machines in one place") }
+        let start = TailnetRadar.frame(at: 0, blips: [], scanning: true)
+        let lap = TailnetRadar.frame(at: TailnetRadar.sweepPeriod, blips: [], scanning: true)
+        if abs(start.sweep - lap.sweep) > 0.0001 { failures.append("a step at the seam") }
+        let blip = RadarBlip(key: key, tone: .ready, bornAt: -10)
+        let under = TailnetRadar.frame(
+            at: angle / (2 * Double.pi) * TailnetRadar.sweepPeriod, blips: [blip], scanning: true)
+        let behind = TailnetRadar.frame(
+            at: (angle / (2 * Double.pi) + 0.45) * TailnetRadar.sweepPeriod, blips: [blip],
+            scanning: true)
+        if under.sparks.first.map({ $0.light }) ?? 0 <= behind.sparks.first.map({ $0.light }) ?? 1 {
+            failures.append("the arm lights nothing")
+        }
+        if (behind.sparks.first?.light ?? 0) < TailnetRadar.rest - 0.0001 {
+            failures.append("a blip that goes dark")
+        }
+        let done = TailnetRadar.frame(at: 12, blips: [blip], scanning: false)
+        if !done.settled || done.sweepLight != 0 { failures.append("a finished scan that still moves") }
+        if !TailnetRadar.frame(at: 12, blips: [blip], scanning: true, reducedMotion: true).settled {
+            failures.append("motion a calm desk did not ask for")
+        }
+        return failures
+    }
+
     private static func checkPalettes() throws -> Int {
         var ids = Set<String>()
         var names = Set<String>()
