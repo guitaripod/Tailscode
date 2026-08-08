@@ -76,30 +76,17 @@ enum UsagePanel {
                     css: "dim", selectable: false))
             return
         }
-        if let pick = tightest(quotas) {
-            gtk_box_append(ptr(column), hero(quota: pick.quota, gauge: pick.gauge))
+        let holdings = QuotaRollup.account(from: quotas)
+        if let pick = QuotaRollup.tightest(in: holdings) {
+            gtk_box_append(ptr(column), hero(quota: pick.holding.quota, gauge: pick.gauge))
         }
-        for (server, quota) in quotas {
-            gtk_box_append(ptr(column), card(server: server, quota: quota))
+        for holding in holdings {
+            gtk_box_append(ptr(column), card(holding))
         }
         if refreshing {
             gtk_box_append(
                 ptr(column), Gtk.label(Localized.text("Refreshing…"), css: "dim", selectable: false))
         }
-    }
-
-    /// The one number that decides what happens next: whichever window across every provider is
-    /// closest to its wall, worn large with its own tall bar and its reset.
-    private static func tightest(_ quotas: [(String, UsageQuota)])
-        -> (quota: UsageQuota, gauge: UsageQuota.Gauge)?
-    {
-        var best: (quota: UsageQuota, gauge: UsageQuota.Gauge)?
-        for (_, quota) in quotas {
-            for gauge in quota.gauges where best.map({ gauge.fraction > $0.gauge.fraction }) ?? true {
-                best = (quota, gauge)
-            }
-        }
-        return best
     }
 
     private static func hero(quota: UsageQuota, gauge: UsageQuota.Gauge)
@@ -145,7 +132,8 @@ enum UsagePanel {
         return card
     }
 
-    private static func card(server: String, quota: UsageQuota) -> UnsafeMutablePointer<GtkWidget> {
+    private static func card(_ holding: QuotaHolding) -> UnsafeMutablePointer<GtkWidget> {
+        let quota = holding.quota
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
         Gtk.addClass(card, "usage-card")
 
@@ -191,7 +179,7 @@ enum UsagePanel {
 
         gtk_box_append(
             ptr(card),
-            Gtk.label("\(quota.source) · \(server)", css: "usage-source", selectable: false))
+            Gtk.label(QuotaRollup.provenance(holding), css: "usage-source", selectable: false))
         return card
     }
 

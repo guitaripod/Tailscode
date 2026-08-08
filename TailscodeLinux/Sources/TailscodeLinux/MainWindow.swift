@@ -2564,18 +2564,18 @@ final class MainWindow: @unchecked Sendable {
         return true
     }
 
-    /// Every quota every server can speak for. One machine answering for a provider is enough —
-    /// a second profile on the same host must not double the card.
+    /// Every quota every server can speak for, raw and per-machine. Nothing is dropped here —
+    /// ``QuotaRollup`` folds the reports into one holding per provider, so a second machine
+    /// refines the account's numbers instead of being thrown away for arriving late.
     private static func collectQuotas(profiles: [ConnectionProfile]) async -> [(String, UsageQuota)]
     {
         var quotas: [(String, UsageQuota)] = []
-        var seen = Set<String>()
         for profile in profiles {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
             var collected: [UsageQuota] = []
             if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
             collected += (try? await backend.additionalUsageQuotas()) ?? []
-            for quota in collected where seen.insert("\(quota.providerName)|\(quota.source)").inserted {
+            for quota in collected {
                 quotas.append((profile.name, quota))
             }
         }
@@ -2589,17 +2589,19 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// Quota as a glance, not a paragraph: one thin bar per gauge, the number beside it, and the
-    /// reset countdown tucked under the row that actually resets.
+    /// reset countdown tucked under the row that actually resets. The account, not the machines —
+    /// every server's report folded into one heading per provider, tightest first.
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
         Gtk.removeChildren(of: usageBox)
-        gtk_widget_set_visible(usageBox, quotas.isEmpty ? 0 : 1)
-        for (name, quota) in quotas {
-            let slug = ProviderBrand.slug(quota.providerName)
+        let holdings = QuotaRollup.account(from: quotas)
+        gtk_widget_set_visible(usageBox, holdings.isEmpty ? 0 : 1)
+        for holding in holdings {
+            let slug = holding.slug
             let header = Gtk.label(
-                "\(quota.providerName) · \(name)", css: "section-header", selectable: false)
+                holding.providerName, css: "section-header", selectable: false)
             if let slug { Gtk.addClass(header, "brand-\(slug)") }
             gtk_box_append(ptr(usageBox), header)
-            for gauge in quota.gauges {
+            for gauge in holding.gauges {
                 let fraction = min(max(gauge.fraction, 0), 1)
                 let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
 

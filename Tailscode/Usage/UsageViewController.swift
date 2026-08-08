@@ -367,12 +367,16 @@ final class UsageViewController: UIViewController {
         return matching.sorted { lhs, _ in lhs.id == controller.activeProfileID }
     }
 
+    /// The account's Claude quota, not one bridge's: the first machine to answer paints the card
+    /// immediately and every later answer is folded into it, so a second machine refines the
+    /// numbers instead of being discarded for arriving late.
     private func fillClaude(profiles: [ConnectionProfile], controller: ConnectionController) async -> Error? {
         guard let primary = profiles.first else { return nil }
         guard controller.makeBackend(for: primary) != nil else {
             renderFailure(.claude, on: claudeCard)
             return CredentialsUnavailableError(profileName: primary.name)
         }
+        var reports: [(String, UsageQuota)] = []
         for profile in profiles {
             guard let candidate = controller.makeBackend(for: profile),
                 let quota = try? await candidate.usageQuota()
@@ -380,10 +384,12 @@ final class UsageViewController: UIViewController {
             guard !Task.isCancelled else { return nil }
             AppLogger.session.info(
                 "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            apply(Self.liveModel(quota, accent: Theme.Color.claude), to: .claude)
-            return nil
+            reports.append((profile.name, quota))
+            guard let account = QuotaRollup.account(from: reports).first else { continue }
+            apply(Self.liveModel(account.quota, accent: Theme.Color.claude), to: .claude)
         }
         guard !Task.isCancelled else { return nil }
+        if !reports.isEmpty { return nil }
         AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
         renderFailure(.claude, on: claudeCard)
         return QuotaUnavailableError()
@@ -401,6 +407,7 @@ final class UsageViewController: UIViewController {
     /// Grok quota rides on the Claude Code bridge, which reads the server machine's grok
     /// login; older bridges (or hosts without one) return nothing and the card hides itself.
     private func fillGrok(profiles: [ConnectionProfile], controller: ConnectionController) async {
+        var reports: [(String, UsageQuota)] = []
         for profile in profiles {
             guard let backend = controller.makeBackend(for: profile),
                 let quota = (try? await backend.additionalUsageQuotas())?
@@ -409,11 +416,12 @@ final class UsageViewController: UIViewController {
             guard !Task.isCancelled else { return }
             AppLogger.session.info(
                 "usage: Grok live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            apply(Self.liveModel(quota, accent: Theme.Color.grok), to: .grok)
+            reports.append((profile.name, quota))
+            guard let account = QuotaRollup.account(from: reports).first else { continue }
+            apply(Self.liveModel(account.quota, accent: Theme.Color.grok), to: .grok)
             grokCard.isHidden = false
-            return
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, reports.isEmpty else { return }
         AppLogger.session.info("usage: no Grok quota from any Claude Code bridge")
         grokCard.setLoading(false)
         grokCard.isHidden = !filledCards.contains(.grok)

@@ -770,20 +770,19 @@ final class MainWindowController: NSWindowController {
     }
 
     /// Every quota every server can speak for: the agent's own, plus whatever other providers
-    /// the machine holds accounts for (a bridge also reports Grok). One machine answering for a
-    /// provider is enough — a second profile on the same host must not double the card.
+    /// the machine holds accounts for (a bridge also reports Grok). Nothing is dropped here —
+    /// ``QuotaRollup`` folds the reports into one holding per provider, so a second machine
+    /// refines the account's numbers instead of being thrown away for arriving late.
     private static func collectQuotas(profiles: [ConnectionProfile]) async
         -> [(String, UsageQuota)]
     {
         var quotas: [(String, UsageQuota)] = []
-        var seen = Set<String>()
         for profile in profiles {
             guard let backend = ServerDirectory.shared.backend(for: profile) else { continue }
             var collected: [UsageQuota] = []
             if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
             collected += (try? await backend.additionalUsageQuotas()) ?? []
-            for quota in collected
-            where seen.insert("\(quota.providerName)|\(quota.source)").inserted {
+            for quota in collected {
                 quotas.append((profile.name, quota))
             }
         }

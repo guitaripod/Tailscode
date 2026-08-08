@@ -151,16 +151,17 @@ final class UsageFooterView: NSView {
 
     func render(_ quotas: [(String, UsageQuota)]) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        isHidden = quotas.isEmpty
-        for (server, quota) in quotas {
-            let slug = ProviderBrand.slug(quota.providerName)
+        let holdings = QuotaRollup.account(from: quotas)
+        isHidden = holdings.isEmpty
+        for holding in holdings {
+            let slug = holding.slug
             let header = RowKit.label(
-                "\(quota.providerName) · \(server)",
+                holding.providerName,
                 font: .systemFont(ofSize: 10, weight: .semibold),
                 color: UsageFormat.brandColor(slug) ?? MacTheme.Color.secondaryLabel)
             column.addArrangedSubview(header)
             column.setCustomSpacing(5, after: header)
-            for gauge in quota.gauges {
+            for gauge in holding.gauges {
                 let fraction = min(max(gauge.fraction, 0), 1)
                 let severity = UsageFormat.severity(fraction)
                 let color = UsageFormat.severityColor(severity)
@@ -312,11 +313,12 @@ final class UsagePanelViewController: NSViewController {
                     font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel))
             return
         }
-        if let hero = heroCard() {
+        let holdings = QuotaRollup.account(from: quotas)
+        if let hero = heroCard(holdings) {
             column.addArrangedSubview(hero)
         }
-        for (server, quota) in quotas {
-            column.addArrangedSubview(card(server: server, quota: quota))
+        for holding in holdings {
+            column.addArrangedSubview(card(holding))
         }
         if refreshing {
             column.addArrangedSubview(
@@ -329,12 +331,10 @@ final class UsagePanelViewController: NSViewController {
     /// The panel leads with the tightest window across every provider — the one that decides
     /// when the next send unlocks — as one big bar with its countdown. The cards below carry
     /// the rest.
-    private func heroCard() -> NSView? {
-        let ranked = quotas.flatMap { pair in pair.1.gauges.map { (pair.1, $0) } }
-        guard let (quota, gauge) = ranked.max(by: { $0.1.fraction < $1.1.fraction }) else {
-            return nil
-        }
-        let slug = ProviderBrand.slug(quota.providerName)
+    private func heroCard(_ holdings: [QuotaHolding]) -> NSView? {
+        guard let (holding, gauge) = QuotaRollup.tightest(in: holdings) else { return nil }
+        let quota = holding.quota
+        let slug = holding.slug
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = UsageFormat.severity(fraction)
 
@@ -385,8 +385,9 @@ final class UsagePanelViewController: NSViewController {
         return hero
     }
 
-    private func card(server: String, quota: UsageQuota) -> NSView {
-        let slug = ProviderBrand.slug(quota.providerName)
+    private func card(_ holding: QuotaHolding) -> NSView {
+        let quota = holding.quota
+        let slug = holding.slug
         let card = NSStackView()
         card.orientation = .vertical
         card.alignment = .width
@@ -437,7 +438,7 @@ final class UsagePanelViewController: NSViewController {
 
         card.addArrangedSubview(
             RowKit.label(
-                "\(quota.source) · \(server)", font: .systemFont(ofSize: 10),
+                QuotaRollup.provenance(holding), font: .systemFont(ofSize: 10),
                 color: MacTheme.Color.tertiaryLabel))
         return card
     }

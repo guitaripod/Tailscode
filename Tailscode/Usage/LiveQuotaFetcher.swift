@@ -1,11 +1,13 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import TailscodeCore
 
 /// Fetches live provider quotas (Claude, Grok) straight from every saved Claude Code
-/// bridge — first bridge to answer for a provider wins. Compiled into both the app and
-/// the widget extension, so widget timeline reloads and background refreshes can pull
-/// fresh numbers without the app ever foregrounding.
+/// bridge and folds them into the account's own numbers — a limit belongs to the account, not
+/// to the machine that answered first. Compiled into both the app and the widget extension, so
+/// widget timeline reloads and background refreshes can pull fresh numbers without the app ever
+/// foregrounding.
 enum LiveQuotaFetcher {
     private static let policy = ConnectionPolicy(
         requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
@@ -22,20 +24,20 @@ enum LiveQuotaFetcher {
         else { return [] }
         let bridges = profiles.filter { $0.backend == .claudeCode }.enumerated()
             .compactMap { index, profile in
-                (try? store.makeBackend(profile, policy: policy)).map { (index, $0) }
+                (try? store.makeBackend(profile, policy: policy)).map { (index, profile.name, $0) }
             }
         guard !bridges.isEmpty else { return [] }
         let results = await withTaskGroup(
-            of: (index: Int, quotas: [UsageQuota])?.self
+            of: (index: Int, server: String, quotas: [UsageQuota])?.self
         ) { group in
-            for (index, backend) in bridges {
-                group.addTask { (index, await fetchQuotas(from: backend)) }
+            for (index, name, backend) in bridges {
+                group.addTask { (index, name, await fetchQuotas(from: backend)) }
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
                 return nil
             }
-            var collected: [(index: Int, quotas: [UsageQuota])] = []
+            var collected: [(index: Int, server: String, quotas: [UsageQuota])] = []
             while collected.count < bridges.count, let outcome = await group.next() {
                 guard let outcome else { break }
                 collected.append(outcome)
@@ -43,15 +45,9 @@ enum LiveQuotaFetcher {
             group.cancelAll()
             return collected
         }
-        var byProvider: [String: UsageQuota] = [:]
-        var order: [String] = []
-        for entry in results.sorted(by: { $0.index < $1.index }) {
-            for quota in entry.quotas where byProvider[quota.providerName] == nil {
-                byProvider[quota.providerName] = quota
-                order.append(quota.providerName)
-            }
-        }
-        return order.compactMap { byProvider[$0] }
+        let reports = results.sorted(by: { $0.index < $1.index })
+            .flatMap { entry in entry.quotas.map { (entry.server, $0) } }
+        return QuotaRollup.account(from: reports).map(\.quota)
     }
 
     private static func fetchQuotas(from backend: any CodingAgentBackend) async -> [UsageQuota] {

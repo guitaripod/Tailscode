@@ -203,7 +203,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .usageGauges, area: "chat list", title: "Usage quota gauges",
             spec:
-                "Account quota (usageQuota + additionalUsageQuotas) is visible at a glance from the list surface and refreshes on a slow poll."),
+                "Account quota (usageQuota + additionalUsageQuotas) is visible at a glance from the list surface and refreshes on a slow poll. The numbers are the account's, never a machine's: every connected server's report is folded by QuotaRollup into one heading per provider — the strictest reading of each window, a provider-stated reset over a guessed one, windows only one server knows kept — ordered tightest-first, and no gauge wears a hostname. A machine is named only where it is not redundant: the details surface names the servers behind a provider's numbers when more than one answered, and says nothing about hosts when one did."),
         CapabilityDefinition(
             id: .quotaExhaustion, area: "sessions", title: "Used-up quota is a clear state",
             spec:
