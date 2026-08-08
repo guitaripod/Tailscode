@@ -277,20 +277,26 @@ public struct GitState: Sendable, Equatable {
         self.facts = Self.facts(snapshot, sync: sync.0, syncTone: sync.1, now: now)
     }
 
-    /// The chip a chat's chrome wears: the branch, and how far the tree has drifted from it. Short
-    /// enough to sit beside a model name, and never a number without its meaning.
+    /// The chip a chat's chrome wears: the branch, how far it has drifted, and what the working
+    /// tree is holding — in the shorthand a prompt uses, because the whole value of the chip is
+    /// being read without being opened. `↑↓` is the upstream, `✖` a conflict, `+` staged, `~`
+    /// changed but not staged, `?` untracked. Every mark that would read as zero is absent, so a
+    /// clean tree on a branch with no drift is just the branch's name.
     public var badge: String {
         var text = title
         if snapshot.ahead > 0 { text += " ↑\(snapshot.ahead)" }
         if snapshot.behind > 0 { text += " ↓\(snapshot.behind)" }
-        let dirty = changedCount + stagedCount + conflictCount
-        if dirty > 0 { text += " ●\(dirty)" }
+        if conflictCount > 0 { text += " ✖\(conflictCount)" }
+        if stagedCount > 0 { text += " +\(stagedCount)" }
+        if changedCount > 0 { text += " ~\(changedCount)" }
+        if untrackedCount > 0 { text += " ?\(untrackedCount)" }
         return text
     }
 
     public var badgeTone: GitTone {
         if conflictCount > 0 || snapshot.operation != nil { return .conflict }
         if changedCount + stagedCount > 0 { return .changed }
+        if untrackedCount > 0 { return .untracked }
         return .neutral
     }
 

@@ -122,8 +122,30 @@ struct GitSurfaceTests {
                     GitChange(path: "a.swift", worktree: "M"),
                     GitChange(path: "b.swift", index: "A"),
                 ]), now: Self.now)
-        #expect(state.badge == "master ↑1 ↓2 ●2")
+        #expect(state.badge == "master ↑1 ↓2 +1 ~1")
         #expect(state.badgeTone == .changed)
+    }
+
+    @Test("The chip spells out what the tree is holding, kind by kind")
+    func badgeSpellsOutTheTree() {
+        let state = GitState(
+            snapshot: Self.snapshot(
+                behind: 3,
+                changes: [
+                    GitChange(path: "a.swift", index: "U", worktree: "U", conflicted: true),
+                    GitChange(path: "b.swift", index: "A"),
+                    GitChange(path: "c.swift", worktree: "M"),
+                    GitChange(path: "d.swift", worktree: "M"),
+                    GitChange(path: "e.txt", worktree: "?", untracked: true),
+                ]), now: Self.now)
+        #expect(state.badge == "master ↓3 ✖1 +1 ~2 ?1")
+        #expect(state.badgeTone == .conflict)
+        let untrackedOnly = GitState(
+            snapshot: Self.snapshot(changes: [
+                GitChange(path: "e.txt", worktree: "?", untracked: true)
+            ]), now: Self.now)
+        #expect(untrackedOnly.badge == "master ?1")
+        #expect(untrackedOnly.badgeTone == .untracked)
     }
 
     @Test("A remote is named the way a person names it")
