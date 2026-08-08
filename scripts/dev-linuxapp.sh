@@ -240,12 +240,32 @@ cmd_shot() {
     local out=${1:-/tmp/tailscode-linux.png}
     harness_env
     "${HARNESS_ENV[@]}" import -display "$DEV_DISPLAY" -window root "$out"
+    local want got
+    want=${GEOMETRY%x*}
+    got=$(identify -format '%wx%h' "$out" 2>/dev/null || echo unreadable)
+    if [ "$got" != "$want" ]; then
+        rm -f "$out"
+        die "shot is ${got}, harness is ${want} — that was NOT the harness display, refusing to keep it"
+    fi
     say "$out"
+}
+
+# The X server answering DEV_DISPLAY must be the harness Xvfb, proven by its geometry, before a
+# single event is sent: a shot of the wrong display is a lie, but a click on it drives the desk.
+assert_harness_display() {
+    "$(xvenv)" - "$DEV_DISPLAY" "${GEOMETRY%x*}" <<'PY' && return 0
+import sys
+from Xlib import display
+screen = display.Display(sys.argv[1]).screen()
+sys.exit(0 if f"{screen.width_in_pixels}x{screen.height_in_pixels}" == sys.argv[2] else 1)
+PY
+    die "$DEV_DISPLAY is not the ${GEOMETRY%x*} harness Xvfb — refusing to touch it"
 }
 
 cmd_input() {
     require_running
     harness_env
+    assert_harness_display
     "${HARNESS_ENV[@]}" "$(xvenv)" "$REPO/scripts/dev-input.py" "$@"
 }
 
