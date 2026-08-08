@@ -85,6 +85,14 @@ public struct SessionRowModel: Equatable, Sendable {
     public let unread: Bool
     public let saved: Bool
     public let pinned: Bool
+    /// The directory the conversation belongs to, which is what a person calls it.
+    public let project: String?
+    /// The machine it lives on, and the agent answering there, kept apart so a list can drop
+    /// either one when it distinguishes nothing.
+    public let serverName: String
+    public let backendName: String
+    /// How long ago it last moved, in the compact form the age column draws.
+    public let age: String
     /// What the agent is working on, when it is working — the line a busy row leads with.
     public let snippet: String?
 
@@ -103,8 +111,10 @@ public struct SessionRowModel: Equatable, Sendable {
         self.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
-        let project = entry.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent }
-        let age = Self.age(of: entry.session.updatedAt)
+        self.project = entry.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent }
+        self.serverName = entry.profileName
+        self.backendName = ServerLabel.agent(entry.backendType)
+        self.age = Self.age(of: entry.session.updatedAt)
         self.detail = [
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
@@ -115,6 +125,21 @@ public struct SessionRowModel: Equatable, Sendable {
         default:
             self.snippet = entry.session.isWorking ? entry.session.agentTask : nil
         }
+    }
+
+    /// The row's second line, split into the weights a client draws it at and stripped of
+    /// whatever the listing as a whole already says. A row that would be left with nothing on its
+    /// left falls back to naming its server: an anonymous line is worse than a repeated one.
+    public func facets(_ vocabulary: ChatListVocabulary = .full) -> SessionRowFacets {
+        var origin: [String] = []
+        if vocabulary.namesServer { origin.append(serverName) }
+        if vocabulary.namesBackend, !serverName.localizedCaseInsensitiveContains(backendName) {
+            origin.append(backendName)
+        }
+        if origin.isEmpty, project == nil { origin.append(serverName) }
+        return SessionRowFacets(
+            project: project, origin: origin.isEmpty ? nil : origin.joined(separator: " · "),
+            age: age)
     }
 
     /// The order the row's five states are decided in. What this device watched wins over what the

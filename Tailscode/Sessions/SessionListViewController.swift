@@ -37,6 +37,9 @@ final class SessionListViewController: UIViewController {
     /// Each visible row's derived state, keyed the way every store here is keyed, so a cell reads
     /// what `SessionRowModel` already decided instead of re-deciding it per configure.
     private var rowModels: [String: SessionRowModel] = [:]
+    /// What the whole listing already says, so no row repeats it: one server's name written on
+    /// every row of a one-server fleet is the word a reader's eye lands on and learns nothing from.
+    private var vocabulary: ChatListVocabulary = .full
 
     private var selection = ChatSelection()
     private var isSelecting = false
@@ -688,16 +691,12 @@ final class SessionListViewController: UIViewController {
         content.textProperties.font = Theme.Font.body()
         content.textProperties.numberOfLines = 1
 
-        var parts: [String] = [entry.profileName]
-        if let dir = entry.session.directory {
-            parts.append((dir as NSString).lastPathComponent)
-        }
+        let facets = row.facets(vocabulary)
+        var parts: [String] = [facets.project, facets.origin].compactMap { $0 }
         if let badge = ModelBadge.text(for: entry.session) {
             parts.append(badge)
         }
-        parts.append(Self.relativeDate(entry.session.updatedAt))
-        let meta = parts.joined(separator: " · ")
-        content.secondaryText = row.snippet ?? meta
+        content.secondaryText = row.snippet ?? parts.joined(separator: " · ")
         content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
         content.secondaryTextProperties.color =
             row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent
@@ -720,7 +719,7 @@ final class SessionListViewController: UIViewController {
         }
         cell.backgroundConfiguration = background
 
-        var accessories: [UICellAccessory] = []
+        var accessories: [UICellAccessory] = [Self.ageAccessory(facets.age)]
         if isSelecting {
             accessories.append(Self.markAccessory(marked: selection.contains(entry)))
         }
@@ -758,6 +757,7 @@ final class SessionListViewController: UIViewController {
         case .idle: break
         }
         if row.unread { parts.append(String(localized: "Unread")) }
+        parts.append(relativeDate(row.entry.session.updatedAt))
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
@@ -772,6 +772,27 @@ final class SessionListViewController: UIViewController {
         return .customView(
             configuration: .init(
                 customView: mark, placement: .leading(displayed: .always),
+                maintainsFixedSize: true))
+    }
+
+    /// How long ago the chat moved, in a fixed column at the trailing edge rather than at the end
+    /// of the second line: staleness is compared down a list, and a number that starts at a
+    /// different x on every row cannot be compared at a glance. Monospaced digits so the column
+    /// holds even as the figures change under it.
+    private static func ageAccessory(_ age: String) -> UICellAccessory {
+        let label = UILabel()
+        label.text = age
+        label.font = UIFontMetrics(forTextStyle: .caption2)
+            .scaledFont(for: .monospacedDigitSystemFont(ofSize: 11, weight: .regular))
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.tertiaryLabel
+        label.textAlignment = .right
+        label.sizeToFit()
+        label.frame = CGRect(x: 0, y: 0, width: max(26, label.frame.width), height: 16)
+        label.isAccessibilityElement = false
+        return .customView(
+            configuration: .init(
+                customView: label, placement: .trailing(displayed: .always),
                 maintainsFixedSize: true))
     }
 
@@ -923,6 +944,7 @@ final class SessionListViewController: UIViewController {
         rowModels = Dictionary(
             rows.map { (SessionPinStore.key($0.entry.profileID, $0.entry.session.id), $0) },
             uniquingKeysWith: { first, _ in first })
+        vocabulary = ChatListVocabulary(rows: rows)
         visibleEntries = rows.map(\.entry)
         selection.prune(to: visibleEntries)
 

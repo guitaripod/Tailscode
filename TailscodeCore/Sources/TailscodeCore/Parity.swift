@@ -31,6 +31,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case liveListUpdates
     case rowContextActions
     case rowSnippet
+    case rowFacets
     case usageGauges
     case quotaExhaustion
     case markdownRendering
@@ -194,6 +195,10 @@ public enum CapabilityRegistry {
             id: .rowSnippet, area: "chat list", title: "A busy row names the work",
             spec:
                 "While a session is working, the row's second line carries agentTask (the task in flight) in place of the meta line, so the list says what the agent is doing rather than only that it is live; idle rows keep their meta. Filtering matches the snippet too."),
+        CapabilityDefinition(
+            id: .rowFacets, area: "chat list", title: "The row's second line is read, not parsed",
+            spec:
+                "A row's second line is three facts at three weights rather than four at one: the project it is in leads, the machine and agent follow a step quieter, and the age is pinned in a fixed column at the trailing edge in monospaced digits, so staleness can be compared straight down the list. What the whole listing already says is not repeated on every row — ChatListVocabulary, computed once from the full listing, drops the server name when one machine answered and the agent name when one backend did, and a row left with nothing to say falls back to naming its server. Every client reads SessionRowModel.facets(_:) and decides only how the two weights look."),
         CapabilityDefinition(
             id: .usageGauges, area: "chat list", title: "Usage quota gauges",
             spec:

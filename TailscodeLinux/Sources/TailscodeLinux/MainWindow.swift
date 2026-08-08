@@ -1036,6 +1036,7 @@ final class MainWindow: @unchecked Sendable {
         }
 
         var built = 0
+        let vocabulary = ChatListVocabulary(rows: rows)
         for (title, members) in sections {
             guard built < sidebarLimit else { break }
             gtk_box_append(
@@ -1046,7 +1047,7 @@ final class MainWindow: @unchecked Sendable {
                     ptr(sidebarList),
                     SidebarRow.make(
                         row, focused: row.entry.session.id == selectedID,
-                        marked: marks.contains(row.entry),
+                        marked: marks.contains(row.entry), vocabulary: vocabulary,
                         onOpen: { [weak self] in
                             self?.open(row.entry)
                         },

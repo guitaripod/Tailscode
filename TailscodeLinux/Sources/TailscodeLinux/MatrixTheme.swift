@@ -311,7 +311,16 @@ enum MatrixTheme {
         .selection-verb:hover { border-color: \(accent); }
         .row-title { font-size: \(c(0.92)); color: \(text); }
         .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
-        .row-detail { font-size: \(c(0.78)); opacity: 0.65; font-family: monospace; }
+        .row-detail { font-size: \(c(0.78)); opacity: 0.55; font-family: monospace; }
+        .row-project { font-size: \(c(0.78)); opacity: 0.9; color: \(text); font-family: monospace; }
+        .row-age {
+            font-size: \(c(0.75));
+            opacity: 0.45;
+            color: \(text);
+            font-family: monospace;
+            font-feature-settings: "tnum";
+        }
+        .row-focused .row-project, .row-focused .row-age { opacity: 1; }
         .row-note {
             color: \(accent);
             font-size: \(c(0.72));

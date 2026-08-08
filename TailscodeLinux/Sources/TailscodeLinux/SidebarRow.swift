@@ -181,6 +181,7 @@ enum SidebarRow {
     /// the conversation every time someone tried to select it.
     static func make(
         _ model: SessionRowModel, focused: Bool, marked: Bool = false,
+        vocabulary: ChatListVocabulary = .full,
         onOpen: @escaping @Sendable () -> Void,
         onMark: @escaping @Sendable () -> Void = {},
         onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
@@ -219,9 +220,7 @@ enum SidebarRow {
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
-        gtk_box_append(
-            ptr(column),
-            Gtk.label(model.snippet ?? model.detail, css: "row-detail", selectable: false))
+        gtk_box_append(ptr(column), detailRow(model, vocabulary: vocabulary))
         gtk_widget_set_hexpand(column, 1)
 
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
@@ -244,6 +243,42 @@ enum SidebarRow {
         gtk_box_append(ptr(holder), makeMark(marked: marked, onMark: onMark))
         gtk_box_append(ptr(holder), button)
         return holder
+    }
+
+    /// The second line, read as three things rather than one: what the conversation is in, where
+    /// it lives, and how long ago it moved. The age is pinned to the trailing edge in monospace so
+    /// it forms a straight column down the list — a staleness that has to be found at the end of a
+    /// sentence of varying length is a fact nobody reads. A row that is working says what it is
+    /// working on instead, and keeps the column.
+    private static func detailRow(_ model: SessionRowModel, vocabulary: ChatListVocabulary)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let facets = model.facets(vocabulary)
+        if let snippet = model.snippet {
+            let label = Gtk.label(snippet, css: "row-note", selectable: false)
+            gtk_widget_set_hexpand(label, 1)
+            gtk_box_append(ptr(line), label)
+        } else {
+            if let project = facets.project {
+                let label = Gtk.label(project, css: "row-project", selectable: false)
+                gtk_box_append(ptr(line), label)
+            }
+            if let origin = facets.origin {
+                let label = Gtk.label(origin, css: "row-detail", selectable: false)
+                gtk_widget_set_hexpand(label, 1)
+                gtk_box_append(ptr(line), label)
+            }
+        }
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(line), spacer)
+        let age = Gtk.label(facets.age, css: "row-age", selectable: false)
+        gtk_label_set_ellipsize(op(age), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(age), 1)
+        gtk_widget_set_size_request(age, 30, -1)
+        gtk_box_append(ptr(line), age)
+        return line
     }
 
     /// The mark itself: quiet until the pointer is over the row or the chat is actually marked,

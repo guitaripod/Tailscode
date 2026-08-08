@@ -606,12 +606,16 @@ final class SidebarViewController: NSViewController {
                             : Localized.text("Nothing matches “%@”", filter)))
         } else {
             var built = 0
+            let vocabulary = ChatListVocabulary(rows: models)
             for (title, members) in sections {
                 guard built < sidebarLimit else { break }
                 next.append(.header(title, members.count))
                 for model in members {
                     guard built < sidebarLimit else { break }
-                    next.append(.session(model, marked: selection.contains(model.entry)))
+                    next.append(
+                        .session(
+                            model, marked: selection.contains(model.entry),
+                            vocabulary: vocabulary))
                     built += 1
                 }
             }
@@ -659,7 +663,7 @@ final class SidebarViewController: NSViewController {
 
     private func rowIndex(of sessionID: String) -> Int? {
         rows.firstIndex {
-            if case .session(let model, _) = $0 { return model.entry.session.id == sessionID }
+            if case .session(let model, _, _) = $0 { return model.entry.session.id == sessionID }
             return false
         }
     }
@@ -973,7 +977,7 @@ final class SidebarViewController: NSViewController {
         let index = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard index >= 0, index < rows.count else { return }
         switch rows[index] {
-        case .session(let model, _):
+        case .session(let model, _, _):
             open(model.entry)
         case .more:
             sidebarLimit += 200
@@ -1038,7 +1042,7 @@ extension SidebarViewController: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int)
         -> (any NSPasteboardWriting)?
     {
-        guard case .session(let model, _) = rows[row] else { return nil }
+        guard case .session(let model, _, _) = rows[row] else { return nil }
         let payload = PaneDragPayload(
             profileID: model.entry.profileID, sessionID: model.entry.session.id)
         let item = NSPasteboardItem()
@@ -1066,7 +1070,7 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionSync else { return }
         let row = tableView.selectedRow
-        guard row >= 0, row < rows.count, case .session(let model, _) = rows[row],
+        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row],
             let index = visible.firstIndex(where: {
                 $0.entry.session.id == model.entry.session.id
             })
@@ -1084,7 +1088,7 @@ extension SidebarViewController: NSMenuDelegate {
         menuModel = nil
         menuBackend = nil
         let row = tableView.clickedRow
-        guard row >= 0, row < rows.count, case .session(let model, _) = rows[row] else { return }
+        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row] else { return }
         menuModel = model
         let entry = model.entry
         if let profile = ServerDirectory.shared.profiles.first(where: { $0.id == entry.profileID }) {

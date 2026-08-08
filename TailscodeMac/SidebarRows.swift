@@ -12,7 +12,7 @@ enum SidebarRow: Equatable {
     /// - Parameter marked: whether the row is held by the bulk selection. It travels in the row
     ///   value rather than being read from the store at configure time, so the table's diff sees a
     ///   mark land the same way it sees a title change.
-    case session(SessionRowModel, marked: Bool)
+    case session(SessionRowModel, marked: Bool, vocabulary: ChatListVocabulary)
     case more(Int)
     case archived(Int)
     case empty(String)
@@ -34,9 +34,9 @@ enum SidebarCellFactory {
         for row: SidebarRow, in tableView: NSTableView, onClearMissed: (() -> Void)? = nil
     ) -> NSView {
         switch row {
-        case .session(let model, let marked):
+        case .session(let model, let marked, let vocabulary):
             let cell = reuse("session", in: tableView) { SidebarSessionCell() }
-            cell.configure(with: model, marked: marked)
+            cell.configure(with: model, marked: marked, vocabulary: vocabulary)
             return cell
         case .header(let title, let count):
             let cell = reuse("header", in: tableView) { SidebarHeaderCell() }
@@ -111,6 +111,8 @@ final class SidebarSessionCell: NSView {
     private let badge = ActivityBadgeView(pointSize: 10)
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    /// How long ago the conversation moved, in a column of its own down the trailing edge.
+    private let age = NSTextField(labelWithString: "")
     private let titleRow = NSStackView()
 
     init() {
@@ -135,9 +137,17 @@ final class SidebarSessionCell: NSView {
         detail.lineBreakMode = .byTruncatingTail
         detail.translatesAutoresizingMaskIntoConstraints = false
 
+        age.font = .monospacedDigitSystemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .regular)
+        age.textColor = MacTheme.Color.tertiaryLabel
+        age.alignment = .right
+        age.setContentCompressionResistancePriority(.required, for: .horizontal)
+        age.setContentHuggingPriority(.required, for: .horizontal)
+        age.translatesAutoresizingMaskIntoConstraints = false
+
         badge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glyph)
         addSubview(badge)
+        addSubview(age)
         addSubview(titleRow)
         addSubview(detail)
         NSLayoutConstraint.activate([
@@ -149,10 +159,12 @@ final class SidebarSessionCell: NSView {
             glyph.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             glyph.widthAnchor.constraint(equalToConstant: 16),
             titleRow.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 4),
-            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: age.leadingAnchor, constant: -6),
             titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            age.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            age.firstBaselineAnchor.constraint(equalTo: detail.firstBaselineAnchor),
             detail.leadingAnchor.constraint(equalTo: titleRow.leadingAnchor),
-            detail.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            detail.trailingAnchor.constraint(lessThanOrEqualTo: age.leadingAnchor, constant: -6),
             detail.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 2),
             detail.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
@@ -164,7 +176,9 @@ final class SidebarSessionCell: NSView {
     /// - Parameter marked: a marked row wears the accent wash and lends its glyph column to the
     ///   check, because the mark is the only thing about the row that a verb is about to act on;
     ///   the state it was in is still spoken by its pill, so nothing a marked row says is lost.
-    func configure(with model: SessionRowModel, marked: Bool) {
+    func configure(
+        with model: SessionRowModel, marked: Bool, vocabulary: ChatListVocabulary = .full
+    ) {
         layer?.backgroundColor =
             marked
             ? MacTheme.Color.accent.withAlphaComponent(0.16).cgColor : NSColor.clear.cgColor
@@ -177,10 +191,18 @@ final class SidebarSessionCell: NSView {
         glyph.textColor = marked ? MacTheme.Color.accent : Self.glyphColor(model.state)
         title.stringValue = model.title
         title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
-        detail.stringValue = model.snippet ?? model.detail
+        let facets = model.facets(vocabulary)
         detail.font = MacTheme.Font.caption()
-        detail.textColor =
-            model.snippet != nil ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
+        if let snippet = model.snippet {
+            detail.stringValue = snippet
+            detail.textColor = MacTheme.Color.accent
+        } else {
+            detail.attributedStringValue = Self.detailText(facets)
+        }
+        age.stringValue = facets.age
+        age.font = .monospacedDigitSystemFont(
+            ofSize: MacTheme.Font.caption().pointSize, weight: .regular)
+        age.textColor = MacTheme.Color.tertiaryLabel
         for view in titleRow.arrangedSubviews.dropFirst() {
             titleRow.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -202,6 +224,27 @@ final class SidebarSessionCell: NSView {
             dot.textColor = MacTheme.Color.accent
             titleRow.addArrangedSubview(dot)
         }
+    }
+
+    /// Two weights on one line: the project a person recognises the chat by, then the machine it
+    /// lives on a step quieter behind it. One colour for both is a line that has to be read word
+    /// by word to find the only part that identifies anything.
+    private static func detailText(_ facets: SessionRowFacets) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        let font = MacTheme.Font.caption()
+        if let project = facets.project {
+            text.append(
+                NSAttributedString(
+                    string: project,
+                    attributes: [.font: font, .foregroundColor: MacTheme.Color.secondaryLabel]))
+        }
+        if let origin = facets.origin {
+            text.append(
+                NSAttributedString(
+                    string: text.length == 0 ? origin : " · \(origin)",
+                    attributes: [.font: font, .foregroundColor: MacTheme.Color.tertiaryLabel]))
+        }
+        return text
     }
 
     /// The glyph column carries the same tones the Linux CSS classes do, and draws the same line

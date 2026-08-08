@@ -63,6 +63,77 @@ struct ChatListTests {
         #expect(row(entry(active: false, task: "Edit")).snippet == nil)
     }
 
+    @Test("One machine answering is a word every row can stop saying")
+    func vocabularyDropsWhatEveryRowShares() {
+        let alone = [row(entry(sessionID: "a")), row(entry(sessionID: "b"))]
+        let one = ChatListVocabulary(rows: alone)
+        #expect(!one.namesServer)
+        #expect(!one.namesBackend)
+        #expect(alone[0].facets(one).origin == nil)
+        #expect(alone[0].facets(one).project == "one")
+
+        let fleet = alone + [row(entry(profileID: "two", sessionID: "c"))]
+        let many = ChatListVocabulary(rows: fleet)
+        #expect(many.namesServer)
+        #expect(!many.namesBackend)
+        #expect(fleet[0].facets(many).origin == "one")
+    }
+
+    @Test("The agent is named only when its machine does not already imply it")
+    func backendNamedOnlyWhenAmbiguous() {
+        let mixedFleet = [
+            row(entry(profileID: "one", sessionID: "a")),
+            row(openCode(profileID: "two", sessionID: "b")),
+        ]
+        #expect(!ChatListVocabulary(rows: mixedFleet).namesBackend)
+
+        let mixedServer = [
+            row(entry(profileID: "one", sessionID: "a")),
+            row(openCode(profileID: "one", sessionID: "b")),
+        ]
+        let vocabulary = ChatListVocabulary(rows: mixedServer)
+        #expect(vocabulary.namesBackend)
+        #expect(!vocabulary.namesServer)
+        #expect(mixedServer[0].facets(vocabulary).origin == "Claude Code")
+    }
+
+    private func openCode(profileID: String, sessionID: String) -> SessionEntry {
+        SessionEntry(
+            profileID: profileID, profileName: profileID, host: profileID, backendType: .openCode,
+            session: AgentSession(
+                id: sessionID, agentType: .openCode, title: "chat", directory: "/tmp/\(profileID)",
+                createdAt: Date(), updatedAt: Date()))
+    }
+
+    @Test("A row left with nothing to say names its server rather than going blank")
+    func facetsNeverGoSilent() {
+        let noProject = SessionEntry(
+            profileID: "one", profileName: "macbook", host: "one", backendType: .claudeCode,
+            session: AgentSession(
+                id: "s1", agentType: .claudeCode, title: "chat", directory: nil,
+                createdAt: Date(), updatedAt: Date()))
+        let facets = row(noProject).facets(ChatListVocabulary(namesServer: false, namesBackend: false))
+        #expect(facets.project == nil)
+        #expect(facets.origin == "macbook")
+    }
+
+    @Test("The age is its own fact, not the tail of a sentence")
+    func facetsCarryTheAge() {
+        let recent = row(entry(updated: Date(timeIntervalSinceNow: -7200)))
+        #expect(recent.facets().age == "2h")
+        #expect(recent.age == recent.facets().age)
+    }
+
+    @Test("A server that already names its agent does not say it twice")
+    func originDoesNotRepeatTheAgent() {
+        let named = SessionEntry(
+            profileID: "one", profileName: "Claude Code", host: "one", backendType: .claudeCode,
+            session: AgentSession(
+                id: "s1", agentType: .claudeCode, title: "chat", directory: "/tmp/p",
+                createdAt: Date(), updatedAt: Date()))
+        #expect(row(named).facets(.full).origin == "Claude Code")
+    }
+
     @Test("A turn stopped for an approval leads LIVE NOW with the running ones")
     func inFlight() {
         #expect(SessionRowState.live.isInFlight)
