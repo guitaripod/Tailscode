@@ -593,7 +593,7 @@ final class ChatPane: @unchecked Sendable {
     /// conversation, on the first one. The harness reads the `GALLERY` lines it prints.
     func driverOpenGallery() {
         let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
-            guard case .file(let reference) = row.kind,
+            guard case .file(let reference, _) = row.kind,
                 (reference.mime ?? "").hasPrefix("image/")
             else { return nil }
             let name =
@@ -610,7 +610,7 @@ final class ChatPane: @unchecked Sendable {
 
     /// Opens the gallery over every picture in the conversation, landed on the one clicked.
     private func presentImage(key: String, name: String) {        let items: [ImageGallery.Item] = lastFullRows.compactMap { row in
-            guard case .file(let reference) = row.kind,
+            guard case .file(let reference, _) = row.kind,
                 (reference.mime ?? "").hasPrefix("image/")
             else { return nil }
             let name =

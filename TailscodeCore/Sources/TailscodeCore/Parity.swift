@@ -239,7 +239,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .imageParts, area: "transcript", title: "Pictures the agent hands over",
             spec:
-                "Tool results that gave the model an image become file parts docked at the tool call, fetched over /files/raw and rendered inline with a filename caption."),
+                "Tool results that gave the model an image become file parts docked at the tool call, fetched over /files/raw and rendered inline with a filename caption. Direction is size: a picture the agent hands over is content and fills the row's preview, while one you sent is a receipt and renders at ImagePreview's share of that box — same shape, same tap to open it full size, no caption. A client decides only what units the rule is applied in."),
         CapabilityDefinition(
             id: .imageViewer, area: "transcript", title: "Image viewer over the conversation",
             spec:

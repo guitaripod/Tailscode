@@ -117,10 +117,14 @@ enum ImageDisk {
 /// picture in it is a reference — small, scaled to fit, one click from the full-window viewer.
 @MainActor
 enum ImageRowView {
-    private static let thumbWidth: CGFloat = 220
-    private static let thumbHeight: CGFloat = 140
+    private static let fullWidth: CGFloat = 220
+    private static let fullHeight: CGFloat = 140
 
-    static func make(_ reference: FileReference, key: String, context: TranscriptContext) -> NSView {
+    static func make(
+        _ reference: FileReference, mine: Bool, key: String, context: TranscriptContext
+    ) -> NSView {
+        let thumbWidth = CGFloat(ImagePreview.bound(Double(fullWidth), mine: mine))
+        let thumbHeight = CGFloat(ImagePreview.bound(Double(fullHeight), mine: mine))
         let name =
             reference.filename
             ?? reference.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "file"

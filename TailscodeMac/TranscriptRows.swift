@@ -99,7 +99,7 @@ struct TranscriptRow: Hashable {
         case run([ActivityStep])
         case subagent(ToolCall)
         case workflow(ToolCall)
-        case file(FileReference)
+        case file(FileReference, mine: Bool)
         case compaction(Compaction)
         case turnBreak
     }
@@ -187,7 +187,8 @@ struct TranscriptRow: Hashable {
                     TranscriptRow(
                         key: key, kind: Self.kind(for: call)))
             case .file(let reference):
-                rows.append(TranscriptRow(key: key, kind: .file(reference)))
+                rows.append(
+                    TranscriptRow(key: key, kind: .file(reference, mine: message.role == .user)))
             case .compaction(let compaction):
                 rows.append(TranscriptRow(key: key, kind: .compaction(compaction)))
             case .unknown:
@@ -278,7 +279,7 @@ struct TranscriptRow: Hashable {
                 case .tool(let call): return Self.searchText(for: call)
                 }
             }.joined(separator: " ")
-        case .file(let reference):
+        case .file(let reference, _):
             return reference.filename ?? reference.path ?? ""
         case .compaction(let compaction):
             return compaction.summary ?? ""
@@ -312,8 +313,8 @@ struct TranscriptRow: Hashable {
             return WorkflowCardView.make(call, key: key, context: context)
         case .subagent(let call):
             return SubagentRowView.make(call, key: key, context: context)
-        case .file(let reference):
-            return ImageRowView.make(reference, key: key, context: context)
+        case .file(let reference, let mine):
+            return ImageRowView.make(reference, mine: mine, key: key, context: context)
         case .compaction(let compaction):
             return Self.seam(compaction, key: key, context: context)
         case .turnBreak:

@@ -725,7 +725,7 @@ final class TranscriptViewController: NSViewController {
         context.openImage = { [weak self] key, name in
             guard let self else { return }
             let items: [ImageViewer.Item] = self.lastFullRows.compactMap { row in
-                guard case .file(let reference) = row.kind,
+                guard case .file(let reference, _) = row.kind,
                     (reference.mime ?? "").hasPrefix("image/")
                 else { return nil }
                 let itemName =

@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 @MainActor
@@ -10,8 +11,9 @@ protocol ImageBubbleCellDelegate: AnyObject {
 /// An attached image, rendered at the size it actually is (capped) rather than
 /// in a fixed box, so a screenshot reads as a screenshot and a photo as a photo.
 /// A picture the agent sent names itself underneath; one you sent needs no
-/// caption. Press and hold for the things you do with a picture, or drag it
-/// straight into another app.
+/// caption and is drawn small (``ImagePreview``) — you already know what you
+/// handed over, and a tap still opens it full size. Press and hold for the
+/// things you do with a picture, or drag it straight into another app.
 final class ImageBubbleCell: UICollectionViewCell {
     static let reuseID = "ImageBubbleCell"
     weak var delegate: ImageBubbleCellDelegate?
@@ -31,11 +33,14 @@ final class ImageBubbleCell: UICollectionViewCell {
     private var imageBottomPin: NSLayoutConstraint!
     private var captionBottomPin: NSLayoutConstraint!
     private var ratio: NSLayoutConstraint?
+    private var widthPin: NSLayoutConstraint!
+    private var maxHeightPin: NSLayoutConstraint!
     private var loadToken = UUID()
     private var file: FileReference?
     private var originalData: Data?
 
     private static let maxHeight: CGFloat = 300
+    private static let bubbleShare: CGFloat = 0.72
 
     /// Extra gap above the bubble when this row opens a new turn.
     var turnInset: CGFloat = 0 {
@@ -96,9 +101,9 @@ final class ImageBubbleCell: UICollectionViewCell {
             equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
         trailingPin = bubble.trailingAnchor.constraint(
             equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.l)
-        let widthPin = bubble.widthAnchor.constraint(
-            equalTo: contentView.widthAnchor, multiplier: 0.72)
-        widthPin.priority = UILayoutPriority(999)
+        widthPin = Self.widthPin(bubble: bubble, container: contentView, mine: false)
+        maxHeightPin = imageView.heightAnchor.constraint(
+            lessThanOrEqualToConstant: Self.maxHeight)
         bubbleTop = bubble.topAnchor.constraint(
             equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
         imageBottomPin = imageView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
@@ -110,7 +115,7 @@ final class ImageBubbleCell: UICollectionViewCell {
             bubble.bottomAnchor.constraint(
                 equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.xs),
             widthPin,
-            imageView.heightAnchor.constraint(lessThanOrEqualToConstant: Self.maxHeight),
+            maxHeightPin,
             imageView.topAnchor.constraint(equalTo: bubble.topAnchor),
             imageView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
@@ -161,6 +166,7 @@ final class ImageBubbleCell: UICollectionViewCell {
         localData: Data? = nil
     ) {
         let isUser = role == .user
+        applyDirection(mine: isUser)
         leadingPin.constant = isUser ? Theme.Spacing.l : Theme.Spacing.s
         trailingPin.constant = isUser ? -Theme.Spacing.l : -Theme.Spacing.s
         leadingPin.isActive = !isUser
@@ -192,6 +198,25 @@ final class ImageBubbleCell: UICollectionViewCell {
             self.show(image, animated: true)
             self.onLoaded?()
         }
+    }
+
+    /// A picture you sent is a receipt, not something to read: it keeps the same shape and the
+    /// same tap, at ``ImagePreview``'s share of the box a picture from the agent gets.
+    private func applyDirection(mine: Bool) {
+        maxHeightPin.constant = CGFloat(ImagePreview.bound(Double(Self.maxHeight), mine: mine))
+        widthPin.isActive = false
+        widthPin = Self.widthPin(bubble: bubble, container: contentView, mine: mine)
+        widthPin.isActive = true
+    }
+
+    private static func widthPin(bubble: UIView, container: UIView, mine: Bool)
+        -> NSLayoutConstraint
+    {
+        let pin = bubble.widthAnchor.constraint(
+            equalTo: container.widthAnchor,
+            multiplier: CGFloat(ImagePreview.share(Double(bubbleShare), mine: mine)))
+        pin.priority = UILayoutPriority(999)
+        return pin
     }
 
     /// A caption is what makes a picture from the agent legible as a file on the
