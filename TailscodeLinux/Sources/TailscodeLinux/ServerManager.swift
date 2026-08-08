@@ -14,8 +14,7 @@ import TailscodeCore
 /// follows it through the server's own restart. A bridge too old to have the route says so and
 /// hands over the one-line install command instead.
 final class ServerManager: @unchecked Sendable {
-    static let installCommand =
-        "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
+    static let installCommand = BridgeInstall.installCommand
     private var window: UnsafeMutablePointer<GtkWidget>?
     private let listBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private let statusLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
@@ -147,7 +146,11 @@ final class ServerManager: @unchecked Sendable {
         let raw = Dialogs.entryText(addressEntry)
         let label = Dialogs.entryText(nameEntry)
         guard let passwordRaw = gtk_editable_get_text(op(passwordEntry)) else { return }
-        let password = String(cString: passwordRaw)
+        var password = String(cString: passwordRaw)
+        if password.isEmpty, let pasted = BridgeInstall.password(in: raw) {
+            password = pasted
+            gtk_editable_set_text(op(passwordEntry), pasted)
+        }
         let backend: AgentType = useOpenCode ? .openCode : .claudeCode
 
         guard !raw.isEmpty else {

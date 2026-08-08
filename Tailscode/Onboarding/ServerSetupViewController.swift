@@ -424,7 +424,7 @@ final class ServerSetupViewController: UIViewController {
                 ? String(localized: "Type this on the computer, not on this phone.")
                 : String(
                     localized:
-                        "Type these on the computer, not on this phone. The build needs a Swift toolchain and takes a few minutes."
+                        "Type this on the computer, not on this phone. It builds from source (git and a Swift toolchain, a few minutes the first time) and installs a service that survives reboots."
                 ))
         if backend == .claudeCode {
             showPasswordField(focus: false)

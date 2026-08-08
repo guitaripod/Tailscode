@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 
 /// Keeping a server current from the phone that talks to it.
 ///
@@ -26,8 +27,7 @@ final class BridgeUpdater {
     var onChange: ((State) -> Void)?
 
     /// The one command that installs or updates a bridge, for a server that cannot do it itself.
-    static let installCommand =
-        "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
+    static let installCommand = BridgeInstall.installCommand
 
     private var backend: (any SelfUpdatingBackend)?
     private var poll: Task<Void, Never>?
