@@ -7,16 +7,19 @@ import Foundation
 /// its own field the moment the command is taken away. Shared so every client's
 /// first run makes the same argument with the same command.
 public enum BridgeInstall {
+    /// The one command that installs or updates a bridge: clone, build, config,
+    /// and a service that survives a reboot. Bare, for surfaces that update an
+    /// existing install; the setup flow bakes its minted password in instead.
+    public static let installCommand =
+        "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
+
     public static func command(for backend: AgentType, password: String) -> String {
         switch backend {
         case .openCode:
             return "opencode serve --hostname 0.0.0.0 --port 4096"
         case .claudeCode:
-            return """
-                git clone https://github.com/guitaripod/claude-bridge
-                cd claude-bridge && swift build -c release
-                BRIDGE_BIND=0.0.0.0 BRIDGE_PASSWORD=\(password) .build/release/claude-bridge
-                """
+            return
+                "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | BRIDGE_PASSWORD=\(password) bash"
         }
     }
 

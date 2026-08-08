@@ -36,8 +36,7 @@ enum ServerProbe {
 /// account: signed in as whom, or signed out with the one button that fixes it.
 @MainActor
 final class ServersWindow: NSWindowController {
-    static let installCommand =
-        "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
+    static let installCommand = BridgeInstall.installCommand
 
     private let onChanged: @MainActor () -> Void
     private let listColumn = NSStackView()
@@ -193,7 +192,11 @@ final class ServersWindow: NSWindowController {
     @objc private func probeAndSave() {
         let raw = addressField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let password = passwordField.stringValue
+        var password = passwordField.stringValue
+        if password.isEmpty, let pasted = BridgeInstall.password(in: raw) {
+            password = pasted
+            passwordField.stringValue = pasted
+        }
         let backend: AgentType = opencodeRadio.state == .on ? .openCode : .claudeCode
 
         guard !raw.isEmpty else {

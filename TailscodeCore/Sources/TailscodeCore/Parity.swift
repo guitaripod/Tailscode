@@ -66,9 +66,11 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case stopTurn
     case statusBand
     case usagePanel
+    case usageAnalytics
     case sessionSpend
     case toasts
     case serverManagement
+    case tailnetDiscovery
     case connectDiagnosis
     case serverSignIn
     case serverSelfUpdate
@@ -207,7 +209,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .syntaxHighlighting, area: "transcript", title: "Code is coloured by what it is",
             spec:
-                "A fenced block is lexed by SyntaxHighlighter — one shared, toolkit-free pass over ~60 language tags — and painted through SyntaxPalette, which derives every role from the theme's own slots on its own code background: keywords wear special, names wear info, strings wear warn, numbers wear accentDim, comments are textDim blended toward the canvas, and a diff needs no colours of its own because accent and danger already mean addition and subtraction. Comments and strings are claimed before anything else, so a `//` inside a string is not a comment and a keyword inside a comment is not a keyword; an unterminated run claims the rest of the block, which is what a block still being streamed looks like. A block's header wears the canonical language name and an unknown fence tag keeps its own spelling and renders plain rather than being guessed at. Code scrolls horizontally and is never reflowed — code that rewraps is code you cannot read."),
+                "A fenced block is lexed by SyntaxHighlighter — one shared, toolkit-free pass over ~60 language tags — and painted through SyntaxPalette, which derives every role from the theme's own slots on its own code background: keywords wear special, names wear info, strings wear warn, numbers wear accentDim, comments are textDim blended toward the canvas. A diff is read twice (DiffHighlight): its first column decides each line's ground — added and removed lines sit on a wash of the same accent and danger the diff's +N/−N labels wear (SyntaxPalette.diffLineBackground), with the marker glyph keeping the diff's full ink — and the language the patch's own headers name colours the code on every line, corrected against the wash it sits on; a patch that names no file keeps whole-line accent and danger, and a headed block's header wears both facts (`diff · swift`). Comments and strings are claimed before anything else, so a `//` inside a string is not a comment and a keyword inside a comment is not a keyword; an unterminated run claims the rest of the block, which is what a block still being streamed looks like. A block's header wears the canonical language name and an unknown fence tag keeps its own spelling and renders plain rather than being guessed at. Code scrolls horizontally and is never reflowed — code that rewraps is code you cannot read."),
         CapabilityDefinition(
             id: .streamingGrowth, area: "transcript", title: "Parts grow in place",
             spec:
@@ -222,7 +224,8 @@ public enum CapabilityRegistry {
                 "Each tool call is a compact row stating tool, target and status, expandable to its payload; one row per MessagePart."),
         CapabilityDefinition(
             id: .toolDiffs, area: "transcript", title: "Edit tools render diffs",
-            spec: "Edit/write tool calls show an added/removed line diff (ToolDiff), not raw JSON."),
+            spec:
+                "Edit/write tool calls show an added/removed line diff (ToolDiff), not raw JSON. The call's own file_path names the language (ToolDiff.language), so the lines get the same treatment as a fenced patch: the diff washes under them, the file's syntax on them."),
         CapabilityDefinition(
             id: .compactActivity, area: "transcript", title: "Agent steps collapse to a slim line",
             spec:
@@ -329,7 +332,12 @@ public enum CapabilityRegistry {
                 "The price on the chat's own chrome is the whole conversation's, not the last turn's — a turn's cost is a curiosity, a session's is a fact you act on — and touching it opens the account behind it. The server reads the CLI's own transcript (GET /sessions/:id/spend) for per-turn tokens by tier and prices them; a backend that reports money per message is summed locally instead (SessionSpend(messages:)); a server too old for either leaves the last turn's price where it was. The money is always marked as an estimate with its provenance stated, because a subscription bills a flat fee and the figure is API-equivalent value, never a bill. The panel is the same five sections on every client: the total with turns/each/over/rate/tokens, a bar per turn against the priciest, where the money went across answer / cache written / cache read / fresh input, which model spent it, and the five most expensive turns named by the words that started them. Every number comes from SessionSpend; a client decides only how tall a bar is."),
         CapabilityDefinition(
             id: .usagePanel, area: "status", title: "Usage details",
-            spec: "A dedicated surface breaks down quota windows beyond the glanceable gauges."),
+            spec:
+                "A dedicated surface breaks down quota windows beyond the glanceable gauges. It leads with the tightest window — the one that decides when the next send unlocks — as a hero gauge with its countdown, then every provider's windows as labelled bars with LIVE/CACHED provenance and plan details, and it is the road to the month in numbers."),
+        CapabilityDefinition(
+            id: .usageAnalytics, area: "status", title: "The month in numbers",
+            spec:
+                "A dedicated analytics surface aggregates the whole account: every connected Claude server reports the ledger its machine already holds (GET /analytics — every transcript priced turn by turn), and Core's UsageAnalytics merges the servers and generates every word. The sections are fixed: the window's total with its per-day rate and week-over-week trend, a bar per day with the empty days present, the week's rhythm Monday-first, the day's 24-hour clock, models, projects, tools, where the money went across the four token tiers with what caching saved, the records (busiest day, priciest conversation and turn, longest turn, streak, subagent runs, compactions), per-machine shares when more than one server answered, and two or three insights. A client decides only how tall a bar is. Money is an estimate and says so; a server too old for the route is named in the surface, never a silent hole in the numbers."),
         CapabilityDefinition(
             id: .toasts, area: "status", title: "Transient notices",
             spec: "Short-lived confirmations/errors appear as toasts that never steal focus."),
@@ -337,6 +345,10 @@ public enum CapabilityRegistry {
             id: .serverManagement, area: "servers", title: "Server profiles",
             spec:
                 "Add, probe, edit and remove server profiles; HostAddress normalizes anything typed; a password is asked for only once a server says it wants one."),
+        CapabilityDefinition(
+            id: .tailnetDiscovery, area: "servers", title: "The app finds its own servers",
+            spec:
+                "Setting a machine up is a scan, not a form: the tailnet's own peers are asked on both agent ports through the shared TailnetScanner, and everything that answers is offered as a row that adds itself — the machine's name, what answers there, its version, and whether it will want a password. The wait is drawn rather than spun: TailnetRadar is the shared arithmetic of a sweep that laps at one speed on every desk, each found machine taking a fixed place on the dial from its own name so a rescan puts it back where the reader last saw it, brightest as the arm crosses it and never darker than its resting light. A machine already configured says so instead of offering itself twice, a scan that finds nothing says which peers it asked, and reduced motion draws the same dial at rest with everything on it. Where the tailnet can be read locally it costs nothing to run; where it cannot, the scan asks for the credential it needs and says why."),
         CapabilityDefinition(
             id: .connectDiagnosis, area: "servers", title: "Failed probes name their cause",
             spec:

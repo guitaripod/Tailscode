@@ -14,6 +14,7 @@ public actor ServerDirectory {
 
     private var cached: [ConnectionProfile] = []
     private var backends: [String: any CodingAgentBackend] = [:]
+    private var backendProfiles: [String: ConnectionProfile] = [:]
     private var ephemeralPasswords: [String: String] = [:]
     private var demoMode = false
     private let store = LinuxProfileStore()
@@ -21,12 +22,19 @@ public actor ServerDirectory {
     public func profiles() -> [ConnectionProfile] { cached }
     public func isDemoMode() -> Bool { demoMode }
 
+    /// Re-reads the servers this machine is configured for.
+    ///
+    /// A server that did not change keeps the backend already talking to it. The list poll asks
+    /// for this every ten seconds, and a backend is not a cheap thing to make: it carries a
+    /// `URLSession`, which on Linux is a libcurl handle that nothing invalidates. Throwing them
+    /// all away six times a minute meant the app was quietly accumulating one connection stack per
+    /// server per poll for as long as it was open.
     public func reload() {
-        backends = [:]
         if let (profile, password) = Self.environmentProfile() {
             cached = [profile]
             ephemeralPasswords = password.map { [profile.id: $0] } ?? [:]
             demoMode = false
+            keepBackends(for: cached)
             return
         }
         ephemeralPasswords = [:]
@@ -36,6 +44,38 @@ public actor ServerDirectory {
             listed.append(contentsOf: DemoWorld.profiles)
         }
         cached = listed
+        keepBackends(for: cached)
+    }
+
+    /// Drops the backends whose server is gone or whose address, name or agent changed, and keeps
+    /// the rest exactly as they are.
+    private func keepBackends(for profiles: [ConnectionProfile]) {
+        var kept: [String: any CodingAgentBackend] = [:]
+        var keptProfiles: [String: ConnectionProfile] = [:]
+        for profile in profiles {
+            guard let existing = backends[profile.id], backendProfiles[profile.id] == profile
+            else { continue }
+            kept[profile.id] = existing
+            keptProfiles[profile.id] = profile
+        }
+        backends = kept
+        backendProfiles = keptProfiles
+    }
+
+    /// Forgets the backend for one server, so the next ask builds a fresh one. A password is not
+    /// part of a profile, so a credential that changed has to say so.
+    private func forgetBackend(id: String) {
+        backends[id] = nil
+        backendProfiles[id] = nil
+    }
+
+    /// The password a saved server was reached with, so an edit that changes only its name or its
+    /// address can hand the same one back — `save` reads a missing password as an instruction to
+    /// forget the stored one, which would silently lock the app out of a server the user merely
+    /// renamed.
+    public func password(for profile: ConnectionProfile) -> String? {
+        if let ephemeral = ephemeralPasswords[profile.id] { return ephemeral }
+        return (try? store.password(for: profile.id)) ?? nil
     }
 
     public func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
@@ -51,6 +91,7 @@ public actor ServerDirectory {
         }
         guard let made else { return nil }
         backends[profile.id] = made
+        backendProfiles[profile.id] = profile
         return made
     }
 
@@ -66,6 +107,7 @@ public actor ServerDirectory {
 
     public func save(_ profile: ConnectionProfile, password: String?) throws {
         try store.save(profile, password: password)
+        forgetBackend(id: profile.id)
         if demoMode {
             DemoMode.leave()
         }
@@ -73,6 +115,7 @@ public actor ServerDirectory {
     }
 
     public func delete(id: String) {
+        forgetBackend(id: id)
         if id.hasPrefix(DemoWorld.profilePrefix) {
             DemoMode.leave()
             reload()

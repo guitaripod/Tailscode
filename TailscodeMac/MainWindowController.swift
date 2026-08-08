@@ -45,6 +45,7 @@ final class MainWindowController: NSWindowController {
     private var lastQuotas: [(String, UsageQuota)] = []
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
+    private var analyticsWindow: AnalyticsWindowController?
     private var watchFeed: MediaFeed?
     private var watchCheckedAt: Date?
     private var watchLoad: Task<Void, Never>?
@@ -747,14 +748,59 @@ final class MainWindowController: NSWindowController {
             self.usagePopover = nil
             return
         }
-        let panel = UsagePanelViewController(initial: lastQuotas) {
-            await Self.collectQuotas(profiles: ServerDirectory.shared.profiles)
-        }
+        let panel = UsagePanelViewController(
+            initial: lastQuotas,
+            refresh: { await Self.collectQuotas(profiles: ServerDirectory.shared.profiles) },
+            onAnalytics: { [weak self] in
+                self?.usagePopover?.close()
+                self?.usagePopover = nil
+                self?.presentAnalytics()
+            })
         let popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = panel
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         usagePopover = popover
+    }
+
+    /// The month in numbers, one window per app, held in a property because a window presented
+    /// from a local is dead on arrival — released while shown, its buttons do nothing.
+    func presentAnalytics() {
+        if analyticsWindow == nil {
+            analyticsWindow = AnalyticsWindowController {
+                await Self.collectAnalytics()
+            }
+        }
+        analyticsWindow?.present()
+    }
+
+    /// The whole account: every Claude server's ledger over the default window, merged by Core.
+    /// One machine answering once is enough — a second profile on the same host must not double
+    /// the money — and a server that cannot answer is named so its absence is a stated fact.
+    private static func collectAnalytics() async -> UsageAnalytics? {
+        var reports: [(name: String, report: UsageAnalyticsReport)] = []
+        var missing: [String] = []
+        var seenHosts = Set<String>()
+        for profile in ServerDirectory.shared.profiles where profile.backend == .claudeCode {
+            let host = "\(profile.baseURL.host ?? profile.id):\(profile.baseURL.port ?? 0)"
+            guard seenHosts.insert(host).inserted else { continue }
+            guard let backend = ServerDirectory.shared.backend(for: profile) else {
+                missing.append(profile.name)
+                continue
+            }
+            do {
+                if let report = try await backend.usageAnalytics(
+                    days: UsageAnalytics.defaultWindowDays)
+                {
+                    reports.append((profile.name, report))
+                } else {
+                    missing.append(profile.name)
+                }
+            } catch {
+                continue
+            }
+        }
+        return UsageAnalytics(servers: reports, missingServers: missing)
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {

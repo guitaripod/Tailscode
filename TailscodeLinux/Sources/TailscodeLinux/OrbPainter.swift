@@ -13,6 +13,12 @@ final class OrbPainter: @unchecked Sendable {
     private let area: UnsafeMutablePointer<GtkWidget>
     private var field: PresenceField
     private var tick: UInt = 0
+    private var lastPainted = 0.0
+    /// How often the body is redrawn. It breathes on a swell measured in seconds, and drawing that
+    /// a hundred and sixty-five times a second because the display can is a fan spinning for
+    /// motion no eye can tell from thirty. The arithmetic still reads absolute time, so a skipped
+    /// frame costs a frame and never the phase.
+    private static let frameInterval = 1.0 / 30.0
     private let stops: [Float]
     private(set) var signal = PresenceSignal()
     private(set) var lastFrameSettled = false
@@ -23,7 +29,8 @@ final class OrbPainter: @unchecked Sendable {
             [Float($0.red), Float($0.green), Float($0.blue)]
         }
         area = tailscode_orb_new()
-        gtk_widget_set_size_request(area, -1, 88)
+        gtk_widget_set_size_request(area, 88, 88)
+        gtk_widget_set_halign(area, GTK_ALIGN_CENTER)
         widget = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(widget, "presence-orb")
         Gtk.margins(widget, top: 0, bottom: 6, leading: 10, trailing: 10)
@@ -95,7 +102,10 @@ final class OrbPainter: @unchecked Sendable {
                 { raw in
                     guard let raw else { return }
                     let painter = Unmanaged<OrbPainter>.fromOpaque(raw).takeUnretainedValue()
-                    painter.paint(at: OrbPainter.now)
+                    let time = OrbPainter.now
+                    guard time - painter.lastPainted >= OrbPainter.frameInterval else { return }
+                    painter.lastPainted = time
+                    painter.paint(at: time)
                     if painter.lastFrameSettled { painter.stop() }
                 }, Unmanaged.passUnretained(self).toOpaque()))
     }

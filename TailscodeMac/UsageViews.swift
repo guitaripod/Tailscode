@@ -67,6 +67,36 @@ enum UsageFormat {
         return track
     }
 
+    /// The hero's bar: as wide as whatever holds it, filled by proportion rather than by a fixed
+    /// constant, on a visible track — the hero sits on a raised card, so a raised-coloured track
+    /// would vanish into it.
+    static func fullWidthBar(fraction: Double, height: CGFloat, fill: NSColor) -> NSView {
+        let clamped = min(max(fraction, 0), 1)
+        let track = NSView()
+        track.wantsLayer = true
+        track.layer?.backgroundColor = MacTheme.Color.separator.cgColor
+        track.layer?.cornerRadius = height / 2
+        track.translatesAutoresizingMaskIntoConstraints = false
+        let bar = NSView()
+        bar.wantsLayer = true
+        bar.layer?.backgroundColor = fill.cgColor
+        bar.layer?.cornerRadius = height / 2
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        track.addSubview(bar)
+        let proportional = bar.widthAnchor.constraint(
+            equalTo: track.widthAnchor, multiplier: clamped)
+        proportional.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            track.heightAnchor.constraint(equalToConstant: height),
+            bar.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+            bar.topAnchor.constraint(equalTo: track.topAnchor),
+            bar.bottomAnchor.constraint(equalTo: track.bottomAnchor),
+            proportional,
+            bar.widthAnchor.constraint(greaterThanOrEqualToConstant: height),
+        ])
+        return track
+    }
+
     /// A spend window reads as money, everything else as the percent already used — or "Used up"
     /// when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
@@ -177,14 +207,17 @@ final class UsagePanelViewController: NSViewController {
     private let column = NSStackView()
     private var quotas: [(String, UsageQuota)]
     private let refresh: () async -> [(String, UsageQuota)]
+    private let onAnalytics: () -> Void
     private var refreshing = false
 
     init(
         initial: [(String, UsageQuota)],
-        refresh: @escaping () async -> [(String, UsageQuota)]
+        refresh: @escaping () async -> [(String, UsageQuota)],
+        onAnalytics: @escaping () -> Void
     ) {
         self.quotas = initial
         self.refresh = refresh
+        self.onAnalytics = onAnalytics
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -220,7 +253,14 @@ final class UsagePanelViewController: NSViewController {
         }
         refreshButton.bezelStyle = .rounded
         refreshButton.controlSize = .small
-        let footer = NSStackView(views: [RowKit.spacer(), refreshButton])
+        let monthButton = RowKit.ActionButton(title: Localized.text("The month in numbers")) {
+            [weak self] in
+            self?.onAnalytics()
+        }
+        monthButton.isBordered = false
+        monthButton.contentTintColor = MacTheme.Color.accent
+        monthButton.controlSize = .small
+        let footer = NSStackView(views: [monthButton, RowKit.spacer(), refreshButton])
         footer.orientation = .horizontal
         footer.edgeInsets = NSEdgeInsets(
             top: 0, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -272,6 +312,9 @@ final class UsagePanelViewController: NSViewController {
                     font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel))
             return
         }
+        if let hero = heroCard() {
+            column.addArrangedSubview(hero)
+        }
         for (server, quota) in quotas {
             column.addArrangedSubview(card(server: server, quota: quota))
         }
@@ -281,6 +324,65 @@ final class UsagePanelViewController: NSViewController {
                     Localized.text("Refreshing…"), font: MacTheme.Font.caption(),
                     color: MacTheme.Color.tertiaryLabel))
         }
+    }
+
+    /// The panel leads with the tightest window across every provider — the one that decides
+    /// when the next send unlocks — as one big bar with its countdown. The cards below carry
+    /// the rest.
+    private func heroCard() -> NSView? {
+        let ranked = quotas.flatMap { pair in pair.1.gauges.map { (pair.1, $0) } }
+        guard let (quota, gauge) = ranked.max(by: { $0.1.fraction < $1.1.fraction }) else {
+            return nil
+        }
+        let slug = ProviderBrand.slug(quota.providerName)
+        let fraction = min(max(gauge.fraction, 0), 1)
+        let severity = UsageFormat.severity(fraction)
+
+        let caption = RowKit.label(
+            Localized.text("Tightest window"), font: .systemFont(ofSize: 10, weight: .semibold),
+            color: MacTheme.Color.tertiaryLabel)
+        let name = RowKit.label(
+            "\(quota.providerName) · \(gauge.label)", font: MacTheme.Font.emphasis(),
+            color: UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
+        name.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+        let amount = RowKit.label(
+            UsageFormat.amount(for: gauge),
+            font: .monospacedDigitSystemFont(ofSize: 22, weight: .semibold),
+            color: severity == "ok"
+                ? MacTheme.Color.label : UsageFormat.severityColor(severity))
+        amount.setContentHuggingPriority(.required, for: .horizontal)
+        let nameRow = NSStackView(views: [name, RowKit.spacer(), amount])
+        nameRow.orientation = .horizontal
+        nameRow.alignment = .firstBaseline
+        nameRow.spacing = MacTheme.Spacing.s
+
+        let bar = UsageFormat.fullWidthBar(
+            fraction: fraction, height: 9,
+            fill: UsageFormat.fillColor(severity: severity, slug: slug))
+
+        var views: [NSView] = [caption, nameRow, bar]
+        if let resets = gauge.resetsAt {
+            let phrasing =
+                gauge.trustedReset
+                ? Localized.text("resets in %@", UsageFormat.countdown(to: resets))
+                : Localized.text("resets in about %@", UsageFormat.countdown(to: resets))
+            views.append(
+                RowKit.label(
+                    phrasing, font: MacTheme.Font.caption(),
+                    color: MacTheme.Color.tertiaryLabel))
+        }
+        let hero = NSStackView(views: views)
+        hero.orientation = .vertical
+        hero.alignment = .width
+        hero.spacing = MacTheme.Spacing.s
+        hero.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.m)
+        hero.wantsLayer = true
+        hero.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
+        hero.layer?.cornerRadius = MacTheme.Radius.control
+        hero.translatesAutoresizingMaskIntoConstraints = false
+        return hero
     }
 
     private func card(server: String, quota: UsageQuota) -> NSView {

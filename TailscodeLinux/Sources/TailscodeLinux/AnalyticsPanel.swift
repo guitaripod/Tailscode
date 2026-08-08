@@ -1,0 +1,413 @@
+import CAdw
+import CGtkShim
+import CodingAgentKit
+import Foundation
+import TailscodeCore
+
+/// The month in numbers behind the usage panel's footer: every connected Claude server's
+/// transcript ledger merged by Core's `UsageAnalytics` into one account — spend per day, the
+/// week's rhythm and the day's clock, models, projects, tools, cache economics, records and
+/// insights. Every word and every number comes from Core; this file only decides how tall a
+/// bar is.
+enum AnalyticsPanel {
+    private static let meterTrack = 456
+    private static let dayChartHeight = 90
+    private static let dayBarWidth = 14
+    private static let weekdayChartHeight = 46
+    private static let weekdayBarWidth = 52
+    private static let hourChartHeight = 34
+    private static let hourBarWidth = 16
+
+    static func present(parent: UnsafeMutablePointer<GtkWidget>?) {
+        let (window, content) = Dialogs.window(
+            title: Localized.text("The month in numbers"), parent: parent, width: 560)
+        gtk_window_set_default_size(ptr(window), 560, 720)
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
+        gtk_box_append(ptr(column), notice(Localized.text("Reading the ledger…")))
+
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_widget_set_vexpand(scroller, 1)
+        gtk_scrolled_window_set_child(op(scroller), column)
+        gtk_box_append(ptr(content), scroller)
+
+        let windowBits = UInt(bitPattern: window)
+        let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
+            gtk_window_destroy(ptr(raw))
+        }
+        gtk_widget_set_halign(dismiss, GTK_ALIGN_END)
+        Gtk.margins(dismiss, top: 4)
+        gtk_box_append(ptr(content), dismiss)
+        Gtk.onKey(window) { keyval, _ in
+            guard keyval == Keymap.escape else { return false }
+            guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return true }
+            gtk_window_destroy(ptr(raw))
+            return true
+        }
+        gtk_window_present(ptr(window))
+        gtk_widget_grab_focus(dismiss)
+
+        g_object_ref(UnsafeMutableRawPointer(column))
+        let columnBits = UInt(bitPattern: column)
+        Task.detached {
+            let analytics = await gather()
+            Gtk.onMain {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: columnBits) else { return }
+                defer { g_object_unref(raw) }
+                guard gtk_widget_get_root(ptr(raw)) != nil else { return }
+                render(analytics, into: ptr(raw))
+            }
+        }
+    }
+
+    /// Every Claude server the app knows, asked for its whole ledger. A server that answers nil
+    /// is too old for the route and is named rather than silently dropped; one that cannot be
+    /// reached at all is left to the surfaces that already report reachability.
+    private static func gather() async -> UsageAnalytics? {
+        let profiles = await ServerDirectory.shared.profiles()
+        var reports: [(name: String, report: UsageAnalyticsReport)] = []
+        var missing: [String] = []
+        var seenHosts = Set<String>()
+        for profile in profiles where profile.backend == .claudeCode {
+            let host = "\(profile.baseURL.host ?? profile.id):\(profile.baseURL.port ?? 0)"
+            guard seenHosts.insert(host).inserted else { continue }
+            guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
+            do {
+                if let report = try await backend.usageAnalytics(
+                    days: UsageAnalytics.defaultWindowDays)
+                {
+                    reports.append((profile.name, report))
+                } else {
+                    missing.append(profile.name)
+                }
+            } catch {
+                continue
+            }
+        }
+        return UsageAnalytics(servers: reports, missingServers: missing)
+    }
+
+    /// A state that is the whole window sits in the middle of it, not in a corner.
+    private static func notice(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: "dim", selectable: false)
+        gtk_widget_set_halign(label, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(label, 1)
+        return label
+    }
+
+    private static func render(
+        _ analytics: UsageAnalytics?, into column: UnsafeMutablePointer<GtkWidget>
+    ) {
+        Gtk.removeChildren(of: column)
+        guard let analytics else {
+            gtk_box_append(ptr(column), notice(Localized.text("Nothing on the ledger yet.")))
+            return
+        }
+        gtk_box_append(ptr(column), hero(analytics))
+        if !analytics.days.isEmpty { gtk_box_append(ptr(column), daily(analytics)) }
+        if !analytics.weekdays.isEmpty || !analytics.hours.isEmpty {
+            gtk_box_append(ptr(column), rhythm(analytics))
+        }
+        if !analytics.models.isEmpty {
+            gtk_box_append(
+                ptr(column),
+                meterCard(title: Localized.text("Models"), meters: analytics.models, caption: nil))
+        }
+        if !analytics.projects.isEmpty {
+            gtk_box_append(
+                ptr(column),
+                meterCard(
+                    title: Localized.text("Projects"), meters: analytics.projects, caption: nil))
+        }
+        if !analytics.tools.isEmpty {
+            gtk_box_append(
+                ptr(column),
+                meterCard(
+                    title: Localized.text("Tools"), meters: analytics.tools,
+                    caption: analytics.toolsLine))
+        }
+        if !analytics.tiers.isEmpty { gtk_box_append(ptr(column), tiers(analytics)) }
+        if !analytics.records.isEmpty { gtk_box_append(ptr(column), records(analytics)) }
+        if !analytics.machines.isEmpty {
+            gtk_box_append(
+                ptr(column),
+                meterCard(
+                    title: Localized.text("Machines"), meters: analytics.machines, caption: nil))
+        }
+        gtk_box_append(ptr(column), footer(analytics))
+    }
+
+    private static func hero(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(
+            ptr(card), Gtk.label(analytics.windowLabel, css: "usage-plan", selectable: false))
+        let money = Gtk.label(analytics.totalMoney, css: "analytics-total", selectable: false)
+        gtk_label_set_ellipsize(op(money), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(card), money)
+        gtk_box_append(
+            ptr(card), Gtk.label(analytics.perDayLine, css: "usage-detail-key", selectable: false))
+        let activity = Gtk.label(
+            analytics.activityLine, css: "usage-detail-key", wrap: true, selectable: false)
+        gtk_box_append(ptr(card), activity)
+        if let delta = analytics.deltaLine {
+            let tone: String
+            switch analytics.trend {
+            case .up: tone = "analytics-delta-up"
+            case .down: tone = "analytics-delta-down"
+            case .flat: tone = "analytics-delta-flat"
+            }
+            gtk_box_append(ptr(card), Gtk.label(delta, css: tone, selectable: false))
+        }
+        return card
+    }
+
+    private static func daily(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(
+            ptr(card), heading(Localized.text("Day by day"), trailing: analytics.windowLabel))
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
+        gtk_widget_set_valign(row, GTK_ALIGN_END)
+        gtk_widget_set_size_request(row, -1, Int32(dayChartHeight))
+        for day in analytics.days {
+            let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            gtk_widget_set_valign(holder, GTK_ALIGN_END)
+            let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(bar, day.isToday ? "analytics-bar-today" : "analytics-bar")
+            let height = max(2, Int(Double(dayChartHeight) * min(max(day.share, 0), 1)))
+            gtk_widget_set_size_request(bar, Int32(dayBarWidth), Int32(height))
+            gtk_widget_set_tooltip_text(
+                bar,
+                "\(day.weekdayLabel) \(day.label) · \(day.money) · "
+                    + Localized.text("%@ turns", "\(day.turns)"))
+            gtk_box_append(ptr(holder), bar)
+            gtk_box_append(ptr(row), holder)
+        }
+        gtk_box_append(ptr(card), row)
+
+        let captions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        if let peak = analytics.peakDay, peak.costUSD > 0 {
+            let left = Gtk.label(
+                Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money),
+                css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(left), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_hexpand(left, 1)
+            gtk_box_append(ptr(captions), left)
+        }
+        if let today = analytics.days.last(where: \.isToday) {
+            let right = Gtk.label(
+                Localized.text("Today · %@", today.money), css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(right), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(captions), right)
+        }
+        gtk_box_append(ptr(card), captions)
+        return card
+    }
+
+    private static func rhythm(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), heading(Localized.text("Rhythm"), trailing: nil))
+
+        let week = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_valign(week, GTK_ALIGN_END)
+        for weekday in analytics.weekdays {
+            let columnBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+            gtk_widget_set_valign(columnBox, GTK_ALIGN_END)
+            let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(bar, "analytics-bar")
+            let height = max(2, Int(Double(weekdayChartHeight) * min(max(weekday.share, 0), 1)))
+            gtk_widget_set_size_request(bar, Int32(weekdayBarWidth), Int32(height))
+            if let money = weekday.money { gtk_widget_set_tooltip_text(bar, money) }
+            gtk_box_append(ptr(columnBox), bar)
+            let label = Gtk.label(weekday.label, css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+            gtk_label_set_xalign(op(label), 0.5)
+            gtk_box_append(ptr(columnBox), label)
+            gtk_box_append(ptr(week), columnBox)
+        }
+        gtk_box_append(ptr(card), week)
+
+        let clock = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
+        gtk_widget_set_valign(clock, GTK_ALIGN_END)
+        gtk_widget_set_size_request(clock, -1, Int32(hourChartHeight))
+        Gtk.margins(clock, top: 4)
+        for hour in analytics.hours {
+            let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            gtk_widget_set_valign(holder, GTK_ALIGN_END)
+            let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(bar, "analytics-hour")
+            let height = max(2, Int(Double(hourChartHeight) * min(max(hour.share, 0), 1)))
+            gtk_widget_set_size_request(bar, Int32(hourBarWidth), Int32(height))
+            gtk_widget_set_tooltip_text(
+                bar, "\(hour.label):00 · " + Localized.text("%@ turns", "\(hour.turns)"))
+            gtk_box_append(ptr(holder), bar)
+            gtk_box_append(ptr(clock), holder)
+        }
+        gtk_box_append(ptr(card), clock)
+
+        if let clockLine = analytics.clockLine {
+            gtk_box_append(
+                ptr(card), Gtk.label(clockLine, css: "spend-caption", selectable: false))
+        }
+        return card
+    }
+
+    private static func meterCard(
+        title: String, meters: [UsageAnalytics.Meter], caption: String?
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), heading(title, trailing: nil))
+        for row in meters {
+            gtk_box_append(
+                ptr(card),
+                meter(
+                    label: row.label, value: row.money, detail: row.detail, fraction: row.share,
+                    hot: false))
+        }
+        if let caption {
+            gtk_box_append(ptr(card), Gtk.label(caption, css: "spend-caption", selectable: false))
+        }
+        return card
+    }
+
+    private static func tiers(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), heading(Localized.text("Where it went"), trailing: nil))
+        for tier in analytics.tiers {
+            gtk_box_append(
+                ptr(card),
+                meter(
+                    label: tier.label, value: SessionSpend.money(tier.costUSD),
+                    detail: StatusFacts.tokens(tier.tokens), fraction: tier.share,
+                    hot: tier.id == "output"))
+        }
+        if let cacheLine = analytics.cacheLine {
+            gtk_box_append(
+                ptr(card), Gtk.label(cacheLine, css: "spend-caption", selectable: false))
+        }
+        return card
+    }
+
+    private static func records(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), heading(Localized.text("Records"), trailing: nil))
+        var index = 0
+        while index < analytics.records.count {
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+            gtk_box_set_homogeneous(ptr(row), 1)
+            gtk_box_append(ptr(row), recordCard(analytics.records[index]))
+            if index + 1 < analytics.records.count {
+                gtk_box_append(ptr(row), recordCard(analytics.records[index + 1]))
+            } else {
+                let filler = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+                gtk_box_append(ptr(row), filler)
+            }
+            gtk_box_append(ptr(card), row)
+            index += 2
+        }
+        return card
+    }
+
+    private static func recordCard(_ record: UsageAnalytics.Record)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let cell = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.addClass(cell, "record-card")
+        let glyph = Gtk.label(record.glyph, css: "record-glyph", selectable: false)
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(cell), glyph)
+        let title = Gtk.label(record.title.uppercased(), css: "record-title", selectable: false)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(cell), title)
+        let value = Gtk.label(record.value, css: "record-value", selectable: false)
+        gtk_box_append(ptr(cell), value)
+        if let detail = record.detail {
+            let text = Gtk.label(detail, css: "record-detail", wrap: true, selectable: false)
+            gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
+            gtk_label_set_lines(op(text), 2)
+            gtk_box_append(ptr(cell), text)
+        }
+        return cell
+    }
+
+    private static func footer(_ analytics: UsageAnalytics) -> UnsafeMutablePointer<GtkWidget> {
+        let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        for insight in analytics.insights {
+            gtk_box_append(
+                ptr(block),
+                Gtk.label("· " + insight, css: "usage-detail-key", wrap: true, selectable: false))
+        }
+        gtk_box_append(
+            ptr(block), Gtk.label(analytics.source, css: "usage-source", selectable: false))
+        if !analytics.missingServers.isEmpty {
+            gtk_box_append(
+                ptr(block),
+                Gtk.label(
+                    Localized.text(
+                        "Not counted: %@ (server too old)",
+                        analytics.missingServers.joined(separator: ", ")),
+                    css: "usage-source", wrap: true, selectable: false))
+        }
+        return block
+    }
+
+    private static func heading(_ text: String, trailing: String?)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let title = Gtk.label(text, css: "usage-provider", selectable: false)
+        gtk_label_set_xalign(op(title), 0)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_box_append(ptr(row), title)
+        if let trailing {
+            let caption = Gtk.label(trailing, css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(caption), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(row), caption)
+        }
+        return row
+    }
+
+    private static func meter(
+        label: String, value: String?, detail: String, fraction: Double, hot: Bool
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let name = Gtk.label(label, css: "usage-gauge-label", selectable: false)
+        gtk_label_set_xalign(op(name), 0)
+        gtk_widget_set_hexpand(name, 1)
+        gtk_box_append(ptr(row), name)
+        if !detail.isEmpty {
+            let count = Gtk.label(detail, css: "spend-caption", selectable: false)
+            gtk_label_set_ellipsize(op(count), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(row), count)
+        }
+        if let value {
+            let money = Gtk.label(value, css: "usage-detail-value", selectable: false)
+            gtk_label_set_ellipsize(op(money), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(row), money)
+        }
+        gtk_box_append(ptr(block), row)
+
+        let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(track, "gauge-track")
+        gtk_widget_set_size_request(track, Int32(meterTrack), 6)
+        gtk_widget_set_halign(track, GTK_ALIGN_START)
+        let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(fill, hot ? "spend-bar-hot" : "spend-bar")
+        let width = max(2, Int(Double(meterTrack) * min(max(fraction, 0), 1)))
+        gtk_widget_set_size_request(fill, Int32(width), 6)
+        gtk_widget_set_halign(fill, GTK_ALIGN_START)
+        gtk_box_append(ptr(track), fill)
+        gtk_box_append(ptr(block), track)
+        return block
+    }
+}

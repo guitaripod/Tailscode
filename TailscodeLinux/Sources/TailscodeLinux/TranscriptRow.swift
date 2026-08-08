@@ -122,12 +122,13 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         var all: [TranscriptRow] = []
         var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
+        let writing = messages.last?.id
         for message in messages {
             let rows: [TranscriptRow]
             if let hit = cache[message.id], hit.message == message {
                 rows = hit.rows
             } else {
-                rows = TranscriptRow.rows(for: message)
+                rows = TranscriptRow.rows(for: message, cacheMarkup: message.id != writing)
             }
             next[message.id] = (message, rows)
             guard !rows.isEmpty else { continue }
@@ -195,7 +196,11 @@ struct TranscriptRow: Hashable {
         return (true, remainder)
     }
 
-    static func rows(for message: ChatMessage) -> [TranscriptRow] {
+    /// - Parameter cacheMarkup: whether the prose this message renders is worth remembering. The
+    ///   message a turn is currently writing into is a different string on every arrival, so
+    ///   remembering its markup fills the memo with a thousand prefixes of one answer and evicts
+    ///   the settled segments the memo exists for.
+    static func rows(for message: ChatMessage, cacheMarkup: Bool = true) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
@@ -225,7 +230,7 @@ struct TranscriptRow: Hashable {
                                     text: prose,
                                     markup: PangoMarkdown.render(
                                         prose, dim: palette.textDim, code: palette.info,
-                                        accent: palette.accent))))
+                                        accent: palette.accent, cache: cacheMarkup))))
                     case .code(let language, let body):
                         rows.append(
                             TranscriptRow(
@@ -240,7 +245,7 @@ struct TranscriptRow: Hashable {
             case .tool(let call):
                 if call.asksUserQuestion, call.isAwaitingAnswer { continue }
                 let kind: Kind
-                if call.summary.kind == .workflow {
+                if call.summaryKind == .workflow {
                     kind = .workflow(call)
                 } else {
                     kind = call.spawnsSubagent ? .subagent(call) : .tool(call)
@@ -476,7 +481,8 @@ struct TranscriptRow: Hashable {
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let tag = Gtk.label(
-            SyntaxHighlighter.displayName(for: language), css: "code-header", selectable: false)
+            SyntaxHighlighter.displayName(for: language, source: body), css: "code-header",
+            selectable: false)
         gtk_widget_set_hexpand(tag, 1)
         gtk_box_append(ptr(header), tag)
         let bytes = body

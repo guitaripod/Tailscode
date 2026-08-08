@@ -1,8 +1,25 @@
 #include "include/CGtkShim.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
+/// How a Swift closure that a signal was holding is let go of.
+///
+/// The closure arrives here as a retained Swift object behind a raw pointer, and C cannot release
+/// one. So Swift hands over the release once, at startup, and the shim calls it when GObject
+/// finishes with the closure — which is when the handler is disconnected or the object it was on
+/// is finalized, and by then nothing can call the handler again. Without it every signal
+/// connection leaked its closure for the life of the process, and the transcript, the sidebar and
+/// every popover connect a fresh one each time they are built.
+static void (*tailscode_box_release)(void *) = NULL;
+
+void tailscode_set_box_release(void (*release)(void *)) { tailscode_box_release = release; }
+
+static void tailscode_box_destroy(gpointer data, GClosure *closure) {
+    (void)closure;
+    if (data && tailscode_box_release) tailscode_box_release(data);
+}
+
 void tailscode_connect(gpointer instance, const char *signal, GCallback handler, gpointer data) {
-    g_signal_connect_data(instance, signal, handler, data, NULL, 0);
+    g_signal_connect_data(instance, signal, handler, data, tailscode_box_destroy, 0);
 }
 
 typedef struct {
@@ -90,6 +107,14 @@ static gboolean tailscode_key_trampoline(
     return box->handler(keyval, (guint)state, box->data);
 }
 
+static void tailscode_key_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeKey *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
 void tailscode_connect_key(
     GtkWidget *widget, gboolean (*handler)(guint keyval, guint state, void *), void *data) {
     TailscodeKey *box = g_new0(TailscodeKey, 1);
@@ -98,7 +123,8 @@ void tailscode_connect_key(
     GtkEventController *controller = gtk_event_controller_key_new();
     gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
     g_signal_connect_data(
-        controller, "key-pressed", G_CALLBACK(tailscode_key_trampoline), box, NULL, 0);
+        controller, "key-pressed", G_CALLBACK(tailscode_key_trampoline), box,
+        tailscode_key_destroy, 0);
     gtk_widget_add_controller(widget, controller);
 }
 
@@ -340,11 +366,17 @@ GType tailscode_chat_ref_get_type(void) {
     return (GType)once;
 }
 
+/// A row the pointer can pick up. The content provider is made with a reference of its own, and
+/// the drag source takes one more rather than taking that one over — so it has to be let go of
+/// here, or every chat row the sidebar builds leaves a provider and its payload behind, and the
+/// sidebar builds all of them again on every list change.
 void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload) {
     GtkDragSource *source = gtk_drag_source_new();
     gtk_drag_source_set_actions(source, GDK_ACTION_COPY);
-    gtk_drag_source_set_content(
-        source, gdk_content_provider_new_typed(tailscode_chat_ref_get_type(), payload));
+    GdkContentProvider *content =
+        gdk_content_provider_new_typed(tailscode_chat_ref_get_type(), payload);
+    gtk_drag_source_set_content(source, content);
+    g_object_unref(content);
     GdkPaintable *ghost = gtk_widget_paintable_new(widget);
     gtk_drag_source_set_icon(source, ghost, 0, 0);
     g_object_unref(ghost);
@@ -455,13 +487,23 @@ static void tailscode_notify_trampoline(GObject *object, GParamSpec *pspec, gpoi
     box->handler(box->data);
 }
 
+static void tailscode_notify_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodeNotify *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
 void tailscode_connect_notify(
     gpointer instance, const char *property, void (*handler)(void *), void *data) {
     TailscodeNotify *box = g_new0(TailscodeNotify, 1);
     box->handler = handler;
     box->data = data;
     char *signal = g_strdup_printf("notify::%s", property);
-    g_signal_connect_data(instance, signal, G_CALLBACK(tailscode_notify_trampoline), box, NULL, 0);
+    g_signal_connect_data(
+        instance, signal, G_CALLBACK(tailscode_notify_trampoline), box, tailscode_notify_destroy,
+        0);
     g_free(signal);
 }
 
@@ -684,6 +726,171 @@ guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data)
 void tailscode_remove_tick(GtkWidget *widget, guint id) {
     if (!widget || id == 0) return;
     gtk_widget_remove_tick_callback(widget, id);
+}
+
+#define TAILSCODE_RADAR_RINGS 4
+#define TAILSCODE_RADAR_SPARKS 64
+#define TAILSCODE_RADAR_WEDGES 48
+#define TAILSCODE_RADAR_INKS 4
+
+typedef struct {
+    double sweep;
+    double sweep_light;
+    double ping;
+    double ping_light;
+    double rings[TAILSCODE_RADAR_RINGS];
+    int ring_count;
+    /// angle, radius, light, scale, tone — five per spark, in Core's order.
+    double sparks[TAILSCODE_RADAR_SPARKS * 5];
+    int spark_count;
+    /// grid, ready, locked, pending, as RGB triples.
+    double ink[TAILSCODE_RADAR_INKS * 3];
+} TailscodeRadar;
+
+/// Screen coordinates for a place on the dial. Angle zero is straight up and the sweep turns the
+/// way a clock does, because that is the only radar anybody has ever seen.
+static void tailscode_radar_point(
+    double cx, double cy, double reach, double angle, double radius, double *x, double *y) {
+    *x = cx + sin(angle) * reach * radius;
+    *y = cy - cos(angle) * reach * radius;
+}
+
+/// The dial: rings at the distances Core named, and a faint cross so an empty tailnet still looks
+/// like an instrument rather than a blank circle.
+static void tailscode_radar_grid(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    const double *ink = &radar->ink[0];
+    cairo_set_line_width(cr, 1.0);
+    for (int index = 0; index < radar->ring_count; index++) {
+        double r = reach * radar->rings[index];
+        if (r <= 0.5) continue;
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.22);
+        cairo_arc(cr, cx, cy, r, 0, 2 * G_PI);
+        cairo_stroke(cr);
+    }
+    cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.13);
+    for (int spoke = 0; spoke < 4; spoke++) {
+        double x, y;
+        tailscode_radar_point(cx, cy, reach, spoke * G_PI / 2, 0.98, &x, &y);
+        cairo_move_to(cr, cx, cy);
+        cairo_line_to(cr, x, y);
+    }
+    cairo_stroke(cr);
+}
+
+/// The arm and the light it drags behind it. cairo cannot run a gradient along an arc, so the
+/// wake is laid down as narrow wedges whose alpha falls off the way Core's blip light does — the
+/// same curve, so the arm and the machines it crosses agree about where it has been.
+static void tailscode_radar_sweep(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    if (radar->sweep_light <= 0) return;
+    const double *ink = &radar->ink[3];
+    double span = 1.5;
+    for (int wedge = 0; wedge < TAILSCODE_RADAR_WEDGES; wedge++) {
+        double from = (double)wedge / TAILSCODE_RADAR_WEDGES * span;
+        double to = (double)(wedge + 1) / TAILSCODE_RADAR_WEDGES * span;
+        double alpha = exp(-from / 0.62) * 0.20 * radar->sweep_light;
+        if (alpha < 0.002) break;
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], alpha);
+        cairo_move_to(cr, cx, cy);
+        cairo_arc(
+            cr, cx, cy, reach * 0.98, radar->sweep - to - G_PI / 2,
+            radar->sweep - from - G_PI / 2);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
+    double x, y;
+    tailscode_radar_point(cx, cy, reach, radar->sweep, 0.98, &x, &y);
+    cairo_set_line_width(cr, 1.4);
+    cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.85 * radar->sweep_light);
+    cairo_move_to(cr, cx, cy);
+    cairo_line_to(cr, x, y);
+    cairo_stroke(cr);
+}
+
+/// One machine: a filled dot inside its own soft halo, in the ink its state earns.
+static void tailscode_radar_sparks(
+    cairo_t *cr, const TailscodeRadar *radar, double cx, double cy, double reach) {
+    for (int index = 0; index < radar->spark_count; index++) {
+        const double *spark = &radar->sparks[index * 5];
+        int tone = (int)spark[4];
+        if (tone < 0 || tone > 2) tone = 0;
+        const double *ink = &radar->ink[(tone + 1) * 3];
+        double light = spark[2];
+        double size = 3.2 * spark[3];
+        double x, y;
+        tailscode_radar_point(cx, cy, reach, spark[0], spark[1], &x, &y);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], 0.18 * light);
+        cairo_arc(cr, x, y, size * 2.8, 0, 2 * G_PI);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], light);
+        cairo_arc(cr, x, y, size, 0, 2 * G_PI);
+        cairo_fill(cr);
+    }
+}
+
+static void tailscode_radar_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
+    (void)area;
+    TailscodeRadar *radar = raw;
+    double cx = width / 2.0, cy = height / 2.0;
+    double reach = (width < height ? width : height) / 2.0 - 3.0;
+    if (reach <= 4) return;
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    tailscode_radar_grid(cr, radar, cx, cy, reach);
+    tailscode_radar_sweep(cr, radar, cx, cy, reach);
+    if (radar->ping_light > 0) {
+        const double *ink = &radar->ink[3];
+        cairo_set_line_width(cr, 1.2);
+        cairo_set_source_rgba(cr, ink[0], ink[1], ink[2], radar->ping_light);
+        cairo_arc(cr, cx, cy, reach * radar->ping, 0, 2 * G_PI);
+        cairo_stroke(cr);
+    }
+    tailscode_radar_sparks(cr, radar, cx, cy, reach);
+}
+
+GtkWidget *tailscode_radar_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    TailscodeRadar *radar = g_new0(TailscodeRadar, 1);
+    for (int index = 0; index < TAILSCODE_RADAR_INKS * 3; index++) radar->ink[index] = 0.5;
+    g_object_set_data_full(G_OBJECT(area), "tailscode-radar", radar, g_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_radar_draw, radar, NULL);
+    gtk_widget_set_can_target(area, FALSE);
+    gtk_widget_set_can_focus(area, FALSE);
+    return area;
+}
+
+void tailscode_radar_ink(GtkWidget *area, const double *rgb, int colour_count) {
+    if (!area || !rgb) return;
+    TailscodeRadar *radar = g_object_get_data(G_OBJECT(area), "tailscode-radar");
+    if (!radar) return;
+    int count = colour_count > TAILSCODE_RADAR_INKS ? TAILSCODE_RADAR_INKS : colour_count;
+    for (int index = 0; index < count * 3; index++) radar->ink[index] = rgb[index];
+}
+
+void tailscode_radar_set(
+    GtkWidget *area, double sweep, double sweep_light, double ping, double ping_light,
+    const double *rings, int ring_count, const double *sparks, int spark_count) {
+    if (!area) return;
+    TailscodeRadar *radar = g_object_get_data(G_OBJECT(area), "tailscode-radar");
+    if (!radar) return;
+    radar->sweep = sweep;
+    radar->sweep_light = sweep_light;
+    radar->ping = ping;
+    radar->ping_light = ping_light;
+    radar->ring_count = 0;
+    if (rings) {
+        int count = ring_count > TAILSCODE_RADAR_RINGS ? TAILSCODE_RADAR_RINGS : ring_count;
+        for (int index = 0; index < count; index++) radar->rings[index] = rings[index];
+        radar->ring_count = count;
+    }
+    radar->spark_count = 0;
+    if (sparks) {
+        int count = spark_count > TAILSCODE_RADAR_SPARKS ? TAILSCODE_RADAR_SPARKS : spark_count;
+        for (int index = 0; index < count * 5; index++) radar->sparks[index] = sparks[index];
+        radar->spark_count = count;
+    }
+    gtk_widget_queue_draw(area);
 }
 
 #define TAILSCODE_AURA_STOPS 16
@@ -927,205 +1134,189 @@ int tailscode_label_reveal(
     return total;
 }
 
-#include <epoxy/gl.h>
+#include <math.h>
 
 #define TAILSCODE_ORB_BLOBS 8
 #define TAILSCODE_ORB_STOPS 8
 
 typedef struct {
-    gboolean ready;
-    gboolean failed;
-    GLuint program;
-    GLuint vao;
-    GLint u_size, u_blobs, u_blob_count, u_color, u_energy, u_intensity;
-    GLint u_rainbow, u_rainbow_phase, u_rainbow_glow, u_stops, u_stop_count;
     float blobs[TAILSCODE_ORB_BLOBS * 4];
     int blob_count;
     float color[3];
     float energy, intensity, rainbow, rainbow_phase, rainbow_glow;
     float stops[TAILSCODE_ORB_STOPS * 3];
     int stop_count;
+    cairo_surface_t *surface;
+    int surface_width, surface_height;
 } TailscodeOrb;
 
-/* One fullscreen triangle; the whole picture is the fragment shader. */
-static const char *tailscode_orb_vertex_body =
-    "void main() {\n"
-    "    vec2 corner = vec2(float((gl_VertexID & 1) << 2) - 1.0,\n"
-    "                       float((gl_VertexID & 2) << 1) - 1.0);\n"
-    "    gl_Position = vec4(corner, 0.0, 1.0);\n"
-    "}\n";
-
-/* The field is a smooth-min union of the circles Core handed over — the shader rasterises the
-   frame and adds nothing: no motion, no colour choice, no state lives here. Output is
-   premultiplied alpha over a transparent clear, so the creature floats on whatever the sidebar
-   draws behind it; the halo and rainbow are additive light (rgb past alpha), which premultiplied
-   compositing renders as glow rather than a tinted plate. */
-static const char *tailscode_orb_fragment_body =
-    "uniform vec2 u_size;\n"
-    "uniform vec4 u_blobs[8];\n"
-    "uniform int u_blob_count;\n"
-    "uniform vec3 u_color;\n"
-    "uniform float u_energy;\n"
-    "uniform float u_intensity;\n"
-    "uniform float u_rainbow;\n"
-    "uniform float u_rainbow_phase;\n"
-    "uniform float u_rainbow_glow;\n"
-    "uniform vec3 u_stops[8];\n"
-    "uniform int u_stop_count;\n"
-    "float orb_smin(float a, float b, float k) {\n"
-    "    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);\n"
-    "    return mix(b, a, h) - k * h * (1.0 - h);\n"
-    "}\n"
-    "vec3 orb_rainbow(float t) {\n"
-    "    float span = t * float(u_stop_count - 1);\n"
-    "    int low = int(floor(span));\n"
-    "    int high = low + 1 < u_stop_count ? low + 1 : u_stop_count - 1;\n"
-    "    return mix(u_stops[low], u_stops[high], fract(span));\n"
-    "}\n"
-    "void main() {\n"
-    "    vec2 p = (2.0 * gl_FragCoord.xy - u_size) / min(u_size.x, u_size.y);\n"
-    "    float d = 1000.0;\n"
-    "    for (int i = 0; i < 8; i++) {\n"
-    "        if (i >= u_blob_count) break;\n"
-    "        float part = length(p - u_blobs[i].xy) - u_blobs[i].z;\n"
-    "        d = orb_smin(d, part, 0.19);\n"
-    "    }\n"
-    "    float body = 1.0 - smoothstep(-0.008, 0.012, d);\n"
-    "    float depth = smoothstep(0.0, -0.34, d);\n"
-    "    vec3 ink = u_color * mix(1.08, 0.72, depth) * (0.6 + 0.4 * u_intensity);\n"
-    "    float halo = exp(max(d, 0.0) * -5.5) * (1.0 - body);\n"
-    "    vec3 shade = ink * body + u_color * halo * 0.36 * u_energy * u_intensity;\n"
-    "    if (u_rainbow > 0.001) {\n"
-    "        float angle = fract(atan(p.y, p.x) / 6.28318530718 + 0.5 + u_rainbow_phase);\n"
-    "        float rim = 1.0 - smoothstep(0.0, 0.05, abs(d + 0.01));\n"
-    "        shade += orb_rainbow(angle) * rim * u_rainbow * u_rainbow_glow * 0.9;\n"
-    "    }\n"
-    "    orb_output = vec4(shade, body);\n"
-    "}\n";
-
-static GLuint tailscode_orb_compile(GLenum kind, const char *prefix, const char *body) {
-    GLuint shader = glCreateShader(kind);
-    const char *sources[2] = {prefix, body};
-    glShaderSource(shader, 2, sources, NULL);
-    glCompileShader(shader);
-    GLint ok = GL_FALSE;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[1024] = {0};
-        glGetShaderInfoLog(shader, sizeof(log) - 1, NULL, log);
-        g_warning("tailscode orb shader: %s", log);
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
+/// The creature, drawn by hand.
+///
+/// This was a fragment shader in a `GtkGLArea`, which is the obvious way to draw a field of
+/// metaballs and, on at least one common driver, the wrong one: an animating GL area leaks about
+/// seventy megabytes a minute inside the vendor's EGL stack, whatever the render callback does — a
+/// thirty-line GTK program that only clears the screen leaks at the same rate. The orb never
+/// settles while a turn is open, so it renders for as long as the app is being used, and a body
+/// that costs four gigabytes an hour is not a body anyone can afford to wear.
+///
+/// So the same arithmetic runs on the CPU and lands in an image surface. Not an approximation of
+/// the shader with gradients — the shader, line for line: the same smooth-min union, the same
+/// edge, the same depth, the same halo and the same rim. The creature is a hundred pixels tall and
+/// eight circles wide; a machine that can composite it can afford to compute it.
+static float orb_smin(float a, float b, float k) {
+    float h = 0.5f + 0.5f * (b - a) / k;
+    h = h < 0.0f ? 0.0f : (h > 1.0f ? 1.0f : h);
+    return (b + (a - b) * h) - k * h * (1.0f - h);
 }
 
-static void tailscode_orb_realize(GtkWidget *widget, gpointer raw) {
-    TailscodeOrb *orb = raw;
-    gtk_gl_area_make_current(GTK_GL_AREA(widget));
-    if (gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
-        orb->failed = TRUE;
-        return;
-    }
-    gboolean desktop = epoxy_is_desktop_gl();
-    const char *vertex_prefix =
-        desktop ? "#version 150\n" : "#version 300 es\nprecision highp float;\n";
-    const char *fragment_prefix = desktop
-        ? "#version 150\nout vec4 orb_output;\n"
-        : "#version 300 es\nprecision highp float;\nout vec4 orb_output;\n";
-    GLuint vertex = tailscode_orb_compile(GL_VERTEX_SHADER, vertex_prefix,
-        tailscode_orb_vertex_body);
-    GLuint fragment = tailscode_orb_compile(GL_FRAGMENT_SHADER, fragment_prefix,
-        tailscode_orb_fragment_body);
-    if (!vertex || !fragment) {
-        if (vertex) glDeleteShader(vertex);
-        if (fragment) glDeleteShader(fragment);
-        orb->failed = TRUE;
-        return;
-    }
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertex);
-    glAttachShader(program, fragment);
-    glLinkProgram(program);
-    glDeleteShader(vertex);
-    glDeleteShader(fragment);
-    GLint linked = GL_FALSE;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    if (!linked) {
-        char log[1024] = {0};
-        glGetProgramInfoLog(program, sizeof(log) - 1, NULL, log);
-        g_warning("tailscode orb link: %s", log);
-        glDeleteProgram(program);
-        orb->failed = TRUE;
-        return;
-    }
-    orb->program = program;
-    glGenVertexArrays(1, &orb->vao);
-    orb->u_size = glGetUniformLocation(program, "u_size");
-    orb->u_blobs = glGetUniformLocation(program, "u_blobs");
-    orb->u_blob_count = glGetUniformLocation(program, "u_blob_count");
-    orb->u_color = glGetUniformLocation(program, "u_color");
-    orb->u_energy = glGetUniformLocation(program, "u_energy");
-    orb->u_intensity = glGetUniformLocation(program, "u_intensity");
-    orb->u_rainbow = glGetUniformLocation(program, "u_rainbow");
-    orb->u_rainbow_phase = glGetUniformLocation(program, "u_rainbow_phase");
-    orb->u_rainbow_glow = glGetUniformLocation(program, "u_rainbow_glow");
-    orb->u_stops = glGetUniformLocation(program, "u_stops");
-    orb->u_stop_count = glGetUniformLocation(program, "u_stop_count");
-    orb->ready = TRUE;
-    orb->failed = FALSE;
+static float orb_smoothstep(float edge0, float edge1, float x) {
+    float t = (x - edge0) / (edge1 - edge0);
+    t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+    return t * t * (3.0f - 2.0f * t);
 }
 
-static void tailscode_orb_unrealize(GtkWidget *widget, gpointer raw) {
-    TailscodeOrb *orb = raw;
-    if (!orb->ready) return;
-    gtk_gl_area_make_current(GTK_GL_AREA(widget));
-    if (!gtk_gl_area_get_error(GTK_GL_AREA(widget))) {
-        glDeleteProgram(orb->program);
-        glDeleteVertexArrays(1, &orb->vao);
+static void orb_rainbow(const TailscodeOrb *orb, float t, float *out) {
+    if (orb->stop_count < 2) {
+        out[0] = out[1] = out[2] = 0.0f;
+        return;
     }
-    orb->program = 0;
-    orb->vao = 0;
-    orb->ready = FALSE;
+    float span = t * (float)(orb->stop_count - 1);
+    int low = (int)floorf(span);
+    if (low < 0) low = 0;
+    if (low > orb->stop_count - 1) low = orb->stop_count - 1;
+    int high = low + 1 < orb->stop_count ? low + 1 : orb->stop_count - 1;
+    float mix = span - floorf(span);
+    for (int c = 0; c < 3; c++) {
+        float a = orb->stops[low * 3 + c];
+        float b = orb->stops[high * 3 + c];
+        out[c] = a + (b - a) * mix;
+    }
 }
 
-static gboolean tailscode_orb_render(GtkGLArea *area, GdkGLContext *context, gpointer raw) {
-    (void)context;
+static unsigned char orb_byte(float value) {
+    if (!(value > 0.0f)) return 0;
+    if (value >= 1.0f) return 255;
+    return (unsigned char)(value * 255.0f + 0.5f);
+}
+
+/// One frame into `orb->surface`, in the widget's device pixels.
+///
+/// The field reaches as far as the furthest circle plus the halo's own decay, and the sidebar is
+/// far wider than the creature — so the rows and columns it cannot touch are cleared once and
+/// never evaluated. Coordinates match the shader's: the origin is the middle, the shorter side is
+/// two units across, and y counts upward.
+static void orb_paint(TailscodeOrb *orb, int width, int height) {
+    unsigned char *pixels = cairo_image_surface_get_data(orb->surface);
+    int stride = cairo_image_surface_get_stride(orb->surface);
+    cairo_surface_flush(orb->surface);
+    memset(pixels, 0, (size_t)stride * (size_t)height);
+    if (orb->blob_count <= 0) {
+        cairo_surface_mark_dirty(orb->surface);
+        return;
+    }
+
+    float shorter = (float)(width < height ? width : height);
+    float reach = 0.0f;
+    for (int i = 0; i < orb->blob_count; i++) {
+        const float *blob = &orb->blobs[i * 4];
+        float centre = sqrtf(blob[0] * blob[0] + blob[1] * blob[1]);
+        float extent = centre + blob[2];
+        if (extent > reach) reach = extent;
+    }
+    reach += 0.9f;
+
+    int half = (int)(reach * shorter * 0.5f) + 2;
+    int midX = width / 2;
+    int midY = height / 2;
+    int firstCol = midX - half < 0 ? 0 : midX - half;
+    int lastCol = midX + half > width ? width : midX + half;
+    int firstRow = midY - half < 0 ? 0 : midY - half;
+    int lastRow = midY + half > height ? height : midY + half;
+
+    for (int row = firstRow; row < lastRow; row++) {
+        float fragY = (float)height - (float)row - 0.5f;
+        float py = (2.0f * fragY - (float)height) / shorter;
+        unsigned char *line = pixels + (size_t)row * (size_t)stride;
+        for (int col = firstCol; col < lastCol; col++) {
+            float fragX = (float)col + 0.5f;
+            float px = (2.0f * fragX - (float)width) / shorter;
+
+            float d = 1000.0f;
+            for (int i = 0; i < orb->blob_count; i++) {
+                const float *blob = &orb->blobs[i * 4];
+                float dx = px - blob[0];
+                float dy = py - blob[1];
+                float part = sqrtf(dx * dx + dy * dy) - blob[2];
+                d = orb_smin(d, part, 0.19f);
+            }
+
+            float body = 1.0f - orb_smoothstep(-0.008f, 0.012f, d);
+            float depth = orb_smoothstep(0.0f, -0.34f, d);
+            float lift = (1.08f + (0.72f - 1.08f) * depth) * (0.6f + 0.4f * orb->intensity);
+            float halo = expf((d > 0.0f ? d : 0.0f) * -5.5f) * (1.0f - body);
+            float glow = halo * 0.36f * orb->energy * orb->intensity;
+
+            float shade[3];
+            for (int c = 0; c < 3; c++) {
+                shade[c] = orb->color[c] * lift * body + orb->color[c] * glow;
+            }
+            if (orb->rainbow > 0.001f) {
+                float angle = atan2f(py, px) / 6.28318530718f + 0.5f + orb->rainbow_phase;
+                angle -= floorf(angle);
+                float rim = 1.0f - orb_smoothstep(0.0f, 0.05f, fabsf(d + 0.01f));
+                float band[3];
+                orb_rainbow(orb, angle, band);
+                float amount = rim * orb->rainbow * orb->rainbow_glow * 0.9f;
+                for (int c = 0; c < 3; c++) shade[c] += band[c] * amount;
+            }
+
+            if (body <= 0.0f && shade[0] <= 0.0f && shade[1] <= 0.0f && shade[2] <= 0.0f) continue;
+            unsigned char *pixel = line + (size_t)col * 4;
+            pixel[0] = orb_byte(shade[2]);
+            pixel[1] = orb_byte(shade[1]);
+            pixel[2] = orb_byte(shade[0]);
+            pixel[3] = orb_byte(body);
+        }
+    }
+    cairo_surface_mark_dirty(orb->surface);
+}
+
+static void tailscode_orb_draw(
+    GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer raw) {
     TailscodeOrb *orb = raw;
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    if (!orb->ready) return TRUE;
+    if (width <= 0 || height <= 0) return;
     int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-    float width = (float)(gtk_widget_get_width(GTK_WIDGET(area)) * scale);
-    float height = (float)(gtk_widget_get_height(GTK_WIDGET(area)) * scale);
-    glUseProgram(orb->program);
-    glBindVertexArray(orb->vao);
-    glUniform2f(orb->u_size, width, height);
-    glUniform4fv(orb->u_blobs, TAILSCODE_ORB_BLOBS, orb->blobs);
-    glUniform1i(orb->u_blob_count, orb->blob_count);
-    glUniform3fv(orb->u_color, 1, orb->color);
-    glUniform1f(orb->u_energy, orb->energy);
-    glUniform1f(orb->u_intensity, orb->intensity);
-    glUniform1f(orb->u_rainbow, orb->rainbow);
-    glUniform1f(orb->u_rainbow_phase, orb->rainbow_phase);
-    glUniform1f(orb->u_rainbow_glow, orb->rainbow_glow);
-    glUniform3fv(orb->u_stops, TAILSCODE_ORB_STOPS, orb->stops);
-    glUniform1i(orb->u_stop_count, orb->stop_count);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    return TRUE;
+    if (scale < 1) scale = 1;
+    int pixelWidth = width * scale;
+    int pixelHeight = height * scale;
+    if (!orb->surface || orb->surface_width != pixelWidth || orb->surface_height != pixelHeight) {
+        if (orb->surface) cairo_surface_destroy(orb->surface);
+        orb->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelWidth, pixelHeight);
+        orb->surface_width = pixelWidth;
+        orb->surface_height = pixelHeight;
+    }
+    if (cairo_surface_status(orb->surface) != CAIRO_STATUS_SUCCESS) return;
+    orb_paint(orb, pixelWidth, pixelHeight);
+    cairo_save(cr);
+    cairo_scale(cr, 1.0 / (double)scale, 1.0 / (double)scale);
+    cairo_set_source_surface(cr, orb->surface, 0, 0);
+    cairo_paint(cr);
+    cairo_restore(cr);
+}
+
+static void tailscode_orb_free(gpointer raw) {
+    TailscodeOrb *orb = raw;
+    if (orb->surface) cairo_surface_destroy(orb->surface);
+    g_free(orb);
 }
 
 GtkWidget *tailscode_orb_new(void) {
-    GtkWidget *area = gtk_gl_area_new();
-    gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(area), FALSE);
-    gtk_gl_area_set_has_stencil_buffer(GTK_GL_AREA(area), FALSE);
+    GtkWidget *area = gtk_drawing_area_new();
     TailscodeOrb *orb = g_new0(TailscodeOrb, 1);
     orb->blob_count = 0;
     orb->intensity = 1.0f;
-    g_object_set_data_full(G_OBJECT(area), "tailscode-orb", orb, g_free);
-    g_signal_connect(area, "realize", G_CALLBACK(tailscode_orb_realize), orb);
-    g_signal_connect(area, "unrealize", G_CALLBACK(tailscode_orb_unrealize), orb);
-    g_signal_connect(area, "render", G_CALLBACK(tailscode_orb_render), orb);
+    g_object_set_data_full(G_OBJECT(area), "tailscode-orb", orb, tailscode_orb_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), tailscode_orb_draw, orb, NULL);
     gtk_widget_set_can_target(area, FALSE);
     gtk_widget_set_can_focus(area, FALSE);
     return area;
@@ -1133,8 +1324,7 @@ GtkWidget *tailscode_orb_new(void) {
 
 gboolean tailscode_orb_ready(GtkWidget *area) {
     if (!area) return FALSE;
-    TailscodeOrb *orb = g_object_get_data(G_OBJECT(area), "tailscode-orb");
-    return orb && !orb->failed;
+    return g_object_get_data(G_OBJECT(area), "tailscode-orb") != NULL;
 }
 
 void tailscode_orb_set(

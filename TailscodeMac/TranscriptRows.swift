@@ -410,7 +410,7 @@ struct TranscriptRow: Hashable {
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         let tag = RowKit.label(
-            SyntaxHighlighter.displayName(for: language), font: MacTheme.Font.caption(),
+            SyntaxHighlighter.displayName(for: language, source: body), font: MacTheme.Font.caption(),
             color: MacTheme.Color.tertiaryLabel)
         header.addArrangedSubview(tag)
         header.addArrangedSubview(RowKit.spacer())
@@ -567,22 +567,80 @@ enum RowKit {
     /// code that reflowed is a line you cannot read and cannot count.
     static func code(_ body: String, language: String?) -> NSTextField {
         let font = MacTheme.Font.mono(12)
-        let text = NSMutableAttributedString(
-            string: body,
-            attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
-        for token in SyntaxHighlighter.tokens(body, language: language) {
-            let range = NSRange(location: token.offset, length: token.length)
-            guard NSMaxRange(range) <= text.length else { continue }
-            text.addAttribute(
-                .foregroundColor, value: MacTheme.Color.syntax(token.role), range: range)
+        let label: NSTextField
+        if SyntaxHighlighter.isDiff(language) {
+            let washed = DiffWashField(labelWithAttributedString: diffAttributed(body, font: font))
+            washed.washes = SyntaxHighlighter.diffLines(body).compactMap { line in
+                guard line.kind == .added || line.kind == .removed else { return nil }
+                return (line.row, MacTheme.Color.diffBackground(line.kind))
+            }
+            label = washed
+        } else {
+            let plain = NSMutableAttributedString(
+                string: body,
+                attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
+            for token in SyntaxHighlighter.tokens(body, language: language) {
+                let range = NSRange(location: token.offset, length: token.length)
+                guard NSMaxRange(range) <= plain.length else { continue }
+                plain.addAttribute(
+                    .foregroundColor, value: MacTheme.Color.syntax(token.role), range: range)
+            }
+            label = NSTextField(labelWithAttributedString: plain)
         }
-        let label = NSTextField(labelWithAttributedString: text)
         label.lineBreakMode = .byClipping
         label.isSelectable = true
         label.maximumNumberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         return label
+    }
+
+    /// A field that paints a diff's washes itself, the full width of the line. A background
+    /// attribute covers only glyph runs, so an attribute-painted wash stops at the last glyph
+    /// and reads as a rendering bug rather than a ground. Code never wraps in this field, so a
+    /// source row is a drawn row and the rect is arithmetic — row × line height, edge to edge.
+    final class DiffWashField: NSTextField {
+        var washes: [(row: Int, color: NSColor)] = [] {
+            didSet { needsDisplay = true }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            if !washes.isEmpty, let font {
+                let height = NSLayoutManager().defaultLineHeight(for: font)
+                for wash in washes {
+                    let top = CGFloat(wash.row) * height
+                    let y = isFlipped ? top : bounds.height - top - height
+                    wash.color.setFill()
+                    NSRect(x: 0, y: y, width: bounds.width, height: height).fill()
+                }
+            }
+            super.draw(dirtyRect)
+        }
+    }
+
+    /// A patch's ink. The wash under each changed line carries the diff's meaning — painted by
+    /// the hosting view, full width, never as a background attribute that stops at the last
+    /// glyph — which frees the foreground for the file's own language: the marker glyph keeps
+    /// the diff's full ink, and every token on a washed line is coloured against the wash it
+    /// actually sits on. A patch that names no file keeps the old whole-line red and green,
+    /// because guessing a language would colour code as something it is not.
+    static func diffAttributed(
+        _ source: String, language: String? = nil, font: NSFont
+    ) -> NSAttributedString {
+        let diff = SyntaxHighlighter.diff(source, language: language)
+        let result = NSMutableAttributedString(
+            string: source,
+            attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
+        let length = result.length
+        for token in diff.tokens {
+            let range = NSRange(location: token.offset, length: token.length)
+            guard NSMaxRange(range) <= length else { continue }
+            let kind = diff.kind(at: token.offset)
+            let colour = kind == .added || kind == .removed
+                ? MacTheme.Color.syntax(token.role, on: kind) : MacTheme.Color.syntax(token.role)
+            result.addAttribute(.foregroundColor, value: colour, range: range)
+        }
+        return result
     }
 
     /// The pane a code block lives in: as tall as the code up to an optional cap, as wide as the

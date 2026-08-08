@@ -70,9 +70,9 @@ enum ThemePalette {
     nonisolated(unsafe) private static var syntaxTables: [String: [SyntaxRole: String]] = [:]
     nonisolated(unsafe) private static var syntaxColours: [String: NSColor] = [:]
 
-    static func syntax(_ role: SyntaxRole, system: NSColor) -> NSColor {
+    static func syntax(_ role: SyntaxRole, on kind: DiffLineKind? = nil, system: NSColor) -> NSColor {
         let id = ThemeSelection.themeID
-        let key = "\(id)/\(role.rawValue)"
+        let key = "\(id)/\(role.rawValue)/\(kind?.rawValue ?? "code")"
         lock.lock()
         if let hit = syntaxColours[key] {
             lock.unlock()
@@ -81,13 +81,15 @@ enum ThemePalette {
         lock.unlock()
         let made = NSColor(name: nil) { appearance in
             guard let palette = palette(themeID: id, dark: appearance.isDark) else { return system }
-            let tableKey = "\(id)/\(palette.isDark)"
+            let ground =
+                kind.flatMap { SyntaxPalette.diffLineBackground($0, in: palette) } ?? palette.codeBg
+            let tableKey = "\(id)/\(palette.isDark)/\(kind?.rawValue ?? "code")"
             lock.lock()
             let table: [SyntaxRole: String]
             if let hit = syntaxTables[tableKey] {
                 table = hit
             } else {
-                table = SyntaxPalette.table(for: palette)
+                table = SyntaxPalette.table(for: palette, on: ground)
                 syntaxTables[tableKey] = table
             }
             lock.unlock()
@@ -98,6 +100,20 @@ enum ThemePalette {
         syntaxColours[key] = made
         lock.unlock()
         return made
+    }
+
+    /// The wash under one of a diff's changed lines. A theme derives it from its own accent and
+    /// danger; "System" wears the platform's green and red as a low-alpha field, which survives
+    /// light and dark on its own.
+    static func diffBackground(_ kind: DiffLineKind, system: NSColor) -> NSColor {
+        let id = ThemeSelection.themeID
+        return NSColor(name: nil) { appearance in
+            guard let palette = palette(themeID: id, dark: appearance.isDark) else { return system }
+            guard let hex = SyntaxPalette.diffLineBackground(kind, in: palette),
+                let colour = NSColor(hex: hex)
+            else { return .clear }
+            return colour
+        }
     }
 
     /// A slot walked partway into another, for the register AppKit has and a palette does not.

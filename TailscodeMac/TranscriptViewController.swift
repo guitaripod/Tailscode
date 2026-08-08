@@ -68,6 +68,9 @@ final class TranscriptViewController: NSViewController {
     /// The facts the band last drew, kept so the chat list can borrow the step the turn is on
     /// rather than scanning the transcript for it a second time.
     private var lastFacts: StatusFacts?
+    private var wasRunningForHaptics = false
+    private var hapticPermissionID: String?
+    private var hapticQuestionID: String?
 
     /// What this pane is showing, read by the hub and the tiling host: the focused pane's entry
     /// is the window's "current chat", and a restored layout rebinds by these.
@@ -284,6 +287,9 @@ final class TranscriptViewController: NSViewController {
         agentStreamTask?.cancel()
         agentStreamTask = nil
         agentStreamSessionID = nil
+        wasRunningForHaptics = false
+        hapticPermissionID = nil
+        hapticQuestionID = nil
         updateStatus()
         refreshAuthBanner()
         refreshIdentity()
@@ -762,6 +768,7 @@ final class TranscriptViewController: NSViewController {
         attachments: [PromptAttachment]
     ) {
         guard let conversation else { return }
+        MacHaptics.shared.play(.send)
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
         Task {
@@ -769,6 +776,7 @@ final class TranscriptViewController: NSViewController {
                 try await conversation.send(
                     text, model: model, reasoningEffort: effort, attachments: attachments)
             } catch {
+                MacHaptics.shared.play(.error)
                 NSSound.beep()
             }
         }
@@ -859,6 +867,7 @@ final class TranscriptViewController: NSViewController {
     /// four hundred rows and a multi-second lockup for four thousand. The rest waits behind one
     /// button that widens the window — the full rows are kept, so nothing is refetched.
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
+        noteHapticEdges(state: state, rows: rows)
         lastState = state
         onState?(state)
         var rows = rows
@@ -906,6 +915,48 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+    }
+
+    /// The same edges the phone reports to the hand, read before the new state replaces the old:
+    /// a tool call landing while you wait, the turn ending, the agent stopping to ask. The cues
+    /// are the waiting group's — the wait is what the app asks of someone, so the wait is what
+    /// the trackpad reports.
+    private func noteHapticEdges(state: ConversationState, rows: [TranscriptRow]) {
+        let previous = Self.toolStatuses(lastFullRows)
+        if !previous.isEmpty {
+            let current = Self.toolStatuses(rows)
+            for (id, status) in previous
+            where status != .completed && current[id] == .completed {
+                MacHaptics.shared.play(.step)
+            }
+        }
+        if wasRunningForHaptics && state.status != .running {
+            MacHaptics.shared.play(.received)
+        }
+        wasRunningForHaptics = state.status == .running
+        if let permission = state.pendingPermissions.first, permission.id != hapticPermissionID {
+            hapticPermissionID = permission.id
+            MacHaptics.shared.play(.needsYou)
+        }
+        if let question = state.pendingQuestions.first, question.id != hapticQuestionID {
+            hapticQuestionID = question.id
+            MacHaptics.shared.play(.needsYou)
+        }
+    }
+
+    private static func toolStatuses(_ rows: [TranscriptRow]) -> [String: ToolStatus] {
+        var map: [String: ToolStatus] = [:]
+        for row in rows {
+            switch row.kind {
+            case .tool(let call), .subagent(let call), .workflow(let call):
+                map[call.id] = call.status
+            case .run(let steps):
+                for case .tool(let call) in steps { map[call.id] = call.status }
+            default:
+                break
+            }
+        }
+        return map
     }
 
     /// The band between transcript and composer: what the turn is doing, which agents are out,

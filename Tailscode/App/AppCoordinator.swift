@@ -60,6 +60,9 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--usage") {
                 openUsageForDebug()
             }
+            if CommandLine.arguments.contains("--analytics") {
+                openAnalyticsForDebug()
+            }
             if let slug = ProcessInfo.processInfo.environment["TAILSCODE_SETTINGS_SECTION"] {
                 openSettingsForDebug(slug: slug)
             }
@@ -89,6 +92,13 @@ final class AppCoordinator: NSObject {
             guard let nav = window.rootViewController as? UINavigationController else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 nav.pushViewController(UsageViewController(), animated: false)
+            }
+        }
+
+        private func openAnalyticsForDebug() {
+            guard let nav = window.rootViewController as? UINavigationController else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                nav.pushViewController(AnalyticsViewController(analytics: nil), animated: false)
             }
         }
 

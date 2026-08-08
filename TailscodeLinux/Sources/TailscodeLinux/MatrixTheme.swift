@@ -166,6 +166,9 @@ enum MatrixTheme {
         .glyph-needs { color: \(warn); }
         .glyph-error { color: \(danger); }
         .glyph-pending { color: \(textDim); }
+        .fact-good .subtitle { color: alpha(\(accent), 0.85); opacity: 1; }
+        .fact-warn .subtitle { color: \(warn); opacity: 1; }
+        .fact-bad .subtitle { color: \(danger); opacity: 1; }
         .dim { color: \(textDim); }
         .attachment { color: \(info); font-family: monospace; font-size: \(m(0.88)); }
         .status-line {
@@ -237,6 +240,9 @@ enum MatrixTheme {
         }
         .diff-add { color: \(accent); font-family: monospace; font-size: \(m(0.85)); }
         .diff-remove { color: \(danger); font-family: monospace; font-size: \(m(0.85)); }
+        .diff-line { font-family: monospace; font-size: \(m(0.85)); }
+        .diff-wash-add { background-color: \(SyntaxPalette.diffLineBackground(.added, in: palette) ?? palette.codeBg); }
+        .diff-wash-remove { background-color: \(SyntaxPalette.diffLineBackground(.removed, in: palette) ?? palette.codeBg); }
 
         .pill {
             font-family: monospace;
@@ -768,6 +774,36 @@ enum MatrixTheme {
             padding: 4px 8px;
         }
         .git-diff { font-family: monospace; font-size: 0.85rem; }
+        .analytics-total { color: \(text); font-weight: 700; font-size: 2.1rem; }
+        .analytics-hero-percent { font-weight: 700; font-size: 1.5rem; }
+        .hero-ok { color: \(text); }
+        .hero-warn { color: \(warn); }
+        .hero-danger { color: \(danger); }
+        .analytics-delta-up { color: \(warn); font-size: 0.85rem; }
+        .analytics-delta-down { color: \(accent); font-size: 0.85rem; }
+        .analytics-delta-flat { color: \(textDim); font-size: 0.85rem; }
+        .analytics-bar { background-color: \(accentDim); border-radius: 2px; }
+        .analytics-bar-today { background-color: \(accent); border-radius: 2px; }
+        .analytics-hour { background-color: alpha(\(info), 0.75); border-radius: 2px; }
+        .record-card {
+            background-color: alpha(currentColor, 0.04);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .record-glyph { color: \(accent); font-size: 1.2rem; }
+        .record-title { color: \(textDim); font-size: 0.68rem; letter-spacing: 0.06em; }
+        .record-value { color: \(text); font-weight: 700; font-size: 0.9rem; }
+        .record-detail { color: \(textDim); font-size: 0.78rem; }
+        .analytics-open {
+            background-color: alpha(currentColor, 0.05);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            color: \(text);
+            font-size: 0.85rem;
+            padding: 8px 12px;
+        }
+        .analytics-open:hover { background-color: alpha(\(accent), 0.12); }
         .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """

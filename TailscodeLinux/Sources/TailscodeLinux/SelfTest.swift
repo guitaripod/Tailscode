@@ -231,6 +231,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let radarFailures = checkRadar()
+        if radarFailures.isEmpty {
+            report("tailnet radar: the dial laps, lights and settles")
+        } else {
+            report("tailnet radar: \(radarFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         do {
             let checks = try checkPalettes()
             report("themes: \(checks) themes read in both appearances")
@@ -1078,9 +1086,41 @@ public enum SelfTest {
         try expect(
             comment.contains(SyntaxPalette.hex(.comment, in: palette)), "a comment is quiet")
 
+        guard let addedGround = SyntaxPalette.diffLineBackground(.added, in: palette),
+            let removedGround = SyntaxPalette.diffLineBackground(.removed, in: palette)
+        else { throw SelfTestFailure("syntax case failed: a diff line has no ground") }
         let diff = render("-old\n+new", "diff")
-        try expect(diff.contains(SyntaxPalette.hex(.added, in: palette)), "an addition is affirmed")
-        try expect(diff.contains(SyntaxPalette.hex(.removed, in: palette)), "a removal is danger")
+        try expect(diff.contains("background=\"\(addedGround)\""), "an addition wears its wash")
+        try expect(diff.contains("background=\"\(removedGround)\""), "a removal wears its wash")
+        try expect(
+            diff.contains(SyntaxPalette.hex(.added, in: palette, on: addedGround)),
+            "the marker is affirmed on its wash")
+
+        let headed = render("+++ b/App.swift\n+let a = 1", "diff")
+        try expect(
+            headed.contains(SyntaxPalette.hex(.keyword, in: palette, on: addedGround)),
+            "a headed diff lexes its body by the file's language")
+        try expect(
+            SyntaxHighlighter.displayName(for: "diff", source: "+++ b/App.swift\n+let a = 1")
+                == "diff · swift",
+            "a headed diff names both facts")
+
+        let toolLine = PangoSyntax.diffLine(
+            prefix: "+", body: "let a = 1", kind: .added, language: "swift", palette: palette)
+        try expect(
+            !toolLine.contains("background="),
+            "a tool diff line leaves its wash to CSS, which paints the full row")
+        try expect(
+            toolLine.contains(SyntaxPalette.hex(.keyword, in: palette, on: addedGround)),
+            "a tool diff line is lexed against its wash")
+        try expect(parsesAsMarkup(headed), "a diff's markup is legal Pango")
+        try expect(parsesAsMarkup(toolLine), "a tool diff line is legal Pango")
+        let padded = render("-old\n+new is longer", "diff")
+        try expect(
+            padded.contains(String(repeating: " ", count: 10) + "</span>"),
+            "washes are padded to one straight right edge")
+        let hostile = render("+++ b/x.cpp\n+std::vector<int> v && w\n-a < b", "diff")
+        try expect(parsesAsMarkup(hostile), "a hostile diff still escapes on its way in")
 
         try expect(SyntaxHighlighter.displayName(for: "rs") == "rust", "a fence tag is resolved")
         return checks
@@ -1199,17 +1239,16 @@ public enum SelfTest {
         let rainbow = CascadeTint.edge(for: palette, ultracode: true, phase: 0.5)
         try expect(rainbow.count == 7 && rainbow.hasPrefix("#"), "ultracode leads with a colour")
         let spark = CascadeTint.spark(for: palette, edge: edge)
+        let inks = CascadeTint.Inks(settled: palette.text, edge: edge, spark: spark)
         for distance in 0..<StreamCascade.span {
             let painted = CascadeTint.paint(
-                StreamCascade.sample(distance: distance, phase: 0.3), settled: palette.text,
-                edge: edge, spark: spark)
+                StreamCascade.sample(distance: distance, phase: 0.3), inks: inks)
             try expect(painted.alpha >= 1, "a glyph must never be painted invisible")
             try expect(painted.rgb <= 0xff_ffff, "the wave produced a colour outside 24 bits")
             checks += 1
         }
         let settled = CascadeTint.paint(
-            StreamCascade.sample(distance: StreamCascade.span * 4, phase: 0.3),
-            settled: palette.text, edge: edge, spark: spark)
+            StreamCascade.sample(distance: StreamCascade.span * 4, phase: 0.3), inks: inks)
         try expect(
             settled.alpha == 65535, "a glyph the wave has passed must be fully opaque again")
         checks += 1
@@ -1280,6 +1319,38 @@ public enum SelfTest {
     /// renderings — a stale cache would paint light-mode prose in dark-mode colors, which no
     /// compiler catches. A theme that cannot be made readable fails the build rather than shipping
     /// as a pretty palette nobody can use.
+    /// The scan's picture, checked as arithmetic: a machine keeps the place its name gives it, the
+    /// sweep laps without a step at the seam, a blip is brightest under the arm and never dark
+    /// behind it, and a finished scan reports itself settled so the clock can stop.
+    private static func checkRadar() -> [String] {
+        var failures: [String] = []
+        let key = "macbook|claudeCode"
+        let angle = TailnetRadar.angle(for: key)
+        if angle != TailnetRadar.angle(for: key) { failures.append("a place that moves") }
+        if TailnetRadar.angle(for: "arch|openCode") == angle { failures.append("two machines in one place") }
+        let start = TailnetRadar.frame(at: 0, blips: [], scanning: true)
+        let lap = TailnetRadar.frame(at: TailnetRadar.sweepPeriod, blips: [], scanning: true)
+        if abs(start.sweep - lap.sweep) > 0.0001 { failures.append("a step at the seam") }
+        let blip = RadarBlip(key: key, tone: .ready, bornAt: -10)
+        let under = TailnetRadar.frame(
+            at: angle / (2 * Double.pi) * TailnetRadar.sweepPeriod, blips: [blip], scanning: true)
+        let behind = TailnetRadar.frame(
+            at: (angle / (2 * Double.pi) + 0.45) * TailnetRadar.sweepPeriod, blips: [blip],
+            scanning: true)
+        if under.sparks.first.map({ $0.light }) ?? 0 <= behind.sparks.first.map({ $0.light }) ?? 1 {
+            failures.append("the arm lights nothing")
+        }
+        if (behind.sparks.first?.light ?? 0) < TailnetRadar.rest - 0.0001 {
+            failures.append("a blip that goes dark")
+        }
+        let done = TailnetRadar.frame(at: 12, blips: [blip], scanning: false)
+        if !done.settled || done.sweepLight != 0 { failures.append("a finished scan that still moves") }
+        if !TailnetRadar.frame(at: 12, blips: [blip], scanning: true, reducedMotion: true).settled {
+            failures.append("motion a calm desk did not ask for")
+        }
+        return failures
+    }
+
     private static func checkPalettes() throws -> Int {
         var ids = Set<String>()
         var names = Set<String>()

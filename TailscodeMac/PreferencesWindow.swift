@@ -13,6 +13,8 @@ final class PreferencesWindow: NSWindowController {
     private let onReloadShortcuts: @MainActor () -> Void
     private let linesLabel = NSTextField(labelWithString: "")
     private let windowLabel = NSTextField(labelWithString: "")
+    private let hapticLabel = NSTextField(labelWithString: "")
+    private var hapticStop = -1
     private let watchAccounts = NSStackView()
     /// The block the accounts notification calls. A block observer is held by the notification
     /// centre rather than by this window, so it outlives the window unless it is handed back —
@@ -174,6 +176,22 @@ final class PreferencesWindow: NSWindowController {
                 button: test))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Haptics")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Cues you feel"),
+                subtitle: Localized.text(
+                    "The trackpad reports the wait — sent, a step landing, needs you, finished — while a hand is on it"),
+                value: MacHaptics.isEnabled, action: #selector(hapticsEnabledChanged)))
+        column.addArrangedSubview(
+            sliderRow(
+                title: Localized.text("Strength"),
+                subtitle: Localized.text(
+                    "Softer settings drop a cue's reinforcement before they drop the cue; drag to feel each stop"),
+                value: MacHaptics.strength, valueLabel: hapticLabel,
+                action: #selector(hapticStrengthChanged)))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(WatchAccounts.heading))
         column.addArrangedSubview(
             indented(MacDialogs.detailLabel(WatchAccounts.description, wraps: true), by: 0))
@@ -249,6 +267,23 @@ final class PreferencesWindow: NSWindowController {
         defaults.set(sender.integerValue, forKey: "tailscode.transcriptWindow")
         windowLabel.stringValue = "\(sender.integerValue)"
         onTranscriptChanged()
+    }
+
+    @objc private func hapticsEnabledChanged(_ sender: NSButton) {
+        MacHaptics.setEnabled(sender.state == .on)
+        if sender.state == .on { MacHaptics.shared.play(.tap, strength: MacHaptics.strength) }
+    }
+
+    /// The setting is chosen by feel: every step-width stop the slider passes plays the send cue
+    /// at the strength under the pointer, so silence, a single tick and the full recipe are felt
+    /// as they are crossed rather than read about afterwards.
+    @objc private func hapticStrengthChanged(_ sender: NSSlider) {
+        MacHaptics.setStrength(sender.doubleValue)
+        hapticLabel.stringValue = HapticStrength.label(sender.doubleValue)
+        let stop = Int((sender.doubleValue / HapticStrength.step).rounded())
+        guard stop != hapticStop else { return }
+        hapticStop = stop
+        MacHaptics.shared.play(.send, strength: sender.doubleValue)
     }
 
     @objc private func notifyTurnsChanged(_ sender: NSButton) {
@@ -468,6 +503,34 @@ final class PreferencesWindow: NSWindowController {
         let filler = NSView()
         filler.setContentHuggingPriority(.init(1), for: .horizontal)
         let row = NSStackView(views: [label, filler, valueLabel, stepper])
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        let detail = MacDialogs.detailLabel(subtitle, wraps: true)
+        let column = NSStackView(views: [row, indented(detail, by: 0)])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        return column
+    }
+
+    private func sliderRow(
+        title: String, subtitle: String, value: Double, valueLabel: NSTextField, action: Selector
+    ) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = MacTheme.Font.body()
+        valueLabel.stringValue = HapticStrength.label(value)
+        valueLabel.font = MacTheme.Font.mono(11)
+        valueLabel.alignment = .right
+        valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        let slider = NSSlider(
+            value: value, minValue: HapticStrength.range.lowerBound,
+            maxValue: HapticStrength.range.upperBound, target: self, action: action)
+        slider.isContinuous = true
+        slider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        let filler = NSView()
+        filler.setContentHuggingPriority(.init(1), for: .horizontal)
+        let row = NSStackView(views: [label, filler, valueLabel, slider])
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
         let detail = MacDialogs.detailLabel(subtitle, wraps: true)

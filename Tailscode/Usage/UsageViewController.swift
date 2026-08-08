@@ -35,6 +35,12 @@ private struct CardModel {
     let note: String
 }
 
+private func rampColor(for fraction: Double, accent: UIColor) -> UIColor {
+    if fraction > 0.85 { return Theme.Color.danger }
+    if fraction >= 0.6 { return Theme.Color.warning }
+    return accent
+}
+
 @MainActor
 final class UsageViewController: UIViewController {
     private static let staleInterval: TimeInterval = 5 * 60
@@ -45,15 +51,20 @@ final class UsageViewController: UIViewController {
     private let errorLabel = UILabel()
     private let updatedLabel = UILabel()
     private var loadTask: Task<Void, Never>?
+    private var analyticsTask: Task<Void, Never>?
     private var lastRefreshed: Date?
     /// Cards currently showing real numbers, whether from the saved snapshot or
     /// a live answer. A refresh that fails must leave these alone.
     private var filledCards: Set<CardKind> = []
+    private var appliedModels: [CardKind: CardModel] = [:]
+    private var analytics: UsageAnalytics?
     private var hasSeeded = false
 
+    private let heroCard = HeroCard()
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
     private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
     private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
+    private let monthCard = MonthCard()
 
     private lazy var emptyStateView = EmptyStateView(
         symbol: "gauge.with.dots.needle.67percent",
@@ -93,6 +104,8 @@ final class UsageViewController: UIViewController {
         if isMovingFromParent {
             loadTask?.cancel()
             loadTask = nil
+            analyticsTask?.cancel()
+            analyticsTask = nil
         }
     }
 
@@ -158,16 +171,27 @@ final class UsageViewController: UIViewController {
         errorLabel.numberOfLines = 0
         errorLabel.isHidden = true
 
+        heroCard.isHidden = true
+        monthCard.addTarget(self, action: #selector(openAnalytics), for: .touchUpInside)
+
         contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
+        contentStack.addArrangedSubview(heroCard)
         contentStack.addArrangedSubview(claudeCard)
         contentStack.addArrangedSubview(grokCard)
         contentStack.addArrangedSubview(opencodeCard)
+        contentStack.addArrangedSubview(monthCard)
         contentStack.isHidden = true
     }
 
     @objc private func pulledToRefresh() {
         startLoad()
+    }
+
+    @objc private func openAnalytics() {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(
+            AnalyticsViewController(analytics: analytics), animated: true)
     }
 
     private func refreshUpdatedLabel() {
@@ -205,6 +229,7 @@ final class UsageViewController: UIViewController {
         claudeCard.isHidden = claudeProfile == nil
         grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
+        monthCard.isHidden = claudeProfile == nil
         contentStack.isHidden = false
 
         let claudeProfiles = orderedProfiles(.claudeCode, profiles: profiles, controller: controller)
@@ -218,10 +243,57 @@ final class UsageViewController: UIViewController {
         lastRefreshed = Date()
         refreshUpdatedLabel()
         refresher.endRefreshing()
+        if claudeProfile != nil { loadAnalytics() }
+    }
+
+    /// The sparkline is a preview and the analytics screen is the point: one
+    /// fetch feeds both, cached here so the push opens on numbers it already has.
+    private func loadAnalytics() {
+        guard analyticsTask == nil else { return }
+        analyticsTask = Task {
+            let haul = await AnalyticsFetcher.fetch()
+            guard !Task.isCancelled else { return }
+            analytics = UsageAnalytics(servers: haul.servers, missingServers: haul.missing)
+            monthCard.render(analytics)
+            analyticsTask = nil
+        }
     }
 
     private enum CardKind {
         case claude, grok, opencode
+    }
+
+    private func apply(_ model: CardModel, to kind: CardKind) {
+        card(for: kind).apply(model)
+        appliedModels[kind] = model
+        filledCards.insert(kind)
+        refreshHero()
+    }
+
+    /// The one number that matters most: whichever quota window across every
+    /// provider is closest to its wall wears the big ring.
+    private func refreshHero() {
+        var best: (title: String, accent: UIColor, gauge: GaugeVM)?
+        for kind in [CardKind.claude, .grok, .opencode] {
+            guard let model = appliedModels[kind] else { continue }
+            for gauge in model.gauges where gauge.fraction > (best?.gauge.fraction ?? -1) {
+                best = (Self.providerTitle(for: kind), model.accent, gauge)
+            }
+        }
+        guard let best else {
+            heroCard.isHidden = true
+            return
+        }
+        heroCard.isHidden = false
+        heroCard.apply(provider: best.title, gauge: best.gauge, accent: best.accent)
+    }
+
+    private static func providerTitle(for kind: CardKind) -> String {
+        switch kind {
+        case .claude: return "Claude Code"
+        case .grok: return "Grok"
+        case .opencode: return "opencode go"
+        }
     }
 
     /// Opens every card on the last numbers the app landed anywhere — the shared
@@ -235,8 +307,7 @@ final class UsageViewController: UIViewController {
         guard let entry = UsageWidgetStore.read() else { return }
         for provider in entry.providers where !provider.gauges.isEmpty {
             let kind = Self.kind(for: provider.providerName)
-            card(for: kind).apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)))
-            filledCards.insert(kind)
+            apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)), to: kind)
         }
         guard lastRefreshed == nil, !filledCards.isEmpty else { return }
         lastRefreshed = entry.date
@@ -309,8 +380,7 @@ final class UsageViewController: UIViewController {
             guard !Task.isCancelled else { return nil }
             AppLogger.session.info(
                 "usage: Claude live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            claudeCard.apply(Self.liveModel(quota, accent: Theme.Color.claude))
-            filledCards.insert(.claude)
+            apply(Self.liveModel(quota, accent: Theme.Color.claude), to: .claude)
             return nil
         }
         guard !Task.isCancelled else { return nil }
@@ -339,8 +409,7 @@ final class UsageViewController: UIViewController {
             guard !Task.isCancelled else { return }
             AppLogger.session.info(
                 "usage: Grok live quota from \(profile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
-            grokCard.apply(Self.liveModel(quota, accent: Theme.Color.grok))
-            filledCards.insert(.grok)
+            apply(Self.liveModel(quota, accent: Theme.Color.grok), to: .grok)
             grokCard.isHidden = false
             return
         }
@@ -366,13 +435,12 @@ final class UsageViewController: UIViewController {
             return nil
         }
         guard !Task.isCancelled else { return nil }
-        opencodeCard.apply(Self.opencodeModel(result))
-        filledCards.insert(.opencode)
+        apply(Self.opencodeModel(result), to: .opencode)
         return nil
     }
 
     private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
-        let gauges = quota.gauges.prefix(3).map { gauge -> GaugeVM in
+        let gauges = quota.gauges.map { gauge -> GaugeVM in
             let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
             return GaugeVM(
                 name: gauge.label,
@@ -385,7 +453,7 @@ final class UsageViewController: UIViewController {
             subtitle: quota.subtitle,
             pill: String(localized: "LIVE"),
             accent: accent,
-            gauges: Array(gauges),
+            gauges: gauges,
             details: quota.details.map { ($0.key, $0.value) },
             note: String(
                 localized:
@@ -523,19 +591,84 @@ final class UsageViewController: UIViewController {
     }
 }
 
+/// The tightest window across every provider, worn big: the one number a visit
+/// to this screen is usually for.
+@MainActor
+private final class HeroCard: UIView {
+    private let ring = RingGaugeView()
+    private let titleLabel = UILabel()
+    private let captionLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        build()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func apply(provider: String, gauge: GaugeVM, accent: UIColor) {
+        ring.configure(
+            fraction: gauge.fraction,
+            color: rampColor(for: gauge.fraction, accent: accent),
+            percentText: gauge.percentText)
+        titleLabel.text = "\(provider) · \(gauge.name)"
+        captionLabel.text = gauge.caption
+        accessibilityLabel = "\(titleLabel.text ?? ""), \(gauge.percentText), \(gauge.caption)"
+    }
+
+    private func build() {
+        backgroundColor = Theme.Color.secondaryBackground
+        layer.cornerRadius = Theme.Radius.card
+        layer.cornerCurve = .continuous
+        isAccessibilityElement = true
+
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            ring.widthAnchor.constraint(equalToConstant: 140),
+            ring.heightAnchor.constraint(equalToConstant: 140),
+        ])
+
+        titleLabel.font = Theme.Font.headline()
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 2
+        titleLabel.text = "—"
+
+        captionLabel.font = Theme.Font.mono(11)
+        captionLabel.textColor = Theme.Color.secondaryLabel
+        captionLabel.textAlignment = .center
+        captionLabel.numberOfLines = 2
+        captionLabel.text = "—"
+
+        let stack = UIStackView(arrangedSubviews: [ring, titleLabel, captionLabel])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = Theme.Spacing.s
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.l),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.l),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+}
+
 @MainActor
 private final class ProviderCard: UIView {
     private let cardTitle: String
     private let accent: UIColor
-    private var ringViews: [RingGaugeView] = []
-    private var ringColumns: [UIView] = []
-    private var ringNames: [UILabel] = []
-    private var ringCaptions: [UILabel] = []
     private let subtitleLabel = UILabel()
     private let pillLabel = UILabel()
     private let pillBackground = UIView()
     private let noteLabel = UILabel()
+    private let gaugeStack = UIStackView()
+    private var captionLabels: [UILabel] = []
+    private let disclosure = DisclosureRow()
     private let detailsStack = UIStackView()
+    private var detailsContainer: UIView?
+    private var detailsExpanded = false
     private let spinner = UIActivityIndicatorView(style: .medium)
 
     init(title: String, accent: UIColor) {
@@ -553,7 +686,7 @@ private final class ProviderCard: UIView {
 
     func renderError() {
         spinner.stopAnimating()
-        for caption in ringCaptions { caption.text = "—" }
+        for caption in captionLabels { caption.text = "—" }
     }
 
     func apply(_ model: CardModel) {
@@ -563,25 +696,14 @@ private final class ProviderCard: UIView {
         pillBackground.backgroundColor = model.accent
         pillLabel.textColor = Self.contrastingText(on: model.accent)
 
-        for (index, ring) in ringViews.enumerated() {
-            if index < model.gauges.count {
-                let gauge = model.gauges[index]
-                ringColumns[index].isHidden = false
-                ring.configure(
-                    fraction: gauge.fraction, color: color(for: gauge.fraction, accent: model.accent),
-                    percentText: gauge.percentText)
-                ringNames[index].text = gauge.name
-                ringCaptions[index].text = gauge.caption
-            } else {
-                ringColumns[index].isHidden = true
-            }
-        }
+        setGauges(model.gauges, accent: model.accent)
 
         noteLabel.text = model.note
         detailsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (key, value) in model.details {
             detailsStack.addArrangedSubview(detailRow(key, value))
         }
+        detailsContainer?.isHidden = model.details.isEmpty
     }
 
     private func build() {
@@ -596,6 +718,9 @@ private final class ProviderCard: UIView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+        setGauges(
+            (0..<3).map { _ in GaugeVM(name: "—", fraction: 0, percentText: "—", caption: "—") },
+            accent: accent)
     }
 
     private func quotaCard() -> UIView {
@@ -620,42 +745,75 @@ private final class ProviderCard: UIView {
         subtitleLabel.textColor = Theme.Color.secondaryLabel
         subtitleLabel.numberOfLines = 0
 
-        var columns: [UIView] = []
-        for _ in 0..<3 {
-            let ring = RingGaugeView()
-            ringViews.append(ring)
+        gaugeStack.axis = .vertical
+        gaugeStack.spacing = Theme.Spacing.m
 
-            let name = UILabel()
-            name.font = Theme.Font.subheadline()
-            name.textColor = Theme.Color.label
-            name.textAlignment = .center
-            name.numberOfLines = 2
-            name.text = "—"
-            ringNames.append(name)
+        return card([header, subtitleLabel, gaugeStack], spacing: Theme.Spacing.l)
+    }
 
-            let caption = UILabel()
-            caption.font = Theme.Font.mono(11)
-            caption.textColor = Theme.Color.secondaryLabel
-            caption.textAlignment = .center
-            caption.numberOfLines = 2
-            caption.text = "—"
-            ringCaptions.append(caption)
-
-            let column = UIStackView(arrangedSubviews: [ring, name, caption])
-            column.axis = .vertical
-            column.alignment = .center
-            column.spacing = Theme.Spacing.xs
-            ringColumns.append(column)
-            columns.append(column)
+    private func setGauges(_ gauges: [GaugeVM], accent: UIColor) {
+        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        captionLabels = []
+        for gauge in gauges {
+            gaugeStack.addArrangedSubview(gaugeRow(gauge, accent: accent))
         }
+    }
 
-        let rings = UIStackView(arrangedSubviews: columns)
-        rings.axis = .horizontal
-        rings.distribution = .fillEqually
-        rings.alignment = .top
-        rings.spacing = Theme.Spacing.s
+    private func gaugeRow(_ gauge: GaugeVM, accent: UIColor) -> UIView {
+        let name = UILabel()
+        name.text = gauge.name
+        name.font = Theme.Font.subheadline()
+        name.textColor = Theme.Color.label
+        name.numberOfLines = 1
+        name.adjustsFontSizeToFitWidth = true
+        name.minimumScaleFactor = 0.7
+        name.translatesAutoresizingMaskIntoConstraints = false
+        name.widthAnchor.constraint(equalToConstant: 88).isActive = true
 
-        return card([header, subtitleLabel, rings], spacing: Theme.Spacing.l)
+        let track = UIView()
+        track.backgroundColor = Theme.Color.separator
+        track.layer.cornerRadius = 4
+        track.translatesAutoresizingMaskIntoConstraints = false
+        let fill = UIView()
+        fill.backgroundColor = rampColor(for: gauge.fraction, accent: accent)
+        fill.layer.cornerRadius = 4
+        fill.translatesAutoresizingMaskIntoConstraints = false
+        track.addSubview(fill)
+        NSLayoutConstraint.activate([
+            track.heightAnchor.constraint(equalToConstant: 8),
+            fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+            fill.topAnchor.constraint(equalTo: track.topAnchor),
+            fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
+            fill.widthAnchor.constraint(
+                equalTo: track.widthAnchor, multiplier: max(0.01, min(1, gauge.fraction))),
+        ])
+
+        let percent = UILabel()
+        percent.text = gauge.percentText
+        percent.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        percent.textColor = Theme.Color.label
+        percent.textAlignment = .right
+        percent.setContentHuggingPriority(.required, for: .horizontal)
+        percent.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let line = UIStackView(arrangedSubviews: [name, track, percent])
+        line.axis = .horizontal
+        line.alignment = .center
+        line.spacing = Theme.Spacing.s
+
+        let caption = UILabel()
+        caption.text = gauge.caption
+        caption.font = Theme.Font.mono(11)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.numberOfLines = 2
+        captionLabels.append(caption)
+
+        let row = UIStackView(arrangedSubviews: [line, caption])
+        row.axis = .vertical
+        row.spacing = Theme.Spacing.xs
+        row.isAccessibilityElement = true
+        row.accessibilityLabel = "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+        return row
     }
 
     private func pill() -> UIView {
@@ -686,10 +844,28 @@ private final class ProviderCard: UIView {
         return noteLabel
     }
 
+    /// The plan's fine print folds away: the bars answer the daily question, and
+    /// the row of caps and windows is there for the visit that asks it.
     private func detailsCard() -> UIView {
+        disclosure.addTarget(self, action: #selector(toggleDetails), for: .touchUpInside)
         detailsStack.axis = .vertical
         detailsStack.spacing = Theme.Spacing.s
-        return card([detailsStack], spacing: Theme.Spacing.s)
+        detailsStack.isHidden = true
+        detailsStack.alpha = 0
+        let container = card([disclosure, detailsStack], spacing: Theme.Spacing.s)
+        container.isHidden = true
+        detailsContainer = container
+        return container
+    }
+
+    @objc private func toggleDetails() {
+        detailsExpanded.toggle()
+        disclosure.setExpanded(detailsExpanded)
+        Theme.Haptics.selection()
+        UIView.animate(withDuration: 0.25) {
+            self.detailsStack.isHidden = !self.detailsExpanded
+            self.detailsStack.alpha = self.detailsExpanded ? 1 : 0
+        }
     }
 
     private func detailRow(_ title: String, _ value: String) -> UIView {
@@ -744,10 +920,153 @@ private final class ProviderCard: UIView {
             return luminance > 0.5 ? .black : .white
         }
     }
+}
 
-    private func color(for fraction: Double, accent: UIColor) -> UIColor {
-        if fraction > 0.85 { return Theme.Color.danger }
-        if fraction >= 0.6 { return Theme.Color.warning }
-        return accent
+@MainActor
+private final class DisclosureRow: UIControl {
+    private let titleLabel = UILabel()
+    private let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        titleLabel.text = String(localized: "Plan details")
+        titleLabel.font = Theme.Font.subheadline()
+        titleLabel.textColor = Theme.Color.label
+
+        chevron.tintColor = Theme.Color.secondaryLabel
+        chevron.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+            pointSize: 12, weight: .semibold)
+        chevron.contentMode = .scaleAspectFit
+
+        let row = UIStackView(arrangedSubviews: [titleLabel, UIView(), chevron])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.s
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
+        ])
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = titleLabel.text
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.6 : 1 }
+    }
+
+    func setExpanded(_ expanded: Bool) {
+        UIView.animate(withDuration: 0.2) {
+            self.chevron.transform =
+                expanded ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
+        }
+    }
+}
+
+/// The doorway to the analytics screen, wearing a month of days as its own
+/// preview: the sparkline appears once a ledger has been read and the total
+/// rides beside the chevron.
+@MainActor
+private final class MonthCard: UIControl {
+    private let totalLabel = UILabel()
+    private let sparkline = UIStackView()
+    private static let sparkHeight: CGFloat = 28
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = Theme.Color.secondaryBackground
+        layer.cornerRadius = Theme.Radius.card
+        layer.cornerCurve = .continuous
+
+        let title = UILabel()
+        title.text = String(localized: "The month in numbers")
+        title.font = .systemFont(ofSize: 18, weight: .bold)
+        title.textColor = Theme.Color.label
+
+        totalLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        totalLabel.textColor = Theme.Color.secondaryLabel
+        totalLabel.textAlignment = .right
+        totalLabel.setContentHuggingPriority(.required, for: .horizontal)
+        totalLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tintColor = Theme.Color.secondaryLabel
+        chevron.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+            pointSize: 13, weight: .semibold)
+        chevron.contentMode = .scaleAspectFit
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+
+        let header = UIStackView(arrangedSubviews: [title, UIView(), totalLabel, chevron])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
+
+        sparkline.axis = .horizontal
+        sparkline.distribution = .fillEqually
+        sparkline.spacing = 2
+        sparkline.isHidden = true
+
+        let stack = UIStackView(arrangedSubviews: [header, sparkline])
+        stack.axis = .vertical
+        stack.spacing = Theme.Spacing.m
+        stack.isUserInteractionEnabled = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.l),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.l),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = title.text
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.7 : 1 }
+    }
+
+    func render(_ analytics: UsageAnalytics?) {
+        totalLabel.text = analytics?.totalMoney
+        sparkline.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard let analytics else {
+            sparkline.isHidden = true
+            return
+        }
+        sparkline.isHidden = false
+        for day in analytics.days {
+            let holder = UIView()
+            let bar = UIView()
+            let height = max(2, Self.sparkHeight * day.share)
+            if day.share > 0 {
+                bar.backgroundColor = day.isToday ? Theme.Color.accent : Theme.Color.info
+                if !day.isToday { bar.alpha = 0.7 }
+            } else {
+                bar.backgroundColor = Theme.Color.separator
+            }
+            bar.layer.cornerRadius = 1.5
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            holder.addSubview(bar)
+            NSLayoutConstraint.activate([
+                holder.heightAnchor.constraint(equalToConstant: Self.sparkHeight),
+                bar.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
+                bar.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+                bar.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+                bar.heightAnchor.constraint(equalToConstant: height),
+            ])
+            sparkline.addArrangedSubview(holder)
+        }
+        accessibilityValue = analytics.totalMoney
     }
 }

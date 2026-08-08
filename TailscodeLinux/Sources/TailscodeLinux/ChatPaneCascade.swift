@@ -45,19 +45,18 @@ extension ChatPane {
         return paced
     }
 
-    /// One frame of the wave, painted into the live row's own label. The markup is parsed once by
-    /// the shim and cached, so a frame is a substring and an attribute list — never a markdown
-    /// parse and never a widget rebuild, which is what lets a selection survive the sentence it is
-    /// in being written.
+    /// One frame of the wave, painted into the live row's own label. The markup is the one the
+    /// painter was pointed at when the stream last moved, so a frame is a substring and an
+    /// attribute list — never a markdown parse, never a fresh copy of the answer, and never a
+    /// widget rebuild, which is what lets a selection survive the sentence it is in being written.
     func paintCascade() {
         guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
         let index = renderedRows.count - 1
         guard index < rowWidgets.count, renderedRows[index].key == key,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
-            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind),
-            let markup = Self.cascadeMarkup(for: renderedRows[index])
+            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
         else { return }
-        cascade.paint(label, markup: markup)
+        cascade.paint(label)
         if followsBottom { scrollToBottom() }
     }
 }

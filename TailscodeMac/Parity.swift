@@ -61,9 +61,13 @@ enum ParityManifest {
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBandView")
         case .usagePanel: return .implemented("UsagePanel")
+        case .usageAnalytics: return .implemented("AnalyticsWindowController")
         case .sessionSpend: return .implemented("SpendPanelViewController")
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
+        case .tailnetDiscovery:
+            return .gap(
+                "The Mac types an address by hand. The scan itself is shared (TailnetScanner, TailnetRadar) and macOS can read the tailnet from the tailscale CLI exactly as the GTK client does, so this is work not yet done rather than a platform that cannot.")
         case .connectDiagnosis: return .implemented("diagnose")
         case .serverSignIn: return .implemented("SignInSheet")
         case .serverSelfUpdate: return .implemented("updateStatus")
@@ -88,7 +92,7 @@ enum ParityManifest {
         case .firstRunSetup: return .implemented("FirstRunWindow")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("MacNotifier")
-        case .hapticFeedback: return .gap("nothing calls NSHapticFeedbackManager yet; a Force Touch trackpad can tick, but it is only felt while a hand is on it and it takes no strength, so the setting the phone owns has no meaning here until the cues are wired")
+        case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         case .presenceOrb: return .implemented("PresenceOrbView")

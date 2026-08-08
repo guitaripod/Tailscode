@@ -44,13 +44,33 @@ public enum Contrast {
     /// expects at every step.
     public static func blend(_ one: String, _ other: String, _ amount: Double) -> String? {
         guard let start = RGB(one), let end = RGB(other) else { return nil }
-        let mix = min(max(amount, 0), 1)
+        return mix(start, end, amount).hex
+    }
+
+    /// The same mix, kept as numbers.
+    ///
+    /// The stream cascade walks this twenty-six times a frame and then parses the answer straight
+    /// back into an integer. Formatting a colour into six hex digits so the caller can undo it is
+    /// three thousand strings a second built to be thrown away, on the main thread, inside the
+    /// frame callback — the wave is arithmetic and it can stay arithmetic.
+    public static func blendChannels(
+        _ one: (red: Double, green: Double, blue: Double),
+        _ other: (red: Double, green: Double, blue: Double), _ amount: Double
+    ) -> (red: Double, green: Double, blue: Double) {
+        let blended = mix(
+            RGB(red: one.red, green: one.green, blue: one.blue),
+            RGB(red: other.red, green: other.green, blue: other.blue), amount)
+        return (blended.red, blended.green, blended.blue)
+    }
+
+    private static func mix(_ start: RGB, _ end: RGB, _ amount: Double) -> RGB {
+        let amount = min(max(amount, 0), 1)
         var lab = OKLab(start)
         let target = OKLab(end)
-        lab.lightness += (target.lightness - lab.lightness) * mix
-        lab.a += (target.a - lab.a) * mix
-        lab.b += (target.b - lab.b) * mix
-        return lab.rgb.hex
+        lab.lightness += (target.lightness - lab.lightness) * amount
+        lab.a += (target.a - lab.a) * amount
+        lab.b += (target.b - lab.b) * amount
+        return lab.rgb
     }
 
     /// A hex string from linear-free 0…1 channels — the form the shared rainbow stops are authored

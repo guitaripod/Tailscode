@@ -11,13 +11,26 @@ import TailscodeCore
 /// indistinguishable from one that was never in it — the effect has to disappear completely, or
 /// every finished answer ends up wearing a differently-coloured tail.
 enum CascadeTint {
+    /// The channels a frame blends between, resolved once for the frame rather than parsed out of
+    /// three hex strings at every one of the twenty-six glyphs the wave covers.
+    struct Inks {
+        let settled: (red: Double, green: Double, blue: Double)
+        let edge: (red: Double, green: Double, blue: Double)
+        let spark: (red: Double, green: Double, blue: Double)
+
+        init(settled: String, edge: String, spark: String) {
+            let fallback = (red: 0.5, green: 0.5, blue: 0.5)
+            self.settled = Contrast.channels(settled) ?? fallback
+            self.edge = Contrast.channels(edge) ?? fallback
+            self.spark = Contrast.channels(spark) ?? fallback
+        }
+    }
+
     /// One character's colour and opacity, as the shim wants them: packed RGB and Pango's
     /// sixteen-bit alpha.
-    static func paint(_ sample: CascadeSample, settled: String, edge: String, spark: String)
-        -> (rgb: UInt32, alpha: UInt16)
-    {
-        let warmed = Contrast.blend(settled, edge, sample.heat * 0.86) ?? settled
-        let lit = Contrast.blend(warmed, spark, sample.shimmer) ?? warmed
+    static func paint(_ sample: CascadeSample, inks: Inks) -> (rgb: UInt32, alpha: UInt16) {
+        let warmed = Contrast.blendChannels(inks.settled, inks.edge, sample.heat * 0.86)
+        let lit = Contrast.blendChannels(warmed, inks.spark, sample.shimmer)
         return (packed(lit), UInt16(max(1, min(65535, sample.alpha * 65535))))
     }
 
@@ -35,10 +48,11 @@ enum CascadeTint {
         return Contrast.hex(red: colour.red, green: colour.green, blue: colour.blue)
     }
 
-    private static func packed(_ hex: String) -> UInt32 {
-        var digits = Substring(hex)
-        if digits.hasPrefix("#") { digits = digits.dropFirst() }
-        return UInt32(digits, radix: 16) ?? 0
+    private static func packed(_ colour: (red: Double, green: Double, blue: Double)) -> UInt32 {
+        func byte(_ channel: Double) -> UInt32 {
+            UInt32((min(max(channel, 0), 1) * 255).rounded())
+        }
+        return byte(colour.red) << 16 | byte(colour.green) << 8 | byte(colour.blue)
     }
 }
 
@@ -53,6 +67,19 @@ final class CascadePainter: @unchecked Sendable {
     private var ultracode = false
     private var tick: UInt = 0
     private var clockWidget: UnsafeMutablePointer<GtkWidget>?
+    /// The markup the wave is holding, already null-terminated for the shim.
+    ///
+    /// A frame is supposed to cost a substring and an attribute list. It stopped being that as
+    /// soon as the markup arrived as a `String`: handing a Swift string to a C parameter copies it
+    /// into a fresh buffer, so the whole answer was allocated and thrown away sixty times a
+    /// second, on top of the pane rebuilding the markup itself just as often. The answer changes
+    /// when the stream says so, not when the display does — so it is converted where it changes
+    /// and every frame after that reads the same bytes.
+    private var markup: [CChar] = []
+    /// The wave's colours, kept across frames. Two arrays of twenty-six are not much to allocate,
+    /// sixty times a second for the length of an answer.
+    private var rgb: [UInt32] = []
+    private var alpha: [UInt16] = []
 
     /// What to do with a frame that changed something. The pane repaints exactly the live row.
     var onFrame: (() -> Void)?
@@ -83,9 +110,14 @@ final class CascadePainter: @unchecked Sendable {
     /// The rendered text behind markup — what a reader sees, which is what the reveal counts. The
     /// shim parses once and remembers, so asking for it costs nothing on a frame that has already
     /// painted it.
-    static func renderedText(of markup: String) -> String? {
-        guard let text = tailscode_markup_text(markup) else { return nil }
+    private static func renderedText(of markup: [CChar]) -> String? {
+        let text = markup.withUnsafeBufferPointer { tailscode_markup_text($0.baseAddress) }
+        guard let text else { return nil }
         return String(cString: text)
+    }
+
+    static func renderedText(of markup: String) -> String? {
+        renderedText(of: Array(markup.utf8CString))
     }
 
     /// Points the wave at the row the stream is writing into, or lets go of it. Letting go settles
@@ -95,11 +127,12 @@ final class CascadePainter: @unchecked Sendable {
         clock: UnsafeMutablePointer<GtkWidget>?
     ) {
         self.ultracode = ultracode
-        guard Self.motionAllowed, let id, let rendered = Self.renderedText(of: markup) else {
-            live.focus(nil, rendered: "", sealed: true, at: Self.now)
-            stop()
+        let bytes = Array(markup.utf8CString)
+        guard Self.motionAllowed, let id, let rendered = Self.renderedText(of: bytes) else {
+            release()
             return
         }
+        self.markup = bytes
         live.focus(id, rendered: rendered, sealed: sealed, at: Self.now)
         start(on: clock)
         watch()
@@ -107,27 +140,33 @@ final class CascadePainter: @unchecked Sendable {
 
     func release() {
         live.focus(nil, rendered: "", sealed: true, at: Self.now)
+        markup = []
         stop()
     }
 
-    /// Paints one frame into the label the live row keeps its words in. The markup is parsed once
-    /// by the shim and cached, so a frame is a substring and an attribute list rather than a
-    /// markdown parse.
-    func paint(_ label: UnsafeMutablePointer<GtkWidget>, markup: String) {
+    /// Paints one frame into the label the live row keeps its words in. The markup was converted
+    /// and parsed when the stream last moved, so a frame is a substring and an attribute list
+    /// rather than a markdown parse.
+    func paint(_ label: UnsafeMutablePointer<GtkWidget>) {
+        guard !markup.isEmpty else { return }
         let palette = MatrixTheme.palette
         let edge = CascadeTint.edge(for: palette, ultracode: ultracode, phase: live.phase)
         let spark = CascadeTint.spark(for: palette, edge: edge)
         let span = StreamCascade.span
-        var rgb = [UInt32](repeating: 0, count: span)
-        var alpha = [UInt16](repeating: 65535, count: span)
+        let inks = CascadeTint.Inks(settled: palette.text, edge: edge, spark: spark)
+        if rgb.count != span {
+            rgb = [UInt32](repeating: 0, count: span)
+            alpha = [UInt16](repeating: 65535, count: span)
+        }
         for distance in 0..<span {
-            let painted = CascadeTint.paint(
-                live.sample(distance: distance), settled: palette.text, edge: edge, spark: spark)
+            let painted = CascadeTint.paint(live.sample(distance: distance), inks: inks)
             rgb[distance] = painted.rgb
             alpha[distance] = painted.alpha
         }
-        _ = tailscode_label_reveal(
-            label, markup, Int32(live.revealed), Int32(span), &rgb, &alpha)
+        markup.withUnsafeBufferPointer { bytes in
+            _ = tailscode_label_reveal(
+                label, bytes.baseAddress, Int32(live.revealed), Int32(span), &rgb, &alpha)
+        }
     }
 
     /// Hands the whole row back, unpaced and untinted — what a row that is no longer live must

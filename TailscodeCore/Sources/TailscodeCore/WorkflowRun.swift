@@ -339,10 +339,15 @@ public enum WorkflowRunAssembly {
     }
 
     /// Every workflow launched in a transcript, in the order the conversation made them.
+    ///
+    /// The kind comes from the tool's name rather than from its summary: this runs over every tool
+    /// call in the conversation every time a token arrives, and a summary parses the call's input
+    /// and strips the markup off its entire output. On a long agent transcript that was megabytes
+    /// of string work per arrival to answer a question the name already answers.
     public static func launches(in messages: [ChatMessage]) -> [Launch] {
         messages.flatMap { message in
             message.parts.compactMap { part -> Launch? in
-                guard case .tool(let call) = part.kind, call.summary.kind == .workflow else {
+                guard case .tool(let call) = part.kind, call.summaryKind == .workflow else {
                     return nil
                 }
                 return Launch(call: call, at: message.createdAt)
@@ -358,8 +363,7 @@ public enum WorkflowRunAssembly {
         let launches = launches(in: messages)
         guard !launches.isEmpty else { return [] }
         return runs(
-            launches: launches, agents: agents,
-            completions: completions(in: messages.map(\.text)), now: now)
+            launches: launches, agents: agents, completions: completions(in: messages), now: now)
     }
 
     public static func runs(
@@ -417,6 +421,27 @@ public enum WorkflowRunAssembly {
 
     /// A run's answer comes back as its own message, not as the tool's result: the harness posts a
     /// `<task-notification>` naming the task it finished. Reading it is how a card stops spinning.
+    /// The same reading, taken from the messages themselves.
+    ///
+    /// A message's `text` joins all its text parts into a new string, so asking every message in a
+    /// conversation for it rebuilds the whole transcript's prose on every arrival. Almost no
+    /// message carries a notification, and whether one does can be read off the parts without
+    /// building anything.
+    public static func completions(in messages: [ChatMessage]) -> [String: String] {
+        var found: [String: String] = [:]
+        for message in messages {
+            let carries = message.parts.contains { part in
+                guard case .text(let value) = part.kind else { return false }
+                return value.contains("<task-notification>")
+            }
+            guard carries else { continue }
+            let text = message.text
+            guard let taskID = tag("task-id", in: text) else { continue }
+            found[taskID] = tag("result", in: text).map(unquoted) ?? tag("summary", in: text) ?? ""
+        }
+        return found
+    }
+
     public static func completions(in texts: [String]) -> [String: String] {
         var found: [String: String] = [:]
         for text in texts {

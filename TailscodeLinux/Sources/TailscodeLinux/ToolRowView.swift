@@ -192,7 +192,7 @@ enum ToolRowView {
         }
 
         if let diff = ToolDiff.lines(for: call) {
-            gtk_box_append(ptr(column), diffBlock(diff))
+            gtk_box_append(ptr(column), diffBlock(diff, language: ToolDiff.language(for: call)))
             hasContent = true
         }
 
@@ -233,14 +233,19 @@ enum ToolRowView {
         return summary.displayOutput.map { String($0.prefix(4000)) }
     }
 
-    static func diffBlock(_ lines: [(prefix: String, text: String)])
+    static func diffBlock(_ lines: [(prefix: String, text: String)], language: String?)
         -> UnsafeMutablePointer<GtkWidget>
     {
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(block, "code-block")
+        let palette = MatrixTheme.palette
         for line in lines.prefix(80) {
-            let css = line.prefix == "+" ? "diff-add" : "diff-remove"
-            let label = Gtk.label("\(line.prefix) \(line.text)", css: css, wrap: true)
+            let kind: DiffLineKind = line.prefix == "+" ? .added : .removed
+            let markup = PangoSyntax.diffLine(
+                prefix: line.prefix, body: line.text, kind: kind,
+                language: language, palette: palette)
+            let label = Gtk.markupLabel(markup, css: "diff-line", wrap: true)
+            Gtk.addClass(label, kind == .added ? "diff-wash-add" : "diff-wash-remove")
             gtk_box_append(ptr(block), label)
         }
         if lines.count > 80 {

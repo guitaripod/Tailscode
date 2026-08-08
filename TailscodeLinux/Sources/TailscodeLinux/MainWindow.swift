@@ -47,6 +47,7 @@ final class MainWindow: @unchecked Sendable {
     /// The configured servers, kept on the main context so an empty pane can ask its question in
     /// the same frame the split happens rather than after a hop through the directory actor.
     private var knownProfiles: [ConnectionProfile] = []
+    private var servers: ServerManager?
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing
     /// keeps reporting the session until the delete lands, and each report would resurrect the
     /// row; the tombstone outlives them all. Keyed on `(profileID, sessionID)` like every store
@@ -251,10 +252,14 @@ final class MainWindow: @unchecked Sendable {
                     self.activePane.scroll(by: Double(argument) ?? 200)
                 case "jump":
                     self.activePane.jumpToBottom()
+                case "servers":
+                    self.presentServers()
                 case "settings":
                     self.presentSettings()
                 case "usage":
                     self.presentUsage()
+                case "analytics":
+                    AnalyticsPanel.present(parent: self.sidebarPane)
                 case "type":
                     let pane = self.activePane
                     pane.driverType(argument)
@@ -1822,10 +1827,13 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// The window is kept here as well as by the manager's own registry, so a second ask raises
+    /// the one already open instead of stacking a second copy of a screen full of live probes.
     private func presentServers() {
-        let manager = ServerManager { [weak self] in
+        let manager = servers ?? ServerManager { [weak self] in
             Task { [weak self] in await self?.refresh() }
         }
+        servers = manager
         manager.present(parent: window)
     }
 
