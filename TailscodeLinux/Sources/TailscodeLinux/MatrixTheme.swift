@@ -751,6 +751,36 @@ enum MatrixTheme {
         .spend-caption { color: \(textDim); font-size: 0.72rem; letter-spacing: 0.06em; }
         .spend-bar { background-color: \(accentDim); border-radius: 2px; }
         .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
+        .analytics-total { color: \(text); font-weight: 700; font-size: 2.1rem; }
+        .analytics-hero-percent { font-weight: 700; font-size: 1.5rem; }
+        .hero-ok { color: \(text); }
+        .hero-warn { color: \(warn); }
+        .hero-danger { color: \(danger); }
+        .analytics-delta-up { color: \(warn); font-size: 0.85rem; }
+        .analytics-delta-down { color: \(accent); font-size: 0.85rem; }
+        .analytics-delta-flat { color: \(textDim); font-size: 0.85rem; }
+        .analytics-bar { background-color: \(accentDim); border-radius: 2px; }
+        .analytics-bar-today { background-color: \(accent); border-radius: 2px; }
+        .analytics-hour { background-color: alpha(\(info), 0.75); border-radius: 2px; }
+        .record-card {
+            background-color: alpha(currentColor, 0.04);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+        .record-glyph { color: \(accent); font-size: 1.2rem; }
+        .record-title { color: \(textDim); font-size: 0.68rem; letter-spacing: 0.06em; }
+        .record-value { color: \(text); font-weight: 700; font-size: 0.9rem; }
+        .record-detail { color: \(textDim); font-size: 0.78rem; }
+        .analytics-open {
+            background-color: alpha(currentColor, 0.05);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            color: \(text);
+            font-size: 0.85rem;
+            padding: 8px 12px;
+        }
+        .analytics-open:hover { background-color: alpha(\(accent), 0.12); }
         .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """

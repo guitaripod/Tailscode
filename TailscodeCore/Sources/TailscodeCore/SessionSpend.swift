@@ -157,10 +157,14 @@ public struct SessionSpend: Sendable, Equatable {
                 startedAt: turns.first?.at, endedAt: turns.last?.at, estimated: false))
     }
 
-    /// The four tiers, each priced by its own share of the total, dropping any the conversation
-    /// never used — an empty legend row is a row that has to be read to learn nothing.
     private static func tiers(of report: SessionSpendReport) -> [Tier] {
-        let tokens = report.tokens
+        tierSplit(tokens: report.tokens, costUSD: report.costUSD)
+    }
+
+    /// The four tiers, each priced by its own share of the total, dropping any the window never
+    /// used — an empty legend row is a row that has to be read to learn nothing. Shared with the
+    /// account-wide analytics, which splits a month the same way a panel splits a conversation.
+    public static func tierSplit(tokens: SessionSpendReport.Tokens, costUSD: Double) -> [Tier] {
         let weights: [(String, String, Int, Double)] = [
             ("output", Localized.text("Answer"), tokens.output, 1.0),
             ("cacheWrite", Localized.text("Cache written"), tokens.cacheWrite, 0.25),
@@ -175,7 +179,7 @@ public struct SessionSpend: Sendable, Equatable {
             result.append(
                 Tier(
                     id: entry.0, label: entry.1, tokens: entry.2,
-                    costUSD: report.costUSD * fraction, share: fraction))
+                    costUSD: costUSD * fraction, share: fraction))
         }
         return result.sorted { $0.costUSD > $1.costUSD }
     }

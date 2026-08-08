@@ -61,6 +61,7 @@ enum ParityManifest {
         case .stopTurn: return .implemented("composerDidTapStop")
         case .statusBand: return .implemented("StatusFacts.from")
         case .usagePanel: return .implemented("UsageViewController")
+        case .usageAnalytics: return .implemented("AnalyticsViewController")
         case .sessionSpend: return .implemented("SpendViewController")
         case .toasts: return .implemented("presentToast")
         case .serverManagement: return .implemented("ConnectionController")

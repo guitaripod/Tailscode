@@ -258,6 +258,8 @@ final class MainWindow: @unchecked Sendable {
                     self.presentSettings()
                 case "usage":
                     self.presentUsage()
+                case "analytics":
+                    AnalyticsPanel.present(parent: self.sidebarPane)
                 case "type":
                     let pane = self.activePane
                     pane.driverType(argument)

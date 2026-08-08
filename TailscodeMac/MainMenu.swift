@@ -139,6 +139,8 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
         menu.addItem(.separator())
+        menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
+        menu.addItem(.separator())
         menu.addItem(item(Localized.text("Shortcuts Cheatsheet"), #selector(cheatsheet), "/"))
         return holder(menu)
     }
@@ -233,6 +235,7 @@ final class MainMenu: NSObject {
     @objc private func zoomOut() { hub.perform(.zoomOut) }
     @objc private func zoomReset() { hub.perform(.zoomReset) }
     @objc private func cheatsheet() { hub.perform(.toggleHelp) }
+    @objc private func monthInNumbers() { hub.presentAnalytics() }
     @objc private func nextChat() { hub.perform(.selectNext) }
     @objc private func previousChat() { hub.perform(.selectPrevious) }
     @objc fileprivate func splitRight() { hub.perform(.splitPane(.horizontal)) }

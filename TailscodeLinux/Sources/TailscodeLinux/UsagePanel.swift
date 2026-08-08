@@ -4,11 +4,14 @@ import CodingAgentKit
 import Foundation
 import TailscodeCore
 
-/// The full quota picture behind the sidebar footer: one card per provider, every gauge as a
-/// wide bar with its reset, spend windows in money, and the account facts the provider reports.
-/// Opens on what the footer already knows, then refetches so the numbers are current.
+/// The full quota picture behind the sidebar footer: the tightest window first as one tall bar,
+/// then one card per provider, every gauge as a wide bar with its reset, spend windows in money,
+/// and the account facts the provider reports. Opens on what the footer already knows, then
+/// refetches so the numbers are current. The footer hands over to ``AnalyticsPanel`` for the
+/// whole month.
 enum UsagePanel {
     static let trackWidth = 300
+    private static let heroTrackWidth = 314
 
     static func present(
         parent: UnsafeMutablePointer<GtkWidget>?,
@@ -27,6 +30,14 @@ enum UsagePanel {
         gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
         gtk_scrolled_window_set_child(op(scroller), column)
         gtk_box_append(ptr(content), scroller)
+
+        let contentBits = UInt(bitPattern: content)
+        let month = Gtk.button(Localized.text("The month in numbers"), css: ["analytics-open"]) {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: contentBits) else { return }
+            AnalyticsPanel.present(parent: ptr(raw))
+        }
+        gtk_widget_set_hexpand(month, 1)
+        gtk_box_append(ptr(content), month)
 
         let windowBits = UInt(bitPattern: window)
         let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
@@ -65,6 +76,9 @@ enum UsagePanel {
                     css: "dim", selectable: false))
             return
         }
+        if let pick = tightest(quotas) {
+            gtk_box_append(ptr(column), hero(quota: pick.quota, gauge: pick.gauge))
+        }
         for (server, quota) in quotas {
             gtk_box_append(ptr(column), card(server: server, quota: quota))
         }
@@ -72,6 +86,63 @@ enum UsagePanel {
             gtk_box_append(
                 ptr(column), Gtk.label(Localized.text("Refreshing…"), css: "dim", selectable: false))
         }
+    }
+
+    /// The one number that decides what happens next: whichever window across every provider is
+    /// closest to its wall, worn large with its own tall bar and its reset.
+    private static func tightest(_ quotas: [(String, UsageQuota)])
+        -> (quota: UsageQuota, gauge: UsageQuota.Gauge)?
+    {
+        var best: (quota: UsageQuota, gauge: UsageQuota.Gauge)?
+        for (_, quota) in quotas {
+            for gauge in quota.gauges where best.map({ gauge.fraction > $0.gauge.fraction }) ?? true {
+                best = (quota, gauge)
+            }
+        }
+        return best
+    }
+
+    private static func hero(quota: UsageQuota, gauge: UsageQuota.Gauge)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        let fraction = min(max(gauge.fraction, 0), 1)
+        let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
+        let slug = ProviderBrand.slug(quota.providerName)
+
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let name = Gtk.label(quota.providerName, css: "usage-provider", selectable: false)
+        if let slug { Gtk.addClass(name, "brand-\(slug)") }
+        gtk_box_append(ptr(header), name)
+        gtk_box_append(ptr(header), Gtk.label(gauge.label, css: "usage-plan", selectable: false))
+        gtk_box_append(ptr(card), header)
+
+        let percent = Gtk.label(
+            amount(for: gauge), css: "analytics-hero-percent", selectable: false)
+        Gtk.addClass(percent, "hero-\(severity)")
+        gtk_label_set_ellipsize(op(percent), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(card), percent)
+
+        let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(track, "gauge-track")
+        gtk_widget_set_size_request(track, Int32(heroTrackWidth), 10)
+        gtk_widget_set_halign(track, GTK_ALIGN_START)
+        let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
+        gtk_widget_set_size_request(fill, Int32((fraction * Double(heroTrackWidth)).rounded()), 10)
+        gtk_widget_set_halign(fill, GTK_ALIGN_START)
+        gtk_box_append(ptr(track), fill)
+        gtk_box_append(ptr(card), track)
+
+        if let resets = gauge.resetsAt {
+            let phrasing =
+                gauge.trustedReset
+                ? Localized.text("resets in %@", countdown(to: resets))
+                : Localized.text("resets in about %@", countdown(to: resets))
+            gtk_box_append(ptr(card), Gtk.label(phrasing, css: "gauge-reset", selectable: false))
+        }
+        return card
     }
 
     private static func card(server: String, quota: UsageQuota) -> UnsafeMutablePointer<GtkWidget> {

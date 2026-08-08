@@ -66,6 +66,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case stopTurn
     case statusBand
     case usagePanel
+    case usageAnalytics
     case sessionSpend
     case toasts
     case serverManagement
@@ -330,7 +331,12 @@ public enum CapabilityRegistry {
                 "The price on the chat's own chrome is the whole conversation's, not the last turn's — a turn's cost is a curiosity, a session's is a fact you act on — and touching it opens the account behind it. The server reads the CLI's own transcript (GET /sessions/:id/spend) for per-turn tokens by tier and prices them; a backend that reports money per message is summed locally instead (SessionSpend(messages:)); a server too old for either leaves the last turn's price where it was. The money is always marked as an estimate with its provenance stated, because a subscription bills a flat fee and the figure is API-equivalent value, never a bill. The panel is the same five sections on every client: the total with turns/each/over/rate/tokens, a bar per turn against the priciest, where the money went across answer / cache written / cache read / fresh input, which model spent it, and the five most expensive turns named by the words that started them. Every number comes from SessionSpend; a client decides only how tall a bar is."),
         CapabilityDefinition(
             id: .usagePanel, area: "status", title: "Usage details",
-            spec: "A dedicated surface breaks down quota windows beyond the glanceable gauges."),
+            spec:
+                "A dedicated surface breaks down quota windows beyond the glanceable gauges. It leads with the tightest window — the one that decides when the next send unlocks — as a hero gauge with its countdown, then every provider's windows as labelled bars with LIVE/CACHED provenance and plan details, and it is the road to the month in numbers."),
+        CapabilityDefinition(
+            id: .usageAnalytics, area: "status", title: "The month in numbers",
+            spec:
+                "A dedicated analytics surface aggregates the whole account: every connected Claude server reports the ledger its machine already holds (GET /analytics — every transcript priced turn by turn), and Core's UsageAnalytics merges the servers and generates every word. The sections are fixed: the window's total with its per-day rate and week-over-week trend, a bar per day with the empty days present, the week's rhythm Monday-first, the day's 24-hour clock, models, projects, tools, where the money went across the four token tiers with what caching saved, the records (busiest day, priciest conversation and turn, longest turn, streak, subagent runs, compactions), per-machine shares when more than one server answered, and two or three insights. A client decides only how tall a bar is. Money is an estimate and says so; a server too old for the route is named in the surface, never a silent hole in the numbers."),
         CapabilityDefinition(
             id: .toasts, area: "status", title: "Transient notices",
             spec: "Short-lived confirmations/errors appear as toasts that never steal focus."),
