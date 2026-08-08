@@ -111,13 +111,10 @@ enum ChatRowBuilder {
                         let segments = MessageSegment.split(text)
                         for (index, segment) in segments.enumerated() {
                             let segID = segments.count == 1 ? id : "\(id):seg\(index)"
-                            let content: ChatRow.Content
-                            switch segment {
-                            case .text(let value): content = .text(value)
-                            case .code(let block): content = .code(block)
-                            }
                             rows.append(
-                                ChatRow(id: segID, messageID: message.id, role: message.role, content: content))
+                                ChatRow(
+                                    id: segID, messageID: message.id, role: message.role,
+                                    content: segment.chatContent))
                         }
                     }
                 case .file(let file):

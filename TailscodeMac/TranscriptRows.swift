@@ -95,6 +95,7 @@ struct TranscriptRow: Hashable {
         /// prose row is a label set, not a markdown parse.
         case agentProse(text: String, rendered: NSAttributedString)
         case codeBlock(language: String?, body: String)
+        case table(MarkdownTable)
         case reasoning(String)
         case tool(ToolCall)
         case run([ActivityStep])
@@ -177,6 +178,8 @@ struct TranscriptRow: Hashable {
                             TranscriptRow(
                                 key: "\(key):s\(index)",
                                 kind: .codeBlock(language: language, body: body)))
+                    case .table(let table):
+                        rows.append(TranscriptRow(key: "\(key):s\(index)", kind: .table(table)))
                     }
                 }
             case .reasoning(let text):
@@ -291,6 +294,8 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
+        case .table(let table):
+            return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
         case .run(let steps):
@@ -326,6 +331,8 @@ struct TranscriptRow: Hashable {
             return RowKit.attributedLabel(rendered)
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, context: context)
+        case .table(let table):
+            return Self.table(table)
         case .reasoning(let text):
             return ToolRowView.reasoning(text, key: key, context: context)
         case .tool(let call):
@@ -392,9 +399,55 @@ struct TranscriptRow: Hashable {
             case .code(let language, let body):
                 column.addArrangedSubview(
                     codeBlock(language: language, body: body, context: context))
+            case .table(let table):
+                column.addArrangedSubview(Self.table(table))
             }
         }
         return column
+    }
+
+    /// A pipe table as columns: NSGridView does the sizing, a hairline seats the header, and a
+    /// cell wraps past its cap so a prose column folds instead of running the pane out.
+    @MainActor
+    static func table(_ table: MarkdownTable) -> NSView {
+        let grid = NSGridView()
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 3
+        grid.columnSpacing = 16
+        grid.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        func cell(_ text: String, header: Bool) -> NSTextField {
+            let label = RowKit.attributedLabel(MacMarkdown.tableCell(text, header: header))
+            label.preferredMaxLayoutWidth = 340
+            label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+            return label
+        }
+
+        grid.addRow(with: table.header.map { cell($0, header: true) })
+        grid.addRow(with: [RowKit.hairline(verticalPadding: 2)])
+        grid.mergeCells(
+            inHorizontalRange: NSRange(location: 0, length: table.columnCount),
+            verticalRange: NSRange(location: 1, length: 1))
+        for row in table.rows.indices {
+            grid.addRow(with: table.cells(in: row).map { cell($0, header: false) })
+        }
+        for column in 0..<table.columnCount {
+            switch table.alignment(of: column) {
+            case .leading: grid.column(at: column).xPlacement = .leading
+            case .center: grid.column(at: column).xPlacement = .center
+            case .trailing: grid.column(at: column).xPlacement = .trailing
+            }
+        }
+        let wrap = NSView()
+        wrap.translatesAutoresizingMaskIntoConstraints = false
+        wrap.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: wrap.leadingAnchor),
+            grid.topAnchor.constraint(equalTo: wrap.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: wrap.bottomAnchor),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: wrap.trailingAnchor),
+        ])
+        return wrap
     }
 
     /// Bounded labels: one layout pass over forty thousand words takes a visible pause to

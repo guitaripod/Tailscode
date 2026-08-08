@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 
 /// What a row answers a text search with, and how matches are ordered — toolkit-free so the
 /// find bar can stay about chrome while this stays about the transcript.
@@ -12,6 +13,8 @@ enum ChatFind {
             return text
         case .code(let block):
             return "\(block.language ?? "") \(block.source)"
+        case .table(let table):
+            return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .activity(let steps):
             return steps.map { step in
                 switch step {

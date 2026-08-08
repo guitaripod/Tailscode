@@ -213,7 +213,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:
-                "Assistant prose renders headings, emphasis, lists, links, inline code and fenced code from the shared grammar; never raw markdown source."),
+                "Assistant prose renders headings (a `#` only with the space the grammar demands), emphasis, lists — numbered with `.` or `)`, task items as boxes (`- [ ]`/`- [x]` → ☐/☑) — links, inline code and fenced code from the shared grammar; never raw markdown source. A pipe table is read once in Core (MarkdownTable, lifted out of prose by MessageSegment.split alongside fences) and rendered as real columns with a bold header over a hairline and each column keeping its declared alignment; the client owns only the grid widget, and a copy or export writes the pipes back (MarkdownTable.markdown). Prose never carries more than one blank line in a row — extra emptiness is the model exhaling, not paragraph structure."),
         CapabilityDefinition(
             id: .syntaxHighlighting, area: "transcript", title: "Code is coloured by what it is",
             spec:

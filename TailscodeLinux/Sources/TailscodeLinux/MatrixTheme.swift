@@ -155,6 +155,9 @@ enum MatrixTheme {
             color: \(text);
             font-size: \(p(0.95));
         }
+        .md-table { padding: 2px 0; }
+        .md-table-header { color: \(text); font-size: \(p(0.92)); }
+        .md-table-cell { color: \(text); font-size: \(p(0.92)); }
         .tool-line, .mono {
             font-family: monospace;
             font-size: \(m(0.88));

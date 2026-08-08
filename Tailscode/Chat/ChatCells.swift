@@ -16,6 +16,7 @@ struct ChatRow: Hashable {
     enum Content: Hashable {
         case text(String)
         case code(CodeBlock)
+        case table(MarkdownTable)
         case activity([ActivityStep])
         case subagent(SubagentCard)
         case workflow(WorkflowRun)
@@ -39,42 +40,18 @@ struct CodeBlock: Hashable {
     let source: String
 }
 
-enum MessageSegment {
-    case text(String)
-    case code(CodeBlock)
-
-    /// Splits assistant text into prose and fenced ``` code blocks, preserving order.
-    static func split(_ text: String) -> [MessageSegment] {
-        guard text.contains("```") else { return [.text(text)] }
-        var segments: [MessageSegment] = []
-        var lines = text.components(separatedBy: "\n")[...]
-        var prose: [String] = []
-        func flushProse() {
-            let joined = prose.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !joined.isEmpty { segments.append(.text(joined)) }
-            prose = []
+extension MessageSegment {
+    /// The shared splitter's rows in this client's grammar, so every consumer maps a segment the
+    /// same way.
+    var chatContent: ChatRow.Content {
+        switch self {
+        case .prose(let text):
+            return .text(text)
+        case .code(let language, let body):
+            return .code(CodeBlock(language: language, source: body))
+        case .table(let table):
+            return .table(table)
         }
-        while let line = lines.first {
-            lines = lines.dropFirst()
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                flushProse()
-                let language = line.trimmingCharacters(in: .whitespaces)
-                    .dropFirst(3).trimmingCharacters(in: .whitespaces)
-                var code: [String] = []
-                while let next = lines.first, !next.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                    code.append(next)
-                    lines = lines.dropFirst()
-                }
-                if !lines.isEmpty { lines = lines.dropFirst() }
-                segments.append(
-                    .code(CodeBlock(language: language.isEmpty ? nil : language,
-                        source: code.joined(separator: "\n"))))
-            } else {
-                prose.append(line)
-            }
-        }
-        flushProse()
-        return segments.isEmpty ? [.text(text)] : segments
     }
 }
 
@@ -344,10 +321,20 @@ final class TextBubbleCell: UICollectionViewCell {
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
                     paragraph.paragraphSpacing = Self.listItemSpacing
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
-                    edits.append((
-                        NSRange(location: substringRange.location + indentDepth, length: 2),
-                        indentDepth >= 2 ? "◦  " : "•  "
-                    ))
+                    let item = trimmedStart.dropFirst(2)
+                    if let box = ["[ ] ": "☐  ", "[x] ": "☑  ", "[X] ": "☑  "]
+                        .first(where: { item.hasPrefix($0.key) })
+                    {
+                        edits.append((
+                            NSRange(location: substringRange.location + indentDepth, length: 6),
+                            box.value
+                        ))
+                    } else {
+                        edits.append((
+                            NSRange(location: substringRange.location + indentDepth, length: 2),
+                            indentDepth >= 2 ? "◦  " : "•  "
+                        ))
+                    }
                 } else if let digits = Self.orderedListPrefixLength(trimmedStart) {
                     let paragraph = NSMutableParagraphStyle()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6

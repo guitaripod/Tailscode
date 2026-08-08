@@ -65,11 +65,13 @@ enum MacMarkdown {
         }
         if trimmed.hasPrefix("#") {
             let hashes = trimmed.prefix { $0 == "#" }.count
-            let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-            var style = Style()
-            style.size = hashes <= 1 ? 19 : hashes == 2 ? 16 : 13
-            style.bold = true
-            return inline(body, base: style)
+            if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
+                let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+                var style = Style()
+                style.size = hashes <= 1 ? 19 : hashes == 2 ? 16 : 13
+                style.bold = true
+                return inline(body, base: style)
+            }
         }
         if trimmed.hasPrefix("> ") {
             let body = String(trimmed.dropFirst(2))
@@ -82,13 +84,21 @@ enum MacMarkdown {
         }
         if let marker = bulletMarker(trimmed) {
             let body = String(trimmed.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+            let depth = CGFloat(min(8, indent)) * 6
+            if let box = taskBox(body) {
+                var tint = Style()
+                tint.color = box.done ? .controlAccentColor : .secondaryLabelColor
+                let line = NSMutableAttributedString(
+                    string: box.done ? "☑  " : "☐  ", attributes: attributes(tint))
+                line.append(inline(box.body, base: Style()))
+                return indented(line, first: depth, rest: depth + 14)
+            }
             let glyph = indent >= 2 ? "◦" : "•"
             var accent = Style()
             accent.color = .controlAccentColor
             let line = NSMutableAttributedString(
                 string: "\(glyph)  ", attributes: attributes(accent))
             line.append(inline(body, base: Style()))
-            let depth = CGFloat(min(8, indent)) * 6
             return indented(line, first: depth, rest: depth + 14)
         }
         if let number = numberedMarker(trimmed) {
@@ -128,8 +138,29 @@ enum MacMarkdown {
 
     private static func numberedMarker(_ line: String) -> String? {
         let digits = line.prefix { $0.isNumber }
-        guard !digits.isEmpty, line.dropFirst(digits.count).hasPrefix(". ") else { return nil }
+        guard !digits.isEmpty, digits.count <= 3 else { return nil }
+        let rest = line.dropFirst(digits.count)
+        guard rest.hasPrefix(". ") || rest.hasPrefix(") ") else { return nil }
         return String(line.prefix(digits.count + 2))
+    }
+
+    /// A `- [ ]` / `- [x]` task item's box and what it carries, or nil for an ordinary bullet.
+    private static func taskBox(_ body: String) -> (done: Bool, body: String)? {
+        for (marker, done) in [("[ ] ", false), ("[x] ", true), ("[X] ", true)]
+        where body.hasPrefix(marker) {
+            return (done, String(body.dropFirst(marker.count)))
+        }
+        return nil
+    }
+
+    /// One table cell's inline spans at the table's own size — bold and quiet for a header —
+    /// without the block grammar, so a dashed cell never becomes a rule.
+    static func tableCell(_ text: String, header: Bool) -> NSAttributedString {
+        var style = Style()
+        style.size = 12
+        style.bold = header
+        if header { style.color = .secondaryLabelColor }
+        return inline(text, base: style)
     }
 
     /// Inline spans, resolved with code spans lifted out first and restored last: `gtk_box_append`

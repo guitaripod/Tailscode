@@ -30,7 +30,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { [weak controller] in await controller?.sidebar.refresh() }
         }
         NSApp.activate(ignoringOtherApps: true)
+        openRequestedSession()
         MacShot.schedule()
+    }
+
+    /// `TAILSCODE_OPEN_SESSION=<id>` — the same headless hook the iOS harness has: land the
+    /// window on one named chat once the listing exists, so a `--shot` can look at a
+    /// conversation instead of the picker.
+    private func openRequestedSession() {
+        guard let id = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] else {
+            return
+        }
+        Task { [weak main] in
+            try? await Task.sleep(for: .seconds(2))
+            main?.openSession(withID: id)
+        }
     }
 
     /// A Mac that slept holds sockets that look alive and deliver nothing; coming back to the

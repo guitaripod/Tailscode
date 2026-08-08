@@ -391,6 +391,7 @@ final class ChatViewController: UIViewController {
         collectionView.addGestureRecognizer(dismissTap)
         collectionView.register(TextBubbleCell.self, forCellWithReuseIdentifier: TextBubbleCell.reuseID)
         collectionView.register(CodeBlockCell.self, forCellWithReuseIdentifier: CodeBlockCell.reuseID)
+        collectionView.register(TableCell.self, forCellWithReuseIdentifier: TableCell.reuseID)
         collectionView.register(
             ImageBubbleCell.self, forCellWithReuseIdentifier: ImageBubbleCell.reuseID)
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
@@ -1012,6 +1013,12 @@ final class ChatViewController: UIViewController {
                 ) {
                     [weak self] in self?.toggleReasoning(id)
                 }
+                return cell
+            case .table(let table):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TableCell.reuseID, for: indexPath) as! TableCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(table, width: collectionView.bounds.width)
                 return cell
             case .activity(let steps):
                 let cell = collectionView.dequeueReusableCell(
@@ -2973,6 +2980,8 @@ final class ChatViewController: UIViewController {
             case .code(let block):
                 let fence = block.language ?? ""
                 body = "```\(fence)\n\(block.source)\n```"
+            case .table(let table):
+                body = table.markdown
             case .activity(let steps):
                 body = steps.map {
                     switch $0 {
@@ -3620,6 +3629,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return text
         case .code(let block):
             return block.source
+        case .table(let table):
+            return table.markdown
         case .activity(let steps):
             return steps.map { step in
                 switch step {

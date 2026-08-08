@@ -164,6 +164,7 @@ struct TranscriptRow: Hashable {
         /// colors are baked into it, which is what makes a theme change a row change the diff sees.
         case agentProse(text: String, markup: String)
         case codeBlock(language: String?, body: String)
+        case table(MarkdownTable)
         case reasoning(String)
         case tool(ToolCall)
         case run([ActivityStep])
@@ -238,6 +239,8 @@ struct TranscriptRow: Hashable {
                             TranscriptRow(
                                 key: "\(key):s\(index)",
                                 kind: .codeBlock(language: language, body: body)))
+                    case .table(let table):
+                        rows.append(TranscriptRow(key: "\(key):s\(index)", kind: .table(table)))
                     }
                 }
             case .reasoning(let text):
@@ -387,6 +390,8 @@ struct TranscriptRow: Hashable {
             return text
         case .codeBlock(let language, let body):
             return "\(language ?? "") \(body)"
+        case .table(let table):
+            return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
         case .tool(let call), .subagent(let call), .workflow(let call):
             return Self.searchText(for: call)
         case .run(let steps):
@@ -422,6 +427,8 @@ struct TranscriptRow: Hashable {
             return Gtk.markupLabel(markup, css: "agent-text")
         case .codeBlock(let language, let body):
             return Self.codeBlock(language: language, body: body, context: context)
+        case .table(let table):
+            return Self.table(table)
         case .reasoning(let text):
             return Self.reasoning(text, key: key, context: context)
         case .tool(let call):
@@ -473,9 +480,55 @@ struct TranscriptRow: Hashable {
                 }
             case .code(let language, let body):
                 gtk_box_append(ptr(column), codeBlock(language: language, body: body, context: nil))
+            case .table(let table):
+                gtk_box_append(ptr(column), Self.table(table))
             }
         }
         return column
+    }
+
+    /// A pipe table as columns: GtkGrid does the sizing, a hairline seats the header, and every
+    /// cell is a wrapping label carrying its inline markdown — so a wide table folds its longest
+    /// column instead of running out of the pane.
+    static func table(_ table: MarkdownTable) -> UnsafeMutablePointer<GtkWidget> {
+        let palette = MatrixTheme.palette
+        let widget = gtk_grid_new()!
+        let grid: UnsafeMutablePointer<GtkGrid> = ptr(UnsafeMutableRawPointer(widget))
+        Gtk.addClass(widget, "md-table")
+        gtk_grid_set_column_spacing(grid, 16)
+        gtk_grid_set_row_spacing(grid, 3)
+        gtk_widget_set_halign(widget, GTK_ALIGN_START)
+
+        func cell(_ text: String, header: Bool, column: Int) -> UnsafeMutablePointer<GtkWidget> {
+            let inline = PangoMarkdown.inline(text, code: palette.info, accent: palette.accent)
+            let label = Gtk.markupLabel(
+                header ? "<b>\(inline)</b>" : inline,
+                css: header ? "md-table-header" : "md-table-cell")
+            gtk_label_set_max_width_chars(op(label), 40)
+            gtk_widget_set_halign(label, GTK_ALIGN_FILL)
+            gtk_widget_set_valign(label, GTK_ALIGN_START)
+            switch table.alignment(of: column) {
+            case .leading: gtk_label_set_xalign(op(label), 0)
+            case .center: gtk_label_set_xalign(op(label), 0.5)
+            case .trailing: gtk_label_set_xalign(op(label), 1)
+            }
+            return label
+        }
+
+        for (column, title) in table.header.enumerated() {
+            gtk_grid_attach(grid, cell(title, header: true, column: column), Int32(column), 0, 1, 1)
+        }
+        let rule = Gtk.hairline()
+        Gtk.margins(rule, top: 2, bottom: 2)
+        gtk_grid_attach(grid, rule, 0, 1, Int32(table.columnCount), 1)
+        for row in table.rows.indices {
+            for (column, text) in table.cells(in: row).enumerated() {
+                gtk_grid_attach(
+                    grid, cell(text, header: false, column: column),
+                    Int32(column), Int32(row + 2), 1, 1)
+            }
+        }
+        return widget
     }
 
     /// Bounded labels: one Pango layout over forty thousand words takes a visible pause to

@@ -465,13 +465,15 @@ final class SubagentCardCell: UICollectionViewCell {
         column.spacing = Theme.Spacing.s
         for segment in MessageSegment.split(report) {
             switch segment {
-            case .text(let text):
+            case .prose(let text):
                 let body = UILabel()
                 body.numberOfLines = 0
                 body.attributedText = TextBubbleCell.rendered(text, color: Theme.Color.label)
                 column.addArrangedSubview(body)
-            case .code(let block):
-                column.addArrangedSubview(codeView(block))
+            case .code(let language, let source):
+                column.addArrangedSubview(codeView(CodeBlock(language: language, source: source)))
+            case .table(let table):
+                column.addArrangedSubview(TableCell.tableView(table))
             }
         }
         return column

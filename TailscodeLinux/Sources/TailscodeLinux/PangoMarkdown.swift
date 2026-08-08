@@ -64,9 +64,11 @@ enum PangoMarkdown {
         }
         if trimmed.hasPrefix("#") {
             let hashes = trimmed.prefix { $0 == "#" }.count
-            let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-            let size = hashes <= 1 ? "x-large" : hashes == 2 ? "large" : "medium"
-            return "<span size=\"\(size)\" weight=\"bold\">\(inline(body, code: code, accent: accent))</span>"
+            if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
+                let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+                let size = hashes <= 1 ? "x-large" : hashes == 2 ? "large" : "medium"
+                return "<span size=\"\(size)\" weight=\"bold\">\(inline(body, code: code, accent: accent))</span>"
+            }
         }
         if trimmed.hasPrefix("> ") {
             let body = String(trimmed.dropFirst(2))
@@ -76,6 +78,11 @@ enum PangoMarkdown {
         if let marker = bulletMarker(trimmed) {
             let body = String(trimmed.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
             let pad = String(repeating: " ", count: min(8, indent))
+            if let box = taskBox(body) {
+                let glyph = box.done ? "☑" : "☐"
+                let tint = box.done ? accent : dim
+                return "\(pad)<span foreground=\"\(tint)\">\(glyph)</span> \(inline(box.body, code: code, accent: accent))"
+            }
             let glyph = indent >= 2 ? "◦" : "•"
             return "\(pad)<span foreground=\"\(accent)\">\(glyph)</span> \(inline(body, code: code, accent: accent))"
         }
@@ -95,8 +102,19 @@ enum PangoMarkdown {
 
     private static func numberedMarker(_ line: String) -> String? {
         let digits = line.prefix { $0.isNumber }
-        guard !digits.isEmpty, line.dropFirst(digits.count).hasPrefix(". ") else { return nil }
+        guard !digits.isEmpty, digits.count <= 3 else { return nil }
+        let rest = line.dropFirst(digits.count)
+        guard rest.hasPrefix(". ") || rest.hasPrefix(") ") else { return nil }
         return String(line.prefix(digits.count + 2))
+    }
+
+    /// A `- [ ]` / `- [x]` task item's box and what it carries, or nil for an ordinary bullet.
+    private static func taskBox(_ body: String) -> (done: Bool, body: String)? {
+        for (marker, done) in [("[ ] ", false), ("[x] ", true), ("[X] ", true)]
+        where body.hasPrefix(marker) {
+            return (done, String(body.dropFirst(marker.count)))
+        }
+        return nil
     }
 
     /// Inline spans, resolved on the escaped text so a literal `<` in prose never becomes a tag and
