@@ -684,6 +684,10 @@ char *tailscode_label_selection(GtkWidget *widget) {
     return g_utf8_substring(text, start, end);
 }
 
+gboolean tailscode_is_label(GtkWidget *widget) {
+    return widget && GTK_IS_LABEL(widget);
+}
+
 gboolean tailscode_label_has_selection(GtkWidget *widget) {
     if (!widget || !GTK_IS_LABEL(widget)) return FALSE;
     int start = 0, end = 0;

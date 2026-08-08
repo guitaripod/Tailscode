@@ -764,6 +764,7 @@ enum MatrixTheme {
             font-size: 0.78rem;
             letter-spacing: 0.06em;
         }
+        .git-neutral-ink { color: \(text); }
         .git-row { padding: 2px 4px; border-radius: 6px; }
         .git-row:hover { background-color: alpha(currentColor, 0.07); }
         .git-alert {

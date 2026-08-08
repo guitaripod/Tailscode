@@ -1543,7 +1543,14 @@ public enum SelfTest {
         for tone in GitTone.allCases {
             try expect(css.contains(".\(tone.css) {"), "\(tone.rawValue) has no rule to draw with")
         }
-        for name in ["git-row", "git-alert", "git-diff"] {
+        let badge = GitState(snapshot: snapshot).badgeParts
+        try expect(badge.first?.tone == .neutral, "the branch is not a state")
+        try expect(
+            Set(badge.map(\.tone)).count >= 4, "the chip's marks do not carry their own meanings")
+        try expect(
+            badge.map(\.text).joined(separator: " ") == GitState(snapshot: snapshot).badge,
+            "the runs and the plain chip say different things")
+        for name in ["git-row", "git-alert", "git-diff", "git-neutral-ink"] {
             try expect(css.contains(".\(name) {"), "\(name) has no rule to draw with")
         }
         return checks

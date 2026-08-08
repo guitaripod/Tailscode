@@ -193,13 +193,21 @@ public struct StatusFacts: Sendable {
         /// the icon and lets the text carry only words; a client that cannot still has the glyph
         /// already inside `text`, so nothing is lost by ignoring it.
         public let icon: ActivityIcon?
+        /// The segment split into runs that each carry their own meaning, for a client that can
+        /// colour inside one label. Nil for a segment that is one fact in one colour; `text` is
+        /// always the same string joined, so ignoring this loses the colours and nothing else.
+        public let parts: [GitBadgePart]?
 
-        public init(id: String, text: String, css: String, kind: Kind, icon: ActivityIcon? = nil) {
+        public init(
+            id: String, text: String, css: String, kind: Kind, icon: ActivityIcon? = nil,
+            parts: [GitBadgePart]? = nil
+        ) {
             self.id = id
             self.text = text
             self.css = css
             self.kind = kind
             self.icon = icon
+            self.parts = parts
         }
 
         public var action: Action? {
@@ -303,7 +311,8 @@ public struct StatusFacts: Sendable {
             result.append(
                 Segment(
                     id: "branch", text: StatusMark.branch + " " + git.badge,
-                    css: git.badgeTone == .conflict ? "seg-warn" : "seg-dim", kind: .act(.git)))
+                    css: git.badgeTone == .conflict ? "seg-warn" : "seg-dim", kind: .act(.git),
+                    parts: [GitBadgePart(text: StatusMark.branch, tone: .neutral)] + git.badgeParts))
         }
 
         if let goal {

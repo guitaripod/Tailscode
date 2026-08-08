@@ -1782,9 +1782,8 @@ final class ChatViewController: UIViewController {
             gitChip.isHidden = true
             return
         }
-        gitChip.configuration?.title = git.badge
-        gitChip.configuration?.baseForegroundColor =
-            git.badgeTone == .conflict ? Theme.Color.warning : Theme.Color.secondaryLabel
+        gitChip.configuration?.attributedTitle = AttributedString(GitInk.line(git.badgeParts))
+        gitChip.configuration?.baseForegroundColor = Theme.Color.secondaryLabel
         gitChip.accessibilityLabel = git.spokenBadge
         gitChip.isHidden = false
     }

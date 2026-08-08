@@ -16,6 +16,33 @@ public enum GitTone: String, Sendable, Equatable, CaseIterable {
     case conflict
     /// A fact with no charge: a branch name, a hash, a date.
     case neutral
+
+    /// The class a text client draws this meaning with. Named here rather than in each client so
+    /// the stylesheet, the band and the panel cannot drift into three vocabularies.
+    public var cssName: String {
+        switch self {
+        case .added: return "git-added"
+        case .removed: return "git-removed"
+        case .changed: return "git-changed"
+        case .untracked: return "git-untracked"
+        case .conflict: return "git-conflict"
+        case .neutral: return "git-neutral-ink"
+        }
+    }
+}
+
+/// One run of a git line that carries its own meaning — a mark on the chip, a clause in the
+/// summary — so a client can colour it rather than painting the whole string one colour. A number
+/// that means "staged" and a number that means "conflicted" are two facts, and a reader who has to
+/// count words to tell them apart is reading, not glancing.
+public struct GitBadgePart: Sendable, Hashable {
+    public let text: String
+    public let tone: GitTone
+
+    public init(text: String, tone: GitTone) {
+        self.text = text
+        self.tone = tone
+    }
 }
 
 /// What happened to one path, in the vocabulary a reader already has. The letter is git's own, so
@@ -222,7 +249,8 @@ public struct GitState: Sendable, Equatable {
     public let sync: String
     public let syncTone: GitTone
     /// One line for what the working tree holds: "12 changed · 3 staged", or "Working tree clean".
-    public let summary: String
+    /// Joined from `summaryParts`, so the sentence and its colours can never say different things.
+    public var summary: String { summaryParts.map(\.text).joined(separator: " · ") }
     /// A state that has stopped and wants a person — a conflict, or an operation left half-done.
     public let alert: String?
     public let insertions: Int
@@ -231,6 +259,38 @@ public struct GitState: Sendable, Equatable {
     public let stagedCount: Int
     public let untrackedCount: Int
     public let conflictCount: Int
+
+    /// The working-tree line, clause by clause, so each count is drawn in the colour of the thing
+    /// it counts. A clean tree is one neutral clause, because "nothing" has no state to wear.
+    public var summaryParts: [GitBadgePart] {
+        var parts: [GitBadgePart] = []
+        if conflictCount > 0 {
+            parts.append(
+                GitBadgePart(
+                    text: Localized.text("%d conflicted", conflictCount), tone: .conflict))
+        }
+        if stagedCount > 0 {
+            parts.append(GitBadgePart(text: Localized.text("%d staged", stagedCount), tone: .added))
+        }
+        if changedCount > 0 {
+            parts.append(
+                GitBadgePart(text: Localized.text("%d changed", changedCount), tone: .changed))
+        }
+        if untrackedCount > 0 {
+            parts.append(
+                GitBadgePart(
+                    text: Localized.text("%d untracked", untrackedCount), tone: .untracked))
+        }
+        if truncated, hiddenCount > 0, !parts.isEmpty {
+            parts.append(
+                GitBadgePart(text: Localized.text("%d more", hiddenCount), tone: .neutral))
+        }
+        if parts.isEmpty {
+            parts.append(
+                GitBadgePart(text: Localized.text("Working tree clean"), tone: .neutral))
+        }
+        return parts
+    }
 
     public var isClean: Bool { changedCount == 0 && stagedCount == 0 && untrackedCount == 0 }
     public var isRepository: Bool { snapshot.repo }
@@ -269,29 +329,38 @@ public struct GitState: Sendable, Equatable {
         let sync = Self.sync(snapshot)
         self.sync = sync.0
         self.syncTone = sync.1
-        self.summary = Self.summary(
-            changed: changedCount, staged: stagedCount, untracked: untrackedCount,
-            conflicts: conflictCount, truncated: snapshot.truncated,
-            hidden: max(0, snapshot.changedTotal - snapshot.changes.count))
         self.alert = Self.alert(snapshot, conflicts: conflictCount)
         self.facts = Self.facts(snapshot, sync: sync.0, syncTone: sync.1, now: now)
     }
 
-    /// The chip a chat's chrome wears: the branch, how far it has drifted, and what the working
-    /// tree is holding — in the shorthand a prompt uses, because the whole value of the chip is
-    /// being read without being opened. `↑↓` is the upstream, `✖` a conflict, `+` staged, `~`
-    /// changed but not staged, `?` untracked. Every mark that would read as zero is absent, so a
-    /// clean tree on a branch with no drift is just the branch's name.
-    public var badge: String {
-        var text = title
-        if snapshot.ahead > 0 { text += " ↑\(snapshot.ahead)" }
-        if snapshot.behind > 0 { text += " ↓\(snapshot.behind)" }
-        if conflictCount > 0 { text += " ✖\(conflictCount)" }
-        if stagedCount > 0 { text += " +\(stagedCount)" }
-        if changedCount > 0 { text += " ~\(changedCount)" }
-        if untrackedCount > 0 { text += " ?\(untrackedCount)" }
-        return text
+    /// The chip a chat's chrome wears, in runs that each carry their own meaning: the branch, how
+    /// far it has drifted, and what the working tree is holding — in the shorthand a prompt uses,
+    /// because the whole value of the chip is being read without being opened. `↑↓` is the
+    /// upstream, `✖` a conflict, `+` staged, `~` changed but not staged, `?` untracked. Every mark
+    /// that would read as zero is absent, so a clean tree on a branch with no drift is just the
+    /// branch's name — and every mark is its own colour, so the eye lands on the conflict before
+    /// it has read the number beside it.
+    public var badgeParts: [GitBadgePart] {
+        var parts = [GitBadgePart(text: title, tone: .neutral)]
+        if snapshot.ahead > 0 {
+            parts.append(GitBadgePart(text: "↑\(snapshot.ahead)", tone: .added))
+        }
+        if snapshot.behind > 0 {
+            parts.append(GitBadgePart(text: "↓\(snapshot.behind)", tone: .removed))
+        }
+        if conflictCount > 0 {
+            parts.append(GitBadgePart(text: "✖\(conflictCount)", tone: .conflict))
+        }
+        if stagedCount > 0 { parts.append(GitBadgePart(text: "+\(stagedCount)", tone: .added)) }
+        if changedCount > 0 { parts.append(GitBadgePart(text: "~\(changedCount)", tone: .changed)) }
+        if untrackedCount > 0 {
+            parts.append(GitBadgePart(text: "?\(untrackedCount)", tone: .untracked))
+        }
+        return parts
     }
+
+    /// The same chip for a client that can only draw one colour, or none.
+    public var badge: String { badgeParts.map(\.text).joined(separator: " ") }
 
     public var badgeTone: GitTone {
         if conflictCount > 0 || snapshot.operation != nil { return .conflict }
@@ -403,19 +472,6 @@ public struct GitState: Sendable, Equatable {
         case (let ahead, let behind):
             return (Localized.text("%1$d ahead, %2$d behind", ahead, behind), .conflict)
         }
-    }
-
-    private static func summary(
-        changed: Int, staged: Int, untracked: Int, conflicts: Int, truncated: Bool, hidden: Int
-    ) -> String {
-        var parts: [String] = []
-        if conflicts > 0 { parts.append(Localized.text("%d conflicted", conflicts)) }
-        if staged > 0 { parts.append(Localized.text("%d staged", staged)) }
-        if changed > 0 { parts.append(Localized.text("%d changed", changed)) }
-        if untracked > 0 { parts.append(Localized.text("%d untracked", untracked)) }
-        if parts.isEmpty { return Localized.text("Working tree clean") }
-        if truncated, hidden > 0 { parts.append(Localized.text("%d more", hidden)) }
-        return parts.joined(separator: " · ")
     }
 
     /// The one line that overrides everything else on the header, or nothing. An operation left

@@ -4,15 +4,20 @@ import Foundation
 import TailscodeCore
 
 extension GitTone {
-    /// The class the panel's ink wears. One mapping, read by every git surface on this desk.
-    var css: String {
+    /// The class the panel's ink wears — Core names it, so the stylesheet, the band and the panel
+    /// cannot drift into three vocabularies.
+    var css: String { self == .neutral ? "git-neutral" : cssName }
+
+    /// The same meaning as a colour, for the runs a band paints inside one label.
+    var hex: String {
+        let palette = MatrixTheme.palette
         switch self {
-        case .added: return "git-added"
-        case .removed: return "git-removed"
-        case .changed: return "git-changed"
-        case .untracked: return "git-untracked"
-        case .conflict: return "git-conflict"
-        case .neutral: return "git-neutral"
+        case .added: return palette.accent
+        case .removed: return palette.danger
+        case .changed: return palette.info
+        case .untracked: return palette.textDim
+        case .conflict: return palette.warn
+        case .neutral: return palette.text
         }
     }
 }
@@ -86,7 +91,11 @@ enum GitPanel {
         gtk_label_set_xalign(op(sync), 0)
         gtk_box_append(ptr(card), sync)
 
-        let summary = Gtk.label(state.summary, css: "usage-detail-key", selectable: false)
+        let summary = Gtk.markupLabel(
+            state.summaryParts.map {
+                "<span foreground='\($0.tone.hex)'>\(PangoMarkdown.escape($0.text))</span>"
+            }.joined(separator: "<span alpha='45%'> · </span>"), css: "usage-detail-key",
+            wrap: false)
         gtk_label_set_xalign(op(summary), 0)
         gtk_box_append(ptr(card), summary)
 

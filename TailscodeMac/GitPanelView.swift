@@ -118,6 +118,8 @@ final class GitPanelViewController: NSViewController {
             state.sync, font: MacTheme.Font.body(), color: state.syncTone.color)
         let summary = RowKit.label(
             state.summary, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+        summary.attributedStringValue = Self.tinted(
+            state.summaryParts, font: MacTheme.Font.caption())
 
         var views: [NSView] = [name, branch, sync, summary]
         if let alert = state.alert {
@@ -250,6 +252,28 @@ final class GitPanelViewController: NSViewController {
                 NSAttributedString(
                     string: "−\(GitState.number(row.deletions))",
                     attributes: [.foregroundColor: MacTheme.Color.danger, .font: font]))
+        }
+        return text
+    }
+
+    /// A line whose clauses mean different things, each drawn in the colour of what it counts.
+    static func tinted(_ parts: [GitBadgePart], font: NSFont) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        for part in parts {
+            if text.length > 0 {
+                text.append(
+                    NSAttributedString(
+                        string: " · ",
+                        attributes: [.font: font, .foregroundColor: MacTheme.Color.tertiaryLabel]))
+            }
+            text.append(
+                NSAttributedString(
+                    string: part.text,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: part.tone == .neutral
+                            ? MacTheme.Color.secondaryLabel : part.tone.color,
+                    ]))
         }
         return text
     }

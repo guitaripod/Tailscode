@@ -2,7 +2,27 @@ import CodingAgentKit
 import TailscodeCore
 import UIKit
 
+/// Ink for a line whose runs mean different things — the chip, the working-tree summary. Each run
+/// is drawn in the colour of the thing it counts, because a number a reader has to read a word to
+/// interpret is a number they have already stopped glancing at.
+enum GitInk {
+    static func line(_ parts: [GitBadgePart], font: UIFont? = nil) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        for part in parts {
+            if text.length > 0 { text.append(NSAttributedString(string: " ")) }
+            var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: part.tone.ink]
+            if let font { attributes[.font] = font }
+            text.append(NSAttributedString(string: part.text, attributes: attributes))
+        }
+        return text
+    }
+}
+
 extension GitTone {
+    /// The colour a run of this meaning is written in. Neutral stays label-coloured rather than
+    /// borrowing a signal slot: a branch name is not a state.
+    var ink: UIColor { self == .neutral ? Theme.Color.label : color }
+
     var color: UIColor {
         switch self {
         case .added: return Theme.Color.success
@@ -426,7 +446,8 @@ final class GitHeaderCell: UICollectionViewListCell {
         branch.text = state.title
         sync.text = state.sync
         sync.textColor = state.syncTone.color
-        summary.text = state.summary
+        summary.attributedText = GitInk.line(
+            state.summaryParts, font: .preferredFont(forTextStyle: .footnote))
         alert.text = state.alert
         alertBox.isHidden = state.alert == nil
         facts.arrangedSubviews.forEach { $0.removeFromSuperview() }

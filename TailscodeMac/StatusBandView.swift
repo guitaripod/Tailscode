@@ -121,17 +121,39 @@ final class StatusBandView: NSView {
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
-        write(segment.text, to: view, css: segment.css)
+        write(segment.text, to: view, css: segment.css, parts: segment.parts)
         animate(segment)
     }
 
-    private func write(_ text: String, to view: NSView, css: String) {
+    /// A segment that arrives as runs is written run by run, each in the colour of what it means —
+    /// a branch, what it owes its upstream, what the tree is holding — because one colour over all
+    /// of it makes a conflict read as another number.
+    private func write(
+        _ text: String, to view: NSView, css: String, parts: [GitBadgePart]? = nil
+    ) {
+        let rendered = parts.map(Self.tinted) ?? Self.title(text, css: css)
         if let label = view as? NSTextField {
-            label.stringValue = text
-            label.textColor = Self.color(for: css)
+            label.attributedStringValue = rendered
         } else if let button = view as? BandButton {
-            button.attributedTitle = Self.title(text, css: css)
+            button.attributedTitle = rendered
         }
+    }
+
+    private static func tinted(_ parts: [GitBadgePart]) -> NSAttributedString {
+        let text = NSMutableAttributedString()
+        let font = MacTheme.Font.mono(11)
+        for part in parts {
+            if text.length > 0 { text.append(NSAttributedString(string: " ")) }
+            text.append(
+                NSAttributedString(
+                    string: part.text,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: part.tone == .neutral
+                            ? MacTheme.Color.secondaryLabel : part.tone.color,
+                    ]))
+        }
+        return text
     }
 
     /// A fact about something happening moves the way that thing moves; a fact that is a number
@@ -146,6 +168,7 @@ final class StatusBandView: NSView {
         case .plain:
             let label = RowKit.label(
                 segment.text, font: MacTheme.Font.mono(11), color: Self.color(for: segment.css))
+            if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
             return label
         case .act:
@@ -156,7 +179,8 @@ final class StatusBandView: NSView {
                 else { return }
                 self.perform?(action)
             }
-            button.attributedTitle = Self.title(segment.text, css: segment.css)
+            button.attributedTitle =
+                segment.parts.map(Self.tinted) ?? Self.title(segment.text, css: segment.css)
             return button
         case .menu:
             let id = segment.id

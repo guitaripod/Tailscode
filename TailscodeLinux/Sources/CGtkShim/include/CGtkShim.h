@@ -160,6 +160,8 @@ void tailscode_on_right_click(
     GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
 char *tailscode_label_selection(GtkWidget *widget);
 gboolean tailscode_label_has_selection(GtkWidget *widget);
+/// Whether a widget is a label — the band tints the label inside a segment, whatever wrapped it.
+gboolean tailscode_is_label(GtkWidget *widget);
 
 /// The stream cascade, painted into a label from markup that is parsed once.
 ///

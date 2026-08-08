@@ -1118,6 +1118,21 @@ enum SelfTest {
             openDiff: { _, _, _ in })
         try expect(panel.view.subviews.count == 1, "the panel builds its own view")
 
+        let parts = state.badgeParts
+        try expect(parts.first?.tone == .neutral, "the branch is drawn as a state")
+        try expect(Set(parts.map(\.tone)).count >= 4, "the chip's marks share one colour")
+        try expect(
+            parts.map(\.text).joined(separator: " ") == state.badge,
+            "the runs and the plain chip say different things")
+        var badgeInks: Set<String> = []
+        let tinted = GitPanelViewController.tinted(state.summaryParts, font: MacTheme.Font.caption())
+        tinted.enumerateAttribute(
+            .foregroundColor, in: NSRange(location: 0, length: tinted.length)
+        ) { value, _, _ in
+            if let colour = value as? NSColor { badgeInks.insert(CascadeTint.hex(colour)) }
+        }
+        try expect(badgeInks.count >= 3, "the working-tree line is written in one colour")
+
         let rendered = GitDiffWindowController.render(
             """
             diff --git a/a.swift b/a.swift

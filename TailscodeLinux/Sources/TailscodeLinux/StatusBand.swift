@@ -1,4 +1,5 @@
 import CAdw
+import CGtkShim
 import TailscodeCore
 
 /// The band itself: a strip of clickable facts above the prompt box. Everything on it is either
@@ -99,7 +100,7 @@ enum StatusBand {
     private static func update(
         _ widget: UnsafeMutablePointer<GtkWidget>, segment: StatusFacts.Segment
     ) {
-        write(segment.text, to: widget, kind: segment.kind)
+        write(segment.text, to: widget, kind: segment.kind, parts: segment.parts)
         for css in StatusFacts.Segment.allCSS where css != segment.css {
             gtk_widget_remove_css_class(widget, css)
         }
@@ -122,13 +123,40 @@ enum StatusBand {
 
     private static func write(
         _ text: String, to widget: UnsafeMutablePointer<GtkWidget>,
-        kind: StatusFacts.Segment.Kind
+        kind: StatusFacts.Segment.Kind, parts: [GitBadgePart]? = nil
     ) {
         switch kind {
         case .plain: gtk_label_set_text(op(widget), text)
         case .act: gtk_button_set_label(ptr(widget), text)
         case .menu: gtk_menu_button_set_label(op(widget), text)
         }
+        guard let parts, !parts.isEmpty else { return }
+        tint(widget, parts: parts)
+    }
+
+    /// A segment that arrives as runs is repainted run by run, each in the colour of what it means.
+    /// The plain text is written first and then replaced with markup on the same label, so a widget
+    /// that has no label to reach — a menu button's nested box — simply keeps the words.
+    private static func tint(
+        _ widget: UnsafeMutablePointer<GtkWidget>, parts: [GitBadgePart]
+    ) {
+        let markup = parts.map {
+            "<span foreground='\($0.tone.hex)'>\(PangoMarkdown.escape($0.text))</span>"
+        }.joined(separator: " ")
+        guard let label = labelInside(widget) else { return }
+        gtk_label_set_markup(op(label), markup)
+    }
+
+    private static func labelInside(_ widget: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>?
+    {
+        if tailscode_is_label(widget) != 0 { return widget }
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            if let found = labelInside(current) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
     }
 
     /// A menu segment's rows are read at open time, so a list opened mid-turn is the list as it
