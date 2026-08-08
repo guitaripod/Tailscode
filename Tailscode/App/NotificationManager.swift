@@ -28,6 +28,16 @@ enum NotificationManager {
             case .usage: return .usage
             }
         }
+
+        /// Where a tap lands when the notice is not about one conversation. A quota warning names
+        /// no session, and a notification whose tap does nothing at all is worse than none — the
+        /// thing it is about has a screen, so it opens it.
+        var route: String? {
+            switch self {
+            case .usage: return "usage"
+            case .turnComplete, .approval, .question: return nil
+            }
+        }
     }
 
     /// Tells the system what each kind of notification is and which buttons it carries, from the
@@ -131,6 +141,7 @@ enum NotificationManager {
             content.threadIdentifier = sessionID
         }
         if let profileID { userInfo["profileID"] = profileID }
+        if let route = kind.route { userInfo["route"] = route }
         if let permission, let encoded = try? JSONEncoder().encode(permission) {
             userInfo["permission"] = String(decoding: encoded, as: UTF8.self)
         }
@@ -238,14 +249,19 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
             await Self.decide(
                 payload: payload, profileID: profileID, identifier: identifier, approve: approve)
         default:
-            guard let sessionID, let url = URL(string: "tailscode://session/\(sessionID)")
-            else { return }
-            await MainActor.run {
-                let scene = UIApplication.shared.connectedScenes
-                    .compactMap { $0.delegate as? SceneDelegate }.first
-                scene?.routeDeepLink(url)
-            }
+            let route = content.userInfo["route"] as? String
+            guard let url = Self.destination(route: route, sessionID: sessionID) else { return }
+            await MainActor.run { PendingRoute.deliver(url) }
         }
+    }
+
+    /// A notice about one conversation opens it; one about the account opens the screen it is
+    /// about. Anything else lands on whatever the app was showing, which is what a tap with
+    /// nothing to say means.
+    private static func destination(route: String?, sessionID: String?) -> URL? {
+        if let route { return URL(string: "tailscode://\(route)") }
+        guard let sessionID else { return nil }
+        return URL(string: "tailscode://session/\(sessionID)")
     }
 
     /// The lock-screen answer: rebuild the backend the request came from and respond by name.
