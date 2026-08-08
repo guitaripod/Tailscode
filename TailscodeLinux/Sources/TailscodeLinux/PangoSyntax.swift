@@ -35,8 +35,13 @@ enum PangoSyntax {
         }
         cacheLock.unlock()
 
-        let tokens = SyntaxHighlighter.tokens(source, language: language)
-        let rendered = tokens.isEmpty ? PangoMarkdown.escape(source) : markup(source, tokens, palette)
+        let rendered: String
+        if SyntaxHighlighter.isDiff(language) {
+            rendered = diffMarkup(source, palette)
+        } else {
+            let tokens = SyntaxHighlighter.tokens(source, language: language)
+            rendered = tokens.isEmpty ? PangoMarkdown.escape(source) : markup(source, tokens, palette)
+        }
 
         cacheLock.lock()
         if cache.count > cacheLimit || cacheBytes > cacheByteLimit {
@@ -48,6 +53,97 @@ enum PangoSyntax {
         }
         cacheLock.unlock()
         return rendered
+    }
+
+    /// A patch as markup: each changed line wrapped in a span carrying its wash — accent for
+    /// added, danger for removed, the same colours the diff's own +N/−N labels wear — with the
+    /// marker glyph in the diff's full ink and the body in the file's language, every colour
+    /// corrected against the wash it actually sits on rather than the plain code background.
+    private static func diffMarkup(_ source: String, _ palette: Palette) -> String {
+        let diff = SyntaxHighlighter.diff(source)
+        let units = Array(source.utf16)
+        let plainTable = SyntaxPalette.table(for: palette)
+        var washes: [DiffLineKind: (background: String, table: [SyntaxRole: String])] = [:]
+        for kind in [DiffLineKind.added, .removed] {
+            guard let ground = SyntaxPalette.diffLineBackground(kind, in: palette) else { continue }
+            washes[kind] = (ground, SyntaxPalette.table(for: palette, on: ground))
+        }
+
+        func slice(_ from: Int, _ to: Int) -> String {
+            guard from < to, to <= units.count else { return "" }
+            return String(decoding: units[from..<to], as: UTF16.self)
+        }
+
+        var result = ""
+        result.reserveCapacity(source.count + diff.tokens.count * 32)
+        var tokenIndex = 0
+        var cursor = 0
+        for line in diff.lines {
+            result += PangoMarkdown.escape(slice(cursor, line.offset))
+            let wash = washes[line.kind]
+            let table = wash?.table ?? plainTable
+            let lineEnd = line.offset + line.length
+            var body = ""
+            var lineCursor = line.offset
+            while tokenIndex < diff.tokens.count, diff.tokens[tokenIndex].offset < lineEnd {
+                let token = diff.tokens[tokenIndex]
+                tokenIndex += 1
+                guard token.offset >= lineCursor, token.offset + token.length <= units.count
+                else { continue }
+                body += PangoMarkdown.escape(slice(lineCursor, token.offset))
+                let colour = table[token.role] ?? palette.text
+                let run = PangoMarkdown.escape(slice(token.offset, token.offset + token.length))
+                body += "<span foreground=\"\(colour)\">\(run)</span>"
+                lineCursor = token.offset + token.length
+            }
+            body += PangoMarkdown.escape(slice(lineCursor, lineEnd))
+            if let wash {
+                result += "<span background=\"\(wash.background)\">\(body)</span>"
+            } else {
+                result += body
+            }
+            cursor = lineEnd
+        }
+        result += PangoMarkdown.escape(slice(cursor, units.count))
+        return result
+    }
+
+    /// One line of an Edit tool's diff: the marker in the diff's full ink, the body in the file's
+    /// language, the whole line over its wash — the same treatment a fenced patch gets, because a
+    /// tool's edit and a quoted diff are the same fact arriving by different roads.
+    static func diffLine(
+        prefix: String, body: String, kind: DiffLineKind, language: String?, palette: Palette
+    ) -> String {
+        guard let ground = SyntaxPalette.diffLineBackground(kind, in: palette) else {
+            return PangoMarkdown.escape("\(prefix) \(body)")
+        }
+        let table = SyntaxPalette.table(for: palette, on: ground)
+        let marker = table[kind == .added ? .added : .removed] ?? palette.text
+        let base = table[.plain] ?? palette.text
+        var inner = "<span foreground=\"\(marker)\">\(PangoMarkdown.escape(prefix + " "))</span>"
+        let tokens = language.map { SyntaxHighlighter.tokens(body, language: $0) } ?? []
+        if tokens.isEmpty {
+            inner += "<span foreground=\"\(marker)\">\(PangoMarkdown.escape(body))</span>"
+        } else {
+            let units = Array(body.utf16)
+            func slice(_ from: Int, _ to: Int) -> String {
+                guard from < to, to <= units.count else { return "" }
+                return String(decoding: units[from..<to], as: UTF16.self)
+            }
+            var runs = ""
+            var cursor = 0
+            for token in tokens {
+                guard token.offset >= cursor, token.offset + token.length <= units.count
+                else { continue }
+                runs += PangoMarkdown.escape(slice(cursor, token.offset))
+                let run = PangoMarkdown.escape(slice(token.offset, token.offset + token.length))
+                runs += "<span foreground=\"\(table[token.role] ?? base)\">\(run)</span>"
+                cursor = token.offset + token.length
+            }
+            runs += PangoMarkdown.escape(slice(cursor, units.count))
+            inner += "<span foreground=\"\(base)\">\(runs)</span>"
+        }
+        return "<span background=\"\(ground)\">\(inner)</span>"
     }
 
     private static func markup(_ source: String, _ tokens: [SyntaxToken], _ palette: Palette)

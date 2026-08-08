@@ -221,7 +221,7 @@ enum ToolRowView {
         }
 
         if let diff = ToolDiff.lines(for: call) {
-            column.addArrangedSubview(diffBlock(diff))
+            column.addArrangedSubview(diffBlock(diff, language: ToolDiff.language(for: call)))
             hasContent = true
         }
 
@@ -257,9 +257,10 @@ enum ToolRowView {
         return summary.displayOutput.map { String($0.prefix(4000)) }
     }
 
-    /// An Edit rendered the way a reviewer reads it: what left in red, what arrived in green, cut
-    /// at eighty lines with the remainder counted rather than drawn.
-    static func diffBlock(_ lines: [(prefix: String, text: String)]) -> NSView {
+    /// An Edit rendered the way a reviewer reads it: washed added/removed lines carrying the
+    /// file's own syntax — the same treatment a fenced patch gets — cut at eighty lines with the
+    /// remainder counted rather than drawn.
+    static func diffBlock(_ lines: [(prefix: String, text: String)], language: String?) -> NSView {
         let block = NSStackView()
         block.orientation = .vertical
         block.alignment = .width
@@ -270,12 +271,13 @@ enum ToolRowView {
         block.layer?.backgroundColor = MacTheme.Color.codeBackground.cgColor
         block.layer?.cornerRadius = 8
         for line in lines.prefix(80) {
-            let added = line.prefix == "+"
-            let color = added ? MacTheme.Color.success : MacTheme.Color.danger
-            let label = RowKit.wrapping(
-                "\(line.prefix) \(line.text)", font: MacTheme.Font.mono(11), color: color)
-            label.drawsBackground = true
-            label.backgroundColor = color.withAlphaComponent(0.12)
+            let text = RowKit.diffAttributed(
+                "\(line.prefix) \(line.text)", language: language, font: MacTheme.Font.mono(11))
+            let label = NSTextField(wrappingLabelWithString: "")
+            label.attributedStringValue = text
+            label.isSelectable = true
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             block.addArrangedSubview(label)
         }
         if lines.count > 80 {

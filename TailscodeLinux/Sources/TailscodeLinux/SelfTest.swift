@@ -1078,9 +1078,35 @@ public enum SelfTest {
         try expect(
             comment.contains(SyntaxPalette.hex(.comment, in: palette)), "a comment is quiet")
 
+        guard let addedGround = SyntaxPalette.diffLineBackground(.added, in: palette),
+            let removedGround = SyntaxPalette.diffLineBackground(.removed, in: palette)
+        else { throw SelfTestFailure("syntax case failed: a diff line has no ground") }
         let diff = render("-old\n+new", "diff")
-        try expect(diff.contains(SyntaxPalette.hex(.added, in: palette)), "an addition is affirmed")
-        try expect(diff.contains(SyntaxPalette.hex(.removed, in: palette)), "a removal is danger")
+        try expect(diff.contains("background=\"\(addedGround)\""), "an addition wears its wash")
+        try expect(diff.contains("background=\"\(removedGround)\""), "a removal wears its wash")
+        try expect(
+            diff.contains(SyntaxPalette.hex(.added, in: palette, on: addedGround)),
+            "the marker is affirmed on its wash")
+
+        let headed = render("+++ b/App.swift\n+let a = 1", "diff")
+        try expect(
+            headed.contains(SyntaxPalette.hex(.keyword, in: palette, on: addedGround)),
+            "a headed diff lexes its body by the file's language")
+        try expect(
+            SyntaxHighlighter.displayName(for: "diff", source: "+++ b/App.swift\n+let a = 1")
+                == "diff · swift",
+            "a headed diff names both facts")
+
+        let toolLine = PangoSyntax.diffLine(
+            prefix: "+", body: "let a = 1", kind: .added, language: "swift", palette: palette)
+        try expect(toolLine.contains("background=\"\(addedGround)\""), "a tool diff line wears its wash")
+        try expect(
+            toolLine.contains(SyntaxPalette.hex(.keyword, in: palette, on: addedGround)),
+            "a tool diff line is lexed")
+        try expect(parsesAsMarkup(headed), "a diff's markup is legal Pango")
+        try expect(parsesAsMarkup(toolLine), "a tool diff line is legal Pango")
+        let hostile = render("+++ b/x.cpp\n+std::vector<int> v && w\n-a < b", "diff")
+        try expect(parsesAsMarkup(hostile), "a hostile diff still escapes on its way in")
 
         try expect(SyntaxHighlighter.displayName(for: "rs") == "rust", "a fence tag is resolved")
         return checks

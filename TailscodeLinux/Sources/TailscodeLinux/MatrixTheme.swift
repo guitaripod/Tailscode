@@ -240,6 +240,7 @@ enum MatrixTheme {
         }
         .diff-add { color: \(accent); font-family: monospace; font-size: \(m(0.85)); }
         .diff-remove { color: \(danger); font-family: monospace; font-size: \(m(0.85)); }
+        .diff-line { font-family: monospace; font-size: \(m(0.85)); }
 
         .pill {
             font-family: monospace;

@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// Builds the view for one agent step — a thought or a tool call — from its
@@ -433,30 +434,16 @@ final class ToolStepRenderer {
         return stack.arrangedSubviews.isEmpty ? nil : stack
     }
 
-    /// Renders a red/green unified diff for Edit/Write tool calls from their structured input.
+    /// Renders an Edit/Write call as the diff a reviewer reads: washed added/removed lines with
+    /// the file's own syntax on them — the same treatment a fenced patch gets in the transcript,
+    /// because the tool knows its `file_path` and the path names the language.
     private static func editDiff(for call: ToolCall) -> NSAttributedString? {
         let editors = ["Edit", "Write", "MultiEdit", "str_replace", "str_replace_editor", "create"]
         guard editors.contains(where: { call.name.localizedCaseInsensitiveContains($0) }),
-            let input = call.input
+            let lines = ToolDiff.lines(for: call)
         else { return nil }
-        let mono = Theme.Font.mono(11)
-        let result = NSMutableAttributedString()
-        func append(_ text: String, prefix: String, color: UIColor) {
-            for line in text.components(separatedBy: "\n") {
-                result.append(
-                    NSAttributedString(
-                        string: "\(prefix)\(line)\n",
-                        attributes: [
-                            .font: mono, .foregroundColor: color,
-                            .backgroundColor: color.withAlphaComponent(0.12),
-                        ]))
-            }
-        }
-        if let old = input["old_string"]?.stringValue { append(old, prefix: "- ", color: Theme.Color.danger) }
-        if let new = input["new_string"]?.stringValue { append(new, prefix: "+ ", color: Theme.Color.success) }
-        if let content = input["content"]?.stringValue, input["new_string"] == nil {
-            append(content, prefix: "+ ", color: Theme.Color.success)
-        }
-        return result.length > 0 ? result : nil
+        let unified = lines.map { "\($0.prefix) \($0.text)" }.joined(separator: "\n")
+        return CodeBlockCell.diffAttributed(
+            unified, language: ToolDiff.language(for: call), font: Theme.Font.mono(11))
     }
 }

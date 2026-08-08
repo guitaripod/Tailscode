@@ -399,6 +399,26 @@ enum SelfTest {
         let removed = colour(in: diff, over: "-let old = 1")
         let added = colour(in: diff, over: "+let new = 2")
         try expect(removed != nil && added != nil && removed != added, "a diff reads by its column")
+        func wash(in rendered: NSAttributedString, over needle: String) -> NSColor? {
+            let range = (rendered.string as NSString).range(of: needle)
+            guard range.location != NSNotFound else { return nil }
+            return rendered.attributes(at: range.location, effectiveRange: nil)[.backgroundColor]
+                as? NSColor
+        }
+        try expect(
+            wash(in: diff, over: "+let new = 2") != nil, "an added line sits on its wash")
+
+        let headed = RowKit.code(
+            "+++ b/App.swift\n+let a = \"s\"", language: "diff").attributedStringValue
+        let headedKeyword = colour(in: headed, over: "let")
+        let headedString = colour(in: headed, over: "\"s\"")
+        try expect(
+            headedKeyword != nil && headedString != nil && headedKeyword != headedString,
+            "a headed diff lexes its body by the file's language")
+        try expect(
+            SyntaxHighlighter.displayName(for: "diff", source: "+++ b/App.swift\n+let a = 1")
+                == "diff · swift",
+            "a headed diff names both facts")
 
         try expect(SyntaxHighlighter.displayName(for: "py") == "python", "a fence tag is resolved")
         return checks

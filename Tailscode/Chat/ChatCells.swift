@@ -688,7 +688,7 @@ final class CodeBlockCell: UICollectionViewCell {
         self.source = block.source
         self.onToggle = onToggle
         codeScroll.setContentOffset(.zero, animated: false)
-        langLabel.text = SyntaxHighlighter.displayName(for: block.language)
+        langLabel.text = SyntaxHighlighter.displayName(for: block.language, source: block.source)
         var copyConfig = copyButton.configuration ?? .plain()
         copyConfig.image = UIImage(
             systemName: "doc.on.doc", withConfiguration:
@@ -753,17 +753,54 @@ final class CodeBlockCell: UICollectionViewCell {
     ) -> NSAttributedString {
         let key = "\(font.pointSize)#\(language ?? "")#\(source)" as NSString
         if let cached = highlightCache.object(forKey: key) { return cached }
+        let result: NSAttributedString
+        if SyntaxHighlighter.isDiff(language) {
+            result = diffAttributed(source, font: font)
+        } else {
+            let plain = NSMutableAttributedString(string: source, attributes: [
+                .font: font, .foregroundColor: Theme.Color.label,
+            ])
+            let length = plain.length
+            for token in SyntaxHighlighter.tokens(source, language: language) {
+                let range = NSRange(location: token.offset, length: token.length)
+                guard NSMaxRange(range) <= length else { continue }
+                plain.addAttribute(
+                    .foregroundColor, value: Theme.Color.syntax(token.role), range: range)
+            }
+            result = plain
+        }
+        highlightCache.setObject(result, forKey: key)
+        return result
+    }
+
+    /// A patch painted twice over. The wash under each changed line carries the diff's meaning —
+    /// the same accent and danger its +N/−N labels wear — which frees the foreground for the
+    /// file's own language: the marker glyph keeps the diff's full ink, and every token on a
+    /// washed line is coloured against the wash it actually sits on. A patch that names no file
+    /// keeps the old whole-line red and green, because guessing a language would colour code as
+    /// something it is not.
+    static func diffAttributed(
+        _ source: String, language: String? = nil, font: UIFont
+    ) -> NSAttributedString {
+        let diff = SyntaxHighlighter.diff(source, language: language)
         let result = NSMutableAttributedString(string: source, attributes: [
             .font: font, .foregroundColor: Theme.Color.label,
         ])
         let length = result.length
-        for token in SyntaxHighlighter.tokens(source, language: language) {
-            let range = NSRange(location: token.offset, length: token.length)
+        for line in diff.lines where line.kind == .added || line.kind == .removed {
+            let range = NSRange(location: line.offset, length: line.length)
             guard NSMaxRange(range) <= length else { continue }
             result.addAttribute(
-                .foregroundColor, value: Theme.Color.syntax(token.role), range: range)
+                .backgroundColor, value: Theme.Color.diffBackground(line.kind), range: range)
         }
-        highlightCache.setObject(result, forKey: key)
+        for token in diff.tokens {
+            let range = NSRange(location: token.offset, length: token.length)
+            guard NSMaxRange(range) <= length else { continue }
+            let kind = diff.kind(at: token.offset)
+            let color = kind == .added || kind == .removed
+                ? Theme.Color.syntax(token.role, on: kind) : Theme.Color.syntax(token.role)
+            result.addAttribute(.foregroundColor, value: color, range: range)
+        }
         return result
     }
 

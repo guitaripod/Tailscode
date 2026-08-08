@@ -481,7 +481,8 @@ struct TranscriptRow: Hashable {
 
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let tag = Gtk.label(
-            SyntaxHighlighter.displayName(for: language), css: "code-header", selectable: false)
+            SyntaxHighlighter.displayName(for: language, source: body), css: "code-header",
+            selectable: false)
         gtk_widget_set_hexpand(tag, 1)
         gtk_box_append(ptr(header), tag)
         let bytes = body

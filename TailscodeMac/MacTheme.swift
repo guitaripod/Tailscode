@@ -58,6 +58,26 @@ enum MacTheme {
             ThemePalette.syntax(role, system: systemSyntax(role))
         }
 
+        /// The same role over one of a diff's washed lines, corrected against that wash rather
+        /// than the plain code background.
+        static func syntax(_ role: SyntaxRole, on kind: DiffLineKind) -> NSColor {
+            ThemePalette.syntax(role, on: kind, system: systemSyntax(role))
+        }
+
+        /// The field an added or removed diff line sits on — the same accent and danger its +N/−N
+        /// labels wear, washed nearly into the code background.
+        static func diffBackground(_ kind: DiffLineKind) -> NSColor {
+            switch kind {
+            case .added:
+                return ThemePalette.diffBackground(
+                    .added, system: NSColor.systemGreen.withAlphaComponent(0.16))
+            case .removed:
+                return ThemePalette.diffBackground(
+                    .removed, system: NSColor.systemRed.withAlphaComponent(0.16))
+            case .context, .hunk, .meta, .note: return .clear
+            }
+        }
+
         private static func systemSyntax(_ role: SyntaxRole) -> NSColor {
             switch role {
             case .plain: return .labelColor

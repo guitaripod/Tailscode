@@ -92,22 +92,39 @@ enum ThemePalette {
     /// whole table is derived once per palette and kept — the same trade the palette cache makes.
     nonisolated(unsafe) private static var syntaxTables: [String: [SyntaxRole: String]] = [:]
 
-    nonisolated static func syntax(_ role: SyntaxRole, system: UIColor) -> UIColor {
+    nonisolated static func syntax(
+        _ role: SyntaxRole, on kind: DiffLineKind? = nil, system: UIColor
+    ) -> UIColor {
         UIColor { traits in
             guard let palette = traits.palette else { return system.resolvedColor(with: traits) }
-            let key = "\(traits.themeID)/\(palette.isDark)"
+            let ground =
+                kind.flatMap { SyntaxPalette.diffLineBackground($0, in: palette) } ?? palette.codeBg
+            let key = "\(traits.themeID)/\(palette.isDark)/\(kind?.rawValue ?? "code")"
             lock.lock()
             let table: [SyntaxRole: String]
             if let hit = syntaxTables[key] {
                 table = hit
             } else {
-                table = SyntaxPalette.table(for: palette)
+                table = SyntaxPalette.table(for: palette, on: ground)
                 syntaxTables[key] = table
             }
             lock.unlock()
             guard let hex = table[role], let color = UIColor(hex: hex) else {
                 return system.resolvedColor(with: traits)
             }
+            return color
+        }
+    }
+
+    /// The wash under one of a diff's changed lines. A theme derives it from its own accent and
+    /// danger; "System" wears the platform's green and red as a low-alpha field, which survives
+    /// light and dark on its own.
+    nonisolated static func diffBackground(_ kind: DiffLineKind, system: UIColor) -> UIColor {
+        UIColor { traits in
+            guard let palette = traits.palette else { return system.resolvedColor(with: traits) }
+            guard let hex = SyntaxPalette.diffLineBackground(kind, in: palette),
+                let color = UIColor(hex: hex)
+            else { return .clear }
             return color
         }
     }

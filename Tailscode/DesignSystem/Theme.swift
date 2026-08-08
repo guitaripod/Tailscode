@@ -51,11 +51,40 @@ enum Theme {
         /// colours rather than to a stock syntax theme none of Apple's materials were drawn for.
         static func syntax(_ role: SyntaxRole) -> UIColor { syntaxColors[role] ?? label }
 
+        /// The same role over one of a diff's washed lines, corrected against that wash rather
+        /// than the plain code background.
+        static func syntax(_ role: SyntaxRole, on kind: DiffLineKind) -> UIColor {
+            washedSyntaxColors[kind]?[role] ?? syntax(role)
+        }
+
+        /// The field an added or removed diff line sits on — the same accent and danger its +N/−N
+        /// labels wear, washed nearly into the code background.
+        static func diffBackground(_ kind: DiffLineKind) -> UIColor {
+            diffBackgrounds[kind] ?? .clear
+        }
+
         private static let syntaxColors: [SyntaxRole: UIColor] = SyntaxRole.allCases.reduce(
             into: [:]
         ) { table, role in
             table[role] = ThemePalette.syntax(role, system: systemSyntax(role))
         }
+
+        private static let washedSyntaxColors: [DiffLineKind: [SyntaxRole: UIColor]] = {
+            var tables: [DiffLineKind: [SyntaxRole: UIColor]] = [:]
+            for kind in [DiffLineKind.added, .removed] {
+                tables[kind] = SyntaxRole.allCases.reduce(into: [:]) { table, role in
+                    table[role] = ThemePalette.syntax(role, on: kind, system: systemSyntax(role))
+                }
+            }
+            return tables
+        }()
+
+        private static let diffBackgrounds: [DiffLineKind: UIColor] = [
+            .added: ThemePalette.diffBackground(
+                .added, system: UIColor.systemGreen.withAlphaComponent(0.16)),
+            .removed: ThemePalette.diffBackground(
+                .removed, system: UIColor.systemRed.withAlphaComponent(0.16)),
+        ]
 
         private static func systemSyntax(_ role: SyntaxRole) -> UIColor {
             switch role {

@@ -21,4 +21,13 @@ public enum ToolDiff {
         }
         return lines.isEmpty ? nil : lines
     }
+
+    /// The language of the file the call edits, read from its own path, so the diff's lines can
+    /// carry the file's syntax colours and not just their red and green.
+    public static func language(for call: ToolCall) -> String? {
+        guard let input = call.input?.objectValue else { return nil }
+        let path = input["file_path"]?.stringValue ?? input["filePath"]?.stringValue
+            ?? input["path"]?.stringValue
+        return path.flatMap(SyntaxHighlighter.language(forPath:))
+    }
 }

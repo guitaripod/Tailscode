@@ -184,6 +184,109 @@ import Testing
         #expect(text(source, "diff", role: .attribute) == ["--- a/File.swift", "+++ b/File.swift"])
     }
 
+    /// The richer read: a patch that names its own file is lexed twice — line grounds from the
+    /// first column, ink from the file's language — and the marker glyph alone keeps the diff
+    /// role, because the ground now carries the line's identity.
+    @Test func diffWithAHeaderLexesItsBodyByTheFilesLanguage() {
+        let source = """
+            --- a/Sources/App.swift
+            +++ b/Sources/App.swift
+            @@ -1,2 +1,2 @@
+             let kept = true
+            -let old = 1
+            +let new = 2
+            """
+        let diff = SyntaxHighlighter.diff(source)
+        #expect(diff.language == "swift")
+        #expect(diff.lines.map(\.kind) == [.meta, .meta, .hunk, .context, .removed, .added])
+
+        let utf16 = Array(source.utf16)
+        func slices(_ role: SyntaxRole) -> [String] {
+            diff.tokens.filter { $0.role == role }.map {
+                String(decoding: utf16[$0.offset..<($0.offset + $0.length)], as: UTF16.self)
+            }
+        }
+        #expect(slices(.added) == ["+"])
+        #expect(slices(.removed) == ["-"])
+        #expect(slices(.keyword) == ["let", "true", "let", "let"])
+        #expect(slices(.number) == ["1", "2"])
+        for token in diff.tokens where token.role == .keyword {
+            #expect([DiffLineKind.context, .removed, .added].contains(diff.kind(at: token.offset)))
+        }
+    }
+
+    /// A bare quoted hunk names no file, so nothing is guessed and a changed line stays one run
+    /// of its own colour — the look the transcript has always had.
+    @Test func diffWithoutAHeaderKeepsWholeLineRuns() {
+        let source = "-let old = 1\n+let new = 2"
+        let diff = SyntaxHighlighter.diff(source)
+        #expect(diff.language == nil)
+        let utf16 = Array(source.utf16)
+        let added = diff.tokens.filter { $0.role == .added }.map {
+            String(decoding: utf16[$0.offset..<($0.offset + $0.length)], as: UTF16.self)
+        }
+        #expect(added == ["+", "let new = 2"])
+        #expect(diff.tokens.allSatisfy { $0.role == .added || $0.role == .removed })
+    }
+
+    @Test func diffHonoursACallersLanguageOverInference() {
+        let diff = SyntaxHighlighter.diff("+SELECT 1", language: "sql")
+        #expect(diff.language == "sql")
+        #expect(diff.tokens.contains { $0.role == .keyword })
+        #expect(SyntaxHighlighter.diff("+x", language: "patch").language == nil)
+    }
+
+    @Test func aPathNamesItsLanguage() {
+        #expect(SyntaxHighlighter.language(forPath: "Sources/App/Main.swift") == "swift")
+        #expect(SyntaxHighlighter.language(forPath: "src/lib.rs") == "rs")
+        #expect(SyntaxHighlighter.language(forPath: "Makefile") == "make")
+        #expect(SyntaxHighlighter.language(forPath: "deploy/Dockerfile") == "dockerfile")
+        #expect(SyntaxHighlighter.language(forPath: "config.yml") == "yml")
+        #expect(SyntaxHighlighter.language(forPath: "notes.unknownext") == nil)
+        #expect(SyntaxHighlighter.language(forPath: "README") == nil)
+        #expect(SyntaxHighlighter.diffLanguage(in: "+++ b/tool.py\n+import os") == "py")
+        #expect(SyntaxHighlighter.diffLanguage(in: "+++ /dev/null\n-gone") == nil)
+    }
+
+    @Test func aDiffFenceIsRecognisedAndTitled() {
+        #expect(SyntaxHighlighter.isDiff("diff"))
+        #expect(SyntaxHighlighter.isDiff("patch"))
+        #expect(!SyntaxHighlighter.isDiff("swift"))
+        #expect(!SyntaxHighlighter.isDiff(nil))
+        let headed = "+++ b/App/Main.swift\n+let a = 1"
+        #expect(SyntaxHighlighter.displayName(for: "diff", source: headed) == "diff · swift")
+        #expect(SyntaxHighlighter.displayName(for: "diff", source: "+bare") == "diff")
+        #expect(SyntaxHighlighter.displayName(for: "swift", source: headed) == "swift")
+    }
+
+    /// The grounds are the diff's identity now, so they must exist, differ from the plain code
+    /// background, and keep every role's ink readable — on every face of every theme.
+    @Test func diffGroundsExistAndKeepInkReadableOnEveryPalette() {
+        for theme in AppTheme.all {
+            for palette in [theme.dark.corrected(), theme.light.corrected()] {
+                for kind in [DiffLineKind.added, .removed] {
+                    guard let ground = SyntaxPalette.diffLineBackground(kind, in: palette) else {
+                        Issue.record("\(theme.id)/\(palette.name) has no \(kind) ground")
+                        continue
+                    }
+                    #expect(ground != palette.codeBg)
+                    for role in SyntaxRole.allCases {
+                        let hex = SyntaxPalette.hex(role, in: palette, on: ground)
+                        guard let ratio = Contrast.ratio(hex, on: ground) else {
+                            Issue.record("\(theme.id)/\(palette.name) \(role) is not a colour")
+                            continue
+                        }
+                        let floor = role == .comment ? Contrast.secondary : Contrast.readable
+                        #expect(
+                            ratio >= floor - 0.05,
+                            "\(theme.id)/\(palette.name) \(role) reads at \(ratio) on \(kind)")
+                    }
+                }
+                #expect(SyntaxPalette.diffLineBackground(.context, in: palette) == nil)
+            }
+        }
+    }
+
     @Test func jsonSeparatesKeysFromStringValues() {
         let source = """
             {
