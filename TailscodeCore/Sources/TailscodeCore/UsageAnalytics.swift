@@ -86,6 +86,11 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// Servers that answered but are too old for the route, named so their absence from the
     /// numbers is a stated fact rather than a silent hole.
     public let missingServers: [String]
+    /// The same fold, scored as a game: the trophy catalog with its progress, and the scores
+    /// the leaderboards take. Read from this merge so the case can never disagree with the
+    /// charts it sits beside.
+    public let trophies: [Trophy]
+    public let scores: [TrophyScore]
 
     public static let defaultWindowDays = 30
     private static let projectLimit = 8
@@ -290,6 +295,26 @@ public struct UsageAnalytics: Sendable, Equatable {
             records: records, streak: streak, subagents: subagents, compactions: compactions,
             totalCostUSD: totals.costUSD, prefix: prefix, calendar: calendar)
 
+        var facts = TrophyFacts()
+        facts.turns = totals.turns
+        facts.tokens = tokens.total
+        facts.toolCalls = totals.toolCalls
+        facts.sessions = totals.sessions
+        facts.streakDays = streak
+        facts.subagentRuns = subagents.runs
+        facts.compactions = compactions.count
+        facts.cacheSavedUSD = cacheSaved
+        facts.machines = reports.count
+        facts.projects = projectRows.count
+        facts.models = modelRows.count
+        facts.nightTurns = hourTurns[0...4].reduce(0, +)
+        facts.hoursCovered = hourTurns.filter { $0 > 0 }.count
+        facts.longestTurnSeconds = records.longestTurn?.seconds ?? 0
+        facts.peakDayCostUSD = peakDay
+        facts.weekendTurns = Self.weekendTurns(dayTurns: dayTurns, calendar: calendar)
+        self.trophies = TrophyRoom.trophies(facts: facts)
+        self.scores = TrophyRoom.scores(facts: facts)
+
         if reports.count > 1 {
             let machinePeak = reports.map(\.report.totals.costUSD).max() ?? 0
             self.machines = reports.sorted { $0.report.totals.costUSD > $1.report.totals.costUSD }
@@ -417,6 +442,15 @@ public struct UsageAnalytics: Sendable, Equatable {
             return (Localized.text("Up %d%% on the week before", percent), .up)
         }
         return (Localized.text("Down %d%% on the week before", percent), .down)
+    }
+
+    private static func weekendTurns(dayTurns: [String: Int], calendar: Calendar) -> Int {
+        let formatter = dayFormatter(calendar)
+        return dayTurns.reduce(0) { sum, entry in
+            guard let date = formatter.date(from: entry.key), calendar.isDateInWeekend(date)
+            else { return sum }
+            return sum + entry.value
+        }
     }
 
     private static func streak(days: Set<String>, calendar: Calendar) -> Int {

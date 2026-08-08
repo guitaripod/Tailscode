@@ -97,6 +97,7 @@ enum ParityManifest {
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .homeQuickActions: return .notApplicable("there is no springboard on a desktop to long-press; the app launches into its window, where every destination the phone's quick actions reach is already one click away")
         case .presenceOrb: return .implemented("OrbPainter")
+        case .gameCenter: return .notApplicable("Game Center is Apple's account system, and this client cannot sign into it — there is no dashboard to open and nowhere to report a percentage; the trophies' arithmetic lives in Core, but a case with no account behind it would be a scoreboard nobody else can see, and the month's numbers are already usageAnalytics's parity")
         }
     }
 }

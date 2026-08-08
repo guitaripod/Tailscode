@@ -12,6 +12,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             for: .documentDirectory, in: .userDomainMask
         ).first
         ProStore.shared.start()
+        GameCenterCoordinator.shared.start()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
         endOrphanedActivitiesIfForeground(application)

@@ -38,6 +38,9 @@ final class AnalyticsViewController: UIViewController {
         title = String(localized: "The month in numbers")
         setupScroll()
         setupStateViews()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(gameCenterStandingChanged),
+            name: GameCenterCoordinator.standingChanged, object: nil)
         if analytics != nil {
             render()
         } else {
@@ -122,6 +125,7 @@ final class AnalyticsViewController: UIViewController {
             let haul = await AnalyticsFetcher.fetch()
             guard !Task.isCancelled else { return }
             analytics = UsageAnalytics(servers: haul.servers, missingServers: haul.missing)
+            GameCenterCoordinator.shared.note(analytics)
             render()
             refresher.endRefreshing()
             loadTask = nil
@@ -159,6 +163,7 @@ final class AnalyticsViewController: UIViewController {
         if !analytics.tools.isEmpty { column.addArrangedSubview(tools(analytics)) }
         if !analytics.tiers.isEmpty { column.addArrangedSubview(tiers(analytics)) }
         if !analytics.records.isEmpty { column.addArrangedSubview(records(analytics)) }
+        if !analytics.trophies.isEmpty { column.addArrangedSubview(trophyCase(analytics)) }
         if !analytics.machines.isEmpty { column.addArrangedSubview(machines(analytics)) }
         if !analytics.insights.isEmpty { column.addArrangedSubview(insights(analytics)) }
 
@@ -437,6 +442,84 @@ final class AnalyticsViewController: UIViewController {
         tile.accessibilityLabel = [record.title, record.value, record.detail]
             .compactMap { $0 }.joined(separator: ", ")
         return tile
+    }
+
+    private func trophyCase(_ analytics: UsageAnalytics) -> UIView {
+        var views: [UIView] = [
+            heading(
+                String(localized: "The trophy case"),
+                trailing: TrophyRoom.headline(analytics.trophies))
+        ]
+        let earned = analytics.trophies.filter(\.earned)
+        if !earned.isEmpty {
+            views.append(earnedStrip(earned))
+        }
+        for (index, trophy) in TrophyRoom.nextUp(analytics.trophies).enumerated() {
+            views.append(
+                meter(
+                    label: trophy.title, value: "", detail: trophy.progressLine,
+                    fraction: trophy.percent / 100, hot: index == 0))
+        }
+        if let title = GameCenterCoordinator.shared.actionTitle {
+            views.append(dashboardButton(title))
+        }
+        if let line = GameCenterCoordinator.shared.unavailableLine {
+            views.append(label(line, style: .caption2, color: Theme.Color.tertiaryLabel))
+        }
+        return card(views)
+    }
+
+    private func earnedStrip(_ earned: [Trophy]) -> UIView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = Theme.Spacing.s
+        row.alignment = .center
+        for trophy in earned.prefix(10) {
+            let symbol = UIImageView(image: UIImage(systemName: trophy.symbolName))
+            symbol.tintColor = Theme.Color.accent
+            symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+                pointSize: 15, weight: .semibold)
+            symbol.contentMode = .scaleAspectFit
+            row.addArrangedSubview(symbol)
+        }
+        if earned.count > 10 {
+            row.addArrangedSubview(
+                label(
+                    "+\(earned.count - 10)", style: .caption1,
+                    color: Theme.Color.secondaryLabel))
+        }
+        row.addArrangedSubview(UIView())
+        row.isAccessibilityElement = true
+        row.accessibilityLabel = String(
+            localized: "Earned: \(earned.map(\.title).joined(separator: ", "))")
+        return row
+    }
+
+    private func dashboardButton(_ title: String) -> UIView {
+        var configuration = UIButton.Configuration.plain()
+        configuration.title = title
+        configuration.image = UIImage(systemName: "chevron.right")
+        configuration.imagePlacement = .trailing
+        configuration.imagePadding = Theme.Spacing.xs
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: 12, weight: .semibold)
+        configuration.contentInsets = .zero
+        configuration.baseForegroundColor = Theme.Color.accent
+        let button = UIButton(configuration: configuration)
+        button.contentHorizontalAlignment = .leading
+        button.addTarget(self, action: #selector(openGameCenter), for: .touchUpInside)
+        return button
+    }
+
+    @objc private func openGameCenter() {
+        GameCenterCoordinator.shared.openDashboard(from: self)
+    }
+
+    @objc private func gameCenterStandingChanged() {
+        if analytics != nil {
+            hasAnimatedBars = true
+            render()
+        }
     }
 
     private func insights(_ analytics: UsageAnalytics) -> UIView {

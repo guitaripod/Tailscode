@@ -99,6 +99,11 @@ enum ParityManifest {
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         case .presenceOrb: return .implemented("PresenceOrbView")
+        case .gameCenter:
+            return .partial(
+                "MacGameCenter",
+                missing:
+                    "the trophy case renders and reports through the same coordinator as iOS, but the dev build is ad-hoc signed without the com.apple.developer.game-center entitlement, so GKLocalPlayer cannot authenticate until the Mac app ships signed; the surface states the unavailability instead of hiding")
         }
     }
 }

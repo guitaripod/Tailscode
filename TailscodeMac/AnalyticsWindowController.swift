@@ -33,6 +33,9 @@ final class AnalyticsWindowController: NSWindowController {
         window.center()
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(standingChanged), name: MacGameCenter.standingChanged,
+            object: nil)
     }
 
     @available(*, unavailable)
@@ -84,8 +87,15 @@ final class AnalyticsWindowController: NSWindowController {
         Task { [weak self] in
             guard let self else { return }
             self.analytics = await self.fetch()
+            MacGameCenter.shared.note(self.analytics)
             self.loading = false
             self.render()
+        }
+    }
+
+    @objc private func standingChanged() {
+        if !loading, analytics != nil {
+            render()
         }
     }
 
@@ -132,6 +142,7 @@ final class AnalyticsWindowController: NSWindowController {
         }
         if !analytics.tiers.isEmpty { column.addArrangedSubview(tiersSection(analytics)) }
         if !analytics.records.isEmpty { column.addArrangedSubview(recordsSection(analytics)) }
+        if !analytics.trophies.isEmpty { column.addArrangedSubview(trophySection(analytics)) }
         if !analytics.machines.isEmpty {
             column.addArrangedSubview(
                 meterSection(title: Localized.text("Machines"), meters: analytics.machines))
@@ -356,6 +367,66 @@ final class AnalyticsWindowController: NSWindowController {
         stack.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
+    }
+
+    private func trophySection(_ analytics: UsageAnalytics) -> NSView {
+        var views: [NSView] = [
+            heading(
+                Localized.text("The trophy case"),
+                trailing: TrophyRoom.headline(analytics.trophies))
+        ]
+        let earned = analytics.trophies.filter(\.earned)
+        if !earned.isEmpty {
+            views.append(earnedStrip(earned))
+        }
+        for trophy in TrophyRoom.nextUp(analytics.trophies) {
+            views.append(
+                meterRow(
+                    label: trophy.title, detail: trophy.progressLine, money: nil,
+                    share: trophy.percent / 100, hot: false))
+        }
+        if let title = MacGameCenter.shared.actionTitle {
+            let open = RowKit.ActionButton(title: title) { [weak self] in
+                MacGameCenter.shared.openDashboard(from: self?.window)
+            }
+            open.bezelStyle = .rounded
+            open.controlSize = .small
+            let row = NSStackView(views: [open, RowKit.spacer()])
+            row.orientation = .horizontal
+            views.append(row)
+        }
+        if let line = MacGameCenter.shared.unavailableLine {
+            views.append(
+                RowKit.wrapping(
+                    line, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+        }
+        return card(views: views)
+    }
+
+    private func earnedStrip(_ earned: [Trophy]) -> NSView {
+        var views: [NSView] = []
+        for trophy in earned.prefix(12) {
+            let symbol = NSImageView()
+            symbol.image = NSImage(
+                systemSymbolName: trophy.symbolName, accessibilityDescription: trophy.title)
+            symbol.symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: 13, weight: .semibold)
+            symbol.contentTintColor = MacTheme.Color.accent
+            symbol.toolTip = trophy.title
+            symbol.translatesAutoresizingMaskIntoConstraints = false
+            views.append(symbol)
+        }
+        if earned.count > 12 {
+            views.append(
+                RowKit.label(
+                    "+\(earned.count - 12)", font: MacTheme.Font.caption(),
+                    color: MacTheme.Color.secondaryLabel))
+        }
+        views.append(RowKit.spacer())
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        return row
     }
 
     private func insightsSection(_ analytics: UsageAnalytics) -> NSView {

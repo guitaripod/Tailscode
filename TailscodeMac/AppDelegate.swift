@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = MainMenu(hub: controller)
         menu.install()
         self.menu = menu
+        MacGameCenter.shared.start()
         MacNotifier.shared.activate()
         MacNotifier.shared.onOpen = { [weak controller] sessionID in
             controller?.openSession(withID: sessionID)

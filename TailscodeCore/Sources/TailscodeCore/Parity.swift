@@ -102,6 +102,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case hapticFeedback
     case homeQuickActions
     case presenceOrb
+    case gameCenter
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -477,6 +478,10 @@ public enum CapabilityRegistry {
             id: .watchDirectory, area: "splits", title: "What's on, before anything is chosen",
             spec:
                 "An empty video slot is a board of what is actually on, not a text box. WatchChooser holds it toolkit-free: the channels this device follows (WatchStore, device-local, listing itself with names and sources even when no source answers), what is live among them with audience and uptime, what is popular now, and the categories to browse — each section compact by default and expanding in place behind one row that says how many it is holding. Typing turns the board into an answer for those words: what they would open leads, and what the sources found live for them follows, while VideoTarget.classify keeps a typed channel behaving exactly as it always did. Both sources are read without an account (Twitch's public GraphQL, YouTube's own web JSON, yt-dlp for a single channel's live state), and an account only ever adds to that, every fetch is the client's to schedule, and a source that cannot answer says which one failed as a row rather than leaving a silent gap. The keys are the ones a text field cannot want — arrows, enter, tab to expand, ctrl+f to follow, esc to step back — because the same box is being typed into. The pane chooser's watch row reports the same fact in one line: WatchSummary names who is live instead of naming the two sites."),
+        CapabilityDefinition(
+            id: .gameCenter, area: "status", title: "The ledger is also a game",
+            spec:
+                "The month the analytics already fold is scored against a fixed trophy catalog, and Apple's Game Center wears the result. The catalog and every word are Core's (TrophyRoom): each trophy is an identifier shared with App Store Connect, a target, a progress line and Game Center's own 0–100 percent, all read from the same UsageAnalytics merge as the charts — the in-app card and Apple's dashboard can never disagree. The analytics surface carries the trophy case: earned count, the nearest unearned marks as progress bars (the chase, not the shelf), and the road into Apple's own dashboard. Signing in is lazy and never a wall — the card renders whole from Core with no account, states plainly when Game Center is unavailable, and the sign-in sheet appears only when the person goes toward the dashboard. Reporting rides the fetches the app already makes: whenever a haul lands, changed percentages go to GKAchievement and the window's scores to the leaderboards (longest streak, and the month's turns, tokens and tool calls), deduplicated so a refresh costs nothing. Game Center is Apple's account system, so only the Apple clients can answer it; the trophies themselves stay toolkit-free in Core."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {
