@@ -64,7 +64,7 @@ enum ParityManifest {
         case .sessionSpend: return .implemented("SpendPanel")
         case .toasts: return .implemented("toastOverlay")
         case .serverManagement: return .implemented("ServerManager")
-        case .connectDiagnosis: return .implemented("diagnose")
+        case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverSignIn: return .implemented("SignInDialog")
         case .serverSelfUpdate: return .implemented("renderSoftware")
         case .newChat: return .implemented("NewChatWindow")

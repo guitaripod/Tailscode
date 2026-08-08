@@ -69,6 +69,15 @@ public actor ServerDirectory {
         backendProfiles[id] = nil
     }
 
+    /// The password a saved server was reached with, so an edit that changes only its name or its
+    /// address can hand the same one back — `save` reads a missing password as an instruction to
+    /// forget the stored one, which would silently lock the app out of a server the user merely
+    /// renamed.
+    public func password(for profile: ConnectionProfile) -> String? {
+        if let ephemeral = ephemeralPasswords[profile.id] { return ephemeral }
+        return (try? store.password(for: profile.id)) ?? nil
+    }
+
     public func backend(for profile: ConnectionProfile) -> (any CodingAgentBackend)? {
         if profile.id.hasPrefix(DemoWorld.profilePrefix) {
             return DemoWorld.backend(for: profile.id)

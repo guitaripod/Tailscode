@@ -166,6 +166,9 @@ enum MatrixTheme {
         .glyph-needs { color: \(warn); }
         .glyph-error { color: \(danger); }
         .glyph-pending { color: \(textDim); }
+        .fact-good .subtitle { color: alpha(\(accent), 0.85); opacity: 1; }
+        .fact-warn .subtitle { color: \(warn); opacity: 1; }
+        .fact-bad .subtitle { color: \(danger); opacity: 1; }
         .dim { color: \(textDim); }
         .attachment { color: \(info); font-family: monospace; font-size: \(m(0.88)); }
         .status-line {

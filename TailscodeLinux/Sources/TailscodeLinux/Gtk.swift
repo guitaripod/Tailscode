@@ -240,6 +240,15 @@ enum Gtk {
         gtk_widget_add_css_class(widget, name)
     }
 
+    /// The one class out of a set of mutually exclusive tones, applied by taking the others off
+    /// first — a widget that reports a changing state keeps the classes it was given otherwise.
+    static func setTone(
+        _ widget: UnsafeMutablePointer<GtkWidget>, _ name: String?, from tones: [String]
+    ) {
+        for tone in tones where tone != name { gtk_widget_remove_css_class(widget, tone) }
+        if let name { gtk_widget_add_css_class(widget, name) }
+    }
+
     /// Files dropped anywhere on `widget` arrive as absolute paths.
     static func acceptFileDrops(
         on widget: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping ([String]) -> Void
