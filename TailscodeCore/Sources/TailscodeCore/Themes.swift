@@ -153,7 +153,7 @@ public struct AppTheme: Equatable, Sendable {
     public func palette(dark: Bool) -> Palette { dark ? self.dark : light }
 
     public static let all: [AppTheme] = [
-        .rosePine, .tokyoNight, .everforest, .gruvbox, .nord, .solarized, .phosphor,
+        .rosePine, .tokyoNight, .everforest, .gruvbox, .nord, .solarized, .suomi, .phosphor,
     ]
 
     public static let fallback = AppTheme.rosePine
@@ -361,6 +361,43 @@ extension AppTheme {
                 "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
             ],
             terminalFg: "#657b83"))
+
+    /// The blue cross at home, drawn from the land rather than the flag chart. Night is kaamos
+    /// over a frozen lake — the aurora carries motion, the low sun attention, lingonberry failure,
+    /// ice the agent's marks, the violet of the blue moment its standing ones. Day is fresh snow
+    /// under flag-blue ink, with spruce for affirmation and cloudberry for attention. Every slot
+    /// is authored at its contrast floor as a family, so the corrector has nothing to move.
+    public static let suomi = AppTheme(
+        id: "suomi", name: "Suomi",
+        blurb: Localized.text("The blue cross at home — kaamos night under aurora, fresh snow by day"),
+        dark: Palette(
+            name: "suomi", isDark: true,
+            canvas: "#0a1522", canvasRaised: "#101f30", rule: "#1b3049",
+            text: "#e9f1f9", textDim: "#8ba3bd",
+            accent: "#5fd9a3", accentDim: "#3dab7d",
+            warn: "#eec26b", danger: "#f0788a",
+            info: "#85c7f0", special: "#bb9ce8",
+            codeBg: "#071019", subagentBg: "#101f30", findHit: "#28507a",
+            ansi: [
+                "#16283e", "#e05c6f", "#3dab7d", "#d9a84f",
+                "#5a9fd4", "#a17fd4", "#57b8c2", "#c9d8e8",
+                "#3c5878", "#f0788a", "#5fd9a3", "#eec26b",
+                "#85c7f0", "#bb9ce8", "#7fdbe6", "#e9f1f9",
+            ]),
+        light: Palette(
+            name: "suomi-lumi", isDark: false,
+            canvas: "#f5f8fc", canvasRaised: "#eaf0f7", rule: "#d5deea",
+            text: "#1c3a5e", textDim: "#587498",
+            accent: "#276b43", accentDim: "#1d5638",
+            warn: "#8f5a10", danger: "#a83240",
+            info: "#1f4e8c", special: "#6b4d9e",
+            codeBg: "#eaf0f7", subagentBg: "#eff4f9", findHit: "#cdddf0",
+            ansi: [
+                "#d5deea", "#a83240", "#276b43", "#8f5a10",
+                "#1f4e8c", "#6b4d9e", "#20707f", "#587498",
+                "#9fb2c8", "#c14b59", "#2e8552", "#a86a14",
+                "#2d64ad", "#7f5fb8", "#2a8a9c", "#1c3a5e",
+            ]))
 
     /// The one that is ours. A coding agent answering from another machine over a private network
     /// is a terminal at the end of a long wire, so this is that terminal: a phosphor tube in the
