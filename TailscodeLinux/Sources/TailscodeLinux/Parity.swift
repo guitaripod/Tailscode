@@ -26,7 +26,6 @@ enum ParityManifest {
         case .liveListUpdates: return .implemented("SessionListStreaming")
         case .rowContextActions: return .implemented("rowMenuRows")
         case .rowSnippet: return .implemented("model.snippet")
-        case .rowFacets: return .implemented("row-age")
         case .usageGauges: return .implemented("usage-footer")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("PangoMarkdown")
