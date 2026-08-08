@@ -21,8 +21,18 @@ final class NewChatWindow: @unchecked Sendable {
 
     private var chooser: NewChatChooser
     private let entries: [SessionEntry]
-    private let onStart: @Sendable (String, String?) -> Void
+    private let onStart:
+        @Sendable (String, String?, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
+    private let onFix:
+        @Sendable (NewChatFailure.Fix, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
     private let onBrowse: @Sendable (String, String, @escaping @Sendable (String) -> Void) -> Void
+    /// What the window is doing. The modal outlives Start now: a chat is minted on another
+    /// machine, and a window that vanishes the instant a request goes out cannot tell the person
+    /// whether it worked.
+    private var phase: NewChatPhase = .asking
+    /// What to run again when the failure card's fix has been applied — the same folder on the
+    /// same server, so a corrected port lands the person in the chat they asked for.
+    private var lastAttempt: (profileID: String, directory: String?)?
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
@@ -30,24 +40,36 @@ final class NewChatWindow: @unchecked Sendable {
     private let hint: UnsafeMutablePointer<GtkWidget>
     private let list: UnsafeMutablePointer<GtkWidget>
     private let scroller: UnsafeMutablePointer<GtkWidget>
+    private var buttons: UnsafeMutablePointer<GtkWidget>!
     private var rowWidgets: [UInt] = []
 
     /// - Parameter onBrowse: how this client opens a folder picker, given the server's profile id,
     ///   what has been typed so far — the picker opens where the field points when that is a real
     ///   folder — and what to do with the path. Only a local server ever asks; a remote one has no
     ///   browse row, because a native picker would offer this disk's folders on its behalf.
+    /// - Parameters:
+    ///   - onStart: mints the chat and answers with nothing when it worked, or with the reason it
+    ///     did not. The window stays up until that answer arrives.
+    ///   - onFix: applies a failure's own remedy — repointing a server at the port its agent is
+    ///     actually on, or opening its settings — and answers the same way, so a fixed server
+    ///     goes straight back into the chat that was being started.
     static func present(
         servers: [NewChatServer], entries: [SessionEntry], preferredServer: String?,
         parent: UnsafeMutablePointer<GtkWidget>?,
         onBrowse: @escaping @Sendable (String, String, @escaping @Sendable (String) -> Void) ->
             Void,
-        onStart: @escaping @Sendable (String, String?) -> Void
+        onFix: @escaping @Sendable (
+            NewChatFailure.Fix, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void = { _, done in done(nil) },
+        onStart: @escaping @Sendable (
+            String, String?, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         guard !servers.isEmpty else { return }
         open?.close()
         open = NewChatWindow(
             servers: servers, entries: entries, preferredServer: preferredServer, parent: parent,
-            onBrowse: onBrowse, onStart: onStart)
+            onBrowse: onBrowse, onFix: onFix, onStart: onStart)
     }
 
     private init(
@@ -55,10 +77,16 @@ final class NewChatWindow: @unchecked Sendable {
         parent: UnsafeMutablePointer<GtkWidget>?,
         onBrowse: @escaping @Sendable (String, String, @escaping @Sendable (String) -> Void) ->
             Void,
-        onStart: @escaping @Sendable (String, String?) -> Void
+        onFix: @escaping @Sendable (
+            NewChatFailure.Fix, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void,
+        onStart: @escaping @Sendable (
+            String, String?, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         self.entries = entries
         self.onStart = onStart
+        self.onFix = onFix
         self.onBrowse = onBrowse
         chooser = NewChatChooser(
             servers: servers,
@@ -96,7 +124,10 @@ final class NewChatWindow: @unchecked Sendable {
 
         hint = Gtk.label(chooser.hint, css: "chooser-hint", selectable: false)
         gtk_box_append(ptr(column), hint)
-        gtk_box_append(ptr(column), makeButtons())
+        buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(buttons, GTK_ALIGN_END)
+        gtk_box_append(ptr(column), buttons)
+        renderButtons()
 
         Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
             Gtk.onMain { [weak self] in self?.queryChanged() }
@@ -117,23 +148,100 @@ final class NewChatWindow: @unchecked Sendable {
     /// A hand still gets both verbs. Enter and escape are the fast way through this window, but a
     /// query that matches nothing has no row left to click, and a folder typed out in full must
     /// still be startable without learning which key does it.
-    private func makeButtons() -> UnsafeMutablePointer<GtkWidget> {
-        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_widget_set_halign(row, GTK_ALIGN_END)
-        gtk_box_append(
-            ptr(row),
-            Gtk.button(Localized.text("Cancel")) { [weak self] in
-                Gtk.onMain { [weak self] in self?.close() }
-            })
-        gtk_box_append(
-            ptr(row),
-            Gtk.button(Localized.text("Start"), css: ["suggested-action"]) { [weak self] in
+    /// The buttons say what the window is doing: two while the question is open, none but a way
+    /// out while a machine is being waited on, and the failure's own remedy once there is one.
+    private func renderButtons() {
+        Gtk.removeChildren(of: buttons)
+        switch phase {
+        case .asking:
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(Localized.text("Cancel")) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.close() }
+                })
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(Localized.text("Start"), css: ["suggested-action"]) { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        guard let self, let outcome = self.chooser.activate() else { return }
+                        self.apply(outcome)
+                    }
+                })
+        case .starting:
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(Localized.text("Cancel")) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.close() }
+                })
+        case .failed(let failure):
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(Localized.text("Back")) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.returnToAsking() }
+                })
+            guard let title = failure.actionTitle else { return }
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(title, css: ["suggested-action"]) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.applyFix(failure.fix) }
+                })
+        }
+    }
+
+    /// Start, and stay: the window holds the question until the other machine has answered, so a
+    /// chat that cannot be created says why in the place it was asked for rather than nowhere.
+    private func beginStart(profileID: String, directory: String?) {
+        lastAttempt = (profileID, directory)
+        let name = chooser.servers.first { $0.profileID == profileID }?.name ?? profileID
+        phase = .starting(server: name)
+        render()
+        onStart(profileID, directory) { [weak self] failure in
+            Gtk.onMain { [weak self] in self?.finish(failure) }
+        }
+    }
+
+    /// The remedy is applied here and the chat is tried again on the spot: a person who pressed
+    /// "Use :4098" asked for the conversation, not for a corrected settings screen.
+    private func applyFix(_ fix: NewChatFailure.Fix) {
+        switch fix {
+        case .none:
+            close()
+        case .retry:
+            guard let attempt = lastAttempt else { return returnToAsking() }
+            beginStart(profileID: attempt.profileID, directory: attempt.directory)
+        case .editServer:
+            onFix(fix) { _ in }
+            close()
+        case .repoint:
+            phase = .starting(server: chooser.server?.name ?? "")
+            render()
+            onFix(fix) { [weak self] failure in
                 Gtk.onMain { [weak self] in
-                    guard let self, let outcome = self.chooser.activate() else { return }
-                    self.apply(outcome)
+                    guard let self else { return }
+                    if let failure {
+                        self.finish(failure)
+                        return
+                    }
+                    guard let attempt = self.lastAttempt else { return self.returnToAsking() }
+                    self.beginStart(profileID: attempt.profileID, directory: attempt.directory)
                 }
-            })
-        return row
+            }
+        }
+    }
+
+    private func finish(_ failure: NewChatFailure?) {
+        guard let failure else {
+            close()
+            return
+        }
+        phase = .failed(failure)
+        render()
+    }
+
+    private func returnToAsking() {
+        phase = .asking
+        render()
+        applyMode()
     }
 
     private static func gather(servers: [NewChatServer], entries: [SessionEntry])
@@ -184,7 +292,27 @@ final class NewChatWindow: @unchecked Sendable {
         }
     }
 
+    /// While a machine is being waited on, or a failure is on screen, the chooser's grammar is
+    /// not the window's grammar: enter takes the fix, escape steps back one state rather than
+    /// closing something that has an unread answer in it.
     private func key(keyval: UInt32, state: UInt32) -> Bool {
+        switch phase {
+        case .asking:
+            break
+        case .starting:
+            guard keyval == Keymap.escape else { return true }
+            close()
+            return true
+        case .failed(let failure):
+            if keyval == Keymap.escape {
+                returnToAsking()
+                return true
+            }
+            if keyval == Keymap.enter || keyval == Keymap.keypadEnter {
+                applyFix(failure.actionTitle == nil ? .none : failure.fix)
+            }
+            return true
+        }
         guard let chord = KeyChord.canonical(keyval: keyval, state: state),
             let command = NewChatChooser.command(for: chord, mode: chooser.mode)
         else { return false }
@@ -223,9 +351,7 @@ final class NewChatWindow: @unchecked Sendable {
             FileBrowserRecents.record(directory, for: profileID)
             SettingsFile.capture()
         }
-        let handler = onStart
-        close()
-        handler(profileID, directory?.isEmpty == false ? directory : nil)
+        beginStart(profileID: profileID, directory: directory?.isEmpty == false ? directory : nil)
     }
 
     private func browse(profileID: String) {
@@ -249,6 +375,30 @@ final class NewChatWindow: @unchecked Sendable {
     }
 
     private func render() {
+        renderButtons()
+        switch phase {
+        case .starting(let server):
+            gtk_label_set_text(op(heading), Localized.text("Starting on %@…", server))
+            gtk_label_set_text(op(hint), Localized.text("esc closes this — the chat still lands in the list"))
+            gtk_widget_set_sensitive(entry, 0)
+            Gtk.removeChildren(of: list)
+            rowWidgets = []
+            gtk_box_append(ptr(list), Self.waitingCard())
+            return
+        case .failed(let failure):
+            gtk_label_set_text(op(heading), Localized.text("Could not start the chat"))
+            gtk_label_set_text(
+                op(hint),
+                failure.actionTitle.map { Localized.text("enter %@ · esc goes back", $0) }
+                    ?? Localized.text("esc goes back"))
+            gtk_widget_set_sensitive(entry, 0)
+            Gtk.removeChildren(of: list)
+            rowWidgets = []
+            gtk_box_append(ptr(list), Self.failureCard(failure))
+            return
+        case .asking:
+            gtk_widget_set_sensitive(entry, 1)
+        }
         gtk_label_set_text(op(heading), chooser.heading)
         gtk_label_set_text(op(hint), chooser.hint)
         Gtk.removeChildren(of: list)
@@ -321,6 +471,44 @@ final class NewChatWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.activate(index) }
         }
         return button
+    }
+
+    /// Waiting is a state with a face here too: the same swell every busy badge in the app
+    /// breathes on, so a modal that is working looks like work rather than like a frozen window.
+    private static func waitingCard() -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        Gtk.margins(card, top: 28, bottom: 28, leading: 12, trailing: 12)
+        gtk_widget_set_halign(card, GTK_ALIGN_CENTER)
+        let glyph = Gtk.label(ActivityKind.working.icon.glyph, css: ActivityKind.working.icon.glyphCSS, selectable: false)
+        ActivityPulse.apply(ActivityKind.working.icon, to: glyph)
+        gtk_box_append(ptr(card), glyph)
+        gtk_box_append(
+            ptr(card),
+            Gtk.label(
+                Localized.text("Asking the server for a conversation"), css: "row-detail",
+                selectable: false))
+        return card
+    }
+
+    /// The whole failure in the window that caused it: what happened, why, and the one button
+    /// that fixes it. Never a raw error string, and never somewhere else on screen.
+    private static func failureCard(_ failure: NewChatFailure) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        Gtk.margins(card, top: 18, bottom: 18, leading: 10, trailing: 10)
+        let glyph = Gtk.label(failure.glyph, css: "glyph-error", selectable: false)
+        gtk_widget_set_valign(glyph, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), glyph)
+
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let title = Gtk.label(failure.title, css: "row-title", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(title), 0)
+        gtk_box_append(ptr(lines), title)
+        let detail = Gtk.label(failure.detail, css: "row-detail", wrap: true, selectable: true)
+        gtk_label_set_xalign(op(detail), 0)
+        gtk_box_append(ptr(lines), detail)
+        gtk_widget_set_hexpand(lines, 1)
+        gtk_box_append(ptr(card), lines)
+        return card
     }
 
     private func activate(_ index: Int) {

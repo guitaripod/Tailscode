@@ -95,6 +95,12 @@ final class HomeViewController: UIViewController {
                     self?.composerSend(text)
                 }
             }
+            if let directory = ProcessInfo.processInfo.environment["TAILSCODE_NEW_CHAT"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    self?.startChatForVerification(in: directory)
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_FOCUS_COMPOSER"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
@@ -907,6 +913,20 @@ final class HomeViewController: UIViewController {
                 directory: chat.directory, createdAt: chat.updatedAt, updatedAt: chat.updatedAt))
         openChat(for: entry)
     }
+
+    #if DEBUG
+        /// Opens the new-chat sheet on the first server and starts in a folder, so the states a
+        /// mint can end in — waiting, and each failure with its own remedy — can be seen on a
+        /// simulator without a hand on the screen.
+        private func startChatForVerification(in directory: String) {
+            guard let profile = viewModel.servers.first else { return }
+            NewChatFlow.begin(
+                from: self, profile: profile, viewModel: viewModel, directory: directory
+            ) { [weak self] entry in
+                self?.openSession(withID: entry.session.id)
+            }
+        }
+    #endif
 
     private func pushChats(filterProfileID: String? = nil) {
         navigationController?.pushViewController(

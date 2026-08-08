@@ -8,14 +8,18 @@ import UIKit
 /// in the server they think is meant; the modal pre-chooses it and lets it be changed.
 @MainActor
 enum NewChatFlow {
+    /// - Parameter directory: a folder to start in without waiting to be asked. Verification
+    ///   only — it is how a headless run reaches the states a mint can end in.
     static func begin(
         from presenter: UIViewController,
         profile: ConnectionProfile,
         viewModel: SessionListViewModel,
+        directory: String? = nil,
         onOpen: @escaping @MainActor (SessionEntry) -> Void
     ) {
         let chooser = NewChatViewController(viewModel: viewModel, preferredServer: profile.id)
         chooser.onStart = onOpen
+        chooser.startImmediately = directory
         present(chooser, from: presenter)
     }
 

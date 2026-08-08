@@ -76,6 +76,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverSignIn
     case serverSelfUpdate
     case newChat
+    case newChatFailure
     case keyboardShortcuts
     case shortcutCheatsheet
     case fileBrowser
@@ -370,6 +371,11 @@ public enum CapabilityRegistry {
             id: .newChat, area: "servers", title: "New conversation",
             spec:
                 "Starting a chat picks server and working directory in one modal built on NewChatChooser: the folders this device already knows for that server — starred, recent, and the ones its own chats work in — ranked against what is being typed by FuzzyRank, each row saying where it came from, with the typed path always offered as a row of its own so a folder nobody has used yet needs no special gesture. The server last used is pre-chosen, not re-asked. Keyboard-first in two modes: while typing, ⌃n/⌃p walk, tab completes, ⌃s switches server and esc reaches the verbs; in normal mode j/k walk, g/G jump, 1–9 pick outright, i types, f stars, enter starts and esc closes — the grammar written on screen, never a form with unranked buttons under a text field."),
+        CapabilityDefinition(
+            id: .newChatFailure, area: "servers", title: "A chat that cannot start says why",
+            spec:
+                "Starting a chat never fails silently and never prints a raw error. The modal stays up through the mint — it is another machine over a tailnet — showing the working badge while it waits, and on refusal it replaces its own body with the diagnosis: NewChatDiagnosis turns what this device saw plus what the machine answered when asked directly (NewChatWitness.gather, which probes the profile's address and the other agent's default port) into a title, a sentence, and one action. The commonest mistake — a profile aimed at the other agent's port, which answers, refuses, and looks like a dead server — is repaired by the app itself: the fix rewrites the profile's address and retries the same folder on the spot, so the person lands in the chat they asked for. Every other cause names its own remedy (server settings, try again) and no path — no password on this device, no such server, an unreachable host, a healthy server refusing a folder — is allowed to end in a closed sheet with nothing said. The modal also states before the choice which servers did not answer the last listing.",
+        ),
         CapabilityDefinition(
             id: .bulkSelection, area: "chat list", title: "Several chats at once",
             spec:

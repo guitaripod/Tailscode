@@ -21,7 +21,18 @@ final class NewChatSheet: NSObject {
     private let sheet: NSWindow
     private let profiles: [ConnectionProfile]
     private let entries: [SessionEntry]
-    private let onCreate: @MainActor (ConnectionProfile, String?) -> Void
+    private let onCreate:
+        @MainActor (ConnectionProfile, String?, @escaping @MainActor (NewChatFailure?) -> Void) ->
+            Void
+    private let onFix:
+        @MainActor (NewChatFailure.Fix, @escaping @MainActor (NewChatFailure?) -> Void) -> Void
+    /// What the sheet is doing. It outlives Start: a chat is minted on another machine, and a
+    /// sheet that closes the instant a request goes out cannot say whether it worked.
+    private var phase: NewChatPhase = .asking
+    private var lastAttempt: (profile: ConnectionProfile, directory: String?)?
+    private let status = NewChatStatusView()
+    private let cancel = NSButton()
+    private let start = NSButton()
     private var chooser: NewChatChooser
     private let heading = NSTextField(labelWithString: "")
     private let field = NSTextField()
@@ -65,7 +76,12 @@ final class NewChatSheet: NSObject {
     static func present(
         on host: NSWindow, profiles: [ConnectionProfile], entries: [SessionEntry],
         unreachable: [String], localAddresses: Set<String>, preferredServer: String? = nil,
-        onCreate: @escaping @MainActor (ConnectionProfile, String?) -> Void
+        onFix: @escaping @MainActor (
+            NewChatFailure.Fix, @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void = { _, done in done(nil) },
+        onCreate: @escaping @MainActor (
+            ConnectionProfile, String?, @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         guard !profiles.isEmpty else { return }
         let sheet = NewChatSheet(
@@ -73,7 +89,7 @@ final class NewChatSheet: NSObject {
             localAddresses: localAddresses,
             preferredServer: preferredServer
                 ?? UserDefaults.standard.string(forKey: preferredServerKey),
-            onCreate: onCreate)
+            onFix: onFix, onCreate: onCreate)
         active.append(sheet)
         host.beginSheet(sheet.sheet) { _ in
             sheet.teardown()
@@ -85,11 +101,17 @@ final class NewChatSheet: NSObject {
     private init(
         profiles: [ConnectionProfile], entries: [SessionEntry], unreachable: [String],
         localAddresses: Set<String>, preferredServer: String?,
-        onCreate: @escaping @MainActor (ConnectionProfile, String?) -> Void
+        onFix: @escaping @MainActor (
+            NewChatFailure.Fix, @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void,
+        onCreate: @escaping @MainActor (
+            ConnectionProfile, String?, @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         self.profiles = profiles
         self.entries = entries
         self.onCreate = onCreate
+        self.onFix = onFix
         chooser = NewChatChooser(
             servers: Self.servers(
                 profiles: profiles, unreachable: unreachable, localAddresses: localAddresses),
@@ -141,6 +163,10 @@ final class NewChatSheet: NSObject {
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
 
+        status.isHidden = true
+        status.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(status)
+
         hint.font = MacTheme.Font.mono(10)
         hint.textColor = MacTheme.Color.tertiaryLabel
         hint.lineBreakMode = .byTruncatingTail
@@ -148,10 +174,14 @@ final class NewChatSheet: NSObject {
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let cancel = NSButton(
-            title: Localized.text("Cancel"), target: self, action: #selector(cancelSheet))
-        let start = NSButton(
-            title: Localized.text("Start"), target: self, action: #selector(startFocused))
+        cancel.title = Localized.text("Cancel")
+        cancel.bezelStyle = .rounded
+        cancel.target = self
+        cancel.action = #selector(cancelSheet)
+        start.title = Localized.text("Start")
+        start.bezelStyle = .rounded
+        start.target = self
+        start.action = #selector(startFocused)
         let controls = NSStackView(views: [hint, spacer, cancel, start])
         controls.orientation = .horizontal
         controls.spacing = MacTheme.Spacing.s
@@ -172,6 +202,10 @@ final class NewChatSheet: NSObject {
             scroll.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
             empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             empty.topAnchor.constraint(equalTo: scroll.topAnchor, constant: MacTheme.Spacing.xl),
+            status.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            status.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
+            status.topAnchor.constraint(equalTo: field.topAnchor),
+            status.bottomAnchor.constraint(lessThanOrEqualTo: scroll.bottomAnchor),
             controls.topAnchor.constraint(
                 equalTo: scroll.bottomAnchor, constant: MacTheme.Spacing.s),
             controls.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
@@ -218,7 +252,9 @@ final class NewChatSheet: NSObject {
     /// which is what keeps typing a path from tripping over the verbs.
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.sheet, let chord = MacKeys.chord(for: event),
+            guard let self, event.window === self.sheet else { return event }
+            if self.phase != .asking { return self.statusKey(event) }
+            guard let chord = MacKeys.chord(for: event),
                 let command = NewChatChooser.command(for: chord, mode: self.chooser.mode)
             else { return event }
             let answer = self.chooser.handle(command)
@@ -229,6 +265,33 @@ final class NewChatSheet: NSObject {
     }
 
     private func rebuild() {
+        switch phase {
+        case .starting(let server):
+            heading.stringValue = Localized.text("Starting on %@…", server)
+            hint.stringValue = Localized.text("Asking the server for a conversation")
+            status.showWaiting()
+            setChrome(asking: false)
+            cancel.title = Localized.text("Cancel")
+            start.isHidden = true
+            return
+        case .failed(let failure):
+            heading.stringValue = Localized.text("Could not start the chat")
+            hint.stringValue = failure.spoken
+            status.show(failure)
+            setChrome(asking: false)
+            cancel.title = Localized.text("Back")
+            start.isHidden = failure.actionTitle == nil
+            start.title = failure.actionTitle ?? Localized.text("Start")
+            start.action = #selector(takeFix)
+            return
+        case .asking:
+            status.isHidden = true
+            setChrome(asking: true)
+            cancel.title = Localized.text("Cancel")
+            start.isHidden = false
+            start.title = Localized.text("Start")
+            start.action = #selector(startFocused)
+        }
         heading.stringValue = chooser.heading
         hint.stringValue = chooser.hint
         if field.stringValue != chooser.query {
@@ -241,6 +304,37 @@ final class NewChatSheet: NSObject {
         table.reloadData()
         revealCursor()
         syncMode()
+    }
+
+    /// While a machine is being waited on, the question's own chrome goes away rather than sitting
+    /// there inert: a field that cannot be typed into and a list that cannot be picked from are
+    /// worse than absent.
+    private func setChrome(asking: Bool) {
+        field.isHidden = !asking
+        scroll.isHidden = !asking
+        empty.isHidden = true
+        status.isHidden = asking
+        if !asking { sheet.makeFirstResponder(nil) }
+    }
+
+    /// Once the sheet is waiting or explaining, the chooser's grammar is not the sheet's: return
+    /// takes the fix, escape steps back one state, and nothing else reaches a list that is not
+    /// on screen.
+    private func statusKey(_ event: NSEvent) -> NSEvent? {
+        switch event.keyCode {
+        case 53:
+            if phase.failure != nil { show(.asking) } else { close() }
+        case 36, 76:
+            if let failure = phase.failure, failure.actionTitle != nil { applyFix(failure.fix) }
+        default:
+            break
+        }
+        return nil
+    }
+
+    @objc private func takeFix() {
+        guard let failure = phase.failure else { return }
+        applyFix(failure.fix)
     }
 
     /// The keyboard follows the chooser's own mode: while typing, the field owns the letters and
@@ -284,14 +378,66 @@ final class NewChatSheet: NSObject {
     /// Starting also teaches the list: the folder joins this server's recents and the server
     /// becomes the one pre-chosen next time, so the modal is faster every time it is used.
     private func start(profileID: String, directory: String?) {
-        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
+        guard let profile = profiles.first(where: { $0.id == profileID }) else {
+            show(.failed(NewChatDiagnosis.noSuchServer()))
+            return
+        }
         let trimmed = directory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let target = trimmed.isEmpty ? nil : trimmed
         if let target { FileBrowserRecents.record(target, for: profileID) }
         UserDefaults.standard.set(profileID, forKey: Self.preferredServerKey)
-        let handler = onCreate
-        close()
-        handler(profile, target)
+        begin(profile: profile, directory: target)
+    }
+
+    /// Start, and stay up: the sheet holds the question until the other machine has answered, so
+    /// a chat that cannot be created says why where it was asked for.
+    ///
+    /// The server is re-read from the directory at the moment of the mint, never taken from the
+    /// copy this sheet opened with: a repoint applied from the failure card rewrote the address a
+    /// second ago, and retrying against the stale copy would hit the same wrong port again.
+    private func begin(profile stale: ConnectionProfile, directory: String?) {
+        let profile = ServerDirectory.shared.profiles.first { $0.id == stale.id } ?? stale
+        lastAttempt = (profile, directory)
+        show(.starting(server: profile.name))
+        onCreate(profile, directory) { [weak self] failure in
+            guard let self else { return }
+            guard let failure else {
+                self.close()
+                return
+            }
+            self.show(.failed(failure))
+        }
+    }
+
+    /// The remedy is applied and the chat retried on the spot: someone who pressed "Use :4098"
+    /// asked for the conversation, not for a settings screen.
+    private func applyFix(_ fix: NewChatFailure.Fix) {
+        switch fix {
+        case .none:
+            close()
+        case .retry:
+            guard let attempt = lastAttempt else { return show(.asking) }
+            begin(profile: attempt.profile, directory: attempt.directory)
+        case .editServer:
+            onFix(fix) { _ in }
+            close()
+        case .repoint:
+            show(.starting(server: lastAttempt?.profile.name ?? ""))
+            onFix(fix) { [weak self] failure in
+                guard let self else { return }
+                if let failure { return self.show(.failed(failure)) }
+                guard let attempt = self.lastAttempt else { return self.show(.asking) }
+                let refreshed =
+                    ServerDirectory.shared.profiles.first { $0.id == attempt.profile.id }
+                    ?? attempt.profile
+                self.begin(profile: refreshed, directory: attempt.directory)
+            }
+        }
+    }
+
+    private func show(_ next: NewChatPhase) {
+        phase = next
+        rebuild()
     }
 
     /// The panel is a decision in its own right — a folder picked in it was chosen, not typed — so
@@ -318,7 +464,11 @@ final class NewChatSheet: NSObject {
     /// chooser's own grammar, and a default button would take Enter before the modal's monitor
     /// ever saw it.
     @objc private func cancelSheet() {
-        close()
+        guard phase.failure != nil else {
+            close()
+            return
+        }
+        show(.asking)
     }
 
     @objc private func startFocused() {
@@ -522,5 +672,82 @@ private final class NewChatRowView: NSTableCellView {
         capsule.setContentCompressionResistancePriority(.required, for: .horizontal)
         capsule.setContentHuggingPriority(.required, for: .horizontal)
         return capsule
+    }
+}
+
+/// The two states a new chat can be in that are not a question: waiting on another machine, and
+/// the reason it did not happen. One view, because they are the same shape — a symbol, a
+/// sentence, and the words under it — and because a modal that swaps its whole body for an error
+/// is how a person knows the error belongs to what they just did.
+final class NewChatStatusView: NSView {
+    private let badge = ActivityBadgeView(pointSize: 15)
+    private let symbol = NSImageView()
+    private let title = NSTextField(labelWithString: "")
+    private let detail = NSTextField(wrappingLabelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        symbol.translatesAutoresizingMaskIntoConstraints = false
+        symbol.contentTintColor = MacTheme.Color.danger
+        symbol.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
+        title.font = MacTheme.Font.emphasis()
+        title.lineBreakMode = .byWordWrapping
+        title.maximumNumberOfLines = 3
+        title.translatesAutoresizingMaskIntoConstraints = false
+        detail.font = MacTheme.Font.body()
+        detail.textColor = MacTheme.Color.secondaryLabel
+        detail.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(badge)
+        addSubview(symbol)
+        addSubview(title)
+        addSubview(detail)
+        NSLayoutConstraint.activate([
+            symbol.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.l),
+            symbol.leadingAnchor.constraint(equalTo: leadingAnchor),
+            symbol.widthAnchor.constraint(equalToConstant: 26),
+            badge.centerXAnchor.constraint(equalTo: symbol.centerXAnchor),
+            badge.centerYAnchor.constraint(equalTo: symbol.centerYAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 22),
+            badge.heightAnchor.constraint(equalToConstant: 22),
+            title.topAnchor.constraint(equalTo: symbol.topAnchor),
+            title.leadingAnchor.constraint(
+                equalTo: symbol.trailingAnchor, constant: MacTheme.Spacing.m),
+            title.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: MacTheme.Spacing.xs),
+            detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            detail.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detail.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Waiting breathes on the same swell every busy badge in the app uses, so a sheet that is
+    /// working looks like work rather than like a window that stopped.
+    func showWaiting() {
+        isHidden = false
+        symbol.isHidden = true
+        badge.isHidden = false
+        badge.activity = .working
+        title.stringValue = Localized.text("Asking the server for a conversation")
+        title.textColor = MacTheme.Color.label
+        detail.stringValue = Localized.text(
+            "A chat is minted on the other machine; this takes a moment over a tailnet.")
+    }
+
+    func show(_ failure: NewChatFailure) {
+        isHidden = false
+        badge.isHidden = true
+        badge.activity = nil
+        symbol.isHidden = false
+        symbol.image = NSImage(
+            systemSymbolName: failure.symbol, accessibilityDescription: failure.title)
+        title.stringValue = failure.title
+        title.textColor = MacTheme.Color.label
+        detail.stringValue = failure.detail
+        setAccessibilityLabel(failure.spoken)
     }
 }

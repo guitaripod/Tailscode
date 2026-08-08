@@ -53,7 +53,8 @@ enum NotificationManager {
         else { return }
         #if DEBUG
             let env = ProcessInfo.processInfo.environment
-            guard env["TAILSCODE_AUTOSEND"] == nil, env["TAILSCODE_OPEN_SESSION"] == nil
+            guard env["TAILSCODE_AUTOSEND"] == nil, env["TAILSCODE_OPEN_SESSION"] == nil,
+                env["TAILSCODE_NEW_CHAT"] == nil
             else { return }
         #endif
         UNUserNotificationCenter.current().getNotificationSettings { settings in

@@ -29,6 +29,8 @@ enum NewChatPurpose {
 final class NewChatViewController: UIViewController {
     var onStart: (@MainActor (SessionEntry) -> Void)?
     var onChoose: (@MainActor (String, String?) -> Void)?
+    /// A folder to start in the moment the sheet appears, instead of waiting to be asked.
+    var startImmediately: String?
 
     private struct RowID: Hashable {
         let origin: Int
@@ -45,6 +47,11 @@ final class NewChatViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, RowID>!
     private var startItem: UIBarButtonItem!
+    /// What the sheet is doing. It stays up through the mint: a sheet that closes the instant
+    /// Start is pressed cannot tell anyone the server refused.
+    private var phase: NewChatPhase = .asking
+    private var lastAttempt: (profile: ConnectionProfile, directory: String?)?
+    private let statusView = NewChatStatusView()
 
     /// Enter can arrive twice — as the key command that claims the field's Return and as the
     /// field's own `textFieldShouldReturn` — and a second arrival would create a second session
@@ -88,6 +95,11 @@ final class NewChatViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         syncMode()
+        guard let directory = startImmediately else { return }
+        startImmediately = nil
+        chooser.type(directory)
+        reload()
+        finish(profileID: chooser.server?.profileID ?? "", directory: directory)
     }
 
     override var canBecomeFirstResponder: Bool { true }
@@ -139,9 +151,12 @@ final class NewChatViewController: UIViewController {
         emptyLabel.isHidden = true
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        statusView.isHidden = true
+        statusView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(serverButton)
         view.addSubview(field)
         view.addSubview(hintLabel)
+        view.addSubview(statusView)
 
         NSLayoutConstraint.activate([
             serverButton.topAnchor.constraint(
@@ -165,6 +180,13 @@ final class NewChatViewController: UIViewController {
                 equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
             hintLabel.bottomAnchor.constraint(
                 equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Theme.Spacing.s),
+
+            statusView.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.xl),
+            statusView.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            statusView.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
         ])
     }
 
@@ -437,32 +459,131 @@ final class NewChatViewController: UIViewController {
     /// list's own error alert is the one surface for a server that will not answer, and it cannot
     /// present itself underneath a sheet that is still up.
     private func finish(profileID: String, directory: String?) {
-        guard !finished,
-            let profile = viewModel.servers.first(where: { $0.id == profileID })
-        else { return }
-        finished = true
+        guard !finished else { return }
+        guard let profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+            show(.failed(NewChatDiagnosis.noSuchServer()))
+            return
+        }
         if let directory { FileBrowserRecents.record(directory, for: profileID) }
         AppPreferences.lastComposeTarget = (profileID, directory)
         Theme.Haptics.tap()
-        dismiss(animated: true) { [weak self] in
-            guard let self else { return }
-            switch self.purpose {
-            case .start:
-                self.create(on: profile, directory: directory)
-            case .choose:
-                self.onChoose?(profileID, directory)
+        switch purpose {
+        case .start:
+            create(on: profile, directory: directory)
+        case .choose:
+            finished = true
+            dismiss(animated: true) { [weak self] in
+                self?.onChoose?(profileID, directory)
             }
         }
     }
 
+    /// The mint happens with the sheet still up, and the sheet only leaves once there is a
+    /// conversation: a failure is shown here, where the chat was asked for, rather than as an
+    /// alert on whatever screen the dismissal happened to reveal.
     private func create(on profile: ConnectionProfile, directory: String?) {
-        Task { [viewModel, onStart] in
-            guard let entry = await viewModel.newSession(on: profile, directory: directory) else {
+        lastAttempt = (profile, directory)
+        show(.starting(server: profile.name))
+        Task { [weak self, viewModel] in
+            let result = await viewModel.createSession(on: profile, directory: directory)
+            guard let self else { return }
+            switch result {
+            case .success(let entry):
+                self.finished = true
+                Theme.Haptics.success()
+                self.dismiss(animated: true) { [weak self] in self?.onStart?(entry) }
+            case .failure(let failure):
                 Theme.Haptics.error()
-                return
+                self.show(.failed(failure))
             }
-            Theme.Haptics.success()
-            onStart?(entry)
+        }
+    }
+
+    /// The remedy, applied and the chat retried on the spot — someone who tapped "Use :4098"
+    /// asked for the conversation, not for a settings screen.
+    private func applyFix(_ fix: NewChatFailure.Fix) {
+        switch fix {
+        case .none:
+            dismiss(animated: true)
+        case .retry:
+            guard let attempt = lastAttempt else { return show(.asking) }
+            create(on: attempt.profile, directory: attempt.directory)
+        case .editServer(let profileID):
+            guard let profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+                return show(.asking)
+            }
+            let editor = ServerEditViewController(profile: profile)
+            editor.onSaved = { [weak self] _ in
+                guard let self, let attempt = self.lastAttempt else { return }
+                self.viewModel.refreshSources()
+                let refreshed =
+                    self.viewModel.servers.first { $0.id == attempt.profile.id } ?? attempt.profile
+                self.create(on: refreshed, directory: attempt.directory)
+            }
+            navigationController?.pushViewController(editor, animated: true)
+        case .repoint(let profileID, let url, _):
+            guard var profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+                return show(.asking)
+            }
+            let password = ConnectionController.shared.password(for: profile.id)
+            profile.baseURL = url
+            show(.starting(server: profile.name))
+            do {
+                try ConnectionController.shared.save(profile, password: password)
+                viewModel.refreshSources()
+                create(on: profile, directory: lastAttempt?.directory)
+            } catch {
+                show(
+                    .failed(
+                        NewChatDiagnosis.failure(
+                            server: NewChatServer(
+                                profileID: profile.id, name: profile.name,
+                                backend: profile.backend,
+                                address: ServerLabel.address(profile)),
+                            directory: nil, error: AgentErrorText.readable(error),
+                            witness: .unknown)))
+            }
+        }
+    }
+
+    /// One state change, one redraw: the question's chrome and the status card are never both on
+    /// screen, and the bar buttons say what the state's verbs are.
+    private func show(_ next: NewChatPhase) {
+        phase = next
+        let asking = next == .asking
+        field.isHidden = !asking
+        serverButton.isHidden = !asking || chooser.servers.count < 2
+        collectionView.isHidden = !asking
+        emptyLabel.isHidden = true
+        statusView.isHidden = asking
+        hintLabel.isHidden = !asking
+        if !asking { field.resignFirstResponder() }
+        switch next {
+        case .asking:
+            title = String(localized: "New conversation")
+            navigationItem.rightBarButtonItem = startItem
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                systemItem: .cancel,
+                primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            reload()
+        case .starting(let server):
+            title = String(localized: "Starting on \(server)")
+            statusView.showWaiting()
+            navigationItem.rightBarButtonItem = nil
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                systemItem: .cancel,
+                primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        case .failed(let failure):
+            title = String(localized: "Could not start")
+            statusView.show(failure)
+            navigationItem.leftBarButtonItem = UIBarButtonItem(
+                title: String(localized: "Back"),
+                primaryAction: UIAction { [weak self] _ in self?.show(.asking) })
+            navigationItem.rightBarButtonItem = failure.actionTitle.map { title in
+                UIBarButtonItem(
+                    title: title,
+                    primaryAction: UIAction { [weak self] _ in self?.applyFix(failure.fix) })
+            }
         }
     }
 
@@ -629,5 +750,78 @@ extension NewChatViewController: UICollectionViewDelegate {
         chooser.focus(indexPath.item)
         reload()
         activate()
+    }
+}
+
+/// The two states a new chat can be in that are not a question: waiting on another machine, and
+/// the reason it did not happen. One view for both, because a modal that swaps its own body for
+/// the answer is how a person knows the answer belongs to what they just did.
+@MainActor
+final class NewChatStatusView: UIView {
+    private let badge = ActivityBadgeView(pointSize: 20)
+    private let symbol = UIImageView()
+    private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
+
+    init() {
+        super.init(frame: .zero)
+        symbol.contentMode = .scaleAspectFit
+        symbol.tintColor = Theme.Color.danger
+        symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+            pointSize: 30, weight: .regular)
+        symbol.setContentHuggingPriority(.required, for: .vertical)
+
+        titleLabel.font = Theme.Font.headline()
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.numberOfLines = 0
+        titleLabel.textAlignment = .center
+
+        detailLabel.font = .preferredFont(forTextStyle: .subheadline)
+        detailLabel.adjustsFontForContentSizeCategory = true
+        detailLabel.textColor = Theme.Color.secondaryLabel
+        detailLabel.numberOfLines = 0
+        detailLabel.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [badge, symbol, titleLabel, detailLabel])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = Theme.Spacing.m
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 30),
+            badge.heightAnchor.constraint(equalToConstant: 30),
+        ])
+        isAccessibilityElement = true
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Waiting breathes on the same swell every busy badge in the app uses, so a sheet that is
+    /// working looks like work rather than like a screen that stopped.
+    func showWaiting() {
+        isHidden = false
+        symbol.isHidden = true
+        badge.isHidden = false
+        badge.activity = .working
+        titleLabel.text = String(localized: "Asking the server for a conversation")
+        detailLabel.text = String(
+            localized: "A chat is minted on the other machine; this takes a moment over a tailnet.")
+        accessibilityLabel = titleLabel.text
+    }
+
+    func show(_ failure: NewChatFailure) {
+        isHidden = false
+        badge.isHidden = true
+        badge.activity = nil
+        symbol.isHidden = false
+        symbol.image = UIImage(systemName: failure.symbol)
+        titleLabel.text = failure.title
+        detailLabel.text = failure.detail
+        accessibilityLabel = failure.spoken
     }
 }

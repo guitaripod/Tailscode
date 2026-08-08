@@ -560,9 +560,10 @@ final class MainWindowController: NSWindowController {
             guard let self, let window = self.window else { return }
             NewChatSheet.present(
                 on: window, profiles: profiles, entries: entries, unreachable: down,
-                localAddresses: locals, preferredServer: profile?.id
-            ) { [weak self] profile, directory in
-                self?.createChat(on: profile, directory: directory)
+                localAddresses: locals, preferredServer: profile?.id,
+                onFix: { [weak self] fix, done in self?.applyNewChatFix(fix, done: done) }
+            ) { [weak self] profile, directory, done in
+                self?.createChat(on: profile, directory: directory, done: done)
             }
         }
     }
@@ -571,22 +572,69 @@ final class MainWindowController: NSWindowController {
     /// row is seeded from the answer and the conversation opens on the spot with the composer
     /// focused; the full list refresh reconciles behind it, because a person who just started a
     /// chat is looking at the prompt box, not at the list.
-    private func createChat(on profile: ConnectionProfile, directory: String?) {
-        guard let backend = ServerDirectory.shared.backend(for: profile) else { return }
+    private func createChat(
+        on profile: ConnectionProfile, directory: String?,
+        done: @escaping @MainActor (NewChatFailure?) -> Void = { _ in }
+    ) {
+        guard let backend = ServerDirectory.shared.backend(for: profile) else {
+            done(NewChatDiagnosis.noCredentials(server: Self.newChatServer(profile)))
+            return
+        }
+        let server = Self.newChatServer(profile)
+        let password = ServerDirectory.shared.password(for: profile)
         Task { [weak self] in
-            do {
-                let session = try await backend.createSession(title: nil, directory: directory)
-                guard let self else { return }
-                let entry = SessionEntry(
-                    profileID: profile.id, profileName: profile.name,
-                    host: profile.baseURL.host ?? profile.name,
-                    backendType: profile.backend, session: session)
-                self.sidebar.noteCreated(entry)
-                self.transcript.focusComposer()
-                await self.sidebar.refresh()
-            } catch {
-                self?.setNotice(Localized.text("Could not start a session: %@", "\(error)"))
+            let minted = await NewChatAttempt.mint(
+                using: backend, server: server, baseURL: profile.baseURL, password: password,
+                directory: directory)
+            guard case .success(let session) = minted else {
+                done(minted.failureValue)
+                return
             }
+            done(nil)
+            guard let self else { return }
+            let entry = SessionEntry(
+                profileID: profile.id, profileName: profile.name,
+                host: profile.baseURL.host ?? profile.name,
+                backendType: profile.backend, session: session)
+            self.sidebar.noteCreated(entry)
+            self.transcript.focusComposer()
+            await self.sidebar.refresh()
+        }
+    }
+
+    private static func newChatServer(_ profile: ConnectionProfile) -> NewChatServer {
+        NewChatServer(
+            profileID: profile.id, name: profile.name, backend: profile.backend,
+            address: ServerLabel.address(profile))
+    }
+
+    /// The failure card's own remedy, carried out: a repoint rewrites the server's address so the
+    /// chat can be tried again on the spot; anything else opens the screen it is fixed on.
+    private func applyNewChatFix(
+        _ fix: NewChatFailure.Fix, done: @escaping @MainActor (NewChatFailure?) -> Void
+    ) {
+        switch fix {
+        case .repoint(let profileID, let url, _):
+            guard var profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
+            else {
+                done(NewChatDiagnosis.noSuchServer())
+                return
+            }
+            let password = ServerDirectory.shared.password(for: profile)
+            profile.baseURL = url
+            do {
+                try ServerDirectory.shared.save(profile, password: password)
+                done(nil)
+                Task { [weak self] in await self?.sidebar.refresh() }
+            } catch {
+                done(
+                    NewChatDiagnosis.failure(
+                        server: Self.newChatServer(profile), directory: nil,
+                        error: AgentErrorText.readable(error), witness: .unknown))
+            }
+        case .editServer, .none, .retry:
+            presentServers()
+            done(nil)
         }
     }
 

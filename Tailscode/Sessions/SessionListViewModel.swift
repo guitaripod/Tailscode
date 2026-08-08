@@ -300,6 +300,34 @@ final class SessionListViewModel {
         }
     }
 
+    /// The same mint, with the reason kept instead of thrown away. A new chat is the one place a
+    /// silent failure is unforgivable — the person asked for a conversation and got a closed
+    /// sheet — so the caller is handed the diagnosis to show where the asking happened.
+    func createSession(on profile: ConnectionProfile, directory: String?) async
+        -> Result<SessionEntry, NewChatFailure>
+    {
+        let server = NewChatServer(
+            profileID: profile.id, name: profile.name, backend: profile.backend,
+            address: ServerLabel.address(profile))
+        guard let source = sources.first(where: { $0.profile.id == profile.id }) else {
+            return .failure(NewChatDiagnosis.noCredentials(server: server))
+        }
+        let minted = await NewChatAttempt.mint(
+            using: source.backend, server: server, baseURL: profile.baseURL,
+            password: ConnectionController.shared.password(for: profile.id), directory: directory)
+        guard case .success(let session) = minted else {
+            return .failure(minted.failureValue ?? NewChatDiagnosis.noSuchServer())
+        }
+        let entry = SessionEntry(
+            profileID: source.profile.id, profileName: source.profile.name,
+            host: source.profile.baseURL.host ?? source.profile.name,
+            backendType: source.profile.backend, session: session)
+        entries.insert(entry, at: 0)
+        onChange?()
+        Task { await load() }
+        return .success(entry)
+    }
+
     func newSession(on profile: ConnectionProfile, directory: String? = nil) async -> SessionEntry? {
         guard let source = sources.first(where: { $0.profile.id == profile.id }) else { return nil }
         do {

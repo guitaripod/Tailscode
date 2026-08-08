@@ -61,6 +61,13 @@ final class ServerDirectory {
         return made
     }
 
+    /// What a diagnostic probe needs to send: the password this device holds for a server, from
+    /// wherever it is held. Never used to build a backend — `backend(for:)` is still the one way
+    /// in — only to ask a machine who is there when something has already gone wrong.
+    func password(for profile: ConnectionProfile) -> String? {
+        ephemeralPasswords[profile.id] ?? (try? store?.password(for: profile.id)) ?? nil
+    }
+
     func enterDemoMode() {
         DemoMode.enter()
         reload()

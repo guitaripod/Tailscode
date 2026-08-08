@@ -221,22 +221,36 @@ enum Dialogs {
     /// Only a local server offers to browse: the desktop's own folder chooser is the one place a
     /// native picker tells the truth, and pointing it at this disk on behalf of a machine across
     /// the tailnet would offer folders that are not there.
+    /// - Parameters:
+    ///   - unreachable: the profiles that did not answer the last listing, so the modal can say a
+    ///     machine is down before a folder is chosen on it rather than after.
+    ///   - onCreate: mints the chat and answers with the reason when it does not — the modal holds
+    ///     the question until then.
+    ///   - onFix: applies a failure's remedy: repointing the profile at the port its agent is
+    ///     really on, or opening its settings.
     static func newChat(
         parent: UnsafeMutablePointer<GtkWidget>?,
         profiles: [ConnectionProfile],
         entries: [SessionEntry],
         preferredServer: String?,
         localAddresses: Set<String>,
-        onCreate: @escaping @Sendable (ConnectionProfile, String?) -> Void
+        unreachable: Set<String> = [],
+        onFix: @escaping @Sendable (
+            NewChatFailure.Fix, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void = { _, done in done(nil) },
+        onCreate: @escaping @Sendable (
+            String, String?, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         guard !profiles.isEmpty else { return }
-        let byID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
         let local = Set(
             profiles.filter { isLocal($0, localAddresses: localAddresses) }.map(\.id))
         let servers = profiles.map { profile in
             NewChatServer(
                 profileID: profile.id, name: profile.name, backend: profile.backend,
-                address: ServerLabel.address(profile), canBrowse: local.contains(profile.id),
+                address: ServerLabel.address(profile),
+                reachable: !unreachable.contains(profile.id),
+                canBrowse: local.contains(profile.id),
                 isLocal: local.contains(profile.id))
         }
         let parentBits = parent.map { UInt(bitPattern: $0) } ?? 0
@@ -251,10 +265,8 @@ enum Dialogs {
                     deliver(picked)
                 }
             },
-            onStart: { profileID, directory in
-                guard let profile = byID[profileID] else { return }
-                onCreate(profile, directory)
-            })
+            onFix: onFix,
+            onStart: { profileID, directory, done in onCreate(profileID, directory, done) })
     }
 
     /// This machine answering its own tailnet address is still this machine: a profile is local

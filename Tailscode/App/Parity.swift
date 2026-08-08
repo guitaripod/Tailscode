@@ -71,6 +71,7 @@ enum ParityManifest {
         case .serverSignIn: return .implemented("ServerSignInViewController")
         case .serverSelfUpdate: return .implemented("BridgeUpdater")
         case .newChat: return .implemented("NewChatViewController")
+        case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts: return .implemented("KeyBridge")
         case .shortcutCheatsheet: return .implemented("ShortcutCheatsheetViewController")
         case .fileBrowser: return .implemented("FileBrowserViewController")

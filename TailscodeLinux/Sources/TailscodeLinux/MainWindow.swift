@@ -246,6 +246,8 @@ final class MainWindow: @unchecked Sendable {
                                 on: profile, directory: argument.isEmpty ? nil : argument)
                         }
                     }
+                case "newchatui":
+                    self.presentNewChat()
                 case "up":
                     self.activePane.scroll(by: -(Double(argument) ?? 200))
                 case "down":
@@ -1773,9 +1775,13 @@ final class MainWindow: @unchecked Sendable {
                 Dialogs.newChat(
                     parent: self.window, profiles: profiles, entries: self.entries,
                     preferredServer: profile?.id ?? (pane ?? self.activePane).entry?.profileID,
-                    localAddresses: localAddresses
-                ) { [weak self, weak pane] profile, directory in
-                    self?.createChat(on: profile, directory: directory, into: pane)
+                    localAddresses: localAddresses, unreachable: Set(self.unreachable),
+                    onFix: { [weak self] fix, done in
+                        Gtk.onMain { [weak self] in self?.applyNewChatFix(fix, done: done) }
+                    }
+                ) { [weak self, weak pane] profileID, directory, done in
+                    self?.createChat(
+                        onProfileID: profileID, directory: directory, into: pane, done: done)
                 }
             }
         }
@@ -1793,38 +1799,100 @@ final class MainWindow: @unchecked Sendable {
 
     /// The one round trip that mints the session id is all the new chat waits for; the full list
     /// refresh reconciles behind it.
+    /// The server is looked up when the chat is minted, never when the modal opened: a repoint
+    /// applied from the failure card rewrites the address a second earlier, and retrying against
+    /// the copy the dialog captured would hit the same wrong port again.
     private func createChat(
-        on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil
+        onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
+        done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
+    ) {
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            guard let profile = profiles.first(where: { $0.id == profileID }) else {
+                done(NewChatDiagnosis.noSuchServer())
+                return
+            }
+            Gtk.onMain { [weak self] in
+                self?.createChat(on: profile, directory: directory, into: pane, done: done)
+            }
+        }
+    }
+
+    private func createChat(
+        on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
+        done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
         Task { [weak self, weak pane] in
-            guard let backend = await ServerDirectory.shared.backend(for: profile) else { return }
-            do {
-                let session = try await backend.createSession(title: nil, directory: directory)
-                Trace.mark("createChat session created")
-                let entry = SessionEntry(
-                    profileID: profile.id, profileName: profile.name,
-                    host: profile.baseURL.host ?? profile.name,
-                    backendType: profile.backend, session: session)
-                Gtk.onMain { [weak self, weak pane] in
-                    guard let self else { return }
-                    if !self.entries.contains(where: { $0.session.id == entry.session.id }) {
-                        self.entries.insert(entry, at: 0)
-                    }
-                    self.freshlyCreated = entry
-                    self.lastSidebar = nil
-                    self.renderSidebar()
-                    (pane ?? self.activePane).open(entry, freshlyCreated: true)
+            guard let backend = await ServerDirectory.shared.backend(for: profile) else {
+                done(NewChatDiagnosis.noCredentials(server: Self.newChatServer(profile)))
+                return
+            }
+            let minted = await NewChatAttempt.mint(
+                using: backend, server: Self.newChatServer(profile), baseURL: profile.baseURL,
+                password: await ServerDirectory.shared.password(for: profile), directory: directory)
+            guard case .success(let session) = minted else {
+                done(minted.failureValue)
+                return
+            }
+            Trace.mark("createChat session created")
+            let entry = SessionEntry(
+                profileID: profile.id, profileName: profile.name,
+                host: profile.baseURL.host ?? profile.name,
+                backendType: profile.backend, session: session)
+            Gtk.onMain { [weak self, weak pane] in
+                guard let self else { return }
+                if !self.entries.contains(where: { $0.session.id == entry.session.id }) {
+                    self.entries.insert(entry, at: 0)
                 }
-                await self?.refresh()
-                Trace.mark("createChat refresh done")
-            } catch {
-                Gtk.onMain { [weak self, weak pane] in
-                    guard let self else { return }
-                    (pane ?? self.activePane).setNotice(
-                            Localized.text("Could not start a session: %@", "\(error)"))
+                self.freshlyCreated = entry
+                self.lastSidebar = nil
+                self.renderSidebar()
+                (pane ?? self.activePane).open(entry, freshlyCreated: true)
+            }
+            done(nil)
+            await self?.refresh()
+            Trace.mark("createChat refresh done")
+        }
+    }
+
+    private static func newChatServer(_ profile: ConnectionProfile) -> NewChatServer {
+        NewChatServer(
+            profileID: profile.id, name: profile.name, backend: profile.backend,
+            address: ServerLabel.address(profile))
+    }
+
+    /// The remedy the failure card offers, carried out: a repoint rewrites the profile's address
+    /// and answers so the chat can be tried again on the spot; anything else opens the screen
+    /// where the rest of it is fixed by hand.
+    private func applyNewChatFix(
+        _ fix: NewChatFailure.Fix, done: @escaping @Sendable (NewChatFailure?) -> Void
+    ) {
+        switch fix {
+        case .repoint(let profileID, let url, _):
+            Task { [weak self] in
+                let profiles = await ServerDirectory.shared.profiles()
+                guard var profile = profiles.first(where: { $0.id == profileID }) else {
+                    done(NewChatDiagnosis.noSuchServer())
+                    return
+                }
+                let password = await ServerDirectory.shared.password(for: profile)
+                profile.baseURL = url
+                do {
+                    try await ServerDirectory.shared.save(profile, password: password)
+                    SettingsFile.capture()
+                    done(nil)
+                    await self?.refresh()
+                } catch {
+                    done(
+                        NewChatDiagnosis.failure(
+                            server: Self.newChatServer(profile), directory: nil,
+                            error: AgentErrorText.readable(error), witness: .unknown))
                 }
             }
+        case .editServer, .none, .retry:
+            presentServers()
+            done(nil)
         }
     }
 

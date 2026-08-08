@@ -73,6 +73,7 @@ enum ParityManifest {
         case .serverSignIn: return .implemented("SignInSheet")
         case .serverSelfUpdate: return .implemented("updateStatus")
         case .newChat: return .implemented("NewChatSheet")
+        case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts: return .implemented("ShortcutSet")
         case .shortcutCheatsheet: return .implemented("cheatsheet")
         case .gitState: return .implemented("GitPanelViewController")
