@@ -20,12 +20,13 @@ enum MacCLI {
           TailscodeMac --demo                   open the scripted demo world (no server)
           TailscodeMac --connect <address>      save a server (--password, --name, --opencode)
           TailscodeMac --selftest               check the whole chain with no display
+          TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size)
           TailscodeMac --version
         """
 
     static let knownOptions: Set<String> = [
         "--selftest", "--connect", "--password", "--name", "--opencode", "--demo",
-        "--version", "--help", "-h",
+        "--shot", "--shot-delay", "--shot-size", "--version", "--help", "-h",
     ]
 }
 

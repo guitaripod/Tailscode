@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { [weak controller] in await controller?.sidebar.refresh() }
         }
         NSApp.activate(ignoringOtherApps: true)
+        MacShot.schedule()
     }
 
     /// A Mac that slept holds sockets that look alive and deliver nothing; coming back to the
