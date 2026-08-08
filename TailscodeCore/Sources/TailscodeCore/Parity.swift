@@ -45,6 +45,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case imageViewer
     case subagentCards
     case workflowCard
+    case taskBoard
     case questionCells
     case compactionSeam
     case permissionCards
@@ -248,6 +249,10 @@ public enum CapabilityRegistry {
             id: .subagentCards, area: "transcript", title: "Subagents inline",
             spec:
                 "A subagent renders as a card docked at its spawning tool call, expanding in place; a wide fan-out collapses behind one group row; never a separate chat."),
+        CapabilityDefinition(
+            id: .taskBoard, area: "transcript", title: "The agent's plan is one live board",
+            spec:
+                "Claude keeps its to-do list by tool call — TodoWrite rewrites the whole list, TaskCreate/TaskUpdate grow it a task at a time with the number only in the result string — and TaskBoard (Core) folds every such call in transcript order into one list. The transcript shows the board once: the LAST board-moving call renders as a checklist card — done struck through, the in-progress task wearing its activeForm and the accent, pending dim, headed by \"N of M done · what is happening now\" — and every earlier board call stays the one-line tool row it was, so a long run reads as one plan updating rather than twenty snapshots. TaskList/TaskGet read the server's list and change nothing, so they stay ordinary rows. The card is the fold of the transcript the device already holds — no server route, works on saved chats."),
         CapabilityDefinition(
             id: .workflowCard, area: "transcript", title: "A workflow run is one card",
             spec:

@@ -21,6 +21,7 @@ struct ChatRow: Hashable {
         case workflow(WorkflowRun)
         case subagentGroup(SubagentGroup)
         case compaction(CompactionRow)
+        case taskBoard(TaskBoard)
         case file(FileReference)
         case image(FileReference)
         case timestamp(String)

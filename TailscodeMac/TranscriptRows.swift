@@ -70,6 +70,7 @@ final class TranscriptRowBuilder {
             all += rows
         }
         cache = next
+        all = TranscriptRow.placeBoard(in: all)
         return TranscriptRow.compactTools ? TranscriptRow.fuse(all) : all
     }
 }
@@ -100,6 +101,7 @@ struct TranscriptRow: Hashable {
         case subagent(ToolCall)
         case workflow(ToolCall)
         case file(FileReference, mine: Bool)
+        case taskBoard(TaskBoard)
         case compaction(Compaction)
         case turnBreak
     }
@@ -211,7 +213,26 @@ struct TranscriptRow: Hashable {
             }
             all += rows
         }
+        all = placeBoard(in: all)
         return compactTools ? fuse(all) : all
+    }
+
+    /// The agent's plan shows once: the last call that moved the to-do list becomes the board —
+    /// the fold of every board call before it — and every earlier one stays the one-line tool row
+    /// it was, so a long run reads as one plan updating rather than twenty snapshots.
+    static func placeBoard(in rows: [TranscriptRow]) -> [TranscriptRow] {
+        let calls = rows.compactMap { row -> ToolCall? in
+            guard case .tool(let call) = row.kind, TaskBoard.isBoardCall(call.name) else {
+                return nil
+            }
+            return call
+        }
+        let board = TaskBoard.fold(calls)
+        guard !board.isEmpty, let lastID = calls.last?.id else { return rows }
+        return rows.map { row in
+            guard case .tool(let call) = row.kind, call.id == lastID else { return row }
+            return TranscriptRow(key: row.key, kind: .taskBoard(board))
+        }
     }
 
     /// Compact mode: everything the agent did between two messages — the thoughts and the tool
@@ -281,6 +302,8 @@ struct TranscriptRow: Hashable {
             }.joined(separator: " ")
         case .file(let reference, _):
             return reference.filename ?? reference.path ?? ""
+        case .taskBoard(let board):
+            return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
             return compaction.summary ?? ""
         case .interruption:
@@ -315,6 +338,8 @@ struct TranscriptRow: Hashable {
             return SubagentRowView.make(call, key: key, context: context)
         case .file(let reference, let mine):
             return ImageRowView.make(reference, mine: mine, key: key, context: context)
+        case .taskBoard(let board):
+            return TaskBoardView.make(board)
         case .compaction(let compaction):
             return Self.seam(compaction, key: key, context: context)
         case .turnBreak:

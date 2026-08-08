@@ -28,6 +28,8 @@ enum ChatFind {
             return group.title
         case .compaction(let row):
             return row.compaction?.summary ?? "compaction"
+        case .taskBoard(let board):
+            return board.items.map(\.subject).joined(separator: " ")
         case .file(let reference), .image(let reference):
             return reference.filename ?? reference.path ?? ""
         case .timestamp:

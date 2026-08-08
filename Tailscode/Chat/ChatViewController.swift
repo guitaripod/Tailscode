@@ -408,6 +408,8 @@ final class ChatViewController: UIViewController {
             QuestionCell.self, forCellWithReuseIdentifier: QuestionCell.reuseID)
         collectionView.register(
             CompactionCell.self, forCellWithReuseIdentifier: CompactionCell.reuseID)
+        collectionView.register(
+            TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1059,6 +1061,12 @@ final class ChatViewController: UIViewController {
                 cell.configure(compaction) { [weak self] in
                     self?.presentCompactionSummary(compaction)
                 }
+                return cell
+            case .taskBoard(let board):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: TaskBoardCell.reuseID, for: indexPath) as! TaskBoardCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(board)
                 return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
@@ -2978,6 +2986,11 @@ final class ChatViewController: UIViewController {
                 body = Self.workflowMarkdown(run)
             case .subagentGroup(let group):
                 body = "_" + String(localized: "\(group.total) agents") + "_"
+            case .taskBoard(let board):
+                body = board.items.map { item in
+                    let mark = item.status == .completed ? "x" : " "
+                    return "- [\(mark)] \(item.subject)"
+                }.joined(separator: "\n")
             case .file(let file), .image(let file):
                 body = "[file: \(file.path ?? file.filename ?? String(localized: "attachment"))]"
             case .compaction(let row):
@@ -3620,6 +3633,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return Self.workflowMarkdown(run)
         case .subagentGroup:
             return nil
+        case .taskBoard(let board):
+            return board.items.map(\.subject).joined(separator: "\n")
         case .file(let file), .image(let file):
             return file.filename ?? file.mime
         case .compaction(let row):

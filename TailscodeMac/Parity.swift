@@ -40,6 +40,7 @@ enum ParityManifest {
         case .imageViewer: return .implemented("ImageViewer")
         case .subagentCards: return .implemented("SubagentRowView")
         case .workflowCard: return .implemented("WorkflowCardView")
+        case .taskBoard: return .implemented("TaskBoardView")
         case .questionCells: return .implemented("PendingCards")
         case .compactionSeam: return .implemented("Compaction")
         case .permissionCards: return .implemented("PendingCards")

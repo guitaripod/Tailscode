@@ -13,6 +13,16 @@ enum ChatRowBuilder {
         var lastDate: Date?
         var seenMessageIDs = Set<String>()
         var pendingUnattached = agents.unattached
+        let boardCalls = messages.flatMap { message in
+            message.parts.compactMap { part -> ToolCall? in
+                guard case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) else {
+                    return nil
+                }
+                return call
+            }
+        }
+        let board = TaskBoard.fold(boardCalls)
+        let boardCallID = board.isEmpty ? nil : boardCalls.last?.id
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
@@ -50,6 +60,14 @@ enum ChatRowBuilder {
                             ChatRow(
                                 id: "agent:\(card.agentID)", messageID: message.id,
                                 role: message.role, content: .subagent(card)))
+                        continue
+                    }
+                    if call.id == boardCallID {
+                        flushActivity()
+                        rows.append(
+                            ChatRow(
+                                id: "board:\(call.id)", messageID: message.id,
+                                role: message.role, content: .taskBoard(board)))
                         continue
                     }
                     if let run = runs[call.id] {

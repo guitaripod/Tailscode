@@ -559,6 +559,9 @@ enum MatrixTheme {
         }
         .workflow-answer { color: \(text); font-size: \(p(0.9)); }
         .image-part { border: 1px solid \(rule); }
+        .task-board { border: 1px solid \(rule); border-radius: 8px; padding: 10px 12px; background-color: alpha(currentColor, 0.03); }
+        .task-board-head { font-size: \(c(0.8)); font-weight: 700; color: \(palette.accent); }
+        .task-board-item { font-size: \(c(0.86)); }
 
         .goal-line {
             color: \(special);
