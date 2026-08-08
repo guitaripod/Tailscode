@@ -255,12 +255,14 @@ public enum TranscriptSearch {
         var seen = Set<String>()
         var unique: [Row] = []
         for row in rows where seen.insert(row.id).inserted { unique.append(row) }
-        let ranked = unique.sorted { lhs, rhs in
-            let left = score(lhs, needles: needles)
-            let right = score(rhs, needles: needles)
-            if left != right { return left > right }
-            return lhs.updatedAt > rhs.updatedAt
-        }
+        // Scored once each rather than inside the comparison, which would lowercase every title
+        // again on every comparison a sort makes.
+        let ranked = unique.map { (score: score($0, needles: needles), row: $0) }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return lhs.row.updatedAt > rhs.row.updatedAt
+            }
+            .map(\.row)
         return Board(query: query, rows: ranked, outcomes: outcomes)
     }
 
