@@ -15,3 +15,6 @@ build-rel/
 LAUNCH.md
 
 __pycache__/
+TailscodeMac/Info.plist
+build-mac/
+build-tsmac/
