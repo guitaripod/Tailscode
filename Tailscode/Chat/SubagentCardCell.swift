@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// One spawned agent, as it appears inside the conversation that spawned it:
@@ -477,13 +478,14 @@ final class SubagentCardCell: UICollectionViewCell {
     }
 
     private static func codeView(_ block: CodeBlock) -> UIView {
-        let label = UILabel()
+        let label = DiffWashLabel()
         label.numberOfLines = 0
-        label.lineBreakMode = .byCharWrapping
+        label.lineBreakMode = SyntaxHighlighter.isDiff(block.language) ? .byClipping : .byCharWrapping
         label.font = Theme.Font.mono(11)
         label.textColor = Theme.Color.label
         label.attributedText = CodeBlockCell.highlightedCode(
             block.source, language: block.language, font: Theme.Font.mono(11))
+        label.washes = CodeBlockCell.washes(block.source, language: block.language)
         label.translatesAutoresizingMaskIntoConstraints = false
         let box = UIView()
         box.backgroundColor = Theme.Color.codeBackground

@@ -59,6 +59,11 @@ enum PangoSyntax {
     /// added, danger for removed, the same colours the diff's own +N/−N labels wear — with the
     /// marker glyph in the diff's full ink and the body in the file's language, every colour
     /// corrected against the wash it actually sits on rather than the plain code background.
+    ///
+    /// A Pango background covers glyphs and nothing else, so every washed line is padded with
+    /// spaces to the block's widest line: the washes share one straight right edge and read as a
+    /// ground instead of a ragged smear that stops mid-air at each line's last glyph. The padding
+    /// is display only — the copy button hands over the raw source.
     private static func diffMarkup(_ source: String, _ palette: Palette) -> String {
         let diff = SyntaxHighlighter.diff(source)
         let units = Array(source.utf16)
@@ -74,6 +79,7 @@ enum PangoSyntax {
             return String(decoding: units[from..<to], as: UTF16.self)
         }
 
+        let columns = diff.lines.map { slice($0.offset, $0.offset + $0.length).count }.max() ?? 0
         var result = ""
         result.reserveCapacity(source.count + diff.tokens.count * 32)
         var tokenIndex = 0
@@ -98,7 +104,9 @@ enum PangoSyntax {
             }
             body += PangoMarkdown.escape(slice(lineCursor, lineEnd))
             if let wash {
-                result += "<span background=\"\(wash.background)\">\(body)</span>"
+                let width = slice(line.offset, lineEnd).count
+                let padding = String(repeating: " ", count: max(0, columns - width))
+                result += "<span background=\"\(wash.background)\">\(body)\(padding)</span>"
             } else {
                 result += body
             }
@@ -109,8 +117,11 @@ enum PangoSyntax {
     }
 
     /// One line of an Edit tool's diff: the marker in the diff's full ink, the body in the file's
-    /// language, the whole line over its wash — the same treatment a fenced patch gets, because a
-    /// tool's edit and a quoted diff are the same fact arriving by different roads.
+    /// language, every colour corrected against the wash the line sits on — the same treatment a
+    /// fenced patch gets, because a tool's edit and a quoted diff are the same fact arriving by
+    /// different roads. The wash itself is the label's CSS background, not a Pango span: CSS
+    /// paints the widget's whole allocation, so the ground runs the full width of the row and
+    /// stays under a long line that wraps.
     static func diffLine(
         prefix: String, body: String, kind: DiffLineKind, language: String?, palette: Palette
     ) -> String {
@@ -143,7 +154,7 @@ enum PangoSyntax {
             runs += PangoMarkdown.escape(slice(cursor, units.count))
             inner += "<span foreground=\"\(base)\">\(runs)</span>"
         }
-        return "<span background=\"\(ground)\">\(inner)</span>"
+        return inner
     }
 
     private static func markup(_ source: String, _ tokens: [SyntaxToken], _ palette: Palette)

@@ -276,6 +276,9 @@ enum ToolRowView {
             let label = NSTextField(wrappingLabelWithString: "")
             label.attributedStringValue = text
             label.isSelectable = true
+            label.drawsBackground = true
+            label.backgroundColor = MacTheme.Color.diffBackground(
+                line.prefix == "+" ? .added : .removed)
             label.translatesAutoresizingMaskIntoConstraints = false
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             block.addArrangedSubview(label)

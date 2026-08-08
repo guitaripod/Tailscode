@@ -30,16 +30,20 @@ public enum DiffLineKind: String, CaseIterable, Sendable, Hashable {
     case note
 }
 
-/// One line of a diff, measured like a token: UTF-16 offset and length, newline excluded.
+/// One line of a diff, measured like a token: UTF-16 offset and length, newline excluded. `row`
+/// is the line's index in the source, for a renderer that paints grounds by geometry — code never
+/// wraps in a code block, so a source row is a drawn row.
 public struct DiffLineSpan: Equatable, Sendable, Hashable {
     public let offset: Int
     public let length: Int
     public let kind: DiffLineKind
+    public let row: Int
 
-    public init(offset: Int, length: Int, kind: DiffLineKind) {
+    public init(offset: Int, length: Int, kind: DiffLineKind, row: Int) {
         self.offset = offset
         self.length = length
         self.kind = kind
+        self.row = row
     }
 }
 
@@ -229,16 +233,40 @@ public enum SyntaxHighlighter {
         var lines: [DiffLineSpan] = []
         var tokens: [SyntaxToken] = []
         var offset = 0
+        var row = 0
         for slice in source.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(slice)
             let length = line.utf16.count
-            defer { offset += length + 1 }
+            defer {
+                offset += length + 1
+                row += 1
+            }
             guard length > 0 else { continue }
             let kind = diffLineKind(line)
-            lines.append(DiffLineSpan(offset: offset, length: length, kind: kind))
+            lines.append(DiffLineSpan(offset: offset, length: length, kind: kind, row: row))
             appendDiffTokens(line, kind: kind, at: offset, language: resolved, into: &tokens)
         }
         return DiffHighlight(lines: lines, tokens: tokens, language: resolved)
+    }
+
+    /// The line spans alone — what a renderer painting grounds needs, without the cost of lexing
+    /// every line's code a second time.
+    public static func diffLines(_ source: String) -> [DiffLineSpan] {
+        guard source.utf16.count <= sourceLimit else { return [] }
+        var lines: [DiffLineSpan] = []
+        var offset = 0
+        var row = 0
+        for slice in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(slice)
+            let length = line.utf16.count
+            if length > 0 {
+                lines.append(
+                    DiffLineSpan(offset: offset, length: length, kind: diffLineKind(line), row: row))
+            }
+            offset += length + 1
+            row += 1
+        }
+        return lines
     }
 
     /// The language a patch's own headers point at: `+++ b/Sources/App.swift` names the file the

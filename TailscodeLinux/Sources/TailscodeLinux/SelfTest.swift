@@ -1099,12 +1099,18 @@ public enum SelfTest {
 
         let toolLine = PangoSyntax.diffLine(
             prefix: "+", body: "let a = 1", kind: .added, language: "swift", palette: palette)
-        try expect(toolLine.contains("background=\"\(addedGround)\""), "a tool diff line wears its wash")
+        try expect(
+            !toolLine.contains("background="),
+            "a tool diff line leaves its wash to CSS, which paints the full row")
         try expect(
             toolLine.contains(SyntaxPalette.hex(.keyword, in: palette, on: addedGround)),
-            "a tool diff line is lexed")
+            "a tool diff line is lexed against its wash")
         try expect(parsesAsMarkup(headed), "a diff's markup is legal Pango")
         try expect(parsesAsMarkup(toolLine), "a tool diff line is legal Pango")
+        let padded = render("-old\n+new is longer", "diff")
+        try expect(
+            padded.contains(String(repeating: " ", count: 10) + "</span>"),
+            "washes are padded to one straight right edge")
         let hostile = render("+++ b/x.cpp\n+std::vector<int> v && w\n-a < b", "diff")
         try expect(parsesAsMarkup(hostile), "a hostile diff still escapes on its way in")
 

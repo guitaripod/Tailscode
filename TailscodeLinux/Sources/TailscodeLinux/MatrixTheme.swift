@@ -241,6 +241,8 @@ enum MatrixTheme {
         .diff-add { color: \(accent); font-family: monospace; font-size: \(m(0.85)); }
         .diff-remove { color: \(danger); font-family: monospace; font-size: \(m(0.85)); }
         .diff-line { font-family: monospace; font-size: \(m(0.85)); }
+        .diff-wash-add { background-color: \(SyntaxPalette.diffLineBackground(.added, in: palette) ?? palette.codeBg); }
+        .diff-wash-remove { background-color: \(SyntaxPalette.diffLineBackground(.removed, in: palette) ?? palette.codeBg); }
 
         .pill {
             font-family: monospace;

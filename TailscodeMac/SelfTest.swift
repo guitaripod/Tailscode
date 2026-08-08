@@ -399,14 +399,11 @@ enum SelfTest {
         let removed = colour(in: diff, over: "-let old = 1")
         let added = colour(in: diff, over: "+let new = 2")
         try expect(removed != nil && added != nil && removed != added, "a diff reads by its column")
-        func wash(in rendered: NSAttributedString, over needle: String) -> NSColor? {
-            let range = (rendered.string as NSString).range(of: needle)
-            guard range.location != NSNotFound else { return nil }
-            return rendered.attributes(at: range.location, effectiveRange: nil)[.backgroundColor]
-                as? NSColor
-        }
+        let washed = RowKit.code("-let old = 1\n+let new = 2", language: "diff")
+            as? RowKit.DiffWashField
         try expect(
-            wash(in: diff, over: "+let new = 2") != nil, "an added line sits on its wash")
+            washed?.washes.map(\.row) == [0, 1],
+            "a diff's changed lines carry full-width washes, drawn rows 0 and 1")
 
         let headed = RowKit.code(
             "+++ b/App.swift\n+let a = \"s\"", language: "diff").attributedStringValue

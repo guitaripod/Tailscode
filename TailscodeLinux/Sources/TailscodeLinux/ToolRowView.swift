@@ -240,11 +240,12 @@ enum ToolRowView {
         Gtk.addClass(block, "code-block")
         let palette = MatrixTheme.palette
         for line in lines.prefix(80) {
+            let kind: DiffLineKind = line.prefix == "+" ? .added : .removed
             let markup = PangoSyntax.diffLine(
-                prefix: line.prefix, body: line.text,
-                kind: line.prefix == "+" ? .added : .removed,
+                prefix: line.prefix, body: line.text, kind: kind,
                 language: language, palette: palette)
             let label = Gtk.markupLabel(markup, css: "diff-line", wrap: true)
+            Gtk.addClass(label, kind == .added ? "diff-wash-add" : "diff-wash-remove")
             gtk_box_append(ptr(block), label)
         }
         if lines.count > 80 {

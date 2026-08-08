@@ -199,6 +199,8 @@ import Testing
         let diff = SyntaxHighlighter.diff(source)
         #expect(diff.language == "swift")
         #expect(diff.lines.map(\.kind) == [.meta, .meta, .hunk, .context, .removed, .added])
+        #expect(diff.lines.map(\.row) == [0, 1, 2, 3, 4, 5])
+        #expect(SyntaxHighlighter.diffLines(source) == diff.lines)
 
         let utf16 = Array(source.utf16)
         func slices(_ role: SyntaxRole) -> [String] {

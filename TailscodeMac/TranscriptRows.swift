@@ -567,9 +567,14 @@ enum RowKit {
     /// code that reflowed is a line you cannot read and cannot count.
     static func code(_ body: String, language: String?) -> NSTextField {
         let font = MacTheme.Font.mono(12)
-        let text: NSAttributedString
+        let label: NSTextField
         if SyntaxHighlighter.isDiff(language) {
-            text = diffAttributed(body, font: font)
+            let washed = DiffWashField(labelWithAttributedString: diffAttributed(body, font: font))
+            washed.washes = SyntaxHighlighter.diffLines(body).compactMap { line in
+                guard line.kind == .added || line.kind == .removed else { return nil }
+                return (line.row, MacTheme.Color.diffBackground(line.kind))
+            }
+            label = washed
         } else {
             let plain = NSMutableAttributedString(
                 string: body,
@@ -580,9 +585,8 @@ enum RowKit {
                 plain.addAttribute(
                     .foregroundColor, value: MacTheme.Color.syntax(token.role), range: range)
             }
-            text = plain
+            label = NSTextField(labelWithAttributedString: plain)
         }
-        let label = NSTextField(labelWithAttributedString: text)
         label.lineBreakMode = .byClipping
         label.isSelectable = true
         label.maximumNumberOfLines = 0
@@ -591,12 +595,35 @@ enum RowKit {
         return label
     }
 
-    /// A patch painted twice over. The wash under each changed line carries the diff's meaning —
-    /// the same accent and danger its +N/−N labels wear — which frees the foreground for the
-    /// file's own language: the marker glyph keeps the diff's full ink, and every token on a
-    /// washed line is coloured against the wash it actually sits on. A patch that names no file
-    /// keeps the old whole-line red and green, because guessing a language would colour code as
-    /// something it is not.
+    /// A field that paints a diff's washes itself, the full width of the line. A background
+    /// attribute covers only glyph runs, so an attribute-painted wash stops at the last glyph
+    /// and reads as a rendering bug rather than a ground. Code never wraps in this field, so a
+    /// source row is a drawn row and the rect is arithmetic — row × line height, edge to edge.
+    final class DiffWashField: NSTextField {
+        var washes: [(row: Int, color: NSColor)] = [] {
+            didSet { needsDisplay = true }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            if !washes.isEmpty, let font {
+                let height = NSLayoutManager().defaultLineHeight(for: font)
+                for wash in washes {
+                    let top = CGFloat(wash.row) * height
+                    let y = isFlipped ? top : bounds.height - top - height
+                    wash.color.setFill()
+                    NSRect(x: 0, y: y, width: bounds.width, height: height).fill()
+                }
+            }
+            super.draw(dirtyRect)
+        }
+    }
+
+    /// A patch's ink. The wash under each changed line carries the diff's meaning — painted by
+    /// the hosting view, full width, never as a background attribute that stops at the last
+    /// glyph — which frees the foreground for the file's own language: the marker glyph keeps
+    /// the diff's full ink, and every token on a washed line is coloured against the wash it
+    /// actually sits on. A patch that names no file keeps the old whole-line red and green,
+    /// because guessing a language would colour code as something it is not.
     static func diffAttributed(
         _ source: String, language: String? = nil, font: NSFont
     ) -> NSAttributedString {
@@ -605,12 +632,6 @@ enum RowKit {
             string: source,
             attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
         let length = result.length
-        for line in diff.lines where line.kind == .added || line.kind == .removed {
-            let range = NSRange(location: line.offset, length: line.length)
-            guard NSMaxRange(range) <= length else { continue }
-            result.addAttribute(
-                .backgroundColor, value: MacTheme.Color.diffBackground(line.kind), range: range)
-        }
         for token in diff.tokens {
             let range = NSRange(location: token.offset, length: token.length)
             guard NSMaxRange(range) <= length else { continue }

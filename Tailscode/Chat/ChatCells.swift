@@ -571,6 +571,38 @@ final class PermissionCell: UICollectionViewCell {
     @objc private func denyTapped() { Theme.Haptics.warning(); onDecision?(.reject) }
 }
 
+/// A label that paints a diff's washes itself, the full width of the line. A background attribute
+/// covers only glyph runs, so an attribute-painted wash stops at the last glyph and reads as a
+/// rendering bug rather than a ground. Code never wraps in this label, so a source row is a drawn
+/// row and the rect is arithmetic — row × lineHeight, edge to edge.
+final class DiffWashLabel: UILabel {
+    var washes: [(row: Int, color: UIColor)] = [] {
+        didSet { setNeedsDisplay() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        contentMode = .redraw
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
+            (label: DiffWashLabel, _) in label.setNeedsDisplay()
+        }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ rect: CGRect) {
+        if !washes.isEmpty, let font {
+            let height = font.lineHeight
+            for wash in washes {
+                wash.color.setFill()
+                UIRectFill(CGRect(
+                    x: 0, y: CGFloat(wash.row) * height, width: bounds.width, height: height))
+            }
+        }
+        super.draw(rect)
+    }
+}
+
 /// Renders a fenced code block with a language header, one-tap raw copy, and collapse for long
 /// blocks — a native client owning the exact clipboard string.
 final class CodeBlockCell: UICollectionViewCell {
@@ -581,7 +613,7 @@ final class CodeBlockCell: UICollectionViewCell {
     private let langLabel = UILabel()
     private let copyButton = UIButton(type: .system)
     private let codeScroll = UIScrollView()
-    private let codeLabel = UILabel()
+    private let codeLabel = DiffWashLabel()
     private let lineNumberLabel = UILabel()
     private let toggleButton = UIButton(type: .system)
     private var source = ""
@@ -657,6 +689,7 @@ final class CodeBlockCell: UICollectionViewCell {
             codeScroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             codeScroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
             frame.heightAnchor.constraint(equalTo: content.heightAnchor),
+            content.widthAnchor.constraint(greaterThanOrEqualTo: frame.widthAnchor),
 
             lineNumberLabel.topAnchor.constraint(equalTo: content.topAnchor),
             lineNumberLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -700,15 +733,27 @@ final class CodeBlockCell: UICollectionViewCell {
             let shortSource = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
             codeLabel.attributedText = Self.highlightedCode(
                 shortSource, language: block.language, cascade: nil)
+            codeLabel.washes = Self.washes(shortSource, language: block.language)
             lineNumberLabel.text = Self.lineNumbers(count: Self.collapsedLineLimit)
             toggleButton.setTitle(String(localized: "Show all \(lines.count) lines"), for: .normal)
             toggleButton.isHidden = false
         } else {
             codeLabel.attributedText = Self.highlightedCode(
                 block.source, language: block.language, cascade: cascade)
+            codeLabel.washes = Self.washes(block.source, language: block.language)
             lineNumberLabel.text = Self.lineNumbers(count: lines.count)
             toggleButton.setTitle(String(localized: "Collapse"), for: .normal)
             toggleButton.isHidden = !isLong
+        }
+    }
+
+    /// The grounds under a diff's changed lines, as geometry for `DiffWashLabel` to paint. Any
+    /// other language has none.
+    static func washes(_ source: String, language: String?) -> [(row: Int, color: UIColor)] {
+        guard SyntaxHighlighter.isDiff(language) else { return [] }
+        return SyntaxHighlighter.diffLines(source).compactMap { line in
+            guard line.kind == .added || line.kind == .removed else { return nil }
+            return (line.row, Theme.Color.diffBackground(line.kind))
         }
     }
 
@@ -773,12 +818,12 @@ final class CodeBlockCell: UICollectionViewCell {
         return result
     }
 
-    /// A patch painted twice over. The wash under each changed line carries the diff's meaning —
-    /// the same accent and danger its +N/−N labels wear — which frees the foreground for the
-    /// file's own language: the marker glyph keeps the diff's full ink, and every token on a
-    /// washed line is coloured against the wash it actually sits on. A patch that names no file
-    /// keeps the old whole-line red and green, because guessing a language would colour code as
-    /// something it is not.
+    /// A patch's ink. The wash under each changed line carries the diff's meaning — painted by
+    /// the hosting view, full width, never as a background attribute that stops at the last
+    /// glyph — which frees the foreground for the file's own language: the marker glyph keeps
+    /// the diff's full ink, and every token on a washed line is coloured against the wash it
+    /// actually sits on. A patch that names no file keeps the old whole-line red and green,
+    /// because guessing a language would colour code as something it is not.
     static func diffAttributed(
         _ source: String, language: String? = nil, font: UIFont
     ) -> NSAttributedString {
@@ -787,12 +832,6 @@ final class CodeBlockCell: UICollectionViewCell {
             .font: font, .foregroundColor: Theme.Color.label,
         ])
         let length = result.length
-        for line in diff.lines where line.kind == .added || line.kind == .removed {
-            let range = NSRange(location: line.offset, length: line.length)
-            guard NSMaxRange(range) <= length else { continue }
-            result.addAttribute(
-                .backgroundColor, value: Theme.Color.diffBackground(line.kind), range: range)
-        }
         for token in diff.tokens {
             let range = NSRange(location: token.offset, length: token.length)
             guard NSMaxRange(range) <= length else { continue }

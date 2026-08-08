@@ -174,11 +174,7 @@ final class ToolStepRenderer {
                 column.addArrangedSubview(Self.outputLabel(output))
             }
             if let diff = Self.editDiff(for: call) {
-                let diffLabel = UILabel()
-                diffLabel.numberOfLines = 0
-                diffLabel.lineBreakMode = .byCharWrapping
-                diffLabel.attributedText = diff
-                column.addArrangedSubview(diffLabel)
+                column.addArrangedSubview(diff)
             }
         case .webSearch:
             if let query = summary.title {
@@ -436,14 +432,34 @@ final class ToolStepRenderer {
 
     /// Renders an Edit/Write call as the diff a reviewer reads: washed added/removed lines with
     /// the file's own syntax on them — the same treatment a fenced patch gets in the transcript,
-    /// because the tool knows its `file_path` and the path names the language.
-    private static func editDiff(for call: ToolCall) -> NSAttributedString? {
+    /// because the tool knows its `file_path` and the path names the language. One label per line
+    /// with the wash as the label's own background, so the ground runs the full width of the row
+    /// and stays under a long line that wraps; cut at eighty lines with the remainder counted.
+    private static func editDiff(for call: ToolCall) -> UIView? {
         let editors = ["Edit", "Write", "MultiEdit", "str_replace", "str_replace_editor", "create"]
         guard editors.contains(where: { call.name.localizedCaseInsensitiveContains($0) }),
             let lines = ToolDiff.lines(for: call)
         else { return nil }
-        let unified = lines.map { "\($0.prefix) \($0.text)" }.joined(separator: "\n")
-        return CodeBlockCell.diffAttributed(
-            unified, language: ToolDiff.language(for: call), font: Theme.Font.mono(11))
+        let language = ToolDiff.language(for: call)
+        let mono = Theme.Font.mono(11)
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = 0
+        for line in lines.prefix(80) {
+            let kind: DiffLineKind = line.prefix == "+" ? .added : .removed
+            let label = UILabel()
+            label.numberOfLines = 0
+            label.lineBreakMode = .byCharWrapping
+            label.backgroundColor = Theme.Color.diffBackground(kind)
+            label.attributedText = CodeBlockCell.diffAttributed(
+                "\(line.prefix) \(line.text)", language: language, font: mono)
+            stack.addArrangedSubview(label)
+        }
+        if lines.count > 80 {
+            stack.addArrangedSubview(
+                Self.pathLabel(String(localized: "… \(lines.count - 80) more lines")))
+        }
+        return stack.arrangedSubviews.isEmpty ? nil : stack
     }
 }
