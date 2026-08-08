@@ -749,12 +749,16 @@ final class MainWindowController: NSWindowController {
                 missing.append(profile.name)
                 continue
             }
-            let report = (try? await backend.usageAnalytics(
-                days: UsageAnalytics.defaultWindowDays)) ?? nil
-            if let report {
-                reports.append((profile.name, report))
-            } else {
-                missing.append(profile.name)
+            do {
+                if let report = try await backend.usageAnalytics(
+                    days: UsageAnalytics.defaultWindowDays)
+                {
+                    reports.append((profile.name, report))
+                } else {
+                    missing.append(profile.name)
+                }
+            } catch {
+                continue
             }
         }
         return UsageAnalytics(servers: reports, missingServers: missing)

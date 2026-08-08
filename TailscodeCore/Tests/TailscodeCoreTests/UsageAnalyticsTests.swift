@@ -234,6 +234,33 @@ struct UsageAnalyticsTests {
         #expect(analytics.records.isEmpty)
     }
 
+    @Test("A model states what a turn of it costs, and the hero states today")
+    func sharpenedNumbers() throws {
+        let analytics = try #require(
+            UsageAnalytics(
+                servers: [
+                    (
+                        "studio",
+                        report(
+                            daily: [day(0, cost: 30, turns: 10)],
+                            models: [
+                                SessionSpendReport.ModelShare(
+                                    model: "claude-fable-5", turns: 10,
+                                    tokens: UsageAnalyticsReport.Tokens(output: 100), costUSD: 30)
+                            ],
+                            totals: UsageAnalyticsReport.Totals(
+                                costUSD: 30,
+                                tokens: UsageAnalyticsReport.Tokens(
+                                    input: 100, output: 1000, cacheRead: 900),
+                                turns: 10, toolCalls: 0, sessions: 1, activeDays: 1),
+                            cacheSavedUSD: 12)
+                    )
+                ], now: now, calendar: calendar))
+        #expect(analytics.models.first?.detail.contains("$3.00 a turn") == true)
+        #expect(analytics.perDayLine.contains("today"))
+        #expect(analytics.cacheLine?.contains("came from cache") == true)
+    }
+
     @Test("Money marks itself an estimate, and the servers too old to answer are named")
     func provenance() throws {
         let analytics = try #require(

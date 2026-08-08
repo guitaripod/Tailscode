@@ -190,9 +190,13 @@ public struct UsageAnalytics: Sendable, Equatable {
         self.totalMoney = prefix + SessionSpend.money(totals.costUSD)
         self.windowLabel = Localized.text("Last %d days", window)
         let perActive = totals.costUSD / Double(max(1, totals.activeDays))
-        self.perDayLine = Localized.text(
+        var perDay = Localized.text(
             "%@ a day, over %d active days", prefix + SessionSpend.money(perActive),
             totals.activeDays)
+        if let today = bars.last, today.isToday, today.costUSD > 0 {
+            perDay += Localized.text(" · today %@", today.money)
+        }
+        self.perDayLine = perDay
         self.activityLine = Localized.text(
             "%@ turns · %@ conversations · %@ tool calls · %@ tokens",
             Self.count(totals.turns), Self.count(totals.sessions), Self.count(totals.toolCalls),
@@ -217,11 +221,17 @@ public struct UsageAnalytics: Sendable, Equatable {
 
         let modelPeak = modelRows.values.map(\.costUSD).max() ?? 0
         self.models = modelRows.values.sorted { $0.costUSD > $1.costUSD }.map { row in
-            Meter(
+            var detail = Localized.text(
+                "%@ turns · %@ tokens", Self.count(row.turns),
+                StatusFacts.tokens(row.tokens.total))
+            if row.turns > 0, row.costUSD > 0 {
+                detail += Localized.text(
+                    " · %@ a turn",
+                    prefix + SessionSpend.money(row.costUSD / Double(row.turns)))
+            }
+            return Meter(
                 label: ModelBadge.shortName(row.model),
-                detail: Localized.text(
-                    "%@ turns · %@ tokens", Self.count(row.turns),
-                    StatusFacts.tokens(row.tokens.total)),
+                detail: detail,
                 money: prefix + SessionSpend.money(row.costUSD),
                 share: modelPeak > 0 ? row.costUSD / modelPeak : 0)
         }
@@ -256,7 +266,14 @@ public struct UsageAnalytics: Sendable, Equatable {
         }
 
         self.tiers = SessionSpend.tierSplit(tokens: tokens, costUSD: totals.costUSD)
-        if cacheSaved >= 1 {
+        let contextRead = tokens.cacheRead + tokens.input
+        if cacheSaved >= 1, contextRead > 0 {
+            let hitRate = Int(
+                (Double(tokens.cacheRead) / Double(contextRead) * 100).rounded())
+            self.cacheLine = Localized.text(
+                "%d%% of what the model read came from cache, saving %@ against fresh-input prices",
+                hitRate, "~" + SessionSpend.money(cacheSaved))
+        } else if cacheSaved >= 1 {
             self.cacheLine = Localized.text(
                 "Cache reads saved %@ against fresh-input prices",
                 "~" + SessionSpend.money(cacheSaved))
@@ -271,7 +288,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         let streak = Self.streak(days: Set(dayCost.keys), calendar: calendar)
         self.records = Self.recordRows(
             records: records, streak: streak, subagents: subagents, compactions: compactions,
-            prefix: prefix, calendar: calendar)
+            totalCostUSD: totals.costUSD, prefix: prefix, calendar: calendar)
 
         if reports.count > 1 {
             let machinePeak = reports.map(\.report.totals.costUSD).max() ?? 0
@@ -419,7 +436,8 @@ public struct UsageAnalytics: Sendable, Equatable {
     private static func recordRows(
         records: UsageAnalyticsReport.Records, streak: Int,
         subagents: UsageAnalyticsReport.Subagents,
-        compactions: UsageAnalyticsReport.Compactions, prefix: String, calendar: Calendar
+        compactions: UsageAnalyticsReport.Compactions, totalCostUSD: Double, prefix: String,
+        calendar: Calendar
     ) -> [Record] {
         var rows: [Record] = []
         if let busiest = records.busiestDay {
@@ -469,14 +487,19 @@ public struct UsageAnalytics: Sendable, Equatable {
                     detail: nil))
         }
         if subagents.runs > 0 {
+            var detail = Localized.text(
+                "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
+                prefix + SessionSpend.money(subagents.costUSD))
+            if totalCostUSD > 0, subagents.costUSD > 0 {
+                let share = Int((subagents.costUSD / totalCostUSD * 100).rounded())
+                detail += Localized.text(" · %d%% of the window", share)
+            }
             rows.append(
                 Record(
                     id: "subagents", symbolName: "person.2.gobackward", glyph: "⑂",
                     title: Localized.text("Subagent runs"),
                     value: Self.count(subagents.runs),
-                    detail: Localized.text(
-                        "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
-                        prefix + SessionSpend.money(subagents.costUSD))))
+                    detail: detail))
         }
         if compactions.count > 0 {
             rows.append(
