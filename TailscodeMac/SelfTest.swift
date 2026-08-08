@@ -102,6 +102,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkGit()
+            report("git: \(checks) claims hold — the tree reads, the patch colours")
+        } catch {
+            report("git: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkParity()
             report("parity: \(checks) capabilities answered")
         } catch {
@@ -1047,6 +1055,70 @@ enum SelfTest {
         try expect(WebCommand.command(for: plain) == nil, "a letter belongs to the page")
         try expect(WebCommand.command(for: address) == .address, "ctrl+l opens the address bar")
         try expect(WebCommand.command(for: back) == .back, "alt+left goes back")
+        return checks
+    }
+
+    /// The repository surface where it can actually go wrong on this toolkit: the shared reading
+    /// of a working tree must survive being drawn — a panel that cannot build its own view is a
+    /// popover that opens empty — and a patch must reach AppKit with its meanings still apart.
+    private static func checkGit() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("git: \(label)") }
+            checks += 1
+        }
+        let snapshot = GitSnapshot(
+            root: "/home/dev/project", branch: "master", head: "abc12345",
+            upstream: "origin/master", ahead: 2, behind: 1, stashes: 1, operation: "rebase",
+            remote: "git@github.com:acme/project.git",
+            changes: [
+                GitChange(
+                    path: "Sources/App/Main.swift", index: "M", worktree: "M", insertions: 3,
+                    deletions: 1, stagedInsertions: 8, stagedDeletions: 2),
+                GitChange(
+                    path: "docs/", worktree: "?", untracked: true, directory: true, contains: 4),
+                GitChange(path: "Package.swift", index: "U", worktree: "U", conflicted: true),
+            ],
+            commits: [
+                GitCommitSummary(
+                    hash: "deadbeefcafe", short: "deadbeef", subject: "a change", author: "dev",
+                    at: Date(timeIntervalSince1970: 1_700_000_000), refs: ["HEAD -> master"])
+            ], changedTotal: 3)
+        let state = GitState(snapshot: snapshot)
+        try expect(
+            state.sections.map(\.kind) == [.conflicts, .staged, .changed, .untracked],
+            "sections triage in order")
+        try expect(state.alert?.contains("Rebase") == true, "an unfinished rebase leads the header")
+        try expect(
+            state.badge.contains("↑2") && state.badge.contains("↓1"),
+            "the chip carries both drifts")
+        try expect(
+            state.facts.contains { $0.value == "acme/project" },
+            "the remote is named the way a person names it")
+
+        let panel = GitPanelViewController(
+            state: state, title: "a chat", patch: { _ in nil }, commit: { _ in nil },
+            openDiff: { _, _, _ in })
+        try expect(panel.view.subviews.count == 1, "the panel builds its own view")
+
+        let rendered = GitDiffWindowController.render(
+            """
+            diff --git a/a.swift b/a.swift
+            @@ -10,2 +10,2 @@
+             kept
+            -gone
+            +arrived
+            """)
+        var colours: Set<String> = []
+        rendered.enumerateAttribute(
+            .foregroundColor, in: NSRange(location: 0, length: rendered.length)
+        ) { value, _, _ in
+            if let colour = value as? NSColor { colours.insert(CascadeTint.hex(colour)) }
+        }
+        try expect(colours.count >= 3, "a patch reaches AppKit with its meanings apart")
+        try expect(
+            rendered.string.contains("+ arrived") && rendered.string.contains("− gone"),
+            "both sides of the change are drawn")
         return checks
     }
 

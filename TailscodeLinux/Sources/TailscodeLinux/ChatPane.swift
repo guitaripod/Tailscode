@@ -34,6 +34,9 @@ final class ChatPane: @unchecked Sendable {
     /// agents. A backend that cannot account for it leaves this nil and the band falls back to the
     /// last turn's price.
     private var spend: SessionSpend?
+    /// Which branch this conversation's work is landing on, read on the same slow poll. Nil for a
+    /// server that cannot read a repository, which is how the band knows to say nothing at all.
+    private var git: GitState?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
     private var notice: String?
@@ -1402,7 +1405,7 @@ final class ChatPane: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend)
+            spend: spend, git: git)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -1446,6 +1449,24 @@ final class ChatPane: @unchecked Sendable {
         case .scrollToPending: scroll(toEnd: true)
         case .scrollToAgents: scrollToNewestAgent()
         case .agent(let id): scrollToAgent(id)
+        case .git:
+            guard let git, let backend, let entry else { return }
+            let directory = entry.session.directory
+            let sessionID = entry.session.id
+            GitPanel.present(
+                parent: host?.windowWidget, state: git,
+                title: entry.session.title,
+                patch: { row in
+                    guard let observer = backend as? any GitObservingBackend else { return nil }
+                    return try? await observer.gitPatch(
+                        directory: directory, sessionID: sessionID, path: row.path,
+                        staged: row.staged)?.patch
+                },
+                commit: { commit in
+                    guard let observer = backend as? any GitObservingBackend else { return nil }
+                    return try? await observer.gitCommit(
+                        directory: directory, sessionID: sessionID, hash: commit.hash)?.patch
+                })
         case .spend:
             guard let spend else { return }
             SpendPanel.present(
@@ -1568,9 +1589,11 @@ final class ChatPane: @unchecked Sendable {
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
+            let repository = await Self.readGit(backend: backend, session: entry.session)
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.usage = usage
+                self.git = repository.map { GitState(snapshot: $0) }
                 self.spend = report.map(SessionSpend.init(report:))
                     ?? SessionSpend(messages: self.lastState?.messages ?? [])
                 if let agents {
@@ -1580,6 +1603,18 @@ final class ChatPane: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// The repository the conversation is working in, when the server can read one. A backend
+    /// without the routes, or a directory outside version control, answers nil and the band simply
+    /// has one fewer fact — never an error about a repository nobody asked for.
+    private static func readGit(backend: any CodingAgentBackend, session: AgentSession) async
+        -> GitSnapshot?
+    {
+        guard let observer = backend as? any GitObservingBackend else { return nil }
+        let snapshot = try? await observer.gitSnapshot(
+            directory: session.directory, sessionID: session.id)
+        return (snapshot?.repo == true) ? snapshot : nil
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event.

@@ -71,6 +71,7 @@ enum ParityManifest {
         case .keyboardShortcuts: return .implemented("KeyBridge")
         case .shortcutCheatsheet: return .implemented("ShortcutCheatsheetViewController")
         case .fileBrowser: return .implemented("FileBrowserViewController")
+        case .gitState: return .implemented("GitStatusViewController")
         case .terminalPane: return .notApplicable("iOS has no shell; the pane presumes the app shares a filesystem with the agent")
         case .browserSlot: return .notApplicable("no tiling on a phone; a page beside the work presumes panes that tile, and the system browser owns the page on iOS")
         case .videoSlot: return .notApplicable("no tiling on a phone; a slot is a pane among panes, and the same reason splitPanes is not applicable applies to what a pane could hold")

@@ -213,6 +213,9 @@ public enum StatusMark {
     public static let pursued = "⦿"
     public static let idle = "·"
     public static let open = "◐"
+    /// One column for "this is a branch", so a band segment reads as a repository rather than as
+    /// another number. Text clients have no symbol set to fall back on.
+    public static let branch = "⑂"
 }
 
 extension ToolStatus {

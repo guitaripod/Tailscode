@@ -38,6 +38,10 @@ final class MainWindowController: NSWindowController {
     private var usageTask: Task<Void, Never>?
     private var usagePopover: NSPopover?
     private var spendPopover: NSPopover?
+    private var gitPopover: NSPopover?
+    /// Diff windows outlive the popover that opened them, so the controller holds them: a window
+    /// controller nobody retains closes itself the moment the stack unwinds.
+    private var gitDiffWindows: [GitDiffWindowController] = []
     private var lastQuotas: [(String, UsageQuota)] = []
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
@@ -351,6 +355,8 @@ final class MainWindowController: NSWindowController {
             pane.scrollToAgent(id)
         case .spend:
             presentSpend(for: pane)
+        case .git:
+            presentGit(for: pane)
         case .reconnect:
             pane.reconnect()
         }
@@ -369,6 +375,39 @@ final class MainWindowController: NSWindowController {
         let anchor = pane.bandAnchor
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         spendPopover = popover
+    }
+
+    /// The repository behind the branch on the band, in a popover off the band itself. A path or a
+    /// commit inside it opens in a window, because a diff outlives the popover that offered it.
+    private func presentGit(for pane: TranscriptViewController) {
+        guard let git = pane.git, let backend = pane.gitBackend, let entry = pane.currentEntry
+        else { return }
+        gitPopover?.close()
+        let directory = entry.session.directory
+        let sessionID = entry.session.id
+        let panel = GitPanelViewController(
+            state: git, title: entry.session.title,
+            patch: { row in
+                try? await backend.gitPatch(
+                    directory: directory, sessionID: sessionID, path: row.path, staged: row.staged)?
+                    .patch
+            },
+            commit: { commit in
+                try? await backend.gitCommit(
+                    directory: directory, sessionID: sessionID, hash: commit.hash)?.patch
+            },
+            openDiff: { [weak self] title, subtitle, load in
+                self?.gitPopover?.close()
+                let window = GitDiffWindowController(title: title, subtitle: subtitle, load: load)
+                self?.gitDiffWindows.append(window)
+                window.present()
+            })
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = panel
+        let anchor = pane.bandAnchor
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        gitPopover = popover
     }
 
     private func applyUIScale() {

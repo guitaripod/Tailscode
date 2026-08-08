@@ -53,6 +53,10 @@ final class ChatViewController: UIViewController {
     /// judged by. Tapping opens the account behind the number.
     private let spendChip = UIButton(type: .system)
     private var spend: SessionSpend?
+    /// The branch the work is landing on, and how far the tree has drifted from it. Tapping opens
+    /// the repository — read-only, because this app never commits on anyone's behalf.
+    private let gitChip = UIButton(type: .system)
+    private var git: GitState?
     private let findBar = UIView()
     private let findField = UISearchTextField()
     private let findCountLabel = UILabel()
@@ -109,6 +113,7 @@ final class ChatViewController: UIViewController {
         configureGoalChip()
         configureContextChip()
         configureSpendChip()
+        configureGitChip()
         configureFindBar()
         configureNavTitleView()
         configureDataSource()
@@ -194,6 +199,19 @@ final class ChatViewController: UIViewController {
                     self?.presentModelPicker()
                 }
             }
+            if let hook = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_GIT"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    self.presentGit()
+                    guard hook == "diff" || hook == "commit" else { return }
+                    try? await Task.sleep(for: .seconds(2))
+                    (self.presentedViewController as? UINavigationController)?
+                        .topViewController
+                        .flatMap { $0 as? GitStatusViewController }?
+                        .openFirst(hook == "commit" ? .commit : .change)
+                }
+            }
         #endif
         let draft = DraftStore.text(for: draftScope)
         if !draft.isEmpty { composer.setDraft(draft, focus: false) }
@@ -213,6 +231,7 @@ final class ChatViewController: UIViewController {
         super.viewDidAppear(animated)
         if !composer.isEditing { becomeFirstResponder() }
         refreshSpend()
+        refreshGit()
     }
 
     override var canBecomeFirstResponder: Bool { true }
@@ -419,7 +438,9 @@ final class ChatViewController: UIViewController {
         contextChip.translatesAutoresizingMaskIntoConstraints = false
         spendChip.isHidden = true
         spendChip.translatesAutoresizingMaskIntoConstraints = false
-        let chips = UIStackView(arrangedSubviews: [contextChip, spendChip])
+        gitChip.isHidden = true
+        gitChip.translatesAutoresizingMaskIntoConstraints = false
+        let chips = UIStackView(arrangedSubviews: [contextChip, spendChip, gitChip])
         chips.axis = .horizontal
         chips.spacing = Theme.Spacing.xs
         composerAccessories.addArrangedSubview(chips)
@@ -1357,6 +1378,7 @@ final class ChatViewController: UIViewController {
         if wasRunning && state.status != .running {
             Theme.Haptics.received()
             refreshSpend()
+            refreshGit()
         }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
@@ -1734,6 +1756,66 @@ final class ChatViewController: UIViewController {
             localized: "What this conversation has cost. Opens the breakdown.")
         spendChip.addAction(
             UIAction { [weak self] _ in self?.presentSpend() }, for: .touchUpInside)
+    }
+
+    /// Which branch the agent's work is landing on, once the server can say. It opens the whole
+    /// repository — the working tree, what each file's change is, the commits behind it — and
+    /// offers nothing that writes: this app reads a repository, it does not operate one.
+    private func configureGitChip() {
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.image = UIImage(
+            systemName: "arrow.trianglehead.branch",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))
+        config.imagePadding = 6
+        config.baseForegroundColor = Theme.Color.secondaryLabel
+        gitChip.configuration = config
+        gitChip.accessibilityHint = String(
+            localized: "The repository this conversation is working in. Opens its state.")
+        gitChip.addAction(
+            UIAction { [weak self] _ in self?.presentGit() }, for: .touchUpInside)
+    }
+
+    private func updateGitChip() {
+        guard let git, git.isRepository else {
+            gitChip.isHidden = true
+            return
+        }
+        gitChip.configuration?.title = git.badge
+        gitChip.configuration?.baseForegroundColor =
+            git.badgeTone == .conflict ? Theme.Color.warning : Theme.Color.secondaryLabel
+        gitChip.accessibilityLabel = git.spokenBadge
+        gitChip.isHidden = false
+    }
+
+    private func presentGit() {
+        guard let backend = viewModel.backend as? any GitObservingBackend else { return }
+        Theme.Haptics.tap()
+        let panel = GitStatusViewController(
+            backend: backend, directory: viewModel.session.directory,
+            sessionID: viewModel.session.id)
+        let nav = UINavigationController(rootViewController: panel)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        present(nav, animated: true)
+    }
+
+    /// Read on the same slow beat as the price, and again the moment a turn ends: an agent that
+    /// just finished editing has changed exactly what this chip is counting.
+    private func refreshGit() {
+        guard let backend = viewModel.backend as? any GitObservingBackend else { return }
+        let sessionID = viewModel.session.id
+        let directory = viewModel.session.directory
+        Task { [weak self] in
+            guard let self else { return }
+            let snapshot = try? await backend.gitSnapshot(
+                directory: directory, sessionID: sessionID)
+            guard self.viewModel.session.id == sessionID else { return }
+            self.git = snapshot.map { GitState(snapshot: $0) }
+            self.updateGitChip()
+        }
     }
 
     private func updateSpendChip() {

@@ -33,6 +33,10 @@ public struct StatusFacts: Sendable {
     /// this in place of the last turn's price — a turn's cost is a curiosity, a session's is a
     /// fact you act on — and clicking it opens the whole account.
     public var spend: SessionSpend?
+    /// Which branch the work is landing on, when the server can read the repository. The band
+    /// states it because a change means something different on `master` than on a branch nobody
+    /// has pushed, and clicking it opens the whole working tree — read-only, always.
+    public var git: GitState?
     public var lastTurnTokens: Int?
     public var goal: String?
     public var goalMet = false
@@ -72,7 +76,8 @@ public struct StatusFacts: Sendable {
     public static func from(
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
-        quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil
+        quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
+        git: GitState? = nil
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
@@ -103,6 +108,7 @@ public struct StatusFacts: Sendable {
         facts.runningTool = Self.runningTool(in: state)
         facts.queued = queued
         facts.spend = spend
+        facts.git = git
         facts.agents = agents
         facts.contextTokens = contextTokens
         facts.lastCostUSD = usage?.costUSD
@@ -293,6 +299,13 @@ public struct StatusFacts: Sendable {
                     kind: .plain))
         }
 
+        if let git, git.isRepository {
+            result.append(
+                Segment(
+                    id: "branch", text: StatusMark.branch + " " + git.badge,
+                    css: git.badgeTone == .conflict ? "seg-warn" : "seg-dim", kind: .act(.git)))
+        }
+
         if let goal {
             let glyph = goalMet ? StatusMark.done : goalFailed ? StatusMark.failed : StatusMark.pursued
             let css = goalMet ? "seg-idle" : goalFailed ? "seg-error" : "seg-goal"
@@ -442,6 +455,7 @@ public struct StatusFacts: Sendable {
     public enum Action: Equatable, Sendable {
         case stop
         case spend
+        case git
         case compact
         case goal
         case scrollToPending

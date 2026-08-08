@@ -70,6 +70,7 @@ enum ParityManifest {
         case .newChat: return .implemented("NewChatSheet")
         case .keyboardShortcuts: return .implemented("ShortcutSet")
         case .shortcutCheatsheet: return .implemented("cheatsheet")
+        case .gitState: return .implemented("GitPanelViewController")
         case .fileBrowser: return .implemented("FileTreePane")
         case .terminalPane: return .implemented("TerminalPane")
         case .splitPanes: return .implemented("SplitPaneHost")

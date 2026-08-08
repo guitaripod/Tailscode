@@ -747,6 +747,27 @@ enum MatrixTheme {
         .spend-caption { color: \(textDim); font-size: 0.72rem; letter-spacing: 0.06em; }
         .spend-bar { background-color: \(accentDim); border-radius: 2px; }
         .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
+        .git-added { color: \(accent); }
+        .git-removed { color: \(danger); }
+        .git-changed { color: \(info); }
+        .git-untracked { color: \(textDim); }
+        .git-conflict { color: \(warn); font-weight: 700; }
+        .git-neutral {
+            color: \(text);
+            font-weight: 700;
+            font-size: 0.78rem;
+            letter-spacing: 0.06em;
+        }
+        .git-row { padding: 2px 4px; border-radius: 6px; }
+        .git-row:hover { background-color: alpha(currentColor, 0.07); }
+        .git-alert {
+            color: \(warn);
+            font-weight: 700;
+            border: 1px solid alpha(\(warn), 0.45);
+            border-radius: 8px;
+            padding: 4px 8px;
+        }
+        .git-diff { font-family: monospace; font-size: 0.85rem; }
         .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """

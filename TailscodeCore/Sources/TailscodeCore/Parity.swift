@@ -76,6 +76,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case keyboardShortcuts
     case shortcutCheatsheet
     case fileBrowser
+    case gitState
     case terminalPane
     case splitPanes
     case newPaneChooser
@@ -367,6 +368,10 @@ public enum CapabilityRegistry {
             id: .fileBrowser, area: "app", title: "The server's files",
             spec:
                 "Browse the conversation directory's tree via FileBrowsingBackend.listFiles; picking a file hands its path to the composer."),
+        CapabilityDefinition(
+            id: .gitState, area: "app", title: "What the repository is doing",
+            spec:
+                "The repository a conversation is working in, read and never operated: the server answers GET /git with branch, upstream drift, stash count, an operation left half-done, every path the working tree disagrees with the index or HEAD about, and the recent commits, and GitObservingBackend carries it to the client with nil meaning 'this server cannot say' rather than an error. GitState in Core is the whole arrangement — sections in triage order (conflicts, staged, changed, untracked), one row per path with git's own status letter, a symbol, a tone from five meanings and the lines it moved; a header that states the branch, what it owes its upstream and one alert line when a merge or rebase is unfinished; and the chip a chat's chrome wears (branch, drift, dirt). A file opens its own diff, read into numbered lines by GitPatchReader so all three clients colour the same gutter, and a commit opens what it changed. No client offers to stage, commit, pull or push: a change made from a phone is a change nobody reviewed on the machine that has to live with it. A tree with no repository says so; a bridge too old for the routes makes the surface disappear rather than fail."),
         CapabilityDefinition(
             id: .terminalPane, area: "app", title: "A shell beside the conversation",
             spec:

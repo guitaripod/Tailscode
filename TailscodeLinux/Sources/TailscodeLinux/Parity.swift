@@ -71,6 +71,7 @@ enum ParityManifest {
         case .keyboardShortcuts: return .implemented("installKeymap")
         case .shortcutCheatsheet: return .implemented("helpOverlay")
         case .fileBrowser: return .implemented("FileTree")
+        case .gitState: return .implemented("GitPanel")
         case .terminalPane: return .implemented("TerminalPane")
         case .splitPanes: return .implemented("SplitHost")
         case .videoSlot: return .implemented("VideoPane")

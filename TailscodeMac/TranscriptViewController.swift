@@ -125,6 +125,12 @@ final class TranscriptViewController: NSViewController {
     /// What the whole conversation has cost, asked of the server on the same slow poll as the
     /// agents; a backend that cannot account for it leaves the band on the last turn's price.
     private(set) var spend: SessionSpend?
+    /// Which branch this conversation's work is landing on, read on the same slow poll. Nil for a
+    /// server that cannot read a repository, which is how the band knows to say nothing at all.
+    private(set) var git: GitState?
+    /// The same backend the pane already talks to, when it can answer questions about a
+    /// repository. Exposed instead of the backend itself: the window needs the one capability.
+    var gitBackend: (any GitObservingBackend)? { backend as? any GitObservingBackend }
     private var contextEstimate: Int?
     private var countedMessages = -1
     private var notice: String?
@@ -922,7 +928,7 @@ final class TranscriptViewController: NSViewController {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend)
+            spend: spend, git: git)
         lastFacts = facts
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
@@ -973,8 +979,10 @@ final class TranscriptViewController: NSViewController {
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
+            let repository = await Self.readGit(backend: backend, session: entry.session)
             guard let self, self.entry?.session.id == sessionID else { return }
             self.usage = usage
+            self.git = repository.map { GitState(snapshot: $0) }
             self.spend = report.map(SessionSpend.init(report:))
                 ?? SessionSpend(messages: self.lastState?.messages ?? [])
             if let agents {
@@ -983,6 +991,18 @@ final class TranscriptViewController: NSViewController {
                 self.updateStatus()
             }
         }
+    }
+
+    /// The repository the conversation is working in, when the server can read one. A backend
+    /// without the routes, or a directory outside version control, answers nil and the band simply
+    /// has one fewer fact — never an error about a repository nobody asked for.
+    private static func readGit(backend: any CodingAgentBackend, session: AgentSession) async
+        -> GitSnapshot?
+    {
+        guard let observer = backend as? any GitObservingBackend else { return nil }
+        let snapshot = try? await observer.gitSnapshot(
+            directory: session.directory, sessionID: session.id)
+        return (snapshot?.repo == true) ? snapshot : nil
     }
 
     /// A proto-2 bridge pushes each fan-out's live facts as they change; older servers are

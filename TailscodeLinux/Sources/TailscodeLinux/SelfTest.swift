@@ -88,6 +88,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkGit()
+            report("git: \(checks) claims hold — the tree reads, the patch colours, the classes exist")
+        } catch {
+            report("git: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSpend()
             report("spend: \(checks) numbers hold, and the panel can be built")
         } catch {
@@ -1405,6 +1413,71 @@ public enum SelfTest {
     /// What a conversation cost is money on a screen, so the arithmetic is asserted rather than
     /// eyeballed: the bars are relative to the priciest turn, the tiers add up to the total, and
     /// an estimate says so in the badge itself.
+    /// The repository surface, asserted where GTK can actually lose it: the shared reading of a
+    /// working tree, the Pango markup a diff becomes, and — the failure mode unique to this
+    /// toolkit — every class the panel puts on a widget having a rule in the stylesheet. A class
+    /// nobody styles is invisible ink, and no build catches it.
+    private static func checkGit() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("git: \(label)") }
+            checks += 1
+        }
+        let snapshot = GitSnapshot(
+            root: "/home/dev/project", branch: "master", head: "abc12345",
+            upstream: "origin/master", ahead: 2, behind: 1, stashes: 1, operation: "rebase",
+            remote: "git@github.com:acme/project.git",
+            changes: [
+                GitChange(
+                    path: "Sources/App/Main.swift", index: "M", worktree: "M", insertions: 3,
+                    deletions: 1, stagedInsertions: 8, stagedDeletions: 2),
+                GitChange(
+                    path: "build/", worktree: "?", untracked: true, directory: true, contains: 12),
+                GitChange(path: "Package.swift", index: "U", worktree: "U", conflicted: true),
+            ],
+            commits: [
+                GitCommitSummary(
+                    hash: "deadbeefcafe", short: "deadbeef", subject: "a change", author: "dev",
+                    at: Date(timeIntervalSince1970: 1_700_000_000), refs: ["HEAD -> master"])
+            ], changedTotal: 3)
+        let state = GitState(snapshot: snapshot)
+        try expect(
+            state.sections.map(\.kind) == [.conflicts, .staged, .changed, .untracked],
+            "sections triage in order")
+        try expect(state.alert?.contains("Rebase") == true, "an unfinished rebase leads the header")
+        try expect(
+            state.badge.contains("↑2") && state.badge.contains("↓1"),
+            "the chip carries both drifts")
+        try expect(
+            state.facts.contains { $0.value == "acme/project" },
+            "the remote is named the way a person names it")
+
+        let markup = GitDiffWindow.markup(
+            """
+            diff --git a/a.swift b/a.swift
+            @@ -10,2 +10,2 @@
+             kept
+            -gone
+            +arrived
+            """)
+        let palette = MatrixTheme.palette
+        try expect(markup.contains(palette.accent), "an added line is not drawn in the accent")
+        try expect(markup.contains(palette.danger), "a removed line is not drawn in the danger")
+        try expect(
+            markup.contains("+ arrived") && markup.contains("− gone"),
+            "both sides of the change are drawn")
+        try expect(!markup.contains("<span foreground=\'\'>"), "a colour resolved to nothing")
+
+        let css = MatrixTheme.css(for: palette)
+        for tone in GitTone.allCases {
+            try expect(css.contains(".\(tone.css) {"), "\(tone.rawValue) has no rule to draw with")
+        }
+        for name in ["git-row", "git-alert", "git-diff"] {
+            try expect(css.contains(".\(name) {"), "\(name) has no rule to draw with")
+        }
+        return checks
+    }
+
     private static func checkSpend() throws -> Int {
         let start = Date(timeIntervalSince1970: 1_780_000_000)
         func turn(_ minute: Int, _ cost: Double, output: Int = 1000) -> SessionSpendReport.Turn {

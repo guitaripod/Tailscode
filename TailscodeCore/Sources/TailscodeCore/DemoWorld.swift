@@ -147,7 +147,30 @@ public enum DemoWorld {
         subagentScripts: [
             "agent-cache-audit": subagentCacheScript,
             "agent-test-shard": subagentShardScript,
-        ])
+        ],
+        git: demoGit(
+            root: "/Users/demo/dev/pulse-server", branch: "reconnect-backoff",
+            upstream: "origin/reconnect-backoff", ahead: 2, behind: 0,
+            changes: [
+                GitChange(
+                    path: "Sources/Pulse/Socket/Reconnect.swift", index: "M", insertions: 64,
+                    deletions: 0, stagedInsertions: 64, stagedDeletions: 12),
+                GitChange(
+                    path: "Sources/Pulse/Socket/Backoff.swift", worktree: "M", insertions: 31,
+                    deletions: 4),
+                GitChange(
+                    path: "Tests/PulseTests/ReconnectTests.swift", worktree: "M", insertions: 88,
+                    deletions: 6),
+                GitChange(
+                    path: "Sources/Pulse/Socket/Jitter.swift", worktree: "?", untracked: true,
+                    insertions: 41, bytes: 1_204),
+            ],
+            commits: [
+                ("Hold the socket open across a suspend", "you", 900),
+                ("Give the reconnect its own clock", "you", 26_000),
+                ("Log every drop with the reason the peer gave", "you", 88_000),
+            ]),
+        gitPatches: ["Sources/Pulse/Socket/Backoff.swift": demoBackoffPatch])
 
 
     public static let openCode: MockBackend = MockBackend(
@@ -207,7 +230,21 @@ public enum DemoWorld {
                 FileNode(path: "/home/demo/dev/acme-api/go.mod", name: "go.mod", isDirectory: false),
                 FileNode(path: "/home/demo/dev/acme-api/README.md", name: "README.md", isDirectory: false),
             ],
-        ])
+        ],
+        git: demoGit(
+            root: "/home/demo/dev/acme-api", branch: "async-auth", upstream: nil, ahead: 0,
+            behind: 0,
+            changes: [
+                GitChange(
+                    path: "internal/auth/session.go", worktree: "M", insertions: 122,
+                    deletions: 47),
+                GitChange(path: "internal/auth/token.go", worktree: "M", insertions: 18, deletions: 9),
+                GitChange(path: "cmd/api/main.go", worktree: "D", deletions: 12),
+            ],
+            commits: [
+                ("Take the mutex out of the token refresh", "you", 5_400),
+                ("Name the context every handler is given", "you", 40_000),
+            ]))
 
 
     private static var claudeLiveScript: [MockScriptStep] {
@@ -619,6 +656,41 @@ public enum DemoWorld {
 
         The user was asking what happens when the refresh call itself returns 401. The answer had \
         not yet been given when the context filled.
+        """
+
+    /// A working tree a demo can show: enough shapes to prove the surface — something staged,
+    /// something only edited, something git has never seen — without pretending to be a repository
+    /// anybody could act on. Nothing here is reachable, which is the point of a demo.
+    private static func demoGit(
+        root: String, branch: String, upstream: String?, ahead: Int, behind: Int,
+        changes: [GitChange], commits: [(String, String, TimeInterval)]
+    ) -> GitSnapshot {
+        GitSnapshot(
+            root: root, repo: true, branch: branch, head: "9f3a21c8", upstream: upstream,
+            ahead: ahead, behind: behind, stashes: 1, remote: "git@github.com:demo/pulse.git",
+            fetchedAt: ago(2_400), changes: changes,
+            commits: commits.enumerated().map { index, commit in
+                GitCommitSummary(
+                    hash: "demo-commit-\(index)", short: String(format: "%08x", 0x9f3a21c8 &- index &* 977),
+                    subject: commit.0, author: commit.1, at: ago(commit.2),
+                    refs: index == 0 ? ["HEAD -> \(branch)"] : [])
+            }, changedTotal: changes.count)
+    }
+
+    private static let demoBackoffPatch = """
+        diff --git a/Sources/Pulse/Socket/Backoff.swift b/Sources/Pulse/Socket/Backoff.swift
+        index 4b1c0a2..9d21f77 100644
+        --- a/Sources/Pulse/Socket/Backoff.swift
+        +++ b/Sources/Pulse/Socket/Backoff.swift
+        @@ -12,9 +12,12 @@ struct Backoff {
+             let ceiling: TimeInterval
+
+             func delay(afterFailures failures: Int) -> TimeInterval {
+        -        min(ceiling, base * pow(2, Double(failures)))
+        +        let doubled = min(ceiling, base * pow(2, Double(failures)))
+        +        return doubled * Double.random(in: 0.7...1.0)
+             }
+         }
         """
 
     private static func assistant(
