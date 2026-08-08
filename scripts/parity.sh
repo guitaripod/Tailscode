@@ -4,27 +4,39 @@ cd "$(dirname "$0")/.."
 
 CORE=TailscodeCore/Sources/TailscodeCore/Parity.swift
 CLIENTS=(iOS linux mac)
-declare -A DIRS=([iOS]=Tailscode [linux]=TailscodeLinux/Sources/TailscodeLinux [mac]=TailscodeMac)
-declare -A MANIFESTS=(
-  [iOS]=Tailscode/App/Parity.swift
-  [linux]=TailscodeLinux/Sources/TailscodeLinux/Parity.swift
-  [mac]=TailscodeMac/Parity.swift
-)
+
+dir_for() {
+  case "$1" in
+    iOS) echo Tailscode ;;
+    linux) echo TailscodeLinux/Sources/TailscodeLinux ;;
+    mac) echo TailscodeMac ;;
+  esac
+}
+
+manifest_for() {
+  case "$1" in
+    iOS) echo Tailscode/App/Parity.swift ;;
+    linux) echo TailscodeLinux/Sources/TailscodeLinux/Parity.swift ;;
+    mac) echo TailscodeMac/Parity.swift ;;
+  esac
+}
+
+fact_set() { eval "_${1}_${2}_${3}=\$4"; }
+fact_get() { eval "printf '%s' \"\${_${1}_${2}_${3}:-}\""; }
 
 CHECK=0
 [[ "${1:-}" == "--check" ]] && CHECK=1
 errors=()
 
-mapfile -t caps < <(awk '/^public enum AppCapability/,/^}/' "$CORE" | sed -n 's/^ *case \([A-Za-z]*\)$/\1/p')
+caps=($(awk '/^public enum AppCapability/,/^}/' "$CORE" | sed -n 's/^ *case \([A-Za-z]*\)$/\1/p'))
 [[ ${#caps[@]} -gt 0 ]] || { echo "parity: could not parse AppCapability cases from $CORE" >&2; exit 1; }
 
 for cap in "${caps[@]}"; do
   grep -q "id: \.$cap," "$CORE" || errors+=("registry: no CapabilityDefinition for .$cap in $CORE")
 done
 
-declare -A KIND ANCHOR NOTE
 for c in "${CLIENTS[@]}"; do
-  mf="${MANIFESTS[$c]}"
+  mf=$(manifest_for "$c")
   [[ -f "$mf" ]] || { echo "parity: missing manifest $mf" >&2; exit 1; }
   if grep -nE '(^|[^A-Za-z])default *:' "$mf" >/dev/null; then
     errors+=("$c: 'default:' found in $mf — the switch must stay exhaustive, one case per line")
@@ -38,41 +50,41 @@ for c in "${CLIENTS[@]}"; do
     line=${line%% case .*}
     if [[ -z "$line" ]]; then
       errors+=("$c: no answer for .$cap in $mf")
-      KIND[$c/$cap]="?"
+      fact_set KIND "$c" "$cap" "?"
       continue
     fi
     case "$line" in
       *".implemented("*)
-        KIND[$c/$cap]="implemented"
-        ANCHOR[$c/$cap]=$(sed 's/.*\.implemented("\([^"]*\)").*/\1/' <<<"$line")
+        fact_set KIND "$c" "$cap" "implemented"
+        fact_set ANCHOR "$c" "$cap" "$(sed 's/.*\.implemented("\([^"]*\)").*/\1/' <<<"$line")"
         ;;
       *".partial("*)
-        KIND[$c/$cap]="partial"
-        ANCHOR[$c/$cap]=$(sed 's/.*\.partial("\([^"]*\)".*/\1/' <<<"$line")
-        NOTE[$c/$cap]=$(sed 's/.*missing: "\([^"]*\)").*/\1/' <<<"$line")
+        fact_set KIND "$c" "$cap" "partial"
+        fact_set ANCHOR "$c" "$cap" "$(sed 's/.*\.partial("\([^"]*\)".*/\1/' <<<"$line")"
+        fact_set NOTE "$c" "$cap" "$(sed 's/.*missing: "\([^"]*\)").*/\1/' <<<"$line")"
         ;;
       *".gap("*)
-        KIND[$c/$cap]="gap"
-        NOTE[$c/$cap]=$(sed 's/.*\.gap("\([^"]*\)").*/\1/' <<<"$line")
+        fact_set KIND "$c" "$cap" "gap"
+        fact_set NOTE "$c" "$cap" "$(sed 's/.*\.gap("\([^"]*\)").*/\1/' <<<"$line")"
         ;;
       *".notApplicable("*)
-        KIND[$c/$cap]="n/a"
-        NOTE[$c/$cap]=$(sed 's/.*\.notApplicable("\([^"]*\)").*/\1/' <<<"$line")
+        fact_set KIND "$c" "$cap" "n/a"
+        fact_set NOTE "$c" "$cap" "$(sed 's/.*\.notApplicable("\([^"]*\)").*/\1/' <<<"$line")"
         ;;
       *)
         errors+=("$c: unparseable evidence for .$cap: $line")
-        KIND[$c/$cap]="?"
+        fact_set KIND "$c" "$cap" "?"
         ;;
     esac
-    anchor="${ANCHOR[$c/$cap]:-}"
+    anchor=$(fact_get ANCHOR "$c" "$cap")
     if [[ -n "$anchor" ]]; then
-      if ! grep -rF --include='*.swift' --exclude='Parity.swift' -l -- "$anchor" "${DIRS[$c]}" >/dev/null; then
-        errors+=("$c: anchor '$anchor' for .$cap not found anywhere under ${DIRS[$c]}")
+      if ! grep -rF --include='*.swift' --exclude='Parity.swift' -l -- "$anchor" "$(dir_for "$c")" >/dev/null; then
+        errors+=("$c: anchor '$anchor' for .$cap not found anywhere under $(dir_for "$c")")
       fi
     fi
-    note="${NOTE[$c/$cap]:-}"
-    if [[ "${KIND[$c/$cap]}" != "implemented" && -z "$note" ]]; then
-      errors+=("$c: .$cap is ${KIND[$c/$cap]} but carries no reason")
+    note=$(fact_get NOTE "$c" "$cap")
+    if [[ "$(fact_get KIND "$c" "$cap")" != "implemented" && -z "$note" ]]; then
+      errors+=("$c: .$cap is $(fact_get KIND "$c" "$cap") but carries no reason")
     fi
   done
 done
@@ -83,7 +95,7 @@ if [[ $CHECK -eq 0 ]]; then
   for cap in "${caps[@]}"; do
     row=()
     for c in "${CLIENTS[@]}"; do
-      case "${KIND[$c/$cap]}" in
+      case "$(fact_get KIND "$c" "$cap")" in
         implemented) row+=("ok") ;;
         partial) row+=("PARTIAL") ;;
         gap) row+=("GAP") ;;
@@ -96,22 +108,24 @@ if [[ $CHECK -eq 0 ]]; then
   echo
   for c in "${CLIENTS[@]}"; do
     for cap in "${caps[@]}"; do
-      k="${KIND[$c/$cap]}"
+      k=$(fact_get KIND "$c" "$cap")
       if [[ "$k" == "gap" || "$k" == "partial" ]]; then
-        echo "$c .$cap ($k): ${NOTE[$c/$cap]:-}"
+        echo "$c .$cap ($k): $(fact_get NOTE "$c" "$cap")"
       fi
     done
   done
   echo
   total=$(( ${#caps[@]} * ${#CLIENTS[@]} ))
   done_count=0; partial=0; gaps=0; na=0
-  for k in "${KIND[@]}"; do
-    case "$k" in
-      implemented) done_count=$((done_count+1)) ;;
-      partial) partial=$((partial+1)) ;;
-      gap) gaps=$((gaps+1)) ;;
-      "n/a") na=$((na+1)) ;;
-    esac
+  for c in "${CLIENTS[@]}"; do
+    for cap in "${caps[@]}"; do
+      case "$(fact_get KIND "$c" "$cap")" in
+        implemented) done_count=$((done_count+1)) ;;
+        partial) partial=$((partial+1)) ;;
+        gap) gaps=$((gaps+1)) ;;
+        "n/a") na=$((na+1)) ;;
+      esac
+    done
   done
   echo "$done_count/$total implemented, $partial partial, $gaps gaps, $na n/a"
 fi
