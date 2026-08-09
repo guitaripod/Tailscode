@@ -37,6 +37,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case usageGauges
     case quotaExhaustion
     case markdownRendering
+    case transcriptLinks
     case syntaxHighlighting
     case streamingGrowth
     case streamCascade
@@ -223,6 +224,10 @@ public enum CapabilityRegistry {
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:
                 "Assistant prose renders headings (a `#` only with the space the grammar demands), emphasis, lists — numbered with `.` or `)`, task items as boxes (`- [ ]`/`- [x]` → ☐/☑) — links, inline code and fenced code from the shared grammar; never raw markdown source. A pipe table is read once in Core (MarkdownTable, lifted out of prose by MessageSegment.split alongside fences) and rendered as real columns with a bold header over a hairline and each column keeping its declared alignment; the client owns only the grid widget, and a copy or export writes the pipes back (MarkdownTable.markdown). Prose never carries more than one blank line in a row — extra emptiness is the model exhaling, not paragraph structure."),
+        CapabilityDefinition(
+            id: .transcriptLinks, area: "transcript", title: "An address is touchable",
+            spec:
+                "Every address in the transcript opens, whether it was written as a markdown link or pasted bare into a sentence — Autolink finds the bare ones in Core (a scheme or a `www.` host, a dot inside the host, trailing sentence punctuation handed back, a closing bracket kept only when the address opened one) so all three clients agree on where a link starts and stops. A link is drawn in the theme's accent and underlined, never as prose the reader has to retype off a screen. Activating one hands it to the browser the person is already signed in to — never a webview with an empty cookie jar, because the pages worth opening from a transcript are behind an account. A page Claude published for the conversation is recognised as such (ArtifactLink) and says so where it is shown, since its address is the only evidence in the transcript that the deliverable exists."),
         CapabilityDefinition(
             id: .syntaxHighlighting, area: "transcript", title: "Code is coloured by what it is",
             spec:

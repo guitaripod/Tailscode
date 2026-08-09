@@ -48,6 +48,11 @@ GdkTexture *tailscode_texture_scaled(
 /// which is why the cast lives here.
 GtkWidget *tailscode_picture_for_texture(GdkTexture *texture);
 
+/// Makes the label's `<a href>` spans open in the person's own browser. `activate-link` is
+/// gboolean-returning and carries the uri, which the generic Swift signal bridge cannot express;
+/// the launch also needs the toplevel as its parent so the portal knows who asked.
+void tailscode_label_open_links(GtkWidget *label);
+
 /// The texture's pixel size, for captioning a picture with what it actually is.
 int tailscode_texture_width(GdkTexture *texture);
 int tailscode_texture_height(GdkTexture *texture);

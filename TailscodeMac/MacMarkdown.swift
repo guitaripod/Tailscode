@@ -1,4 +1,5 @@
 import AppKit
+import TailscodeCore
 
 /// The agent writes markdown; a label that shows the asterisks is showing the punctuation instead
 /// of the emphasis. This turns a prose segment into an attributed string — the same grammar the
@@ -171,6 +172,7 @@ enum MacMarkdown {
         result = extractCodeSpans(in: result, into: &codeSpans)
         var links: [(label: String, url: String)] = []
         result = extractLinks(in: result, into: &links)
+        result = extractBareLinks(in: result, into: &links)
         result = replacePairs(in: result, delimiter: "**", open: Marker.boldOpen, close: Marker.boldClose)
         result = replacePairs(in: result, delimiter: "__", open: Marker.boldOpen, close: Marker.boldClose)
         result = replacePairs(in: result, delimiter: "~~", open: Marker.strikeOpen, close: Marker.strikeClose)
@@ -223,6 +225,24 @@ enum MacMarkdown {
             rest = rest[end.upperBound...]
         }
         return result + rest
+    }
+
+    /// Addresses pasted bare into prose, lifted into the same spans a markdown link produces. It
+    /// runs after the markdown form so an address already lifted is a sentinel here, not text.
+    private static func extractBareLinks(
+        in text: String, into links: inout [(label: String, url: String)]
+    ) -> String {
+        let spans = Autolink.spans(in: text)
+        guard !spans.isEmpty else { return text }
+        var result = ""
+        var cursor = text.startIndex
+        for span in spans {
+            result += text[cursor..<span.range.lowerBound]
+            links.append((span.text, span.url))
+            result += "\(Marker.linkOpen)\(links.count - 1)\(Marker.linkClose)"
+            cursor = span.range.upperBound
+        }
+        return result + text[cursor...]
     }
 
     private static func replacePairs(

@@ -335,6 +335,21 @@ GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
     return picture;
 }
 
+static gboolean tailscode_label_link_activated(GtkLabel *label, const char *uri, gpointer data) {
+    (void)data;
+    if (uri == NULL || *uri == '\0') { return TRUE; }
+    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(label));
+    GtkWindow *parent = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : NULL;
+    GtkUriLauncher *launcher = gtk_uri_launcher_new(uri);
+    gtk_uri_launcher_launch(launcher, parent, NULL, NULL, NULL);
+    g_object_unref(launcher);
+    return TRUE;
+}
+
+void tailscode_label_open_links(GtkWidget *label) {
+    g_signal_connect(label, "activate-link", G_CALLBACK(tailscode_label_link_activated), NULL);
+}
+
 int tailscode_texture_width(GdkTexture *texture) {
     return gdk_texture_get_width(texture);
 }

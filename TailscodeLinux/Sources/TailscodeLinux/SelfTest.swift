@@ -1140,6 +1140,11 @@ public enum SelfTest {
             ("1. one", ["1.", "one"], "numbered"),
             ("> quoted", ["<i>quoted</i>"], "quote"),
             ("[docs](https://x.dev)", ["<a href=\"https://x.dev\">"], "link"),
+            ("published at https://x.dev/p now", ["<a href=\"https://x.dev/p\">"], "bare link"),
+            (
+                "[docs](https://x.dev) and https://y.dev",
+                ["<a href=\"https://x.dev\">", "<a href=\"https://y.dev\">"], "both link forms"
+            ),
             ("a < b && c > d", ["&lt;", "&amp;&amp;", "&gt;"], "escaping"),
             ("`<div>`", ["&lt;div&gt;"], "escaped code"),
             ("2 * 3 * 4 = 24", ["24"], "bare asterisks survive"),

@@ -32,6 +32,7 @@ enum ParityManifest {
         case .usageGauges: return .implemented("usageFooter")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("MacMarkdown")
+        case .transcriptLinks: return .implemented("extractBareLinks")
         case .syntaxHighlighting: return .implemented("RowKit.code")
         case .streamingGrowth: return .implemented("applyRows")
         case .streamCascade: return .implemented("CascadePainter")

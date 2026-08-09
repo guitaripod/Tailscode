@@ -232,6 +232,7 @@ enum Gtk {
         gtk_label_set_selectable(label, 1)
         if wrap { gtk_label_set_wrap_mode(label, PANGO_WRAP_WORD_CHAR) }
         gtk_label_set_ellipsize(label, PANGO_ELLIPSIZE_NONE)
+        tailscode_label_open_links(widget)
         if let css { addClass(widget, css) }
         return widget
     }

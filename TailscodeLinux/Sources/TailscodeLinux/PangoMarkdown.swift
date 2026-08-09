@@ -1,4 +1,5 @@
 import Foundation
+import TailscodeCore
 
 /// The agent writes markdown; a label that shows the asterisks is showing the punctuation instead
 /// of the emphasis. This turns a prose segment into Pango markup — the only rich text GTK labels
@@ -126,6 +127,7 @@ enum PangoMarkdown {
         var codeSpans: [String] = []
         result = extractCodeSpans(in: result, into: &codeSpans, color: code)
         result = replaceLinks(in: result, accent: accent)
+        result = autolink(in: result, accent: accent)
         result = replacePairs(in: result, delimiter: "**", open: "<b>", close: "</b>")
         result = replacePairs(in: result, delimiter: "__", open: "<b>", close: "</b>")
         result = replacePairs(in: result, delimiter: "~~", open: "<s>", close: "</s>")
@@ -235,6 +237,37 @@ enum PangoMarkdown {
         }
         if open { result += String(openDelimiter) + buffer }
         return result
+    }
+
+    /// Addresses pasted bare into prose, made into the same anchors a markdown link produces. It
+    /// runs after the markdown form so an anchor already built is stepped over whole — its href
+    /// holds an address too, and linking one twice is a tag inside a tag Pango refuses to parse.
+    private static func autolink(in text: String, accent: String) -> String {
+        guard text.contains("://") || text.contains("www.") else { return text }
+        var result = ""
+        var rest = Substring(text)
+        while let open = rest.range(of: "<a "),
+            let close = rest[open.upperBound...].range(of: "</a>")
+        {
+            result += linkify(String(rest[..<open.lowerBound]), accent: accent)
+            result += rest[open.lowerBound..<close.upperBound]
+            rest = rest[close.upperBound...]
+        }
+        return result + linkify(String(rest), accent: accent)
+    }
+
+    private static func linkify(_ text: String, accent: String) -> String {
+        let spans = Autolink.spans(in: text)
+        guard !spans.isEmpty else { return text }
+        var result = ""
+        var cursor = text.startIndex
+        for span in spans {
+            result += text[cursor..<span.range.lowerBound]
+            result +=
+                "<a href=\"\(span.url)\"><span foreground=\"\(accent)\">\(span.text)</span></a>"
+            cursor = span.range.upperBound
+        }
+        return result + text[cursor...]
     }
 
     private static func replaceLinks(in text: String, accent: String) -> String {
