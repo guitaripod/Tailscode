@@ -55,6 +55,7 @@ final class AppCoordinator: NSObject {
         route(animated: false)
         window.makeKeyAndVisible()
         UpdateMonitor.checkIfDue()
+        if let parked = PendingRoute.take() { handle(parked) }
         #if DEBUG
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 handle(URL(string: "tailscode://session/\(sessionID)")!)
@@ -306,7 +307,9 @@ final class AppCoordinator: NSObject {
         }
         if let pending = pendingSessionLink {
             pendingSessionLink = nil
-            if Date().timeIntervalSince(pending.parkedAt) < 30 { handle(pending.url) }
+            if Date().timeIntervalSince(pending.parkedAt) < 30 {
+                deliver(pending.url)
+            }
         }
         if pendingComposeFocus {
             pendingComposeFocus = false
@@ -316,6 +319,14 @@ final class AppCoordinator: NSObject {
             self.pendingShortcut = nil
             perform(pendingShortcut)
         }
+    }
+
+    /// A link released by a root swap waits for the swap to finish. `route` is the one moment the
+    /// window's root is being replaced — on a cold launch it has not even been made key yet — and
+    /// navigating from inside it pushes onto a navigation controller whose view is not on screen,
+    /// which is how a notification tap ends in an inconsistent stack rather than a chat.
+    private func deliver(_ url: URL) {
+        DispatchQueue.main.async { [weak self] in self?.handle(url) }
     }
 
     private func makeOnboarding() -> UIViewController {

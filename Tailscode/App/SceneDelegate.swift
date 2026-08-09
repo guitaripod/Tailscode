@@ -48,7 +48,12 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         HapticEngine.shared.relinquish()
     }
 
-    func routeDeepLink(_ url: URL) {
-        coordinator?.handle(url)
+    /// Answers whether the link was actually taken: a scene that exists before its coordinator
+    /// does must say so, or the tap that made it is silently dropped.
+    @discardableResult
+    func routeDeepLink(_ url: URL) -> Bool {
+        guard let coordinator else { return false }
+        coordinator.handle(url)
+        return true
     }
 }

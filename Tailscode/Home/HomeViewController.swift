@@ -824,10 +824,24 @@ final class HomeViewController: UIViewController {
             return
         }
         pendingDeepLink = nil
+        land(on: entry)
+    }
+
+    /// Clearing the way to a chat and pushing it are two navigation transitions, and starting the
+    /// second before the first has finished is how a deep link corrupts the stack: the push waits
+    /// for the dismissal it depends on.
+    private func land(on entry: SessionEntry) {
         view.endEditing(true)
-        presentedViewController?.dismiss(animated: false)
-        navigationController?.popToRootViewController(animated: false)
-        openChat(for: entry)
+        guard let presented = presentedViewController else {
+            navigationController?.popToRootViewController(animated: false)
+            openChat(for: entry)
+            return
+        }
+        presented.dismiss(animated: false) { [weak self] in
+            guard let self else { return }
+            self.navigationController?.popToRootViewController(animated: false)
+            self.openChat(for: entry)
+        }
     }
 
     /// Stays parked until the session actually appears: the cold-launch
@@ -842,7 +856,7 @@ final class HomeViewController: UIViewController {
         guard let entry = viewModel.entries.first(where: { $0.session.id == pending.sessionID })
         else { return }
         pendingDeepLink = nil
-        openChat(for: entry)
+        land(on: entry)
     }
 
     @discardableResult
