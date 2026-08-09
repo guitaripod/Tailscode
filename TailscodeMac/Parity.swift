@@ -18,6 +18,7 @@ enum ParityManifest {
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .bulkSelection: return .implemented("SidebarBulkBar")
+        case .bulkSplit: return .implemented("openMarkedSplit")
         case .renameSession: return .implemented("renameSession")
         case .forkSession: return .implemented("forkSession")
         case .transcriptSearch: return .implemented("runTranscriptSearch")
@@ -27,8 +28,10 @@ enum ParityManifest {
         case .rowContextActions: return .implemented("rowMenu")
         case .rowSnippet: return .implemented("if let snippet = model.snippet")
         case .rowFacets: return .implemented("detailText")
+        case .modelIdentityTint: return .implemented("chipText")
         case .usageGauges: return .implemented("usageFooter")
         case .quotaExhaustion: return .implemented("quotaNotice")
+        case .quotaBlockedChats: return .implemented("recordQuotaWall")
         case .markdownRendering: return .implemented("MacMarkdown")
         case .syntaxHighlighting: return .implemented("RowKit.code")
         case .streamingGrowth: return .implemented("applyRows")
@@ -40,6 +43,7 @@ enum ParityManifest {
         case .imageViewer: return .implemented("ImageViewer")
         case .subagentCards: return .implemented("SubagentRowView")
         case .workflowCard: return .implemented("WorkflowCardView")
+        case .taskBoard: return .implemented("TaskBoardView")
         case .questionCells: return .implemented("PendingCards")
         case .compactionSeam: return .implemented("Compaction")
         case .permissionCards: return .implemented("PendingCards")
@@ -57,6 +61,9 @@ enum ParityManifest {
         case .sendQueue: return .implemented("Queue")
         case .modelEffortPicker: return .implemented("PillsRow")
         case .unifiedModelChooser: return .implemented("ModelChooserSheet")
+        case .modelHandoff:
+            return .gap(
+                "Core decides the handoff and writes the briefing (HandoffPlan, HandoffBrief, HandoffRunner) and the phone offers it; the Mac's model chooser still just changes the next turn — no sheet asks whether to switch, copy or cross a machine.")
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .ultracodeAura: return .implemented("UltracodeAura")
         case .stopTurn: return .implemented("cancelCurrentTurn")
@@ -73,6 +80,7 @@ enum ParityManifest {
         case .serverSignIn: return .implemented("SignInSheet")
         case .serverSelfUpdate: return .implemented("updateStatus")
         case .newChat: return .implemented("NewChatSheet")
+        case .newChatDefaults: return .implemented("renderDefaults")
         case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts: return .implemented("ShortcutSet")
         case .shortcutCheatsheet: return .implemented("cheatsheet")
@@ -98,6 +106,13 @@ enum ParityManifest {
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         case .presenceOrb: return .implemented("PresenceOrbView")
+        case .gameCenter:
+            return .partial(
+                "MacGameCenter",
+                missing:
+                    "the trophy case renders and reports through the same coordinator as iOS, but the dev build is ad-hoc signed without the com.apple.developer.game-center entitlement, so GKLocalPlayer cannot authenticate until the Mac app ships signed; the surface states the unavailability instead of hiding")
+        case .projectBoard: return .implemented("toggleProjectScope")
+        case .quickAsk: return .implemented("QuickAskPanel")
         }
     }
 }

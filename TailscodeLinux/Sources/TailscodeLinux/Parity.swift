@@ -13,6 +13,7 @@ enum ParityManifest {
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityPulse")
         case .bulkSelection: return .implemented("SidebarSelectionBar")
+        case .bulkSplit: return .implemented("openMarkedSplit")
         case .sessionPinning: return .implemented("pill-pinned")
         case .unreadTracking: return .implemented("toggleUnreadSelected")
         case .savedChats: return .implemented("SavedChatStore")
@@ -27,8 +28,10 @@ enum ParityManifest {
         case .rowContextActions: return .implemented("rowMenuRows")
         case .rowSnippet: return .implemented("model.snippet")
         case .rowFacets: return .implemented("row-age")
+        case .modelIdentityTint: return .implemented("modelLabel")
         case .usageGauges: return .implemented("usage-footer")
         case .quotaExhaustion: return .implemented("quotaNotice")
+        case .quotaBlockedChats: return .implemented("recordQuotaWall")
         case .markdownRendering: return .implemented("PangoMarkdown")
         case .syntaxHighlighting: return .implemented("PangoSyntax")
         case .streamingGrowth: return .implemented("applyRows")
@@ -40,6 +43,7 @@ enum ParityManifest {
         case .imageViewer: return .implemented("ImageGallery")
         case .subagentCards: return .implemented("subagentRows")
         case .workflowCard: return .implemented("WorkflowCardView")
+        case .taskBoard: return .implemented("TaskBoardView")
         case .questionCells: return .implemented("asksUserQuestion")
         case .compactionSeam: return .implemented("compaction")
         case .permissionCards: return .implemented("PendingCards")
@@ -57,6 +61,9 @@ enum ParityManifest {
         case .sendQueue: return .implemented("sendButton")
         case .modelEffortPicker: return .implemented("modelRows")
         case .unifiedModelChooser: return .implemented("ModelChooserWindow")
+        case .modelHandoff:
+            return .gap(
+                "Core decides the handoff and writes the briefing (HandoffPlan, HandoffBrief, HandoffRunner) and the phone offers it; this client's model chooser still just changes the next turn — no dialog asks whether to switch, copy or cross a machine.")
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .ultracodeAura: return .implemented("AuraPainter")
         case .stopTurn: return .implemented("cancelCurrentTurn")
@@ -71,6 +78,7 @@ enum ParityManifest {
         case .serverSignIn: return .implemented("SignInDialog")
         case .serverSelfUpdate: return .implemented("renderSoftware")
         case .newChat: return .implemented("NewChatWindow")
+        case .newChatDefaults: return .implemented("renderDefaults")
         case .newChatFailure: return .implemented("failureCard")
         case .keyboardShortcuts: return .implemented("installKeymap")
         case .shortcutCheatsheet: return .implemented("helpOverlay")
@@ -96,6 +104,9 @@ enum ParityManifest {
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .homeQuickActions: return .notApplicable("there is no springboard on a desktop to long-press; the app launches into its window, where every destination the phone's quick actions reach is already one click away")
         case .presenceOrb: return .implemented("OrbPainter")
+        case .gameCenter: return .notApplicable("Game Center is Apple's account system, and this client cannot sign into it — there is no dashboard to open and nowhere to report a percentage; the trophies' arithmetic lives in Core, but a case with no account behind it would be a scoreboard nobody else can see, and the month's numbers are already usageAnalytics's parity")
+        case .projectBoard: return .implemented("toggleProjectScope")
+        case .quickAsk: return .implemented("QuickAskWindow")
         }
     }
 }

@@ -195,7 +195,7 @@ final class SessionListViewModel {
                 case .success(let list):
                     failureStreaks[source.profile.id] = 0
                     healthilySlow.remove(source.profile.id)
-                    fresh[source.profile.id] = list.filter { $0.parentID == nil }.map {
+                    fresh[source.profile.id] = list.map {
                         SessionEntry(
                             profileID: source.profile.id,
                             profileName: source.profile.name,

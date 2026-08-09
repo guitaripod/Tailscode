@@ -26,7 +26,7 @@ public enum SessionListCache {
         guard let data = try? Data(contentsOf: fileURL),
             let cached = try? JSONDecoder().decode([Entry].self, from: data)
         else { return [] }
-        return cached.map { entry in
+        return cached.filter { !$0.session.isSubagent }.map { entry in
             var session = entry.session
             session.isActive = nil
             return SessionEntry(
