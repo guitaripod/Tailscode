@@ -854,12 +854,16 @@ enum MatrixTheme {
             lines.append(
                 ".\(pair.cls) { color: \(pair.hex); background-color: alpha(\(pair.hex), 0.13); }")
             lines.append(
+                ".chip-set.\(pair.cls) { border: 1px solid alpha(\(pair.hex), 0.5); "
+                    + "background-color: transparent; }")
+            lines.append(
                 ".pill-row menubutton.\(pair.cls) > button { color: \(pair.hex); "
                     + "border-color: alpha(\(pair.hex), 0.55); }")
             lines.append(
                 ".pill-row menubutton.\(pair.cls) > button:hover "
                     + "{ background-color: alpha(\(pair.hex), 0.12); }")
         }
+        lines.append(".chip-set { border-radius: 3px; }")
         lines.append(".chip-lead { border-radius: 2px 0px 0px 2px; }")
         lines.append(
             ".chip-tail { border-radius: 0px 2px 2px 0px; "

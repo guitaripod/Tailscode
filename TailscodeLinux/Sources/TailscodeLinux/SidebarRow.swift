@@ -341,6 +341,8 @@ enum SidebarRow {
         }
         Gtk.addClass(tail, "chip-tail")
         let capsule = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(capsule, "chip-set")
+        Gtk.addClass(capsule, ModelTint.identityClass(family: chip.family, name: chip.name))
         gtk_widget_set_valign(capsule, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(capsule), lead)
         gtk_box_append(ptr(capsule), tail)
