@@ -155,6 +155,24 @@ final class PillsRow: NSView {
         effortPill.contentTintColor = color
     }
 
+    /// Ultracode is a power, not a level, so its pill does not take a heat: the word itself is
+    /// set letter by letter from the shared rainbow, the same stops the aura travels.
+    func setEffortRainbow(_ word: String) {
+        let font = effortPill.font ?? MacTheme.Font.caption()
+        let text = NSMutableAttributedString()
+        for (index, letter) in word.enumerated() {
+            text.append(
+                NSAttributedString(
+                    string: String(letter),
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: MacTheme.Color.modelRainbowLetter(
+                            index, of: word.count),
+                    ]))
+        }
+        effortPill.attributedTitle = text
+    }
+
     func setAttachShown(_ shown: Bool) {
         attachButton.isHidden = !shown
     }

@@ -845,13 +845,32 @@ enum MatrixTheme {
             lines.append(
                 ".\(pair.cls) { color: \(pair.hex); background-color: alpha(\(pair.hex), 0.13); }")
             lines.append(
-                ".pill-row button.\(pair.cls) { color: \(pair.hex); "
-                    + "border-color: alpha(\(pair.hex), 0.55); background-color: transparent; }")
+                ".pill-row menubutton.\(pair.cls) > button { color: \(pair.hex); "
+                    + "border-color: alpha(\(pair.hex), 0.55); }")
             lines.append(
-                ".pill-row button.\(pair.cls):hover { background-color: alpha(\(pair.hex), 0.12); }")
+                ".pill-row menubutton.\(pair.cls) > button:hover "
+                    + "{ background-color: alpha(\(pair.hex), 0.12); }")
         }
-        lines.append(".effort-ultracode { background-color: alpha(\(palette.text), 0.08); }")
+        lines.append(
+            ".effort-ultracode { background-image: \(rainbowWash(0.16)); color: \(palette.text); }")
+        lines.append(
+            ".pill-row menubutton.effort-ultracode > button { "
+                + "background-image: \(rainbowWash(0.22)); background-color: transparent; "
+                + "border-color: alpha(\(palette.text), 0.3); color: \(palette.text); "
+                + "font-weight: 700; }")
+        lines.append(
+            ".pill-row menubutton.effort-ultracode > button:hover "
+                + "{ background-image: \(rainbowWash(0.34)); }")
         return lines.joined(separator: "\n        ")
+    }
+
+    /// The shared rainbow as a low-alpha wash a word stays readable on: the same stops the aura
+    /// travels, laid left to right under the one effort that is a power rather than a level.
+    private static func rainbowWash(_ alpha: Double) -> String {
+        let stops = Ultracode.rainbowStops
+            .map { "alpha(\(Contrast.hex(red: $0.red, green: $0.green, blue: $0.blue)), \(alpha))" }
+            .joined(separator: ", ")
+        return "linear-gradient(to right, \(stops))"
     }
 
     /// Loading into the same provider restyles every widget already on screen, so a size or

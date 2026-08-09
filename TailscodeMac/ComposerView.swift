@@ -447,7 +447,13 @@ final class ComposerView: NSView {
         let activeModel = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
         pills.setModelTint(
             activeModel.map { MacTheme.Color.modelFamily(ModelTint.family($0)) })
-        pills.setEffortTint(MacTheme.Color.modelEffort(effortPillText()))
+        let effortWord = effortPillText()
+        if effortWord.lowercased() == Ultracode.effortLevel {
+            pills.setEffortTint(nil)
+            pills.setEffortRainbow(effortWord)
+        } else {
+            pills.setEffortTint(MacTheme.Color.modelEffort(effortWord))
+        }
         pills.setAttachShown(attachmentsSupported)
         updateVimUI()
     }
