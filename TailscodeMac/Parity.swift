@@ -31,6 +31,7 @@ enum ParityManifest {
         case .modelIdentityTint: return .implemented("chipText")
         case .usageGauges: return .implemented("usageFooter")
         case .quotaExhaustion: return .implemented("quotaNotice")
+        case .quotaScoping: return .implemented("quotasForModels")
         case .markdownRendering: return .implemented("MacMarkdown")
         case .transcriptLinks: return .implemented("extractBareLinks")
         case .syntaxHighlighting: return .implemented("RowKit.code")

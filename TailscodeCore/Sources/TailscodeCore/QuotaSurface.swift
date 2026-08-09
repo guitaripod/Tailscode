@@ -4,8 +4,8 @@ import Foundation
 /// A provider window that has nothing left to spend — the fact a person can act on: switch
 /// model, wait for the reset, or open usage. Built from live gauges when we have them, and from
 /// a failure string when the turn died of a rate limit before a gauge refreshed.
-public struct QuotaExhaustion: Sendable, Equatable {
-    public enum Source: Sendable, Equatable {
+public struct QuotaExhaustion: Sendable, Hashable {
+    public enum Source: Sendable, Hashable {
         case gauge
         case failure
     }
@@ -16,10 +16,12 @@ public struct QuotaExhaustion: Sendable, Equatable {
     public let resetsAt: Date?
     public let trustedReset: Bool
     public let source: Source
+    /// Which models this wall is actually in front of.
+    public let scope: QuotaScope
 
     public init(
         provider: String, window: String, fraction: Double, resetsAt: Date?,
-        trustedReset: Bool, source: Source
+        trustedReset: Bool, source: Source, scope: QuotaScope = .account
     ) {
         self.provider = provider
         self.window = window
@@ -27,7 +29,12 @@ public struct QuotaExhaustion: Sendable, Equatable {
         self.resetsAt = resetsAt
         self.trustedReset = trustedReset
         self.source = source
+        self.scope = scope
     }
+
+    /// True when this wall stops every model on the provider rather than the one it names — the
+    /// difference between "pick something else" and "wait".
+    public var isAccountWide: Bool { scope == .account }
 }
 
 /// How the product talks about a used-up quota. Toolkit-free copy so every client says the same
@@ -55,25 +62,40 @@ public enum QuotaSurface {
     /// slightly over 1.0 after an over-limit request; clamp presentation elsewhere.
     public static let exhaustedFloor: Double = 1.0
 
-    /// The hottest exhausted window across every quota we know — session over weekly over a
-    /// model-specific window when several are full, because the tightest clock is the one that
-    /// unlocks the next send.
-    public static func hottestExhausted(in quotas: [UsageQuota]) -> QuotaExhaustion? {
+    /// Every exhausted window standing in front of `model` — account-wide walls always, and a
+    /// model-scoped wall only when it is that model's. A model nobody named is answered by the
+    /// account-wide walls alone, because a scoped wall attributed to a chat that may not be on
+    /// that model is exactly the notice nobody can act on.
+    public static func walls(
+        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil
+    ) -> [QuotaExhaustion] {
         quotas.flatMap { quota in
             quota.gauges
                 .filter { $0.fraction >= exhaustedFloor }
-                .map {
-                    QuotaExhaustion(
-                        provider: quota.providerName, window: $0.label, fraction: $0.fraction,
-                        resetsAt: $0.resetsAt, trustedReset: $0.trustedReset, source: .gauge)
+                .compactMap { gauge -> QuotaExhaustion? in
+                    let scope = QuotaBinding.scope(of: gauge)
+                    guard QuotaBinding.governs(scope, model: model, named: name) else { return nil }
+                    return QuotaExhaustion(
+                        provider: quota.providerName, window: gauge.label,
+                        fraction: gauge.fraction, resetsAt: gauge.resetsAt,
+                        trustedReset: gauge.trustedReset, source: .gauge, scope: scope)
                 }
         }
-        .max(by: { a, b in
-            if a.fraction != b.fraction { return a.fraction < b.fraction }
-            let aReset = a.resetsAt?.timeIntervalSince1970 ?? .infinity
-            let bReset = b.resetsAt?.timeIntervalSince1970 ?? .infinity
-            return aReset > bReset
-        })
+    }
+
+    /// The hottest exhausted window in the way of `model` — session over weekly over a
+    /// model-specific window when several are full, because the tightest clock is the one that
+    /// unlocks the next send.
+    public static func hottestExhausted(
+        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil
+    ) -> QuotaExhaustion? {
+        walls(in: quotas, model: model, named: name)
+            .max(by: { a, b in
+                if a.fraction != b.fraction { return a.fraction < b.fraction }
+                let aReset = a.resetsAt?.timeIntervalSince1970 ?? .infinity
+                let bReset = b.resetsAt?.timeIntervalSince1970 ?? .infinity
+                return aReset > bReset
+            })
     }
 
     /// Whether a turn failure is the provider saying "no more", not a bug in our plumbing.
@@ -96,7 +118,10 @@ public enum QuotaSurface {
     /// reset, and fall back to classifying the failure string alone. A failure that names its
     /// provider is the turn's own wall — a full gauge on some *other* provider (say Claude's
     /// weekly, while this turn died on opencode-go) must not rewrite it.
-    public static func resolve(failureMessage: String?, quotas: [UsageQuota]) -> QuotaExhaustion? {
+    public static func resolve(
+        failureMessage: String?, quotas: [UsageQuota], model: String? = nil,
+        named name: String? = nil
+    ) -> QuotaExhaustion? {
         if let message = failureMessage, isQuotaFailure(message) {
             let named = QuotaExhaustion(
                 provider: providerHint(in: message) ?? Localized.text("Provider"),
@@ -106,10 +131,10 @@ public enum QuotaSurface {
             if providerHint(in: message) != nil {
                 return named
             }
-            if let gauge = hottestExhausted(in: quotas) { return gauge }
+            if let gauge = hottestExhausted(in: quotas, model: model, named: name) { return gauge }
             return named
         }
-        return hottestExhausted(in: quotas)
+        return hottestExhausted(in: quotas, model: model, named: name)
     }
 
     /// Banner / phase line: names what is used up.
@@ -147,6 +172,26 @@ public enum QuotaSurface {
         detail(exhaustion)
     }
 
+    /// The note a spent model wears in a chooser. A wall the row is itself the subject of needs no
+    /// gloss; an account-wide one names its window, because "used up" on every row in the list is
+    /// only an answer if it says what ran out.
+    public static func rowNote(_ exhaustion: QuotaExhaustion) -> String {
+        let head =
+            exhaustion.isAccountWide
+            ? Localized.text("%@ used up", exhaustion.window) : Localized.text("Used up")
+        guard let reset = resetPhrase(exhaustion) else { return head }
+        return "\(head) · \(reset)"
+    }
+
+    /// The same note where there is only room for a pill: the state, and the clock that ends it.
+    /// A countdown is legible without the verb; what ran out is not, so the window's name is the
+    /// part that goes rather than the time.
+    public static func rowMark(_ exhaustion: QuotaExhaustion) -> String {
+        let head = Localized.text("Used up")
+        guard let resetsAt = exhaustion.resetsAt else { return head }
+        return "\(head) · \(countdown(to: resetsAt))"
+    }
+
     /// Percent label for a gauge that is full: "Used up" rather than "100%", so a bar at the wall
     /// reads as a state, not a measurement.
     public static func amountLabel(fraction: Double, percentText: String) -> String {
@@ -159,10 +204,12 @@ public enum QuotaSurface {
 
     /// The message StatusFacts should show for a failed turn when the failure is a quota wall.
     public static func statusFailureMessage(
-        failure: String?, quotas: [UsageQuota]
+        failure: String?, quotas: [UsageQuota], model: String? = nil, named name: String? = nil
     ) -> String? {
         guard let failure else { return nil }
-        if let exhaustion = resolve(failureMessage: failure, quotas: quotas) {
+        if let exhaustion = resolve(
+            failureMessage: failure, quotas: quotas, model: model, named: name)
+        {
             return short(exhaustion)
         }
         return failure

@@ -1512,7 +1512,7 @@ final class ChatPane: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend, git: git)
+            spend: spend, git: git, model: activeModelID)
         if identityActivity != facts.activity {
             identityActivity = facts.activity
             refreshIdentity()
@@ -1541,11 +1541,19 @@ final class ChatPane: @unchecked Sendable {
 
     /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
     /// rewritten phase, so this only speaks when the wall is up before the next send. Only the
-    /// chat's own provider family speaks here; other walls stay in the sidebar gauges.
+    /// chat's own provider family speaks here, and only the wall standing in front of the model
+    /// this chat would send with; every other wall is worn where a model is picked.
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        return QuotaSurface.hottestExhausted(in: relevant).map(QuotaSurface.short)
+        return QuotaSurface.hottestExhausted(in: relevant, model: activeModelID)
+            .map(QuotaSurface.short)
+    }
+
+    /// The used-up windows on this server's account, for marking a model spent where it is picked.
+    private func modelQuotas() -> [UsageQuota] {
+        QuotaSurface.relevantQuotas(
+            for: backend?.agentType, among: host?.quotasForStatus() ?? [])
     }
 
     private func perform(bandAction action: StatusFacts.Action) {
@@ -1790,13 +1798,17 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func modelTintClass() -> String? {
-        let active = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
-        guard let active, let chip = ModelBadge.chip(model: active, effort: nil) else { return nil }
+        guard let active = activeModelID, let chip = ModelBadge.chip(model: active, effort: nil)
+        else { return nil }
         return ModelTint.identityClass(family: chip.family, name: chip.name)
     }
 
     /// What the chat is actually being answered by: the explicit pick, else the model observed on
     /// the last assistant turn, else the session's own record.
+    var activeModelID: String? {
+        chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+    }
+
     private func modelPillText() -> String {
         if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
         if let observed = observedModelID() {
@@ -1835,7 +1847,7 @@ final class ChatPane: @unchecked Sendable {
     /// Effort is a property of the model on servers whose catalog says so; the backend-wide list
     /// is the fallback for agents where every model takes the same levels.
     private func effortOptions() -> [String] {
-        let active = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+        let active = activeModelID
         if let active, let variants = models.first(where: { $0.id == active })?.variants,
             !variants.isEmpty
         {
@@ -1858,17 +1870,23 @@ final class ChatPane: @unchecked Sendable {
                 }
             })
         ]
+        let quotas = modelQuotas()
         for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
             let selection = candidate.selection
+            let providers = candidate.providerNames.joined(separator: " · ")
+            let wall = ModelChooser.wall(for: candidate, quotas: quotas)
             rows.append(
-                (candidate.name, candidate.providerNames.joined(separator: " · "), { [weak self] in
+                (candidate.name,
+                 wall.map { "\(QuotaSurface.rowNote($0)) · \(providers)" } ?? providers,
+                 { [weak self] in
                     Gtk.onMain { [weak self] in
                         self?.setChosenModel(selection)
                     }
                 }))
         }
         rows.append(
-            (Localized.text("All models…"), ModelChooser(models: models, selected: chosenModel).summary,
+            (Localized.text("All models…"),
+             ModelChooser(models: models, selected: chosenModel, quotas: quotas).summary,
              { [weak self] in
                 Gtk.onMain { [weak self] in self?.openModelChooser() }
              }))
@@ -1878,7 +1896,7 @@ final class ChatPane: @unchecked Sendable {
     private func openModelChooser() {
         ModelChooserWindow.present(
             sources: modelSources(), selected: chosenModel,
-            parent: host?.windowWidget ?? root
+            parent: host?.windowWidget ?? root, quotas: modelQuotas()
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in self?.apply(pick) }
         }

@@ -77,12 +77,12 @@ public struct StatusFacts: Sendable {
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
-        git: GitState? = nil
+        git: GitState? = nil, model: String? = nil
     ) -> StatusFacts {
         var facts = StatusFacts()
         if let failure = state.lastFailure {
             let message = QuotaSurface.statusFailureMessage(
-                failure: failure.message, quotas: quotas) ?? failure.message
+                failure: failure.message, quotas: quotas, model: model) ?? failure.message
             facts.phase = .failed(message)
         } else {
             switch state.connection {

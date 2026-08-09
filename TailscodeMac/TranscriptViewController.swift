@@ -683,6 +683,11 @@ final class TranscriptViewController: NSViewController {
         composer.onToast = { [weak self] text in self?.onToast?(text) }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
         composer.onBrowseCommands = { [weak self] in self?.presentCommandCatalog() }
+        composer.quotasForModels = { [weak self] in
+            guard let self else { return [] }
+            return QuotaSurface.relevantQuotas(
+                for: self.backend?.agentType, among: self.quotasForStatus?() ?? [])
+        }
 
         let column = NSStackView(views: [composer])
         column.orientation = .vertical
@@ -1022,7 +1027,7 @@ final class TranscriptViewController: NSViewController {
         let facts = StatusFacts.from(
             state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
             attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
-            spend: spend, git: git)
+            spend: spend, git: git, model: composer.activeModelID)
         lastFacts = facts
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
@@ -1031,11 +1036,13 @@ final class TranscriptViewController: NSViewController {
 
     /// Pre-emptive used-up quota on the band while idle — a failed turn already carries the
     /// rewritten phase, so this only speaks when the wall is up before the next send. Only the
-    /// chat's own provider family speaks here; other walls stay in the sidebar gauges.
+    /// chat's own provider family speaks here, and only the wall standing in front of the model
+    /// this chat would send with; every other wall is worn where a model is picked.
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        return QuotaSurface.hottestExhausted(in: relevant).map(QuotaSurface.short)
+        return QuotaSurface.hottestExhausted(in: relevant, model: composer.activeModelID)
+            .map(QuotaSurface.short)
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;

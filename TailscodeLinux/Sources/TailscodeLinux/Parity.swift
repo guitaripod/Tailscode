@@ -31,6 +31,7 @@ enum ParityManifest {
         case .modelIdentityTint: return .implemented("modelLabel")
         case .usageGauges: return .implemented("usage-footer")
         case .quotaExhaustion: return .implemented("quotaNotice")
+        case .quotaScoping: return .implemented("model-fact-spent")
         case .markdownRendering: return .implemented("PangoMarkdown")
         case .transcriptLinks: return .implemented("autolink")
         case .syntaxHighlighting: return .implemented("PangoSyntax")

@@ -1393,6 +1393,8 @@ extension HomeViewController: HomeComposerBarDelegate {
                                 choice: self.modelChoices[profile.id] ?? ModelChoice(),
                                 efforts: backend.reasoningEffortOptions,
                                 allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                                quotas: QuotaSurface.relevantQuotas(
+                                    for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
                                 actions: ModelMenu.Actions(
                                     selectModel: { [weak self] selection in
                                         self?.setComposeModel(selection, for: profile)
@@ -1438,7 +1440,9 @@ extension HomeViewController: HomeComposerBarDelegate {
             sources: ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: profile.id,
                 currentModels: models, allowsServerDefault: profile.backend == .claudeCode),
-            selected: modelChoices[profile.id]?.model
+            selected: modelChoices[profile.id]?.model,
+            quotas: QuotaSurface.relevantQuotas(
+                for: profile.backend, among: UsageWidgetStore.cachedQuotas())
         ) { [weak self] pick in
             guard let self else { return }
             if pick.isElsewhere {

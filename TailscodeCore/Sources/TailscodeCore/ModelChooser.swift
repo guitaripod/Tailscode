@@ -313,6 +313,10 @@ public struct ModelChooserRow: Sendable, Hashable, Identifiable {
     public let canExpand: Bool
     /// An alternate is drawn inset under the row it belongs to.
     public let isNested: Bool
+    /// The used-up window standing between this row and a send, when one is. A walled row is drawn
+    /// spent — dimmed, wearing what ran out and when it comes back — and stays pickable, because a
+    /// window resets and a wall is not a reason to refuse someone the model they came for.
+    public let wall: QuotaExhaustion?
 
     /// Unique across the whole list, which is what a diffable list demands of an identifier.
     public var id: String { "\(sectionID)/\(anchor)" }
@@ -390,6 +394,10 @@ public struct ModelChooser: Sendable, Equatable {
     public let allowsServerDefault: Bool
     public let selected: ModelSelection?
     private let recents: [ModelSelection]
+    /// One wall per candidate that has one, worked out once: a used-up window does not change
+    /// while a list is open, and a search that re-ranks two hundred rows per keystroke must not
+    /// re-read every gauge to draw them.
+    private let walls: [String: QuotaExhaustion]
 
     public private(set) var query = ""
     public private(set) var cursor = 0
@@ -400,30 +408,59 @@ public struct ModelChooser: Sendable, Equatable {
     /// One server's list — the shape every screen that only ever meant this machine still asks for.
     public init(
         models: [ModelInfo], selected: ModelSelection?, allowsServerDefault: Bool = true,
-        recents: [ModelSelection] = RecentModelsStore.all()
+        recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
     ) {
         self.init(
             sources: [
                 ModelSource(
                     profileID: "", name: "", backend: .openCode, models: models, isCurrent: true,
                     allowsServerDefault: allowsServerDefault, acceptsAnyModelID: false)
-            ], selected: selected, recents: recents)
+            ], selected: selected, recents: recents, quotas: quotas)
     }
 
     /// Every server you have, as one list. The machine a model runs on is a fact on its row rather
     /// than a list you have to leave and re-enter, and the pick that comes back says which machine
     /// it meant.
+    ///
+    /// `quotas` are the walls in front of *this* server, already narrowed to its provider family by
+    /// the caller that knows which backend it opened — the chooser marks a model spent, it does not
+    /// decide whose account a machine spends from. A model on another machine is never marked: the
+    /// same name reached through another gateway is metered by that gateway, and a mark this list
+    /// cannot stand behind is worse than none.
     public init(
         sources: [ModelSource], selected: ModelSelection?,
-        recents: [ModelSelection] = RecentModelsStore.all()
+        recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
     ) {
         self.sources = sources
-        self.candidates = sources.flatMap { Self.fold(source: $0) }
+        let candidates = sources.flatMap { Self.fold(source: $0) }
+        self.candidates = candidates
         self.selected = selected
         self.allowsServerDefault = sources.first { $0.isCurrent }?.allowsServerDefault ?? false
         self.recents = recents
+        self.walls = Self.walls(for: candidates, quotas: quotas)
         rebuild()
         cursor = rows.firstIndex { $0.isSelected } ?? 0
+    }
+
+    private static func walls(
+        for candidates: [ModelCandidate], quotas: [UsageQuota]
+    ) -> [String: QuotaExhaustion] {
+        guard !quotas.isEmpty else { return [:] }
+        var found: [String: QuotaExhaustion] = [:]
+        for candidate in candidates where !candidate.isElsewhere {
+            guard let hit = wall(for: candidate, quotas: quotas) else { continue }
+            found[candidate.id] = hit
+        }
+        return found
+    }
+
+    /// The used-up window in front of one model, for the pill's shortlist — the same reading the
+    /// full chooser draws, so a menu and the list behind it never disagree about what is spent.
+    public static func wall(
+        for candidate: ModelCandidate, quotas: [UsageQuota]
+    ) -> QuotaExhaustion? {
+        QuotaSurface.hottestExhausted(
+            in: quotas, model: candidate.primary.model.id, named: candidate.name)
     }
 
     public var isEmpty: Bool { candidates.isEmpty }
@@ -443,6 +480,7 @@ public struct ModelChooser: Sendable, Equatable {
         }
         let local = candidates.filter(\.isLocal).count
         if local > 0 { parts.append(Localized.text("%@ on your machine", "\(local)")) }
+        if !walls.isEmpty { parts.append(Localized.text("%@ used up", "\(walls.count)")) }
         return parts.joined(separator: " · ")
     }
 
@@ -598,7 +636,7 @@ public struct ModelChooser: Sendable, Equatable {
                             title: Localized.text("Server default"),
                             detail: Localized.text("Whatever this server runs"), highlight: [],
                             facts: [], isSelected: selected == nil, isExpanded: false,
-                            canExpand: false, isNested: false)
+                            canExpand: false, isNested: false, wall: nil)
                     ]))
         }
 
@@ -665,7 +703,8 @@ public struct ModelChooser: Sendable, Equatable {
                     ? Localized.text("Hand this name to the CLI as it is")
                     : Localized.text("Hand this name to %@ as it is", source.name),
                 highlight: [], facts: source.isCurrent ? [] : [.server(source.name)],
-                isSelected: false, isExpanded: false, canExpand: false, isNested: false)
+                isSelected: false, isExpanded: false, canExpand: false, isNested: false,
+                wall: nil)
         }
         return [
             ModelChooserSection(
@@ -689,7 +728,7 @@ public struct ModelChooser: Sendable, Equatable {
                 facts: offer.isLocal ? [.local] : [],
                 isSelected: !candidate.isElsewhere && selected == offer.selection,
                 isExpanded: false, canExpand: false,
-                isNested: true)
+                isNested: true, wall: walls[candidate.id])
         }
         return result
     }
@@ -705,7 +744,8 @@ public struct ModelChooser: Sendable, Equatable {
             highlight: highlight, facts: ModelFact.of(candidate),
             isSelected: !candidate.isElsewhere && candidate.carries(selected),
             isExpanded: expanded.contains(candidate.id),
-            canExpand: candidate.offers.count > 1, isNested: false)
+            canExpand: candidate.offers.count > 1, isNested: false,
+            wall: walls[candidate.id])
     }
 
     /// Under the name: who runs it, and the id the server actually knows it by — the one string
@@ -733,6 +773,8 @@ public struct ModelChooser: Sendable, Equatable {
                 candidates
                 .sorted { lhs, rhs in
                     if lhs.isElsewhere != rhs.isElsewhere { return !lhs.isElsewhere }
+                    let (walledL, walledR) = (walls[lhs.id] != nil, walls[rhs.id] != nil)
+                    if walledL != walledR { return !walledL }
                     return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
                 }
                 .map { ($0, []) }
@@ -747,6 +789,8 @@ public struct ModelChooser: Sendable, Equatable {
             .sorted { lhs, rhs in
                 if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
                 if lhs.0.isElsewhere != rhs.0.isElsewhere { return !lhs.0.isElsewhere }
+                let (walledL, walledR) = (walls[lhs.0.id] != nil, walls[rhs.0.id] != nil)
+                if walledL != walledR { return !walledL }
                 let (a, b) = (rank(lhs.0), rank(rhs.0))
                 if a != b { return a < b }
                 return lhs.0.name.localizedCaseInsensitiveCompare(rhs.0.name) == .orderedAscending
@@ -1088,6 +1132,60 @@ public enum ModelChooserCheck {
         expect(
             alone.rows.first?.pick.isElsewhere == false,
             "and every pick stays where it is")
+
+        func window(_ label: String, _ fraction: Double) -> UsageQuota.Gauge {
+            UsageQuota.Gauge(
+                key: label, label: label, fraction: fraction,
+                resetsAt: Date().addingTimeInterval(7_200), trustedReset: true)
+        }
+        func account(_ gauges: [UsageQuota.Gauge]) -> UsageQuota {
+            UsageQuota(
+                providerName: "Claude", subtitle: "", source: "selftest", live: true,
+                gauges: gauges, details: [])
+        }
+
+        let scoped = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [account([window("Weekly · Opus 4.1", 1), window("5-hour session", 0.3)])])
+        expect(
+            scoped.rows.allSatisfy { $0.wall == nil },
+            "a wall around a model the catalog does not carry marks nothing")
+
+        let walled = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [account([window("Weekly · Sonnet 4.5", 1), window("5-hour session", 0.3)])])
+        let sonnetRow = walled.rows.first { $0.title == "Claude Sonnet 4.5" }
+        expect(sonnetRow?.wall != nil, "the model the window names is marked spent")
+        expect(sonnetRow?.wall?.isAccountWide == false, "and knows the wall is its own")
+        expect(
+            walled.rows.filter { $0.title.hasPrefix("GPT") }.allSatisfy { $0.wall == nil },
+            "a model the window never mentioned is left alone")
+        expect(walled.summary.contains(Localized.text("%@ used up", "1")), "and the count says so")
+
+        let ranked = ModelChooser(
+            models: studio.models, selected: nil, recents: [],
+            quotas: [account([window("Weekly · Opus 4.1", 1)])])
+        let opusAt = ranked.rows.firstIndex { $0.title == "Opus" }
+        let sonnetAt = ranked.rows.firstIndex { $0.title == "Sonnet" }
+        expect(
+            opusAt != nil && sonnetAt != nil && sonnetAt! < opusAt!,
+            "a spent model sinks under the ones in its family that can still answer")
+        if let wall = sonnetRow?.wall {
+            expect(
+                QuotaSurface.rowNote(wall).contains(Localized.text("Used up")),
+                "the row says what it is")
+            expect(QuotaSurface.rowNote(wall).contains("h "), "and when it comes back")
+        }
+
+        let stopped = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [account([window("5-hour session", 1)])])
+        expect(
+            stopped.rows.filter { !$0.isAuto }.allSatisfy { $0.wall != nil },
+            "a window metered against the account stops every model on it")
+        expect(
+            stopped.rows.first { !$0.isAuto }?.wall?.isAccountWide == true,
+            "and says it is the account's rather than the model's")
 
         let keys: [(UInt32, UInt32, ModelChooserCommand?)] = [
             (Keymap.down, 0, .down),

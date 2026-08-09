@@ -349,6 +349,8 @@ final class ServerDetailViewController: UIViewController {
                                 choice: self.modelChoice,
                                 efforts: backend.reasoningEffortOptions,
                                 allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                                quotas: QuotaSurface.relevantQuotas(
+                                    for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
                                 actions: ModelMenu.Actions(
                                     selectModel: { [weak self] selection in
                                         self?.setDefaultModel(selection)
@@ -385,8 +387,11 @@ final class ServerDetailViewController: UIViewController {
             profileID: profile.id, name: profile.name, backend: profile.backend, models: models,
             isCurrent: true, allowsServerDefault: true,
             acceptsAnyModelID: profile.backend == .claudeCode)
-        let picker = ModelPickerViewController(sources: [source], selected: modelChoice.model) {
-            [weak self] pick in
+        let picker = ModelPickerViewController(
+            sources: [source], selected: modelChoice.model,
+            quotas: QuotaSurface.relevantQuotas(
+                for: profile.backend, among: UsageWidgetStore.cachedQuotas())
+        ) { [weak self] pick in
             self?.setDefaultModel(pick.selection)
         }
         let nav = UINavigationController(rootViewController: picker)

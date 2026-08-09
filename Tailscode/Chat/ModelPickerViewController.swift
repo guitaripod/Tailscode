@@ -21,8 +21,11 @@ final class ModelPickerViewController: UIViewController {
     private var sectionIDs: [String] = []
     private var rowsByID: [String: ModelChooserRow] = [:]
 
-    init(sources: [ModelSource], selected: ModelSelection?, onSelect: @escaping (ModelPick) -> Void) {
-        self.chooser = ModelChooser(sources: sources, selected: selected)
+    init(
+        sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota] = [],
+        onSelect: @escaping (ModelPick) -> Void
+    ) {
+        self.chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onSelect = onSelect
         super.init(nibName: nil, bundle: nil)
     }
@@ -113,9 +116,15 @@ final class ModelPickerViewController: UIViewController {
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
                 content.secondaryTextProperties.font = Theme.Font.mono(11)
             }
+            if let wall = row.wall {
+                content.textProperties.color = Theme.Color.tertiaryLabel
+                cell.accessibilityLabel = "\(row.title). \(QuotaSurface.bannerBody(wall))"
+            }
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
-            var accessories = row.facts.map(Self.factAccessory)
+            var accessories: [UICellAccessory] = []
+            if let wall = row.wall { accessories.append(Self.wallPill(wall)) }
+            accessories += row.facts.map(Self.factAccessory)
             if row.canExpand { accessories.append(self.expandAccessory(row)) }
             if row.isSelected { accessories.append(.checkmark()) }
             cell.accessories = accessories
@@ -199,16 +208,30 @@ final class ModelPickerViewController: UIViewController {
             if case .server = fact { return Theme.Color.warning }
             return Theme.Color.secondaryLabel
         }()
+        return pill(text: fact.tag.uppercased(), tint: tint, label: fact.label, minimum: 46)
+    }
+
+    /// What ran out and when it comes back, in the danger register. The row is still there to be
+    /// picked — a window resets — so this is a mark rather than a barrier.
+    private static func wallPill(_ wall: QuotaExhaustion) -> UICellAccessory {
+        pill(
+            text: QuotaSurface.rowMark(wall).uppercased(), tint: Theme.Color.danger,
+            label: QuotaSurface.bannerBody(wall), minimum: 0)
+    }
+
+    private static func pill(
+        text: String, tint: UIColor, label accessibility: String, minimum: CGFloat
+    ) -> UICellAccessory {
         let label = UILabel()
-        label.text = fact.tag.uppercased()
+        label.text = text
         label.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
         label.textColor = tint
         label.textAlignment = .center
-        label.accessibilityLabel = fact.label
+        label.accessibilityLabel = accessibility
         label.sizeToFit()
         let padH: CGFloat = 6
         let padV: CGFloat = 3
-        let width = max(46, label.bounds.width + padH * 2)
+        let width = max(minimum, label.bounds.width + padH * 2)
         let pill = UIView(
             frame: CGRect(x: 0, y: 0, width: width, height: label.bounds.height + padV * 2))
         label.frame = CGRect(x: padH, y: padV, width: width - padH * 2, height: label.bounds.height)

@@ -52,6 +52,8 @@ final class ComposerView: NSView {
     /// What a prompt sent outside the text box should travel with — the same model and effort
     /// the next Enter in this composer would use.
     var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+    /// The used-up windows on this server's account, for marking a model spent where it is picked.
+    var quotasForModels: (() -> [UsageQuota])?
 
     private var completionMatches: [AgentCommand] = []
     private var completionCursor = 0
@@ -451,7 +453,7 @@ final class ComposerView: NSView {
         pills.setDestination(destination)
         pills.setModelTitle(modelPillText())
         pills.setEffortTitle(effortPillText())
-        let activeModel = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+        let activeModel = activeModelID
         pills.setModelTint(
             activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
                 .map(MacTheme.Color.modelIdentity))
@@ -471,6 +473,10 @@ final class ComposerView: NSView {
     /// server's stored session ever hearing about it. The transcript is the authority — the last
     /// assistant message names the model that wrote it — and the session record is the fallback
     /// for a chat that has no answer in it yet.
+    var activeModelID: String? {
+        chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+    }
+
     private func modelPillText() -> String {
         if let chosenModel { return ModelBadge.label(model: chosenModel, effort: nil) }
         if let observed = observedModelID() {
@@ -512,7 +518,7 @@ final class ComposerView: NSView {
     /// differ per model); the backend-wide list is the fallback for agents like Claude Code
     /// where every model takes the same levels.
     private func effortOptions() -> [String] {
-        let active = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+        let active = activeModelID
         if let active, let variants = models.first(where: { $0.id == active })?.variants,
             !variants.isEmpty
         {
@@ -535,11 +541,16 @@ final class ComposerView: NSView {
                 self?.setModel(nil)
             }
         ]
+        let quotas = quotasForModels?() ?? []
         for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
             let selection = candidate.selection
+            let providers = candidate.providerNames.joined(separator: " · ")
+            let wall = ModelChooser.wall(for: candidate, quotas: quotas)
             rows.append(
                 PillsRow.MenuRow(
-                    candidate.name, subtitle: candidate.providerNames.joined(separator: " · "),
+                    candidate.name,
+                    subtitle: wall.map { "\(QuotaSurface.rowNote($0)) · \(providers)" }
+                        ?? providers,
                     checked: candidate.carries(chosenModel)
                 ) { [weak self] in
                     self?.setModel(selection)
@@ -548,7 +559,8 @@ final class ComposerView: NSView {
         rows.append(
             PillsRow.MenuRow(
                 Localized.text("All models…"),
-                subtitle: ModelChooser(models: models, selected: chosenModel).summary
+                subtitle: ModelChooser(models: models, selected: chosenModel, quotas: quotas)
+                    .summary
             ) { [weak self] in
                 self?.openModelChooser()
             })
@@ -558,7 +570,8 @@ final class ComposerView: NSView {
     private func openModelChooser() {
         guard let host = window else { return }
         ModelChooserSheet.present(
-            on: host, models: models, selected: chosenModel, allowsServerDefault: true
+            on: host, models: models, selected: chosenModel, allowsServerDefault: true,
+            quotas: quotasForModels?() ?? []
         ) { [weak self] selection in
             self?.setModel(selection)
         }

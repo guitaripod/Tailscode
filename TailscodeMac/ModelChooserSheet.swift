@@ -31,11 +31,12 @@ final class ModelChooserSheet: NSObject {
 
     static func present(
         on host: NSWindow, models: [ModelInfo], selected: ModelSelection?,
-        allowsServerDefault: Bool, onPick: @escaping @MainActor (ModelSelection?) -> Void
+        allowsServerDefault: Bool, quotas: [UsageQuota] = [],
+        onPick: @escaping @MainActor (ModelSelection?) -> Void
     ) {
         let controller = ModelChooserSheet(
             models: models, selected: selected, allowsServerDefault: allowsServerDefault,
-            onPick: onPick)
+            quotas: quotas, onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
@@ -47,10 +48,11 @@ final class ModelChooserSheet: NSObject {
 
     private init(
         models: [ModelInfo], selected: ModelSelection?, allowsServerDefault: Bool,
-        onPick: @escaping @MainActor (ModelSelection?) -> Void
+        quotas: [UsageQuota], onPick: @escaping @MainActor (ModelSelection?) -> Void
     ) {
         chooser = ModelChooser(
-            models: models, selected: selected, allowsServerDefault: allowsServerDefault)
+            models: models, selected: selected, allowsServerDefault: allowsServerDefault,
+            quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
@@ -325,6 +327,12 @@ private final class ModelChooserRowView: NSTableCellView {
         let line = NSStackView(views: [check, title])
         line.spacing = MacTheme.Spacing.xs
         line.alignment = .firstBaseline
+        if let wall = row.wall {
+            line.addArrangedSubview(
+                Self.pill(
+                    text: QuotaSurface.rowNote(wall), tint: MacTheme.Color.danger,
+                    tooltip: QuotaSurface.bannerBody(wall)))
+        }
         for fact in row.facts { line.addArrangedSubview(Self.pill(fact)) }
         if row.canExpand {
             let chevron = RowKit.ActionButton(title: "", action: onExpand)
@@ -367,7 +375,9 @@ private final class ModelChooserRowView: NSTableCellView {
         let text = NSMutableAttributedString(
             string: row.title,
             attributes: [
-                .font: MacTheme.Font.body(), .foregroundColor: MacTheme.Color.label,
+                .font: MacTheme.Font.body(),
+                .foregroundColor: row.wall == nil
+                    ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel,
             ])
         let characters = Array(row.title)
         for offset in row.highlight where offset < characters.count {
@@ -390,10 +400,14 @@ private final class ModelChooserRowView: NSTableCellView {
             default: return MacTheme.Color.secondaryLabel
             }
         }()
-        let label = NSTextField(labelWithString: fact.tag)
+        return pill(text: fact.tag, tint: tint, tooltip: fact.label)
+    }
+
+    private static func pill(text: String, tint: NSColor, tooltip: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
         label.font = .monospacedSystemFont(ofSize: 9 * MacTheme.UIScale.factor, weight: .medium)
         label.textColor = tint
-        label.toolTip = fact.label
+        label.toolTip = tooltip
         label.translatesAutoresizingMaskIntoConstraints = false
         let wrap = NSView()
         wrap.wantsLayer = true

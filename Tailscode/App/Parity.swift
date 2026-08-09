@@ -31,6 +31,7 @@ enum ParityManifest {
         case .modelIdentityTint: return .implemented("ModelChipText")
         case .usageGauges: return .implemented("QuotaCard")
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
+        case .quotaScoping: return .implemented("wallPill")
         case .markdownRendering: return .implemented("TextBubbleCell")
         case .transcriptLinks: return .implemented("dataDetectorTypes")
         case .syntaxHighlighting: return .implemented("CodeBlockCell.highlightedCode")

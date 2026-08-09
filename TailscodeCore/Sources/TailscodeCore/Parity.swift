@@ -36,6 +36,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case modelIdentityTint
     case usageGauges
     case quotaExhaustion
+    case quotaScoping
     case markdownRendering
     case transcriptLinks
     case syntaxHighlighting
@@ -221,6 +222,10 @@ public enum CapabilityRegistry {
             id: .quotaExhaustion, area: "sessions", title: "Used-up quota is a clear state",
             spec:
                 "When a provider window is at or past full, or a turn fails because of a rate limit / quota wall: a clear surface names the provider and window, says when it resets when known, and tells the person to switch model or wait — never a raw rate-limit string alone. Live gauges at full read as \"Used up\". A one-shot notification fires the first time a window hits full. Pre-emptive notice rides the conversation chrome while the wall is up, not only after a failed send, and speaks only for the chat's own provider family — a wall on another provider stays in the gauges. Copy and classification live in QuotaSurface so every client says the same thing."),
+        CapabilityDefinition(
+            id: .quotaScoping, area: "sessions", title: "A wall speaks to the model it holds",
+            spec:
+                "A used-up window is worn where it applies and nowhere else. QuotaBinding reads each gauge's own label for the model it was scoped to (\"Weekly · Opus\" is Opus's; \"5-hour session\" is the account's), so the chat's standing notice speaks only when the wall is in front of the model that chat would send with — a scoped wall on a model this chat is not using is not news, and a chat whose model nobody can name hears the account-wide walls only. What the notice stops saying, the chooser says instead: every model in the picker carries the wall in front of it (ModelChooserRow.wall), drawn spent — dimmed, wearing what ran out and when it returns (QuotaSurface.rowNote) — sunk under the models in its family that can still answer, counted in the chooser's summary, and echoed on the composer's own shortlist so the quick menu and the full list never disagree. A spent model stays pickable: a window resets, and refusing someone the model they came for is not the app's call. The reading is Core's; a client decides only how spent looks."),
         CapabilityDefinition(
             id: .markdownRendering, area: "transcript", title: "Markdown prose",
             spec:

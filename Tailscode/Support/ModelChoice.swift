@@ -148,9 +148,25 @@ enum ModelMenu {
         ModelChooser.shortlist(models, selected: selected, limit: inlineLimit)
     }
 
+    /// A model the account cannot spend on right now says so in the menu as well as in the picker,
+    /// with what ran out and when it comes back — the quick list and the full one are one list, and
+    /// a fact that only the long version carries is a fact the short version is lying about.
+    private static func subtitle(
+        _ candidate: ModelCandidate, quotas: [UsageQuota], showsProvider: Bool
+    ) -> String? {
+        let who =
+            candidate.isLocal
+            ? String(localized: "\(candidate.primary.providerName) · local")
+            : (showsProvider ? candidate.providerNames.joined(separator: " · ") : nil)
+        guard let wall = ModelChooser.wall(for: candidate, quotas: quotas) else { return who }
+        let note = QuotaSurface.rowNote(wall)
+        guard let who else { return note }
+        return "\(note) · \(who)"
+    }
+
     static func elements(
         models: [ModelInfo], choice: ModelChoice, efforts: [String],
-        allowsServerDefault: Bool, actions: Actions
+        allowsServerDefault: Bool, quotas: [UsageQuota] = [], actions: Actions
     ) -> [UIMenuElement] {
         var sections: [UIMenuElement] = []
         let shortlist = shortlist(models, selected: choice.model)
@@ -166,12 +182,12 @@ enum ModelMenu {
         }
         let showsProvider = Set(models.map(\.providerID)).count > 1
         picks += shortlist.map { candidate in
-            UIAction(
+            let walled = ModelChooser.wall(for: candidate, quotas: quotas) != nil
+            return UIAction(
                 title: candidate.name,
-                subtitle: candidate.isLocal
-                    ? String(localized: "\(candidate.primary.providerName) · local")
-                    : (showsProvider
-                        ? candidate.providerNames.joined(separator: " · ") : nil),
+                subtitle: subtitle(candidate, quotas: quotas, showsProvider: showsProvider),
+                image: walled
+                    ? UIImage(systemName: "gauge.with.dots.needle.100percent") : nil,
                 state: candidate.carries(choice.model) ? .on : .off
             ) { _ in actions.selectModel(candidate.selection) }
         }
@@ -189,7 +205,9 @@ enum ModelMenu {
                     children: [
                         UIAction(
                             title: String(localized: "All models…"),
-                            subtitle: ModelChooser(models: models, selected: choice.model).summary,
+                            subtitle: ModelChooser(
+                                models: models, selected: choice.model, quotas: quotas
+                            ).summary,
                             image: UIImage(systemName: "magnifyingglass")
                         ) { _ in browseAll() }
                     ]))

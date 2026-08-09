@@ -1592,21 +1592,26 @@ final class ChatViewController: UIViewController {
 
     /// A used-up quota is a state, not a generic failure: name the window, say when it resets,
     /// and leave the raw rate-limit string behind. Pre-emptive when gauges are already full, and
-    /// after a turn dies of a rate limit.
+    /// after a turn dies of a rate limit — and only ever about a wall standing in front of the
+    /// model this chat would send with, because a window scoped to a model nobody here is using is
+    /// a fact for the picker, not a banner over the conversation.
     @discardableResult
     private func applyQuotaExhaustion(for state: ConversationState) -> Bool {
         guard Date() > suppressBannerUntil, state.status != .running else { return false }
         let quotas = UsageWidgetStore.cachedQuotas()
+        let model = viewModel.displayedModel?.modelID
         let failure: String? = {
             guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
             return f.message
         }()
         let exhaustion: QuotaExhaustion?
         if let failure {
-            exhaustion = QuotaSurface.resolve(failureMessage: failure, quotas: quotas)
+            exhaustion = QuotaSurface.resolve(
+                failureMessage: failure, quotas: quotas, model: model)
         } else {
             exhaustion = QuotaSurface.hottestExhausted(
-                in: QuotaSurface.relevantQuotas(for: viewModel.backend.agentType, among: quotas))
+                in: QuotaSurface.relevantQuotas(for: viewModel.backend.agentType, among: quotas),
+                model: model)
         }
         guard let exhaustion else { return false }
         banner.show(
@@ -3135,6 +3140,8 @@ final class ChatViewController: UIViewController {
             choice: choice,
             efforts: viewModel.reasoningEffortOptions,
             allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
+            quotas: QuotaSurface.relevantQuotas(
+                for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
             actions: ModelMenu.Actions(
                 selectModel: { [weak self] selection in
                     Theme.Haptics.selection()
@@ -3167,7 +3174,9 @@ final class ChatViewController: UIViewController {
                 profiles: ConnectionController.shared.profiles,
                 current: viewModel.contextID, currentModels: availableModels,
                 allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
-            selected: viewModel.selectedModel
+            selected: viewModel.selectedModel,
+            quotas: QuotaSurface.relevantQuotas(
+                for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
         ) { [weak self] pick in
             self?.apply(pick)
         }

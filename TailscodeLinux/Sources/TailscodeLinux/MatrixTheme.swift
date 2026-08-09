@@ -408,6 +408,12 @@ enum MatrixTheme {
             border-color: alpha(\(warn), 0.6);
             background: alpha(\(warn), 0.10);
         }
+        .model-fact-spent {
+            color: \(danger);
+            border-color: alpha(\(danger), 0.6);
+            background: alpha(\(danger), 0.10);
+        }
+        .model-row-spent { color: \(textDim); }
         .chooser-hint {
             color: \(textDim);
             font-family: monospace;

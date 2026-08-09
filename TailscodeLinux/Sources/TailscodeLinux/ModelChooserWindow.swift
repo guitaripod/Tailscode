@@ -25,20 +25,20 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     static func present(
         sources: [ModelSource], selected: ModelSelection?,
-        parent: UnsafeMutablePointer<GtkWidget>?,
+        parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota] = [],
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
         open = ModelChooserWindow(
-            sources: sources, selected: selected, parent: parent, onPick: onPick)
+            sources: sources, selected: selected, parent: parent, quotas: quotas, onPick: onPick)
     }
 
     private init(
         sources: [ModelSource], selected: ModelSelection?,
-        parent: UnsafeMutablePointer<GtkWidget>?,
+        parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota],
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
-        chooser = ModelChooser(sources: sources, selected: selected)
+        chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
 
         window = gtk_window_new()!
@@ -179,7 +179,16 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_label_set_selectable(op(title), 0)
         gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
         gtk_widget_set_hexpand(title, 1)
+        if row.wall != nil { Gtk.addClass(title, "model-row-spent") }
         gtk_box_append(ptr(titleRow), title)
+        if let wall = row.wall {
+            let pill = Gtk.label(QuotaSurface.rowNote(wall), css: "model-fact", selectable: false)
+            gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
+            gtk_widget_set_tooltip_text(pill, QuotaSurface.bannerBody(wall))
+            Gtk.addClass(pill, "model-fact-spent")
+            gtk_box_append(ptr(titleRow), pill)
+        }
         for fact in row.facts {
             gtk_box_append(ptr(titleRow), Self.factPill(fact))
         }
