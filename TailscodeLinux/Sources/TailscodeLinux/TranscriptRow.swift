@@ -32,6 +32,9 @@ final class TranscriptContext: @unchecked Sendable {
     /// every spinner and elapsed reading in one frame agrees.
     var workflowNow: Date = Date()
     var onToggle: (@Sendable (String, Bool) -> Void)?
+    /// Called with a just-opened disclosure's widget bits: the pane scrolls the minimum needed to
+    /// show the opened body, never past the point where the clicked header would leave the top.
+    var revealRow: (@Sendable (UInt) -> Void)?
     var requestImage: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
@@ -596,9 +599,13 @@ struct TranscriptRow: Hashable {
         context.liveReasoning[key] = text
         let header = Gtk.label(Self.thoughtHeader(text), css: "dim", selectable: false)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, bits in
+                toggle?(key, open)
+                if open { reveal?(bits) }
+            }
         ) { [weak context] in
             let body = Gtk.label(
                 context?.liveReasoning[key] ?? text, css: "reasoning-body", wrap: true)

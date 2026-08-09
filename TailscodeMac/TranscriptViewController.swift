@@ -711,6 +711,11 @@ final class TranscriptViewController: NSViewController {
         findBar.onClose = { [weak self] in self?.setFindShown(false) }
     }
 
+    /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
+    /// clicked, so the transcript stops following the bottom — a stream that kept pinning would
+    /// scroll the very card they opened out from under them — and the view moves only as far as
+    /// ``revealDisclosure`` needs to show the opened body, never past the clicked header. Their
+    /// own next prompt, or the jump pill, is what re-engages following.
     private func wireContext() {
         context.onToggle = { [weak self] key, open in
             guard let self else { return }
@@ -719,7 +724,10 @@ final class TranscriptViewController: NSViewController {
             } else {
                 self.context.expanded.remove(key)
             }
-            if open, self.followsBottom { self.schedulePinCorrector() }
+            self.followsBottom = false
+        }
+        context.revealRow = { [weak self] row in
+            DispatchQueue.main.async { [weak self] in self?.revealDisclosure(row) }
         }
         context.requestImage = { [weak self] reference, key in
             self?.fetchImage(reference, key: key)
@@ -779,6 +787,7 @@ final class TranscriptViewController: NSViewController {
         MacHaptics.shared.play(.send)
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
+        scrollToBottom()
         Task {
             do {
                 try await conversation.send(
@@ -1101,14 +1110,27 @@ final class TranscriptViewController: NSViewController {
                     + context.workflowRuns.keys.filter { byCall[$0] == nil })
             workflowRuns = runs
             context.workflowRuns = byCall
-            if !stale.isEmpty {
-                replaceRows {
-                    if case .workflow(let call) = $0.kind { return stale.contains(call.id) }
-                    return false
-                }
-            }
+            refreshWorkflowCards(stale)
         }
         updateTicker(running: state.status == .running)
+    }
+
+    /// A changed run is written into the card it already has; only a card whose structure no
+    /// longer matches — an agent appeared, the result landed — is rebuilt, and only that card.
+    /// A rebuild destroys the view under the pointer and the click that was in flight with it,
+    /// so it is the exception, never the once-a-second path.
+    private func refreshWorkflowCards(_ ids: Set<String>) {
+        guard !ids.isEmpty, !placeholderShown else { return }
+        var rebuilt: Set<String> = []
+        for index in renderedRows.indices {
+            guard case .workflow(let call) = renderedRows[index].kind, ids.contains(call.id),
+                index < rowViews.count
+            else { continue }
+            if !WorkflowCardView.restate(rowViews[index], call: call, context: context) {
+                rebuilt.insert(renderedRows[index].key)
+            }
+        }
+        if !rebuilt.isEmpty { replaceRows { rebuilt.contains($0.key) } }
     }
 
     /// A background run outlives the turn that launched it, so the clock every live card is drawn
@@ -1118,10 +1140,7 @@ final class TranscriptViewController: NSViewController {
         context.workflowNow = Date()
         let live = Set(workflowRuns.filter(\.isLive).map(\.id))
         refreshWorkflowRuns()
-        replaceRows {
-            if case .workflow(let call) = $0.kind { return live.contains(call.id) }
-            return false
-        }
+        refreshWorkflowCards(live)
     }
 
     private func fetchWorkflowAgent(_ agentID: String) {
@@ -1136,8 +1155,9 @@ final class TranscriptViewController: NSViewController {
             self.inFlightSubagents.remove(agentID)
             self.context.subagentRows[WorkflowAgentRows.key(agentID)] = rows
             self.replaceRows {
-                if case .workflow = $0.kind { return true }
-                return false
+                guard case .workflow(let call) = $0.kind else { return false }
+                return self.context.workflowRuns[call.id]?.agents
+                    .contains { $0.id == agentID } ?? true
             }
         }
     }
@@ -1729,6 +1749,29 @@ final class TranscriptViewController: NSViewController {
             maxScrollOrigin())
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
         scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// The gentlest scroll that shows a just-opened body: down only as far as the body's end (or
+    /// the page can hold), and never past the point where the clicked header would leave the top —
+    /// a header that flies off the screen is the person losing the very thing they pointed at.
+    /// Runs on the next hop, once the body has its layout; a row already torn down by then is no
+    /// longer in the canvas and moves nothing.
+    private func revealDisclosure(_ row: NSView) {
+        guard row.window != nil, row.isDescendant(of: canvas) else { return }
+        view.layoutSubtreeIfNeeded()
+        let frame = row.convert(row.bounds, to: canvas)
+        let clip = scrollView.contentView
+        let margin: CGFloat = 8
+        let visibleTop = clip.bounds.origin.y + scrollView.contentInsets.top
+        let visibleBottom =
+            clip.bounds.origin.y + clip.bounds.height - scrollView.contentInsets.bottom
+        let needed = frame.maxY + margin - visibleBottom
+        let slack = frame.minY - margin - visibleTop
+        let delta = min(needed, slack)
+        guard delta > 0 else { return }
+        isAutoScrolling = true
+        adjustScroll { $0 + delta }
+        isAutoScrolling = false
     }
 
     private func clearUnseen() {

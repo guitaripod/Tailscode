@@ -1952,15 +1952,52 @@ final class ChatViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
+    /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
+    /// tapped, so the transcript stops chasing the bottom — a stream that kept scrolling would
+    /// push the very card they opened out from under them — and the view moves only as far as
+    /// `revealToggledRow` needs to show the opened body, never past the tapped header. Their own
+    /// next prompt, or the jump pill, is what re-engages following.
     private func toggleReasoning(_ id: String) {
-        if expandedReasoning.contains(id) {
-            expandedReasoning.remove(id)
-        } else {
+        userScrolledUp = true
+        let opened = !expandedReasoning.contains(id)
+        if opened {
             expandedReasoning.insert(id)
+        } else {
+            expandedReasoning.remove(id)
         }
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
         dataSource.apply(snapshot, animatingDifferences: false)
+        if opened { revealToggledRow(id) }
+    }
+
+    /// The gentlest scroll that shows a just-opened body: down only as far as the row's end (or
+    /// the screen can hold), and never past the point where the tapped header would leave the
+    /// top — a header that flies off the screen is the person losing what they pointed at.
+    private func revealToggledRow(_ id: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.collectionView.layoutIfNeeded()
+            guard let index = self.dataSource.snapshot().indexOfItem(id),
+                let attributes = self.collectionView.layoutAttributesForItem(
+                    at: IndexPath(item: index, section: 0))
+            else { return }
+            let inset = self.collectionView.adjustedContentInset
+            let offset = self.collectionView.contentOffset.y
+            let margin: CGFloat = 8
+            let visibleTop = offset + inset.top
+            let visibleBottom = offset + self.collectionView.bounds.height - inset.bottom
+            let needed = attributes.frame.maxY + margin - visibleBottom
+            let slack = attributes.frame.minY - margin - visibleTop
+            let delta = min(needed, slack)
+            guard delta > 0 else { return }
+            let ceiling = max(
+                -inset.top,
+                self.collectionView.contentSize.height + inset.bottom
+                    - self.collectionView.bounds.height)
+            self.collectionView.setContentOffset(
+                CGPoint(x: 0, y: min(offset + delta, ceiling)), animated: true)
+        }
     }
 
     /// The extra breathing room above a row that opens a new turn. Rows that
@@ -2255,7 +2292,9 @@ final class ChatViewController: UIViewController {
     }
 
     private func toggleSubagent(_ agentID: String) {
+        userScrolledUp = true
         viewModel.toggleSubagent(agentID)
+        if viewModel.isSubagentExpanded(agentID) { revealToggledRow("agent:\(agentID)") }
     }
 
     /// A workflow agent has no spawning tool call to reveal, so opening one goes straight to its
@@ -2281,11 +2320,20 @@ final class ChatViewController: UIViewController {
 
     /// The clock every live workflow card is drawn against. A background run outlives the turn that
     /// launched it, so the cards keep their own second hand after the turn ends — a frozen elapsed
-    /// reads as a hang.
+    /// reads as a hang. The tick reconfigures exactly the live cards, never the whole transcript:
+    /// a full render every second re-decides scrolling under the reader and costs rows that did
+    /// not change, and the cards write the tick into the labels they already have.
     private func advanceWorkflowClock() {
-        guard workflowRuns.contains(where: \.isLive), let state = lastRenderedState else { return }
+        guard workflowRuns.contains(where: \.isLive), lastRenderedState != nil else { return }
         workflowNow = Date()
-        render(state)
+        var snapshot = dataSource.snapshot()
+        let live = snapshot.itemIdentifiers.filter { id in
+            guard case .workflow(let run) = rowsByID[id]?.content else { return false }
+            return run.isLive
+        }
+        guard !live.isEmpty else { return }
+        snapshot.reconfigureItems(live)
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     /// A background run keeps working after the turn that launched it ended, so its cards need a
@@ -2454,9 +2502,12 @@ final class ChatViewController: UIViewController {
     #endif
 
     private func toggleAgentGroup(_ groupID: String) {
-        if expandedAgentGroups.remove(groupID) == nil { expandedAgentGroups.insert(groupID) }
+        userScrolledUp = true
+        let opened = expandedAgentGroups.remove(groupID) == nil
+        if opened { expandedAgentGroups.insert(groupID) }
         animateNextRender = true
         render(viewModel.state)
+        if opened { revealToggledRow(groupID) }
     }
 
     /// A brief highlight after jumping, so a card reached from the agent list is

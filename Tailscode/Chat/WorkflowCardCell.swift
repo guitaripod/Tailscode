@@ -28,6 +28,19 @@ final class WorkflowCardCell: UICollectionViewCell {
     private var fillWidth: NSLayoutConstraint?
     private var containerTop: NSLayoutConstraint!
     private var onAgentTap: ((String) -> Void)?
+    private var phaseSignature: [String] = []
+    private var phaseDots: [UIImageView] = []
+    private var agentIDs: [String] = []
+    private var agentHandles: [AgentHandle] = []
+
+    /// The mutable pieces of one agent row, kept so a reconfigure writes into them instead of
+    /// rebuilding the row — a rebuilt row takes the button out from under a finger mid-tap.
+    private struct AgentHandle {
+        let glyph: UIImageView
+        let title: UILabel
+        let live: UILabel
+        let time: UILabel
+    }
 
     /// Extra gap above the card when this row opens a new turn.
     var turnInset: CGFloat = 0 {
@@ -172,13 +185,36 @@ final class WorkflowCardCell: UICollectionViewCell {
             ? String(localized: "no agents yet")
             : String(localized: "\(run.doneCount) of \(run.agents.count) agents")
 
-        rebuild(phaseStack) { stack in
-            for phase in run.phases { stack.addArrangedSubview(Self.phaseRow(phase, run: run)) }
-        }
-        rebuild(agentStack) { stack in
-            for agent in run.agents {
-                stack.addArrangedSubview(self.agentRow(agent, at: now))
+        let phases = run.phases.map { "\($0.title)|\($0.detail ?? "")|\($0.model ?? "")" }
+        if phases != phaseSignature {
+            phaseSignature = phases
+            phaseDots = []
+            rebuild(phaseStack) { stack in
+                for phase in run.phases {
+                    stack.addArrangedSubview(self.phaseRow(phase, run: run))
+                }
             }
+        }
+        let done = !run.isLive
+        for dot in phaseDots {
+            dot.image = UIImage(
+                systemName: done ? "circle.fill" : "circle",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
+            dot.tintColor = done ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        }
+
+        let ids = run.agents.map(\.id)
+        if ids != agentIDs {
+            agentIDs = ids
+            agentHandles = []
+            rebuild(agentStack) { stack in
+                for agent in run.agents {
+                    stack.addArrangedSubview(self.agentRow(agent))
+                }
+            }
+        }
+        for (handle, agent) in zip(agentHandles, run.agents) {
+            update(handle, with: agent, at: now)
         }
 
         let answer = run.result?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -198,7 +234,7 @@ final class WorkflowCardCell: UICollectionViewCell {
     /// The phases the script declares, as the plan it is. Which phase an agent belongs to is only
     /// recorded by a finished run, so a live card never points at one — claiming a position the
     /// data cannot support is worse than showing the plan and the agents separately.
-    private static func phaseRow(_ phase: WorkflowPhase, run: WorkflowRun) -> UIView {
+    private func phaseRow(_ phase: WorkflowPhase, run: WorkflowRun) -> UIView {
         let done = !run.isLive
         let dot = UIImageView(
             image: UIImage(
@@ -206,6 +242,7 @@ final class WorkflowCardCell: UICollectionViewCell {
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold)))
         dot.tintColor = done ? Theme.Color.accent : Theme.Color.tertiaryLabel
         dot.setContentHuggingPriority(.required, for: .horizontal)
+        phaseDots.append(dot)
 
         let title = UILabel()
         title.font = .preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
@@ -235,46 +272,38 @@ final class WorkflowCardCell: UICollectionViewCell {
     }
 
     /// One agent, tappable: opening it is opening its own transcript, because a workflow agent is
-    /// never its own chat and never gets a screen of its own to be lost behind.
-    private func agentRow(_ agent: WorkflowAgent, at now: Date) -> UIView {
-        let glyph = UIImageView(
-            image: UIImage(
-                systemName: agent.isCompleted ? "checkmark.circle.fill" : "circle.dotted",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)))
-        glyph.tintColor = agent.isCompleted ? Theme.Color.success : Theme.Color.accent
+    /// never its own chat and never gets a screen of its own to be lost behind. The live-tool and
+    /// elapsed labels exist from the start and hide while empty, so a reconfigure only ever
+    /// changes words — the row, and the button under a finger, are never rebuilt for a tick.
+    private func agentRow(_ agent: WorkflowAgent) -> UIView {
+        let glyph = UIImageView()
         glyph.setContentHuggingPriority(.required, for: .horizontal)
 
         let title = UILabel()
         title.font = .preferredFont(forTextStyle: .caption1)
         title.textColor = Theme.Color.label
-        title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
         title.lineBreakMode = .byTruncatingTail
 
-        let row = UIStackView(arrangedSubviews: [glyph, title])
+        let live = UILabel()
+        live.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
+        live.textColor = Theme.Color.accent
+        live.setContentHuggingPriority(.required, for: .horizontal)
+
+        let time = UILabel()
+        time.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        time.textColor = Theme.Color.tertiaryLabel
+        time.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = UIStackView(arrangedSubviews: [glyph, title, live, time])
         row.axis = .horizontal
         row.spacing = 6
         row.alignment = .firstBaseline
-        if agent.isActive, let tool = agent.currentTool {
-            let live = UILabel()
-            live.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
-            live.textColor = Theme.Color.accent
-            live.text = tool
-            live.setContentHuggingPriority(.required, for: .horizontal)
-            row.addArrangedSubview(live)
-        }
-        if let elapsed = agent.elapsed(at: now) {
-            let time = UILabel()
-            time.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-            time.textColor = Theme.Color.tertiaryLabel
-            time.text = WorkflowRun.duration(elapsed)
-            time.setContentHuggingPriority(.required, for: .horizontal)
-            row.addArrangedSubview(time)
-        }
 
         let button = UIButton(type: .system)
         button.accessibilityLabel = agent.title
+        let agentID = agent.id
         button.addAction(
-            UIAction { [weak self] _ in self?.onAgentTap?(agent.id) }, for: .touchUpInside)
+            UIAction { [weak self] _ in self?.onAgentTap?(agentID) }, for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(button)
         NSLayoutConstraint.activate([
@@ -283,7 +312,22 @@ final class WorkflowCardCell: UICollectionViewCell {
             button.topAnchor.constraint(equalTo: row.topAnchor),
             button.bottomAnchor.constraint(equalTo: row.bottomAnchor),
         ])
+        agentHandles.append(AgentHandle(glyph: glyph, title: title, live: live, time: time))
         return row
+    }
+
+    private func update(_ handle: AgentHandle, with agent: WorkflowAgent, at now: Date) {
+        handle.glyph.image = UIImage(
+            systemName: agent.isCompleted ? "checkmark.circle.fill" : "circle.dotted",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        handle.glyph.tintColor = agent.isCompleted ? Theme.Color.success : Theme.Color.accent
+        handle.title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
+        let tool = agent.isActive ? agent.currentTool : nil
+        handle.live.text = tool
+        handle.live.isHidden = tool == nil
+        let elapsed = agent.elapsed(at: now)
+        handle.time.text = elapsed.map(WorkflowRun.duration)
+        handle.time.isHidden = elapsed == nil
     }
 
     /// A phase's model as a badge: the family, without the vendor prefix or the dated build that

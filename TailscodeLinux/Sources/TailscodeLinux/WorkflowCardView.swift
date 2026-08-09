@@ -10,6 +10,14 @@ import TailscodeCore
 /// that has appeared and what it is doing, how far through the fan-out in hand it is, and how long
 /// it has been going. The answer arrives later as its own message and is folded into the same card,
 /// so a run reads as one thing from launch to result.
+///
+/// A live card is a clock, and a clock must not be a demolition: the once-a-second tick is written
+/// into the labels the card already has (``restate``), never by tearing the widget down — a card
+/// rebuilt under the pointer eats the click that was in flight and rebuilds an opened agent
+/// transcript nobody asked to pay for again. Every label whose text comes and goes is created up
+/// front and hidden while empty, so the tick only ever changes words, and the widget tree stays
+/// the shape ``restate`` expects for as long as the run's structure holds. Only a structural
+/// change — an agent appearing, the result landing — earns a rebuild.
 enum WorkflowCardView {
     static func make(_ call: ToolCall, key: String, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
@@ -26,24 +34,122 @@ enum WorkflowCardView {
         gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_box_append(ptr(header), title)
 
-        if let run {
-            gtk_box_append(
-                ptr(header),
-                Gtk.label(run.headline(at: now), css: headlineClass(run), selectable: false))
-            if let elapsed = run.elapsed(at: now) {
-                gtk_box_append(
-                    ptr(header),
-                    Gtk.label(WorkflowRun.duration(elapsed), css: "workflow-elapsed", selectable: false))
-            }
-        }
+        let headline = Gtk.label(
+            run.map { $0.headline(at: now) } ?? "",
+            css: run.map(headlineClass) ?? "dim", selectable: false)
+        gtk_widget_set_visible(headline, run == nil ? 0 : 1)
+        gtk_box_append(ptr(header), headline)
+        let elapsed = Gtk.label(
+            (run?.elapsed(at: now)).map(WorkflowRun.duration) ?? "",
+            css: "workflow-elapsed", selectable: false)
+        gtk_widget_set_visible(elapsed, run?.elapsed(at: now) == nil ? 0 : 1)
+        gtk_box_append(ptr(header), elapsed)
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, bits in
+                toggle?(key, open)
+                if open { reveal?(bits) }
+            }
         ) {
             body(run, call: call, context: context, now: now)
         }
+    }
+
+    /// The card restated in place from the run it already shows: spinner frame, headline, elapsed
+    /// readings, meter fill, phase marks, each agent's glyph and current tool. False the moment the
+    /// widget's structure no longer matches the run — a new agent, the result arriving, a card
+    /// built before its run existed — which is the caller's cue to rebuild this one card whole.
+    static func restate(
+        _ widget: UnsafeMutablePointer<GtkWidget>, call: ToolCall, context: TranscriptContext
+    ) -> Bool {
+        let run = context.workflowRuns[call.id]
+        let now = context.workflowNow
+        guard let button = gtk_widget_get_first_child(widget),
+            isA(button, gtk_button_get_type()),
+            let header = Gtk.disclosureHeader(button)
+        else { return false }
+        let head = children(of: header)
+        guard head.count == 5 else { return false }
+        setLabel(head[0], text: glyph(run, now))
+        setExclusiveClass(head[0], among: Self.glyphClasses, to: glyphClass(run))
+        setLabel(head[3], text: run.map { $0.headline(at: now) } ?? "")
+        setExclusiveClass(head[3], among: Self.headlineClasses, to: run.map(headlineClass) ?? "dim")
+        gtk_widget_set_visible(head[3], run == nil ? 0 : 1)
+        let elapsed = run?.elapsed(at: now)
+        setLabel(head[4], text: elapsed.map(WorkflowRun.duration) ?? "")
+        gtk_widget_set_visible(head[4], elapsed == nil ? 0 : 1)
+
+        guard let body = gtk_widget_get_next_sibling(button) else { return true }
+        guard let run else { return true }
+        let sections = children(of: body)
+        func section(_ css: String) -> UnsafeMutablePointer<GtkWidget>? {
+            sections.first { gtk_widget_has_css_class($0, css) != 0 }
+        }
+        guard let meterRow = section("workflow-meter-row") else { return false }
+
+        let summary = section("workflow-summary")
+        guard (summary != nil) == (run.summary != nil) else { return false }
+        if let summary, let text = run.summary { setLabel(summary, text: text) }
+
+        let meter = children(of: meterRow)
+        guard meter.count == 2 else { return false }
+        setLabel(meter[0], text: meterBar(run))
+        setExclusiveClass(
+            meter[0], among: ["workflow-meter-live", "workflow-meter"],
+            to: run.isLive ? "workflow-meter-live" : "workflow-meter")
+        setLabel(meter[1], text: meterCaption(run))
+
+        let phases = section("workflow-phases")
+        guard (phases != nil) == !run.phases.isEmpty else { return false }
+        if let phases {
+            let rows = children(of: phases)
+            guard rows.count == run.phases.count else { return false }
+            let done = !run.isLive
+            for (row, phase) in zip(rows, run.phases) {
+                guard let marker = gtk_widget_get_first_child(row) else { return false }
+                setLabel(marker, text: phaseMark(phase, of: run.phases.count, done: done))
+                setExclusiveClass(
+                    marker, among: ["workflow-phase-done", "workflow-phase"],
+                    to: done ? "workflow-phase-done" : "workflow-phase")
+            }
+        }
+
+        let agents = section("workflow-agents")
+        guard (agents != nil) == !run.agents.isEmpty else { return false }
+        if let agents {
+            let rows = children(of: agents)
+            guard rows.count == run.agents.count else { return false }
+            for (row, agent) in zip(rows, run.agents) {
+                guard restateAgent(row, agent: agent, now: now) else { return false }
+            }
+        }
+
+        let hasAnswer = !(run.result ?? "").isEmpty
+        guard (section("workflow-answer-col") != nil) == hasAnswer else { return false }
+        return true
+    }
+
+    private static func restateAgent(
+        _ row: UnsafeMutablePointer<GtkWidget>, agent: WorkflowAgent, now: Date
+    ) -> Bool {
+        guard let button = gtk_widget_get_first_child(row),
+            isA(button, gtk_button_get_type()),
+            let header = Gtk.disclosureHeader(button)
+        else { return false }
+        let head = children(of: header)
+        guard head.count == 4 else { return false }
+        setLabel(head[0], text: agentGlyph(agent, now: now))
+        setExclusiveClass(head[0], among: Self.glyphClasses, to: agentGlyphClass(agent))
+        let tool = agent.isActive ? agent.currentTool : nil
+        setLabel(head[2], text: tool ?? "")
+        gtk_widget_set_visible(head[2], tool == nil ? 0 : 1)
+        let elapsed = agent.elapsed(at: now)
+        setLabel(head[3], text: elapsed.map(WorkflowRun.duration) ?? "")
+        gtk_widget_set_visible(head[3], elapsed == nil ? 0 : 1)
+        return true
     }
 
     private static func body(
@@ -78,18 +184,26 @@ enum WorkflowCardView {
     /// is labelled with what it actually counts rather than implying a total nobody has stated.
     private static func meter(_ run: WorkflowRun) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let slots = 18
-        let filled = Int((Double(slots) * run.progress).rounded())
-        let bar = String(repeating: "▰", count: filled) + String(repeating: "▱", count: slots - filled)
+        Gtk.addClass(row, "workflow-meter-row")
         gtk_box_append(
             ptr(row),
-            Gtk.label(bar, css: run.isLive ? "workflow-meter-live" : "workflow-meter", selectable: false))
-        let caption =
-            run.agents.isEmpty
+            Gtk.label(
+                meterBar(run), css: run.isLive ? "workflow-meter-live" : "workflow-meter",
+                selectable: false))
+        gtk_box_append(ptr(row), Gtk.label(meterCaption(run), css: "dim", selectable: false))
+        return row
+    }
+
+    private static func meterBar(_ run: WorkflowRun) -> String {
+        let slots = 18
+        let filled = Int((Double(slots) * run.progress).rounded())
+        return String(repeating: "▰", count: filled) + String(repeating: "▱", count: slots - filled)
+    }
+
+    private static func meterCaption(_ run: WorkflowRun) -> String {
+        run.agents.isEmpty
             ? Localized.text("no agents yet")
             : Localized.text("%@ of %@ agents", "\(run.doneCount)", "\(run.agents.count)")
-        gtk_box_append(ptr(row), Gtk.label(caption, css: "dim", selectable: false))
-        return row
     }
 
     /// The phases the script declares, as the plan it is. Which phase an agent belongs to is only
@@ -97,14 +211,15 @@ enum WorkflowCardView {
     /// data cannot support is worse than showing the plan and the agents separately.
     private static func phaseRail(_ run: WorkflowRun) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        Gtk.addClass(column, "workflow-phases")
         let done = !run.isLive
         for phase in run.phases {
             let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-            let marker = phase.index == run.phases.count - 1 ? "└" : "├"
             gtk_box_append(
                 ptr(row),
                 Gtk.label(
-                    "\(marker) \(done ? "▰" : "▱")", css: done ? "workflow-phase-done" : "workflow-phase",
+                    phaseMark(phase, of: run.phases.count, done: done),
+                    css: done ? "workflow-phase-done" : "workflow-phase",
                     selectable: false))
             gtk_box_append(ptr(row), Gtk.label(phase.title, css: "workflow-phase-title", selectable: false))
             if let detail = phase.detail {
@@ -124,10 +239,15 @@ enum WorkflowCardView {
         return column
     }
 
+    private static func phaseMark(_ phase: WorkflowPhase, of count: Int, done: Bool) -> String {
+        "\(phase.index == count - 1 ? "└" : "├") \(done ? "▰" : "▱")"
+    }
+
     private static func agentList(_ run: WorkflowRun, context: TranscriptContext, now: Date)
         -> UnsafeMutablePointer<GtkWidget>
     {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        Gtk.addClass(column, "workflow-agents")
         for agent in run.agents {
             gtk_box_append(ptr(column), agentRow(agent, run: run, context: context, now: now))
         }
@@ -151,24 +271,27 @@ enum WorkflowCardView {
         gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
         gtk_box_append(ptr(header), title)
-        if agent.isActive, let tool = agent.currentTool {
-            gtk_box_append(ptr(header), Gtk.label(tool, css: "agent-live", selectable: false))
-        }
-        if let elapsed = agent.elapsed(at: now) {
-            gtk_box_append(
-                ptr(header),
-                Gtk.label(WorkflowRun.duration(elapsed), css: "workflow-elapsed", selectable: false))
-        }
+        let liveTool = agent.isActive ? agent.currentTool : nil
+        let tool = Gtk.label(liveTool ?? "", css: "agent-live", selectable: false)
+        gtk_widget_set_visible(tool, liveTool == nil ? 0 : 1)
+        gtk_box_append(ptr(header), tool)
+        let elapsed = Gtk.label(
+            agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
+            css: "workflow-elapsed", selectable: false)
+        gtk_widget_set_visible(elapsed, agent.elapsed(at: now) == nil ? 0 : 1)
+        gtk_box_append(ptr(header), elapsed)
 
         let key = "wf:\(run.id):\(agent.id)"
         let rowKey = WorkflowAgentRows.key(agent.id)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         let request = context.requestWorkflowAgent
         let agentID = agent.id
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in
+            onToggle: { open, bits in
                 toggle?(key, open)
+                if open { reveal?(bits) }
                 if open, context.subagentRows[rowKey] == nil { request?(agentID) }
             }
         ) {
@@ -202,6 +325,7 @@ enum WorkflowCardView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.addClass(column, "workflow-answer-col")
         let palette = MatrixTheme.palette
         let preview = result.count > 1200 ? String(result.prefix(1200)) + "…" : result
         let label = Gtk.markupLabel(
@@ -247,6 +371,11 @@ enum WorkflowCardView {
         }
     }
 
+    private static let glyphClasses = [
+        "glyph-pending", "glyph-running", "glyph-done", "glyph-error",
+    ]
+    private static let headlineClasses = ["agent-live", "dim", "glyph-error"]
+
     private static func glyphClass(_ run: WorkflowRun?) -> String {
         guard let run else { return "glyph-pending" }
         switch run.state {
@@ -272,6 +401,38 @@ enum WorkflowCardView {
     private static func agentGlyphClass(_ agent: WorkflowAgent) -> String {
         if agent.isCompleted { return "glyph-done" }
         return agent.isActive ? "glyph-running" : "glyph-pending"
+    }
+
+    private static func isA(_ widget: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
+        let instance = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self)
+        return g_type_check_instance_is_a(instance, type) != 0
+    }
+
+    private static func children(of box: UnsafeMutablePointer<GtkWidget>)
+        -> [UnsafeMutablePointer<GtkWidget>]
+    {
+        var found: [UnsafeMutablePointer<GtkWidget>] = []
+        var child = gtk_widget_get_first_child(box)
+        while let current = child {
+            found.append(current)
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return found
+    }
+
+    /// Writes a label only when the words changed: an equal set still invalidates the label's
+    /// layout, and a tick that changes nothing must cost nothing.
+    private static func setLabel(_ label: UnsafeMutablePointer<GtkWidget>, text: String) {
+        guard isA(label, gtk_label_get_type()) else { return }
+        if let current = gtk_label_get_text(op(label)), String(cString: current) == text { return }
+        gtk_label_set_text(op(label), text)
+    }
+
+    private static func setExclusiveClass(
+        _ widget: UnsafeMutablePointer<GtkWidget>, among all: [String], to chosen: String
+    ) {
+        for name in all where name != chosen { gtk_widget_remove_css_class(widget, name) }
+        gtk_widget_add_css_class(widget, chosen)
     }
 }
 

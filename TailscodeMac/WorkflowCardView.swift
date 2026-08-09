@@ -7,8 +7,22 @@ import TailscodeCore
 /// the card says it instead: what the run is, the phases its script declares, every agent that has
 /// appeared and what it is doing, how far through the fan-out in hand it is, and how long it has
 /// been going. The answer arrives later as its own message and is folded into the same card.
+///
+/// A live card is a clock, and a clock must not be a demolition: the once-a-second tick is written
+/// into the labels the card already has (``restate``), never by tearing the view down — a card
+/// rebuilt under the pointer eats the click that was in flight and rebuilds an opened agent
+/// transcript nobody asked to pay for again. Every label whose text comes and goes is created up
+/// front and hidden while empty, so a tick only ever changes words, and the view tree stays the
+/// shape ``restate`` expects for as long as the run's structure holds. Only a structural change —
+/// an agent appearing, the result landing — earns a rebuild.
 @MainActor
 enum WorkflowCardView {
+    private static let meterID = NSUserInterfaceItemIdentifier("workflow-meter")
+    private static let phasesID = NSUserInterfaceItemIdentifier("workflow-phases")
+    private static let agentsID = NSUserInterfaceItemIdentifier("workflow-agents")
+    private static let answerID = NSUserInterfaceItemIdentifier("workflow-answer")
+    private static let summaryID = NSUserInterfaceItemIdentifier("workflow-summary")
+
     static func make(_ call: ToolCall, key: String, context: TranscriptContext) -> NSView {
         let run = context.workflowRuns[call.id]
         let now = context.workflowNow
@@ -24,27 +38,110 @@ enum WorkflowCardView {
             RowKit.label(
                 run?.name ?? call.summary.title ?? Localized.text("Workflow"),
                 font: MacTheme.Font.mono(12).bold, color: MacTheme.Color.accent))
-        if let run {
-            header.addArrangedSubview(
-                RowKit.label(
-                    run.headline(at: now), font: MacTheme.Font.caption(),
-                    color: headlineColor(run)))
-            if let elapsed = run.elapsed(at: now) {
-                header.addArrangedSubview(
-                    RowKit.label(
-                        WorkflowRun.duration(elapsed), font: MacTheme.Font.caption(),
-                        color: MacTheme.Color.tertiaryLabel))
-            }
-        }
+        let headline = RowKit.label(
+            run.map { $0.headline(at: now) } ?? "", font: MacTheme.Font.caption(),
+            color: run.map(headlineColor) ?? MacTheme.Color.tertiaryLabel)
+        headline.isHidden = run == nil
+        header.addArrangedSubview(headline)
+        let elapsed = RowKit.label(
+            (run?.elapsed(at: now)).map(WorkflowRun.duration) ?? "",
+            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+        elapsed.isHidden = run?.elapsed(at: now) == nil
+        header.addArrangedSubview(elapsed)
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, row in
+                toggle?(key, open)
+                if open { reveal?(row) }
+            }
         ) { [weak context] in
             guard let context else { return RowKit.inset(NSStackView(), leading: 26) }
             return body(run, context: context, now: now)
         }
+    }
+
+    /// The card restated in place from the run it already shows: spinner frame, headline, elapsed
+    /// readings, meter fill, phase marks, each agent's glyph and current tool. False the moment the
+    /// view's structure no longer matches the run — a new agent, the result arriving, a card built
+    /// before its run existed — which is the caller's cue to rebuild this one card whole.
+    static func restate(_ view: NSView, call: ToolCall, context: TranscriptContext) -> Bool {
+        guard let row = view as? DisclosureRow,
+            let header = row.headerView as? NSStackView
+        else { return false }
+        let run = context.workflowRuns[call.id]
+        let now = context.workflowNow
+        let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
+        guard head.count == 5 else { return false }
+        setLabel(head[0], text: glyph(run, now), color: glyphColor(run))
+        setLabel(
+            head[3], text: run.map { $0.headline(at: now) } ?? "",
+            color: run.map(headlineColor) ?? MacTheme.Color.tertiaryLabel)
+        head[3].isHidden = run == nil
+        let elapsed = run?.elapsed(at: now)
+        setLabel(head[4], text: elapsed.map(WorkflowRun.duration) ?? "")
+        head[4].isHidden = elapsed == nil
+
+        guard let body = row.bodyView else { return true }
+        guard let run else { return true }
+        guard let meterRow = find(meterID, in: body) as? NSStackView else { return false }
+
+        let summary = find(summaryID, in: body) as? NSTextField
+        guard (summary != nil) == (run.summary != nil) else { return false }
+        if let summary, let text = run.summary { setLabel(summary, text: text) }
+
+        let meter = meterRow.arrangedSubviews.compactMap { $0 as? NSTextField }
+        guard meter.count == 2 else { return false }
+        setLabel(
+            meter[0], text: meterBar(run),
+            color: run.isLive ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel)
+        setLabel(meter[1], text: meterCaption(run))
+
+        let phases = find(phasesID, in: body) as? NSStackView
+        guard (phases != nil) == !run.phases.isEmpty else { return false }
+        if let phases {
+            let rows = phases.arrangedSubviews.compactMap { $0 as? NSStackView }
+            guard rows.count == run.phases.count else { return false }
+            let done = !run.isLive
+            for (phaseRow, phase) in zip(rows, run.phases) {
+                guard let marker = phaseRow.arrangedSubviews.first as? NSTextField else {
+                    return false
+                }
+                setLabel(
+                    marker, text: phaseMark(phase, of: run.phases.count, done: done),
+                    color: done ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel)
+            }
+        }
+
+        let agents = find(agentsID, in: body) as? NSStackView
+        guard (agents != nil) == !run.agents.isEmpty else { return false }
+        if let agents {
+            let rows = agents.arrangedSubviews.compactMap { $0 as? DisclosureRow }
+            guard rows.count == run.agents.count else { return false }
+            for (agentRow, agent) in zip(rows, run.agents) {
+                guard restateAgent(agentRow, agent: agent, now: now) else { return false }
+            }
+        }
+
+        let hasAnswer = !(run.result ?? "").isEmpty
+        guard (find(answerID, in: body) != nil) == hasAnswer else { return false }
+        return true
+    }
+
+    private static func restateAgent(_ row: DisclosureRow, agent: WorkflowAgent, now: Date) -> Bool {
+        guard let header = row.headerView as? NSStackView else { return false }
+        let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
+        guard head.count == 4 else { return false }
+        setLabel(head[0], text: agentGlyph(agent, now: now), color: agentColor(agent))
+        let tool = agent.isActive ? agent.currentTool : nil
+        setLabel(head[2], text: tool ?? "")
+        head[2].isHidden = tool == nil
+        let elapsed = agent.elapsed(at: now)
+        setLabel(head[3], text: elapsed.map(WorkflowRun.duration) ?? "")
+        head[3].isHidden = elapsed == nil
+        return true
     }
 
     private static func body(_ run: WorkflowRun?, context: TranscriptContext, now: Date) -> NSView {
@@ -65,14 +162,31 @@ enum WorkflowCardView {
         }
 
         if let summary = run.summary {
-            body.addArrangedSubview(
-                RowKit.wrapping(
-                    summary, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel))
+            let label = RowKit.wrapping(
+                summary, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+            label.identifier = summaryID
+            body.addArrangedSubview(label)
         }
         body.addArrangedSubview(meter(run))
-        for phase in run.phases { body.addArrangedSubview(phaseRow(phase, run: run)) }
-        for agent in run.agents {
-            body.addArrangedSubview(agentRow(agent, run: run, context: context, now: now))
+        if !run.phases.isEmpty {
+            let rail = NSStackView()
+            rail.orientation = .vertical
+            rail.alignment = .leading
+            rail.spacing = 1
+            rail.identifier = phasesID
+            for phase in run.phases { rail.addArrangedSubview(phaseRow(phase, run: run)) }
+            body.addArrangedSubview(rail)
+        }
+        if !run.agents.isEmpty {
+            let list = NSStackView()
+            list.orientation = .vertical
+            list.alignment = .width
+            list.spacing = 1
+            list.identifier = agentsID
+            for agent in run.agents {
+                list.addArrangedSubview(agentRow(agent, run: run, context: context, now: now))
+            }
+            body.addArrangedSubview(list)
         }
         if let result = run.result, !result.isEmpty {
             body.addArrangedSubview(RowKit.hairline(verticalPadding: 4))
@@ -88,37 +202,42 @@ enum WorkflowCardView {
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
+        row.identifier = meterID
+        row.addArrangedSubview(
+            RowKit.label(
+                meterBar(run), font: MacTheme.Font.mono(11),
+                color: run.isLive ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel))
+        row.addArrangedSubview(
+            RowKit.label(
+                meterCaption(run), font: MacTheme.Font.caption(),
+                color: MacTheme.Color.tertiaryLabel))
+        return row
+    }
+
+    private static func meterBar(_ run: WorkflowRun) -> String {
         let slots = 18
         let filled = Int((Double(slots) * run.progress).rounded())
-        row.addArrangedSubview(
-            RowKit.label(
-                String(repeating: "▰", count: filled)
-                    + String(repeating: "▱", count: slots - filled),
-                font: MacTheme.Font.mono(11),
-                color: run.isLive ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel))
-        let caption =
-            run.agents.isEmpty
+        return String(repeating: "▰", count: filled) + String(repeating: "▱", count: slots - filled)
+    }
+
+    private static func meterCaption(_ run: WorkflowRun) -> String {
+        run.agents.isEmpty
             ? Localized.text("no agents yet")
             : Localized.text("%@ of %@ agents", "\(run.doneCount)", "\(run.agents.count)")
-        row.addArrangedSubview(
-            RowKit.label(
-                caption, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
-        return row
     }
 
     /// The phases the script declares, as the plan it is. Which phase an agent belongs to is only
     /// recorded by a finished run, so a live card never points at one — claiming a position the
     /// data cannot support is worse than showing the plan and the agents separately.
-    private static func phaseRow(_ phase: WorkflowPhase, run: WorkflowRun) -> NSView {
+    private static func phaseRow(_ phase: WorkflowPhase, run: WorkflowRun) -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
         let done = !run.isLive
-        let marker = phase.index == run.phases.count - 1 ? "└" : "├"
         row.addArrangedSubview(
             RowKit.label(
-                "\(marker) \(done ? "▰" : "▱")", font: MacTheme.Font.mono(11),
+                phaseMark(phase, of: run.phases.count, done: done), font: MacTheme.Font.mono(11),
                 color: done ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel))
         row.addArrangedSubview(
             RowKit.label(phase.title, font: MacTheme.Font.mono(12), color: MacTheme.Color.label))
@@ -133,6 +252,10 @@ enum WorkflowCardView {
                     shortModel(model), font: MacTheme.Font.mono(10), color: MacTheme.Color.mark))
         }
         return row
+    }
+
+    private static func phaseMark(_ phase: WorkflowPhase, of count: Int, done: Bool) -> String {
+        "\(phase.index == count - 1 ? "└" : "├") \(done ? "▰" : "▱")"
     }
 
     /// One agent, openable in place: its own sidecar transcript is fetched on demand and rendered
@@ -151,27 +274,28 @@ enum WorkflowCardView {
         header.addArrangedSubview(
             ToolRowView.detailLabel(
                 String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120))))
-        if agent.isActive, let tool = agent.currentTool {
-            header.addArrangedSubview(
-                RowKit.label(
-                    tool, font: MacTheme.Font.caption(), color: MacTheme.Color.accent))
-        }
-        if let elapsed = agent.elapsed(at: now) {
-            header.addArrangedSubview(
-                RowKit.label(
-                    WorkflowRun.duration(elapsed), font: MacTheme.Font.caption(),
-                    color: MacTheme.Color.tertiaryLabel))
-        }
+        let liveTool = agent.isActive ? agent.currentTool : nil
+        let tool = RowKit.label(
+            liveTool ?? "", font: MacTheme.Font.caption(), color: MacTheme.Color.accent)
+        tool.isHidden = liveTool == nil
+        header.addArrangedSubview(tool)
+        let elapsed = RowKit.label(
+            agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
+            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+        elapsed.isHidden = agent.elapsed(at: now) == nil
+        header.addArrangedSubview(elapsed)
 
         let key = "wf:\(run.id):\(agent.id)"
         let rowKey = WorkflowAgentRows.key(agent.id)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         let request = context.requestWorkflowAgent
         let agentID = agent.id
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { [weak context] open in
+            onToggle: { [weak context] open, row in
                 toggle?(key, open)
+                if open { reveal?(row) }
                 if open, context?.subagentRows[rowKey] == nil { request?(agentID) }
             }
         ) { [weak context] in
@@ -210,6 +334,7 @@ enum WorkflowCardView {
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = MacTheme.Spacing.xs
+        column.identifier = answerID
         let preview = result.count > 1200 ? String(result.prefix(1200)) + "…" : result
         column.addArrangedSubview(TranscriptRow.richBody(preview, context: context))
         if result.count > 1200 {
@@ -272,6 +397,21 @@ enum WorkflowCardView {
     private static func agentColor(_ agent: WorkflowAgent) -> NSColor {
         if agent.isCompleted { return MacTheme.Color.success }
         return agent.isActive ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel
+    }
+
+    /// Writes a label only when the words changed: an equal set still dirties layout, and a tick
+    /// that changes nothing must cost nothing.
+    private static func setLabel(_ label: NSTextField, text: String, color: NSColor? = nil) {
+        if label.stringValue != text { label.stringValue = text }
+        if let color, label.textColor != color { label.textColor = color }
+    }
+
+    private static func find(_ id: NSUserInterfaceItemIdentifier, in view: NSView) -> NSView? {
+        if view.identifier == id { return view }
+        for child in view.subviews {
+            if let match = find(id, in: child) { return match }
+        }
+        return nil
     }
 }
 

@@ -25,6 +25,9 @@ final class TranscriptContext {
     /// spinner and elapsed reading in one frame agrees.
     var workflowNow: Date = Date()
     var onToggle: ((String, Bool) -> Void)?
+    /// Called with a just-opened disclosure row: the transcript scrolls the minimum needed to
+    /// show the opened body, never past the point where the clicked header would leave the top.
+    var revealRow: ((NSView) -> Void)?
     var requestImage: ((FileReference, String) -> Void)?
     var requestSubagent: ((ToolCall) -> Void)?
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
@@ -803,16 +806,22 @@ enum RowKit {
 
 /// A header you click and a body that appears under it, built lazily the first time it opens —
 /// nearly every row is collapsed, and its body must cost nothing until then. The body survives a
-/// collapse hidden, so reopening is free.
+/// collapse hidden, so reopening is free. `onToggle` also receives the row itself, because the
+/// one thing a caller cannot reconstruct from a key is where on screen the clicked header is.
 @MainActor
 final class DisclosureRow: NSView {
     private let stack = NSStackView()
     private let makeBody: () -> NSView
-    private let onToggle: (Bool) -> Void
+    private let onToggle: (Bool, DisclosureRow) -> Void
     private var body: NSView?
 
+    /// The header this row was built around, for a restate that writes into its labels.
+    var headerView: NSView? { stack.arrangedSubviews.first }
+    /// The body, if it has ever been opened — hidden while collapsed, never discarded.
+    var bodyView: NSView? { body }
+
     init(
-        header: NSView, expanded: Bool, onToggle: @escaping (Bool) -> Void,
+        header: NSView, expanded: Bool, onToggle: @escaping (Bool, DisclosureRow) -> Void,
         makeBody: @escaping () -> NSView
     ) {
         self.makeBody = makeBody
@@ -841,11 +850,11 @@ final class DisclosureRow: NSView {
     @objc private func toggle() {
         if let body {
             body.isHidden = !body.isHidden
-            onToggle(!body.isHidden)
+            onToggle(!body.isHidden, self)
             return
         }
         reveal()
-        onToggle(true)
+        onToggle(true, self)
     }
 
     private func reveal() {

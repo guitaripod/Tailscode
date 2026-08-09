@@ -429,10 +429,12 @@ enum Gtk {
     /// A disclosure whose body does not exist until the first open. A transcript row that is
     /// collapsed — which is nearly every tool row — costs its header line and nothing else; the
     /// diff, the output, the subagent transcript are built the moment someone asks and kept after.
+    /// `onToggle` also receives the disclosure's own widget bits, because the one thing a caller
+    /// cannot reconstruct from a key is where on screen the row that was clicked actually is.
     static func disclosure(
         header: UnsafeMutablePointer<GtkWidget>,
         expanded: Bool,
-        onToggle: @escaping @Sendable (Bool) -> Void,
+        onToggle: @escaping @Sendable (Bool, UInt) -> Void,
         makeBody: @escaping @Sendable () -> UnsafeMutablePointer<GtkWidget>
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = box(GTK_ORIENTATION_VERTICAL, spacing: 4)
@@ -467,7 +469,7 @@ enum Gtk {
                 gtk_box_append(ptr(raw), body)
                 slot.bits = UInt(bitPattern: body)
                 mark(true)
-                onToggle(true)
+                onToggle(true, columnBits)
                 return
             }
             guard let raw = UnsafeMutableRawPointer(bitPattern: slot.bits) else { return }
@@ -475,7 +477,7 @@ enum Gtk {
             let showing = gtk_widget_get_visible(body) != 0
             gtk_widget_set_visible(body, showing ? 0 : 1)
             mark(!showing)
-            onToggle(!showing)
+            onToggle(!showing, columnBits)
         }
         return column
     }

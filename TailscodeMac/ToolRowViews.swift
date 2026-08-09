@@ -15,8 +15,13 @@ enum ToolRowView {
         }
         let expanded = call.status == .error || context.isExpanded(key)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return DisclosureRow(
-            header: header, expanded: expanded, onToggle: { open in toggle?(key, open) }
+            header: header, expanded: expanded,
+            onToggle: { open, row in
+                toggle?(key, open)
+                if open { reveal?(row) }
+            }
         ) {
             RowKit.inset(bodyColumn(call, summary, context: context) ?? NSView(), leading: 26)
         }
@@ -69,9 +74,13 @@ enum ToolRowView {
         }
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, row in
+                toggle?(key, open)
+                if open { reveal?(row) }
+            }
         ) {
             let body = NSStackView()
             body.orientation = .vertical
@@ -99,9 +108,13 @@ enum ToolRowView {
             Self.thoughtHeader(text), font: MacTheme.Font.caption(),
             color: MacTheme.Color.secondaryLabel)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, row in
+                toggle?(key, open)
+                if open { reveal?(row) }
+            }
         ) { [weak context] in
             RowKit.inset(
                 RowKit.wrapping(
@@ -403,11 +416,13 @@ enum SubagentRowView {
         }
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         let request = context.requestSubagent
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { [weak context] open in
+            onToggle: { [weak context] open, row in
                 toggle?(key, open)
+                if open { reveal?(row) }
                 if open, context?.subagentRows[call.id] == nil { request?(call) }
             }
         ) { [weak context] in

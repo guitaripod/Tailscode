@@ -394,8 +394,11 @@ final class ChatPane: @unchecked Sendable {
         return row
     }
 
-    /// Opening the last row grows the transcript below the fold; if the person was at the bottom,
-    /// the bottom must follow them to what they just opened.
+    /// Opening or closing a row is a reading gesture: the person's eyes are on the header they
+    /// clicked, so the transcript stops following the bottom — a stream that kept pinning would
+    /// scroll the very card they opened out from under them — and the view moves only as far as
+    /// ``revealDisclosure`` needs to show the opened body, never past the clicked header. Their
+    /// own next prompt, or the jump pill, is what re-engages following.
     private func wireContext() {
         context.onToggle = { [weak self] key, open in
             Gtk.onMain { [weak self] in
@@ -403,7 +406,14 @@ final class ChatPane: @unchecked Sendable {
                 if open { self.context.expanded.insert(key) } else {
                     self.context.expanded.remove(key)
                 }
-                if open, self.followsBottom { self.schedulePinCorrector() }
+                self.followsBottom = false
+            }
+        }
+        context.revealRow = { [weak self] bits in
+            if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_ref(raw) }
+            Gtk.onMain { [weak self] in
+                self?.revealDisclosure(bits)
+                if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_unref(raw) }
             }
         }
         context.requestImage = { [weak self] reference, key in
@@ -2227,6 +2237,37 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// The gentlest scroll that shows a just-opened body: down only as far as the body's end (or
+    /// the page can hold), and never past the point where the clicked header would leave the top —
+    /// a header that flies off the screen is the person losing the very thing they pointed at.
+    /// Runs on the idle after the open, once the body has its allocation; a row already rebuilt or
+    /// torn off screen by then simply fails the bounds check and moves nothing.
+    private func revealDisclosure(_ bits: UInt) {
+        guard let raw = UnsafeMutableRawPointer(bitPattern: bits),
+            let canvas = canvasBox, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        var x = 0.0
+        var y = 0.0
+        var width = 0.0
+        var height = 0.0
+        guard tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &width, &height) != 0,
+            height > 0
+        else { return }
+        let value = gtk_adjustment_get_value(adjustment)
+        let page = gtk_adjustment_get_page_size(adjustment)
+        guard page > 0 else { return }
+        let margin = 8.0
+        let needed = y + height + margin - (value + page)
+        let slack = y - margin - value
+        let delta = min(needed, slack)
+        guard delta > 0 else { return }
+        let ceiling = max(0, gtk_adjustment_get_upper(adjustment) - page)
+        isAutoScrolling = true
+        gtk_adjustment_set_value(adjustment, min(value + delta, ceiling))
+        isAutoScrolling = false
+    }
+
     func scroll(by amount: Double) {
         adjust { $0 + amount }
     }
@@ -2518,6 +2559,7 @@ final class ChatPane: @unchecked Sendable {
         if handleSlashCommand(text) { return }
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
+        scrollToBottom()
         attachments = []
         renderAttachments()
         let model = chosenModel
@@ -2759,14 +2801,28 @@ final class ChatPane: @unchecked Sendable {
                     + context.workflowRuns.keys.filter { byCall[$0] == nil })
             workflowRuns = runs
             context.workflowRuns = byCall
-            if !stale.isEmpty {
-                replaceRows {
-                    if case .workflow(let call) = $0.kind { return stale.contains(call.id) }
-                    return false
-                }
-            }
+            refreshWorkflowCards(stale)
         }
         updateTicker(running: state.status == .running)
+    }
+
+    /// A changed run is written into the card it already has; only a card whose structure no
+    /// longer matches — an agent appeared, the result landed — is rebuilt, and only that card.
+    /// A rebuild destroys the widget under the pointer and the click that was in flight with it,
+    /// so it is the exception, never the once-a-second path.
+    private func refreshWorkflowCards(_ ids: Set<String>) {
+        guard !ids.isEmpty, !placeholderShown else { return }
+        var rebuilt: Set<String> = []
+        for index in renderedRows.indices {
+            guard case .workflow(let call) = renderedRows[index].kind, ids.contains(call.id),
+                index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            if !WorkflowCardView.restate(ptr(raw), call: call, context: context) {
+                rebuilt.insert(renderedRows[index].key)
+            }
+        }
+        if !rebuilt.isEmpty { replaceRows { rebuilt.contains($0.key) } }
     }
 
     /// Whether anything on screen still needs a clock: a turn in flight, or a workflow that outlived
@@ -2783,10 +2839,7 @@ final class ChatPane: @unchecked Sendable {
         context.workflowNow = Date()
         let live = Set(workflowRuns.filter(\.isLive).map(\.id))
         refreshWorkflowRuns()
-        replaceRows {
-            if case .workflow(let call) = $0.kind { return live.contains(call.id) }
-            return false
-        }
+        refreshWorkflowCards(live)
     }
 
     private func fetchWorkflowAgent(_ agentID: String) {
@@ -2802,8 +2855,9 @@ final class ChatPane: @unchecked Sendable {
                 self.inFlightSubagents.remove(agentID)
                 self.context.subagentRows[WorkflowAgentRows.key(agentID)] = rows
                 self.replaceRows {
-                    if case .workflow = $0.kind { return true }
-                    return false
+                    guard case .workflow(let call) = $0.kind else { return false }
+                    return self.context.workflowRuns[call.id]?.agents
+                        .contains { $0.id == agentID } ?? true
                 }
             }
         }

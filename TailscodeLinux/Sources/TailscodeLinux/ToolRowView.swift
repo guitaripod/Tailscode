@@ -19,8 +19,13 @@ enum ToolRowView {
         }
         let expanded = call.status == .error || context.isExpanded(key)
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return Gtk.disclosure(
-            header: header, expanded: expanded, onToggle: { open in toggle?(key, open) }
+            header: header, expanded: expanded,
+            onToggle: { open, bits in
+                toggle?(key, open)
+                if open { reveal?(bits) }
+            }
         ) {
             let body = bodyColumn(call, summary, context: context)
                 ?? Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
@@ -74,9 +79,13 @@ enum ToolRowView {
         }
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in toggle?(key, open) }
+            onToggle: { open, bits in
+                toggle?(key, open)
+                if open { reveal?(bits) }
+            }
         ) {
             let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
             Gtk.margins(body, leading: 16)
@@ -314,11 +323,13 @@ enum SubagentRowView {
         }
 
         let toggle = context.onToggle
+        let reveal = context.revealRow
         let request = context.requestSubagent
         return Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
-            onToggle: { open in
+            onToggle: { open, bits in
                 toggle?(key, open)
+                if open { reveal?(bits) }
                 if open, context.subagentRows[call.id] == nil { request?(call) }
             }
         ) {
