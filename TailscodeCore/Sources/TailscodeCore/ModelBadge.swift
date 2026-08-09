@@ -30,6 +30,20 @@ public enum ModelBadge {
         chip(model: session.model, effort: session.reasoningEffort)
     }
 
+    /// The chip for a listed conversation, read in the order the composer's own pill reads: the
+    /// pick this device recorded for the chat wins over the server's session record, because the
+    /// record lags a pick until the next turn lands — and a row must never name a different model
+    /// than the composer open above it. Each fact falls back independently, so an effort picked
+    /// without a model still colours the record's own model name. This is also the only reader
+    /// that can say ultracode: the server maps the tier to xhigh in its store, so the word
+    /// survives only in the device's own pick.
+    public static func chip(for entry: SessionEntry) -> ModelChip? {
+        let key = "\(entry.profileID)/\(entry.session.id)"
+        return chip(
+            model: ModelPreferenceStore.model(forKey: key)?.modelID ?? entry.session.model,
+            effort: EffortPreferenceStore.effort(forKey: key) ?? entry.session.reasoningEffort)
+    }
+
     public static func chip(model raw: String?, effort: String?) -> ModelChip? {
         guard let raw, let name = familyName(raw) else { return nil }
         let trimmed = effort?.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -705,7 +705,7 @@ final class SessionListViewController: UIViewController {
             row.snippet ?? [facets.project, facets.origin].compactMap { $0 }
             .joined(separator: " · ")
         content.secondaryAttributedText = ModelChipText.detailLine(
-            chip: ModelBadge.chip(for: entry.session), rest: rest,
+            chip: ModelBadge.chip(for: entry), rest: rest,
             size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
             restColor: row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent)
         content.secondaryTextProperties.numberOfLines = 1

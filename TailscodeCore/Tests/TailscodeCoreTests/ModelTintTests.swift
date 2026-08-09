@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 import Testing
 
@@ -72,6 +73,29 @@ import Testing
         for family in ModelTint.Family.allCases {
             #expect(ModelTint.cssClass(family) == "model-\(family.rawValue)")
         }
+    }
+
+    @Test func rowChipPrefersTheDevicePickOverTheSessionRecord() {
+        let entry = SessionEntry(
+            profileID: "srv", profileName: "srv", host: "srv", backendType: .claudeCode,
+            session: AgentSession(
+                id: "s9", agentType: .claudeCode, title: "chat", directory: nil,
+                createdAt: Date(), updatedAt: Date(), model: "claude-opus-5",
+                reasoningEffort: "xhigh"))
+        let key = "srv/s9"
+        ModelPreferenceStore.setModel(nil, forKey: key)
+        EffortPreferenceStore.setEffort(nil, forKey: key)
+        #expect(
+            ModelBadge.chip(for: entry)
+                == ModelChip(name: "Opus", family: .opus, effort: "xhigh"))
+        ModelPreferenceStore.setModel(
+            ModelSelection(providerID: "anthropic", modelID: "claude-fable-5"), forKey: key)
+        EffortPreferenceStore.setEffort("ultracode", forKey: key)
+        #expect(
+            ModelBadge.chip(for: entry)
+                == ModelChip(name: "Fable", family: .fable, effort: "ultracode"))
+        ModelPreferenceStore.setModel(nil, forKey: key)
+        EffortPreferenceStore.setEffort(nil, forKey: key)
     }
 
     @Test func chipCarriesPartsAndDropsEmptyEffort() {

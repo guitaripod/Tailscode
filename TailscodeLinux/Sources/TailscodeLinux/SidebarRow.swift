@@ -255,7 +255,7 @@ enum SidebarRow {
     {
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let facets = model.facets(vocabulary)
-        if let chip = ModelBadge.chip(for: model.entry.session) {
+        if let chip = ModelBadge.chip(for: model.entry) {
             for widget in modelChips(chip) { gtk_box_append(ptr(line), widget) }
         }
         if let snippet = model.snippet {

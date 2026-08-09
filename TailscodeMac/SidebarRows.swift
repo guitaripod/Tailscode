@@ -194,7 +194,7 @@ final class SidebarSessionCell: NSView {
         let facets = model.facets(vocabulary)
         detail.font = MacTheme.Font.caption()
         let line = NSMutableAttributedString()
-        if let chip = ModelBadge.chip(for: model.entry.session) {
+        if let chip = ModelBadge.chip(for: model.entry) {
             line.append(Self.chipText(chip))
             line.append(
                 NSAttributedString(

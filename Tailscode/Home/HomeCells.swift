@@ -151,7 +151,7 @@ struct LiveCard: Hashable {
             if let project { parts.append(project) }
             self.detail = parts.joined(separator: " · ")
         }
-        self.chip = ModelBadge.chip(for: entry.session)
+        self.chip = ModelBadge.chip(for: entry)
     }
 
     /// What a session that handed its turn to agents is doing, for the card that
@@ -238,7 +238,7 @@ struct RecentCard: Hashable {
         }
         parts.append(entry.session.updatedAt.formatted(.relative(presentation: .named)))
         self.detail = parts.joined(separator: " · ")
-        self.chip = ModelBadge.chip(for: entry.session)
+        self.chip = ModelBadge.chip(for: entry)
     }
 
     static func == (lhs: RecentCard, rhs: RecentCard) -> Bool {
