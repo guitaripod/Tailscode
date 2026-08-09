@@ -7,8 +7,7 @@ import UIKit
 /// a place to say what the summary must not lose.
 @MainActor
 final class CompactPreflightViewController: UIViewController {
-    private let messageCount: Int
-    private let lastCompaction: Compaction?
+    private let facts: CompactPreflight
     private let draftScope: DraftScope
     private let onCompact: (String?) -> Void
     private let instructions = UITextField()
@@ -21,8 +20,8 @@ final class CompactPreflightViewController: UIViewController {
         messageCount: Int, lastCompaction: Compaction?, initialInstruction: String = "",
         draftScope: DraftScope, onCompact: @escaping (String?) -> Void
     ) {
-        self.messageCount = messageCount
-        self.lastCompaction = lastCompaction
+        self.facts = CompactPreflight.make(
+            messageCount: messageCount, lastCompaction: lastCompaction)
         self.draftScope = draftScope
         self.onCompact = onCompact
         super.init(nibName: nil, bundle: nil)
@@ -47,26 +46,12 @@ final class CompactPreflightViewController: UIViewController {
         scroll.keyboardDismissMode = .interactive
         view.addSubview(scroll)
 
-        let stack = UIStackView(arrangedSubviews: [
-            hero(),
-            body(
-                String(
-                    localized:
-                        "The agent re-reads this conversation, writes a summary of it, and carries the summary forward instead of the whole transcript."
-                )),
-            body(
-                String(
-                    localized:
-                        "Nothing here disappears — you keep every message. Only the agent's memory shrinks."
-                )),
-            instructionsField(),
-            previously(),
-            body(
-                String(
-                    localized:
-                        "Takes a minute or two, and the conversation is busy until it finishes."),
-                color: Theme.Color.tertiaryLabel),
-        ].compactMap { $0 })
+        let stack = UIStackView(
+            arrangedSubviews: [hero()] + facts.paragraphs.map { body($0) } + [
+                instructionsField(),
+                facts.lastTime.map { body($0, color: Theme.Color.tertiaryLabel) },
+                body(facts.wait, color: Theme.Color.tertiaryLabel),
+            ].compactMap { $0 })
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.m
         stack.setCustomSpacing(Theme.Spacing.xl, after: stack.arrangedSubviews[0])
@@ -112,17 +97,14 @@ final class CompactPreflightViewController: UIViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
 
         let headline = UILabel()
-        headline.text = String(localized: "Free up the context window")
+        headline.text = facts.headline
         headline.font = UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
         headline.adjustsFontForContentSizeCategory = true
         headline.numberOfLines = 0
         headline.textAlignment = .center
 
         let subtitle = UILabel()
-        subtitle.text =
-            messageCount > 0
-            ? String(localized: "\(messageCount) messages in this conversation")
-            : String(localized: "This conversation")
+        subtitle.text = facts.subtitle
         subtitle.font = .preferredFont(forTextStyle: .footnote)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = Theme.Color.secondaryLabel
@@ -152,12 +134,12 @@ final class CompactPreflightViewController: UIViewController {
 
     private func instructionsField() -> UIView {
         let caption = UILabel()
-        caption.text = String(localized: "WHAT MUST THE SUMMARY KEEP?")
+        caption.text = facts.fieldCaption.uppercased()
         caption.font = .preferredFont(forTextStyle: .caption2)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.tertiaryLabel
 
-        instructions.placeholder = String(localized: "Optional — e.g. the failing test names")
+        instructions.placeholder = facts.fieldPlaceholder
         instructions.font = Theme.Font.body()
         instructions.adjustsFontForContentSizeCategory = true
         instructions.borderStyle = .none
@@ -195,26 +177,9 @@ final class CompactPreflightViewController: UIViewController {
         return stack
     }
 
-    /// A conversation compacted once usually compacts again; showing the last result sets the
-    /// expectation for this one instead of leaving the wait unexplained.
-    private func previously() -> UIView? {
-        guard let lastCompaction, let before = lastCompaction.tokensBefore,
-            let after = lastCompaction.tokensAfter
-        else { return nil }
-        var text =
-            String(
-                localized:
-                    "Last time: \(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"
-            )
-        if let duration = lastCompaction.duration, duration >= 1 {
-            text += " " + String(localized: "in \(CompactionCell.elapsed(duration))")
-        }
-        return body(text + ".", color: Theme.Color.tertiaryLabel)
-    }
-
     private func compactButton() -> UIView {
         var config = Theme.Glass.buttonConfiguration(prominent: true)
-        config.title = String(localized: "Compact conversation")
+        config.title = facts.confirmTitle
         config.baseBackgroundColor = Theme.Color.accent
         config.contentInsets = NSDirectionalEdgeInsets(
             top: 14, leading: 20, bottom: 14, trailing: 20)
@@ -319,23 +284,6 @@ final class CompactionSummaryViewController: UIViewController {
     }
 
     private static func stats(for compaction: Compaction) -> String {
-        var parts: [String] = []
-        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            parts.append(
-                String(
-                    localized:
-                        "\(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens"))
-        }
-        if let reduction = compaction.reduction {
-            parts.append(String(localized: "\(Int((reduction * 100).rounded()))% freed"))
-        }
-        if let duration = compaction.duration, duration >= 1 {
-            parts.append(CompactionCell.elapsed(duration))
-        }
-        guard !parts.isEmpty else {
-            return String(localized: "What the agent carries forward from here.")
-        }
-        return parts.joined(separator: " · ") + " — "
-            + String(localized: "this is what the agent carries forward.")
+        CompactionStory.summaryHeader(compaction)
     }
 }

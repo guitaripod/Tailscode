@@ -76,6 +76,8 @@ final class ChatPane: @unchecked Sendable {
     private var highlightedRow: UInt = 0
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
     private var pendingSignature = "\u{0}"
+    private var compactingElapsed: UnsafeMutablePointer<GtkWidget>?
+    private var compactingStartedAt: Date?
 
     private var attachButton: UnsafeMutablePointer<GtkWidget>?
     private(set) var composerScroller: UnsafeMutablePointer<GtkWidget>?
@@ -730,6 +732,8 @@ final class ChatPane: @unchecked Sendable {
             showPlaceholder(Localized.text("Connecting…"))
         }
         pendingSignature = "\u{0}"
+        compactingElapsed = nil
+        compactingStartedAt = nil
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
         refreshPills()
@@ -847,6 +851,8 @@ final class ChatPane: @unchecked Sendable {
         lastFullRows = []
         lastFullCount = 0
         pendingSignature = "\u{0}"
+        compactingElapsed = nil
+        compactingStartedAt = nil
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
         showPlaceholder(placeholder)
@@ -1401,10 +1407,15 @@ final class ChatPane: @unchecked Sendable {
     /// What the turn is waiting on, docked where the CLI's prompt would sit: approvals first,
     /// then questions. Rebuilt only when what is pending actually changes.
     private func renderPendingCards(_ state: ConversationState) {
+        let compactionKey = state.compaction.map {
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970)"
+        } ?? ""
         let signature = (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
-            .joined(separator: "|") + "|" + (state.compaction?.failure ?? "")
+            .joined(separator: "|") + "|" + compactionKey
         guard signature != pendingSignature else { return }
         pendingSignature = signature
+        compactingElapsed = nil
+        compactingStartedAt = nil
         Gtk.removeChildren(of: pendingBox)
         for permission in state.pendingPermissions {
             gtk_box_append(
@@ -1420,16 +1431,25 @@ final class ChatPane: @unchecked Sendable {
                     self?.answer(question, answers: answers)
                 })
         }
-        if let compaction = state.compaction, let failure = compaction.failure {
-            let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-            Gtk.addClass(card, "card")
-            gtk_box_append(
-                ptr(card),
-                Gtk.label(
-                    Localized.text("Compaction failed: %@", failure), css: "glyph-error",
-                    wrap: true))
-            gtk_box_append(ptr(pendingBox), card)
+        if let compaction = state.compaction {
+            if let failure = compaction.failure {
+                gtk_box_append(ptr(pendingBox), PendingCards.compactionFailure(failure))
+            } else {
+                compactingStartedAt = compaction.startedAt
+                gtk_box_append(
+                    ptr(pendingBox),
+                    PendingCards.compacting(startedAt: compaction.startedAt) { [weak self] label in
+                        self?.compactingElapsed = label
+                    })
+            }
         }
+    }
+
+    /// The running card's own clock line, moved by the pane's one-second ticker rather than a
+    /// rebuild — the card must hold still while its wait counts up.
+    private func updateCompactingElapsed() {
+        guard let label = compactingElapsed, let startedAt = compactingStartedAt else { return }
+        gtk_label_set_text(op(label), CompactionStory.elapsedLine(startedAt: startedAt))
     }
 
     func respond(to permission: PermissionRequest, decision: PermissionDecision) {
@@ -1695,6 +1715,7 @@ final class ChatPane: @unchecked Sendable {
                     let facts = tick % 5 == 0
                     Gtk.onMain { [weak self] in
                         self?.updateStatus()
+                        self?.updateCompactingElapsed()
                         self?.advanceWorkflowClock()
                         if facts { self?.refreshTurnFacts() }
                     }
@@ -3044,6 +3065,63 @@ final class ChatPane: @unchecked Sendable {
         case .plainText:
             return false
         }
+    }
+
+    /// A synthetic conversation around a compaction — the finished seam, the summarize still
+    /// running, or the refusal — so every face of the card can be photographed headlessly without
+    /// spending minutes compacting a real transcript.
+    func driverCompactionDemo(_ mode: String) {
+        let now = Date()
+        let compaction = Compaction(
+            trigger: .manual, tokensBefore: 148_000, tokensAfter: 11_200, duration: 96,
+            preservedMessageCount: 4,
+            summary: """
+                ## Task
+                Refactor the settings store behind a SettingsFile prefix so preferences survive \
+                restart on Linux.
+
+                ## State
+                The store reads through the prefix; the migration test still fails on the legacy \
+                path. Next: keep the failing test names and re-run the suite.
+                """)
+        let before = ChatMessage(
+            id: "demo-cbefore", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t", kind: .text("Refactor the settings store, keep the tests green."))
+            ],
+            createdAt: now.addingTimeInterval(-660))
+        let seam = ChatMessage(
+            id: "demo-compaction", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "c", kind: .compaction(compaction))],
+            createdAt: now.addingTimeInterval(-300))
+        let after = ChatMessage(
+            id: "demo-cafter", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t",
+                    kind: .text(
+                        "Picking up from the summary: the migration test still names the legacy path."
+                    ))
+            ],
+            createdAt: now.addingTimeInterval(-200))
+        var state = ConversationState()
+        state.hasLoadedTranscript = true
+        state.status = .idle
+        switch mode {
+        case "running":
+            state.messages = [before]
+            state.status = .running
+            state.compaction = CompactionActivity(startedAt: now.addingTimeInterval(-75))
+        case "failed":
+            state.messages = [before]
+            state.compaction = CompactionActivity(
+                startedAt: now.addingTimeInterval(-8),
+                failure: "Conversation too small to compact — nothing would be freed.")
+        default:
+            state.messages = [before, seam, after]
+        }
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
     }
 
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.

@@ -503,6 +503,22 @@ enum MatrixTheme {
             box-shadow: none;
         }
         .seam-read:hover { border-color: \(info); background-color: alpha(\(info), 0.08); }
+        .card-compaction { border-left: 2px solid \(special); }
+        .card-compaction-failed { border-left: 2px solid \(danger); }
+        .seam-footnote { color: \(textDim); font-size: \(p(0.82)); }
+        .seam-bar trough {
+            min-height: 4px;
+            background-color: \(rule);
+            border: none;
+            border-radius: 2px;
+        }
+        .seam-bar progress {
+            min-height: 4px;
+            background-color: \(special);
+            border: none;
+            border-radius: 2px;
+        }
+        .preflight-headline { font-size: \(p(1.15)); font-weight: 700; color: \(text); }
         .reader-prose { background-color: \(canvas); }
         .reader-body, .reader-body text {
             background-color: \(canvas);

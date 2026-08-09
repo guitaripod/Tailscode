@@ -132,6 +132,74 @@ enum PendingCards {
         return card
     }
 
+    /// The minutes-long summarize as a card docked where the turn would be: the sweeping glyph
+    /// says something is being turned over, the words say what and for how long. The elapsed line
+    /// is handed back so the pane's own one-second clock can keep it honest without rebuilding the
+    /// card.
+    static func compacting(
+        startedAt: Date,
+        elapsedLabel: (UnsafeMutablePointer<GtkWidget>) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let story = CompactionStory.running(startedAt: startedAt)
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-compaction")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let glyph = Gtk.label("◐", css: "glyph-running", selectable: false)
+        let glyphBits = UInt(bitPattern: glyph)
+        ActivityPulse.apply(ActivityKind.compacting.icon, to: glyph, text: "◐") { text in
+            guard let raw = UnsafeMutableRawPointer(bitPattern: glyphBits) else { return }
+            gtk_label_set_text(op(raw), text)
+        }
+        gtk_box_append(ptr(heading), glyph)
+        let title = Gtk.label(story.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(story.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        if let footnote = story.footnote {
+            let elapsed = Gtk.label(footnote, css: "seam-footnote", selectable: false)
+            gtk_widget_set_halign(elapsed, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), elapsed)
+            elapsedLabel(elapsed)
+        }
+        return card
+    }
+
+    /// A refused compaction leads with the reason and ends on the one fact that matters: nothing
+    /// was lost.
+    static func compactionFailure(_ reason: String) -> UnsafeMutablePointer<GtkWidget> {
+        let story = CompactionStory.failed(reason)
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-compaction-failed")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(heading), Gtk.label("✗", css: "glyph-error", selectable: false))
+        let title = Gtk.label(story.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(story.detail, css: "agent-text", wrap: true)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        if let footnote = story.footnote {
+            let label = Gtk.label(footnote, css: "seam-footnote", wrap: true, selectable: false)
+            gtk_widget_set_halign(label, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), label)
+        }
+        return card
+    }
+
     /// Selections for a multi-question or multi-select ask, kept next to the widgets that show
     /// them. Lives as long as its card does; the card is rebuilt when the ask resolves.
     private final class AnswerCollector: @unchecked Sendable {

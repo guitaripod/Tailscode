@@ -701,43 +701,57 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A compaction is a seam, not a message: the rule says the transcript restarted here, the
-    /// line says what was traded for what, and the CLI's machine-facing summary — tens of
-    /// thousands of words — opens in a reader window rather than cramped into the flow.
+    /// A compaction is a seam, not a message: the rule says the transcript restarted here, and the
+    /// card says what was traded for what — the trade in tokens, the sliver of context the summary
+    /// still occupies drawn as a bar, and what carried over. The CLI's machine-facing summary —
+    /// tens of thousands of words — opens in a reader window rather than cramped into the flow.
     private static func seam(
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        let story = CompactionStory.done(compaction)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
         gtk_box_append(ptr(column), Gtk.hairline())
 
-        var facts: [String] = []
-        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            facts.append("\(StatusFacts.tokens(before)) → \(StatusFacts.tokens(after))")
-        }
-        if let duration = compaction.duration, duration > 0 {
-            facts.append(StatusFacts.clock(duration))
-        }
-        if let kept = compaction.preservedMessageCount {
-            facts.append(Localized.text("%@ messages kept", "\(kept)"))
-        }
-        if compaction.trigger == .auto { facts.append(Localized.text("automatic")) }
-        let title = facts.isEmpty
-            ? Localized.text("COMPACTED") : "COMPACTED · " + facts.joined(separator: " · ")
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-compaction")
 
-        if let summary = compaction.summary, !summary.isEmpty {
-            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
-            gtk_box_append(ptr(row), Gtk.label(title, css: "seam-text", selectable: false))
-            let present = context.presentText
-            let facts = title
-            let read = Gtk.button(Localized.text("read summary"), css: ["flat", "seam-read"]) {
-                present?(Localized.text("Compaction summary"), facts, summary, false)
-            }
-            gtk_widget_set_valign(read, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(row), read)
-            gtk_box_append(ptr(column), row)
-        } else {
-            gtk_box_append(ptr(column), Gtk.label(title, css: "seam-text", selectable: false))
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(heading), Gtk.label("◆", css: "glyph-done", selectable: false))
+        let title = Gtk.label(story.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(story.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        if let kept = story.keptFraction {
+            let bar = gtk_progress_bar_new()!
+            Gtk.addClass(bar, "seam-bar")
+            gtk_progress_bar_set_fraction(op(bar), kept)
+            gtk_box_append(ptr(card), bar)
         }
+
+        if let footnote = story.footnote {
+            let label = Gtk.label(footnote, css: "seam-footnote", wrap: true, selectable: false)
+            gtk_widget_set_halign(label, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), label)
+        }
+
+        if let summary = story.summary, story.isReadable {
+            let present = context.presentText
+            let header = CompactionStory.summaryHeader(compaction)
+            let read = Gtk.button(Localized.text("Read the summary"), css: ["flat", "seam-read"]) {
+                present?(Localized.text("Compaction summary"), header, summary, false)
+            }
+            gtk_widget_set_halign(read, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), read)
+        }
+
+        gtk_box_append(ptr(column), card)
         gtk_box_append(ptr(column), Gtk.hairline())
         return column
     }

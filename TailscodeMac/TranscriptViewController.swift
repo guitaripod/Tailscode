@@ -819,22 +819,18 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
-    /// instruction for what the summary must keep — so it always opens this preflight first.
+    /// instruction for what the summary must keep — so it always opens the shared decision
+    /// screen first, whose every word is ``CompactPreflight``'s.
     func presentCompactPreflight(initialInstruction: String = "") {
         guard let conversation, let entry else { return }
-        MacDialogs.prompt(
+        MacDialogs.compactPreflight(
             on: view.window,
-            title: Localized.text("Compact this conversation?"),
-            body: Localized.text(
-                "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."),
-            placeholder: Localized.text("What must the summary keep? (optional)"),
-            initial: initialInstruction,
-            confirmLabel: Localized.text("Compact"), destructive: true,
+            facts: CompactPreflight.make(state: lastState),
+            initialInstruction: initialInstruction,
             draft: .compaction(profileID: entry.profileID, sessionID: entry.session.id)
         ) { instruction in
             Task {
-                try? await conversation.compact(
-                    instructions: instruction.isEmpty ? nil : instruction)
+                try? await conversation.compact(instructions: instruction)
             }
         }
     }
@@ -1043,6 +1039,7 @@ final class TranscriptViewController: NSViewController {
                     guard !Task.isCancelled, let self else { return }
                     tick += 1
                     self.updateStatus()
+                    self.updateCompactingElapsed()
                     self.advanceWorkflowClock()
                     if tick % 5 == 0 { self.refreshTurnFacts() }
                 }
@@ -1616,11 +1613,15 @@ final class TranscriptViewController: NSViewController {
     /// then questions. Rebuilt only when what is pending actually changes — this runs on every
     /// streamed token, and cards that flicker under a click swallow the click.
     private func renderPendingCards(_ state: ConversationState) {
+        let compactionKey = state.compaction.map {
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970)"
+        } ?? ""
         let signature =
             (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
-            .joined(separator: "|") + "|" + (state.compaction?.failure ?? "")
+            .joined(separator: "|") + "|" + compactionKey
         guard signature != pendingSignature else { return }
         pendingSignature = signature
+        compactingElapsed = nil
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for permission in state.pendingPermissions {
             pendingStack.addArrangedSubview(
@@ -1634,10 +1635,26 @@ final class TranscriptViewController: NSViewController {
                     self?.answer(question, answers: answers)
                 })
         }
-        if let compaction = state.compaction, let failure = compaction.failure {
-            pendingStack.addArrangedSubview(PendingCards.compactionFailure(failure))
+        if let compaction = state.compaction {
+            if let failure = compaction.failure {
+                pendingStack.addArrangedSubview(PendingCards.compactionFailure(failure))
+            } else {
+                pendingStack.addArrangedSubview(
+                    PendingCards.compacting(startedAt: compaction.startedAt) { [weak self] label in
+                        self?.compactingElapsed = label
+                    })
+            }
         }
         if followsBottom { schedulePinCorrector() }
+    }
+
+    /// The running card's own clock line, moved by the transcript's one-second ticker rather than
+    /// a rebuild — the card must hold still while its wait counts up.
+    private func updateCompactingElapsed() {
+        guard let label = compactingElapsed,
+            let compaction = lastState?.compaction, compaction.isRunning
+        else { return }
+        label.stringValue = CompactionStory.elapsedLine(startedAt: compaction.startedAt)
     }
 
     /// Disk first, tailnet second: a picture this machine has ever shown comes back in one frame,

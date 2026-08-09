@@ -72,6 +72,112 @@ enum MacDialogs {
         alert.beginSheetModal(for: window, completionHandler: finish)
     }
 
+    /// The decision screen `/compact` opens instead of firing bare — compaction is destructive to
+    /// the agent's memory and takes minutes, so an NSAlert's one line is not enough. Every word
+    /// comes from the shared ``CompactPreflight``; this sheet only lays them out: the argument,
+    /// the instruction field, what the previous compaction traded, and the wait.
+    static func compactPreflight(
+        on window: NSWindow?, facts: CompactPreflight, initialInstruction: String = "",
+        draft: DraftScope? = nil,
+        onConfirm: @escaping @MainActor (String?) -> Void
+    ) {
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 100),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        panel.title = Localized.text("Compact this conversation?")
+
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.m
+        column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
+        column.translatesAutoresizingMaskIntoConstraints = false
+
+        let headline = NSTextField(labelWithString: facts.headline)
+        headline.font = .systemFont(ofSize: 15 * MacTheme.UIScale.factor, weight: .bold)
+        column.addArrangedSubview(headline)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: headline)
+        let subtitle = NSTextField(labelWithString: facts.subtitle)
+        subtitle.font = MacTheme.Font.caption()
+        subtitle.textColor = MacTheme.Color.secondaryLabel
+        column.addArrangedSubview(subtitle)
+
+        for paragraph in facts.paragraphs {
+            let body = NSTextField(wrappingLabelWithString: paragraph)
+            body.font = MacTheme.Font.body()
+            body.textColor = MacTheme.Color.secondaryLabel
+            column.addArrangedSubview(body)
+            body.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+        }
+
+        let caption = NSTextField(labelWithString: facts.fieldCaption.uppercased())
+        caption.font = .systemFont(ofSize: 10 * MacTheme.UIScale.factor, weight: .semibold)
+        caption.textColor = MacTheme.Color.tertiaryLabel
+        column.addArrangedSubview(caption)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: caption)
+
+        let field: NSTextField
+        if let draft {
+            field = DraftingField(
+                scope: draft,
+                initial: initialInstruction.isEmpty ? DraftStore.text(for: draft) : initialInstruction)
+        } else {
+            field = NSTextField(string: initialInstruction)
+        }
+        field.placeholderString = facts.fieldPlaceholder
+        column.addArrangedSubview(field)
+        field.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+
+        for line in [facts.lastTime, facts.wait].compactMap({ $0 }) {
+            let note = NSTextField(wrappingLabelWithString: line)
+            note.font = MacTheme.Font.caption()
+            note.textColor = MacTheme.Color.tertiaryLabel
+            column.addArrangedSubview(note)
+            note.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+        }
+
+        let dismiss: @MainActor () -> Void = { [weak window, weak panel] in
+            guard let panel else { return }
+            if let window { window.endSheet(panel) } else { panel.orderOut(nil) }
+        }
+        let cancel = RowKit.ActionButton(title: Localized.text("Cancel")) {
+            dismiss()
+        }
+        cancel.keyEquivalent = "\u{1b}"
+        let confirm = RowKit.ActionButton(title: facts.confirmTitle) { [weak field] in
+            let text = field?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if let draft { DraftStore.clear(draft) }
+            dismiss()
+            onConfirm(text.isEmpty ? nil : text)
+        }
+        confirm.hasDestructiveAction = true
+        confirm.keyEquivalent = "\r"
+
+        let buttons = NSStackView(views: [RowKit.spacer(), cancel, confirm])
+        buttons.orientation = .horizontal
+        buttons.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(buttons)
+        buttons.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+
+        let content = NSView()
+        content.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: content.topAnchor),
+            column.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            content.widthAnchor.constraint(equalToConstant: 480),
+        ])
+        panel.contentView = content
+        panel.initialFirstResponder = field
+        guard let window else {
+            panel.center()
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+        window.beginSheet(panel)
+    }
+
     /// A top-anchored column inside a scroll view — the shape the servers window and every
     /// list-like dialog wants, where AppKit's default document would grow from the bottom.
     static func scrollColumn(holding column: NSStackView) -> NSScrollView {

@@ -122,12 +122,43 @@ enum PendingCards {
         return card
     }
 
+    /// The minutes-long summarize as a card docked where the turn would be: the symbol says work,
+    /// the words say what and for how long. The elapsed line is handed back so the transcript's
+    /// own one-second clock can keep it honest without rebuilding the card.
+    static func compacting(
+        startedAt: Date, elapsedLabel: (NSTextField) -> Void
+    ) -> NSView {
+        let story = CompactionStory.running(startedAt: startedAt)
+        let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
+        let spinner = NSProgressIndicator()
+        spinner.style = .bar
+        spinner.isIndeterminate = true
+        spinner.controlSize = .small
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.startAnimation(nil)
+        card.addArrangedSubview(spinner)
+        spinner.widthAnchor.constraint(
+            equalTo: card.widthAnchor, constant: -2 * MacTheme.Spacing.m
+        ).isActive = true
+        if let footnote = story.footnote {
+            let elapsed = RowKit.label(
+                footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            card.addArrangedSubview(elapsed)
+            elapsedLabel(elapsed)
+        }
+        return card
+    }
+
+    /// A refused compaction leads with the reason and ends on the one fact that matters: nothing
+    /// was lost.
     static func compactionFailure(_ message: String) -> NSView {
-        let card = cardColumn()
-        card.addArrangedSubview(
-            RowKit.wrapping(
-                Localized.text("Compaction failed: %@", message), font: MacTheme.Font.body(),
-                color: MacTheme.Color.danger))
+        let story = CompactionStory.failed(message)
+        let card = RowKit.compactionCard(story, tint: MacTheme.Color.warning)
+        if let footnote = story.footnote {
+            card.addArrangedSubview(
+                RowKit.wrapping(
+                    footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+        }
         return card
     }
 

@@ -511,51 +511,66 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A compaction is a seam, not a message: the rule says the transcript restarted here, the
-    /// line says what was traded for what, and the CLI's machine-facing summary — tens of
-    /// thousands of words — opens in a reader window rather than cramped into the flow.
+    /// A compaction is a seam, not a message: the rule says the transcript restarted here, and
+    /// the card says what was traded for what — the trade in tokens, the sliver of context the
+    /// summary still occupies drawn as a bar, and what carried over. The CLI's machine-facing
+    /// summary — tens of thousands of words — opens in a reader window rather than cramped into
+    /// the flow.
     @MainActor
     private static func seam(
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> NSView {
+        let story = CompactionStory.done(compaction)
         let column = NSStackView()
         column.orientation = .vertical
         column.alignment = .width
-        column.spacing = 6
+        column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(RowKit.hairline())
 
-        var facts: [String] = []
-        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            facts.append("\(StatusFacts.tokens(before)) → \(StatusFacts.tokens(after))")
-        }
-        if let duration = compaction.duration, duration > 0 {
-            facts.append(StatusFacts.clock(duration))
-        }
-        if let kept = compaction.preservedMessageCount {
-            facts.append(Localized.text("%@ messages kept", "\(kept)"))
-        }
-        if compaction.trigger == .auto { facts.append(Localized.text("automatic")) }
-        let title = facts.isEmpty
-            ? Localized.text("COMPACTED") : "COMPACTED · " + facts.joined(separator: " · ")
-        let titleLabel = RowKit.label(
-            title, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+        let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
 
-        if let summary = compaction.summary, !summary.isEmpty {
-            let row = NSStackView()
-            row.orientation = .horizontal
-            row.spacing = MacTheme.Spacing.s
-            row.addArrangedSubview(titleLabel)
-            let present = context.presentText
-            row.addArrangedSubview(
-                RowKit.linkButton(Localized.text("read summary")) {
-                    present?(Localized.text("Compaction summary"), title, summary, false)
-                })
-            row.addArrangedSubview(RowKit.spacer())
-            column.addArrangedSubview(row)
-        } else {
-            column.addArrangedSubview(titleLabel)
+        if let kept = story.keptFraction {
+            let track = NSView()
+            track.wantsLayer = true
+            track.layer?.backgroundColor = MacTheme.Color.separator.cgColor
+            track.layer?.cornerRadius = 2
+            track.translatesAutoresizingMaskIntoConstraints = false
+            let fill = NSView()
+            fill.wantsLayer = true
+            fill.layer?.backgroundColor = MacTheme.Color.accent.cgColor
+            fill.layer?.cornerRadius = 2
+            fill.translatesAutoresizingMaskIntoConstraints = false
+            track.addSubview(fill)
+            NSLayoutConstraint.activate([
+                track.heightAnchor.constraint(equalToConstant: 4),
+                fill.topAnchor.constraint(equalTo: track.topAnchor),
+                fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
+                fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
+                fill.widthAnchor.constraint(
+                    equalTo: track.widthAnchor, multiplier: CGFloat(kept)),
+            ])
+            card.addArrangedSubview(track)
+            track.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -2 * MacTheme.Spacing.m)
+                .isActive = true
         }
+
+        if let footnote = story.footnote {
+            card.addArrangedSubview(
+                RowKit.wrapping(
+                    footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+        }
+
+        if let summary = story.summary, story.isReadable {
+            let present = context.presentText
+            let header = CompactionStory.summaryHeader(compaction)
+            card.addArrangedSubview(
+                RowKit.linkButton(Localized.text("Read the summary")) {
+                    present?(Localized.text("Compaction summary"), header, summary, false)
+                })
+        }
+
+        column.addArrangedSubview(card)
         column.addArrangedSubview(RowKit.hairline())
         return column
     }
@@ -565,6 +580,41 @@ struct TranscriptRow: Hashable {
 /// flat little buttons, capped scrolls — one place, so the rows stay about their content.
 @MainActor
 enum RowKit {
+    /// The shell every compaction card shares: the raised box, the symbol wearing the story's
+    /// tone, the bold title and the detail line. Callers append what their state adds — a bar, a
+    /// ticking clock, a reader link.
+    static func compactionCard(_ story: CompactionStory, tint: NSColor) -> NSStackView {
+        let card = NSStackView()
+        card.orientation = .vertical
+        card.alignment = .leading
+        card.spacing = MacTheme.Spacing.s
+        card.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.m)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.wantsLayer = true
+        card.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
+        card.layer?.cornerRadius = MacTheme.Radius.card
+        card.layer?.borderWidth = 1
+        card.layer?.borderColor = MacTheme.Color.separator.cgColor
+
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: story.symbol, accessibilityDescription: story.title)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        icon.contentTintColor = tint
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        let header = NSStackView(views: [
+            icon, label(story.title, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label),
+        ])
+        header.orientation = .horizontal
+        header.spacing = MacTheme.Spacing.s
+        card.addArrangedSubview(header)
+        card.addArrangedSubview(
+            wrapping(
+                story.detail, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel))
+        return card
+    }
+
     static func label(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = font

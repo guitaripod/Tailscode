@@ -218,6 +218,14 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo()
+                case "compactdemo":
+                    self.activePane.driverCompactionDemo(argument.isEmpty ? "done" : argument)
+                case "compactui":
+                    Dialogs.compactPreflight(
+                        parent: self.window,
+                        facts: CompactPreflight.make(state: self.activePane.lastState),
+                        draft: nil
+                    ) { _ in }
                 case "orb":
                     FileHandle.standardOutput.write(Data("ORB \(self.orb.stateLine)\n".utf8))
                 case "mark":
@@ -2045,7 +2053,8 @@ final class MainWindow: @unchecked Sendable {
     func presentCompactPreflight(for pane: ChatPane, initialInstruction: String = "") {
         guard let conversation = pane.conversation else { return }
         Dialogs.compactPreflight(
-            parent: window, initialInstruction: initialInstruction,
+            parent: window, facts: CompactPreflight.make(state: pane.lastState),
+            initialInstruction: initialInstruction,
             draft: pane.compactionScope
         ) { instruction in
             Task { try? await conversation.compact(instructions: instruction) }

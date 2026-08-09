@@ -3721,7 +3721,7 @@ extension ChatViewController: UICollectionViewDelegate {
             line += ": "
                 + String(
                     localized:
-                        "\(CompactionCell.tokens(before)) → \(CompactionCell.tokens(after)) tokens")
+                        "\(StatusFacts.tokens(before)) → \(StatusFacts.tokens(after)) tokens")
         }
         line += " — "
             + String(localized: "everything above this point was replaced by a summary.") + "_"

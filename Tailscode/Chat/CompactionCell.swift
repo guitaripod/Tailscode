@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// A compaction as the transcript sees it: the finished boundary, the minutes-long summarize that
@@ -163,26 +164,16 @@ final class CompactionCell: UICollectionViewCell {
     }
 
     private func configureDone(_ compaction: Compaction) {
-        symbol("arrow.down.right.and.arrow.up.left", tint: Theme.Color.accent)
-        titleLabel.text = Self.title(for: compaction.trigger)
-        detailLabel.text = Self.detail(for: compaction)
-        fill.backgroundColor = Theme.Color.accent
-        setFill(Self.keptFraction(compaction))
-        track.isHidden = compaction.tokensBefore == nil || compaction.tokensAfter == nil
-        footnote.text = Self.footnote(for: compaction)
-        footnote.isHidden = false
+        let story = CompactionStory.done(compaction)
+        apply(story, tint: Theme.Color.accent)
+        setFill(story.keptFraction)
+        track.isHidden = story.keptFraction == nil
     }
 
     private func configureRunning(startedAt: Date) {
-        symbol("arrow.down.right.and.arrow.up.left", tint: Theme.Color.accent)
-        titleLabel.text = String(localized: "Compacting…")
-        detailLabel.text =
-            String(
-                localized:
-                    "Re-reading the conversation to summarize it. This can take a minute or two.")
+        let story = CompactionStory.running(startedAt: startedAt)
+        apply(story, tint: Theme.Color.accent)
         track.isHidden = false
-        fill.backgroundColor = Theme.Color.accent
-        footnote.isHidden = false
         self.startedAt = startedAt
         updateElapsed()
         startTicking()
@@ -190,12 +181,18 @@ final class CompactionCell: UICollectionViewCell {
     }
 
     private func configureFailed(_ reason: String) {
-        symbol("exclamationmark.triangle.fill", tint: Theme.Color.warning)
-        titleLabel.text = String(localized: "Couldn't compact")
-        detailLabel.text = reason
+        let story = CompactionStory.failed(reason)
+        apply(story, tint: Theme.Color.warning)
         track.isHidden = true
-        footnote.text = String(localized: "The conversation is unchanged.")
-        footnote.isHidden = false
+    }
+
+    private func apply(_ story: CompactionStory, tint: UIColor) {
+        symbol(story.symbol, tint: tint)
+        titleLabel.text = story.title
+        detailLabel.text = story.detail
+        fill.backgroundColor = Theme.Color.accent
+        footnote.text = story.footnote
+        footnote.isHidden = story.footnote == nil
     }
 
     private func symbol(_ name: String, tint: UIColor) {
@@ -213,65 +210,9 @@ final class CompactionCell: UICollectionViewCell {
         fillWidth.isActive = true
     }
 
-    /// The sliver of context the summary now occupies. Rendering what is *kept* rather than what
-    /// was freed is the honest read: a nearly empty bar is the point of compacting.
-    private static func keptFraction(_ compaction: Compaction) -> Double? {
-        guard let before = compaction.tokensBefore, before > 0, let after = compaction.tokensAfter
-        else { return nil }
-        return Double(after) / Double(before)
-    }
-
-    private static func title(for trigger: Compaction.Trigger?) -> String {
-        trigger == .auto
-            ? String(localized: "Context compacted automatically")
-            : String(localized: "Context compacted")
-    }
-
-    private static func detail(for compaction: Compaction) -> String {
-        var parts: [String] = []
-        if let before = compaction.tokensBefore, let after = compaction.tokensAfter {
-            parts.append(String(localized: "\(tokens(before)) → \(tokens(after)) tokens"))
-        } else if let after = compaction.tokensAfter {
-            parts.append(String(localized: "\(tokens(after)) tokens in context"))
-        }
-        if let duration = compaction.duration, duration >= 1 {
-            parts.append(elapsed(duration))
-        }
-        guard !parts.isEmpty else {
-            return String(localized: "The conversation so far was replaced by a summary of it.")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private static func footnote(for compaction: Compaction) -> String {
-        var sentence =
-            compaction.reduction.map {
-                String(
-                    localized: "\(Int(($0 * 100).rounded()))% of the context was replaced by a summary"
-                )
-            } ?? String(localized: "Earlier messages were replaced by a summary")
-        if let preserved = compaction.preservedMessageCount, preserved > 0 {
-            sentence += "; " + String(localized: "the last \(preserved) messages carried over")
-        }
-        return sentence + "."
-    }
-
-    static func tokens(_ value: Int) -> String {
-        if value >= 1_000_000 { return String(format: "%.1fM", Double(value) / 1_000_000) }
-        if value >= 1_000 { return "\(value / 1_000)k" }
-        return "\(value)"
-    }
-
-    static func elapsed(_ interval: TimeInterval) -> String {
-        let seconds = max(Int(interval.rounded()), 0)
-        if seconds < 60 { return "\(seconds)s" }
-        return "\(seconds / 60)m \(seconds % 60)s"
-    }
-
     private func updateElapsed() {
         guard let startedAt else { return }
-        footnote.text = String(
-            localized: "Running for \(Self.elapsed(Date().timeIntervalSince(startedAt)))")
+        footnote.text = CompactionStory.elapsedLine(startedAt: startedAt)
     }
 
     private func startTicking() {

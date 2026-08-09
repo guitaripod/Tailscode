@@ -168,26 +168,51 @@ enum Dialogs {
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an instruction
-    /// for what the summary must keep — so the preflight says all three.
+    /// for what the summary must keep — so it opens a decision screen whose every word is the
+    /// shared ``CompactPreflight``'s: what compacting does, what stays, what the previous one
+    /// traded, and a place for the instruction.
     static func compactPreflight(
-        parent: UnsafeMutablePointer<GtkWidget>?, initialInstruction: String = "",
+        parent: UnsafeMutablePointer<GtkWidget>?, facts: CompactPreflight,
+        initialInstruction: String = "",
         draft: DraftScope?, onCompact: @escaping @Sendable (String?) -> Void
     ) {
         let (window, content) = Self.window(
             title: Localized.text("Compact this conversation?"), parent: parent, width: 520)
-        gtk_box_append(
-            ptr(content),
-            Gtk.label(
-                Localized.text(
-                    "The transcript so far is replaced by a summary. This is irreversible, takes minutes, and the agent works from the summary afterwards."),
-                css: "agent-text", wrap: true))
+
+        let headline = Gtk.label(facts.headline, css: "preflight-headline", selectable: false)
+        gtk_widget_set_halign(headline, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), headline)
+        let subtitle = Gtk.label(facts.subtitle, css: "sidebar-detail", selectable: false)
+        gtk_widget_set_halign(subtitle, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), subtitle)
+
+        for paragraph in facts.paragraphs {
+            let body = Gtk.label(paragraph, css: "agent-text", wrap: true, selectable: false)
+            gtk_widget_set_halign(body, GTK_ALIGN_START)
+            gtk_box_append(ptr(content), body)
+        }
+
+        let caption = Gtk.label(
+            facts.fieldCaption.uppercased(), css: "section-header", wrap: true, selectable: false)
+        gtk_widget_set_halign(caption, GTK_ALIGN_START)
+        gtk_widget_set_margin_top(caption, 4)
+        gtk_box_append(ptr(content), caption)
+
         let entry = gtk_entry_new()!
-        gtk_entry_set_placeholder_text(
-            ptr(entry), Localized.text("What must the summary keep? (optional)"))
+        gtk_entry_set_placeholder_text(ptr(entry), facts.fieldPlaceholder)
         let seeded = initialInstruction.isEmpty
             ? draft.map { DraftStore.text(for: $0) } ?? "" : initialInstruction
         gtk_editable_set_text(op(entry), seeded)
         gtk_box_append(ptr(content), entry)
+
+        if let lastTime = facts.lastTime {
+            let previously = Gtk.label(lastTime, css: "seam-footnote", wrap: true, selectable: false)
+            gtk_widget_set_halign(previously, GTK_ALIGN_START)
+            gtk_box_append(ptr(content), previously)
+        }
+        let wait = Gtk.label(facts.wait, css: "seam-footnote", wrap: true, selectable: false)
+        gtk_widget_set_halign(wait, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), wait)
 
         let entryBits = UInt(bitPattern: entry)
         if let draft {
@@ -198,18 +223,21 @@ enum Dialogs {
                 DraftStore.record(String(cString: text), for: draft)
             }
         }
+        let compact: @Sendable () -> Void = {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
+            let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            let instruction = entryText(entry)
+            if let draft { DraftStore.clear(draft) }
+            close(entry)
+            onCompact(instruction.isEmpty ? nil : instruction)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(entry), "activate", compact)
         gtk_box_append(
             ptr(content),
             buttonRow(
                 window: window,
-                confirm: Gtk.button(Localized.text("Compact"), css: ["destructive-action"]) {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-                    let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-                    let instruction = entryText(entry)
-                    if let draft { DraftStore.clear(draft) }
-                    close(entry)
-                    onCompact(instruction.isEmpty ? nil : instruction)
-                }))
+                confirm: Gtk.button(
+                    facts.confirmTitle, css: ["destructive-action"], onClick: compact)))
         gtk_window_present(ptr(window))
     }
 
