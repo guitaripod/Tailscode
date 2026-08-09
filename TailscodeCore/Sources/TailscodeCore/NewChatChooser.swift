@@ -221,9 +221,18 @@ public struct NewChatChooser: Sendable, Equatable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Always the machine and agent by name, even when only one is configured — where a chat will
+    /// live is the first thing this modal decides, so it is never left to be inferred from a
+    /// window title.
     public var heading: String {
         guard let server else { return Localized.text("No server configured") }
-        return servers.count > 1 ? server.title : Localized.text("New conversation")
+        return server.title
+    }
+
+    /// What the chat would open with on the chosen server, re-read on every render so a pick made
+    /// elsewhere is already true here.
+    public var defaults: NewChatDefaults? {
+        server.map { NewChatDefaults.resolve(profileID: $0.profileID) }
     }
 
     /// The keys, on screen, in the mode they work in. A modal that hides its own grammar is a modal
@@ -477,6 +486,43 @@ public struct NewChatChooser: Sendable, Equatable {
     }
 }
 
+/// What a chat started on a server will open with, said where Start is pressed rather than
+/// discovered on the first answer. Resolved exactly the way the composer resolves a first turn —
+/// the pick this device recorded for that server, else the server's own default — so the label
+/// and the chat it starts can never disagree. The model wears its chip where a client colours
+/// chips; a device with no pick says the server decides instead of guessing a name.
+public struct NewChatDefaults: Sendable, Equatable {
+    public let chip: ModelChip?
+    public let line: String
+
+    public static func resolve(profileID: String) -> NewChatDefaults {
+        made(
+            model: ModelPreferenceStore.initialModel(sessionKey: nil, contextID: profileID),
+            effort: EffortPreferenceStore.initialEffort(sessionKey: nil, contextID: profileID))
+    }
+
+    static func made(model: ModelSelection?, effort: String?) -> NewChatDefaults {
+        if let chip = ModelBadge.chip(model: model?.modelID, effort: effort) {
+            return NewChatDefaults(chip: chip, line: Localized.text("Starts with"))
+        }
+        if let effort, !effort.isEmpty {
+            return NewChatDefaults(
+                chip: nil,
+                line: Localized.text("Starts with the server's default model · %@", effort))
+        }
+        return NewChatDefaults(
+            chip: nil, line: Localized.text("Starts with the server's default model"))
+    }
+
+    /// The whole fact as one sentence, for a screen reader or a client with nowhere to hang a
+    /// coloured chip.
+    public var sentence: String {
+        guard let chip else { return line }
+        let effort = chip.effort.map { " · \($0)" } ?? ""
+        return "\(line) \(chip.name)\(effort)"
+    }
+}
+
 /// The modal's rules, checked headlessly so the phone, GTK and AppKit are proved against one set of
 /// answers rather than each testing its own widgets.
 public enum NewChatChooserCheck {
@@ -547,6 +593,7 @@ public enum NewChatChooserCheck {
         expect(chooser.query == "/home/m/Dev/starred", "and fills the field from the cursor")
 
         var normal = NewChatChooser(servers: [alpha], directories: directories, mode: .normal)
+        expect(normal.heading == alpha.title, "one server is still named, never inferred")
         expect(normal.handle(.dismiss).outcome == .dismiss, "esc in normal mode closes")
         let picked = normal.handle(.pick(1)).outcome
         expect(
@@ -581,6 +628,22 @@ public enum NewChatChooserCheck {
                 NewChatChooser.command(for: chord, mode: mode) == expected,
                 "key \(keyval)/\(state) in \(mode)")
         }
+
+        let recorded = NewChatDefaults.made(
+            model: ModelSelection(providerID: "anthropic", modelID: "claude-fable-5"),
+            effort: "xhigh")
+        expect(
+            recorded.chip?.name == "Fable" && recorded.chip?.effort == "xhigh",
+            "a recorded pick is named as its chip")
+        expect(recorded.sentence == "\(recorded.line) Fable · xhigh", "and read out whole")
+        let auto = NewChatDefaults.made(model: nil, effort: nil)
+        expect(
+            auto.chip == nil && auto.sentence == auto.line,
+            "no pick says the server decides rather than guessing")
+        let effortOnly = NewChatDefaults.made(model: nil, effort: "high")
+        expect(
+            effortOnly.chip == nil && effortOnly.line.contains("high"),
+            "an effort picked without a model still travels")
         return failures
     }
 }

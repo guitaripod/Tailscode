@@ -243,7 +243,7 @@ final class SidebarSessionCell: NSView {
     /// The model wearing its family's hue and the effort wearing its heat, leading the detail
     /// line the same way the Linux chips do. Ultracode is not a heat, so its word is set letter
     /// by letter from the shared rainbow, each held to the canvas's own contrast floor.
-    private static func chipText(_ chip: ModelChip) -> NSAttributedString {
+    static func chipText(_ chip: ModelChip) -> NSAttributedString {
         let font = NSFont.systemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .semibold)
         let text = NSMutableAttributedString(
             string: chip.name,
@@ -519,10 +519,13 @@ final class SidebarHeaderCell: NSView {
 final class SidebarBulkBar: NSView {
     var onAction: ((BulkChatAction) -> Void)?
     var onClear: (() -> Void)?
+    var onSplit: ((SplitArrangement) -> Void)?
 
     private let badge = NSTextField(labelWithString: "")
     private let verbs = NSStackView()
     private let secondary = NSStackView()
+    private let splitHeader = NSTextField(labelWithString: "")
+    private let splitRow = NSStackView()
 
     init() {
         super.init(frame: .zero)
@@ -550,6 +553,12 @@ final class SidebarBulkBar: NSView {
         secondary.spacing = MacTheme.Spacing.xs
         secondary.alignment = .centerY
         secondary.distribution = .fillProportionally
+        splitHeader.font = MacTheme.Font.caption()
+        splitHeader.textColor = MacTheme.Color.secondaryLabel
+        splitRow.orientation = .horizontal
+        splitRow.spacing = MacTheme.Spacing.xs
+        splitRow.alignment = .centerY
+        splitRow.distribution = .fillProportionally
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -558,7 +567,7 @@ final class SidebarBulkBar: NSView {
         top.spacing = MacTheme.Spacing.xs
         top.alignment = .centerY
 
-        let column = NSStackView(views: [top, secondary])
+        let column = NSStackView(views: [top, secondary, splitHeader, splitRow])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = MacTheme.Spacing.xs
@@ -581,7 +590,7 @@ final class SidebarBulkBar: NSView {
     func render(count: Int, actions: [BulkChatAction]) {
         badge.stringValue = "\(count)"
         badge.setAccessibilityLabel("\(count)")
-        for stack in [verbs, secondary] {
+        for stack in [verbs, secondary, splitRow] {
             for view in stack.arrangedSubviews {
                 stack.removeArrangedSubview(view)
                 view.removeFromSuperview()
@@ -595,6 +604,38 @@ final class SidebarBulkBar: NSView {
                 secondary.addArrangedSubview(button)
             }
         }
+        let arrangements = SplitEven.offers(count: count)
+        splitHeader.isHidden = arrangements.isEmpty
+        splitRow.isHidden = arrangements.isEmpty
+        splitHeader.stringValue = SplitEven.header(count: count)
+        for arrangement in arrangements {
+            splitRow.addArrangedSubview(splitButton(arrangement, count: count))
+        }
+    }
+
+    private func splitButton(_ arrangement: SplitArrangement, count: Int) -> NSButton {
+        let button = NSButton(
+            title: arrangement.title, target: self, action: #selector(splitPicked))
+        button.isBordered = false
+        button.bezelStyle = .accessoryBar
+        button.font = MacTheme.Font.caption()
+        button.contentTintColor = MacTheme.Color.accent
+        button.image = NSImage(
+            systemSymbolName: arrangement.symbolName,
+            accessibilityDescription: arrangement.title)
+        button.imagePosition = .imageLeading
+        button.lineBreakMode = .byTruncatingTail
+        button.toolTip = arrangement.caption(count: count)
+        button.setAccessibilityLabel(arrangement.accessibleLabel(count: count))
+        button.identifier = NSUserInterfaceItemIdentifier("split." + arrangement.rawValue)
+        return button
+    }
+
+    @objc private func splitPicked(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue.split(separator: ".").last,
+            let arrangement = SplitArrangement(rawValue: String(raw))
+        else { return }
+        onSplit?(arrangement)
     }
 
     private func button(_ action: BulkChatAction, count: Int) -> NSButton {

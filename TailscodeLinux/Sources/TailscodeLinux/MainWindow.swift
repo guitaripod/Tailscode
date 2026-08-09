@@ -232,6 +232,10 @@ final class MainWindow: @unchecked Sendable {
                 case "bulk":
                     self.perform(bulk: BulkChatAction(rawValue: argument) ?? .archive)
                     FileHandle.standardOutput.write(Data("BULK \(self.marksSummary)\n".utf8))
+                case "marksplit":
+                    self.openMarkedSplit(SplitArrangement(rawValue: argument) ?? .grid)
+                    FileHandle.standardOutput.write(
+                        Data("MARKSPLIT \(self.splitHost.paneCount)\n".utf8))
                 case "sections":
                     let described = self.visible.map { "\($0.state):\($0.title)" }
                         .joined(separator: " | ")
@@ -1142,7 +1146,34 @@ final class MainWindow: @unchecked Sendable {
             },
             onAction: { [weak self] action in
                 Gtk.onMain { [weak self] in self?.perform(bulk: action) }
+            },
+            onSplit: { [weak self] arrangement in
+                Gtk.onMain { [weak self] in self?.openMarkedSplit(arrangement) }
             })
+    }
+
+    /// The selection spent on the window itself: every marked chat opens at once, tiled evenly in
+    /// the chosen arrangement, in the order the list was drawing the rows. The tree replaces what
+    /// the window held — the gesture asked for these conversations, and it persists like any
+    /// hand-built layout.
+    private func openMarkedSplit(_ arrangement: SplitArrangement) {
+        let chosen = marks.resolve(in: visible.map(\.entry))
+        guard let layout = SplitEven.layout(count: chosen.count, as: arrangement) else { return }
+        var sessions: [String: SplitPaneSession] = [:]
+        for (pane, entry) in zip(layout.paneIDs, chosen) {
+            sessions[pane.raw] = SplitPaneSession(
+                profileID: entry.profileID, sessionID: entry.session.id)
+        }
+        _ = splitHost.restore(SplitSnapshot(layout: layout, sessions: sessions))
+        for (pane, entry) in zip(layout.paneIDs, chosen) {
+            splitHost.panes[pane]?.open(entry)
+        }
+        splitHost.persist()
+        marks.clear()
+        lastSidebar = nil
+        renderSidebar()
+        focusedPaneChanged()
+        splitHost.activePane.focusTranscript()
     }
 
     private func toggleMark(_ entry: SessionEntry) {
@@ -2078,15 +2109,26 @@ final class MainWindow: @unchecked Sendable {
     {
         guard !marks.isEmpty else { return [] }
         let count = marks.count
-        return SidebarSelectionBar.offered.map { action in
+        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] =
+            SidebarSelectionBar.offered.map { action in
+                (
+                    BulkChatCopy.button(action, count: count),
+                    Localized.text("%@ marked", "\(count)"),
+                    { [weak self] in
+                        Gtk.onMain { [weak self] in self?.perform(bulk: action) }
+                    }
+                )
+            }
+        rows += SplitEven.offers(count: count).map { arrangement in
             (
-                BulkChatCopy.button(action, count: count),
-                Localized.text("%@ marked", "\(count)"),
+                "\(arrangement.glyph) \(SplitEven.header(count: count)) · \(arrangement.title)",
+                arrangement.caption(count: count),
                 { [weak self] in
-                    Gtk.onMain { [weak self] in self?.perform(bulk: action) }
+                    Gtk.onMain { [weak self] in self?.openMarkedSplit(arrangement) }
                 }
             )
         }
+        return rows
     }
 
     private func rowMenuRows(

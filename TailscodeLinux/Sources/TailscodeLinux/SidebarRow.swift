@@ -319,7 +319,7 @@ enum SidebarRow {
     /// "who, how hard" as a single mark rather than two boxes that happen to be adjacent.
     /// Ultracode is not a heat, so its segment is set letter by letter from the shared rainbow —
     /// the same stops the aura runs — held to the canvas's own contrast floor.
-    private static func modelChips(_ chip: ModelChip) -> [UnsafeMutablePointer<GtkWidget>] {
+    static func modelChips(_ chip: ModelChip) -> [UnsafeMutablePointer<GtkWidget>] {
         let lead = makePill(
             chip.name, css: ModelTint.identityClass(family: chip.family, name: chip.name))
         guard let effort = chip.effort else { return [lead] }

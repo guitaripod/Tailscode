@@ -35,6 +35,7 @@ final class NewChatSheet: NSObject {
     private let start = NSButton()
     private var chooser: NewChatChooser
     private let heading = NSTextField(labelWithString: "")
+    private let defaultsLabel = NSTextField(labelWithString: "")
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
@@ -131,6 +132,12 @@ final class NewChatSheet: NSObject {
         heading.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(heading)
 
+        defaultsLabel.font = MacTheme.Font.caption()
+        defaultsLabel.textColor = MacTheme.Color.secondaryLabel
+        defaultsLabel.lineBreakMode = .byTruncatingTail
+        defaultsLabel.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(defaultsLabel)
+
         field.placeholderString = Localized.text("Where the agent works, e.g. ~/Dev/thing")
         field.font = MacTheme.Font.mono()
         field.delegate = self
@@ -194,7 +201,12 @@ final class NewChatSheet: NSObject {
             heading.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
             heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             heading.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            field.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: MacTheme.Spacing.s),
+            defaultsLabel.topAnchor.constraint(
+                equalTo: heading.bottomAnchor, constant: MacTheme.Spacing.xs),
+            defaultsLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            defaultsLabel.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
+            field.topAnchor.constraint(
+                equalTo: defaultsLabel.bottomAnchor, constant: MacTheme.Spacing.s),
             field.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
             field.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: MacTheme.Spacing.m),
@@ -293,6 +305,7 @@ final class NewChatSheet: NSObject {
             start.action = #selector(startFocused)
         }
         heading.stringValue = chooser.heading
+        renderDefaults()
         hint.stringValue = chooser.hint
         if field.stringValue != chooser.query {
             field.stringValue = chooser.query
@@ -306,11 +319,32 @@ final class NewChatSheet: NSObject {
         syncMode()
     }
 
+    /// What the chat will start with, worn under the server's name: the model as the same coloured
+    /// chip the chat list wears, or the sentence that says the server decides. Re-read on every
+    /// rebuild so switching servers re-labels the chat before it exists.
+    private func renderDefaults() {
+        guard let defaults = chooser.defaults else {
+            defaultsLabel.stringValue = ""
+            return
+        }
+        let font = MacTheme.Font.caption()
+        let text = NSMutableAttributedString(
+            string: defaults.line,
+            attributes: [.font: font, .foregroundColor: MacTheme.Color.secondaryLabel])
+        if let chip = defaults.chip {
+            text.append(NSAttributedString(string: " ", attributes: [.font: font]))
+            text.append(SidebarSessionCell.chipText(chip))
+        }
+        defaultsLabel.attributedStringValue = text
+        defaultsLabel.setAccessibilityLabel(defaults.sentence)
+    }
+
     /// While a machine is being waited on, the question's own chrome goes away rather than sitting
     /// there inert: a field that cannot be typed into and a list that cannot be picked from are
     /// worse than absent.
     private func setChrome(asking: Bool) {
         field.isHidden = !asking
+        defaultsLabel.isHidden = !asking
         scroll.isHidden = !asking
         empty.isHidden = true
         status.isHidden = asking

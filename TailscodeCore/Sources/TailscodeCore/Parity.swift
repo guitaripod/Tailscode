@@ -23,6 +23,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case archivedChats
     case deleteSession
     case bulkSelection
+    case bulkSplit
     case renameSession
     case forkSession
     case listFilter
@@ -78,6 +79,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverSignIn
     case serverSelfUpdate
     case newChat
+    case newChatDefaults
     case newChatFailure
     case keyboardShortcuts
     case shortcutCheatsheet
@@ -383,6 +385,10 @@ public enum CapabilityRegistry {
             spec:
                 "Starting a chat picks server and working directory in one modal built on NewChatChooser: the folders this device already knows for that server — starred, recent, and the ones its own chats work in — ranked against what is being typed by FuzzyRank, each row saying where it came from, with the typed path always offered as a row of its own so a folder nobody has used yet needs no special gesture. The server last used is pre-chosen, not re-asked. Keyboard-first in two modes: while typing, ⌃n/⌃p walk, tab completes, ⌃s switches server and esc reaches the verbs; in normal mode j/k walk, g/G jump, 1–9 pick outright, i types, f stars, enter starts and esc closes — the grammar written on screen, never a form with unranked buttons under a text field."),
         CapabilityDefinition(
+            id: .newChatDefaults, area: "servers", title: "A new chat says what it will start with",
+            spec:
+                "The new-chat surface states, before Start is pressed, which server will host the conversation and which model it will open with. The server is named outright — NewChatChooser.heading carries the machine and agent even when only one is configured — and the model is NewChatDefaults: resolved exactly the way the composer resolves a first turn (the pick this device recorded for that server, else the server's own default, with the effort beside it), re-read every time the server choice changes so switching machines re-labels the chat before it exists. The model wears its family colour and the effort its heat wherever the client already colours chips, a device with no pick says the server decides rather than guessing a name, and the whole fact reads as one sentence for a screen reader. Never a chat whose model is discovered on the first answer."),
+        CapabilityDefinition(
             id: .newChatFailure, area: "servers", title: "A chat that cannot start says why",
             spec:
                 "Starting a chat never fails silently and never prints a raw error. The modal stays up through the mint — it is another machine over a tailnet — showing the working badge while it waits, and on refusal it replaces its own body with the diagnosis: NewChatDiagnosis turns what this device saw plus what the machine answered when asked directly (NewChatWitness.gather, which probes the profile's address and the other agent's default port) into a title, a sentence, and one action. The commonest mistake — a profile aimed at the other agent's port, which answers, refuses, and looks like a dead server — is repaired by the app itself: the fix rewrites the profile's address and retries the same folder on the spot, so the person lands in the chat they asked for. Every other cause names its own remedy (server settings, try again) and no path — no password on this device, no such server, an unreachable host, a healthy server refusing a folder — is allowed to end in a closed sheet with nothing said. The modal also states before the choice which servers did not answer the last listing.",
@@ -391,6 +397,10 @@ public enum CapabilityRegistry {
             id: .bulkSelection, area: "chat list", title: "Several chats at once",
             spec:
                 "The chat list can hold a selection and act on all of it: mark rows (space, or the client's own editing mode), mark every row shown or none (⌃a), then delete, archive, save or mark read in one gesture. The set is ChatSelection, keyed on the (profile, session) pair and pruned as the listing moves under it, and the words come from BulkChatCopy so every client names the count the same way. A delete confirms first, naming what goes; rows leave immediately and a partial failure reports what survived — never a silent skip, and never a set that outlives the rows it points at."),
+        CapabilityDefinition(
+            id: .bulkSplit, area: "chat list", title: "Marked chats open as one even split",
+            spec:
+                "A selection can also be spent on the window itself: while several chats are marked, the selection surface offers to open all of them at once as one tiling — side by side, stacked, or as a grid — with every pane an equal share of the window. SplitEven owns the whole gesture: which arrangements a count earns (two chats get the two lines, a third earns the grid, past SplitEven.limit the verbs simply do not appear), the words and glyphs every client names them by, and the equalized tree itself, with panes landing in the order the list was drawing the marked rows. The gesture spends the marks like every other bulk verb and the arrangement persists like any hand-built layout. A platform without tiling answers notApplicable rather than inventing a stack of modal chats."),
         CapabilityDefinition(
             id: .keyboardShortcuts, area: "app", title: "The shared shortcut registry",
             spec:

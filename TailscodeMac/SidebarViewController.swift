@@ -25,6 +25,7 @@ final class SidebarViewController: NSViewController {
     var onOpenInSplit: ((SessionEntry) -> Void)?
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
+    var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
     var onToast: ((String) -> Void)?
     /// Which session the focused pane is actually showing. With a tiling tree, "already open"
     /// is a fact about the focused pane, not about this list's last click — an empty pane must
@@ -124,6 +125,7 @@ final class SidebarViewController: NSViewController {
         bulkBar.isHidden = true
         bulkBar.onAction = { [weak self] action in self?.applyBulk(action) }
         bulkBar.onClear = { [weak self] in self?.clearMarks() }
+        bulkBar.onSplit = { [weak self] arrangement in self?.applyMarkedSplit(arrangement) }
 
         orb.setEnabled(PresenceOrbSetting.isEnabled)
         orb.heightAnchor.constraint(equalToConstant: 76).isActive = true
@@ -823,6 +825,16 @@ final class SidebarViewController: NSViewController {
         selection.clear()
         lastSidebar = nil
         render()
+    }
+
+    /// The selection spent on the window itself: the hub opens every marked chat at once as one
+    /// even tiling, in the order the list was drawing the rows, and the gesture spends the marks
+    /// like every other bulk verb.
+    private func applyMarkedSplit(_ arrangement: SplitArrangement) {
+        let entries = markedModels.map(\.entry)
+        guard !SplitEven.offers(count: entries.count).isEmpty else { return }
+        finishBulk()
+        onOpenSplit?(entries, arrangement)
     }
 
     private func presentBulkDelete(_ models: [SessionRowModel]) {

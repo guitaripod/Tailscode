@@ -41,6 +41,7 @@ final class NewChatViewController: UIViewController {
     private let purpose: NewChatPurpose
     private var chooser: NewChatChooser
     private let serverButton = UIButton(configuration: Theme.Glass.buttonConfiguration())
+    private let defaultsLabel = UILabel()
     private let field = UITextField()
     private let hintLabel = UILabel()
     private let emptyLabel = UILabel()
@@ -110,9 +111,13 @@ final class NewChatViewController: UIViewController {
         config?.buttonSize = .small
         serverButton.configuration = config
         serverButton.showsMenuAsPrimaryAction = true
-        serverButton.isHidden = chooser.servers.count < 2
+        serverButton.isHidden = chooser.server == nil
         serverButton.translatesAutoresizingMaskIntoConstraints = false
         serverButton.accessibilityHint = String(localized: "Choose which machine the chat runs on")
+
+        defaultsLabel.adjustsFontForContentSizeCategory = true
+        defaultsLabel.numberOfLines = 1
+        defaultsLabel.translatesAutoresizingMaskIntoConstraints = false
 
         field.borderStyle = .none
         field.backgroundColor = Theme.Color.secondaryBackground
@@ -154,6 +159,7 @@ final class NewChatViewController: UIViewController {
         statusView.isHidden = true
         statusView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(serverButton)
+        view.addSubview(defaultsLabel)
         view.addSubview(field)
         view.addSubview(hintLabel)
         view.addSubview(statusView)
@@ -166,9 +172,15 @@ final class NewChatViewController: UIViewController {
             serverButton.trailingAnchor.constraint(
                 lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
 
+            defaultsLabel.topAnchor.constraint(
+                equalTo: serverButton.bottomAnchor, constant: Theme.Spacing.xs),
+            defaultsLabel.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
+            defaultsLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.trailingAnchor, constant: -Theme.Spacing.l),
+
             field.topAnchor.constraint(
-                equalTo: chooser.servers.count < 2
-                    ? view.safeAreaLayoutGuide.topAnchor : serverButton.bottomAnchor,
+                equalTo: defaultsLabel.bottomAnchor,
                 constant: Theme.Spacing.s),
             field.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Theme.Spacing.l),
             field.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Theme.Spacing.l),
@@ -374,7 +386,8 @@ final class NewChatViewController: UIViewController {
     }
 
     private func updateServerButton() {
-        serverButton.isHidden = chooser.servers.count < 2
+        serverButton.isHidden = chooser.server == nil
+        renderDefaults()
         guard let server = chooser.server else { return }
         var config = serverButton.configuration
         config?.title = server.title
@@ -399,6 +412,26 @@ final class NewChatViewController: UIViewController {
                     self.reload()
                 }
             })
+    }
+
+    /// What the chat will start with, worn under the server's name: the model as the same
+    /// coloured chip the chat list wears, or the sentence that says the server decides. Re-read
+    /// on every reload so switching servers re-labels the chat before it exists.
+    private func renderDefaults() {
+        guard let defaults = chooser.defaults else {
+            defaultsLabel.attributedText = nil
+            return
+        }
+        let font = UIFont.preferredFont(forTextStyle: .caption1)
+        let line = NSMutableAttributedString(
+            string: defaults.line,
+            attributes: [.font: font, .foregroundColor: Theme.Color.secondaryLabel])
+        if let chip = defaults.chip {
+            line.append(NSAttributedString(string: " ", attributes: [.font: font]))
+            line.append(ModelChipText.runs(for: chip, size: font.pointSize))
+        }
+        defaultsLabel.attributedText = line
+        defaultsLabel.accessibilityLabel = defaults.sentence
     }
 
     /// Moves keyboard focus to follow the chooser's mode. The field owning the letters and the
@@ -552,7 +585,8 @@ final class NewChatViewController: UIViewController {
         phase = next
         let asking = next == .asking
         field.isHidden = !asking
-        serverButton.isHidden = !asking || chooser.servers.count < 2
+        serverButton.isHidden = !asking || chooser.server == nil
+        defaultsLabel.isHidden = !asking
         collectionView.isHidden = !asking
         emptyLabel.isHidden = true
         statusView.isHidden = asking

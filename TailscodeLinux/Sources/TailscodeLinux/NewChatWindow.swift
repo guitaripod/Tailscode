@@ -37,6 +37,7 @@ final class NewChatWindow: @unchecked Sendable {
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
     private let heading: UnsafeMutablePointer<GtkWidget>
+    private var defaultsRow: UnsafeMutablePointer<GtkWidget>!
     private let hint: UnsafeMutablePointer<GtkWidget>
     private let list: UnsafeMutablePointer<GtkWidget>
     private let scroller: UnsafeMutablePointer<GtkWidget>
@@ -107,6 +108,11 @@ final class NewChatWindow: @unchecked Sendable {
 
         heading = Gtk.label(chooser.heading, css: "section-header", selectable: false)
         gtk_box_append(ptr(column), heading)
+
+        defaultsRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_widget_set_halign(defaultsRow, GTK_ALIGN_START)
+        Gtk.margins(defaultsRow, leading: 8)
+        gtk_box_append(ptr(column), defaultsRow)
 
         entry = gtk_entry_new()!
         gtk_entry_set_placeholder_text(
@@ -380,6 +386,7 @@ final class NewChatWindow: @unchecked Sendable {
         case .starting(let server):
             gtk_label_set_text(op(heading), Localized.text("Starting on %@…", server))
             gtk_label_set_text(op(hint), Localized.text("esc closes this — the chat still lands in the list"))
+            gtk_widget_set_visible(defaultsRow, 0)
             gtk_widget_set_sensitive(entry, 0)
             Gtk.removeChildren(of: list)
             rowWidgets = []
@@ -391,6 +398,7 @@ final class NewChatWindow: @unchecked Sendable {
                 op(hint),
                 failure.actionTitle.map { Localized.text("enter %@ · esc goes back", $0) }
                     ?? Localized.text("esc goes back"))
+            gtk_widget_set_visible(defaultsRow, 0)
             gtk_widget_set_sensitive(entry, 0)
             Gtk.removeChildren(of: list)
             rowWidgets = []
@@ -400,6 +408,7 @@ final class NewChatWindow: @unchecked Sendable {
             gtk_widget_set_sensitive(entry, 1)
         }
         gtk_label_set_text(op(heading), chooser.heading)
+        renderDefaults()
         gtk_label_set_text(op(hint), chooser.hint)
         Gtk.removeChildren(of: list)
         rowWidgets = []
@@ -515,6 +524,26 @@ final class NewChatWindow: @unchecked Sendable {
         chooser.focus(index)
         guard let outcome = chooser.activate() else { return }
         apply(outcome)
+    }
+
+    /// What the chat will start with, worn under the server's name: the model as the same chip the
+    /// chat list wears, or the sentence that says the server decides. Re-read on every render so
+    /// switching servers re-labels the chat before it exists.
+    private func renderDefaults() {
+        Gtk.removeChildren(of: defaultsRow)
+        guard let defaults = chooser.defaults else {
+            gtk_widget_set_visible(defaultsRow, 0)
+            return
+        }
+        let line = Gtk.label(defaults.line, css: "row-detail", selectable: false)
+        gtk_box_append(ptr(defaultsRow), line)
+        if let chip = defaults.chip {
+            for widget in SidebarRow.modelChips(chip) {
+                gtk_box_append(ptr(defaultsRow), widget)
+            }
+        }
+        tailscode_set_accessible_label(defaultsRow, defaults.sentence)
+        gtk_widget_set_visible(defaultsRow, 1)
     }
 
     /// The row under the cursor is brought into view without taking focus off the field — a modal

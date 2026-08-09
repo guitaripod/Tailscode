@@ -159,6 +159,24 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// The marked chats opened all at once as one even tiling: the tree replaces what the window
+    /// held — the gesture asked for these conversations — and the panes bind through the same
+    /// machinery a launch restore uses, so a server that cannot answer right now resolves on the
+    /// next refresh instead of failing the whole gesture.
+    private func openMarkedSplit(_ chosen: [SessionEntry], as arrangement: SplitArrangement) {
+        guard let layout = SplitEven.layout(count: chosen.count, as: arrangement) else { return }
+        var sessions: [String: SplitPaneSession] = [:]
+        for (pane, entry) in zip(layout.paneIDs, chosen) {
+            SessionSeenStore.markSeen(entry.session.id)
+            sessions[pane.raw] = SplitPaneSession(
+                profileID: entry.profileID, sessionID: entry.session.id)
+        }
+        pendingBindings = splitPanes.restore(SplitSnapshot(layout: layout, sessions: sessions))
+        resolvePendingBindings()
+        splitPanes.persist()
+        focusedPaneChanged()
+    }
+
     /// Opening a row into a fresh pane beside the ones already on screen: split, then run the
     /// same open path a sidebar click takes.
     private func openInNewSplit(_ entry: SessionEntry) {
@@ -652,6 +670,9 @@ final class MainWindowController: NSWindowController {
     private func wireChildren() {
         sidebar.onOpen = { [weak self] entry, backend in
             self?.handleOpen(entry, backend: backend)
+        }
+        sidebar.onOpenSplit = { [weak self] entries, arrangement in
+            self?.openMarkedSplit(entries, as: arrangement)
         }
         sidebar.onOpenInSplit = { [weak self] entry in
             self?.openInNewSplit(entry)

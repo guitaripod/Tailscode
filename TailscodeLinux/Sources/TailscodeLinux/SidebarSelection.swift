@@ -1,4 +1,5 @@
 import CAdw
+import CGtkShim
 import Foundation
 import TailscodeCore
 
@@ -17,7 +18,8 @@ enum SidebarSelectionBar {
     static func make(
         count: Int,
         onClear: @escaping @Sendable () -> Void,
-        onAction: @escaping @Sendable (BulkChatAction) -> Void
+        onAction: @escaping @Sendable (BulkChatAction) -> Void,
+        onSplit: @escaping @Sendable (SplitArrangement) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         Gtk.addClass(column, "selection-bar")
@@ -44,6 +46,27 @@ enum SidebarSelectionBar {
             gtk_box_append(ptr(rest), button)
         }
         gtk_box_append(ptr(column), rest)
+
+        let arrangements = SplitEven.offers(count: count)
+        if !arrangements.isEmpty {
+            let header = Gtk.label(
+                SplitEven.header(count: count), css: "selection-split-header", selectable: false)
+            gtk_label_set_xalign(op(header), 0)
+            Gtk.margins(header, top: 4)
+            gtk_box_append(ptr(column), header)
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            gtk_box_set_homogeneous(ptr(row), 1)
+            for arrangement in arrangements {
+                let button = Gtk.button(
+                    "\(arrangement.glyph) \(arrangement.title)", css: ["flat", "selection-verb"]
+                ) { onSplit(arrangement) }
+                gtk_widget_set_tooltip_text(button, arrangement.caption(count: count))
+                tailscode_set_accessible_label(button, arrangement.accessibleLabel(count: count))
+                gtk_widget_set_hexpand(button, 1)
+                gtk_box_append(ptr(row), button)
+            }
+            gtk_box_append(ptr(column), row)
+        }
         return column
     }
 
