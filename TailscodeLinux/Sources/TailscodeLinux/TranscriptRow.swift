@@ -656,8 +656,8 @@ struct TranscriptRow: Hashable {
         guard isImage else {
             return Gtk.label("📎 \(name)", css: "attachment")
         }
-        let thumbWidth = Int32(ImagePreview.bound(220, mine: mine))
-        let thumbHeight = Int32(ImagePreview.bound(140, mine: mine))
+        let thumbWidth = Int32(ImagePreview.deskBound(ImagePreview.deskWidth, mine: mine))
+        let thumbHeight = Int32(ImagePreview.deskBound(ImagePreview.deskHeight, mine: mine))
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
         if let bits = context.textures[key], bits != 0 {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))

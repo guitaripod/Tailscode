@@ -18,6 +18,21 @@ public enum ImagePreview {
         return max(min(full, sentFloor), (full * sentScale).rounded())
     }
 
+    /// A desktop transcript's preview box, shared by both desks so a picture is one size on every
+    /// desktop: a figure beside prose, never a poster and never a stamp.
+    public static let deskWidth: Double = 340
+    public static let deskHeight: Double = 300
+
+    /// What a sent picture keeps of a desktop's box. A desk is wide enough that a receipt only
+    /// steps back a little — enough to read as yours, not enough to need squinting — where the
+    /// phone's narrow bubble keeps the harder `sentScale`.
+    public static let sentDeskScale: Double = 0.85
+
+    public static func deskBound(_ full: Double, mine: Bool) -> Double {
+        guard mine else { return full }
+        return max(min(full, sentFloor), (full * sentDeskScale).rounded())
+    }
+
     /// A share of the row's width, for clients that size a bubble against its container.
     public static func share(_ full: Double, mine: Bool) -> Double {
         mine ? full * sentScale : full

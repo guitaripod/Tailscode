@@ -23,4 +23,13 @@ struct ImagePreviewTests {
         #expect(ImagePreview.bound(140, mine: true) == ImagePreview.sentFloor)
         #expect(ImagePreview.bound(60, mine: true) == 60)
     }
+
+    @Test("A desktop receipt steps back a little, never down to the phone's stamp")
+    func deskReceiptStaysReadable() {
+        #expect(ImagePreview.deskBound(ImagePreview.deskWidth, mine: false) == ImagePreview.deskWidth)
+        let sent = ImagePreview.deskBound(ImagePreview.deskWidth, mine: true)
+        #expect(sent < ImagePreview.deskWidth)
+        #expect(sent > ImagePreview.deskWidth * 0.7)
+        #expect(sent == (ImagePreview.deskWidth * ImagePreview.sentDeskScale).rounded())
+    }
 }
