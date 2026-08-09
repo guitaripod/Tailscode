@@ -697,17 +697,15 @@ final class SessionListViewController: UIViewController {
         let entry = row.entry
         var content = UIListContentConfiguration.subtitleCell()
         content.text = Self.displayTitle(entry.session.title)
-        content.textProperties.font = Theme.Font.body()
+        content.textProperties.font =
+            row.unread ? Theme.Font.body().withTraits(.traitBold) : Theme.Font.body()
         content.textProperties.numberOfLines = 1
 
         let facets = row.facets(vocabulary)
-        let rest =
-            row.snippet ?? [facets.project, facets.origin].compactMap { $0 }
-            .joined(separator: " · ")
-        content.secondaryAttributedText = ModelChipText.detailLine(
-            chip: ModelBadge.chip(for: entry), rest: rest,
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
-            restColor: row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent)
+        content.secondaryAttributedText = ModelChipText.line(
+            chip: ModelBadge.chip(for: entry),
+            pieces: ModelChipText.facetPieces(facets, snippet: row.snippet),
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
         content.secondaryTextProperties.numberOfLines = 1
         content.textToSecondaryTextVerticalPadding = 2
         content.prefersSideBySideTextAndSecondaryText = false

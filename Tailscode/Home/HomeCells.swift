@@ -99,16 +99,22 @@ struct SavedCard: Hashable {
     let chat: SavedChat
     let title: String
     let detail: String
+    let pieces: [(text: String, color: UIColor)]
     let unread: Bool
 
     init(chat: SavedChat, unread: Bool) {
         self.chat = chat
         self.unread = unread
         self.title = chat.displayTitle
-        var parts: [String] = [chat.profileName]
-        if let project = chat.projectName { parts.append(project) }
-        parts.append(chat.updatedAt.formatted(.relative(presentation: .named)))
-        self.detail = parts.joined(separator: " · ")
+        var pieces: [(text: String, color: UIColor)] = []
+        if let project = chat.projectName {
+            pieces.append((project, Theme.Color.secondaryLabel))
+        }
+        pieces.append((chat.profileName, Theme.Color.tertiaryLabel))
+        pieces.append(
+            (chat.updatedAt.formatted(.relative(presentation: .named)), Theme.Color.tertiaryLabel))
+        self.pieces = pieces
+        self.detail = pieces.map(\.text).joined(separator: " · ")
     }
 
     static func == (lhs: SavedCard, rhs: SavedCard) -> Bool {
@@ -126,13 +132,16 @@ struct LiveCard: Hashable {
     let entry: SessionEntry
     let title: String
     let detail: String
+    let pieces: [(text: String, color: UIColor)]
     let age: String
     let presence: Presence
     let chip: ModelChip?
 
     /// `activity` is what the agent is doing this second, known only for turns
-    /// this device is streaming; it displaces the static model/server line
-    /// because "Running Edit" is the more useful thing to see on a live card.
+    /// this device is streaming; it wears the accent and displaces the static
+    /// model/server line because "Running Edit" is the more useful thing to see
+    /// on a live card. An idle line leads with the project a step up from the
+    /// server, the same read the chat list gives.
     init(entry: SessionEntry, presence: Presence, activity: String?) {
         self.entry = entry
         self.presence = presence
@@ -142,15 +151,15 @@ struct LiveCard: Hashable {
             ? String(localized: "New conversation") : trimmed
         self.age = compactAge(entry.session.updatedAt)
         let project = entry.session.directory.map { ($0 as NSString).lastPathComponent }
-        if let activity {
-            self.detail = [project ?? entry.profileName, activity].joined(separator: " · ")
-        } else if let agents = Self.agentActivity(entry.session) {
-            self.detail = [project ?? entry.profileName, agents].joined(separator: " · ")
+        var pieces: [(text: String, color: UIColor)] = []
+        if let project { pieces.append((project, Theme.Color.secondaryLabel)) }
+        if let doing = activity ?? Self.agentActivity(entry.session) {
+            pieces.append((doing, Theme.Color.accent))
         } else {
-            var parts = [entry.profileName]
-            if let project { parts.append(project) }
-            self.detail = parts.joined(separator: " · ")
+            pieces.append((entry.profileName, Theme.Color.tertiaryLabel))
         }
+        self.pieces = pieces
+        self.detail = pieces.map(\.text).joined(separator: " · ")
         self.chip = ModelBadge.chip(for: entry)
     }
 
@@ -222,6 +231,7 @@ struct RecentCard: Hashable {
     let entry: SessionEntry
     let title: String
     let detail: String
+    let pieces: [(text: String, color: UIColor)]
     let unread: Bool
     let chip: ModelChip?
 
@@ -232,12 +242,18 @@ struct RecentCard: Hashable {
         self.title =
             AgentSession.isPlaceholderTitle(trimmed)
             ? String(localized: "New conversation") : trimmed
-        var parts: [String] = [entry.profileName]
+        var pieces: [(text: String, color: UIColor)] = []
         if let directory = entry.session.directory {
-            parts.append((directory as NSString).lastPathComponent)
+            pieces.append(((directory as NSString).lastPathComponent, Theme.Color.secondaryLabel))
         }
-        parts.append(entry.session.updatedAt.formatted(.relative(presentation: .named)))
-        self.detail = parts.joined(separator: " · ")
+        pieces.append((entry.profileName, Theme.Color.tertiaryLabel))
+        pieces.append(
+            (
+                entry.session.updatedAt.formatted(.relative(presentation: .named)),
+                Theme.Color.tertiaryLabel
+            ))
+        self.pieces = pieces
+        self.detail = pieces.map(\.text).joined(separator: " · ")
         self.chip = ModelBadge.chip(for: entry)
     }
 
@@ -354,10 +370,9 @@ final class LiveSessionCell: GlassCardCell {
 
     func configure(_ card: LiveCard) {
         titleLabel.text = card.title
-        detailLabel.attributedText = ModelChipText.detailLine(
-            chip: card.chip, rest: card.detail,
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
-            restColor: Theme.Color.secondaryLabel)
+        detailLabel.attributedText = ModelChipText.line(
+            chip: card.chip, pieces: card.pieces,
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
         ageLabel.text = card.age
         let activity: ActivityKind =
             switch card.presence {
@@ -611,19 +626,21 @@ final class RecentSessionCell: GlassCardCell {
         apply(
             symbol: card.entry.backendType.symbolName,
             tint: card.entry.backendType.brandColor,
-            title: card.title, detail: card.detail, unread: card.unread, badge: nil,
-            chip: card.chip)
+            title: card.title, detail: card.detail, pieces: card.pieces, unread: card.unread,
+            badge: nil, chip: card.chip)
     }
 
     func configure(_ card: SavedCard) {
         apply(
             symbol: card.chat.backend.symbolName,
             tint: card.chat.backend.brandColor,
-            title: card.title, detail: card.detail, unread: card.unread, badge: "bookmark.fill")
+            title: card.title, detail: card.detail, pieces: card.pieces, unread: card.unread,
+            badge: "bookmark.fill")
     }
 
     private func apply(
-        symbol: String, tint: UIColor, title: String, detail: String, unread: Bool,
+        symbol: String, tint: UIColor, title: String, detail: String,
+        pieces: [(text: String, color: UIColor)], unread: Bool,
         badge: String?, chip: ModelChip? = nil
     ) {
         iconView.image = UIImage(systemName: symbol)?
@@ -633,10 +650,9 @@ final class RecentSessionCell: GlassCardCell {
             ? .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
             : .preferredFont(forTextStyle: .subheadline)
         titleLabel.text = title
-        detailLabel.attributedText = ModelChipText.detailLine(
-            chip: chip, rest: detail,
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
-            restColor: Theme.Color.tertiaryLabel)
+        detailLabel.attributedText = ModelChipText.line(
+            chip: chip, pieces: pieces,
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
         if let badge, let image = UIImage(
             systemName: badge,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))

@@ -37,29 +37,40 @@ enum ModelChipText {
         return text
     }
 
-    /// The whole second line: the chip leading, then the rest of the facts in the register the
-    /// caller was already using. An empty remainder is just the chip; no chip is just the facts.
-    static func detailLine(
-        chip: ModelChip?, rest: String, size: CGFloat, restColor: UIColor
+    /// The whole second line: the chip leading, then each remaining fact at its own weight —
+    /// the same three-weight read the desktop rows give, with the separators kept at the
+    /// quietest weight so they never outrank a fact. An empty piece vanishes rather than
+    /// leaving a stranded dot; no chip is just the facts.
+    static func line(
+        chip: ModelChip?, pieces: [(text: String, color: UIColor)], size: CGFloat
     ) -> NSAttributedString {
-        let font = UIFont.preferredFont(forTextStyle: .caption2)
-            .withSize(size)
+        let font = UIFont.preferredFont(forTextStyle: .caption2).withSize(size)
         let line = NSMutableAttributedString()
-        if let chip {
-            line.append(runs(for: chip, size: size))
-            if !rest.isEmpty {
+        if let chip { line.append(runs(for: chip, size: size)) }
+        for piece in pieces where !piece.text.isEmpty {
+            if line.length > 0 {
                 line.append(
                     NSAttributedString(
                         string: " · ",
-                        attributes: [.font: font, .foregroundColor: restColor]))
+                        attributes: [.font: font, .foregroundColor: Theme.Color.tertiaryLabel]))
             }
-        }
-        if !rest.isEmpty {
             line.append(
                 NSAttributedString(
-                    string: rest,
-                    attributes: [.font: font, .foregroundColor: restColor]))
+                    string: piece.text,
+                    attributes: [.font: font, .foregroundColor: piece.color]))
         }
         return line
+    }
+
+    /// A working row says what it is working on in the accent and nothing else; an idle row
+    /// leads with the project a step up from the origin, exactly as the desktop detail lines do.
+    static func facetPieces(
+        _ facets: SessionRowFacets, snippet: String?
+    ) -> [(text: String, color: UIColor)] {
+        if let snippet, !snippet.isEmpty { return [(snippet, Theme.Color.accent)] }
+        var pieces: [(text: String, color: UIColor)] = []
+        if let project = facets.project { pieces.append((project, Theme.Color.secondaryLabel)) }
+        if let origin = facets.origin { pieces.append((origin, Theme.Color.tertiaryLabel)) }
+        return pieces
     }
 }
