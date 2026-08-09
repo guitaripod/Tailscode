@@ -50,6 +50,30 @@ import Testing
         }
     }
 
+    @Test func everyHueBucketReadsOnEveryCanvas() {
+        for palette in Self.canvases {
+            for bucket in 0..<12 {
+                let hex = ModelTint.bucketHex(bucket, in: palette)
+                let ratio = Contrast.ratio(hex, on: palette.canvas) ?? 0
+                #expect(
+                    ratio >= Contrast.readable - 0.05,
+                    "bucket \(bucket) reads at \(ratio):1 on \(palette.name)")
+            }
+        }
+    }
+
+    @Test func aNamelessModelStillGetsAStableIdentity() {
+        #expect(ModelTint.hueBucket("Glm-4.7 Air") == ModelTint.hueBucket("glm-4.7 air"))
+        #expect(ModelTint.identityClass(family: nil, name: "Glm-4.7 Air").hasPrefix("model-hue-"))
+        #expect(ModelTint.identityClass(family: .fable, name: "Fable") == "model-fable")
+        let bucket = ModelTint.hueBucket("Qwen3 14b")
+        for palette in Self.canvases {
+            #expect(
+                ModelTint.identityHex(family: nil, name: "Qwen3 14b", in: palette)
+                    == ModelTint.bucketHex(bucket, in: palette))
+        }
+    }
+
     @Test func familiesAreRecognisedFromAliasAndFullID() {
         #expect(ModelTint.family("claude-fable-5") == .fable)
         #expect(ModelTint.family("fable") == .fable)
@@ -60,7 +84,13 @@ import Testing
         #expect(ModelTint.family("grok-code-fast-1") == .grok)
         #expect(ModelTint.family("gpt-5.2") == .gpt)
         #expect(ModelTint.family("gemini-3-pro") == .gemini)
-        #expect(ModelTint.family("ollama/qwen3:14b") == nil)
+        #expect(ModelTint.family("gemma3:4b") == .gemini)
+        #expect(ModelTint.family("ollama/qwen3:14b") == .qwen)
+        #expect(ModelTint.family("deepseek-v3.2") == .deepseek)
+        #expect(ModelTint.family("meta-llama/llama-4-maverick") == .llama)
+        #expect(ModelTint.family("mistral-large-2") == .mistral)
+        #expect(ModelTint.family("ollama/glm-4.7-air") == nil)
+        #expect(ModelTint.effortClass("thinking") == "effort-medium")
     }
 
     @Test func effortSynonymsFoldAndUnknownStaysQuiet() {
@@ -106,7 +136,7 @@ import Testing
         #expect(ModelBadge.chip(model: nil, effort: "high") == nil)
         #expect(
             ModelBadge.chip(model: "ollama/qwen3:14b", effort: nil)
-                == ModelChip(name: "Ollama/qwen3 14b", family: nil, effort: nil))
+                == ModelChip(name: "Qwen3 14b", family: .qwen, effort: nil))
         #expect(ModelBadge.chip(model: "sonnet", effort: "ultracode")?.isUltracode == true)
     }
 }

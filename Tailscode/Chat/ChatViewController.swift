@@ -3068,8 +3068,10 @@ final class ChatViewController: UIViewController {
         let item = UIBarButtonItem(
             title: label, image: nil, primaryAction: nil,
             menu: UIMenu(title: String(localized: "Model"), children: elements))
-        if let raw = viewModel.displayedModel?.modelID, let family = ModelTint.family(raw) {
-            item.tintColor = Theme.Color.modelFamily(family)
+        if let raw = viewModel.displayedModel?.modelID,
+            let chip = ModelBadge.chip(model: raw, effort: nil)
+        {
+            item.tintColor = Theme.Color.modelIdentity(chip)
         }
         item.accessibilityLabel = String(localized: "Model: \(label)")
         return item

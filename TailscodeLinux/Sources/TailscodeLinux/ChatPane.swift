@@ -1680,7 +1680,8 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private var modelTintClasses: [String] {
-        ModelTint.Family.allCases.map(ModelTint.cssClass) + ["model-plain"]
+        ModelTint.Family.allCases.map(ModelTint.cssClass) + (0..<12).map { "model-hue-\($0)" }
+            + ["model-plain"]
     }
 
     private var effortTintClasses: [String] {
@@ -1689,8 +1690,8 @@ final class ChatPane: @unchecked Sendable {
 
     private func modelTintClass() -> String? {
         let active = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
-        guard let active else { return nil }
-        return ModelTint.family(active).map(ModelTint.cssClass) ?? "model-plain"
+        guard let active, let chip = ModelBadge.chip(model: active, effort: nil) else { return nil }
+        return ModelTint.identityClass(family: chip.family, name: chip.name)
     }
 
     /// What the chat is actually being answered by: the explicit pick, else the model observed on

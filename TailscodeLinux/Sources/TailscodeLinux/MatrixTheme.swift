@@ -835,6 +835,9 @@ enum MatrixTheme {
         var pairs: [(cls: String, hex: String)] = ModelTint.Family.allCases.map {
             (ModelTint.cssClass($0), ModelTint.hex($0, in: palette))
         }
+        for bucket in 0..<12 {
+            pairs.append(("model-hue-\(bucket)", ModelTint.bucketHex(bucket, in: palette)))
+        }
         pairs.append(("model-plain", palette.textDim))
         for tier in ModelTint.effortTiers {
             if let hex = ModelTint.effortHex(tier, in: palette) {

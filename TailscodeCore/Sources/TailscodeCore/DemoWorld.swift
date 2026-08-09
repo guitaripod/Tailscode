@@ -326,16 +326,20 @@ public enum DemoWorld {
         sessions: [
             AgentSession(
                 id: "demo-o1", agentType: .openCode, title: "Refactor the auth module to async/await",
-                directory: "/home/demo/dev/acme-api", createdAt: ago(13_200), updatedAt: ago(540)),
+                directory: "/home/demo/dev/acme-api", createdAt: ago(13_200), updatedAt: ago(540),
+                model: "gpt-5.1-codex", reasoningEffort: "high"),
             AgentSession(
                 id: "demo-o2", agentType: .openCode, title: "Ship the pricing page A/B test",
-                directory: "/home/demo/dev/acme-web", createdAt: ago(11_400), updatedAt: ago(10_200)),
+                directory: "/home/demo/dev/acme-web", createdAt: ago(11_400), updatedAt: ago(10_200),
+                model: "ollama/qwen3:14b", reasoningEffort: "thinking"),
             AgentSession(
                 id: "demo-o3", agentType: .openCode, title: "Hunt the memory leak in ImagePipeline",
-                directory: "/home/demo/dev/acme-ios", createdAt: ago(94_000), updatedAt: ago(90_000)),
+                directory: "/home/demo/dev/acme-ios", createdAt: ago(94_000), updatedAt: ago(90_000),
+                model: "gemini-3-pro"),
             AgentSession(
                 id: "demo-o4", agentType: .openCode, title: "Write the v2.3 release notes",
-                directory: "/home/demo/dev/acme-api", createdAt: ago(267_000), updatedAt: ago(266_000)),
+                directory: "/home/demo/dev/acme-api", createdAt: ago(267_000), updatedAt: ago(266_000),
+                model: "ollama/glm-4.7-air:latest"),
         ],
         models: [
             ModelInfo(id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic"),

@@ -64,13 +64,15 @@ public enum ModelBadge {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         // Raw catalog ids ("ollama/qwen3:14b", "hf.co/org/Qwen3.6-…:IQ2_M")
-        // read better as names: drop the provider prefix, drop a HF quant tag,
-        // and let the size survive a tag split ("qwen3 14b").
+        // read better as names: drop the provider prefix — a path names where a
+        // model is served, never what it is — drop a HF quant tag, and let the
+        // size survive a tag split ("qwen3 14b").
         var cleaned = trimmed
-        if cleaned.contains("hf.co/") {
-            if let last = cleaned.split(separator: "/").last {
-                cleaned = String(last.split(separator: ":").first ?? last)
-            }
+        if cleaned.contains("/"), let last = cleaned.split(separator: "/").last {
+            cleaned = String(last)
+        }
+        if trimmed.lowercased().contains("hf.co/") {
+            cleaned = String(cleaned.split(separator: ":").first ?? Substring(cleaned))
         } else if cleaned.contains(":") {
             cleaned = cleaned.split(separator: ":")
                 .filter { $0.lowercased() != "latest" }

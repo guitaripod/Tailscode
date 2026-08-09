@@ -109,13 +109,25 @@ enum MacTheme {
         /// corrects them when a theme is on, and the platform's own light and dark grounds do when
         /// it is not. A family the catalog does not recognise keeps the secondary register.
         static func modelFamily(_ family: ModelTint.Family?) -> NSColor {
+            modelIdentity(family: family, name: nil)
+        }
+
+        /// The family's authored hue, or — for a model outside the catalog — the stable hue its
+        /// own name hashes to, so an opencode fleet of qwens and glms is a spread of colours
+        /// rather than a column of grey. No name at all keeps the secondary register.
+        static func modelIdentity(_ chip: ModelChip) -> NSColor {
+            modelIdentity(family: chip.family, name: chip.name)
+        }
+
+        private static func modelIdentity(family: ModelTint.Family?, name: String?) -> NSColor {
             NSColor(name: nil) { appearance in
-                guard let family else { return .secondaryLabelColor }
                 let dark = appearance.isDark
-                let hex =
-                    ThemePalette.palette(themeID: ThemeSelection.themeID, dark: dark)
-                    .map { ModelTint.hex(family, in: $0) }
-                    ?? ModelTint.hex(family, onCanvas: systemCanvas(dark: dark), isDark: dark)
+                guard family != nil || name != nil else { return .secondaryLabelColor }
+                let canvas =
+                    ThemePalette.palette(themeID: ThemeSelection.themeID, dark: dark)?.canvas
+                    ?? systemCanvas(dark: dark)
+                let hex = ModelTint.identityHex(
+                    family: family, name: name ?? "", onCanvas: canvas, isDark: dark)
                 return NSColor(hex: hex) ?? .secondaryLabelColor
             }
         }

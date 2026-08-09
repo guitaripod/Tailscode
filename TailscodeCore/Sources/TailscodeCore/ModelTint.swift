@@ -13,11 +13,15 @@ import Foundation
 public enum ModelTint {
     public enum Family: String, CaseIterable, Sendable {
         case fable, opus, sonnet, haiku, grok, gpt, gemini
+        case qwen, deepseek, llama, mistral
     }
 
+    /// Matched against the id's last path segment, because a provider prefix is not a family:
+    /// `ollama/glm-4.7-air` must not wear Llama's blue for the crime of being served by ollama.
     public static func family(_ raw: String) -> Family? {
-        let id = raw.lowercased()
+        let id = String(raw.lowercased().split(separator: "/").last ?? "")
         if id.contains("fable") || id.contains("mythos") { return .fable }
+        if id.contains("gemma") { return .gemini }
         for family in Family.allCases where id.contains(family.rawValue) {
             return family
         }
@@ -36,7 +40,49 @@ public enum ModelTint {
         case .grok: return isDark ? "#e8e8eb" : "#1f1f1f"
         case .gpt: return "#10a37f"
         case .gemini: return "#4285f4"
+        case .qwen: return "#7a5af5"
+        case .deepseek: return "#4d6bfe"
+        case .llama: return "#1877f2"
+        case .mistral: return "#f2620f"
         }
+    }
+
+    /// A model outside the authored families still deserves to be told apart in a list: its name
+    /// is hashed onto one of twelve evenly spaced hues, so `glm` is the same colour on every desk
+    /// and in every palette without anyone having authored an identity for it. The hash is its
+    /// own (djb2) rather than the language's, whose hashing is salted per process — a colour that
+    /// changed on every launch would read as a different model.
+    public static func hueBucket(_ name: String) -> Int {
+        var hash: UInt32 = 5381
+        for byte in name.lowercased().utf8 {
+            hash = hash &* 33 &+ UInt32(byte)
+        }
+        return Int(hash % 12)
+    }
+
+    public static func bucketHex(_ bucket: Int) -> String {
+        let hue = Double((bucket % 12 + 12) % 12) * 30
+        return hsl(hue: hue, saturation: 0.58, lightness: 0.60)
+    }
+
+    public static func bucketHex(_ bucket: Int, in palette: Palette) -> String {
+        published(bucketHex(bucket), on: palette.canvas)
+    }
+
+    private static func hsl(hue: Double, saturation: Double, lightness: Double) -> String {
+        let c = (1 - abs(2 * lightness - 1)) * saturation
+        let x = c * (1 - abs((hue / 60).truncatingRemainder(dividingBy: 2) - 1))
+        let m = lightness - c / 2
+        let (r, g, b): (Double, Double, Double) =
+            switch Int(hue / 60) % 6 {
+            case 0: (c, x, 0)
+            case 1: (x, c, 0)
+            case 2: (0, c, x)
+            case 3: (0, x, c)
+            case 4: (x, 0, c)
+            default: (c, 0, x)
+            }
+        return Contrast.hex(red: r + m, green: g + m, blue: b + m)
     }
 
     /// The effort's heat, authored once for every desk: minimal and low are the same cold slate —
@@ -46,7 +92,7 @@ public enum ModelTint {
     public static func authoredEffortHex(_ effort: String) -> String? {
         switch effort.lowercased() {
         case "minimal", "none", "low": return "#8494a6"
-        case "medium": return "#3aa8a0"
+        case "medium", "thinking": return "#3aa8a0"
         case "high": return "#d9a13c"
         case "xhigh": return "#ee8434"
         case "max": return "#f25c3f"
@@ -93,6 +139,23 @@ public enum ModelTint {
     /// The style class a text client hangs the colour on, generated per palette by its stylesheet.
     public static func cssClass(_ family: Family) -> String { "model-\(family.rawValue)" }
 
+    /// The one identity resolver every chip reads: an authored hue for a recognised family, the
+    /// name's own bucketed hue for everyone else, so no model is ever left grey merely for being
+    /// outside the famous few.
+    public static func identityClass(family: Family?, name: String) -> String {
+        family.map(cssClass) ?? "model-hue-\(hueBucket(name))"
+    }
+
+    public static func identityHex(
+        family: Family?, name: String, onCanvas canvas: String, isDark: Bool
+    ) -> String {
+        published(family.map { authoredHex($0, isDark: isDark) } ?? bucketHex(hueBucket(name)), on: canvas)
+    }
+
+    public static func identityHex(family: Family?, name: String, in palette: Palette) -> String {
+        identityHex(family: family, name: name, onCanvas: palette.canvas, isDark: palette.isDark)
+    }
+
     public static func effortClass(_ effort: String) -> String? {
         if effort.lowercased() == Ultracode.effortLevel { return "effort-ultracode" }
         switch authoredEffortHex(effort) {
@@ -108,6 +171,7 @@ public enum ModelTint {
     private static func canonicalEffort(_ effort: String) -> String {
         switch effort.lowercased() {
         case "minimal", "none": return "low"
+        case "thinking": return "medium"
         default: return effort.lowercased()
         }
     }

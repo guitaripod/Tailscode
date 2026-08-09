@@ -319,7 +319,7 @@ enum SidebarRow {
     /// floor.
     private static func modelChips(_ chip: ModelChip) -> [UnsafeMutablePointer<GtkWidget>] {
         var chips = [
-            makePill(chip.name, css: chip.family.map(ModelTint.cssClass) ?? "model-plain")
+            makePill(chip.name, css: ModelTint.identityClass(family: chip.family, name: chip.name))
         ]
         if let effort = chip.effort {
             if chip.isUltracode {

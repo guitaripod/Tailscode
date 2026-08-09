@@ -247,7 +247,7 @@ final class SidebarSessionCell: NSView {
         let font = NSFont.systemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .semibold)
         let text = NSMutableAttributedString(
             string: chip.name,
-            attributes: [.font: font, .foregroundColor: MacTheme.Color.modelFamily(chip.family)])
+            attributes: [.font: font, .foregroundColor: MacTheme.Color.modelIdentity(chip)])
         guard let effort = chip.effort else { return text }
         text.append(NSAttributedString(string: " ", attributes: [.font: font]))
         if chip.isUltracode {

@@ -446,7 +446,8 @@ final class ComposerView: NSView {
         pills.setEffortTitle(effortPillText())
         let activeModel = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
         pills.setModelTint(
-            activeModel.map { MacTheme.Color.modelFamily(ModelTint.family($0)) })
+            activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
+                .map(MacTheme.Color.modelIdentity))
         let effortWord = effortPillText()
         if effortWord.lowercased() == Ultracode.effortLevel {
             pills.setEffortTint(nil)

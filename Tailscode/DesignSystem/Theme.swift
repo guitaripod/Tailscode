@@ -118,12 +118,25 @@ enum Theme {
         /// corrects them when a theme is on, and the platform's own light and dark grounds do when
         /// it is not. A family the catalog does not recognise keeps the secondary register.
         static func modelFamily(_ family: ModelTint.Family?) -> UIColor {
-            UIColor { traits in
-                guard let family else { return .secondaryLabel }
+            guard let family else { return .secondaryLabel }
+            return UIColor { traits in
                 let dark = traits.userInterfaceStyle == .dark
                 let hex =
                     traits.palette.map { ModelTint.hex(family, in: $0) }
                     ?? ModelTint.hex(family, onCanvas: systemCanvas(dark: dark), isDark: dark)
+                return UIColor(hex: hex) ?? .secondaryLabel
+            }
+        }
+
+        /// The family's authored hue, or — for a model outside the catalog — the stable hue its
+        /// own name hashes to, so an opencode fleet of qwens and glms is a spread of colours
+        /// rather than a column of grey.
+        static func modelIdentity(_ chip: ModelChip) -> UIColor {
+            UIColor { traits in
+                let dark = traits.userInterfaceStyle == .dark
+                let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
+                let hex = ModelTint.identityHex(
+                    family: chip.family, name: chip.name, onCanvas: canvas, isDark: dark)
                 return UIColor(hex: hex) ?? .secondaryLabel
             }
         }
