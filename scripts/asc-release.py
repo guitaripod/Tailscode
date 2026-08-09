@@ -7,6 +7,12 @@ notes every locale already carries, attach the build once it is VALID, then
 submit — reusing an open review submission rather than making a second one,
 which ASC refuses.
 
+Every step is also checked rather than assumed: notes are read back after they
+are written, the build is read back after it is attached, a version carrying a
+Game Center build declares Game Center before it is offered for review, and a
+version still reading PREPARE_FOR_SUBMISSION at the end is a failure however
+cleanly the calls returned.
+
 Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.9 25 --no-submit
 """
@@ -14,6 +20,7 @@ import json
 import os
 import sys
 import time
+from typing import NoReturn
 
 sys.path.insert(0, os.path.expanduser("~/Dev/operator/lib"))
 import asc  # noqa: E402
@@ -23,7 +30,7 @@ APP = "6791660932"
 PLATFORM = "IOS"
 
 
-def die(message: str) -> None:
+def die(message: str) -> NoReturn:
     print(message, file=sys.stderr)
     sys.exit(1)
 
@@ -54,17 +61,34 @@ def version_record(marketing: str) -> dict:
 
 
 def write_notes(version_id: str, marketing: str) -> None:
+    """Every locale ends up carrying this version's own words, and the ones it
+    got are read back rather than assumed.
+
+    A missing entry is fatal instead of a shrug: 1.5 through 1.9 all shipped
+    wearing the 1.5 notes, because leaving the localizations alone looks exactly
+    like writing them when nobody checks. A locale the file does not cover falls
+    back to en-US and says so, which is a translation debt worth seeing."""
     notes = json.load(open(os.path.join(ROOT, "docs/release-notes.json"))).get(marketing)
     if not notes:
-        print(f"no release notes for {marketing} — leaving localizations alone")
-        return
-    for row in asc.get(
+        die(f"docs/release-notes.json has no entry for {marketing} — write the notes first")
+    rows = asc.get(
         f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations",
         **{"limit": "50"},
-    ).get("data", []):
+    ).get("data", [])
+    if not rows:
+        die(f"version {marketing} carries no localizations to write notes into")
+    wanted = {}
+    for row in rows:
         locale = row["attributes"]["locale"]
-        text = notes.get(locale) or notes.get("en-US")
+        text = notes.get(locale)
+        if text is None:
+            text = notes.get("en-US")
+            if text is None:
+                die(f"no notes for {locale} and no en-US to fall back to")
+            print(f"  {locale} falls back to en-US")
+        wanted[locale] = text
         if row["attributes"].get("whatsNew") == text:
+            print(f"  notes {locale} already current")
             continue
         asc.patch(
             f"/v1/appStoreVersionLocalizations/{row['id']}",
@@ -76,7 +100,64 @@ def write_notes(version_id: str, marketing: str) -> None:
                 }
             },
         )
-        print(f"  notes {locale}")
+        print(f"  notes {locale} ({len(text)} chars)")
+    unwritten = [
+        row["attributes"]["locale"]
+        for row in asc.get(
+            f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations",
+            **{"limit": "50"},
+        ).get("data", [])
+        if row["attributes"].get("whatsNew") != wanted.get(row["attributes"]["locale"])
+    ]
+    if unwritten:
+        die(f"notes did not stick for {', '.join(unwritten)}")
+    extra = sorted(set(notes) - set(wanted))
+    if extra:
+        print(f"  notes on file for locales this version has not got: {', '.join(extra)}")
+
+
+def ensure_game_center(version_id: str) -> None:
+    """A build signed with the Game Center entitlement cannot be reviewed until
+    the version it rides in declares Game Center too, and the version record
+    does not inherit it — the submission fails with
+    STATE_ERROR.BUILD_INDICATES_GAME_CENTER_ENABLED, naming the build rather than
+    the missing declaration. Create the link and enable it; `enabled` is refused
+    on the create and has to be a second call."""
+    try:
+        detail = asc.get(f"/v1/apps/{APP}/gameCenterDetail").get("data")
+    except Exception:
+        detail = None
+    if not detail:
+        return
+    existing = asc.get(f"/v1/appStoreVersions/{version_id}/gameCenterAppVersion").get("data")
+    if existing and existing["attributes"].get("enabled"):
+        print("game center already declared for this version")
+        return
+    row = existing or asc.post(
+        "/v1/gameCenterAppVersions",
+        {
+            "data": {
+                "type": "gameCenterAppVersions",
+                "relationships": {
+                    "appStoreVersion": {
+                        "data": {"type": "appStoreVersions", "id": version_id}
+                    }
+                },
+            }
+        },
+    )["data"]
+    if not row["attributes"].get("enabled"):
+        asc.patch(
+            f"/v1/gameCenterAppVersions/{row['id']}",
+            {
+                "data": {
+                    "type": "gameCenterAppVersions",
+                    "id": row["id"],
+                    "attributes": {"enabled": True},
+                }
+            },
+        )
+    print("game center declared for this version")
 
 
 def wait_for_build(number: str) -> dict:
@@ -116,7 +197,12 @@ def main() -> None:
         f"/v1/appStoreVersions/{version_id}/relationships/build",
         {"data": {"type": "builds", "id": build["id"]}},
     )
+    attached = asc.get(f"/v1/appStoreVersions/{version_id}/build").get("data")
+    if not attached or attached["id"] != build["id"]:
+        die(f"build {number} did not attach to {marketing}")
     print(f"build {number} attached to {marketing}")
+
+    ensure_game_center(version_id)
 
     if not submit:
         return
@@ -174,7 +260,12 @@ def main() -> None:
             }
         },
     )
-    print(f"submitted {marketing} ({number}) for review")
+    state = asc.get(f"/v1/appStoreVersions/{version_id}").get("data", {}).get(
+        "attributes", {}
+    ).get("appStoreState")
+    if state == "PREPARE_FOR_SUBMISSION":
+        die(f"{marketing} still reads PREPARE_FOR_SUBMISSION — nothing was submitted")
+    print(f"submitted {marketing} ({number}) for review — {state}")
 
 
 if __name__ == "__main__":

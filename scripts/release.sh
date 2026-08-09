@@ -19,6 +19,33 @@ SIGNING=$HOME/.config/midgar/signing
 
 [ -d "$KIT" ] || { echo "no CodingAgentKit at $KIT" >&2; exit 1; }
 
+# A build number that was uploaded once is spent forever, and ASC only says so
+# after the staging, the archive and the upload have all been paid for. Ask first.
+python3 - "$BUILD" <<'PY' || exit 1
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/Dev/operator/lib"))
+try:
+    import asc
+except ImportError:
+    print("!! no operator asc lib — skipping the spent-build-number check", file=sys.stderr)
+    sys.exit(0)
+wanted = sys.argv[1]
+try:
+    rows = asc.get("/v1/builds", **{"filter[app]": "6791660932", "limit": "50",
+                                    "sort": "-uploadedDate"}).get("data", [])
+except Exception as exc:
+    print(f"!! could not reach App Store Connect ({type(exc).__name__}) — "
+          "skipping the spent-build-number check", file=sys.stderr)
+    sys.exit(0)
+taken = {r["attributes"].get("version") for r in rows}
+if wanted in taken:
+    numeric = [int(v) for v in taken if v and v.isdigit()]
+    print(f"build {wanted} is already on App Store Connect — next free is "
+          f"{max(numeric) + 1 if numeric else '?'}", file=sys.stderr)
+    sys.exit(1)
+print(f"build {wanted} is free")
+PY
+
 echo "== staging $ROOT → $STAGE"
 mkdir -p "$STAGE"
 rsync -a --delete \
