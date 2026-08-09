@@ -104,6 +104,7 @@ enum ParityManifest {
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")
         case .quickAsk: return .implemented("QuickAskViewController")
+        case .updateCenter: return .implemented("UpdateCenterViewController")
         }
     }
 }

@@ -17,6 +17,8 @@ final class HomeViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
+    private let settingsButton = UpdateMarkButton()
+    private lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
     private let orbView = PresenceOrbView()
     private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
@@ -47,10 +49,8 @@ final class HomeViewController: UIViewController {
         title = "Tailscode"
         navigationItem.largeTitleDisplayMode = .always
         view.backgroundColor = Theme.Color.groupedBackground
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "gearshape"), style: .plain, target: self,
-            action: #selector(openSettings))
-        updateDemoBadge()
+        settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        updateLeftBarItems()
         updateComposeButton()
         configureCollectionView()
         configureDataSource()
@@ -251,6 +251,9 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),
             name: ConnectionController.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(updatesDidChange),
+            name: UpdateLedger.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.didEnterBackgroundNotification,
             UIApplication.willTerminateNotification,
@@ -270,7 +273,7 @@ final class HomeViewController: UIViewController {
     @objc private func connectionsDidChange() {
         viewModel.refreshSources()
         resolvedComposeTarget = nil
-        updateDemoBadge()
+        updateLeftBarItems()
         updateComposeButton()
         updateComposer()
         applySnapshot()
@@ -300,15 +303,25 @@ final class HomeViewController: UIViewController {
         applySnapshot()
     }
 
-    /// The demo is a full, believable two-server world, which is exactly why it
-    /// needs to say so on every screen — and why the way out of it belongs here
-    /// rather than three taps deep in Settings.
-    private func updateDemoBadge() {
-        let settings = navigationItem.leftBarButtonItem
-        guard ConnectionController.shared.isDemoMode else {
-            navigationItem.leftBarButtonItems = [settings].compactMap { $0 }
-            return
-        }
+    /// Everything the left of the bar says about what this app is doing, decided in one place.
+    ///
+    /// The demo is a full, believable two-server world, which is exactly why it needs to say so on
+    /// every screen — and why the way out of it belongs here rather than three taps deep in
+    /// Settings. The standing update mark rides the same slot, on the gear itself. Two methods
+    /// each rebuilding `leftBarButtonItems` from what they found there fought: whichever ran last
+    /// won, and the other's item vanished.
+    private func updateLeftBarItems() {
+        settingsButton.apply(UpdateLedger.rollup())
+        var items = [settingsItem]
+        if ConnectionController.shared.isDemoMode { items.append(demoBadge()) }
+        navigationItem.leftBarButtonItems = items
+    }
+
+    @objc private func updatesDidChange() {
+        settingsButton.apply(UpdateLedger.rollup())
+    }
+
+    private func demoBadge() -> UIBarButtonItem {
         var config = UIButton.Configuration.tinted()
         config.title = String(localized: "DEMO")
         config.baseForegroundColor = Theme.Color.warning
@@ -335,8 +348,7 @@ final class HomeViewController: UIViewController {
                 ConnectionController.shared.leaveDemoMode()
             },
         ])
-        navigationItem.leftBarButtonItems = [settings, UIBarButtonItem(customView: button)]
-            .compactMap { $0 }
+        return UIBarButtonItem(customView: button)
     }
 
     /// Opens the add-server flow from wherever the app is, so the Home screen

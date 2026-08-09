@@ -46,6 +46,10 @@ final class MainWindowController: NSWindowController {
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
     private var analyticsWindow: AnalyticsWindowController?
+    private var updateWindow: UpdateWindowController?
+    /// The settings toolbar item's button, which carries the standing mark. Weak because the
+    /// toolbar owns its item's view, and this is only the handle that repaints the dot.
+    private weak var updateMark: UpdateMarkButton?
     private var watchFeed: MediaFeed?
     private var watchCheckedAt: Date?
     private var watchLoad: Task<Void, Never>?
@@ -75,10 +79,16 @@ final class MainWindowController: NSWindowController {
             self?.resolvePendingBindings()
         }
         startUsagePolling()
+        MacUpdateWatch.shared.start()
         NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyTheme() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: UpdateLedger.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMark?.render() }
         }
         if !shortcuts.issues.isEmpty {
             setNotice(
@@ -448,6 +458,7 @@ final class MainWindowController: NSWindowController {
         applyUIScale()
         transcript.applyPaneColours()
         splitPanes.eachPane { $0.applyPaneColours() }
+        updateMark?.render()
     }
 
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
@@ -455,10 +466,21 @@ final class MainWindowController: NSWindowController {
     func presentServers() {
         if serversWindow == nil {
             serversWindow = ServersWindow { [weak self] in
+                MacUpdateWatch.shared.noteProfilesChanged()
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
         }
         serversWindow?.present()
+    }
+
+    /// The Update Center, one window per app, held in a property for the same reason the analytics
+    /// window is: a window presented from a local is dead on arrival — released while shown, its
+    /// buttons do nothing.
+    func presentUpdates() {
+        if updateWindow == nil {
+            updateWindow = UpdateWindowController()
+        }
+        updateWindow?.present()
     }
 
     func presentPreferences() {
@@ -697,6 +719,7 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
+        sidebar.onOpenUpdates = { [weak self] in self?.presentUpdates() }
         sidebar.ultracodeSource = { [weak self] in
             var active = false
             self?.splitPanes.eachPane { active = active || $0.composer.auraActive }
@@ -1625,10 +1648,17 @@ extension MainWindowController: NSToolbarDelegate {
                 tip: Localized.text("Add, probe, update or remove a server"),
                 action: #selector(toolbarServers))
         case ToolbarID.settings:
-            return makeToolbarItem(
-                itemIdentifier, symbol: "gearshape", label: Localized.text("Settings"),
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = Localized.text("Settings")
+            item.paletteLabel = Localized.text("Settings")
+            let button = UpdateMarkButton(
+                symbol: "gearshape", label: Localized.text("Settings"),
                 tip: Localized.text("The prompt box, the transcript and the keyboard"),
-                action: #selector(toolbarSettings))
+                target: self, action: #selector(toolbarSettings))
+            button.render()
+            item.view = button
+            updateMark = button
+            return item
         default:
             return nil
         }

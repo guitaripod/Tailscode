@@ -730,6 +730,8 @@ enum MatrixTheme {
             box-shadow: inset 2px 0 0 \(warn);
         }
         .usage-footer { border-top: 1px solid alpha(currentColor, 0.15); }
+        .update-footer { border-top: 1px solid alpha(currentColor, 0.15); }
+        .update-footer:hover { background-color: alpha(currentColor, 0.04); }
         .gauge-ok, .gauge-warn, .gauge-danger {
             font-family: monospace;
             font-size: \(c(0.75));

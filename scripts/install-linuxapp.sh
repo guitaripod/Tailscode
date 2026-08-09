@@ -36,6 +36,29 @@ for pid in $OLD_PIDS; do kill -9 "$pid" 2>/dev/null || true; done
 mkdir -p "$BIN_DIR" "$APPS_DIR"
 install -m 0755 "$BUILT" "$BIN_DIR/tailscode"
 
+# The binary is installed away from the checkout that built it, so the running program has no way to
+# walk back to its source. This is the only link, and the app believes it only after checking it
+# against the binary actually running — hence the size and mtime, read after the install.
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tailscode"
+SRC=$(cd .. && pwd)
+mkdir -p "$STATE_DIR"
+BIN="$BIN_DIR/tailscode"
+DIRTY=false
+if [ -n "$(git -C "$SRC" status --porcelain 2>/dev/null)" ]; then DIRTY=true; fi
+printf '{"schema":1,"component":"tailscode-linux","installedAt":"%s","installedBy":"scripts/install-linuxapp.sh","flavour":"release","binary":{"path":"%s","size":%s,"modifiedAt":"%s"},"source":{"path":"%s","describe":"%s","commit":"%s","branch":"%s","upstream":"%s","dirty":%s},"marketingVersion":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$BIN" \
+    "$(stat -c %s "$BIN")" \
+    "$(date -u -r "$BIN" +%Y-%m-%dT%H:%M:%SZ)" \
+    "$SRC" \
+    "$(git -C "$SRC" describe --tags --always --dirty 2>/dev/null)" \
+    "$(git -C "$SRC" rev-parse HEAD 2>/dev/null)" \
+    "$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null)" \
+    "$(git -C "$SRC" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" \
+    "$DIRTY" \
+    "$("$BIN" --version 2>/dev/null | awk '{print $NF}')" \
+    > "$STATE_DIR/install.json"
+
 # The desktop entry and icons are owned by the app itself (DesktopIntegration writes the
 # GApplication-id-named files on every launch — the name GNotification and the Wayland shell
 # both match against). The script only clears the misnamed entry earlier versions wrote.

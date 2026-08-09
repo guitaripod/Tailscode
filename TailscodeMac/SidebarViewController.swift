@@ -28,6 +28,8 @@ final class SidebarViewController: NSViewController {
     var onNotice: ((String) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
     var onToast: ((String) -> Void)?
+    /// The standing mark was touched: the Update Center is the whole of what it leads to.
+    var onOpenUpdates: (() -> Void)?
     /// Which session the focused pane is actually showing. With a tiling tree, "already open"
     /// is a fact about the focused pane, not about this list's last click — an empty pane must
     /// be able to receive the row the previous pane still shows.
@@ -45,6 +47,10 @@ final class SidebarViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let rowMenu = NSMenu()
     private let usageFooter = UsageFooterView()
+    /// The standing mark: what every machine's software adds up to, rendered from the ledger and
+    /// therefore on screen before this launch has asked anybody anything. It watches the ledger
+    /// itself, so nothing above it has to remember to tell it.
+    private let updateFooter = UpdateFooterView()
     private let bulkBar = SidebarBulkBar()
     private let orb = PresenceOrbView()
     /// Whether any open pane's composer is burning the ultracode aura, answered by the hub — the
@@ -136,7 +142,9 @@ final class SidebarViewController: NSViewController {
             self, selector: #selector(orbSettingChanged), name: PresenceOrbSetting.didChange,
             object: nil)
 
-        let footer = NSStackView(views: [bulkBar, usageFooter, orb])
+        updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
+
+        let footer = NSStackView(views: [bulkBar, updateFooter, usageFooter, orb])
         footer.orientation = .vertical
         footer.alignment = .width
         footer.spacing = MacTheme.Spacing.xs

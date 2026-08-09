@@ -110,6 +110,11 @@ enum ParityManifest {
                     "the trophy case renders and reports through the same coordinator as iOS, but the dev build is ad-hoc signed without the com.apple.developer.game-center entitlement, so GKLocalPlayer cannot authenticate until the Mac app ships signed; the surface states the unavailability instead of hiding")
         case .projectBoard: return .implemented("toggleProjectScope")
         case .quickAsk: return .implemented("QuickAskPanel")
+        case .updateCenter:
+            return .partial(
+                "UpdateWindowController",
+                missing:
+                    "every server is asked, classified by Core and installed end to end through its own restart, and the app's own row reads the checkout it was built from — but nothing here installs the app itself: rebuilding the .app takes xcodegen and a multi-minute xcodebuild whose product is the very bundle the process is executing out of, so the row states that obstacle and hands over the exact build command instead, and Update everything covers the servers only")
         }
     }
 }

@@ -252,122 +252,62 @@ final class ServersWindow: NSWindowController {
         }
     }
 
-    /// An unanswered `/update` has two very different causes, and only one deserves the install
-    /// command: a bridge old enough to lack the route still answers `/health`, while a machine
-    /// that answers neither is unreachable — telling someone to reinstall a server that is merely
-    /// asleep would be worse than saying nothing.
+    /// What this machine says about its own software, asked and classified in the one place that
+    /// does it — an unanswered `/update` has two very different causes, and only one of them
+    /// deserves the install command: a bridge old enough to lack the route still answers `/health`,
+    /// while a machine that answers neither is unreachable, and telling somebody to reinstall a
+    /// server that is merely asleep would be worse than saying nothing.
     private func checkSoftware(_ profile: ConnectionProfile, into box: NSStackView) {
         setSoftwareText(box, Localized.text("Checking for updates…"))
-        guard
-            let backend = ServerDirectory.shared.backend(for: profile)
-                as? any SelfUpdatingBackend
-        else { return }
         Task { [weak self] in
-            if let update = try? await backend.updateStatus(checkingRemote: true) {
-                self?.renderSoftware(update, profile: profile, into: box)
-            } else if (try? await backend.health()) != nil {
-                self?.renderSoftware(nil, profile: profile, into: box)
-            } else {
-                self?.setSoftwareText(
-                    box,
-                    Localized.text("Could not check for updates — the server is unreachable."))
-            }
+            let reading = await MacUpdateWatch.shared.check(profile, checkingRemote: true)
+            self?.renderSoftware(reading, profile: profile, into: box)
         }
     }
 
+    /// One reading, in Core's own words. A second ladder of hand-written cases here is exactly how
+    /// this window and the Update Center came to hold two opinions about what a missing field
+    /// meant, so there is one renderer and both surfaces call it.
     private func renderSoftware(
-        _ update: ServerUpdate?, profile: ConnectionProfile, into box: NSStackView
+        _ reading: UpdateReading, profile: ConnectionProfile, into box: NSStackView
     ) {
         box.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        guard let update else {
-            box.addArrangedSubview(
-                MacDialogs.detailLabel(
-                    Localized.text(
-                        "This bridge is too old to report its software. Update it by hand:"),
-                    wraps: true))
-            box.addArrangedSubview(
-                makeInlineButton(Localized.text("Copy the install command")) { [weak self] in
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(Self.installCommand, forType: .string)
-                    self?.setStatus(Localized.text("Command copied"))
-                })
-            return
+        box.addArrangedSubview(
+            RowKit.label(
+                reading.headline, font: MacTheme.Font.emphasis(), color: reading.tone.color))
+        for line in UpdateReadingViews.lines(for: reading) {
+            box.addArrangedSubview(line)
         }
-        if update.phase == .failed {
-            let detail = update.reason ?? update.log.map { String($0.suffix(300)) } ?? ""
-            let failure = NSTextField(
-                wrappingLabelWithString: Localized.text("The last update failed. %@", detail))
-            failure.font = MacTheme.Font.caption()
-            failure.textColor = MacTheme.Color.danger
-            box.addArrangedSubview(failure)
+        guard let invitation = reading.invitation else { return }
+        if let promise = UpdateReadingViews.promise(invitation) {
+            box.addArrangedSubview(promise)
         }
-        guard update.updateAvailable else {
-            box.addArrangedSubview(
-                MacDialogs.detailLabel(Localized.text("%@ · up to date", update.version)))
-            return
-        }
-        let target = update.latestVersion
-            ?? update.latestCommit.map { String($0.prefix(7)) }
-            ?? Localized.text("latest")
-        var headline = "\(update.version) → \(target)"
-        if let behind = update.behind, behind > 0 {
-            headline += " · " + Localized.text("%@ commits behind", "\(behind)")
-        }
-        let head = NSTextField(labelWithString: headline)
-        head.font = MacTheme.Font.emphasis()
-        box.addArrangedSubview(head)
-        for change in update.changes.prefix(5) {
-            box.addArrangedSubview(MacDialogs.detailLabel("· \(change)", wraps: true))
-        }
-        if update.canUpdate {
-            box.addArrangedSubview(
-                makeInlineButton(Localized.text("Update the server")) { [weak self] in
-                    self?.runUpdate(profile, into: box)
-                })
-        } else if let reason = update.reason {
-            box.addArrangedSubview(MacDialogs.detailLabel(reason, wraps: true))
-        }
+        box.addArrangedSubview(
+            makeInlineButton(invitation.label) { [weak self] in
+                guard let self else { return }
+                guard invitation.isOneClickInstall else {
+                    if let said = UpdateReadingViews.perform(invitation, on: reading) {
+                        self.setStatus(said)
+                    }
+                    return
+                }
+                self.runUpdate(profile, into: box)
+            })
     }
 
-    /// The update is followed to the end, not to the first heartbeat: the old process keeps
-    /// answering `/health` through the whole fetch and build, so the loop watches the update's
-    /// own phase and treats a refused connection as the restart doing its job. Only a settled
-    /// phase — or ten minutes of silence — ends it.
+    /// The update is followed to the end, not to the first heartbeat — the shared watch owns that
+    /// loop, and this window only draws each step it reports.
     private func runUpdate(_ profile: ConnectionProfile, into box: NSStackView) {
         setSoftwareText(box, Localized.text("Updating — asking the server to fetch and build…"))
-        guard
-            let backend = ServerDirectory.shared.backend(for: profile)
-                as? any SelfUpdatingBackend
-        else { return }
         Task { [weak self] in
-            _ = try? await backend.startUpdate()
-            let deadline = Date().addingTimeInterval(600)
-            while Date() < deadline {
-                try? await Task.sleep(for: .seconds(3))
-                guard let self else { return }
-                guard let update = try? await backend.updateStatus(checkingRemote: false) else {
-                    self.setSoftwareText(
-                        box, Localized.text("Updating — the server is restarting…"))
-                    continue
-                }
-                if update.isRunning {
-                    let phase =
-                        update.phase == .building
-                        ? Localized.text("Updating — building…")
-                        : update.phase == .restarting
-                            ? Localized.text("Updating — restarting…")
-                            : Localized.text("Updating — fetching…")
-                    self.setSoftwareText(box, phase)
-                    continue
-                }
-                self.renderSoftware(update, profile: profile, into: box)
-                self.setStatus(Localized.text("%@ is back — %@", profile.name, update.version))
-                return
+            await MacUpdateWatch.shared.install(.server(profileID: profile.id)) { reading in
+                self?.renderSoftware(reading, profile: profile, into: box)
             }
-            self?.setSoftwareText(
-                box,
-                Localized.text(
-                    "The update did not settle within ten minutes — check the server over ssh."))
+            guard let self,
+                let settled = UpdateLedger.remembered(.server(profileID: profile.id))
+            else { return }
+            self.setStatus(
+                Localized.text("%@ — %@", profile.name, settled.installed.line))
         }
     }
 

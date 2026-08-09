@@ -419,10 +419,9 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
-    /// An unanswered `/update` has two very different causes, and only one deserves the install
-    /// command: a bridge old enough to lack the route still answers `/health`, while a machine
-    /// that answers neither is unreachable — telling someone to reinstall a server that is merely
-    /// asleep would be worse than saying nothing.
+    /// What this machine is running, asked through the same road the update centre uses — so the
+    /// answer is written into ``UpdateLedger`` on the way past and the two screens cannot end up
+    /// telling the person different things about the same server.
     private func checkSoftware(_ profile: ConnectionProfile) {
         guard let slots = rows[profile.id] else { return }
         setFact(
@@ -430,99 +429,75 @@ final class ServerManager: @unchecked Sendable {
             tone: .quiet, actions: [])
         let id = profile.id
         Task { [weak self] in
-            guard
-                let backend = await ServerDirectory.shared.backend(for: profile)
-                    as? any SelfUpdatingBackend
-            else { return }
-            if let update = await Self.within(20, { try? await backend.updateStatus(checkingRemote: true) }) {
-                Gtk.onMain { [weak self] in self?.renderSoftware(update, profileID: id) }
-            } else if await Self.within(10, { try? await backend.health() }) != nil {
-                Gtk.onMain { [weak self] in self?.renderSoftware(nil, profileID: id) }
-            } else {
-                Gtk.onMain { [weak self] in
-                    guard let self, let slots = self.rows[id] else { return }
-                    self.setFact(
-                        slots.software, slots.softwareActions,
-                        Localized.text("Could not check — the server isn't answering."),
-                        tone: .quiet, actions: [])
-                }
-            }
+            let reading = await UpdateWatch.ask(profile, checkingRemote: true)
+            Gtk.onMain { [weak self] in self?.renderSoftware(reading, profileID: id) }
         }
     }
 
-    private func renderSoftware(_ update: ServerUpdate?, profileID: String) {
+    /// One `UpdateReading`, drawn. There is no decision left to make here: whether a server is
+    /// current, too old for the route, unreachable, built but not restarted, or unable to update
+    /// itself is Core's judgement, and a client that re-derived it from the same fields would
+    /// eventually derive it differently.
+    private func renderSoftware(_ reading: UpdateReading, profileID: String) {
         guard let slots = rows[profileID] else { return }
-        guard let update else {
-            setFact(
-                slots.software, slots.softwareActions,
-                Localized.text("Too old to report its software. Update it by hand:"),
-                tone: .warn,
-                actions: [
-                    Self.inlineButton(Localized.text("Copy the install command")) { [weak self] in
-                        Gtk.copyToClipboard(Self.installCommand)
-                        self?.toast(Localized.text("Install command copied"))
-                    }
-                ])
-            return
-        }
-        if update.phase == .failed {
-            let detail = update.reason ?? update.log.map { String($0.suffix(300)) } ?? ""
-            setFact(
-                slots.software, slots.softwareActions,
-                Localized.text("The last update failed. %@", detail), tone: .bad,
-                actions: [
-                    Self.inlineButton(Localized.text("Try again"), css: ["suggested-action"]) {
-                        [weak self] in
-                        self?.runUpdate(profileID: profileID)
-                    },
-                    Self.inlineButton(Localized.text("Copy the install command")) { [weak self] in
-                        Gtk.copyToClipboard(Self.installCommand)
-                        self?.toast(Localized.text("Install command copied"))
-                    },
-                ])
-            return
-        }
-        guard update.updateAvailable else {
-            setFact(
-                slots.software, slots.softwareActions,
-                Localized.text("%@ · up to date", update.version), tone: .good, actions: [])
-            return
-        }
-        let target = update.latestVersion
-            ?? update.latestCommit.map { String($0.prefix(7)) }
-            ?? Localized.text("latest")
-        var headline = "\(update.version) → \(target)"
-        if let behind = update.behind, behind > 0 {
-            headline += " · " + Localized.text("%@ commits behind", "\(behind)")
-        }
-        let changes = update.changes.prefix(5).map { "· \($0)" }.joined(separator: "\n")
-        let text = changes.isEmpty ? headline : "\(headline)\n\(changes)"
-        guard update.canUpdate else {
-            setFact(
-                slots.software, slots.softwareActions,
-                update.reason.map { "\(text)\n\($0)" } ?? text, tone: .warn,
-                actions: [
-                    Self.inlineButton(Localized.text("Copy the install command")) { [weak self] in
-                        Gtk.copyToClipboard(Self.installCommand)
-                        self?.toast(Localized.text("Install command copied"))
-                    }
-                ])
-            return
+        var lines = [reading.headline, reading.detail()]
+        let changes = reading.verdict.offer?.changes ?? []
+        if !changes.isEmpty {
+            lines.append(changes.prefix(5).map { "· \($0)" }.joined(separator: "\n"))
         }
         setFact(
-            slots.software, slots.softwareActions, text, tone: .warn,
-            actions: [
-                Self.inlineButton(Localized.text("Update the server"), css: ["suggested-action"]) {
-                    [weak self] in
+            slots.software, slots.softwareActions, lines.joined(separator: "\n"),
+            tone: Self.tone(for: reading),
+            actions: softwareActions(for: reading, profileID: profileID))
+    }
+
+    private static func tone(for reading: UpdateReading) -> Tone {
+        switch reading.verdict {
+        case .current: return .good
+        case .behind(let offer): return offer.canInstallHere ? .warn : .quiet
+        case .failed: return .bad
+        case .ahead, .working, .blocked, .unverified: return .quiet
+        }
+    }
+
+    /// The one press the reading earned, and nothing else. `installHere` is the only one that ends
+    /// on this machine; everything else says outright that it hands the job somewhere else.
+    private func softwareActions(for reading: UpdateReading, profileID: String)
+        -> [UnsafeMutablePointer<GtkWidget>]
+    {
+        guard let invitation = reading.invitation else { return [] }
+        switch invitation {
+        case .installHere:
+            return [
+                Self.inlineButton(invitation.label, css: ["suggested-action"]) { [weak self] in
                     self?.runUpdate(profileID: profileID)
                 }
-            ])
+            ]
+        case .copyCommand(let command):
+            return [
+                Self.inlineButton(invitation.label) { [weak self] in
+                    Gtk.copyToClipboard(command)
+                    self?.toast(Localized.text("Install command copied"))
+                }
+            ]
+        case .recheck:
+            return [
+                Self.inlineButton(invitation.label) { [weak self] in
+                    guard let self,
+                        let profile = self.profiles.first(where: { $0.id == profileID })
+                    else { return }
+                    self.checkSoftware(profile)
+                }
+            ]
+        case .openStore(let url), .openPage(let url):
+            return [Self.inlineButton(invitation.label) { SignInDialog.openInBrowser(url) }]
+        }
     }
 
     /// The update is followed to the end, not to the first heartbeat: the old process keeps
-    /// answering `/health` through the whole fetch and build, so the loop watches the update's own
-    /// phase and treats a refused connection as the restart doing its job. Only a settled phase —
-    /// or ten minutes of silence — ends it.
+    /// answering `/health` through the whole fetch and build, so a refused connection is the restart
+    /// doing its job. ``UpdateWatch`` owns that walk, and this row is one of the things it reports
+    /// to — the update centre's own row updates from the same answers at the same moment.
     private func runUpdate(profileID: String) {
         guard let profile = profiles.first(where: { $0.id == profileID }),
             let slots = rows[profileID]
@@ -531,52 +506,13 @@ final class ServerManager: @unchecked Sendable {
             slots.software, slots.softwareActions,
             Localized.text("Updating — asking the server to fetch and build…"), tone: .quiet,
             actions: [])
-        Task { [weak self] in
-            guard
-                let backend = await ServerDirectory.shared.backend(for: profile)
-                    as? any SelfUpdatingBackend
-            else { return }
-            _ = try? await backend.startUpdate()
-            let deadline = Date().addingTimeInterval(600)
-            while Date() < deadline {
-                try? await Task.sleep(for: .seconds(3))
-                guard let update = try? await backend.updateStatus(checkingRemote: false) else {
-                    Gtk.onMain { [weak self] in
-                        self?.setSoftwareText(
-                            profileID, Localized.text("Updating — the server is restarting…"))
-                    }
-                    continue
-                }
-                if update.isRunning {
-                    let phase =
-                        update.phase == .building
-                        ? Localized.text("Updating — building…")
-                        : update.phase == .restarting
-                            ? Localized.text("Updating — restarting…")
-                            : Localized.text("Updating — fetching…")
-                    Gtk.onMain { [weak self] in self?.setSoftwareText(profileID, phase) }
-                    continue
-                }
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    self.renderSoftware(update, profileID: profileID)
-                    self.toast(Localized.text("%@ is back — %@", profile.name, update.version))
-                    self.checkHealth(profile)
-                }
-                return
-            }
-            Gtk.onMain { [weak self] in
-                self?.setSoftwareText(
-                    profileID,
-                    Localized.text(
-                        "The update did not settle within ten minutes — check the server over ssh."))
-            }
+        UpdateWatch.updateServer(profile) { [weak self] reading in
+            guard let self else { return }
+            self.renderSoftware(reading, profileID: profileID)
+            guard !reading.verdict.isBusy else { return }
+            self.toast(Localized.text("%@ · %@", profile.name, reading.headline))
+            self.checkHealth(profile)
         }
-    }
-
-    private func setSoftwareText(_ profileID: String, _ text: String) {
-        guard let slots = rows[profileID] else { return }
-        setFact(slots.software, slots.softwareActions, text, tone: .quiet, actions: [])
     }
 
     /// Which account this server's Claude answers as — or the warning that it answers as nobody,

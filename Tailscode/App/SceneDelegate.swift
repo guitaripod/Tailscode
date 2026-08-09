@@ -39,6 +39,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()
+        UpdateMonitor.checkIfDue()
         HapticEngine.shared.prepare()
     }
 

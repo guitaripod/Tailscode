@@ -26,6 +26,13 @@ final class MainWindow: @unchecked Sendable {
     private let searchEntry = gtk_search_entry_new()!
 
     private var sidebarLimit = 60
+    /// The standing mark. One line in the sidebar's foot, rendered from what this device already
+    /// knew before any check of this launch has come back — and hidden outright when there is
+    /// nothing standing, because a mark that is always lit stops being read.
+    private let updateBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+    private let updateGlyph = Gtk.label("·", css: nil, selectable: false)
+    private let updateHeadline = Gtk.label("", css: "sidebar-detail", selectable: false)
+    private var updates: UpdatePanel?
     private let usageBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
     private let orb = OrbPainter()
     private var orbTarget: SessionEntry?
@@ -178,6 +185,9 @@ final class MainWindow: @unchecked Sendable {
         if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: [], fromNetwork: false) }
         startRefreshing()
         startUsagePolling()
+        observeUpdates()
+        renderUpdates()
+        UpdateWatch.start { [weak self] in self?.quitForUpdate() }
         FirstRunDialog.presentIfNeeded(parent: window) { [weak self] in
             Task { [weak self] in await self?.refresh() }
         }
@@ -578,11 +588,16 @@ final class MainWindow: @unchecked Sendable {
                 let servers: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.presentServers() }
                 }
+                let software: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentUpdates() }
+                }
                 return [
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
                      Localized.text("Add, probe, update or remove a server"), servers),
+                    (Localized.text("Software…"),
+                     Localized.text("What this app and every server is running"), software),
                 ]
             })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
@@ -612,6 +627,18 @@ final class MainWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.reapplySidebarScroll() }
             }
         }
+
+        gtk_widget_set_visible(updateBox, 0)
+        Gtk.addClass(updateBox, "update-footer")
+        Gtk.margins(updateBox, top: 6, bottom: 6, leading: 10, trailing: 10)
+        gtk_widget_set_cursor_from_name(updateBox, "pointer")
+        gtk_widget_set_tooltip_text(updateBox, Localized.text("What every machine is running"))
+        gtk_widget_set_valign(updateGlyph, GTK_ALIGN_CENTER)
+        gtk_widget_set_hexpand(updateHeadline, 1)
+        gtk_box_append(ptr(updateBox), updateGlyph)
+        gtk_box_append(ptr(updateBox), updateHeadline)
+        Gtk.onRelease(updateBox) { [weak self] in self?.presentUpdates() }
+        gtk_box_append(ptr(column), updateBox)
 
         gtk_widget_set_visible(usageBox, 0)
         Gtk.addClass(usageBox, "usage-footer")
@@ -868,6 +895,7 @@ final class MainWindow: @unchecked Sendable {
         let known = self.entries.compactMap(\.session.directory)
         let (entries, unreachable) = await ServerDirectory.shared.entries(knownDirectories: known)
         if !entries.isEmpty { SessionListCache.save(entries) }
+        UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
             self?.warmCatalogs(profiles)
@@ -2006,6 +2034,61 @@ final class MainWindow: @unchecked Sendable {
             presentServers()
             done(nil)
         }
+    }
+
+    /// The update centre, held the same way the server screen is: a second ask raises the window
+    /// already open rather than stacking a second copy of a screen following a live update.
+    private func presentUpdates() {
+        let panel = updates ?? UpdatePanel()
+        updates = panel
+        panel.present(parent: sidebarPane)
+    }
+
+    /// The mark, drawn from what this device already knew. It says one thing and holds still unless
+    /// something is actually being installed — an update that exists is a settled fact, and
+    /// stillness is what tells a reader the app is not busy on their behalf. There is no dismiss
+    /// gesture here and no other one anywhere: setting an offer aside happens inside the update
+    /// centre, against that exact offer.
+    private func renderUpdates() {
+        let rollup = UpdateLedger.rollup()
+        guard rollup.showsMark else {
+            ActivityPulse.stop(updateGlyph)
+            gtk_widget_set_visible(updateBox, 0)
+            return
+        }
+        let icon = rollup.icon
+        gtk_label_set_text(op(updateGlyph), icon.glyph)
+        Gtk.setTone(updateGlyph, icon.glyphCSS, from: Self.updateTones)
+        ActivityPulse.apply(icon, to: updateGlyph)
+        gtk_label_set_text(op(updateHeadline), rollup.headline)
+        gtk_widget_set_tooltip_text(updateBox, rollup.accessibilityLine())
+        gtk_widget_set_visible(updateBox, 1)
+    }
+
+    private static let updateTones = ActivityTone.allCases.map(\.glyphCSS)
+
+    /// Every answer any machine gives redraws the mark — and is written through to the settings
+    /// file, because `UserDefaults` on Linux is keyed to the running executable and a mark that
+    /// lived only there would evaporate on exactly the install it exists to talk about.
+    private func observeUpdates() {
+        NotificationCenter.default.addObserver(
+            forName: UpdateLedger.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in
+                SettingsFile.capture()
+                self?.renderUpdates()
+            }
+        }
+    }
+
+    /// The app standing aside for the build that replaces it. `g_application_quit` does not fire
+    /// `close-request`, so everything typed into a composer is written down here or it is lost —
+    /// and this is the only thing in the update that closes a window, which is why it happens at
+    /// the restart rather than at the press.
+    func quitForUpdate() {
+        stashDrafts()
+        DraftStore.flush()
+        g_application_quit(ptr(app))
     }
 
     /// The window is kept here as well as by the manager's own registry, so a second ask raises

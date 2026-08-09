@@ -9,14 +9,15 @@ final class ServerDetailViewController: UIViewController {
 
     private enum Section: Int, CaseIterable { case info, status, software, defaults, actions }
     private enum Item: Hashable {
-        case value(label: String, value: String, warning: Bool = false)
+        case value(label: String, value: String)
         case status(String)
         case pushState
         case account(signedIn: Bool)
         case test
         case updateState
-        case runUpdate(String)
-        case copyInstallCommand
+        case updateVersions
+        case updateAction
+        case updateCenter
         case makeDefault
         case isDefault
         case defaultModel
@@ -30,17 +31,26 @@ final class ServerDetailViewController: UIViewController {
     private var sessionCount: Int?
     private var serverVersion: String?
     private var modelCount: Int?
-    private var latestVersion: String?
     private var backend: (any CodingAgentBackend)?
     private var modelChoice = ModelChoice()
     private var auth: ServerAuth?
-    private let updater = BridgeUpdater()
+
+    /// The verdict this screen renders, read from the one ledger every surface renders from.
+    ///
+    /// Never this screen's own words, and never this screen's own asking either: the press routes
+    /// to `UpdateMonitor`, which drives the updater that owns this machine. A second updater held
+    /// here would watch nothing — the screen would sit on "Update to X" through the whole build
+    /// and restart, and keep offering a press that starts the update again.
+    private var reading: UpdateReading?
 
     private var isDemo: Bool { profile.id.hasPrefix(DemoWorld.profilePrefix) }
+
+    private var component: UpdateComponent { .server(profileID: profile.id) }
 
     init(profile: ConnectionProfile) {
         self.profile = profile
         super.init(nibName: nil, bundle: nil)
+        reading = UpdateLedger.remembered(component)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -54,18 +64,18 @@ final class ServerDetailViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(pushStatesChanged), name: PushRegistrar.didChangeStates,
             object: nil)
-        updater.onChange = { [weak self] state in
-            guard let self else { return }
-            if let version = state.status?.version { self.serverVersion = version }
-            self.applySnapshot()
-            self.reconfigure([.updateState])
-        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(ledgerChanged), name: UpdateLedger.didChange, object: nil)
         Task { await refresh() }
     }
 
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        if isMovingFromParent { updater.stop() }
+    /// An answer landed for some machine — possibly this one, possibly from a sweep started on
+    /// another screen, and during an update every few seconds. The row is redrawn either way.
+    @objc private func ledgerChanged() {
+        reading = UpdateLedger.remembered(component)
+        if let running = reading?.installed.text { serverVersion = running }
+        applySnapshot()
+        reconfigure([.updateState, .updateVersions, .updateAction])
     }
 
     private func configure() {
@@ -135,12 +145,11 @@ final class ServerDetailViewController: UIViewController {
         var content = cell.defaultContentConfiguration()
         cell.accessories = []
         switch item {
-        case .value(let label, let value, let warning):
+        case .value(let label, let value):
             content.text = label
             content.secondaryText = value
             content.prefersSideBySideTextAndSecondaryText = true
-            content.secondaryTextProperties.color =
-                warning ? Theme.Color.warning : Theme.Color.secondaryLabel
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
         case .status(let text):
             content.text = String(localized: "Status")
             content.secondaryText = text
@@ -171,24 +180,49 @@ final class ServerDetailViewController: UIViewController {
             content.image = UIImage(systemName: "antenna.radiowaves.left.and.right")
             content.imageProperties.tintColor = Theme.Color.accent
         case .updateState:
-            content.text = String(localized: "Server software")
-            content.secondaryText = updateDetail()
-            content.secondaryTextProperties.color =
-                updateIsWarning ? Theme.Color.warning : Theme.Color.secondaryLabel
-            if case .checking = updater.state { cell.accessories = [spinner()] }
-            if case .working = updater.state { cell.accessories = [spinner()] }
-        case .runUpdate(let version):
-            content.text = String(localized: "Update to \(version)")
+            guard let reading else {
+                content.text = String(localized: "Server software")
+                content.secondaryText = String(localized: "Checking…")
+                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+                cell.accessories = [spinner()]
+                break
+            }
+            content.text = reading.headline
+            content.secondaryText = reading.detail()
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.font = Theme.Font.footnote()
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(
+                systemName: reading.icon.symbol,
+                withConfiguration: UIImage.SymbolConfiguration(textStyle: .body))
+            content.imageProperties.tintColor = reading.tone.color
+            cell.accessibilityLabel = reading.accessibilityLine()
+            if reading.verdict.isBusy { cell.accessories = [spinner()] }
+        case .updateVersions:
+            content.text = String(localized: "Running")
+            content.secondaryText = reading?.installed.line
+            content.secondaryTextProperties.numberOfLines = 0
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.textProperties.font = Theme.Font.subheadline()
+        case .updateAction:
+            guard let invitation = reading?.invitation else { break }
+            content.text = invitation.label
             content.textProperties.color = Theme.Color.accent
-            content.image = UIImage(systemName: "arrow.down.circle")
+            if let promise = invitation.promise {
+                content.secondaryText = promise
+                content.secondaryTextProperties.numberOfLines = 0
+                content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            }
+            content.image = UIImage(systemName: Self.symbol(for: invitation))
             content.imageProperties.tintColor = Theme.Color.accent
+        case .updateCenter:
+            content.text = String(localized: "Every machine")
+            content.secondaryText = String(
+                localized: "This app and every server, and what each one is running")
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "arrow.triangle.2.circlepath")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
-        case .copyInstallCommand:
-            content.text = String(localized: "Copy update command")
-            content.secondaryText = String(localized: "Run it on the server over ssh or a terminal")
-            content.textProperties.color = Theme.Color.accent
-            content.image = UIImage(systemName: "doc.on.doc")
-            content.imageProperties.tintColor = Theme.Color.accent
         case .makeDefault:
             content.text = String(localized: "Make default server")
             content.textProperties.color = Theme.Color.accent
@@ -227,93 +261,31 @@ final class ServerDetailViewController: UIViewController {
         return .customView(configuration: .init(customView: view, placement: .trailing()))
     }
 
-    /// One line that says where this server's software stands, whatever the answer turned out to
-    /// be: a version, a job in flight, or the reason the server can't move itself forward.
-    private func updateDetail() -> String {
-        switch updater.state {
-        case .unknown, .checking:
-            return String(localized: "Checking…")
-        case .current(let status):
-            return String(localized: "\(status.version) — up to date")
-        case .available(let status):
-            let version = status.latestVersion ?? status.latestCommit ?? ""
-            guard let behind = status.behind, behind > 0 else {
-                return String(localized: "\(version) available")
-            }
-            guard behind > 1 else { return String(localized: "\(version) available — 1 commit newer") }
-            return String(localized: "\(version) available — \(behind) commits newer")
-        case .blocked(let status):
-            return status.reason ?? String(localized: "This server can't update itself")
-        case .unsupported:
-            return String(localized: "Too old to update itself")
-        case .unreachable:
-            return String(localized: "Couldn't check")
-        case .working(let status):
-            switch status.phase {
-            case .building: return String(localized: "Building…")
-            case .restarting: return String(localized: "Restarting…")
-            default: return String(localized: "Updating…")
-            }
-        case .failed(let status):
-            return status.log?.split(separator: "\n").last.map(String.init)
-                ?? String(localized: "The last update failed")
+    private static func symbol(for invitation: UpdateInvitation) -> String {
+        switch invitation {
+        case .installHere: return "arrow.down.circle"
+        case .openStore: return "arrow.up.forward.app"
+        case .copyCommand: return "doc.on.doc"
+        case .openPage: return "safari"
+        case .recheck: return "arrow.clockwise"
         }
     }
 
-    private var updateIsWarning: Bool {
-        switch updater.state {
-        case .available, .blocked, .unsupported, .failed: return true
-        case .unknown, .checking, .current, .unreachable, .working: return false
-        }
-    }
-
+    /// The verdict, the number it rests on, the one press Core says is available, and the way to
+    /// the screen that answers the same question about every other machine.
     private func softwareItems() -> [Item] {
+        guard let reading else { return [.updateState, .updateCenter] }
         var items: [Item] = [.updateState]
-        switch updater.state {
-        case .available(let status):
-            items.append(.runUpdate(status.latestVersion ?? String(localized: "the latest build")))
-        case .failed:
-            items.append(.runUpdate(String(localized: "try again")))
-            items.append(.copyInstallCommand)
-        case .blocked, .unsupported:
-            items.append(.copyInstallCommand)
-        case .unknown, .checking, .current, .unreachable, .working:
-            break
-        }
+        if reading.installed.isKnown { items.append(.updateVersions) }
+        if reading.invitation != nil { items.append(.updateAction) }
+        items.append(.updateCenter)
         return items
     }
 
-    /// The changes an update would bring, before it is taken: an update restarts the server, and a
-    /// person is entitled to know what they are restarting it for.
-    private func confirmUpdate(_ status: ServerUpdate) {
-        let changes = status.changes.prefix(8).map { "• \($0)" }.joined(separator: "\n")
-        let alert = UIAlertController(
-            title: String(localized: "Update this server?"),
-            message: changes.isEmpty
-                ? String(
-                    localized:
-                        "The server pulls the new code, rebuilds it, and restarts. It stops answering for a moment while it does."
-                )
-                : String(
-                    localized:
-                        "\(changes)\n\nThe server rebuilds and restarts, so it stops answering for a moment."
-                ),
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Update"), style: .default) { [weak self] _ in
-                Theme.Haptics.tap()
-                Task { await self?.updater.update() }
-            })
-        present(alert, animated: true)
-    }
-
-    private func showUpdateLog(_ status: ServerUpdate) {
+    private func showUpdateLog(_ reading: UpdateReading) {
         let alert = UIAlertController(
             title: String(localized: "Update failed"),
-            message: status.log ?? status.reason
-                ?? String(localized: "The server didn't say why."),
-            preferredStyle: .alert)
+            message: reading.log ?? reading.detail(), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
         present(alert, animated: true)
     }
@@ -330,20 +302,6 @@ final class ServerDetailViewController: UIViewController {
         }
         let nav = UINavigationController(rootViewController: signIn)
         present(nav, animated: true)
-    }
-
-    private func copyInstallCommand() {
-        UIPasteboard.general.string = BridgeUpdater.installCommand
-        Theme.Haptics.success()
-        let alert = UIAlertController(
-            title: String(localized: "Copied"),
-            message: String(
-                localized:
-                    "Run it on the machine the server runs on. It updates in place and keeps your password."
-            ),
-            preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
-        present(alert, animated: true)
     }
 
     private static func pushDetail(_ state: PushRegistrar.State) -> String {
@@ -467,12 +425,6 @@ final class ServerDetailViewController: UIViewController {
         snapshot.appendItems(info, toSection: .info)
 
         var statusItems: [Item] = [.status(statusText)]
-        if let latestVersion, let serverVersion, serverVersion != latestVersion {
-            statusItems.append(
-                .value(
-                    label: String(localized: "Update available"), value: latestVersion,
-                    warning: true))
-        }
         if profile.backend == .claudeCode, !isDemo {
             statusItems.append(.pushState)
             if let auth { statusItems.append(.account(signedIn: auth.loggedIn)) }
@@ -480,9 +432,7 @@ final class ServerDetailViewController: UIViewController {
         statusItems.append(.test)
         snapshot.appendItems(statusItems, toSection: .status)
 
-        if profile.backend == .claudeCode, !isDemo {
-            snapshot.appendItems(softwareItems(), toSection: .software)
-        }
+        if !isDemo { snapshot.appendItems(softwareItems(), toSection: .software) }
 
         var defaults: [Item] = [
             ConnectionController.shared.activeProfileID == profile.id ? .isDefault : .makeDefault
@@ -514,6 +464,7 @@ final class ServerDetailViewController: UIViewController {
         guard let backend = ConnectionController.shared.makeBackend(for: profile, policy: policy)
         else {
             statusText = String(localized: "No credentials")
+            checkSoftware()
             applySnapshot()
             return
         }
@@ -528,24 +479,15 @@ final class ServerDetailViewController: UIViewController {
             sessionCount = (try? await backend.listAllSessions(knownDirectories: []))?.count
             if profile.backend == .openCode {
                 modelCount = try? await backend.availableModels().count
-                latestVersion = await fetchLatestOpencodeRelease()
             }
             if profile.backend == .claudeCode, !isDemo {
                 auth = try? await (backend as? any AuthenticatingBackend)?.authStatus()
-                updater.attach(backend)
-                Task {
-                    await updater.check()
-                    #if DEBUG
-                        if ProcessInfo.processInfo.environment["TAILSCODE_RUN_UPDATE"] != nil {
-                            await updater.update()
-                        }
-                    #endif
-                }
             }
         } catch {
             statusText = String(localized: "Unreachable")
             ServerHealthMonitor.record(false, for: profile.id)
         }
+        checkSoftware()
         applySnapshot()
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SIGNIN"] != nil,
@@ -556,20 +498,21 @@ final class ServerDetailViewController: UIViewController {
         #endif
     }
 
-    /// GitHub's latest opencode release tag, so the user can see at a glance
-    /// whether the server process is behind and might be missing new models.
-    private func fetchLatestOpencodeRelease() async -> String? {
-        guard let url = URL(string: "https://api.github.com/repos/anomalyco/opencode/releases/latest")
-        else { return nil }
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 6
-        guard
-            let (data, _) = try? await URLSession.shared.data(for: request),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let tag = json["tag_name"] as? String
-        else { return nil }
-        return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+    /// Asks the monitor about this machine, outside whatever the health probe did.
+    ///
+    /// A server that never answered still has an answer worth writing down — "it did not answer" —
+    /// and hanging the question off a successful `health()` is how the Software row keeps a live
+    /// spinner over a state nobody is checking.
+    private func checkSoftware() {
+        guard !isDemo else { return }
+        Task {
+            await UpdateMonitor.check(component)
+            #if DEBUG
+                if ProcessInfo.processInfo.environment["TAILSCODE_RUN_UPDATE"] != nil {
+                    await UpdateMonitor.update(component)
+                }
+            #endif
+        }
     }
 
     private func presentEditor() {
@@ -631,22 +574,23 @@ extension ServerDetailViewController: UICollectionViewDelegate {
             PushRegistrar.reregisterIfNeeded()
             Theme.Haptics.tap()
         case .updateState:
-            if case .failed(let status) = updater.state {
-                showUpdateLog(status)
-            } else if case .working = updater.state {
+            guard let reading else { break }
+            if case .failed = reading.verdict, reading.log != nil {
+                showUpdateLog(reading)
                 break
-            } else {
-                Theme.Haptics.tap()
-                Task { await updater.check() }
             }
-        case .runUpdate:
-            guard let status = updater.state.status else { break }
-            confirmUpdate(status)
+            guard !reading.verdict.isBusy else { break }
+            Theme.Haptics.tap()
+            Task { await UpdateMonitor.check(component, force: true) }
+        case .updateAction:
+            guard let reading else { break }
+            UpdatePress.perform(reading, from: self)
+        case .updateCenter:
+            Theme.Haptics.tap()
+            UpdateCenterViewController.present(from: self)
         case .account(let signedIn):
             guard !signedIn else { break }
             presentSignIn()
-        case .copyInstallCommand:
-            copyInstallCommand()
         default:
             break
         }
@@ -657,7 +601,7 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard indexPaths.count == 1,
-            case .value(_, let value, _) = dataSource.itemIdentifier(for: indexPaths[0])
+            case .value(_, let value) = dataSource.itemIdentifier(for: indexPaths[0])
         else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
             UIMenu(children: [

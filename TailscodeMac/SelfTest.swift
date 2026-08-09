@@ -110,6 +110,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkUpdates()
+            report("updates: \(checks) claims hold — nothing unchecked reads as current")
+        } catch {
+            report("updates: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkParity()
             report("parity: \(checks) capabilities answered")
         } catch {
@@ -1154,6 +1162,117 @@ enum SelfTest {
         try expect(
             rendered.string.contains("+ arrived") && rendered.string.contains("− gone"),
             "both sides of the change are drawn")
+        return checks
+    }
+
+    /// The update surface where it can go wrong on this client: Core must refuse to call a machine
+    /// current when nothing was actually compared, a fleet holding a machine nobody has heard from
+    /// must not read as up to date, the Update Center must be able to build its own view, and the
+    /// ledger must remember and forget exactly what it was told — the probe rows it writes are
+    /// taken back out, because these stores are the real ones and a self-test that left marks
+    /// behind would nag about a server that never existed.
+    private static func checkUpdates() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("updates: \(label)") }
+            checks += 1
+        }
+        let now = Date()
+
+        let quiet = UpdateReadings.server(
+            profileID: "probe-quiet", title: "quiet", subtitle: "claude-bridge",
+            outcome: .answered(ServerUpdate(version: "1.4.0", manager: "systemd")),
+            checkedAt: now)
+        if case .current = quiet.verdict {
+            throw SelfTestFailure("updates: a server that never looked read as up to date")
+        }
+        checks += 1
+        try expect(!quiet.verdict.compared, "an answer that compared nothing says so")
+        try expect(!quiet.stands(), "a machine that cannot say does not hold the mark up")
+
+        let behind = UpdateReadings.server(
+            profileID: "probe-behind", title: "behind", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.4.0",
+                    remote: ServerUpdate.RemoteCheck(checked: true, ok: true, ref: "origin/master"),
+                    latestVersion: "1.5.0", updateAvailable: true, behind: 3,
+                    changes: ["a change", "another"], canUpdate: true, manager: "systemd")),
+            checkedAt: now)
+        try expect(behind.verdict.offer?.canInstallHere == true, "a bridge that can install offers")
+        try expect(behind.invitation == .installHere, "and the offer is the one press")
+        try expect(behind.stands(), "an update that exists holds the mark up")
+
+        let current = UpdateReadings.server(
+            profileID: "probe-current", title: "current", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.5.0",
+                    remote: ServerUpdate.RemoteCheck(
+                        checked: true, ok: true, at: now, ref: "origin/master"),
+                    latestVersion: "1.5.0", canUpdate: true, manager: "systemd")),
+            checkedAt: now)
+        guard case .current = current.verdict else {
+            throw SelfTestFailure("updates: a server that looked and found nothing is current")
+        }
+        checks += 1
+
+        let old = UpdateReadings.server(
+            profileID: "probe-old", title: "old", subtitle: "claude-bridge",
+            outcome: .routeMissing(version: "1.1.0"), checkedAt: now)
+        try expect(!old.verdict.compared, "a bridge too old for the route compared nothing")
+        try expect(
+            old.invitation == .copyCommand(BridgeInstall.installCommand),
+            "and is handed the one command instead")
+
+        let mixed = UpdateRollup(readings: [quiet, current, old])
+        try expect(!mixed.everythingChecked, "one machine that could not say sinks the whole claim")
+        try expect(
+            mixed.headline != Localized.text("Everything is up to date"),
+            "a fleet with a silent machine never reads as up to date")
+        try expect(
+            UpdateRollup(readings: [current]).everythingChecked,
+            "a fleet that all answered may say so")
+        let standing = UpdateRollup(readings: [behind, quiet, current])
+        try expect(standing.showsMark, "the mark stands for the offer")
+        try expect(standing.motion == .still, "an offer is a settled fact and holds perfectly still")
+        try expect(standing.updateOrder == [behind.component], "only what one press finishes")
+
+        let board = UpdateBoardViewController()
+        try expect(board.view.subviews.count == 1, "the update board builds its own view")
+        let footer = UpdateFooterView()
+        footer.render()
+        try expect(
+            footer.isHidden == !UpdateLedger.rollup().showsMark,
+            "the standing mark is shown exactly when something stands")
+
+        let probeID = "selftest-\(UUID().uuidString)"
+        let component = UpdateComponent.server(profileID: probeID)
+        let probe = UpdateReadings.server(
+            profileID: probeID, title: "selftest probe", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.4.0", remote: ServerUpdate.RemoteCheck(checked: true, ok: true),
+                    latestVersion: "1.5.0", updateAvailable: true, behind: 1, canUpdate: true,
+                    manager: "systemd")),
+            checkedAt: now)
+        UpdateLedger.record(probe)
+        guard let remembered = UpdateLedger.remembered(component) else {
+            throw SelfTestFailure("updates: a recorded reading did not come back")
+        }
+        checks += 1
+        try expect(remembered.verdict == probe.verdict, "and came back as it went in")
+        try expect(!UpdateLedger.isAcknowledged(remembered), "nothing is set aside until it is")
+        UpdateLedger.acknowledge(remembered)
+        try expect(UpdateLedger.isAcknowledged(remembered), "setting an offer aside is remembered")
+        try expect(
+            !UpdateLedger.rollup().standing.contains { $0.id == remembered.id },
+            "a set-aside offer stops holding the mark up")
+        UpdateLedger.forget(component)
+        try expect(UpdateLedger.remembered(component) == nil, "the probe left nothing behind")
+        try expect(
+            UpdateLedger.acknowledgements()[component.key] == nil,
+            "and took its acknowledgement with it")
         return checks
     }
 

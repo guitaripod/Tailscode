@@ -74,6 +74,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverSignIn: return .implemented("SignInDialog")
         case .serverSelfUpdate: return .implemented("renderSoftware")
+        case .updateCenter: return .implemented("UpdatePanel")
         case .newChat: return .implemented("NewChatWindow")
         case .newChatDefaults: return .implemented("renderDefaults")
         case .newChatFailure: return .implemented("failureCard")

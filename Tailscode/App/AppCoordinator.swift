@@ -18,6 +18,7 @@ final class AppCoordinator: NSObject {
     func start() {
         SessionSeenStore.bootstrapIfNeeded()
         DraftStore.warm()
+        UpdateMonitor.start()
         AppPreferences.adoptThemeDefaults()
         #if DEBUG
             if let id = ProcessInfo.processInfo.environment["TAILSCODE_THEME"] {
@@ -53,6 +54,7 @@ final class AppCoordinator: NSObject {
         #endif
         route(animated: false)
         window.makeKeyAndVisible()
+        UpdateMonitor.checkIfDue()
         #if DEBUG
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 handle(URL(string: "tailscode://session/\(sessionID)")!)

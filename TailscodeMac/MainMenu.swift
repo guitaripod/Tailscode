@@ -32,6 +32,7 @@ final class MainMenu: NSObject {
         menu.addItem(
             withTitle: Localized.text("About Tailscode"),
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        menu.addItem(item(Localized.text("Software…"), #selector(software), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Settings…"), #selector(settings), ","))
         menu.addItem(.separator())
@@ -213,6 +214,7 @@ final class MainMenu: NSObject {
     }
 
     @objc private func settings() { hub.presentPreferences() }
+    @objc private func software() { hub.presentUpdates() }
     @objc private func newChat() { hub.perform(.newChat) }
     @objc private func find() { hub.perform(.findInConversation) }
     @objc private func send() { hub.perform(.send) }

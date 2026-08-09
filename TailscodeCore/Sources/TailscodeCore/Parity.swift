@@ -109,6 +109,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case gameCenter
     case projectBoard
     case quickAsk
+    case updateCenter
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -387,6 +388,10 @@ public enum CapabilityRegistry {
             id: .serverSelfUpdate, area: "servers", title: "The app updates the server",
             spec:
                 "The server screen reads /update through BridgeUpdater, offers the commits it would bring, and follows the restart; a refused connection mid-update is the restart, not a failure."),
+        CapabilityDefinition(
+            id: .updateCenter, area: "servers", title: "An update is a standing fact",
+            spec:
+                "Every machine in the picture — this app and each server it talks to — reports what it runs and what it could run, and the answer is one mark the app wears until the update is taken. The mark is chrome, never content: it covers nothing, steals no focus, and has no dismiss gesture; setting an offer aside (UpdateLedger.acknowledge) collapses the card that explains it and is recorded against that exact offer, so a newer release, a different obstacle or an obstacle that clears speaks again. It renders from UpdateLedger before any check of the launch completes and survives relaunches, and it holds perfectly still unless something is actually being installed, because an available update is a settled fact rather than work in progress. The words are Core's and no client invents one: UpdateReadings maps what a machine actually said into a verdict, and the whole point is what it refuses to say — a server that never reached the project, one too old for the route, one that answered nothing, one that built but never restarted, and a store record that has not propagated are five different states and none of them may read as 'up to date'. Every number is shown with its provenance and the moment it was read; 'current' expires, 'behind' does not. One press does exactly what it promises and says when it cannot finish the job itself: a bridge that can update itself is installed end to end and followed through its own restart, a machine that cannot is handed the one command, and a phone hands its own update to the App Store outright. Update everything walks the servers one at a time and never includes this app, which would replace the process doing the watching."),
         CapabilityDefinition(
             id: .newChat, area: "servers", title: "New conversation",
             spec:

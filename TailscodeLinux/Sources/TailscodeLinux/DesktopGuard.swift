@@ -21,7 +21,7 @@ enum DesktopGuard {
         exit(3)
     }
 
-    private static var isDevelopmentBuild: Bool {
+    static var isDevelopmentBuild: Bool {
         executablePath.contains("/.build/")
     }
 
@@ -35,7 +35,7 @@ enum DesktopGuard {
 
     /// `argv[0]` is whatever the caller typed and can be relative, a symlink, or a bare name off
     /// `PATH`; the kernel's own answer is none of those.
-    private static var executablePath: String {
+    static var executablePath: String {
         (try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe"))
             ?? Arguments.all.first ?? ""
     }

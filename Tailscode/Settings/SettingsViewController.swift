@@ -10,11 +10,13 @@ final class SettingsViewController: UIViewController {
     /// Sections double as deep-link targets, so anything that spots a broken
     /// setting can send the user straight at it: `tailscode://settings/notifications`.
     enum Section: String, CaseIterable {
-        case connections, tailnet, notifications, usage, chat, appearance, pro, diagnostics, about
+        case connections, software, tailnet, notifications, usage, chat, appearance, pro,
+            diagnostics, about
 
         var title: String {
             switch self {
             case .connections: return String(localized: "Connections")
+            case .software: return String(localized: "Software")
             case .tailnet: return String(localized: "Tailnet")
             case .notifications: return String(localized: "Notifications")
             case .usage: return String(localized: "Usage")
@@ -148,6 +150,7 @@ final class SettingsViewController: UIViewController {
         case addConnection
         case discover
         case leaveDemo
+        case software
         case tailnetStatus
         case tailnetToken
         case tailnetScan
@@ -210,6 +213,7 @@ final class SettingsViewController: UIViewController {
         observe()
         refreshEnvironment()
         Task { await ServerHealthMonitor.checkAll() }
+        UpdateMonitor.checkIfDue()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -262,6 +266,9 @@ final class SettingsViewController: UIViewController {
                 navigationController?.pushViewController(LogViewerViewController(), animated: false)
             case "haptics":
                 navigationController?.pushViewController(HapticsViewController(), animated: false)
+            case "updates":
+                navigationController?.pushViewController(
+                    UpdateCenterViewController(), animated: false)
             default:
                 break
             }
@@ -285,7 +292,13 @@ final class SettingsViewController: UIViewController {
             name: UIApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(
             self, selector: #selector(themeChanged), name: ThemeSelection.didChange, object: nil)
+        center.addObserver(
+            self, selector: #selector(updatesChanged), name: UpdateLedger.didChange, object: nil)
     }
+
+    /// The software row and the per-server marks are the same fact seen at two widths, so one
+    /// answer landing repaints both.
+    @objc private func updatesChanged() { applySnapshot() }
 
     @objc private func themeChanged() {
         reconfigure([.appearance])
@@ -419,6 +432,11 @@ final class SettingsViewController: UIViewController {
                 localized:
                     "Go has no usage API, so the Usage screen estimates spend against these caps. The first subscription month runs on a $40 promotional ceiling; the published one is $60. Auto reads the renewal day from your oldest Go request."
             )
+        case .software:
+            return String(
+                localized:
+                    "Every machine here reports what it runs and what it could run. A server that could not be reached, or is too old to answer, says so rather than reading as up to date."
+            )
         case .about:
             return "\(Self.copyright)\n" + String(localized: "Coding agents over Tailscale.")
         case .chat, .appearance, .pro, .diagnostics:
@@ -464,7 +482,11 @@ final class SettingsViewController: UIViewController {
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: profile.backend.symbolName)
             content.imageProperties.tintColor = profile.backend.brandColor
-            cell.accessories = [healthDot(for: profile.id), .disclosureIndicator()]
+            var accessories: [UICellAccessory] = []
+            if let mark = updateDot(for: profile.id) { accessories.append(mark) }
+            accessories.append(healthDot(for: profile.id))
+            accessories.append(.disclosureIndicator())
+            cell.accessories = accessories
         case .addConnection:
             content.text = String(localized: "Add connection")
             content.textProperties.color = Theme.Color.accent
@@ -482,6 +504,17 @@ final class SettingsViewController: UIViewController {
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(systemName: "play.slash")
             content.imageProperties.tintColor = ThemePalette.color(\.info, system: .systemOrange)
+        case .software:
+            let rollup = UpdateLedger.rollup()
+            content.text = rollup.headline
+            content.secondaryText = rollup.detail()
+            content.secondaryTextProperties.numberOfLines = 2
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: rollup.icon.symbol)
+            content.imageProperties.tintColor =
+                rollup.showsMark ? rollup.tone.color : Theme.Color.secondaryLabel
+            cell.accessibilityLabel = rollup.accessibilityLine()
+            cell.accessories = [.disclosureIndicator()]
         case .tailnetStatus:
             content.text = "Tailscale"
             if let tailnetAddress {
@@ -716,6 +749,20 @@ final class SettingsViewController: UIViewController {
         return .customView(configuration: .init(customView: dot, placement: .trailing()))
     }
 
+    /// The same standing mark the Home chrome wears, per machine. Absent — rather than grey —
+    /// when this server is not a reason for it: a dot that is always there is a dot nobody reads,
+    /// and reachability already owns the slot beside it.
+    private func updateDot(for id: String) -> UICellAccessory? {
+        let rollup = UpdateLedger.rollup()
+        let component = UpdateComponent.server(profileID: id)
+        guard let reading = rollup.readings.first(where: { $0.component == component }),
+            reading.stands(acknowledged: rollup.isAcknowledged(reading)) || reading.verdict.isBusy
+        else { return nil }
+        let badge = ActivityBadgeView(pointSize: 11)
+        badge.show(reading.icon, spoken: reading.headline)
+        return .customView(configuration: .init(customView: badge, placement: .trailing()))
+    }
+
     private func switchAccessory(_ toggle: Toggle) -> UICellAccessory.CustomViewConfiguration {
         let toggleView = UISwitch()
         toggleView.isOn = toggle.isOn
@@ -900,6 +947,7 @@ final class SettingsViewController: UIViewController {
 
         return [
             (.connections, connectionItems),
+            (.software, [.software]),
             (.tailnet, [.tailnetStatus, .tailnetToken, .tailnetScan]),
             (.notifications, notificationItems),
             (.usage, usageItems),
@@ -1001,6 +1049,10 @@ final class SettingsViewController: UIViewController {
         case .discover:
             return String(localized: "discover tailnet scan servers", comment: "search keywords")
         case .leaveDemo: return String(localized: "leave demo sample", comment: "search keywords")
+        case .software:
+            return String(
+                localized: "update updates software version build bridge upgrade newest release",
+                comment: "search keywords")
         case .tailnetStatus:
             return String(
                 localized: "tailscale tailnet vpn status connected address", comment: "search keywords")
@@ -1244,6 +1296,9 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .testNotification:
             Theme.Haptics.tap()
             NotificationManager.sendTest()
+        case .software:
+            Theme.Haptics.tap()
+            UpdateCenterViewController.present(from: self)
         case .usage:
             navigationController?.pushViewController(UsageViewController(), animated: true)
         case .pro:

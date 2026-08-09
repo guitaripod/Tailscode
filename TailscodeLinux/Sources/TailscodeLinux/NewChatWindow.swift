@@ -538,9 +538,7 @@ final class NewChatWindow: @unchecked Sendable {
         let line = Gtk.label(defaults.line, css: "row-detail", selectable: false)
         gtk_box_append(ptr(defaultsRow), line)
         if let chip = defaults.chip {
-            for widget in SidebarRow.modelChips(chip) {
-                gtk_box_append(ptr(defaultsRow), widget)
-            }
+            gtk_box_append(ptr(defaultsRow), SidebarRow.modelLabel(chip))
         }
         tailscode_set_accessible_label(defaultsRow, defaults.sentence)
         gtk_widget_set_visible(defaultsRow, 1)
