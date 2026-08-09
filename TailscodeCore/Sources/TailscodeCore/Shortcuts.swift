@@ -270,6 +270,12 @@ public enum ShortcutRegistry {
             id: "chat.copyPath", title: Localized.text("Copy the project path"), category: .chats,
             action: .copyProjectPath, contexts: [.normal], defaults: ["y p"]),
         .init(
+            id: "chat.project", title: Localized.text("Only this chat's project / everything"),
+            category: .chats, action: .toggleProjectScope, contexts: [.normal], defaults: ["p"]),
+        .init(
+            id: "chat.quickAsk", title: Localized.text("Quick ask"), category: .chats,
+            action: .quickAsk, contexts: [.normal], defaults: ["A"]),
+        .init(
             id: "scroll.down", title: Localized.text("Scroll down"), category: .conversation,
             action: .scrollDown, contexts: [.normal], defaults: ["j"]),
         .init(
@@ -659,6 +665,8 @@ public enum KeyAction: Equatable, Sendable {
     case toggleMarkAll
     case copySessionID
     case copyProjectPath
+    case toggleProjectScope
+    case quickAsk
     case splitPane(SplitAxis)
     case closeSplit
     case focusSplit(SplitDirection)

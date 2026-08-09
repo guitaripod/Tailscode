@@ -23,6 +23,7 @@ private struct DeleteTarget: Sendable {
 final class SidebarViewController: NSViewController {
     var onOpen: ((SessionEntry, any CodingAgentBackend) -> Void)?
     var onOpenInSplit: ((SessionEntry) -> Void)?
+    var onNewChatInScope: ((ProjectScope) -> Void)?
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
@@ -76,6 +77,7 @@ final class SidebarViewController: NSViewController {
     private var freshlyCreated: SessionEntry?
     private var sidebarLimit = 60
     private var filter = ""
+    private var projectScope: ProjectScope?
     /// The results of the last submitted search, and whether one is in flight. A list that is
     /// looking must say so: silence while a fleet answers is indistinguishable from nothing found.
     private var searchBoard: TranscriptSearch.Board?
@@ -396,6 +398,27 @@ final class SidebarViewController: NSViewController {
         if tableView.numberOfRows > 0 { tableView.scrollRowToVisible(0) }
     }
 
+    /// One key walks in and out of a project: scoped, `p` restores the whole list; unscoped, it
+    /// reads the project off the row under the cursor — or the conversation on screen when the
+    /// cursor has nothing — and the sidebar becomes that project's own board.
+    func toggleProjectScope(fallback: SessionEntry?) {
+        guard projectScope == nil else { return setProjectScope(nil) }
+        let row = tableView.selectedRow
+        var cursorEntry: SessionEntry?
+        if row >= 0, row < rows.count, case .session(let model, _, _) = rows[row] {
+            cursorEntry = model.entry
+        }
+        guard let entry = cursorEntry ?? fallback else { return }
+        setProjectScope(ProjectScope(of: entry))
+    }
+
+    func setProjectScope(_ scope: ProjectScope?) {
+        projectScope = scope
+        lastSidebar = nil
+        render()
+        if tableView.numberOfRows > 0 { tableView.scrollRowToVisible(0) }
+    }
+
     func presentRename(entry: SessionEntry, backend: any CodingAgentBackend) {
         let sessionID = entry.session.id
         MacDialogs.prompt(
@@ -549,8 +572,10 @@ final class SidebarViewController: NSViewController {
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
         }
-        let archivedTotal = models.filter(isArchived).count
-        let matching = models.filter {
+        let scoped =
+            projectScope.map { scope in models.filter { scope.matches($0.entry) } } ?? models
+        let archivedTotal = scoped.filter(isArchived).count
+        let matching = scoped.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
                 || ($0.snippet?.lowercased().contains(needle) ?? false)
@@ -571,6 +596,7 @@ final class SidebarViewController: NSViewController {
             "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
                 + "|\(selection.keys.sorted().joined(separator: ","))"
                 + "|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
+                + "|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
@@ -581,6 +607,12 @@ final class SidebarViewController: NSViewController {
             rows = searchRows()
             tableView.reloadData()
             return
+        }
+        if let scope = projectScope {
+            let serverName =
+                entries.first { $0.profileID == scope.profileID }?.profileName ?? scope.profileID
+            next.append(.scopeLink(scope.banner(serverName: serverName)))
+            next.append(.scopeNew(scope.name))
         }
         if !showingArchive, !missed.shown.isEmpty {
             next.append(.missedHeader(missed.total))
@@ -603,9 +635,10 @@ final class SidebarViewController: NSViewController {
                 .empty(
                     showingArchive
                         ? Localized.text("Nothing archived")
-                        : filter.isEmpty
-                            ? Localized.text("No conversations yet")
-                            : Localized.text("Nothing matches “%@”", filter)))
+                        : !filter.isEmpty
+                            ? Localized.text("Nothing matches “%@”", filter)
+                            : projectScope.map { Localized.text("Nothing in %@ yet", $0.name) }
+                                ?? Localized.text("No conversations yet")))
         } else {
             var built = 0
             let vocabulary = ChatListVocabulary(rows: models)
@@ -999,6 +1032,11 @@ final class SidebarViewController: NSViewController {
             setArchiveShown(true)
         case .backLink:
             setArchiveShown(false)
+        case .scopeLink:
+            setProjectScope(nil)
+        case .scopeNew:
+            guard let scope = projectScope else { break }
+            onNewChatInScope?(scope)
         case .missed(let item):
             openMissed(sessionID: item.sessionID)
         case .searchResult(let result):
@@ -1173,6 +1211,19 @@ extension SidebarViewController: NSMenuDelegate {
                     Localized.text("Copy project path"), subtitle: directory,
                     action: #selector(menuCopyPath)))
         }
+        if projectScope == nil {
+            menu.addItem(
+                menuItem(
+                    Localized.text("Only this project"),
+                    subtitle: ProjectScope(of: entry).banner(serverName: entry.profileName),
+                    action: #selector(menuScopeProject)))
+        } else {
+            menu.addItem(
+                menuItem(
+                    Localized.text("Every chat"),
+                    subtitle: Localized.text("Leave the project board"),
+                    action: #selector(menuScopeClear)))
+        }
         if menuBackend != nil {
             menu.addItem(.separator())
             menu.addItem(
@@ -1236,6 +1287,15 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuTogglePinned() {
         guard let model = menuModel else { return }
         togglePinned(model.entry)
+    }
+
+    @objc private func menuScopeProject() {
+        guard let model = menuModel else { return }
+        setProjectScope(ProjectScope(of: model.entry))
+    }
+
+    @objc private func menuScopeClear() {
+        setProjectScope(nil)
     }
 
     @objc private func menuToggleUnread() {

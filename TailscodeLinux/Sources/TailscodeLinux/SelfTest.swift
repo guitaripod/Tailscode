@@ -458,6 +458,9 @@ public enum SelfTest {
         try expect(action(set, chord("j"), .normal) == .scrollDown, "j scrolls")
         try expect(action(set, chord("J", shift: true), .normal) == .selectNext, "J selects")
         try expect(action(set, chord("e"), .normal) == .archiveSelected, "e archives")
+        try expect(
+            action(set, chord("p"), .normal) == .toggleProjectScope, "p scopes to the project")
+        try expect(action(set, chord("a", shift: true), .normal) == .quickAsk, "A quick asks")
         try expect(action(set, chord("x"), .normal) == .deleteSelected, "x deletes")
         try expect(
             action(set, KeyChord.canonical(keyval: Keymap.enter, state: 0), .normal)

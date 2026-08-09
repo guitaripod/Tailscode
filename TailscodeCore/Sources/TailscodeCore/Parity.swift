@@ -106,6 +106,8 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case homeQuickActions
     case presenceOrb
     case gameCenter
+    case projectBoard
+    case quickAsk
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -497,6 +499,14 @@ public enum CapabilityRegistry {
             id: .gameCenter, area: "status", title: "The ledger is also a game",
             spec:
                 "The month the analytics already fold is scored against a fixed trophy catalog, and Apple's Game Center wears the result. The catalog and every word are Core's (TrophyRoom): each trophy is an identifier shared with App Store Connect, a target, a progress line and Game Center's own 0–100 percent, all read from the same UsageAnalytics merge as the charts — the in-app card and Apple's dashboard can never disagree. The analytics surface carries the trophy case: earned count, the nearest unearned marks as progress bars (the chase, not the shelf), and the road into Apple's own dashboard. Signing in is lazy and never a wall — the card renders whole from Core with no account, states plainly when Game Center is unavailable, and the sign-in sheet appears only when the person goes toward the dashboard. Reporting rides the fetches the app already makes: whenever a haul lands, changed percentages go to GKAchievement and the window's scores to the leaderboards (longest streak, and the month's turns, tokens and tool calls), deduplicated so a refresh costs nothing. Game Center is Apple's account system, so only the Apple clients can answer it; the trophies themselves stay toolkit-free in Core."),
+        CapabilityDefinition(
+            id: .projectBoard, area: "chat list", title: "A project opens as its own board",
+            spec:
+                "A project names a place work happens — a directory on one machine — and choosing it opens a container, never a composer: the board is that project's chats and nothing else, decided on the exact (profile, directory) pair (ProjectScope.matches), never a path substring, wearing the same rows, sections, live updates and row verbs the whole list wears, and leading with the project's own name. The one thing a launch pad owed — a new chat in that project, pre-aimed at its directory — rides the board's chrome as an offer, so starting work there costs one tap but stays a choice; creation never happens on open. Where the container appears is the client's idiom: the phone's project cards open it, a desktop sidebar scopes itself from a row's own menu or the p key and wears a clearable banner naming the scope (ProjectScope.banner — project and server both, because two machines can hold a checkout spelled the same) rather than a hidden mode. Leaving the scope restores the whole list unchanged, and conversations that never had a directory form a real scope of their own rather than being unreachable."),
+        CapabilityDefinition(
+            id: .quickAsk, area: "composer", title: "A question skips the setup",
+            spec:
+                "Some prompts are questions, not work, and a question owes no form: one gesture — the A key on a desktop, one tap from the phone's Home — summons a surface that is only a composer, and sending is the whole ceremony. The surface names its aim quietly and one action changes it; which server answers is QuickAskDefaults.target — the machine the last quick ask used while it is still among the servers offered, else the caller's own fallback — and a send records the choice for next time. Sending mints an ordinary conversation there with no project directory and the words already on their way, then opens it where conversations open on that client. Afterwards a quick ask is any other chat: it lists, resumes, saves and deletes normally, and its row simply has no project to name rather than pretending one. With no servers the surface says so and offers setup instead of a dead text box."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

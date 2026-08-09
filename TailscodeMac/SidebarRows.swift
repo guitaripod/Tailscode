@@ -8,6 +8,12 @@ import TailscodeCore
 enum SidebarRow: Equatable {
     case banner(String)
     case backLink
+    /// The clearable banner a scoped list wears: the project and its server, worn as a row whose
+    /// click restores the whole list.
+    case scopeLink(String)
+    /// The offer the launch pad owed: a new chat in the scoped project, pre-aimed at its
+    /// directory, riding the board's own chrome.
+    case scopeNew(String)
     case header(String, Int)
     /// - Parameter marked: whether the row is held by the bulk selection. It travels in the row
     ///   value rather than being read from the store at configure time, so the table's diff sees a
@@ -61,6 +67,14 @@ enum SidebarCellFactory {
         case .backLink:
             let cell = reuse("action", in: tableView) { SidebarMessageCell() }
             cell.configure(text: Localized.text("← All chats"), style: .action)
+            return cell
+        case .scopeLink(let text):
+            let cell = reuse("action", in: tableView) { SidebarMessageCell() }
+            cell.configure(text: Localized.text("%@ ✕", text), style: .action)
+            return cell
+        case .scopeNew(let name):
+            let cell = reuse("action", in: tableView) { SidebarMessageCell() }
+            cell.configure(text: Localized.text("＋ New chat in %@", name), style: .action)
             return cell
         case .missedHeader(let count):
             let cell = reuse("missedHeader", in: tableView) { SidebarHeaderCell() }

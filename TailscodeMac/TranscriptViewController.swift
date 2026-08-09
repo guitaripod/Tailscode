@@ -115,7 +115,9 @@ final class TranscriptViewController: NSViewController {
     private var pinScheduled = false
     private var unseenRows = 0
     private var echoedPrompt: String?
+    private var pendingFirstMessage: (sessionID: String, text: String)?
     private var pendingSignature = "\u{0}"
+    private var compactingElapsed: NSTextField?
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
     private var inFlightImages: Set<String> = []
@@ -326,6 +328,23 @@ final class TranscriptViewController: NSViewController {
                 try? await Task.sleep(for: .seconds(delay))
             }
         }
+        if let queued = pendingFirstMessage {
+            pendingFirstMessage = nil
+            if queued.sessionID == entry.session.id {
+                let choice = composer.promptChoice
+                sendPrompt(
+                    queued.text, model: choice.model, effort: choice.effort, attachments: [])
+            }
+        }
+    }
+
+    /// A quick ask's words arrive before this pane's conversation exists, so they wait here —
+    /// keyed to the session they were minted for — and go out through `sendPrompt` the moment
+    /// open() builds that session's conversation. Any other open drops them: the key is what
+    /// makes sending a question into a stranger's chat impossible, and the caller queues in the
+    /// same main-actor turn that opens the minted chat, so nothing can slip in between.
+    func queueFirstMessage(_ text: String, forSession sessionID: String) {
+        pendingFirstMessage = (sessionID, text)
     }
 
     /// Re-dials without disturbing the stream — the socket a sleeping Mac wakes up holding looks

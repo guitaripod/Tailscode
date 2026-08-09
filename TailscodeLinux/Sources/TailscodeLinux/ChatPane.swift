@@ -39,6 +39,7 @@ final class ChatPane: @unchecked Sendable {
     private var git: GitState?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
+    private var pendingFirstMessage: (sessionID: String, text: String)?
     private var notice: String?
     let entryView = gtk_text_view_new()!
     private let sendButton = gtk_button_new_with_label("Send")!
@@ -648,6 +649,28 @@ final class ChatPane: @unchecked Sendable {
     /// profiles and lists one server's sessions under both, so a session id alone would call the
     /// second copy the chat already open — leaving the pane naming the wrong server and writing
     /// its drafts under it.
+    /// A quick ask's words arrive before the pane's conversation exists, so they wait here —
+    /// keyed to the session they were minted for — and go out the moment the stream task has
+    /// built that session's conversation: the same send a composer's Enter performs, echoed the
+    /// same way. The key is what makes misdelivery impossible: a stream that reaches the words
+    /// for any other session drops them rather than sending a question into a stranger's chat.
+    func queueFirstMessage(_ text: String, forSession sessionID: String) {
+        pendingFirstMessage = (sessionID, text)
+    }
+
+    /// The one read of the queue, serialized through the GTK main loop because the queue is
+    /// written there: whichever stream task reaches its conversation first takes the whole value,
+    /// and everyone else sees nothing.
+    private func takeQueuedFirstMessage() async -> (sessionID: String, text: String)? {
+        await withCheckedContinuation { continuation in
+            Gtk.onMain { [weak self] in
+                let queued = self?.pendingFirstMessage
+                self?.pendingFirstMessage = nil
+                continuation.resume(returning: queued)
+            }
+        }
+    }
+
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard sessionID != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
@@ -746,6 +769,22 @@ final class ChatPane: @unchecked Sendable {
             let conversation = AgentConversation(
                 backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
             self.conversation = conversation
+            if !Task.isCancelled, let queued = await self.takeQueuedFirstMessage(),
+                queued.sessionID == entry.session.id
+            {
+                let model = self.chosenModel
+                let effort = self.chosenEffort
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.echoedPrompt = queued.text
+                    if Ultracode.invokes(queued.text) || effort == Ultracode.effortLevel {
+                        self.ultracodeInFlight = true
+                        self.refreshUltracodeAura()
+                    }
+                }
+                try? await conversation.send(
+                    queued.text, model: model, reasoningEffort: effort)
+            }
             var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
             var resubscribes = 0

@@ -351,6 +351,10 @@ final class MainWindowController: NSWindowController {
             splitPanes.equalize()
         case .exchangeSplit:
             splitPanes.exchangeActive()
+        case .toggleProjectScope:
+            sidebar.toggleProjectScope(fallback: currentEntry)
+        case .quickAsk:
+            presentQuickAsk()
         }
         return true
     }
@@ -676,6 +680,14 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onOpenInSplit = { [weak self] entry in
             self?.openInNewSplit(entry)
+        }
+        sidebar.onNewChatInScope = { [weak self] scope in
+            guard let self,
+                let profile = ServerDirectory.shared.profiles.first(where: {
+                    $0.id == scope.profileID
+                })
+            else { return }
+            self.createChat(on: profile, directory: scope.directory)
         }
         sidebar.focusedSessionID = { [weak self] in
             self?.transcript.currentEntry?.session.id
@@ -1392,6 +1404,64 @@ final class MainWindowController: NSWindowController {
 
     /// The cheatsheet is generated from the registry, so it always tells the truth — overrides
     /// included. Two columns, because forty rows in one column is a scroll, not a glance.
+    /// The chord summons one field and nothing else; the words land in the focused pane as a new
+    /// conversation with no project directory. With no servers the chord goes to setup instead
+    /// of presenting a dead field.
+    private func presentQuickAsk() {
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else {
+            presentServers()
+            return
+        }
+        QuickAskPanel.present(
+            over: window, servers: profiles.map { (profileID: $0.id, name: $0.name) },
+            preferredServer: currentEntry?.profileID
+        ) { [weak self] profileID, text, done in
+            guard let self,
+                let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
+            else {
+                done(NewChatDiagnosis.noSuchServer())
+                return
+            }
+            self.mintQuickAsk(on: profile, text: text, done: done)
+        }
+    }
+
+    /// The quick-ask mint queues the words — keyed to the minted session — and opens the chat in
+    /// one main-actor turn, so nothing a hand does mid-flight can slip between the queue and the
+    /// open, and no other conversation can ever inherit the question. A failed mint queues
+    /// nothing and answers the panel with its reason.
+    private func mintQuickAsk(
+        on profile: ConnectionProfile, text: String,
+        done: @escaping @MainActor (NewChatFailure?) -> Void
+    ) {
+        guard let backend = ServerDirectory.shared.backend(for: profile) else {
+            done(NewChatDiagnosis.noCredentials(server: Self.newChatServer(profile)))
+            return
+        }
+        let server = Self.newChatServer(profile)
+        let password = ServerDirectory.shared.password(for: profile)
+        Task { [weak self] in
+            let minted = await NewChatAttempt.mint(
+                using: backend, server: server, baseURL: profile.baseURL, password: password,
+                directory: nil)
+            guard case .success(let session) = minted else {
+                done(minted.failureValue)
+                return
+            }
+            done(nil)
+            guard let self else { return }
+            let entry = SessionEntry(
+                profileID: profile.id, profileName: profile.name,
+                host: profile.baseURL.host ?? profile.name,
+                backendType: profile.backend, session: session)
+            self.transcript.queueFirstMessage(text, forSession: entry.session.id)
+            self.sidebar.noteCreated(entry)
+            self.transcript.focusComposer()
+            await self.sidebar.refresh()
+        }
+    }
+
     private func presentCheatsheet() {
         let panel = CheatsheetPanel(
             contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)

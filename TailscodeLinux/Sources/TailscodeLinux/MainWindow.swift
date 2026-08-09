@@ -73,6 +73,7 @@ final class MainWindow: @unchecked Sendable {
     func quotasForStatus() -> [UsageQuota] { lastQuotas.map(\.1) }
     private var cursor = 0
     private var filter = ""
+    private var projectScope: ProjectScope?
     /// The results of the last submitted search, and whether one is in flight. A list that is
     /// looking must say so: silence while a fleet answers is indistinguishable from nothing found.
     private var searchBoard: TranscriptSearch.Board?
@@ -253,6 +254,18 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "newchatui":
                     self.presentNewChat()
+                case "pscope":
+                    if let index = Int(argument), index < self.visible.count {
+                        self.setProjectScope(ProjectScope(of: self.visible[index].entry))
+                    } else {
+                        self.toggleProjectScope()
+                    }
+                case "ask":
+                    self.presentQuickAsk()
+                case "asktype":
+                    QuickAskWindow.open?.driveType(argument)
+                case "askgo":
+                    QuickAskWindow.open?.driveGo()
                 case "up":
                     self.activePane.scroll(by: -(Double(argument) ?? 200))
                 case "down":
@@ -959,8 +972,9 @@ final class MainWindow: @unchecked Sendable {
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
         }
-        let archivedTotal = rows.filter(isArchived).count
-        let matching = rows.filter {
+        let scoped = projectScope.map { scope in rows.filter { scope.matches($0.entry) } } ?? rows
+        let archivedTotal = scoped.filter(isArchived).count
+        let matching = scoped.filter {
             needle.isEmpty || $0.title.lowercased().contains(needle)
                 || $0.detail.lowercased().contains(needle)
                 || ($0.snippet?.lowercased().contains(needle) ?? false)
@@ -979,7 +993,7 @@ final class MainWindow: @unchecked Sendable {
         let missed = ActivityInbox.ordered(limit: 5)
         let snapshot = (
             visible, unreachable, filter,
-            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
+            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
         )
         if let last = lastSidebar, last == snapshot { return }
         lastSidebar = snapshot
@@ -989,6 +1003,27 @@ final class MainWindow: @unchecked Sendable {
         defer { restoreSidebarScroll(scrollTarget) }
 
         Gtk.removeChildren(of: sidebarBanner)
+        if let scope = projectScope {
+            let serverName =
+                entries.first { $0.profileID == scope.profileID }?.profileName ?? scope.profileID
+            let clear = Gtk.button(
+                Localized.text("%@ ✕", scope.banner(serverName: serverName)), css: ["flat", "dim"]
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in self?.setProjectScope(nil) }
+            }
+            Gtk.margins(clear, top: 4, bottom: 0)
+            gtk_box_append(ptr(sidebarBanner), clear)
+            let mint = Gtk.button(
+                Localized.text("＋ New chat in %@", scope.name), css: ["flat", "dim"]
+            ) { [weak self] in
+                Gtk.onMain { [weak self] in
+                    self?.createChat(
+                        onProfileID: scope.profileID, directory: scope.directory)
+                }
+            }
+            Gtk.margins(mint, top: 0, bottom: 2)
+            gtk_box_append(ptr(sidebarBanner), mint)
+        }
         if !unreachable.isEmpty {
             gtk_box_append(
                 ptr(sidebarBanner),
@@ -1040,9 +1075,10 @@ final class MainWindow: @unchecked Sendable {
                 SidebarRow.empty(
                     showingArchive
                         ? Localized.text("Nothing archived")
-                        : filter.isEmpty
-                            ? Localized.text("No conversations yet")
-                            : Localized.text("Nothing matches “%@”", filter)))
+                        : !filter.isEmpty
+                            ? Localized.text("Nothing matches “%@”", filter)
+                            : projectScope.map { Localized.text("Nothing in %@ yet", $0.name) }
+                                ?? Localized.text("No conversations yet")))
             appendArchiveFooter(archivedTotal)
             return
         }
@@ -1860,6 +1896,7 @@ final class MainWindow: @unchecked Sendable {
     /// the copy the dialog captured would hit the same wrong port again.
     private func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
+        firstMessage: String? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Task { [weak self] in
@@ -1869,13 +1906,20 @@ final class MainWindow: @unchecked Sendable {
                 return
             }
             Gtk.onMain { [weak self] in
-                self?.createChat(on: profile, directory: directory, into: pane, done: done)
+                self?.createChat(
+                    on: profile, directory: directory, into: pane, firstMessage: firstMessage,
+                    done: done)
             }
         }
     }
 
+    /// - Parameter firstMessage: words that should go out the moment the minted chat's own
+    ///   conversation exists — queued on the pane keyed to the minted session in the same main
+    ///   loop turn that opens it, so nothing can slip between the queue and the open and no
+    ///   other conversation can ever inherit them. A failed mint queues nothing.
     private func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
+        firstMessage: String? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
@@ -1904,7 +1948,11 @@ final class MainWindow: @unchecked Sendable {
                 self.freshlyCreated = entry
                 self.lastSidebar = nil
                 self.renderSidebar()
-                (pane ?? self.activePane).open(entry, freshlyCreated: true)
+                let target = pane ?? self.activePane
+                if let firstMessage {
+                    target.queueFirstMessage(firstMessage, forSession: entry.session.id)
+                }
+                target.open(entry, freshlyCreated: true)
             }
             done(nil)
             await self?.refresh()
@@ -2211,6 +2259,20 @@ final class MainWindow: @unchecked Sendable {
                      }))
             }
         }
+        if projectScope == nil {
+            let scope = ProjectScope(of: entry)
+            rows.append(
+                (Localized.text("Only this project"), scope.banner(serverName: entry.profileName),
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in self?.setProjectScope(scope) }
+                 }))
+        } else {
+            rows.append(
+                (Localized.text("Every chat"), Localized.text("Leave the project board"),
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in self?.setProjectScope(nil) }
+                 }))
+        }
         rows.append(
             (Localized.text("Copy session ID"), entry.session.id,
              { Gtk.onMain { Gtk.copyToClipboard(entry.session.id) } }))
@@ -2412,8 +2474,60 @@ final class MainWindow: @unchecked Sendable {
             splitHost.equalize()
         case .exchangeSplit:
             splitHost.exchangeActive()
+        case .toggleProjectScope:
+            toggleProjectScope()
+        case .quickAsk:
+            presentQuickAsk()
         }
         return true
+    }
+
+    /// One key walks in and out of a project: scoped, `p` restores the whole list; unscoped, it
+    /// reads the project off the row under the cursor — or the conversation on screen when the
+    /// cursor has nothing — and the sidebar becomes that project's own board.
+    private func toggleProjectScope() {
+        guard projectScope == nil else { return setProjectScope(nil) }
+        let entry =
+            cursor < visible.count ? visible[cursor].entry : activePane.entry
+        guard let entry else { return }
+        setProjectScope(ProjectScope(of: entry))
+    }
+
+    private func setProjectScope(_ scope: ProjectScope?) {
+        projectScope = scope
+        lastSidebar = nil
+        renderSidebar()
+        FileHandle.standardOutput.write(
+            Data("SCOPE \(scope.map(\.name) ?? "off")\n".utf8))
+    }
+
+    /// The chord summons one entry and nothing else; the words land in the focused pane as a new
+    /// conversation with no project directory. The pane's queued first message goes out the
+    /// moment the mint's own open() has built the conversation, and a mint that fails takes the
+    /// words back so the next chat this pane opens cannot inherit them.
+    private func presentQuickAsk() {
+        let pane = activePane
+        let fallback = pane.entry?.profileID
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            let servers = profiles.map { (profileID: $0.id, name: $0.name) }
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                guard !servers.isEmpty else {
+                    self.presentServers()
+                    return
+                }
+                QuickAskWindow.present(
+                    servers: servers, preferredServer: fallback, parent: self.window
+                ) { [weak self] profileID, text, done in
+                    Gtk.onMain { [weak self] in
+                        self?.createChat(
+                            onProfileID: profileID, directory: nil, into: pane,
+                            firstMessage: text, done: done)
+                    }
+                }
+            }
+        }
     }
 
     /// `x` means every marked chat when any are marked and the row under the cursor when none are

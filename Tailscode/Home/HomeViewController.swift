@@ -6,7 +6,8 @@ import UIKit
 /// The app's front door, organized around three jobs: triage (what needs you
 /// right now — blocked or live agents, unreachable servers), continue (recent
 /// conversations, badged when they changed since you last looked), and start
-/// (the docked composer plus one-tap project launch pads).
+/// (the docked composer, the quick-ask sheet, and project cards that open
+/// each project's own board).
 @MainActor
 final class HomeViewController: UIViewController {
     var onOpenSettings: (() -> Void)?
@@ -363,6 +364,7 @@ final class HomeViewController: UIViewController {
     private func updateComposeButton() {
         let servers = viewModel.servers
         let compose = UIImage(systemName: "square.and.pencil")
+        let composeItem: UIBarButtonItem
         if servers.count > 1 {
             let actions = servers.map { profile in
                 UIAction(
@@ -372,16 +374,21 @@ final class HomeViewController: UIViewController {
                         .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
                 ) { [weak self] _ in self?.startChat(on: profile) }
             }
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
+            composeItem = UIBarButtonItem(
                 image: compose, menu: UIMenu(title: String(localized: "New chat on…"), children: actions))
         } else {
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
+            composeItem = UIBarButtonItem(
                 image: compose, primaryAction: UIAction { [weak self] _ in
                     guard let self, let profile = self.viewModel.servers.first else { return }
                     self.startChat(on: profile)
                 })
         }
-        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "New chat")
+        composeItem.accessibilityLabel = String(localized: "New chat")
+        let ask = UIBarButtonItem(
+            image: UIImage(systemName: "sparkle"),
+            primaryAction: UIAction { [weak self] _ in self?.presentQuickAsk() })
+        ask.accessibilityLabel = String(localized: "Quick ask")
+        navigationItem.rightBarButtonItems = [composeItem, ask]
     }
 
     private var lastOpencodeScan: Date?
@@ -931,6 +938,33 @@ final class HomeViewController: UIViewController {
     private func pushChats(filterProfileID: String? = nil) {
         navigationController?.pushViewController(
             SessionListViewController(filterProfileID: filterProfileID), animated: true)
+    }
+
+    /// A folder opens a container, never a composer: the card's tap lands on the project's own
+    /// board — its chats and nothing else — with the launch pad's mint waiting in the board's
+    /// chrome and in the card's long-press.
+    private func openProjectBoard(for card: ProjectCard) {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(
+            SessionListViewController(
+                scope: ProjectScope(profileID: card.profileID, directory: card.directory)),
+            animated: true)
+    }
+
+    /// One tap from Home summons the surface; where the conversation opens afterwards is the
+    /// same road every conversation takes, with the words sent the moment the chat is up. With
+    /// no servers the gesture goes to setup instead of presenting a dead text box.
+    private func presentQuickAsk() {
+        Theme.Haptics.tap()
+        guard !viewModel.servers.isEmpty else {
+            presentServerSetup()
+            return
+        }
+        QuickAskViewController.present(from: self, viewModel: viewModel).onOpen = {
+            [weak self] entry, text in
+            guard let self else { return }
+            self.openChat(for: entry, seeding: self.modelChoices[entry.profileID])?.send(text)
+        }
     }
 
     func pushUsage() {
@@ -1550,10 +1584,7 @@ extension HomeViewController: UICollectionViewDelegate {
         case .live(let card):
             openChat(for: card.entry)
         case .project(let card):
-            guard let profile = viewModel.servers.first(where: { $0.id == card.profileID })
-            else { return }
-            setComposeTarget(profile: profile, directory: card.directory)
-            composerBar.focus()
+            openProjectBoard(for: card)
         case .saved(let card):
             openSaved(card.chat)
         case .recent(let card):
@@ -1590,6 +1621,17 @@ extension HomeViewController: UICollectionViewDelegate {
                             Theme.Haptics.success()
                             self.openChat(for: entry)
                         }
+                    },
+                    UIAction(
+                        title: String(localized: "Write here"),
+                        subtitle: String(localized: "Aim the composer at this project"),
+                        image: UIImage(systemName: "square.and.pencil")
+                    ) { _ in
+                        guard let self,
+                            let profile = self.viewModel.servers.first(where: { $0.id == card.profileID })
+                        else { return }
+                        self.setComposeTarget(profile: profile, directory: card.directory)
+                        self.composerBar.focus()
                     },
                     UIAction(
                         title: String(localized: "View chats on \(card.profileName)"),
@@ -1822,6 +1864,8 @@ extension HomeViewController: KeyActionHost {
                 ArchivedChatsViewController(), animated: true)
         case .insert:
             composerBar.focus()
+        case .quickAsk:
+            presentQuickAsk()
         case .leaveInsert:
             guard composerBar.isEditing else { return false }
             composerBar.unfocus()

@@ -107,6 +107,8 @@ enum ParityManifest {
                 "MacGameCenter",
                 missing:
                     "the trophy case renders and reports through the same coordinator as iOS, but the dev build is ad-hoc signed without the com.apple.developer.game-center entitlement, so GKLocalPlayer cannot authenticate until the Mac app ships signed; the surface states the unavailability instead of hiding")
+        case .projectBoard: return .implemented("toggleProjectScope")
+        case .quickAsk: return .implemented("QuickAskPanel")
         }
     }
 }

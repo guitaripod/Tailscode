@@ -19,6 +19,7 @@ enum SettingsFile {
         "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
+        "tailscode.quickask.",
     ]
 
     private nonisolated(unsafe) static var state: [String: Any] = [:]

@@ -28,7 +28,7 @@ enum ParityManifest {
         case .rowContextActions: return .implemented("rowMenuRows")
         case .rowSnippet: return .implemented("model.snippet")
         case .rowFacets: return .implemented("row-age")
-        case .modelIdentityTint: return .implemented("modelChips")
+        case .modelIdentityTint: return .implemented("modelLabel")
         case .usageGauges: return .implemented("usage-footer")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("PangoMarkdown")
@@ -101,6 +101,8 @@ enum ParityManifest {
         case .homeQuickActions: return .notApplicable("there is no springboard on a desktop to long-press; the app launches into its window, where every destination the phone's quick actions reach is already one click away")
         case .presenceOrb: return .implemented("OrbPainter")
         case .gameCenter: return .notApplicable("Game Center is Apple's account system, and this client cannot sign into it — there is no dashboard to open and nowhere to report a percentage; the trophies' arithmetic lives in Core, but a case with no account behind it would be a scoreboard nobody else can see, and the month's numbers are already usageAnalytics's parity")
+        case .projectBoard: return .implemented("toggleProjectScope")
+        case .quickAsk: return .implemented("QuickAskWindow")
         }
     }
 }

@@ -48,6 +48,11 @@ final class ComposerView: NSView {
     private var commandsBySession: [String: [AgentCommand]] = [:]
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
+
+    /// What a prompt sent outside the text box should travel with — the same model and effort
+    /// the next Enter in this composer would use.
+    var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+
     private var completionMatches: [AgentCommand] = []
     private var completionCursor = 0
     /// Opens the browsable catalog — the chat owner owns the window chrome.
