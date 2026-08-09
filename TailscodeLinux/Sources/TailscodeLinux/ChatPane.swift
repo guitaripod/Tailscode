@@ -736,30 +736,38 @@ final class ChatPane: @unchecked Sendable {
             self.conversation = conversation
             var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
-            for await state in await conversation.states() {
-                if Task.isCancelled { return }
-                let tail = self.rowTailMessages
-                let messages = state.messages.count > tail
-                    ? Array(state.messages.suffix(tail)) : state.messages
-                let started = Date()
-                let rows = self.rowBuilder.rows(for: messages)
-                if tracing {
-                    let ms = Int(Date().timeIntervalSince(started) * 1000)
-                    FileHandle.standardOutput.write(
-                        Data("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms\n".utf8))
-                }
-                Gtk.onMain { [weak self] in
-                    self?.apply(state: state, rows: rows)
-                }
-                if state.messages.count != countedMessages {
-                    countedMessages = state.messages.count
-                    let estimate = StatusFacts.estimateContextTokens(state.messages)
+            var resubscribes = 0
+            while !Task.isCancelled {
+                for await state in await conversation.states() {
+                    if Task.isCancelled { return }
+                    if state.connection == .live { resubscribes = 0 }
+                    let tail = self.rowTailMessages
+                    let messages = state.messages.count > tail
+                        ? Array(state.messages.suffix(tail)) : state.messages
+                    let started = Date()
+                    let rows = self.rowBuilder.rows(for: messages)
+                    if tracing {
+                        let ms = Int(Date().timeIntervalSince(started) * 1000)
+                        FileHandle.standardOutput.write(
+                            Data("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms\n".utf8))
+                    }
                     Gtk.onMain { [weak self] in
-                        guard let self else { return }
-                        self.contextEstimate = estimate
-                        self.updateStatus()
+                        self?.apply(state: state, rows: rows)
+                    }
+                    if state.messages.count != countedMessages {
+                        countedMessages = state.messages.count
+                        let estimate = StatusFacts.estimateContextTokens(state.messages)
+                        Gtk.onMain { [weak self] in
+                            guard let self else { return }
+                            self.contextEstimate = estimate
+                            self.updateStatus()
+                        }
                     }
                 }
+                guard !Task.isCancelled else { return }
+                resubscribes += 1
+                let delay = min(30.0, pow(2.0, Double(min(resubscribes, 5))))
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }

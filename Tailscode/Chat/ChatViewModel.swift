@@ -397,6 +397,7 @@ final class ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {
+                if state.connection == .live { self.streamRestarts = 0 }
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
                     self.cachedUsage = nil
@@ -446,6 +447,27 @@ final class ChatViewModel {
         streamTask = nil
         SessionActivity.shared.markUnobserved(sessionID: session.id)
         onState?(state)
+        scheduleStreamRestart()
+    }
+
+    /// A stream that ended while someone is still looking at the chat is a terminal failure, not
+    /// a request to stop watching — left alone, the transcript freezes on whatever rendered last
+    /// until the screen is reopened, which reads as an answer that just stopped arriving. So a
+    /// bound chat dials again after a beat; an unbound one stays released, exactly as before.
+    private var streamRestarts = 0
+
+    private func scheduleStreamRestart() {
+        guard isBound else { return }
+        streamRestarts += 1
+        let delay = min(30.0, pow(2.0, Double(min(streamRestarts, 5))))
+        let generation = streamGeneration
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, self.isBound, self.streamTask == nil,
+                generation == self.streamGeneration
+            else { return }
+            self.start()
+        }
     }
 
     /// A locally-echoed prompt, shown instantly while the server round-trip

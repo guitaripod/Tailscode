@@ -308,14 +308,22 @@ final class TranscriptViewController: NSViewController {
             backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
         self.conversation = conversation
         streamTask = Task { [weak self] in
-            for await state in await conversation.states() {
-                guard !Task.isCancelled, let self else { return }
-                let tail = self.rowTailMessages
-                let messages =
-                    state.messages.count > tail
-                    ? Array(state.messages.suffix(tail)) : state.messages
-                let rows = self.rowBuilder.rows(for: messages)
-                self.apply(state: state, rows: rows)
+            var resubscribes = 0
+            while !Task.isCancelled {
+                for await state in await conversation.states() {
+                    guard !Task.isCancelled, let self else { return }
+                    if state.connection == .live { resubscribes = 0 }
+                    let tail = self.rowTailMessages
+                    let messages =
+                        state.messages.count > tail
+                        ? Array(state.messages.suffix(tail)) : state.messages
+                    let rows = self.rowBuilder.rows(for: messages)
+                    self.apply(state: state, rows: rows)
+                }
+                guard !Task.isCancelled, self != nil else { return }
+                resubscribes += 1
+                let delay = min(30.0, pow(2.0, Double(min(resubscribes, 5))))
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }
