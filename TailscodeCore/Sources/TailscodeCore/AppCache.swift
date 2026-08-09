@@ -37,10 +37,38 @@ public enum ModelPreferenceStore {
         setModel(model, forKey: contextID)
     }
 
-    /// The model a chat opens with: its own recorded pick, else the last model
-    /// used anywhere on that server — never a hardcoded default.
-    public static func initialModel(sessionKey: String?, contextID: String) -> ModelSelection? {
-        sessionKey.flatMap { model(forKey: $0) } ?? globalModel(forContextID: contextID)
+    /// The model a chat opens with, in the exact order its chat row reads (`ModelBadge.chip(for
+    /// entry:)`): this device's recorded pick, else what the server says the session runs, else
+    /// the last model used anywhere on that server. The row and the composer above it must never
+    /// name different models, so a session driven from another device opens on the model its row
+    /// wears — not on this server's global default — and a pick made here still wins until the
+    /// record catches up with it.
+    public static func initialModel(
+        sessionKey: String?, contextID: String, sessionModel: String? = nil
+    ) -> ModelSelection? {
+        sessionKey.flatMap { model(forKey: $0) }
+            ?? resolveSessionModel(sessionModel, contextID: contextID)
+            ?? globalModel(forContextID: contextID)
+    }
+
+    /// A session record names a model as one bare string — a bridge writes `claude-fable-5`
+    /// where its catalog offers `fable` — and a send needs provider and id. The string is read
+    /// against the server's own cached catalog: by id, by display name, then by the family name
+    /// the row's chip would print for it, so the record and the catalog meet exactly where the
+    /// reader already sees them agree. The `provider/model` parse is the last resort, not the
+    /// first — an opencode id can itself contain a slash — and a name nothing can place resolves
+    /// to nothing rather than to a fabricated provider.
+    public static func resolveSessionModel(_ raw: String?, contextID: String) -> ModelSelection? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let catalog = ModelCatalogStore.cached(contextID)
+        let family = ModelBadge.shortName(raw)
+        if let match = catalog.first(where: { $0.id.caseInsensitiveCompare(raw) == .orderedSame })
+            ?? catalog.first(where: { $0.name.caseInsensitiveCompare(raw) == .orderedSame })
+            ?? catalog.first(where: { $0.name.caseInsensitiveCompare(family) == .orderedSame })
+        {
+            return ModelSelection(providerID: match.providerID, modelID: match.id)
+        }
+        return ModelSelection(string: raw)
     }
 
     /// Records a pick everywhere a future chat looks for one: the session's own
@@ -98,10 +126,15 @@ public enum EffortPreferenceStore {
         }
     }
 
-    /// The effort a chat opens at: its own recorded pick, else the effort last
-    /// used anywhere on that server.
-    public static func initialEffort(sessionKey: String?, contextID: String) -> String? {
-        sessionKey.flatMap { effort(forKey: $0) } ?? globalEffort(forContextID: contextID)
+    /// The effort a chat opens at, in the row's own reading order: this device's recorded pick,
+    /// else what the server reports for the session, else the effort last used anywhere on that
+    /// server.
+    public static func initialEffort(
+        sessionKey: String?, contextID: String, sessionEffort: String? = nil
+    ) -> String? {
+        if let picked = sessionKey.flatMap({ effort(forKey: $0) }) { return picked }
+        if let sessionEffort, !sessionEffort.isEmpty { return sessionEffort }
+        return globalEffort(forContextID: contextID)
     }
 
     public static func recordPick(_ level: String?, sessionKey: String?, contextID: String) {

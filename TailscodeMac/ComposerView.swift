@@ -148,9 +148,11 @@ final class ComposerView: NSView {
         pastedImageCount = 0
         syncChips()
         let key = Self.preferenceKey(entry)
-        chosenModel = ModelPreferenceStore.initialModel(sessionKey: key, contextID: entry.profileID)
+        chosenModel = ModelPreferenceStore.initialModel(
+            sessionKey: key, contextID: entry.profileID, sessionModel: entry.session.model)
         chosenEffort = EffortPreferenceStore.initialEffort(
-            sessionKey: key, contextID: entry.profileID)
+            sessionKey: key, contextID: entry.profileID,
+            sessionEffort: entry.session.reasoningEffort)
         ultracodeInFlight = false
         refreshAura()
         models = modelsByProfile[entry.profileID] ?? []

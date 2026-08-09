@@ -662,9 +662,11 @@ final class ChatPane: @unchecked Sendable {
         models = []
         commands = []
         chosenModel = ModelPreferenceStore.initialModel(
-            sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
+            sessionKey: Self.preferenceKey(entry), contextID: entry.profileID,
+            sessionModel: entry.session.model)
         chosenEffort = EffortPreferenceStore.initialEffort(
-            sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
+            sessionKey: Self.preferenceKey(entry), contextID: entry.profileID,
+            sessionEffort: entry.session.reasoningEffort)
         ultracodeInFlight = false
         refreshUltracodeAura()
         turnStartedAt = nil

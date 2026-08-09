@@ -17,7 +17,7 @@ enum SettingsFile {
     /// state and model choices. Captured by prefix because their key space is per session.
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
-        "tailscode.effort.", "tailscode.recentModels",
+        "tailscode.effort.", "tailscode.recentModels", "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
     ]
 

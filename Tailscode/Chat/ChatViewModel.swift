@@ -880,14 +880,16 @@ final class ChatViewModel {
     private func loadDefaultModelIfNeeded() async {
         if supportsReasoningEffort, currentEffort == nil {
             currentEffort = ChatModelResolver.effort(
-                profileID: contextID, backend: backend, sessionKey: persistKey)
+                profileID: contextID, backend: backend, sessionKey: persistKey,
+                sessionEffort: session.reasoningEffort)
         }
         guard supportsModelSelection, selectedModel == nil else {
             onModelChange?()
             return
         }
         selectedModel = await ChatModelResolver.model(
-            profileID: contextID, backend: backend, sessionKey: persistKey)
+            profileID: contextID, backend: backend, sessionKey: persistKey,
+            sessionModel: session.model)
         onModelChange?()
     }
 
