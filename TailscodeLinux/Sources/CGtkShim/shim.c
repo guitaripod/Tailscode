@@ -160,6 +160,51 @@ static GdkPixbuf *tailscode_pixbuf_from_bytes(const void *data, gsize len, GErro
     return pixbuf;
 }
 
+/// A texture the cairo renderer can hand straight to cairo: ARGB32 premultiplied is BGRA bytes on
+/// little-endian, and GTK's cairo path re-downloads every texture node on every render pass — a
+/// pixbuf handed over as plain RGB is re-swizzled across the whole GLib thread pool for every
+/// frame of every animation on screen. Converted once here, that per-frame download is a straight
+/// row copy.
+static GdkTexture *tailscode_texture_premultiplied(GdkPixbuf *pixbuf) {
+#if G_BYTE_ORDER != G_LITTLE_ENDIAN
+    return gdk_texture_new_for_pixbuf(pixbuf);
+#else
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    int channels = gdk_pixbuf_get_n_channels(pixbuf);
+    if ((channels != 3 && channels != 4) || gdk_pixbuf_get_bits_per_sample(pixbuf) != 8)
+        return gdk_texture_new_for_pixbuf(pixbuf);
+    const guchar *pixels = gdk_pixbuf_read_pixels(pixbuf);
+    int src_stride = gdk_pixbuf_get_rowstride(pixbuf);
+    gsize stride = (gsize)width * 4;
+    guchar *out = g_malloc(stride * (gsize)height);
+    for (int row = 0; row < height; row++) {
+        const guchar *from = pixels + (gsize)row * (gsize)src_stride;
+        guchar *to = out + (gsize)row * stride;
+        for (int col = 0; col < width; col++) {
+            guchar red = from[0], green = from[1], blue = from[2];
+            guchar alpha = channels == 4 ? from[3] : 0xff;
+            if (alpha != 0xff) {
+                red = (guchar)((red * alpha + 127) / 255);
+                green = (guchar)((green * alpha + 127) / 255);
+                blue = (guchar)((blue * alpha + 127) / 255);
+            }
+            to[0] = blue;
+            to[1] = green;
+            to[2] = red;
+            to[3] = alpha;
+            from += channels;
+            to += 4;
+        }
+    }
+    GBytes *bytes = g_bytes_new_take(out, stride * (gsize)height);
+    GdkTexture *texture = gdk_memory_texture_new(
+        width, height, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, stride);
+    g_bytes_unref(bytes);
+    return texture;
+#endif
+}
+
 GdkTexture *tailscode_texture_scaled(
     const void *data, gsize len, int max_dim, int *out_orig_w, int *out_orig_h) {
     GBytes *bytes = g_bytes_new(data, len);
@@ -187,17 +232,104 @@ GdkTexture *tailscode_texture_scaled(
             GDK_INTERP_BILINEAR);
         g_object_unref(pixbuf);
         if (!scaled) return NULL;
-        texture = gdk_texture_new_for_pixbuf(scaled);
+        texture = tailscode_texture_premultiplied(scaled);
         g_object_unref(scaled);
     } else {
-        texture = gdk_texture_new_for_pixbuf(pixbuf);
+        texture = tailscode_texture_premultiplied(pixbuf);
         g_object_unref(pixbuf);
     }
     return texture;
 }
 
+#define TAILSCODE_TYPE_SURFACE_PAINTABLE (tailscode_surface_paintable_get_type())
+G_DECLARE_FINAL_TYPE(
+    TailscodeSurfacePaintable, tailscode_surface_paintable, TAILSCODE, SURFACE_PAINTABLE, GObject)
+
+/// A picture held as cairo's own surface rather than as a `GdkTexture`. A texture node under the
+/// cairo renderer is downloaded again on every render pass — even fully outside the damage clip,
+/// because the download happens before cairo ever sees the paint — so every animation anywhere in
+/// the window costs a full copy of every picture in the scene, every frame. A cairo node replays
+/// against the surface it already holds: clipped-out is free, and the GPU renderers rasterise and
+/// cache it like any other cairo node.
+struct _TailscodeSurfacePaintable {
+    GObject parent_instance;
+    cairo_surface_t *surface;
+    int width, height;
+};
+
+static void tailscode_surface_paintable_snapshot(
+    GdkPaintable *paintable, GdkSnapshot *snapshot, double width, double height) {
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
+    if (!self->surface || self->width <= 0 || self->height <= 0) return;
+    graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, (float)width, (float)height);
+    cairo_t *cr = gtk_snapshot_append_cairo(GTK_SNAPSHOT(snapshot), &bounds);
+    cairo_scale(cr, width / (double)self->width, height / (double)self->height);
+    cairo_set_source_surface(cr, self->surface, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+}
+
+static int tailscode_surface_paintable_intrinsic_width(GdkPaintable *paintable) {
+    return TAILSCODE_SURFACE_PAINTABLE(paintable)->width;
+}
+
+static int tailscode_surface_paintable_intrinsic_height(GdkPaintable *paintable) {
+    return TAILSCODE_SURFACE_PAINTABLE(paintable)->height;
+}
+
+static double tailscode_surface_paintable_intrinsic_aspect(GdkPaintable *paintable) {
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(paintable);
+    return self->height > 0 ? (double)self->width / (double)self->height : 0.0;
+}
+
+static GdkPaintableFlags tailscode_surface_paintable_flags(GdkPaintable *paintable) {
+    (void)paintable;
+    return GDK_PAINTABLE_STATIC_SIZE | GDK_PAINTABLE_STATIC_CONTENTS;
+}
+
+static void tailscode_surface_paintable_iface_init(GdkPaintableInterface *iface) {
+    iface->snapshot = tailscode_surface_paintable_snapshot;
+    iface->get_intrinsic_width = tailscode_surface_paintable_intrinsic_width;
+    iface->get_intrinsic_height = tailscode_surface_paintable_intrinsic_height;
+    iface->get_intrinsic_aspect_ratio = tailscode_surface_paintable_intrinsic_aspect;
+    iface->get_flags = tailscode_surface_paintable_flags;
+}
+
+G_DEFINE_TYPE_WITH_CODE(
+    TailscodeSurfacePaintable, tailscode_surface_paintable, G_TYPE_OBJECT,
+    G_IMPLEMENT_INTERFACE(GDK_TYPE_PAINTABLE, tailscode_surface_paintable_iface_init))
+
+static void tailscode_surface_paintable_finalize(GObject *object) {
+    TailscodeSurfacePaintable *self = TAILSCODE_SURFACE_PAINTABLE(object);
+    if (self->surface) cairo_surface_destroy(self->surface);
+    G_OBJECT_CLASS(tailscode_surface_paintable_parent_class)->finalize(object);
+}
+
+static void tailscode_surface_paintable_class_init(TailscodeSurfacePaintableClass *class) {
+    G_OBJECT_CLASS(class)->finalize = tailscode_surface_paintable_finalize;
+}
+
+static void tailscode_surface_paintable_init(TailscodeSurfacePaintable *self) {
+    (void)self;
+}
+
 GtkWidget *tailscode_picture_for_texture(GdkTexture *texture) {
-    GtkWidget *picture = gtk_picture_new_for_paintable(GDK_PAINTABLE(texture));
+    TailscodeSurfacePaintable *paintable =
+        g_object_new(TAILSCODE_TYPE_SURFACE_PAINTABLE, NULL);
+    paintable->width = gdk_texture_get_width(texture);
+    paintable->height = gdk_texture_get_height(texture);
+    paintable->surface = cairo_image_surface_create(
+        CAIRO_FORMAT_ARGB32, paintable->width, paintable->height);
+    if (cairo_surface_status(paintable->surface) == CAIRO_STATUS_SUCCESS) {
+        cairo_surface_flush(paintable->surface);
+        gdk_texture_download(
+            texture, cairo_image_surface_get_data(paintable->surface),
+            (gsize)cairo_image_surface_get_stride(paintable->surface));
+        cairo_surface_mark_dirty(paintable->surface);
+    }
+    GtkWidget *picture = gtk_picture_new_for_paintable(GDK_PAINTABLE(paintable));
+    g_object_unref(paintable);
     gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_SCALE_DOWN);
     gtk_picture_set_can_shrink(GTK_PICTURE(picture), TRUE);
     return picture;

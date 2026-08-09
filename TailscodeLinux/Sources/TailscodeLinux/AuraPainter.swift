@@ -14,6 +14,11 @@ final class AuraPainter: @unchecked Sendable {
     private let area: UnsafeMutablePointer<GtkWidget>
     private let stops: [Double]
     private var tick: UInt = 0
+    private var lastPainted = 0.0
+    /// The lap turns in seconds, not frames, so drawing it past thirty a second buys nothing an
+    /// eye can keep — and on a fast display an uncapped aura redraws every pane it wraps at the
+    /// panel's own rate. Same cap as the orb: a skipped frame costs a frame, never the phase.
+    private static let frameInterval = 1.0 / 30.0
     private(set) var isActive = false
 
     init() {
@@ -56,7 +61,10 @@ final class AuraPainter: @unchecked Sendable {
                 { raw in
                     guard let raw else { return }
                     let painter = Unmanaged<AuraPainter>.fromOpaque(raw).takeUnretainedValue()
-                    painter.paint(at: AuraPainter.now)
+                    let time = AuraPainter.now
+                    guard time - painter.lastPainted >= AuraPainter.frameInterval else { return }
+                    painter.lastPainted = time
+                    painter.paint(at: time)
                 }, box))
     }
 

@@ -25,6 +25,11 @@ final class ActivityPulse {
     private var tick: UInt = 0
     private var lastOpacity = -1.0
     private var lastFrame = ""
+    private var lastStepped = 0.0
+    /// A swell measured in seconds needs no more than thirty frames of it a second; stepped at a
+    /// fast panel's own rate, every breathing badge redraws the window that often for light no
+    /// eye can tell apart. The arithmetic reads absolute time, so a skipped frame skips nothing.
+    private static let frameInterval = 1.0 / 30.0
 
     private init(
         widget: UnsafeMutablePointer<GtkWidget>, icon: ActivityIcon, motion: ActivityMotion,
@@ -128,6 +133,8 @@ final class ActivityPulse {
     /// a sweeping one costs four text writes a second.
     private func step() {
         let time = Self.now
+        guard time - lastStepped >= Self.frameInterval else { return }
+        lastStepped = time
         let opacity = motion.intensity(at: time)
         if abs(opacity - lastOpacity) > 0.004 {
             lastOpacity = opacity
