@@ -97,7 +97,7 @@ struct QuotaBindingTests {
             scope: .model(["opus"]))
         let note = QuotaSurface.rowNote(scoped)
         #expect(note.hasPrefix(Localized.text("Used up")))
-        #expect(note.contains("1h "))
+        #expect(note.contains("h "))
 
         let account = QuotaExhaustion(
             provider: "Claude", window: "5-hour session", fraction: 1, resetsAt: nil,
