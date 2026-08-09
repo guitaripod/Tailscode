@@ -313,6 +313,12 @@ enum MatrixTheme {
             border-radius: 4px;
         }
         .selection-verb:hover { border-color: \(accent); }
+        .selection-split-header {
+            font-size: \(c(0.72));
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            opacity: 0.5;
+        }
         .row-title { font-size: \(c(0.92)); color: \(text); }
         .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
         .row-detail { font-size: \(c(0.78)); opacity: 0.55; font-family: monospace; }
@@ -854,6 +860,10 @@ enum MatrixTheme {
                 ".pill-row menubutton.\(pair.cls) > button:hover "
                     + "{ background-color: alpha(\(pair.hex), 0.12); }")
         }
+        lines.append(".chip-lead { border-radius: 2px 0px 0px 2px; }")
+        lines.append(
+            ".chip-tail { border-radius: 0px 2px 2px 0px; "
+                + "border-left: 1px solid alpha(\(palette.canvas), 0.55); }")
         lines.append(
             ".effort-ultracode { background-image: \(rainbowWash(0.16)); color: \(palette.text); }")
         lines.append(

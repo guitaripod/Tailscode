@@ -232,7 +232,7 @@ final class SidebarSessionCell: NSView {
             titleRow.addArrangedSubview(
                 Self.pill(Localized.text("SAVED"), tint: MacTheme.Color.mark))
         }
-        if model.unread {
+        if model.unread, model.state.pill == nil {
             let dot = NSTextField(labelWithString: "●")
             dot.font = .systemFont(ofSize: 8)
             dot.textColor = MacTheme.Color.accent
