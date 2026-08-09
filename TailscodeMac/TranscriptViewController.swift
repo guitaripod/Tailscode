@@ -101,7 +101,12 @@ final class TranscriptViewController: NSViewController {
     /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
     /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
     private var enteredRows: Set<String> = []
-    private var lastFullRows: [TranscriptRow] = []
+    /// The row the wave last had its hands on, kept until it has actually been handed back whole.
+    var lastStreamedKey: String?
+    /// A row the wave gave up on. It is not taken back: restarting a reveal that already snapped to
+    /// whole would rewind the answer under the reader.
+    var abandoned: String?
+    private(set) var lastFullRows: [TranscriptRow] = []
     private var lastFullCount = 0
     private var windowLimit = 400
     private var rowTailMessages = 300
@@ -275,6 +280,8 @@ final class TranscriptViewController: NSViewController {
         rowTailMessages = 300
         lastFullRows = []
         lastFullCount = 0
+        lastStreamedKey = nil
+        abandoned = nil
         followsBottom = true
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -508,6 +515,8 @@ final class TranscriptViewController: NSViewController {
         lastState = nil
         lastFullRows = []
         lastFullCount = 0
+        lastStreamedKey = nil
+        abandoned = nil
         echoedPrompt = nil
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -659,6 +668,7 @@ final class TranscriptViewController: NSViewController {
 
         composer.isHidden = true
         cascade.onFrame = { [weak self] in self?.paintCascade() }
+        cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
             self?.sendPrompt(text, model: model, effort: effort, attachments: attachments)
         }
@@ -936,6 +946,7 @@ final class TranscriptViewController: NSViewController {
         } else {
             applyRows(
                 pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            settleStreamedTail(in: windowed)
             paintCascade()
         }
         renderPendingCards(state)
@@ -1392,6 +1403,13 @@ final class TranscriptViewController: NSViewController {
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
             guard rows[last].key == cascade.key else { return false }
+            let previous = renderedRows[last]
+            renderedRows[last] = rows[last]
+            guard paintCascade() else {
+                renderedRows[last] = previous
+                return false
+            }
+            return true
         case (.reasoning, .reasoning(let text)):
             guard let disclosure = rowViews[last] as? DisclosureRow else { return false }
             context.liveReasoning[rows[last].key] = text
@@ -1531,20 +1549,31 @@ final class TranscriptViewController: NSViewController {
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
     /// ends leaves the rows identical, so the diff has nothing to do and the last glyphs would keep
     /// the heat of a stream that stopped — the row has to be handed back whole by hand.
-    func settleCascade(on key: String, in rows: [TranscriptRow]) {
+    ///
+    /// Whole means the row's own words, which is what the transcript last received and never what
+    /// the pacer handed the label: the paced copy is cut at the last position where no markdown
+    /// token is half-open, and settling from it would bake that cut into the finished answer.
+    /// Returns whether the row is now whole, so a repair that could not be made is not mistaken for
+    /// one that was.
+    @discardableResult
+    func settleCascade(on key: String, in rows: [TranscriptRow]) -> Bool {
         guard let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowViews.count,
             let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind)
-        else { return }
-        let row = rows.last(where: { $0.key == key }) ?? renderedRows[index]
+        else { return false }
+        let row =
+            lastFullRows.last(where: { $0.key == key })
+            ?? rows.last(where: { $0.key == key })
+            ?? renderedRows[index]
         switch row.kind {
         case .agentProse(_, let rendered):
             label.attributedStringValue = rendered
         case .codeBlock(_, let body):
-            label.stringValue = body
+            label.attributedStringValue = Self.codeRendering(body)
         default:
-            break
+            return false
         }
+        return true
     }
 
     /// A code block's body as the row already draws it, so the wave tints the same glyphs the

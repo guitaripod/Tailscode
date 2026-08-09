@@ -712,6 +712,8 @@ final class ChatPane: @unchecked Sendable {
         rowTailMessages = 300
         lastFullRows = []
         lastFullCount = 0
+        lastStreamedKey = nil
+        abandoned = nil
         followsBottom = true
         gtk_widget_set_visible(earlierButton, 0)
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
@@ -850,6 +852,8 @@ final class ChatPane: @unchecked Sendable {
         lastState = nil
         lastFullRows = []
         lastFullCount = 0
+        lastStreamedKey = nil
+        abandoned = nil
         pendingSignature = "\u{0}"
         compactingElapsed = nil
         compactingStartedAt = nil
@@ -1259,6 +1263,13 @@ final class ChatPane: @unchecked Sendable {
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
             guard rows[last].key == cascade.key else { return false }
+            let previous = renderedRows[last]
+            renderedRows[last] = rows[last]
+            guard paintCascade() else {
+                renderedRows[last] = previous
+                return false
+            }
+            return true
         case (.reasoning, .reasoning(let text)):
             guard TranscriptRow.restateReasoning(
                 widget, text: text, key: rows[last].key, context: context)
@@ -1284,10 +1295,17 @@ final class ChatPane: @unchecked Sendable {
     /// stops sending never says that, and the reveal is a prefix painted into the row's own label:
     /// the rows are equal by then, so the diff sees nothing to do and nothing else would ever put
     /// the rest of the sentence back.
+    ///
+    /// The row is let go of only once it has actually been handed back. A settle can find nothing
+    /// to write into — the row is mid-chunk, its widget was rebuilt between frames, the pane is
+    /// showing a placeholder — and forgetting the key on the way in turns one missed repair into a
+    /// permanent one: nothing else in the pane knows that widget is holding a prefix. Keeping it
+    /// costs a string and retries on the next state, which is where the widget usually is by then.
     private func settleStreamedTail(in rows: [TranscriptRow]) {
         guard let key = lastStreamedKey, key != cascade.key else { return }
-        lastStreamedKey = nil
-        settleCascade(on: key, in: rows)
+        if settleCascade(on: key, in: rows) || !lastFullRows.contains(where: { $0.key == key }) {
+            lastStreamedKey = nil
+        }
     }
 
     /// The reveal stopped moving while it still owed the reader text — the frame clock died under
@@ -1300,10 +1318,10 @@ final class ChatPane: @unchecked Sendable {
     private func giveUpCascade() {
         let key = cascade.key ?? lastStreamedKey
         cascade.release()
-        lastStreamedKey = nil
         abandoned = key
+        lastStreamedKey = key
         guard let key else { return }
-        settleCascade(on: key, in: lastFullRows)
+        if settleCascade(on: key, in: lastFullRows) { lastStreamedKey = nil }
     }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply
@@ -1312,19 +1330,22 @@ final class ChatPane: @unchecked Sendable {
     ///
     /// Whole means the row's own words, which is what the pane last received and never what the
     /// pacer handed the widget: the paced copy is cut at the last position where no markdown token
-    /// is half-open, and settling from it would bake that cut into the finished answer.
-    func settleCascade(on key: String, in rows: [TranscriptRow]) {
+    /// is half-open, and settling from it would bake that cut into the finished answer. Returns
+    /// whether the row is now whole, so a repair that could not be made is not mistaken for one
+    /// that was.
+    @discardableResult
+    func settleCascade(on key: String, in rows: [TranscriptRow]) -> Bool {
         guard let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
-        else { return }
+        else { return false }
         let row =
             lastFullRows.last(where: { $0.key == key })
             ?? rows.last(where: { $0.key == key })
             ?? renderedRows[index]
-        guard let markup = Self.cascadeMarkup(for: row) else { return }
-        cascade.settle(label, markup: markup)
+        guard let markup = Self.cascadeMarkup(for: row) else { return false }
+        return cascade.settle(label, markup: markup)
     }
 
     /// What the shim should parse for this row. Prose already carries its markup; a code block is

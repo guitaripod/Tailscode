@@ -29,13 +29,23 @@ public struct CadenceTuning: Sendable {
     /// Past this much unshown text it is not a stream, it is a paste — history arriving, a tool
     /// dumping a wall of output, a reconnect replaying. Nobody wants to watch that type.
     public var flush: Int
+    /// How long the reveal may owe the reader text without moving, and how long the renderer may be
+    /// held behind a token that has not closed, before the row is handed over whole.
+    ///
+    /// Both halves of a paced row assume text keeps arriving, and a turn is full of moments where
+    /// it stops: a part ends and the agent goes off to run something for four minutes, a frame
+    /// clock stops being served, a socket half-dies while heartbeats keep it looking alive. Every
+    /// one of those leaves a paragraph sitting mid-sentence with nothing coming to finish it, which
+    /// is a worse lie than an unmatched asterisk or a paste. So the debt is timed: past this, the
+    /// row is not being written any more, and the rest of it is owed to the reader now.
+    public var patience: Double
 
     public init(
         buffer: Double = 0.42, response: Double = 0.55,
         minimumRate: Double = 26, maximumRate: Double = 380,
         floorTime: Double = 0.10,
         sealedBuffer: Double = 0.16, sealedResponse: Double = 0.22,
-        flush: Int = 1600
+        flush: Int = 1600, patience: Double = 1.0
     ) {
         self.buffer = buffer
         self.response = response
@@ -45,6 +55,7 @@ public struct CadenceTuning: Sendable {
         self.sealedBuffer = sealedBuffer
         self.sealedResponse = sealedResponse
         self.flush = flush
+        self.patience = patience
     }
 
     public static let standard = CadenceTuning()
@@ -363,6 +374,11 @@ public struct LiveCascade: Sendable {
     public private(set) var phase: Double = 0
     private var cadence: StreamCadence
     private let tuning: CadenceTuning
+    private var gateCut: Int?
+    private var gateSince: Double = 0
+    private var gateGaveUp = false
+    private var owedSince: Double?
+    private var owedAt = -1
 
     public init(tuning: CadenceTuning = .standard) {
         self.tuning = tuning
@@ -372,6 +388,23 @@ public struct LiveCascade: Sendable {
     public var isActive: Bool { id != nil }
     public var isSettled: Bool { cadence.isSettled }
     public var rate: Double { cadence.rate }
+
+    /// Whether the reader is still owed words: either the reveal is behind what arrived, or the
+    /// renderer is being held behind a markdown token that has not closed yet. The second half is
+    /// the one a settled reveal hides — a row can have caught up with every character it was given
+    /// and still be a sentence short, because the gate never handed the last clause over.
+    public var owes: Bool { !cadence.isSettled || (gateCut != nil && !gateGaveUp) }
+
+    /// Whether the debt has gone unpaid long enough that nothing is going to pay it.
+    ///
+    /// Asked *at* a time rather than remembered from the last frame, because the failure this
+    /// exists to catch is the frame never coming: a clock that stopped cannot notice that it
+    /// stopped. A client that keeps its own slow second hand can ask this from there and know,
+    /// without watching the reveal move, whether the row is still being written.
+    public func stalled(at time: Double) -> Bool {
+        guard owes, let owedSince else { return false }
+        return time - owedSince >= tuning.patience
+    }
 
     /// What the client should render: the markdown-safe prefix of the source. Held at the last
     /// position where no inline token is half-open, so the renderer never sees `**bold` without
@@ -384,6 +417,50 @@ public struct LiveCascade: Sendable {
         return String(source.prefix(cut))
     }
 
+    /// The same gate, asked by the row that is being written, which is the only one that can tell
+    /// waiting from stopping.
+    ///
+    /// The gate holds the renderer at a half-open token because the closer is a few characters
+    /// behind — a wait the buffer is there to absorb. But a part ends where it ends: the agent
+    /// stops writing and goes off to run something, and a marker that was going to close never
+    /// does. `CascadeGate`'s window can only forgive a marker once enough *further* text arrives to
+    /// push it out, and no further text is coming, so the clause behind it would sit unwritten for
+    /// the rest of the turn. So the hold is timed from the cut rather than counted in characters:
+    /// a cut that has not moved for `patience` is not a token waiting for its partner, it is the
+    /// end of what the agent had to say, and the rest of the row is handed over as it stands.
+    ///
+    /// Given up is remembered against the cut it was given up at, and that is not bookkeeping: a
+    /// gate that forgot would re-hold the same marker on the very next arrival, and the tail of the
+    /// paragraph would appear and disappear once a second for the rest of the turn. The marker has
+    /// been judged literal; it stays judged until the cut moves somewhere else.
+    public mutating func renderable(_ source: String, sealed: Bool, at time: Double) -> String {
+        guard !sealed else {
+            openGate()
+            return source
+        }
+        let count = source.count
+        let cut = CascadeGate.safeCut(source, at: count)
+        guard cut < count else {
+            openGate()
+            return source
+        }
+        if gateCut != cut {
+            gateCut = cut
+            gateSince = time
+            gateGaveUp = false
+        }
+        if !gateGaveUp, time - gateSince < tuning.patience {
+            return String(source.prefix(cut))
+        }
+        gateGaveUp = true
+        return source
+    }
+
+    private mutating func openGate() {
+        gateCut = nil
+        gateGaveUp = false
+    }
+
     /// Points the wave at the row the stream is writing into, with that row's rendered text.
     /// Passing nil lets go of it.
     public mutating func focus(_ id: String?, rendered: String, sealed: Bool, at time: Double) {
@@ -392,6 +469,9 @@ public struct LiveCascade: Sendable {
             revealed = 0
             total = 0
             cadence = StreamCadence(tuning: tuning)
+            openGate()
+            owedSince = nil
+            owedAt = -1
             return
         }
         if id != self.id {
@@ -405,11 +485,28 @@ public struct LiveCascade: Sendable {
             }
             revealed = cadence.revealed
             phase = StreamCascade.phase(at: time)
+            markDebt(at: time)
             return
         }
         total = rendered.count
         cadence.observe(available: total, sealed: sealed)
         revealed = min(revealed, total)
+        markDebt(at: time)
+    }
+
+    /// When the reader was last paid. The clock restarts every time the reveal moves and every time
+    /// the debt is cleared; it keeps running while the same characters stay owed, which is the only
+    /// state that means nothing is writing this row any more.
+    private mutating func markDebt(at time: Double) {
+        guard owes else {
+            owedSince = nil
+            owedAt = -1
+            return
+        }
+        if owedSince == nil || revealed != owedAt {
+            owedSince = time
+            owedAt = revealed
+        }
     }
 
     /// Advances one frame. Returns true when the row needs repainting — either the reveal moved,
@@ -419,6 +516,7 @@ public struct LiveCascade: Sendable {
         guard id != nil else { return false }
         let moved = cadence.advance(to: time)
         if moved { revealed = cadence.revealed }
+        markDebt(at: time)
         let previous = phase
         phase = StreamCascade.phase(at: time)
         return moved || abs(phase - previous) > 0.002 || phase < previous

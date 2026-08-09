@@ -89,17 +89,15 @@ final class CascadePainter: @unchecked Sendable {
     var onStalled: (() -> Void)?
 
     private var watching = false
-    private var watchedReveal = -1
-    private var stillFrames = 0
-    /// How often the second clock looks, and how many looks in a row a motionless reveal gets
-    /// before the row is given up. Long enough that a slow hand is never mistaken for a stopped
-    /// one — the pacer's own floor moves the reveal every frame while it owes anything at all.
-    private static let watchInterval: UInt32 = 400
-    private static let watchStrikes = 3
+    /// How often the second clock looks. The verdict itself is Core's — `LiveCascade.stalled(at:)`
+    /// times the debt against the display's clock rather than counting looks, so a slow hand is
+    /// never mistaken for a stopped one however often the timeout happens to fire.
+    private static let watchInterval: UInt32 = 300
 
     var key: String? { live.id }
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
+    var owes: Bool { live.owes }
     var revealed: Int { live.revealed }
 
     /// Whether the desktop wants motion at all, read per turn rather than per frame.
@@ -144,11 +142,25 @@ final class CascadePainter: @unchecked Sendable {
         stop()
     }
 
+    /// The markdown-safe prefix of what the agent has written, held only while a closer might still
+    /// be coming. The judgement is Core's: a cut that stops moving is the end of a part, not a
+    /// token in flight, and the rest of the row is handed over rather than held for the turn.
+    func renderable(_ source: String, sealed: Bool) -> String {
+        live.renderable(source, sealed: sealed, at: Self.now)
+    }
+
     /// Paints one frame into the label the live row keeps its words in. The markup was converted
     /// and parsed when the stream last moved, so a frame is a substring and an attribute list
     /// rather than a markdown parse.
-    func paint(_ label: UnsafeMutablePointer<GtkWidget>) {
-        guard !markup.isEmpty else { return }
+    ///
+    /// Returns whether the words actually landed. The pane hands the widget over to the wave and
+    /// stops diffing it — the whole point of painting in place is that the row is not rebuilt for
+    /// every token — so a frame that quietly painted nothing does not leave the row a token behind,
+    /// it leaves it wrong for the rest of the turn with nobody watching. A false here is the pane's
+    /// cue to take the row back.
+    @discardableResult
+    func paint(_ label: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        guard !markup.isEmpty else { return false }
         let palette = MatrixTheme.palette
         let edge = CascadeTint.edge(for: palette, ultracode: ultracode, phase: live.phase)
         let spark = CascadeTint.spark(for: palette, edge: edge)
@@ -163,16 +175,18 @@ final class CascadePainter: @unchecked Sendable {
             rgb[distance] = painted.rgb
             alpha[distance] = painted.alpha
         }
-        markup.withUnsafeBufferPointer { bytes in
-            _ = tailscode_label_reveal(
-                label, bytes.baseAddress, Int32(live.revealed), Int32(span), &rgb, &alpha)
+        return markup.withUnsafeBufferPointer { bytes in
+            tailscode_label_reveal(
+                label, bytes.baseAddress, Int32(live.revealed), Int32(span), &rgb, &alpha) >= 0
         }
     }
 
     /// Hands the whole row back, unpaced and untinted — what a row that is no longer live must
-    /// look like, and what a client with reduced motion sees from the start.
-    func settle(_ label: UnsafeMutablePointer<GtkWidget>, markup: String) {
-        _ = tailscode_label_reveal(label, markup, -1, 0, nil, nil)
+    /// look like, and what a client with reduced motion sees from the start. Returns whether the
+    /// row is now whole, so a repair that could not be made is not mistaken for one that was.
+    @discardableResult
+    func settle(_ label: UnsafeMutablePointer<GtkWidget>, markup: String) -> Bool {
+        tailscode_label_reveal(label, markup, -1, 0, nil, nil) >= 0
     }
 
     /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
@@ -187,8 +201,6 @@ final class CascadePainter: @unchecked Sendable {
     private func watch() {
         guard !watching else { return }
         watching = true
-        watchedReveal = -1
-        stillFrames = 0
         look()
     }
 
@@ -199,13 +211,7 @@ final class CascadePainter: @unchecked Sendable {
                 self.watching = false
                 return
             }
-            if self.live.isSettled || self.live.revealed != self.watchedReveal {
-                self.stillFrames = 0
-            } else {
-                self.stillFrames += 1
-            }
-            self.watchedReveal = self.live.revealed
-            guard self.stillFrames < Self.watchStrikes else {
+            guard !self.live.stalled(at: Self.now) else {
                 self.watching = false
                 self.onStalled?()
                 return

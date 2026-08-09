@@ -86,6 +86,13 @@ final class ChatViewController: UIViewController {
     /// so the diff has nothing to do and the last glyphs would keep the heat of a stream that
     /// stopped — they are reconfigured by name instead.
     private var settledCascadeRows: Set<String> = []
+    /// A row the wave gave up on. It is not taken back: restarting a reveal that already snapped to
+    /// whole would rewind the answer under the reader.
+    private var abandonedCascadeRow: String?
+    /// The live row as it arrived, before the gate cut it back to what is safe to render. Giving up
+    /// on a row means showing the reader everything the agent wrote, which is this and never the
+    /// paced copy the data source is holding.
+    private var wholeCascadeRow: ChatRow?
 
     var sessionID: String { viewModel.session.id }
     init(viewModel: ChatViewModel) {
@@ -1146,19 +1153,42 @@ final class ChatViewController: UIViewController {
         let live = viewModel.isBusy
             ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
         let released = cascade.key
-        guard let live, let source = live.streamedText else {
+        if let abandonedCascadeRow, abandonedCascadeRow != live?.id { self.abandonedCascadeRow = nil }
+        guard let live, let source = live.streamedText, live.id != abandonedCascadeRow else {
             cascade.release()
             if let released { settledCascadeRows.insert(released) }
             return
         }
-        let safe = LiveCascade.renderable(source, sealed: !viewModel.isBusy)
+        let safe = cascade.renderable(source, sealed: !viewModel.isBusy)
         let row = safe == source ? live : live.held(to: safe)
+        wholeCascadeRow = live
         rowsByID[row.id] = row
         cascade.focus(
             row.id, rendered: Self.renderedText(of: row), sealed: !viewModel.isBusy,
             ultracode: viewModel.ultracodeInFlight
                 || viewModel.currentEffort == Ultracode.effortLevel)
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
+    }
+
+    /// The reveal stopped moving while it still owed the reader text — the display link stopped
+    /// being served, or the words stopped arriving. Either way the hand is not coming back, so the
+    /// row is given up and shown whole rather than left mid-sentence.
+    ///
+    /// Given up means for good, for as long as that row is the one being written: taking it back on
+    /// the next arrival would start its reveal again from nothing, and an answer that snapped to
+    /// whole and then rewound would be a worse lie than the stall.
+    private func giveUpCascade() {
+        guard let key = cascade.key else { return }
+        cascade.release()
+        abandonedCascadeRow = key
+        settledCascadeRows.insert(key)
+        if let whole = wholeCascadeRow, whole.id == key { rowsByID[key] = whole }
+        wholeCascadeRow = nil
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(key) else { return }
+        snapshot.reconfigureItems([key])
+        dataSource.apply(snapshot, animatingDifferences: false)
+        settledCascadeRows.remove(key)
     }
 
     /// One frame of the wave over the cell where it stands, so the data source never hears about
@@ -1196,6 +1226,7 @@ final class ChatViewController: UIViewController {
 
     private func bind() {
         cascade.onFrame = { [weak self] in self?.repaintCascade() }
+        cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onSignInStateChanged = { [weak self] in
             guard let self else { return }

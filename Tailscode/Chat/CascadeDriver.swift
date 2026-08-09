@@ -145,14 +145,20 @@ enum CascadeTint {
 final class CascadeDriver {
     private var live = LiveCascade()
     private var link: CADisplayLink?
+    private var watchdog: Timer?
     private var ultracode = false
 
     /// Called on a frame that changed something. The controller reconfigures exactly the live row.
     var onFrame: (() -> Void)?
 
+    /// Called when the reveal stopped moving while it still owed the reader text. The controller
+    /// hands that row back whole.
+    var onStalled: (() -> Void)?
+
     var key: String? { live.id }
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
+    var owes: Bool { live.owes }
     var revealed: Int { live.revealed }
 
     static var motionAllowed: Bool { !UIAccessibility.isReduceMotionEnabled }
@@ -168,11 +174,48 @@ final class CascadeDriver {
         }
         live.focus(id, rendered: rendered, sealed: sealed, at: CACurrentMediaTime())
         start()
+        watch()
     }
 
     func release() {
         live.focus(nil, rendered: "", sealed: true, at: CACurrentMediaTime())
         stop()
+    }
+
+    /// The markdown-safe prefix of what the agent has written, held only while a closer might still
+    /// be coming. The judgement is Core's: a cut that stops moving is the end of a part, not a
+    /// token in flight, and the rest of the row is handed over rather than held for the turn.
+    func renderable(_ source: String, sealed: Bool) -> String {
+        live.renderable(source, sealed: sealed, at: CACurrentMediaTime())
+    }
+
+    /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
+    ///
+    /// The reveal moves on the display's clock, and the display's clock is not this app's to
+    /// promise: a link stops being served when the app goes to the background or a frame runs long,
+    /// and the reveal stops with it — leaving a row holding half a sentence with nothing coming to
+    /// finish it. So the wave also keeps a timer, which no display link can take down, and Core
+    /// times the debt: a reveal that still owes text and has not moved for its patience is given up
+    /// and the row handed over whole.
+    private func watch() {
+        guard watchdog == nil else { return }
+        watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard self.live.isActive else {
+                    self.unwatch()
+                    return
+                }
+                guard self.live.stalled(at: CACurrentMediaTime()) else { return }
+                self.unwatch()
+                self.onStalled?()
+            }
+        }
+    }
+
+    private func unwatch() {
+        watchdog?.invalidate()
+        watchdog = nil
     }
 
     /// The wave a cell should paint for this row, or nil when the row is not the live one.
@@ -195,6 +238,7 @@ final class CascadeDriver {
     private func stop() {
         link?.invalidate()
         link = nil
+        unwatch()
     }
 
     @objc private func tick(_ link: CADisplayLink) {

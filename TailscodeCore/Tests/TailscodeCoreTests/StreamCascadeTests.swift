@@ -243,6 +243,66 @@ struct StreamCascadeTests {
         #expect(live.revealed == 0)
     }
 
+    @Test("a token that never closes stops holding the rest of the answer back")
+    func gateGivesUpOnAnAbandonedToken() {
+        var live = LiveCascade()
+        let source = "Root cause is deeper: any *frame"
+        #expect(live.renderable(source, sealed: false, at: 0) == "Root cause is deeper: any ")
+        #expect(live.renderable(source, sealed: false, at: 0.4) == "Root cause is deeper: any ")
+        #expect(live.owes)
+        #expect(live.renderable(source, sealed: false, at: 2) == source)
+        #expect(!live.owes)
+        #expect(live.renderable(source, sealed: false, at: 2.1) == source)
+        #expect(live.renderable(source, sealed: false, at: 8) == source)
+    }
+
+    @Test("a cut that keeps moving is a token in flight, not an abandoned one")
+    func gateKeepsHoldingWhileTheCutMoves() {
+        var live = LiveCascade()
+        var time = 0.0
+        for tail in ["`one", "`one` and `two", "`one` and `two` and `three"] {
+            time += 0.5
+            #expect(live.renderable(tail, sealed: false, at: time).count < tail.count)
+        }
+        let closed = "`one` and `two` and `three`"
+        #expect(live.renderable(closed, sealed: false, at: time + 0.5) == closed)
+    }
+
+    @Test("a reveal that owes text and stops moving is a stall, however settled it looks")
+    func stallIsTimedFromTheDebt() {
+        var live = LiveCascade()
+        let text = "The transcript should read as writing, not as a paste."
+        live.focus("row", rendered: text, sealed: false, at: 0)
+        live.advance(to: 0.016)
+        #expect(live.owes)
+        #expect(!live.stalled(at: 0.5))
+        #expect(live.stalled(at: 4))
+        var time = 4.0
+        while !live.isSettled, time < 20 {
+            time += 1.0 / 120
+            live.advance(to: time)
+        }
+        #expect(live.isSettled)
+        #expect(!live.owes)
+        #expect(!live.stalled(at: time + 30))
+    }
+
+    @Test("a reveal held behind the gate is owed text even when it has caught up")
+    func aHeldGateIsADebt() {
+        var live = LiveCascade()
+        let source = "shown *held"
+        let safe = live.renderable(source, sealed: false, at: 0)
+        live.focus("row", rendered: safe, sealed: false, at: 0)
+        var time = 0.0
+        while !live.isSettled, time < 20 {
+            time += 1.0 / 120
+            live.advance(to: time)
+        }
+        #expect(live.isSettled)
+        #expect(live.owes)
+        #expect(live.stalled(at: time + 2))
+    }
+
     @Test("entrances stagger in order and stop staggering")
     func entrances() {
         #expect(StreamCascade.entranceDelay(index: 0, of: 5) == 0)

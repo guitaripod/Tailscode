@@ -24,7 +24,7 @@ extension ChatPane {
             if let released { settleCascade(on: released, in: rows) }
             return rows
         }
-        let safe = LiveCascade.renderable(source, sealed: !running)
+        let safe = cascade.renderable(source, sealed: !running)
         var paced = rows
         let row = safe == source ? live : live.truncated(to: safe)
         paced[paced.count - 1] = row
@@ -49,14 +49,21 @@ extension ChatPane {
     /// painter was pointed at when the stream last moved, so a frame is a substring and an
     /// attribute list — never a markdown parse, never a fresh copy of the answer, and never a
     /// widget rebuild, which is what lets a selection survive the sentence it is in being written.
-    func paintCascade() {
-        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return }
+    ///
+    /// Returns whether the words are where the row says they are. Painting in place is a promise
+    /// made to the diff — the row is marked rendered and left alone — so every reason this can fail
+    /// (the live row is not the last one rendered, its widget is gone, the label is not where a row
+    /// of that kind keeps its words) is a promise the pane has to know it cannot keep.
+    @discardableResult
+    func paintCascade() -> Bool {
+        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return false }
         let index = renderedRows.count - 1
         guard index < rowWidgets.count, renderedRows[index].key == key,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
-        else { return }
-        cascade.paint(label)
+        else { return false }
+        guard cascade.paint(label) else { return false }
         if followsBottom { scrollToBottom() }
+        return true
     }
 }

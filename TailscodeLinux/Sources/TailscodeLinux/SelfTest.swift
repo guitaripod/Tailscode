@@ -1219,6 +1219,19 @@ public enum SelfTest {
         let sealedCut = CascadeGate.safeCut(Array("an open **marker"), at: 15, sealed: true)
         try expect(sealedCut == 15, "a sealed turn must stop holding an unmatched marker")
 
+        try expect(
+            CascadePainter.renderedText(of: "a row with <b>no closer") == nil,
+            "markup the parser refuses has no rendered text, and no reveal may claim to show it")
+        var gated = LiveCascade()
+        let abandonedToken = "the rest is behind an *opener"
+        try expect(
+            gated.renderable(abandonedToken, sealed: false, at: 0).count < abandonedToken.count,
+            "a token still in flight holds the renderer")
+        try expect(
+            gated.renderable(abandonedToken, sealed: false, at: 4) == abandonedToken,
+            "a token that never closes must stop holding the rest of the answer back")
+        checks += 4
+
         let written = "The transcript should read as writing, not as a paste."
         var live = LiveCascade()
         live.focus("row", rendered: written, sealed: false, at: 0)

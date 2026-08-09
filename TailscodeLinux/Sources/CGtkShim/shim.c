@@ -1226,13 +1226,18 @@ int tailscode_label_reveal(
     GtkWidget *label, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha) {
     if (!label || !GTK_IS_LABEL(label) || !markup) return -1;
+    /* Every path parses before it writes. A settle is the one moment a row is guaranteed to be
+       shown whole, and handing GtkLabel markup it cannot parse leaves the raw angle brackets on
+       screen instead — so a settle that could not be rendered says so and lets the caller rebuild
+       the row the ordinary way, rather than reporting a repair it did not make. */
+    if (!tailscode_reveal_parse(markup)) return -1;
+    int length = (int)g_utf8_strlen(tailscode_reveal_text, -1);
     if (visible < 0) {
         gtk_label_set_attributes(GTK_LABEL(label), NULL);
         gtk_label_set_markup(GTK_LABEL(label), markup);
         tailscode_label_keep_wrapping(GTK_LABEL(label));
-        return -1;
+        return length;
     }
-    if (!tailscode_reveal_parse(markup)) return -1;
 
     /* The whole arrived paragraph is laid out; only its colours change per frame. Setting a
        label's text inside the frame clock's update phase measures it against the previous frame's
@@ -1244,7 +1249,7 @@ int tailscode_label_reveal(
         tailscode_label_keep_wrapping(GTK_LABEL(label));
     }
 
-    int total = (int)g_utf8_strlen(tailscode_reveal_text, -1);
+    int total = length;
     int seen = CLAMP(visible, 0, total);
     const char *edge = g_utf8_offset_to_pointer(tailscode_reveal_text, seen);
 
