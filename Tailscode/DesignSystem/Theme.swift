@@ -114,6 +114,46 @@ enum Theme {
             })
         static let opencode = ThemePalette.color(\.brandOpencode, system: .systemTeal)
 
+        /// A model family's hue and an effort's heat, from the shared catalog: the theme's canvas
+        /// corrects them when a theme is on, and the platform's own light and dark grounds do when
+        /// it is not. A family the catalog does not recognise keeps the secondary register.
+        static func modelFamily(_ family: ModelTint.Family?) -> UIColor {
+            UIColor { traits in
+                guard let family else { return .secondaryLabel }
+                let dark = traits.userInterfaceStyle == .dark
+                let hex =
+                    traits.palette.map { ModelTint.hex(family, in: $0) }
+                    ?? ModelTint.hex(family, onCanvas: systemCanvas(dark: dark), isDark: dark)
+                return UIColor(hex: hex) ?? .secondaryLabel
+            }
+        }
+
+        static func modelEffort(_ effort: String) -> UIColor? {
+            guard ModelTint.authoredEffortHex(effort) != nil else { return nil }
+            return UIColor { traits in
+                let dark = traits.userInterfaceStyle == .dark
+                let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
+                guard let hex = ModelTint.effortHex(effort, onCanvas: canvas),
+                    let color = UIColor(hex: hex)
+                else { return .secondaryLabel }
+                return color
+            }
+        }
+
+        static func modelRainbowLetter(_ index: Int, of count: Int) -> UIColor {
+            UIColor { traits in
+                let dark = traits.userInterfaceStyle == .dark
+                let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
+                let letters = ModelTint.rainbow(letters: count, onCanvas: canvas)
+                guard letters.indices.contains(index) else { return .label }
+                return UIColor(hex: letters[index]) ?? .label
+            }
+        }
+
+        private static func systemCanvas(dark: Bool) -> String {
+            dark ? "#1c1c1e" : "#ffffff"
+        }
+
         /// Ink for text and symbols that sit *on* a pane of glass, which is the one place a theme
         /// must not reach. Glass flips between light and dark on its own, against whatever content
         /// happens to be behind it and regardless of what the app decided it was, and the system

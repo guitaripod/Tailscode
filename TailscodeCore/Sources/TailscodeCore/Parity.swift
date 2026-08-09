@@ -32,6 +32,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case rowContextActions
     case rowSnippet
     case rowFacets
+    case modelIdentityTint
     case usageGauges
     case quotaExhaustion
     case markdownRendering
@@ -202,6 +203,10 @@ public enum CapabilityRegistry {
             id: .rowFacets, area: "chat list", title: "The row's second line is read, not parsed",
             spec:
                 "A row's second line is three facts at three weights rather than four at one: the project it is in leads, the machine and agent follow a step quieter, and the age is pinned in a fixed column at the trailing edge in monospaced digits, so staleness can be compared straight down the list. What the whole listing already says is not repeated on every row — ChatListVocabulary, computed once from the full listing, drops the server name when one machine answered and the agent name when one backend did, and a row left with nothing to say falls back to naming its server. Every client reads SessionRowModel.facets(_:) and decides only how the two weights look."),
+        CapabilityDefinition(
+            id: .modelIdentityTint, area: "chat list", title: "A model wears its colour",
+            spec:
+                "Everywhere a session's model is named — the chat list row, the composer's model chip, the effort control — the family name wears its authored hue (ModelTint, corrected in OKLab against the canvas it sits on, the same walk the palettes take) and the effort word wears its heat: cold slate for low, teal, amber, orange, vermilion for max, with ultracode outside the scale in per-letter rainbow held to the contrast floor. Both facts stay printed words — the colour is on top, never instead — and a model outside the known families keeps the quiet register rather than being issued an identity. One catalog answers every client; a family's hue may never differ between desks."),
         CapabilityDefinition(
             id: .usageGauges, area: "chat list", title: "Usage quota gauges",
             spec:

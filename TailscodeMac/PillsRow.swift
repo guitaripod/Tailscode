@@ -145,6 +145,16 @@ final class PillsRow: NSView {
         effortPill.title = text
     }
 
+    /// The pills wear the same colours the list chips do — the family's hue on the model, the
+    /// tier's heat on the effort — and nil hands the pill back to the toolkit's own tint.
+    func setModelTint(_ color: NSColor?) {
+        modelPill.contentTintColor = color
+    }
+
+    func setEffortTint(_ color: NSColor?) {
+        effortPill.contentTintColor = color
+    }
+
     func setAttachShown(_ shown: Bool) {
         attachButton.isHidden = !shown
     }

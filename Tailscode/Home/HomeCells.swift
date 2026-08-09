@@ -128,6 +128,7 @@ struct LiveCard: Hashable {
     let detail: String
     let age: String
     let presence: Presence
+    let chip: ModelChip?
 
     /// `activity` is what the agent is doing this second, known only for turns
     /// this device is streaming; it displaces the static model/server line
@@ -148,11 +149,9 @@ struct LiveCard: Hashable {
         } else {
             var parts = [entry.profileName]
             if let project { parts.append(project) }
-            if let badge = ModelBadge.text(for: entry.session) {
-                parts.append(badge)
-            }
             self.detail = parts.joined(separator: " · ")
         }
+        self.chip = ModelBadge.chip(for: entry.session)
     }
 
     /// What a session that handed its turn to agents is doing, for the card that
@@ -224,6 +223,7 @@ struct RecentCard: Hashable {
     let title: String
     let detail: String
     let unread: Bool
+    let chip: ModelChip?
 
     init(entry: SessionEntry, unread: Bool) {
         self.entry = entry
@@ -236,11 +236,9 @@ struct RecentCard: Hashable {
         if let directory = entry.session.directory {
             parts.append((directory as NSString).lastPathComponent)
         }
-        if let badge = ModelBadge.text(for: entry.session) {
-            parts.append(badge)
-        }
         parts.append(entry.session.updatedAt.formatted(.relative(presentation: .named)))
         self.detail = parts.joined(separator: " · ")
+        self.chip = ModelBadge.chip(for: entry.session)
     }
 
     static func == (lhs: RecentCard, rhs: RecentCard) -> Bool {
@@ -356,7 +354,10 @@ final class LiveSessionCell: GlassCardCell {
 
     func configure(_ card: LiveCard) {
         titleLabel.text = card.title
-        detailLabel.text = card.detail
+        detailLabel.attributedText = ModelChipText.detailLine(
+            chip: card.chip, rest: card.detail,
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
+            restColor: Theme.Color.secondaryLabel)
         ageLabel.text = card.age
         let activity: ActivityKind =
             switch card.presence {
@@ -610,7 +611,8 @@ final class RecentSessionCell: GlassCardCell {
         apply(
             symbol: card.entry.backendType.symbolName,
             tint: card.entry.backendType.brandColor,
-            title: card.title, detail: card.detail, unread: card.unread, badge: nil)
+            title: card.title, detail: card.detail, unread: card.unread, badge: nil,
+            chip: card.chip)
     }
 
     func configure(_ card: SavedCard) {
@@ -622,7 +624,7 @@ final class RecentSessionCell: GlassCardCell {
 
     private func apply(
         symbol: String, tint: UIColor, title: String, detail: String, unread: Bool,
-        badge: String?
+        badge: String?, chip: ModelChip? = nil
     ) {
         iconView.image = UIImage(systemName: symbol)?
             .withTintColor(tint, renderingMode: .alwaysOriginal)
@@ -631,7 +633,10 @@ final class RecentSessionCell: GlassCardCell {
             ? .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
             : .preferredFont(forTextStyle: .subheadline)
         titleLabel.text = title
-        detailLabel.text = detail
+        detailLabel.attributedText = ModelChipText.detailLine(
+            chip: chip, rest: detail,
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
+            restColor: Theme.Color.tertiaryLabel)
         if let badge, let image = UIImage(
             systemName: badge,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))

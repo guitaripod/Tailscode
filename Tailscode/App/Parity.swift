@@ -27,6 +27,7 @@ enum ParityManifest {
         case .rowContextActions: return .implemented("sessionMenu")
         case .rowSnippet: return .implemented("agentTask")
         case .rowFacets: return .implemented("ageAccessory")
+        case .modelIdentityTint: return .implemented("ModelChipText")
         case .usageGauges: return .implemented("QuotaCard")
         case .quotaExhaustion: return .implemented("applyQuotaExhaustion")
         case .markdownRendering: return .implemented("TextBubbleCell")
@@ -98,6 +99,8 @@ enum ParityManifest {
         case .homeQuickActions: return .implemented("HomeQuickActions")
         case .presenceOrb: return .implemented("PresenceOrbView")
         case .gameCenter: return .implemented("GameCenterCoordinator")
+        case .projectBoard: return .implemented("openProjectBoard")
+        case .quickAsk: return .implemented("QuickAskViewController")
         }
     }
 }

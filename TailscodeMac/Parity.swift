@@ -27,6 +27,7 @@ enum ParityManifest {
         case .rowContextActions: return .implemented("rowMenu")
         case .rowSnippet: return .implemented("if let snippet = model.snippet")
         case .rowFacets: return .implemented("detailText")
+        case .modelIdentityTint: return .implemented("chipText")
         case .usageGauges: return .implemented("usageFooter")
         case .quotaExhaustion: return .implemented("quotaNotice")
         case .markdownRendering: return .implemented("MacMarkdown")

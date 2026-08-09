@@ -105,6 +105,51 @@ enum MacTheme {
             ThemePalette.color(\.brandOpencode, system: .systemTeal)
         }
 
+        /// A model family's hue and an effort's heat, from the shared catalog: the theme's canvas
+        /// corrects them when a theme is on, and the platform's own light and dark grounds do when
+        /// it is not. A family the catalog does not recognise keeps the secondary register.
+        static func modelFamily(_ family: ModelTint.Family?) -> NSColor {
+            NSColor(name: nil) { appearance in
+                guard let family else { return .secondaryLabelColor }
+                let dark = appearance.isDark
+                let hex =
+                    ThemePalette.palette(themeID: ThemeSelection.themeID, dark: dark)
+                    .map { ModelTint.hex(family, in: $0) }
+                    ?? ModelTint.hex(family, onCanvas: systemCanvas(dark: dark), isDark: dark)
+                return NSColor(hex: hex) ?? .secondaryLabelColor
+            }
+        }
+
+        static func modelEffort(_ effort: String) -> NSColor? {
+            guard ModelTint.authoredEffortHex(effort) != nil else { return nil }
+            return NSColor(name: nil) { appearance in
+                let dark = appearance.isDark
+                let canvas =
+                    ThemePalette.palette(themeID: ThemeSelection.themeID, dark: dark)?.canvas
+                    ?? systemCanvas(dark: dark)
+                guard let hex = ModelTint.effortHex(effort, onCanvas: canvas) else {
+                    return .secondaryLabelColor
+                }
+                return NSColor(hex: hex) ?? .secondaryLabelColor
+            }
+        }
+
+        static func modelRainbowLetter(_ index: Int, of count: Int) -> NSColor {
+            NSColor(name: nil) { appearance in
+                let dark = appearance.isDark
+                let canvas =
+                    ThemePalette.palette(themeID: ThemeSelection.themeID, dark: dark)?.canvas
+                    ?? systemCanvas(dark: dark)
+                let letters = ModelTint.rainbow(letters: count, onCanvas: canvas)
+                guard letters.indices.contains(index) else { return .labelColor }
+                return NSColor(hex: letters[index]) ?? .labelColor
+            }
+        }
+
+        private static func systemCanvas(dark: Bool) -> String {
+            dark ? "#1e1e1e" : "#ffffff"
+        }
+
         /// Ink for anything that sits *on* a pane of glass. Glass flips between light and dark on
         /// its own, against whatever content is behind it and regardless of what the app decided it
         /// was, and AppKit derives the material's vibrancy from these colours in particular — a

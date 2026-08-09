@@ -444,6 +444,10 @@ final class ComposerView: NSView {
         pills.setDestination(destination)
         pills.setModelTitle(modelPillText())
         pills.setEffortTitle(effortPillText())
+        let activeModel = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+        pills.setModelTint(
+            activeModel.map { MacTheme.Color.modelFamily(ModelTint.family($0)) })
+        pills.setEffortTint(MacTheme.Color.modelEffort(effortPillText()))
         pills.setAttachShown(attachmentsSupported)
         updateVimUI()
     }

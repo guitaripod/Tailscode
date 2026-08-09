@@ -24,6 +24,7 @@ final class SessionListViewController: UIViewController {
     private let selectionStack = UIStackView()
     private var bulkButtons: [BulkChatAction: UIButton] = [:]
     private var filter: ChatFilter
+    private let scope: ProjectScope?
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var searchQuery = ""
@@ -44,12 +45,13 @@ final class SessionListViewController: UIViewController {
     private var selection = ChatSelection()
     private var isSelecting = false
 
-    init(filterProfileID: String? = nil) {
+    init(filterProfileID: String? = nil, scope: ProjectScope? = nil) {
         let sources = ConnectionController.shared.allBackends().map {
             SessionListViewModel.Source(profile: $0.profile, backend: $0.backend)
         }
         self.viewModel = SessionListViewModel(sources: sources)
         self.filter = filterProfileID.map { .profile($0) } ?? .all
+        self.scope = scope
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -57,7 +59,7 @@ final class SessionListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(localized: "Chats")
+        title = scope?.name ?? String(localized: "Chats")
         navigationItem.largeTitleDisplayMode = .never
         view.backgroundColor = Theme.Color.groupedBackground
         configureSearch()
@@ -168,7 +170,11 @@ final class SessionListViewController: UIViewController {
         let servers = viewModel.servers
         let compose = UIImage(systemName: "square.and.pencil")
         let composeItem: UIBarButtonItem
-        if servers.count > 1 {
+        if scope != nil {
+            composeItem = UIBarButtonItem(
+                image: compose,
+                primaryAction: UIAction { [weak self] _ in self?.startChatInScope() })
+        } else if servers.count > 1 {
             let actions = servers.map { profile in
                 UIAction(
                     title: profile.name,
@@ -185,7 +191,9 @@ final class SessionListViewController: UIViewController {
                     self.startChat(on: profile)
                 })
         }
-        composeItem.accessibilityLabel = String(localized: "New chat")
+        composeItem.accessibilityLabel =
+            scope.map { String(localized: "New chat in \($0.name)") }
+            ?? String(localized: "New chat")
         let saved = UIBarButtonItem(
             image: UIImage(systemName: "bookmark"),
             primaryAction: UIAction { [weak self] _ in self?.pushSaved() })
@@ -277,7 +285,7 @@ final class SessionListViewController: UIViewController {
             chip(title: String(localized: "All"), isSelected: filter == .all) { [weak self] in
             self?.setFilter(.all)
             })
-        let liveCount = viewModel.entries.count(where: isLive)
+        let liveCount = filterableEntries().count(where: isLive)
         if liveCount > 0 || filter == .live {
             chipStack.addArrangedSubview(
                 chip(
@@ -287,6 +295,7 @@ final class SessionListViewController: UIViewController {
                     [weak self] in self?.setFilter(.live)
                 })
         }
+        guard scope == nil else { return }
         for profile in viewModel.servers {
             chipStack.addArrangedSubview(
                 chip(
@@ -692,14 +701,13 @@ final class SessionListViewController: UIViewController {
         content.textProperties.numberOfLines = 1
 
         let facets = row.facets(vocabulary)
-        var parts: [String] = [facets.project, facets.origin].compactMap { $0 }
-        if let badge = ModelBadge.text(for: entry.session) {
-            parts.append(badge)
-        }
-        content.secondaryText = row.snippet ?? parts.joined(separator: " · ")
-        content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
-        content.secondaryTextProperties.color =
-            row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent
+        let rest =
+            row.snippet ?? [facets.project, facets.origin].compactMap { $0 }
+            .joined(separator: " · ")
+        content.secondaryAttributedText = ModelChipText.detailLine(
+            chip: ModelBadge.chip(for: entry.session), rest: rest,
+            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
+            restColor: row.snippet == nil ? Theme.Color.tertiaryLabel : Theme.Color.accent)
         content.secondaryTextProperties.numberOfLines = 1
         content.textToSecondaryTextVerticalPadding = 2
         content.prefersSideBySideTextAndSecondaryText = false
@@ -876,11 +884,19 @@ final class SessionListViewController: UIViewController {
         }
     }
 
+    /// What the chips choose among: the listing with the board's scope already applied, so a
+    /// scoped Live count never advertises a turn the board is not showing.
+    private func filterableEntries() -> [SessionEntry] {
+        guard let scope else { return viewModel.entries }
+        return viewModel.entries.filter(scope.matches)
+    }
+
     private func filteredEntries() -> [SessionEntry] {
         let archived = ArchivedChatStore.all()
         var list = viewModel.entries.filter {
             !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) || isLive($0)
         }
+        if let scope { list = list.filter(scope.matches) }
         switch filter {
         case .all:
             break
@@ -1179,6 +1195,32 @@ final class SessionListViewController: UIViewController {
         }
     }
 
+    /// The board's own compose skips both questions — the scope already answered them. The mint
+    /// happens straight away, exactly as choosing this server and this folder in the sheet would.
+    private func startChatInScope() {
+        guard let scope,
+            let profile = viewModel.servers.first(where: { $0.id == scope.profileID })
+        else { return }
+        Theme.Haptics.tap()
+        Task {
+            guard let entry = await viewModel.newSession(on: profile, directory: scope.directory)
+            else {
+                Theme.Haptics.error()
+                return
+            }
+            Theme.Haptics.success()
+            openChat(for: entry)
+        }
+    }
+
+    /// A container opens a container: the board is this same listing, scoped. Leaving it is a
+    /// plain pop, so the whole list is exactly where it was.
+    private func openProjectBoard(_ scope: ProjectScope) {
+        Theme.Haptics.tap()
+        navigationController?.pushViewController(
+            SessionListViewController(scope: scope), animated: true)
+    }
+
     /// A result opens the conversation it names, on the server it happened on. The listing may not
     /// carry it — a chat this device has not listed lately — so one the list cannot resolve says so
     /// instead of doing nothing.
@@ -1285,6 +1327,17 @@ extension SessionListViewController: UICollectionViewDelegate {
                             Theme.Haptics.success()
                             self.openChat(for: new)
                         }
+                    })
+            }
+            if self.scope == nil {
+                let rowScope = ProjectScope(of: entry)
+                actions.append(
+                    UIAction(
+                        title: String(localized: "Only this project"),
+                        subtitle: rowScope.banner(serverName: entry.profileName),
+                        image: UIImage(systemName: "folder")
+                    ) { [weak self] _ in
+                        self?.openProjectBoard(rowScope)
                     })
             }
             let isSaved = SavedChatStore.contains(entry)
@@ -1786,6 +1839,13 @@ extension SessionListViewController: KeyActionHost {
             Theme.Haptics.success()
         case .reload:
             Task { await viewModel.load() }
+        case .toggleProjectScope:
+            if scope != nil {
+                navigationController?.popViewController(animated: true)
+                return true
+            }
+            guard let entry = cursorEntry() else { return false }
+            openProjectBoard(ProjectScope(of: entry))
         case .toggleHelp:
             ShortcutCheatsheetViewController.present(from: self)
         default:

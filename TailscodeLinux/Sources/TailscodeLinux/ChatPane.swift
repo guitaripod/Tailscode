@@ -1659,10 +1659,38 @@ final class ChatPane: @unchecked Sendable {
 
         if let modelButton {
             gtk_menu_button_set_label(op(modelButton), modelPillText())
+            applyTintClass(to: modelButton, from: modelTintClasses, chosen: modelTintClass())
         }
         if let effortButton {
             gtk_menu_button_set_label(op(effortButton), effortPillText())
+            applyTintClass(
+                to: effortButton, from: effortTintClasses,
+                chosen: ModelTint.effortClass(effortPillText()))
         }
+    }
+
+    /// The composer's two pills wear the same colours the list chips do — the family's hue on the
+    /// model, the tier's heat on the effort — swapped as one class out of the set, so a change of
+    /// model repaints the pill it already has.
+    private func applyTintClass(
+        to button: UnsafeMutablePointer<GtkWidget>, from all: [String], chosen: String?
+    ) {
+        for cls in all where cls != chosen { gtk_widget_remove_css_class(button, cls) }
+        if let chosen { gtk_widget_add_css_class(button, chosen) }
+    }
+
+    private var modelTintClasses: [String] {
+        ModelTint.Family.allCases.map(ModelTint.cssClass) + ["model-plain"]
+    }
+
+    private var effortTintClasses: [String] {
+        ModelTint.effortTiers.map { "effort-\($0)" } + ["effort-ultracode"]
+    }
+
+    private func modelTintClass() -> String? {
+        let active = chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
+        guard let active else { return nil }
+        return ModelTint.family(active).map(ModelTint.cssClass) ?? "model-plain"
     }
 
     /// What the chat is actually being answered by: the explicit pick, else the model observed on

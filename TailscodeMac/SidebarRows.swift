@@ -193,12 +193,26 @@ final class SidebarSessionCell: NSView {
         title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
         let facets = model.facets(vocabulary)
         detail.font = MacTheme.Font.caption()
-        if let snippet = model.snippet {
-            detail.stringValue = snippet
-            detail.textColor = MacTheme.Color.accent
-        } else {
-            detail.attributedStringValue = Self.detailText(facets)
+        let line = NSMutableAttributedString()
+        if let chip = ModelBadge.chip(for: model.entry.session) {
+            line.append(Self.chipText(chip))
+            line.append(
+                NSAttributedString(
+                    string: "  ",
+                    attributes: [.font: MacTheme.Font.caption()]))
         }
+        if let snippet = model.snippet {
+            line.append(
+                NSAttributedString(
+                    string: snippet,
+                    attributes: [
+                        .font: MacTheme.Font.caption(),
+                        .foregroundColor: MacTheme.Color.accent,
+                    ]))
+        } else {
+            line.append(Self.detailText(facets))
+        }
+        detail.attributedStringValue = line
         age.stringValue = facets.age
         age.font = .monospacedDigitSystemFont(
             ofSize: MacTheme.Font.caption().pointSize, weight: .regular)
@@ -224,6 +238,40 @@ final class SidebarSessionCell: NSView {
             dot.textColor = MacTheme.Color.accent
             titleRow.addArrangedSubview(dot)
         }
+    }
+
+    /// The model wearing its family's hue and the effort wearing its heat, leading the detail
+    /// line the same way the Linux chips do. Ultracode is not a heat, so its word is set letter
+    /// by letter from the shared rainbow, each held to the canvas's own contrast floor.
+    private static func chipText(_ chip: ModelChip) -> NSAttributedString {
+        let font = NSFont.systemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .semibold)
+        let text = NSMutableAttributedString(
+            string: chip.name,
+            attributes: [.font: font, .foregroundColor: MacTheme.Color.modelFamily(chip.family)])
+        guard let effort = chip.effort else { return text }
+        text.append(NSAttributedString(string: " ", attributes: [.font: font]))
+        if chip.isUltracode {
+            for (index, letter) in effort.enumerated() {
+                text.append(
+                    NSAttributedString(
+                        string: String(letter),
+                        attributes: [
+                            .font: font,
+                            .foregroundColor: MacTheme.Color.modelRainbowLetter(
+                                index, of: effort.count),
+                        ]))
+            }
+        } else {
+            text.append(
+                NSAttributedString(
+                    string: effort,
+                    attributes: [
+                        .font: font,
+                        .foregroundColor: MacTheme.Color.modelEffort(effort)
+                            ?? MacTheme.Color.secondaryLabel,
+                    ]))
+        }
+        return text
     }
 
     /// Two weights on one line: the project a person recognises the chat by, then the machine it

@@ -259,6 +259,7 @@ enum MatrixTheme {
         .pill-saved { color: \(special); border: 1px solid alpha(\(special), 0.7); }
         .pill-pinned { color: \(accent); border: 1px solid alpha(\(accent), 0.7); }
         .pill-offline { color: \(textDim); border: 1px solid alpha(\(textDim), 0.5); }
+        \(modelTintCSS(for: palette))
 
         .session-row {
             padding: 0;
@@ -823,6 +824,34 @@ enum MatrixTheme {
         .usage-footer:hover { background-color: alpha(currentColor, 0.04); }
         .settings-group { padding: 6px 0px; }
         """
+    }
+
+    /// The model chip classes, generated from the shared catalog so a family's hue on this desk is
+    /// the same fact the phone and the Mac draw: text colour on a wash of itself for the list
+    /// chips, and the same hue on the composer's bordered pills, which need the heavier selector
+    /// to outrank `.pill-row button`.
+    private static func modelTintCSS(for palette: Palette) -> String {
+        var lines: [String] = []
+        var pairs: [(cls: String, hex: String)] = ModelTint.Family.allCases.map {
+            (ModelTint.cssClass($0), ModelTint.hex($0, in: palette))
+        }
+        pairs.append(("model-plain", palette.textDim))
+        for tier in ModelTint.effortTiers {
+            if let hex = ModelTint.effortHex(tier, in: palette) {
+                pairs.append(("effort-\(tier)", hex))
+            }
+        }
+        for pair in pairs {
+            lines.append(
+                ".\(pair.cls) { color: \(pair.hex); background-color: alpha(\(pair.hex), 0.13); }")
+            lines.append(
+                ".pill-row button.\(pair.cls) { color: \(pair.hex); "
+                    + "border-color: alpha(\(pair.hex), 0.55); background-color: transparent; }")
+            lines.append(
+                ".pill-row button.\(pair.cls):hover { background-color: alpha(\(pair.hex), 0.12); }")
+        }
+        lines.append(".effort-ultracode { background-color: alpha(\(palette.text), 0.08); }")
+        return lines.joined(separator: "\n        ")
     }
 
     /// Loading into the same provider restyles every widget already on screen, so a size or
