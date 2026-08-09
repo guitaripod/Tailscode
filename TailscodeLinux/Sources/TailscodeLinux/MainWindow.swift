@@ -61,6 +61,7 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarScroller: UnsafeMutablePointer<GtkWidget>?
     private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
     private var sidebarScrollTarget: Double?
+    private var sidebarScrollRestore: Double?
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
     private var watchSummary: WatchSummary?
@@ -581,6 +582,11 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(column), scroller)
         sidebarScroller = scroller
+        if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
+            Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
+                Gtk.onMain { [weak self] in self?.reapplySidebarScroll() }
+            }
+        }
 
         gtk_widget_set_visible(usageBox, 0)
         Gtk.addClass(usageBox, "usage-footer")
@@ -1336,15 +1342,34 @@ final class MainWindow: @unchecked Sendable {
         return gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(op(sidebarScroller)))
     }
 
-    /// The old offset is put back from an idle callback — after GTK's resize pass, so the fresh
-    /// rows have a height for the adjustment to clamp against.
+    /// The reader's place survives the rebuild, not just the frame after it. An idle callback at
+    /// default priority runs *before* GTK's layout pass, so the fresh rows have no height yet and
+    /// the pass that follows clamps the adjustment back toward the top — which is the list
+    /// yanking itself up under a reader mid-scroll every time a working session changes state.
+    /// So the offset is set at once for the common case where the range survives, and then held
+    /// as a standing target that `notify::upper` re-applies for as long as the rebuild is still
+    /// settling; the target is dropped after a beat so a later window resize cannot replay a
+    /// stale position.
     private func restoreSidebarScroll(_ value: Double) {
-        guard value > 0, let sidebarScroller else { return }
-        let bits = UInt(bitPattern: sidebarScroller)
-        Gtk.onMain {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-            gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(op(raw)), value)
+        guard value > 0 else {
+            sidebarScrollRestore = nil
+            return
         }
+        sidebarScrollRestore = value
+        reapplySidebarScroll()
+        Gtk.after(400) { [weak self] in
+            guard let self, self.sidebarScrollRestore == value else { return }
+            self.sidebarScrollRestore = nil
+        }
+    }
+
+    private func reapplySidebarScroll() {
+        guard let target = sidebarScrollRestore, let sidebarScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(sidebarScroller))
+        else { return }
+        let ceiling = max(
+            0, gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        gtk_adjustment_set_value(adjustment, min(target, ceiling))
     }
 
     /// The highlight follows the conversation that is open, never a position. The keyboard cursor
