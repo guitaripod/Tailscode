@@ -255,20 +255,23 @@ enum SidebarRow {
     {
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let facets = model.facets(vocabulary)
-        if let chip = ModelBadge.chip(for: model.entry) {
-            for widget in modelChips(chip) { gtk_box_append(ptr(line), widget) }
+        let chip = ModelBadge.chip(for: model.entry)
+        if let chip {
+            gtk_box_append(ptr(line), modelLabel(chip))
         }
         if let snippet = model.snippet {
-            let label = Gtk.label(snippet, css: "row-note", selectable: false)
+            let text = chip == nil ? snippet : "· \(snippet)"
+            let label = Gtk.label(text, css: "row-note", selectable: false)
             gtk_widget_set_hexpand(label, 1)
             gtk_box_append(ptr(line), label)
         } else {
             if let project = facets.project {
-                let label = Gtk.label(project, css: "row-project", selectable: false)
+                let text = chip == nil ? project : "· \(project)"
+                let label = Gtk.label(text, css: "row-project", selectable: false)
                 gtk_box_append(ptr(line), label)
             }
             if let origin = facets.origin {
-                let text = facets.project == nil ? origin : "· \(origin)"
+                let text = chip == nil && facets.project == nil ? origin : "· \(origin)"
                 let label = Gtk.label(text, css: "row-detail", selectable: false)
                 gtk_widget_set_hexpand(label, 1)
                 gtk_box_append(ptr(line), label)
@@ -314,38 +317,32 @@ enum SidebarRow {
         return label
     }
 
-    /// The model wearing its family's hue and the effort wearing its heat, fused into one capsule
-    /// the detail line leads with: two facts, one shape, split by a hairline seam — a row says
-    /// "who, how hard" as a single mark rather than two boxes that happen to be adjacent.
-    /// Ultracode is not a heat, so its segment is set letter by letter from the shared rainbow —
-    /// the same stops the aura runs — held to the canvas's own contrast floor.
-    static func modelChips(_ chip: ModelChip) -> [UnsafeMutablePointer<GtkWidget>] {
-        let lead = makePill(
-            chip.name, css: ModelTint.identityClass(family: chip.family, name: chip.name))
-        guard let effort = chip.effort else { return [lead] }
-        Gtk.addClass(lead, "chip-lead")
-        let tail: UnsafeMutablePointer<GtkWidget>
-        if chip.isUltracode {
-            let colors = ModelTint.rainbow(
-                letters: effort.count, onCanvas: MatrixTheme.palette.canvas)
-            let markup = zip(effort, colors)
-                .map { "<span foreground=\"\($1)\">\($0)</span>" }
-                .joined()
-            let label = Gtk.markupLabel(markup, css: "pill", wrap: false)
-            gtk_label_set_selectable(op(label), 0)
-            Gtk.addClass(label, "effort-ultracode")
-            gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
-            tail = label
-        } else {
-            tail = makePill(effort, css: ModelTint.effortClass(effort) ?? "model-plain")
+    /// The model wearing its family's hue and the effort wearing its heat, as the coloured words
+    /// the detail line opens with. Typography, not chrome: pills on this list mean *state*, and a
+    /// bordered box repeated down every row shouts over the titles it sits under — the identity
+    /// is two emphasised words whose colour is the fact. Ultracode is not a heat, so its word is
+    /// set letter by letter from the shared rainbow — the same stops the aura runs — held to the
+    /// canvas's own contrast floor.
+    static func modelLabel(_ chip: ModelChip) -> UnsafeMutablePointer<GtkWidget> {
+        let palette = MatrixTheme.palette
+        let family = ModelTint.identityHex(family: chip.family, name: chip.name, in: palette)
+        var markup =
+            "<span foreground=\"\(family)\" weight=\"600\">\(PangoMarkdown.escape(chip.name))</span>"
+        if let effort = chip.effort {
+            markup += " "
+            if chip.isUltracode {
+                let colors = ModelTint.rainbow(letters: effort.count, onCanvas: palette.canvas)
+                markup += zip(effort, colors)
+                    .map { "<span foreground=\"\($1)\" weight=\"600\">\($0)</span>" }
+                    .joined()
+            } else {
+                let heat = ModelTint.effortHex(effort, in: palette) ?? palette.textDim
+                markup +=
+                    "<span foreground=\"\(heat)\" weight=\"600\">\(PangoMarkdown.escape(effort))</span>"
+            }
         }
-        Gtk.addClass(tail, "chip-tail")
-        let capsule = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(capsule, "chip-set")
-        Gtk.addClass(capsule, ModelTint.identityClass(family: chip.family, name: chip.name))
-        gtk_widget_set_valign(capsule, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(capsule), lead)
-        gtk_box_append(ptr(capsule), tail)
-        return [capsule]
+        let label = Gtk.markupLabel(markup, css: "row-model", wrap: false)
+        gtk_label_set_selectable(op(label), 0)
+        return label
     }
 }

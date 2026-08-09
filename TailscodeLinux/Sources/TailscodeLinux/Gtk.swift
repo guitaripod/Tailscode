@@ -369,10 +369,24 @@ enum Gtk {
         gtk_widget_set_margin_end(widget, trailing)
     }
 
+    /// Empties a box of its rows without taking down anything else living on it. A context menu
+    /// is a popover *parented* on the box, not appended to it, so a rebuild that swept every
+    /// child would dismiss the menu under the pointer — which is exactly what a list that
+    /// refreshes while working sessions change state kept doing. Popovers close on their own
+    /// terms and unparent themselves when they do.
     static func removeChildren(of parent: UnsafeMutablePointer<GtkWidget>) {
-        while let child = gtk_widget_get_first_child(parent) {
-            gtk_box_remove(ptr(parent), child)
+        var doomed: [UnsafeMutablePointer<GtkWidget>] = []
+        var child = gtk_widget_get_first_child(parent)
+        while let current = child {
+            if !isPopover(current) { doomed.append(current) }
+            child = gtk_widget_get_next_sibling(current)
         }
+        for widget in doomed { gtk_box_remove(ptr(parent), widget) }
+    }
+
+    private static func isPopover(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        let instance = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self)
+        return g_type_check_instance_is_a(instance, gtk_popover_get_type()) != 0
     }
 
     /// Detaches a widget from whatever holds it, through the parent's own API. A raw
