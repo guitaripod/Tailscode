@@ -27,7 +27,7 @@ extension ChatPane {
             return rows
         }
         let safe = cascade.renderable(
-            source, sealed: !running, markdown: live.streamsMarkdown)
+            row: live.key, source, sealed: !running, markdown: live.streamsMarkdown)
         var paced = rows
         let row = safe == source ? live : live.truncated(to: safe)
         paced[paced.count - 1] = row

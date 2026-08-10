@@ -226,6 +226,11 @@ struct TranscriptRow: Hashable {
     /// The agent's plan shows once: the last call that moved the to-do list becomes the board —
     /// the fold of every board call before it — and every earlier one stays the one-line tool row
     /// it was, so a long run reads as one plan updating rather than twenty snapshots.
+    ///
+    /// The row keeps one identity wherever it lands. Naming it after the call it is standing on
+    /// re-identified the whole card every time the agent revised its plan: a delete and an insert
+    /// where a person sees one card counting up, and on a keyed diff a move rather than a repaint.
+    /// There is only ever one board in a transcript, so it can simply say so.
     static func placeBoard(in rows: [TranscriptRow]) -> [TranscriptRow] {
         let calls = rows.compactMap { row -> ToolCall? in
             guard case .tool(let call) = row.kind, TaskBoard.isBoardCall(call.name) else {
@@ -234,18 +239,29 @@ struct TranscriptRow: Hashable {
             return call
         }
         let board = TaskBoard.fold(calls)
-        guard !board.isEmpty, let lastID = calls.last?.id else { return rows }
+        guard !board.isEmpty, let anchor = calls.last?.id else { return rows }
         return rows.map { row in
-            guard case .tool(let call) = row.kind, call.id == lastID else { return row }
-            return TranscriptRow(key: row.key, kind: .taskBoard(board))
+            guard case .tool(let call) = row.kind, call.id == anchor else { return row }
+            return TranscriptRow(key: Self.boardKey, kind: .taskBoard(board))
         }
     }
+
+    /// One board, one identity.
+    static let boardKey = "board"
 
     /// Compact mode: everything the agent did between two messages — the thoughts and the tool
     /// calls, failures included — folds to one line. Twelve greps, four edits and the thinking
     /// around them are one fact: "it worked". The run keeps every step inside it, one click away;
     /// only what is its own card (a subagent, a workflow, a picture) never joins a run, and a run
     /// with no tools stays its own thought rows so a lone reflection still reads as one.
+    ///
+    /// A run that never reached a tool emits one row per thought, and each of those rows is its own
+    /// row: `runKey` names where the run started, so handing it to all of them would give a stretch
+    /// of pure thinking N rows and one identifier. Everything downstream reads a key as an identity
+    /// — the diff anchors by it, the expansion set is keyed by it, the entrance remembers it — so
+    /// duplicates make the diff resolve to the wrong row and open every thought at once. The step's
+    /// index inside the run is what tells them apart, and it is stable while the run grows because a
+    /// thought is only ever appended.
     static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
         var run: [ActivityStep] = []
@@ -258,9 +274,10 @@ struct TranscriptRow: Hashable {
                 return nil
             }
             if tools.isEmpty {
-                for step in run {
+                for (offset, step) in run.enumerated() {
                     if case .reasoning(let text) = step {
-                        fused.append(TranscriptRow(key: runKey, kind: .reasoning(text)))
+                        fused.append(
+                            TranscriptRow(key: "\(runKey):r\(offset)", kind: .reasoning(text)))
                     }
                 }
             } else if tools.count == 1, run.count == 1 {

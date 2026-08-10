@@ -151,9 +151,9 @@ final class CascadePainter: @unchecked Sendable {
     /// has not closed yet — and a gate whose give-up clock is reset by every arrival can never
     /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
     /// `markdown` is false for a row that streams code, which the gate must not read as prose.
-    func renderable(_ source: String, sealed: Bool, markdown: Bool) -> String {
+    func renderable(row: String, _ source: String, sealed: Bool, markdown: Bool) -> String {
         guard Self.motionAllowed else { return source }
-        return live.renderable(source, sealed: sealed, markdown: markdown, at: Self.now)
+        return live.renderable(row: row, source, sealed: sealed, markdown: markdown, at: Self.now)
     }
 
     /// One frame's arithmetic without the display's clock, so the reveal can be checked without a

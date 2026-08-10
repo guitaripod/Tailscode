@@ -134,6 +134,10 @@ final class TranscriptViewController: NSViewController {
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
     private var inFlightImages: Set<String> = []
+    /// Pictures a row has asked for and the transcript has not yet judged worth fetching: held here
+    /// until the reader is within a screen of the row that wants them.
+    private var wantedImages: [String: FileReference] = [:]
+    private var imageSweepScheduled = false
     private var inFlightSubagents: Set<String> = []
     private var findMatches: [Int] = []
     private var findCursor = 0
@@ -777,7 +781,7 @@ final class TranscriptViewController: NSViewController {
             DispatchQueue.main.async { [weak self] in self?.revealDisclosure(row) }
         }
         context.requestImage = { [weak self] reference, key in
-            self?.fetchImage(reference, key: key)
+            self?.noteImageWanted(reference, key: key)
         }
         context.requestSubagent = { [weak self] call in
             self?.fetchSubagent(call)
@@ -930,32 +934,29 @@ final class TranscriptViewController: NSViewController {
         noteHapticEdges(state: state, rows: rows)
         lastState = state
         onState?(state)
-        var rows = rows
-        if let echoedPrompt {
-            if state.messages.contains(where: {
+        var confirmed = rows
+        confirmed.removeAll { $0.key.hasPrefix("echo:") }
+        lastFullRows = confirmed
+        if let entry { rememberRows(confirmed, for: entry.session.id) }
+        if let echoedPrompt,
+            state.messages.contains(where: {
                 $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
-            }) {
-                self.echoedPrompt = nil
-            } else {
-                if !rows.isEmpty {
-                    rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
-                }
-                rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
-            }
+            })
+        {
+            self.echoedPrompt = nil
         }
-        lastFullRows = rows
-        if let entry { rememberRows(rows, for: entry.session.id) }
-        let appended = max(0, rows.count - lastFullCount)
-        lastFullCount = rows.count
+        let shown = echoed(confirmed)
+        let appended = max(0, shown.count - lastFullCount)
+        lastFullCount = shown.count
         let limit = max(windowLimit, Self.transcriptWindowPreference)
-        let windowed = rows.count > limit ? Array(rows.suffix(limit)) : rows
-        let hiddenCount = rows.count - windowed.count
+        let windowed = shown.count > limit ? Array(shown.suffix(limit)) : shown
+        let hiddenCount = shown.count - windowed.count
         earlierButton.isHidden = hiddenCount <= 0
         if hiddenCount > 0 {
             earlierButton.title = Localized.text(
                 "… %@ earlier rows — show more", "\(hiddenCount)")
         }
-        if rows.isEmpty {
+        if shown.isEmpty {
             cascade.release()
             showPlaceholder(
                 state.hasLoadedTranscript
@@ -976,6 +977,26 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+    }
+
+    /// What the transcript draws: the rows the server has confirmed, plus the prompt this device is
+    /// still echoing on its behalf.
+    ///
+    /// The echo never enters `lastFullRows`. It used to be appended to the row list that was then
+    /// stored as that memo, and three callers hand the memo straight back in — the chunked fill on
+    /// every runloop hop, the widening window, the next send — so each re-entry appended a second
+    /// pair while the echo was pending. Nothing de-duplicates rows on the way to the stack and the
+    /// diff's key index is first-occurrence-wins, so a cosmetic double prompt became an anchor
+    /// resolved against the wrong row and a wrong-slice rebuild. The memo is what the server said;
+    /// the echo is added on the way to the screen and nowhere else.
+    private func echoed(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        guard let echoedPrompt else { return rows }
+        var rows = rows
+        if !rows.isEmpty {
+            rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
+        }
+        rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
+        return rows
     }
 
     /// The same edges the phone reports to the hand, read before the new state replaces the old:
@@ -1401,9 +1422,9 @@ final class TranscriptViewController: NSViewController {
     /// The rendering path, shaped around what a person is looking at. On first paint the tail —
     /// the rows the window actually shows — goes up immediately, and everything earlier backfills
     /// above it one chunk per pass, so a huge conversation is readable in one frame instead of
-    /// after a ten-chunk climb. While streaming, everything before the first changed row keeps
-    /// its view — and its disclosure state, its selection, its scroll cost — and a token appended
-    /// to the last message rebuilds one row, not the conversation.
+    /// after a ten-chunk climb. Once it is up, every row whose key survives keeps its view — and its
+    /// disclosure state, its selection, its scroll cost — wherever the edit moved it, and a token
+    /// appended to the last message rebuilds one row, not the conversation.
     ///
     /// `renderedRows` is always a contiguous slice of the applied row list that reaches its end;
     /// where that slice starts is re-found by key on every pass, because the window slides.
@@ -1454,14 +1475,22 @@ final class TranscriptViewController: NSViewController {
             if viewToDrop === highlightedView { clearFindHighlight() }
             viewToDrop.removeFromSuperview()
         }
+        forgetWantedImages(renderedRows[index...])
         rowViews.removeSubrange(index...)
         renderedRows.removeSubrange(index...)
         let limit = max(windowLimit, Self.transcriptWindowPreference)
-        let rows = lastFullRows
+        let rows = echoed(lastFullRows)
         applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }
 
+    /// How many rows go up in one runloop hop while a fill is still climbing, and the size of edit
+    /// past which an arrival is treated as a fill rather than as growth.
+    private static let rowChunk = 40
+
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        assert(
+            Set(rows.map(\.key)).count == rows.count,
+            "the transcript handed one key to two rows")
         if updatedLastRowInPlace(rows) { return }
         let initialFill = placeholderShown
         if placeholderShown {
@@ -1474,8 +1503,117 @@ final class TranscriptViewController: NSViewController {
         }
         let stick = initialFill || followsBottom
         let growth = initialFill ? 0 : appended
-        let chunk = 40
 
+        let edit = preservingScroll { editRows(rows) }
+        repaintChangedRows(rows, from: edit.start)
+        fillComplete = edit.complete
+        if !edit.complete {
+            if stick { followsBottom = true }
+            if !isFillingInChunks {
+                isFillingInChunks = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.isFillingInChunks = false
+                    if let state = self.lastState {
+                        self.apply(state: state, rows: self.lastFullRows)
+                    } else {
+                        let limit = max(self.windowLimit, Self.transcriptWindowPreference)
+                        let rows = self.echoed(self.lastFullRows)
+                        self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
+                    }
+                }
+            }
+        }
+
+        if stick {
+            setFollowing(true)
+            schedulePinCorrector()
+        } else {
+            noteAppendedWhileScrolledUp(growth)
+        }
+        scheduleImageSweep()
+        if edit.complete, !findBar.isHidden { runFind(retarget: false) }
+    }
+
+    /// What has to happen to the rows on screen for them to become `rows`, and whether that leaves
+    /// the whole list showing. Also where the rendered slice starts inside `rows`, which is zero for
+    /// everything except a fill that is still climbing.
+    ///
+    /// The steady state diffs by *key*. A row's identity says whether it is the same row; its value
+    /// says only whether it needs repainting, and conflating the two is what used to make one
+    /// changed row mid-window cost every row below it — `placeBoard` promotes only the last board
+    /// call, so every TodoWrite update reverts a row dozens of positions back and tore the tail off
+    /// after it. A backfill is still a fill: rows arriving above everything on screen when the
+    /// window widens cannot become four hundred views inside one frame.
+    private func editRows(_ rows: [TranscriptRow]) -> (complete: Bool, start: Int) {
+        guard fillComplete, !renderedRows.isEmpty else { return fillRowsInChunks(rows) }
+        let plan = RowDiff.plan(from: renderedRows.map(\.key), to: rows.map(\.key))
+        if isBackfill(plan) { return fillRowsInChunks(rows) }
+        applyPlan(plan, to: rows)
+        return (true, 0)
+    }
+
+    /// Whether an edit is better spread over runloop hops than carried out whole — which is a
+    /// question about *where* the rows land, never about how many of them there are. The widening
+    /// window is the shape worth chunking: several hundred rows arrive above everything on screen,
+    /// nothing already up moves, and the climb costs a chunk of view builds a hop instead of the
+    /// whole backfill inside one frame.
+    ///
+    /// It is also the only shape the chunked fill can express without damage. Its walk stops at the
+    /// first key that disagrees and tears off every row below that point, so a row arriving — or
+    /// leaving — from *between* two rows that stay would collapse and regrow the entire tail under
+    /// it, which is precisely what the keyed diff exists to have stopped. Survivors that are
+    /// contiguous on both sides are exactly the promise that nothing lands between them; counting
+    /// insertions instead was the same mistake in a new place, because forty-one rows appearing in
+    /// the middle of a transcript are not a fill.
+    ///
+    /// A list with no survivor at all is a fill by definition — every row on screen is going either
+    /// way — so a big one climbs rather than building itself inside one frame.
+    private func isBackfill(_ plan: RowDiff.Plan) -> Bool {
+        guard let first = plan.survivors.first, let last = plan.survivors.last else {
+            return plan.insertions.count > Self.rowChunk
+        }
+        let span = plan.survivors.count - 1
+        guard last.old - first.old == span, last.new - first.new == span else { return false }
+        return plan.insertions.prefix(while: { $0 < first.new }).count > Self.rowChunk
+    }
+
+    /// The plan carried out against the stack: removals from the back, so every index still ahead of
+    /// the cursor keeps meaning what it meant, then insertions from the front, which is the order
+    /// the plan is stated in. Nothing here repaints — a row whose key survived keeps the view it
+    /// already has, and whatever its value now says is written into that view afterwards.
+    private func applyPlan(_ plan: RowDiff.Plan, to rows: [TranscriptRow]) {
+        guard !plan.isOrderPreserving else { return }
+        for index in plan.removals.reversed() where index < rowViews.count {
+            let doomed = rowViews[index]
+            if doomed === highlightedView { clearFindHighlight() }
+            doomed.removeFromSuperview()
+            forgetWantedImages([renderedRows[index]])
+            rowViews.remove(at: index)
+            renderedRows.remove(at: index)
+        }
+        let entering = rowsAnnounceArrival
+        for (offset, index) in plan.insertions.enumerated() {
+            let row = rows[index]
+            let rowView = row.makeView(context: context)
+            let at = min(index, rowViews.count)
+            rowsStack.insertArrangedSubview(rowView, at: at)
+            rowViews.insert(rowView, at: at)
+            renderedRows.insert(row, at: at)
+            let firstSight = enteredRows.insert(row.key).inserted
+            if entering, firstSight, row.key != cascade.key, row.announcesArrival {
+                CascadeEntrance.animate(rowView, index: offset, of: plan.insertions.count)
+            }
+        }
+    }
+
+    /// The first fill and the widening window. A transcript of four thousand rows goes up as the
+    /// tail the window actually shows, and everything earlier backfills above it a chunk per runloop
+    /// hop, so it is readable in one frame instead of after a ten-chunk climb. The walk matches by
+    /// key rather than by value: a row whose words changed while the fill was climbing keeps its
+    /// place and is repainted after, instead of taking the rest of the fill down with it.
+    private func fillRowsInChunks(_ rows: [TranscriptRow]) -> (complete: Bool, start: Int) {
+        let chunk = Self.rowChunk
         var start = 0
         if !renderedRows.isEmpty {
             var indexByKey = [String: Int](minimumCapacity: rows.count)
@@ -1494,6 +1632,7 @@ final class TranscriptViewController: NSViewController {
                     if viewToDrop === highlightedView { clearFindHighlight() }
                     viewToDrop.removeFromSuperview()
                 }
+                forgetWantedImages(renderedRows[..<anchor.rendered])
                 rowViews.removeSubrange(..<anchor.rendered)
                 renderedRows.removeSubrange(..<anchor.rendered)
                 start = anchor.row
@@ -1508,7 +1647,7 @@ final class TranscriptViewController: NSViewController {
         } else {
             var same = 0
             while same < renderedRows.count, start + same < rows.count,
-                renderedRows[same] == rows[start + same]
+                renderedRows[same].key == rows[start + same].key
             {
                 same += 1
             }
@@ -1516,6 +1655,7 @@ final class TranscriptViewController: NSViewController {
                 if viewToDrop === highlightedView { clearFindHighlight() }
                 viewToDrop.removeFromSuperview()
             }
+            forgetWantedImages(renderedRows[same...])
             rowViews.removeSubrange(same...)
             renderedRows.removeSubrange(same...)
             let tailFrom = start + renderedRows.count
@@ -1532,49 +1672,48 @@ final class TranscriptViewController: NSViewController {
                 let rowView = row.makeView(context: context)
                 rowsStack.insertArrangedSubview(rowView, at: position)
                 inserted.append(rowView)
+                enteredRows.insert(row.key)
                 position += 1
             }
             renderedRows.insert(contentsOf: rows[from..<start], at: 0)
             rowViews.insert(contentsOf: inserted, at: 0)
             start = from
         }
+        return (tailDone && start == 0, start)
+    }
 
-        let complete = tailDone && start == 0
-        fillComplete = complete
-        if !complete {
-            if stick { followsBottom = true }
-            if !isFillingInChunks {
-                isFillingInChunks = true
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.isFillingInChunks = false
-                    if let state = self.lastState {
-                        self.apply(state: state, rows: self.lastFullRows)
-                    } else {
-                        let limit = max(self.windowLimit, Self.transcriptWindowPreference)
-                        let rows = self.lastFullRows
-                        self.applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
-                    }
-                }
+    /// Where the key survived but the value did not. Repainting happens where the row stands — the
+    /// alternative is removing the view and putting another one back, which is what restarts an
+    /// entrance, drops a selection inside the row and asks the whole column to lay out again.
+    private func repaintChangedRows(_ rows: [TranscriptRow], from start: Int) {
+        var stale: Set<String> = []
+        for index in renderedRows.indices {
+            let source = start + index
+            guard source >= 0, source < rows.count, renderedRows[index] != rows[source] else {
+                continue
             }
+            renderedRows[index] = rows[source]
+            stale.insert(rows[source].key)
         }
+        guard !stale.isEmpty else { return }
+        replaceRows { stale.contains($0.key) }
+    }
 
-        if stick {
-            setFollowing(true)
-            schedulePinCorrector()
-        } else {
-            noteAppendedWhileScrolledUp(growth)
-        }
-        if complete, !findBar.isHidden { runFind(retarget: false) }
+    /// Whether a row arriving now is arriving in front of somebody: the transcript is built and
+    /// visible, and they are at the bottom, where new rows land. Anything else is a fill or a
+    /// backfill — the transcript coming into existence rather than growing — and fading that in is a
+    /// flicker with no event behind it.
+    private var rowsAnnounceArrival: Bool {
+        !placeholderShown && !pendingReveal && fillComplete && followsBottom
     }
 
     private func appendRowViews(_ rows: ArraySlice<TranscriptRow>) {
-        let entering = !placeholderShown && !pendingReveal && fillComplete && followsBottom
+        let entering = rowsAnnounceArrival
         for (offset, row) in rows.enumerated() {
             let rowView = row.makeView(context: context)
             rowsStack.addArrangedSubview(rowView)
             let firstSight = enteredRows.insert(row.key).inserted
-            if entering, firstSight, row.key != cascade.key {
+            if entering, firstSight, row.key != cascade.key, row.announcesArrival {
                 CascadeEntrance.animate(rowView, index: offset, of: rows.count)
             }
             rowViews.append(rowView)
@@ -1654,6 +1793,7 @@ final class TranscriptViewController: NSViewController {
 
     private func tearDownAllRows() {
         enteredRows.removeAll(keepingCapacity: true)
+        wantedImages.removeAll(keepingCapacity: true)
         clearFindHighlight()
         rowViews.forEach { $0.removeFromSuperview() }
         rowViews = []
@@ -1665,15 +1805,143 @@ final class TranscriptViewController: NSViewController {
     /// state, and nothing scrolls. It is not new content — the unseen counter never moves.
     private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
         guard !placeholderShown else { return }
-        for index in renderedRows.indices where predicate(renderedRows[index]) {
-            guard index < rowViews.count else { continue }
-            if rowViews[index] === highlightedView { clearFindHighlight() }
-            rowViews[index].removeFromSuperview()
-            let rowView = renderedRows[index].makeView(context: context)
-            rowsStack.insertArrangedSubview(rowView, at: index)
-            rowViews[index] = rowView
+        preservingScroll { () -> Void in
+            for index in renderedRows.indices where predicate(renderedRows[index]) {
+                guard index < rowViews.count else { continue }
+                if rowViews[index] === highlightedView { clearFindHighlight() }
+                rowViews[index].removeFromSuperview()
+                let rowView = renderedRows[index].makeView(context: context)
+                rowsStack.insertArrangedSubview(rowView, at: index)
+                rowViews[index] = rowView
+            }
         }
         if followsBottom { schedulePinCorrector() }
+    }
+
+    /// A change to the column above where somebody is reading is a change to what they are reading.
+    /// A stack view in a scroll view anchors nothing by itself, so a picture finishing its decode
+    /// forty rows up, a subagent transcript arriving inside a card, or a backfill inserting at the
+    /// top of the stack each move the words out from under a reader who has scrolled back — the
+    /// heights above them changed and their scroll origin did not. The fixed point is the topmost
+    /// row still on screen that the edit left standing: whatever happened to the column, that row is
+    /// put back where it was and the origin follows it. A reader at the bottom already has an
+    /// anchor — the pin — so
+    /// nothing is measured for them, and an edit that only touched the tail moves the anchor by
+    /// nothing and scrolls by nothing.
+    @discardableResult
+    private func preservingScroll<T>(_ mutate: () -> T) -> T {
+        guard !followsBottom else { return mutate() }
+        let anchors = visibleAnchors()
+        guard !anchors.isEmpty else { return mutate() }
+        let result = mutate()
+        view.layoutSubtreeIfNeeded()
+        guard let moved = anchorDrift(anchors), abs(moved) > 0.5 else { return result }
+        let clip = scrollView.contentView
+        isAutoScrolling = true
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: clip.bounds.origin.y + moved))
+        scrollView.reflectScrolledClipView(clip)
+        isAutoScrolling = false
+        return result
+    }
+
+    /// The rows with anything of themselves on screen, each named by the key that identifies it and
+    /// paired with where it sits in the canvas: the fixed points a reflow has to leave looking
+    /// unchanged. Ordered from the topmost down and stopped at the foot of the viewport, because a
+    /// correction wants whichever of them survived the edit and none of the rest.
+    private func visibleAnchors() -> [(key: String, offset: CGFloat)] {
+        let clip = scrollView.contentView
+        let top = clip.bounds.origin.y + scrollView.contentInsets.top
+        let foot = clip.bounds.origin.y + clip.bounds.height
+        var anchors: [(key: String, offset: CGFloat)] = []
+        for (index, rowView) in rowViews.enumerated() where rowView.superview != nil {
+            guard index < renderedRows.count else { break }
+            let frame = rowView.convert(rowView.bounds, to: canvas)
+            guard frame.maxY > top else { continue }
+            if !anchors.isEmpty, frame.minY > foot { break }
+            anchors.append((renderedRows[index].key, frame.minY))
+        }
+        return anchors
+    }
+
+    /// How far the topmost row that survived the edit moved, or nothing if not one of them did.
+    ///
+    /// The anchor is a key looked up afterwards rather than a view held across the mutation, because
+    /// the edits that most need anchoring are the ones that rebuild the very row being read: a batch
+    /// repaint takes every stale row's view out and puts a new one back under the same key, so an
+    /// anchor holding the old view finds it orphaned and abandons the correction — for every row
+    /// below it as well, which is exactly when it was needed. A key that is gone entirely is a row
+    /// that genuinely left, and then the next one still standing holds the column in its place.
+    private func anchorDrift(_ anchors: [(key: String, offset: CGFloat)]) -> CGFloat? {
+        for anchor in anchors {
+            guard let index = renderedRows.firstIndex(where: { $0.key == anchor.key }),
+                index < rowViews.count
+            else { continue }
+            let rowView = rowViews[index]
+            guard rowView.superview != nil else { continue }
+            return rowView.convert(rowView.bounds, to: canvas).minY - anchor.offset
+        }
+        return nil
+    }
+
+    /// A row with no picture yet says so as it is built; whether those bytes are worth crossing the
+    /// tailnet for right now is the transcript's call rather than the row's.
+    private func noteImageWanted(_ reference: FileReference, key: String) {
+        guard ImageStore.shared.entry(forKey: key) == nil else { return }
+        wantedImages[key] = reference
+        scheduleImageSweep()
+    }
+
+    /// Rows leaving the stack take their unmet picture requests with them, wherever they leave from
+    /// — a plan's removals, a window sliding, the tail being handed back to be redrawn.
+    ///
+    /// A want the transcript declined because its row was off screen must not become a fetch the
+    /// moment that row falls out of the window: there is nothing left to paint it into, and the
+    /// bytes would cross the tailnet for a picture nobody can see. Pruning is also what lets an
+    /// absent key keep its one honest meaning in the sweep — a row the flow never rendered at all,
+    /// which is a picture inside a card somebody has just opened. A row that comes back asks again
+    /// as it is built, so nothing is lost by forgetting.
+    private func forgetWantedImages(_ rows: some Sequence<TranscriptRow>) {
+        guard !wantedImages.isEmpty else { return }
+        for row in rows { wantedImages.removeValue(forKey: row.key) }
+    }
+
+    /// Coalesced to once a runloop hop: a sweep costs a layout pass and a scroll delivers its
+    /// notification many times a frame.
+    private func scheduleImageSweep() {
+        guard !imageSweepScheduled, !wantedImages.isEmpty else { return }
+        imageSweepScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.imageSweepScheduled = false
+            self.sweepWantedImages()
+        }
+    }
+
+    /// Pictures fetch themselves when a reader is within a screen of them, and not before. A
+    /// placeholder is a fixed frame and the thumbnail that replaces it is the picture's own shape,
+    /// so every image in a four-hundred-row transcript decoding on the first fill is four hundred
+    /// height changes, most of them above whoever has scrolled back. A key the flow does not render
+    /// is inside a card somebody has just opened — opening it *was* the request — so those are
+    /// fetched at once rather than waited on, which holds only because a row that leaves takes its
+    /// want with it (`forgetWantedImages`) and so cannot arrive here wearing a card's meaning.
+    private func sweepWantedImages() {
+        guard !wantedImages.isEmpty, !placeholderShown else { return }
+        view.layoutSubtreeIfNeeded()
+        let clip = scrollView.contentView
+        let margin = max(clip.bounds.height, 400)
+        let top = clip.bounds.origin.y - margin
+        let bottom = clip.bounds.origin.y + clip.bounds.height + margin
+        var reach: [String: Bool] = [:]
+        for (index, row) in renderedRows.enumerated()
+        where wantedImages[row.key] != nil && index < rowViews.count {
+            let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+            reach[row.key] = frame.maxY >= top && frame.minY <= bottom
+        }
+        let ready = wantedImages.filter { reach[$0.key] ?? true }
+        for (key, reference) in ready {
+            wantedImages.removeValue(forKey: key)
+            fetchImage(reference, key: key)
+        }
     }
 
     /// What the turn is waiting on, docked where the CLI's prompt would sit: approvals first,
@@ -1788,6 +2056,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     @objc private func scrollBoundsChanged() {
+        scheduleImageSweep()
         guard !isAutoScrolling else { return }
         let atBottom = isNearBottom()
         followsBottom = atBottom

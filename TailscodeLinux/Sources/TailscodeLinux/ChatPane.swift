@@ -1387,7 +1387,6 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func tearDownAllRows() {
-        enteredRows.removeAll(keepingCapacity: true)
         for bits in rowWidgets {
             CascadeEntrance.cancel(bits)
             guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
@@ -1399,10 +1398,18 @@ final class ChatPane: @unchecked Sendable {
     /// Drops everything the pane believes about the widgets it had, for the paths that empty the
     /// transcript box wholesale. The entrance clock goes with them: a queue built up for rows that
     /// no longer exist would delay the first row of whatever fills the pane next.
+    ///
+    /// This is the single answer to "the pane no longer has these rows", so every ledger keyed by a
+    /// row key is emptied here rather than by the caller that happened to notice. `enteredRows` is
+    /// the one that matters: its keys are `messageID:partID`, unique per session, so a pane that
+    /// only ever cleared it on the teardown path grew the set for the life of the window — a chat
+    /// switch reaches `showPlaceholder` or the placeholder branch of `applyRows`, and neither of
+    /// those tears rows down, because the box was already emptied.
     private func forgetRowWidgets() {
         renderedRows = []
         rowWidgets = []
         highlightedRow = 0
+        enteredRows.removeAll(keepingCapacity: true)
         entranceInFlight.removeAll(keepingCapacity: true)
         nextEntranceAt = 0
     }
@@ -3074,6 +3081,7 @@ final class ChatPane: @unchecked Sendable {
         guard !inFlightImages.contains(key) else { return }
         inFlightImages.insert(key)
         let backend = backend
+        let sessionID = self.sessionID
         Task { [weak self] in
             var data = ImageCache.load(reference)
             if data == nil, let backend {
@@ -3095,12 +3103,25 @@ final class ChatPane: @unchecked Sendable {
             guard decoded.bits != 0 else { return }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.context.store(
-                    textureBits: decoded.bits, data: data,
-                    dimensions: (decoded.width, decoded.height), forKey: key)
-                self.replaceRows { $0.key == key }
+                self.adoptImage(decoded, data: data, key: key, from: sessionID)
             }
         }
+    }
+
+    /// A decoded picture landing after the pane may have moved on, which is two halves with two
+    /// owners. The cache belongs to the device — `TranscriptContext.store` is deliberately kept
+    /// across a chat switch, LRU-bounded by VRAM, so a picture already decoded comes back in one
+    /// frame and the store must happen whatever the pane is showing now. The rows belong to the
+    /// session that asked, so only a pane still on that session may be told to repaint one.
+    private func adoptImage(
+        _ decoded: (bits: UInt, width: Int32, height: Int32), data: Data, key: String,
+        from sessionID: String?
+    ) {
+        context.store(
+            textureBits: decoded.bits, data: data,
+            dimensions: (decoded.width, decoded.height), forKey: key)
+        guard self.sessionID == sessionID else { return }
+        replaceRows { $0.key == key }
     }
 
     /// A workflow's runs, rebuilt from the transcript and the live fan-out. Only the cards whose

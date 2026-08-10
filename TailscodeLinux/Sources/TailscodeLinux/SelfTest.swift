@@ -1225,10 +1225,11 @@ public enum SelfTest {
         var gated = LiveCascade()
         let abandonedToken = "the rest is behind an *opener"
         try expect(
-            gated.renderable(abandonedToken, sealed: false, at: 0).count < abandonedToken.count,
+            gated.renderable(row: "row", abandonedToken, sealed: false, at: 0).count
+                < abandonedToken.count,
             "a token still in flight holds the renderer")
         try expect(
-            gated.renderable(abandonedToken, sealed: false, at: 4) == abandonedToken,
+            gated.renderable(row: "row", abandonedToken, sealed: false, at: 4) == abandonedToken,
             "a token that never closes must stop holding the rest of the answer back")
         checks += 4
 

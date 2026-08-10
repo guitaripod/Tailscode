@@ -181,9 +181,15 @@ final class CascadePainter {
     /// With motion switched off nothing reveals, so nothing needs protecting from a marker that
     /// has not closed yet — and a gate whose give-up clock is reset by every arrival can never
     /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
-    func renderable(_ source: String, sealed: Bool) -> String {
+    ///
+    /// `markdown` is the row's own answer to whether the gate applies to it at all. Prose has inline
+    /// tokens worth protecting; code has the same characters meaning something else entirely, and
+    /// judging `**kwargs` or `self._value` as a half-open marker freezes the block behind it until
+    /// the gate gives up, dumps the rest at once, and freezes again on the next one.
+    func renderable(row: String, _ source: String, sealed: Bool, markdown: Bool) -> String {
         guard Self.motionAllowed else { return source }
-        return live.renderable(source, sealed: sealed, at: CACurrentMediaTime())
+        return live.renderable(
+            row: row, source, sealed: sealed, markdown: markdown, at: CACurrentMediaTime())
     }
 
     /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
@@ -287,6 +293,27 @@ extension TranscriptRow {
         case .agentProse(_, let rendered): return rendered.string
         case .codeBlock(_, let body): return body
         default: return nil
+        }
+    }
+
+    /// Whether the words this row is growing are markdown the gate should read. Only prose is: a
+    /// code block's source is full of characters that are markdown's punctuation and the language's
+    /// syntax at the same time, and there is no inline token inside a fence for a reader to be
+    /// protected from.
+    var streamsMarkdown: Bool {
+        if case .agentProse = kind { return true }
+        return false
+    }
+
+    /// Whether this row's first appearance is worth announcing. The words a person typed have been
+    /// on screen since they pressed Enter — echoed optimistically under one key, then re-keyed when
+    /// the server confirms the same sentence — so fading them in is not an arrival, it is the prompt
+    /// blinking out and coming back. The rule between turns goes with it: a hairline that fades in
+    /// under a prompt that did not is one seam moving in two halves.
+    var announcesArrival: Bool {
+        switch kind {
+        case .userText, .turnBreak: return false
+        default: return true
         }
     }
 }

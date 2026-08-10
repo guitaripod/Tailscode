@@ -27,6 +27,19 @@ final class ChatViewController: UIViewController {
     /// The compaction happening right now, or the one that was just refused. Finished ones are
     /// rows in the transcript and need no state here.
     private var liveCompaction: CompactionRow?
+    /// How many seams the transcript must be holding before the live card may go, and how long the
+    /// card may wait for one. A compaction that finishes clears itself and grows its `Compaction`
+    /// part on two separate events, and a card dropped on the first of them leaves an applied
+    /// snapshot with neither row in it: the divider blinks out and a different-looking one takes
+    /// its place. A promise nothing ever keeps — a compaction abandoned by a server, a reconnect —
+    /// expires instead of leaving "Compacting…" on screen for the rest of the session.
+    private var promisedSeamCount: Int?
+    private var promisedSeamDeadline: Date = .distantPast
+    /// The clock the deadline is read by. `updateLiveCompaction` runs only from a render and a
+    /// render only from a state arriving, so a compaction that is abandoned rather than finished
+    /// clears inside its own burst of events — every one of them inside the patience — and nothing
+    /// ever looks again. A deadline nobody is watching is not a deadline.
+    private var seamWatch: Task<Void, Never>?
     private var questionSelection = QuestionCell.Selection()
     private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
@@ -111,6 +124,7 @@ final class ChatViewController: UIViewController {
         revealFallback?.cancel()
         workflowTicker?.cancel()
         cascadeRepair?.cancel()
+        seamWatch?.cancel()
     }
 
     override func viewDidLoad() {
@@ -1138,17 +1152,67 @@ final class ChatViewController: UIViewController {
     /// when its text arrives and never again, so a frame that only moves colours — the reveal and
     /// the band both — never touches the data source or the layout, and the transcript cannot
     /// jump under the reader. Only a row with no cell on screen falls back to a reconfigure.
-    private func repaintCascade() {
+    ///
+    /// That fallback is charged for, so it is asked for only when it can pay. The band moves every
+    /// frame and the reveal does not, so a row scrolled out of view was answering every frame with
+    /// a whole-list snapshot copy and an apply — a hundred and twenty times a second, on the main
+    /// thread, against the scroll the reader is doing, and worse the longer the transcript. A frame
+    /// that only moved the band has nothing to say to a cell nobody can see.
+    ///
+    /// And what reports the debt paid is not the branch that painted, it is the absence of anybody
+    /// looking. `landed` is the wave's proof that its arithmetic reached a reader, so the question
+    /// is whether a reader is being kept waiting: a row with a cell on screen that this frame could
+    /// not paint is withholding text from someone and must leave the debt standing for the watchdog,
+    /// while a row scrolled out of the visible set is withholding it from nobody — there is nothing
+    /// to be missing. Timing the debt against a reveal nobody could see either way is how a second's
+    /// scroll away from the live row came back as a stall and handed the answer over whole.
+    private func repaintCascade(revealMoved: Bool) {
         guard let id = cascade.key else { return }
-        if repaintLiveCellInPlace(id) {
-            cascade.landed()
-            return
+        let paint = repaintLiveCellInPlace(id)
+        if paint != .refused { cascade.landed() }
+        if paint != .painted, revealMoved, dataSource.indexPath(for: id) != nil {
+            var snapshot = dataSource.snapshot()
+            snapshot.reconfigureItems([id])
+            dataSource.apply(snapshot, animatingDifferences: false)
         }
+        guard let settled = settleDrainedCascade(), dataSource.indexPath(for: settled) != nil
+        else { return }
         var snapshot = dataSource.snapshot()
-        guard snapshot.itemIdentifiers.contains(id) else { return }
-        snapshot.reconfigureItems([id])
+        snapshot.reconfigureItems([settled])
         dataSource.apply(snapshot, animatingDifferences: false)
-        cascade.landed()
+        settledCascadeRows.remove(settled)
+    }
+
+    /// Whether the turn writing the live row is over, which is not the same question as whether the
+    /// app is busy.
+    ///
+    /// A turn stops being busy for as long as it is waiting on the reader — a permission to run
+    /// something, an answer to a question — and the row it was writing is not finished, it is
+    /// paused. Sealing there would drain the buffer at the end-of-turn cadence, let the row go, and
+    /// then take the same row up again from nothing the moment approval came back: the answer
+    /// rewinds under the reader, which is a worse lie than the pause.
+    private var turnIsOver: Bool {
+        guard !viewModel.isBusy else { return false }
+        let state = viewModel.state
+        return state.pendingPermissions.isEmpty && state.pendingQuestions.isEmpty
+    }
+
+    /// Lets go of the live row once the hand has caught up with it, and says which row that was.
+    ///
+    /// The end of a turn is not the end of the reveal. The pacer trails what has arrived by design
+    /// — that is the whole of the smoothing — so there is always text still owed when the last
+    /// characters land, and cutting the wave loose there hands the row over whole in one frame:
+    /// every answer ended with half a second of writing appearing at once instead of a hand slowing
+    /// to a stop. So the row stays focused, sealed, and drains at the sealed cadence; only when the
+    /// reveal has actually reached the end is it handed back.
+    @discardableResult
+    private func settleDrainedCascade() -> String? {
+        guard turnIsOver, cascade.isSettled, let key = cascade.key else { return nil }
+        cascade.release()
+        if let whole = wholeCascadeRow, whole.id == key { rowsByID[key] = whole }
+        wholeCascadeRow = nil
+        settledCascadeRows.insert(key)
+        return key
     }
 
     /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
@@ -1159,9 +1223,17 @@ final class ChatViewController: UIViewController {
     /// The row is held at its markdown-safe prefix so the renderer never sees `**bold` without its
     /// closer; how much of what it rendered is on screen is the cell's business, from the plan the
     /// driver hands it.
+    ///
+    /// A row is taken up only while its turn is running, and let go of only once the reveal has
+    /// caught up with it. Those are two different moments and treating them as one was the whole
+    /// bug: the wave was released the instant the turn stopped, which is exactly when the buffer is
+    /// fullest, so the last half-second of every answer arrived in a single frame. Reading the last
+    /// row unconditionally is what makes the drain possible; refusing to take up a row the wave was
+    /// not already on once the turn is over is what keeps a chat opened on finished history from
+    /// starting a display link it has nothing to write.
     private func paceCascade(_ rows: [ChatRow]) {
-        let live = viewModel.isBusy
-            ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
+        let last = rows.last.flatMap { $0.streamedText == nil ? nil : $0 }
+        let live = (turnIsOver && cascade.key != last?.id) ? nil : last
         let released = cascade.key
         if let abandonedCascadeRow, abandonedCascadeRow != live?.id { self.abandonedCascadeRow = nil }
         guard let live, let source = live.streamedText, live.id != abandonedCascadeRow else {
@@ -1175,15 +1247,37 @@ final class ChatViewController: UIViewController {
             }
             return
         }
-        let safe = cascade.renderable(source, sealed: !viewModel.isBusy)
+        let sealed = turnIsOver
+        let safe = cascade.renderable(
+            row: live.id, source, sealed: sealed, markdown: live.streamsMarkdown)
         let row = safe == source ? live : live.held(to: safe)
         wholeCascadeRow = live
         rowsByID[row.id] = row
         cascade.focus(
-            row.id, length: Self.renderedLength(of: row), sealed: !viewModel.isBusy,
-            ultracode: viewModel.ultracodeInFlight
-                || viewModel.currentEffort == Ultracode.effortLevel)
+            row.id, length: renderedLength(of: row), sealed: sealed, ultracode: cascadeUltracode)
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
+        settleDrainedCascade()
+    }
+
+    /// Whether the wave paints the unlocked colours: the turn in flight was sent with ultracode on,
+    /// or the session is set to the effort ultracode is.
+    private var cascadeUltracode: Bool {
+        viewModel.ultracodeInFlight || viewModel.currentEffort == Ultracode.effortLevel
+    }
+
+    /// Re-measures the live row after a toggle changed how much of it is laid out.
+    ///
+    /// The reveal counts the characters the cell will actually draw, and a collapsed code block
+    /// draws its first fourteen lines. Opening one on the row the wave is holding leaves the reveal
+    /// standing at the folded count while the cell now lays out the whole block, and everything past
+    /// it is painted clear — the lines the person just asked to see are invisible until some
+    /// unrelated state event happens to re-measure the row. During a live stream that is a flicker;
+    /// on a turn that has just gone quiet nothing else is coming. A row the wave is not holding has
+    /// no reveal to correct.
+    private func refocusCascade(on id: String) {
+        guard cascade.key == id, let row = rowsByID[id] else { return }
+        cascade.focus(
+            id, length: renderedLength(of: row), sealed: turnIsOver, ultracode: cascadeUltracode)
     }
 
     /// The reveal stopped moving while it still owed the reader text — the display link stopped
@@ -1233,23 +1327,35 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    /// What one frame of the wave managed to do with the live row.
+    ///
+    /// The two ways of painting nothing are not the same failure and must not be answered the same
+    /// way. `unseen` is a row the transcript is holding whose cell is not in the visible set: it owes
+    /// the reader nothing, because there is no reader on it. `refused` is every other silence — a
+    /// cell on screen that would not take the frame, a row the wave is pointed at that the data
+    /// source does not have — and those are exactly what the stall watchdog exists to catch, so they
+    /// leave the debt standing.
+    private enum CascadePaint {
+        case painted
+        case unseen
+        case refused
+    }
+
     /// One frame of the wave over the cell where it stands, so the data source never hears about
-    /// a colour change. False when the row is off screen or has no cell to talk to, and the
-    /// caller falls back to the data source.
-    private func repaintLiveCellInPlace(_ id: String) -> Bool {
-        guard let tail = cascade.tail(for: id), let row = rowsByID[id],
-            let indexPath = dataSource.indexPath(for: id),
-            let cell = collectionView.cellForItem(at: indexPath)
-        else { return false }
+    /// a colour change. Anything but `painted` falls the caller back to the data source.
+    private func repaintLiveCellInPlace(_ id: String) -> CascadePaint {
+        guard let indexPath = dataSource.indexPath(for: id) else { return .refused }
+        guard let cell = collectionView.cellForItem(at: indexPath) else { return .unseen }
+        guard let tail = cascade.tail(for: id), let row = rowsByID[id] else { return .refused }
         switch (row.content, cell) {
         case (.text(let text), let bubble as TextBubbleCell):
             bubble.applyCascade(tail, text: text, reasoning: false)
-            return true
+            return .painted
         case (.code(let block), let code as CodeBlockCell):
-            code.applyCascade(tail, block: block)
-            return true
+            code.applyCascade(tail, block: block, expanded: expandedReasoning.contains(id))
+            return .painted
         default:
-            return false
+            return .refused
         }
     }
 
@@ -1258,19 +1364,26 @@ final class ChatViewController: UIViewController {
     /// is what `CascadeTail` indexes the cell's storage by. Counting graphemes here and slicing
     /// UTF-16 there is one number apart per emoji, and the row's last characters stay painted clear
     /// for good while the pacer reports it settled.
-    private static func renderedLength(of row: ChatRow) -> Int {
+    ///
+    /// A collapsed code block is counted at what it actually lays out, not at what it holds:
+    /// counting the whole source of a block showing its first fourteen lines spends the reveal on
+    /// characters the cell will never draw, and the wave reports itself finished while the reader
+    /// is still most of the block behind.
+    private func renderedLength(of row: ChatRow) -> Int {
         switch row.content {
         case .text(let text):
             return TextBubbleCell.rendered(text, color: Theme.Color.label).length
         case .code(let block):
-            return CodeBlockCell.highlightedCode(block.source, language: block.language).length
+            let laidOut = CodeBlockCell.laidOut(
+                block.source, expanded: expandedReasoning.contains(row.id))
+            return CodeBlockCell.highlightedCode(laidOut.text, language: block.language).length
         default:
             return 0
         }
     }
 
     private func bind() {
-        cascade.onFrame = { [weak self] in self?.repaintCascade() }
+        cascade.onFrame = { [weak self] moved in self?.repaintCascade(revealMoved: moved) }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         viewModel.onState = { [weak self] state in self?.render(state) }
         viewModel.onSignInStateChanged = { [weak self] in
@@ -1370,11 +1483,8 @@ final class ChatViewController: UIViewController {
         let lastContentRole: MessageRole? =
             viewModel.localEchoes.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
-        liveCompaction = state.compaction.map {
-            CompactionRow(
-                id: $0.isRunning ? "compacting" : "compaction-failed",
-                state: $0.failure.map { .failed($0) } ?? .running(startedAt: $0.startedAt))
-        }
+        let previousCompaction = liveCompaction
+        updateLiveCompaction(state.compaction, seams: rows.count(where: { Self.isSeam($0) }))
         if let liveCompaction {
             ids.append(liveCompaction.id)
         } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
@@ -1412,6 +1522,9 @@ final class ChatViewController: UIViewController {
         snapshot.appendItems(ids, toSection: .main)
 
         var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        if let liveCompaction, liveCompaction != previousCompaction {
+            changed.append(liveCompaction.id)
+        }
         for id in settledCascadeRows where rowsByID[id] != nil && !changed.contains(id) {
             changed.append(id)
         }
@@ -2021,6 +2134,82 @@ final class ChatViewController: UIViewController {
         }
     #endif
 
+    private static let liveCompactionID = "compaction:live"
+    /// How long the card may outlive the clear while it waits for the seam it was promised.
+    private static let seamPatience: TimeInterval = 6
+
+    private static func isSeam(_ row: ChatRow) -> Bool {
+        if case .compaction = row.content { return true }
+        return false
+    }
+
+    /// The card for the compaction the server is running right now, and when it may go.
+    ///
+    /// One identifier, always, with running and failed carried in the row's state: a compaction
+    /// that fails is the same card changing what it says, and naming the two states differently
+    /// made it a delete and an insert — the card jumped rather than turned over. And a compaction
+    /// that succeeds is cleared by one event and laid into the transcript by the next, so the card
+    /// is held until the seam it promised is actually among the rows. A refusal promises no seam
+    /// and is dropped as soon as the server stops reporting it, and a promise nothing keeps expires
+    /// rather than leaving the transcript claiming work that is not happening.
+    private func updateLiveCompaction(_ activity: CompactionActivity?, seams: Int) {
+        if let activity {
+            if let failure = activity.failure {
+                liveCompaction = CompactionRow(id: Self.liveCompactionID, state: .failed(failure))
+                promisedSeamCount = nil
+                unwatchSeamPromise()
+            } else {
+                liveCompaction = CompactionRow(
+                    id: Self.liveCompactionID, state: .running(startedAt: activity.startedAt))
+                if promisedSeamCount == nil { promisedSeamCount = seams + 1 }
+                promisedSeamDeadline = Date().addingTimeInterval(Self.seamPatience)
+                watchSeamPromise()
+            }
+            return
+        }
+        let waiting = promisedSeamCount.map { seams < $0 && Date() < promisedSeamDeadline } ?? false
+        guard !waiting else {
+            watchSeamPromise()
+            return
+        }
+        unwatchSeamPromise()
+        liveCompaction = nil
+        promisedSeamCount = nil
+    }
+
+    /// Reads the promise's deadline on a clock of its own, and re-renders once when it runs out.
+    ///
+    /// The transcript is drawn from states arriving, so the only moment the card is asked to justify
+    /// itself is a moment something else happened — and the whole point of the deadline is the case
+    /// where nothing else is going to. One sleep to the deadline, re-armed if the promise was
+    /// renewed while it slept (a running compaction pushes it out on every event), and a single
+    /// re-render of the last state when it has genuinely expired, which is the render that lets the
+    /// card go.
+    private func watchSeamPromise() {
+        guard seamWatch == nil else { return }
+        seamWatch = Task { [weak self] in
+            while true {
+                guard let self, self.promisedSeamCount != nil else { break }
+                let remaining = self.promisedSeamDeadline.timeIntervalSinceNow
+                guard remaining > 0 else { break }
+                do {
+                    try await Task.sleep(for: .seconds(remaining))
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.seamWatch = nil
+            guard self.promisedSeamCount != nil, let state = self.lastRenderedState else { return }
+            self.render(state)
+        }
+    }
+
+    private func unwatchSeamPromise() {
+        seamWatch?.cancel()
+        seamWatch = nil
+    }
+
     /// Re-runs one row's cell provider so a now-decoded image is laid out at
     /// its real aspect ratio instead of the placeholder's.
     private func remeasureRow(_ id: String) {
@@ -2043,6 +2232,7 @@ final class ChatViewController: UIViewController {
         } else {
             expandedReasoning.remove(id)
         }
+        refocusCascade(on: id)
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([id])
         dataSource.apply(snapshot, animatingDifferences: false)
@@ -3287,6 +3477,14 @@ final class ChatViewController: UIViewController {
     private var workflowNow: Date = Date()
     private var workflowTicker: Task<Void, Never>?
     private var lastRenderedState: ConversationState?
+    /// The order this conversation first saw each agent in, which is the only order a seat may be
+    /// handed out by.
+    private var agentArrivals: [String: Int] = [:]
+    private var agentArrivalCount = 0
+    /// The spawn call each unattached card was seated against, kept for the life of the view. A seat
+    /// is remembered rather than worked out again, because working it out again is what let two
+    /// cards swap chairs.
+    private var spawnSeats: [String: String] = [:]
 
     private func subagentPlacement(for messages: [ChatMessage]) -> SubagentPlacement {
         guard viewModel.supportsSubagents, !viewModel.trackedSubagents.isEmpty else {
@@ -3300,25 +3498,79 @@ final class ChatViewController: UIViewController {
         }
         let known = Set(spawnIDs)
         var placement = SubagentPlacement(expandedGroups: expandedAgentGroups)
-        var unmatched: [SubagentCard] = []
-        for agent in viewModel.trackedSubagents.sorted(by: { $0.updatedAt < $1.updatedAt }) {
-            let card = subagentCard(for: agent)
+        var unmatched: [SubagentSummary] = []
+        for agent in Self.inPlacementOrder(viewModel.trackedSubagents) {
+            noteArrival(of: agent.id)
             if let toolUseID = agent.toolUseID, known.contains(toolUseID) {
-                placement.byToolUse[toolUseID] = card
+                if placement.byToolUse[toolUseID] == nil {
+                    placement.byToolUse[toolUseID] = subagentCard(for: agent)
+                }
             } else {
-                unmatched.append(card)
+                unmatched.append(agent)
             }
         }
-        var free = spawnIDs.filter { placement.byToolUse[$0] == nil }[...]
-        for card in unmatched {
+        seat(unmatched, spawns: spawnIDs, known: known, into: &placement)
+        return placement
+    }
+
+    /// Seats the cards whose spawning call the server never named, and remembers where each one sat.
+    ///
+    /// A card with no resolvable `toolUseID` lands wherever the seating order puts it, so the seating
+    /// order is the pairing — and it may not be derived from anything that moves while the agent
+    /// runs. Ordering on `updatedAt` did exactly that: two agents working at once traded chairs
+    /// every four-second poll as whichever reported last sorted past the other, each card picking up
+    /// the other's spawn summary, and the snapshot recording a real reorder rather than a repaint.
+    /// So a seat is taken once, against the order the conversation first saw the agent, and then
+    /// held: only a call that resolved its own agent can take a chair back, and the card it displaces
+    /// takes the next free one rather than everybody shuffling along.
+    private func seat(
+        _ agents: [SubagentSummary], spawns: [String], known: Set<String>,
+        into placement: inout SubagentPlacement
+    ) {
+        let ordered = agents.sorted {
+            (agentArrivals[$0.id] ?? 0, $0.id) < (agentArrivals[$1.id] ?? 0, $1.id)
+        }
+        var taken = Set(placement.byToolUse.keys)
+        var displaced: [SubagentSummary] = []
+        for agent in ordered {
+            guard let slot = spawnSeats[agent.id], known.contains(slot), !taken.contains(slot) else {
+                displaced.append(agent)
+                continue
+            }
+            taken.insert(slot)
+            placement.byToolUse[slot] = subagentCard(for: agent)
+        }
+        var free = spawns.filter { !taken.contains($0) }[...]
+        for agent in displaced {
             guard let slot = free.first else {
-                placement.unattached.append(card)
+                placement.unattached.append(subagentCard(for: agent))
                 continue
             }
             free = free.dropFirst()
-            placement.byToolUse[slot] = card
+            spawnSeats[agent.id] = slot
+            placement.byToolUse[slot] = subagentCard(for: agent)
         }
-        return placement
+    }
+
+    /// Records when this conversation first laid eyes on an agent. Assigned while walking the agents
+    /// in their one agreed order rather than from inside a sort's comparator, which would number
+    /// them in whatever order the partitions happened to ask.
+    private func noteArrival(of agentID: String) {
+        guard agentArrivals[agentID] == nil else { return }
+        agentArrivalCount += 1
+        agentArrivals[agentID] = agentArrivalCount
+    }
+
+    /// The one order every device and every poll agrees on.
+    ///
+    /// A fan-out spawns its agents in the same tick — or against a server that stamps whole seconds —
+    /// so ties are routine, and Swift's sort is an introsort and is not stable: the tie order is
+    /// whatever the last partition happened to leave, which is a different arrangement of the same
+    /// agents on the next four-second poll. Falling back to the agent's own identifier makes the
+    /// order total, so this walk is the same walk every time and the arrival numbers it hands out
+    /// are the same numbers every time.
+    private static func inPlacementOrder(_ agents: [SubagentSummary]) -> [SubagentSummary] {
+        agents.sorted { ($0.updatedAt, $0.id) < ($1.updatedAt, $1.id) }
     }
 
     private func subagentCard(for agent: SubagentSummary) -> SubagentCard {

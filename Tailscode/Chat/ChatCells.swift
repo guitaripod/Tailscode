@@ -205,15 +205,12 @@ final class TextBubbleCell: UICollectionViewCell {
         if reasoning {
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.secondaryLabel
-            textView.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitItalic)
+            textView.font = Theme.Type.font(.thought)
             if let cascade {
                 let string = NSAttributedString(
                     string: text,
-                    attributes: [
-                        .font: UIFont.preferredFont(forTextStyle: .subheadline)
-                            .withTraits(.traitItalic),
-                        .foregroundColor: Theme.Color.secondaryLabel,
-                    ])
+                    attributes: Theme.Type.attributes(
+                        .thought, color: Theme.Color.secondaryLabel))
                 textView.attributedText = cascade.paint(
                     string, settled: Theme.Color.secondaryLabel)
             } else {
@@ -226,13 +223,15 @@ final class TextBubbleCell: UICollectionViewCell {
         } else if isUser {
             bubble.backgroundColor = Theme.Color.userBubble
             textView.textColor = Theme.Color.onAccent
-            textView.font = Theme.Font.body()
-            textView.text = text
+            textView.font = Theme.Type.font(.prompt)
+            textView.attributedText = NSAttributedString(
+                string: text,
+                attributes: Theme.Type.attributes(.prompt, color: Theme.Color.onAccent))
             textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
             bubble.backgroundColor = Theme.Color.assistantBubble
             textView.textColor = Theme.Color.label
-            textView.font = Theme.Font.body()
+            textView.font = Theme.Type.font(.answer)
             let rendered = Self.rendered(text, color: Theme.Color.label)
             textView.attributedText =
                 cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
@@ -250,11 +249,7 @@ final class TextBubbleCell: UICollectionViewCell {
         if reasoning {
             let string = NSAttributedString(
                 string: text,
-                attributes: [
-                    .font: UIFont.preferredFont(forTextStyle: .subheadline)
-                        .withTraits(.traitItalic),
-                    .foregroundColor: Theme.Color.secondaryLabel,
-                ])
+                attributes: Theme.Type.attributes(.thought, color: Theme.Color.secondaryLabel))
             textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
             return
         }
@@ -279,17 +274,17 @@ final class TextBubbleCell: UICollectionViewCell {
     static func rendered(_ text: String, color: UIColor) -> NSAttributedString {
         let key = "\(text)#\(color.description)" as NSString
         if let cached = renderCache.object(forKey: key) { return cached }
-        let base = Theme.Font.body()
+        let base = Theme.Type.font(.answer)
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         let result: NSAttributedString
         if var attr = try? AttributedString(markdown: text, options: options) {
             attr.font = base
             attr.foregroundColor = color
-            let headingFont = UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
+            let headingFont = Theme.Type.font(.cardTitle)
             for run in attr.runs {
                 if run.inlinePresentationIntent?.contains(.code) == true {
-                    attr[run.range].font = Theme.Font.mono(base.pointSize - 1)
+                    attr[run.range].font = Theme.Type.font(.code)
                     attr[run.range].backgroundColor = Theme.Color.reasoningBackground
                 }
                 if run.inlinePresentationIntent?.contains(.emphasized) == true {
@@ -297,6 +292,9 @@ final class TextBubbleCell: UICollectionViewCell {
                 }
             }
             let mutable = NSMutableAttributedString(attr)
+            mutable.addAttribute(
+                .paragraphStyle, value: Self.prose(),
+                range: NSRange(location: 0, length: mutable.length))
             var edits: [(range: NSRange, replacement: String)] = []
             mutable.mutableString.enumerateSubstrings(
                 in: NSRange(location: 0, length: mutable.length),
@@ -305,9 +303,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 let line = mutable.attributedSubstring(from: substringRange).string
                 let marks = line.prefix(while: { $0 == "#" }).count
                 if marks >= 1, marks <= 6, line.dropFirst(marks).hasPrefix(" ") {
-                    let font = marks <= 2
-                        ? UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
-                        : headingFont
+                    let font = marks <= 2 ? Theme.Type.font(.headline) : headingFont
                     mutable.addAttribute(.font, value: font, range: substringRange)
                     edits.append(
                         (NSRange(location: substringRange.location, length: marks + 1), ""))
@@ -316,7 +312,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 let trimmedStart = line.drop { $0 == " " }
                 let indentDepth = line.count - trimmedStart.count
                 if trimmedStart.hasPrefix("- ") || trimmedStart.hasPrefix("* ") {
-                    let paragraph = NSMutableParagraphStyle()
+                    let paragraph = Self.prose()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + 14
                     paragraph.paragraphSpacing = Self.listItemSpacing
@@ -336,13 +332,13 @@ final class TextBubbleCell: UICollectionViewCell {
                         ))
                     }
                 } else if let digits = Self.orderedListPrefixLength(trimmedStart) {
-                    let paragraph = NSMutableParagraphStyle()
+                    let paragraph = Self.prose()
                     paragraph.firstLineHeadIndent = CGFloat(indentDepth) * 6
                     paragraph.headIndent = CGFloat(indentDepth) * 6 + CGFloat(digits + 1) * 8
                     paragraph.paragraphSpacing = Self.listItemSpacing
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
                 } else if trimmedStart.hasPrefix("> ") {
-                    let paragraph = NSMutableParagraphStyle()
+                    let paragraph = Self.prose()
                     paragraph.firstLineHeadIndent = 12
                     paragraph.headIndent = 12
                     mutable.addAttribute(.paragraphStyle, value: paragraph, range: substringRange)
@@ -366,6 +362,14 @@ final class TextBubbleCell: UICollectionViewCell {
         }
         renderCache.setObject(result, forKey: key)
         return result
+    }
+
+    /// Every paragraph in an answer starts from the ramp's leading, so an indented list item is not
+    /// set tighter than the prose above it merely for having asked to be indented.
+    private static func prose() -> NSMutableParagraphStyle {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineHeightMultiple = Typography.spec(.answer).lineHeight
+        return paragraph
     }
 
     /// A list reads as a list when the gap between two items is bigger than the gap inside one.
@@ -472,12 +476,12 @@ final class PermissionCell: UICollectionViewCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Type.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .footnote)
+        detailLabel.font = Theme.Type.font(.cardBody)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -567,6 +571,63 @@ final class DiffWashLabel: UILabel {
     var washes: [(row: Int, color: UIColor)] = [] {
         didSet { setNeedsDisplay() }
     }
+    private var settledSize: CGSize?
+    private var settledWidth: CGFloat = .nan
+    private var isRepainting = false
+
+    /// A frame of the wave: the same glyphs, freshly tinted.
+    ///
+    /// `attributedText` is a copy on a label, so unlike a text view there is no storage to tint
+    /// where it stands and the assignment cannot be avoided. What can be avoided is what the
+    /// assignment costs: every one of them invalidates the intrinsic size, and a self-sizing cell
+    /// answers that by measuring the whole block again — on the display's clock, up to a hundred
+    /// and twenty times a second, for a size that cannot have moved because only the colours did.
+    /// So a repaint keeps the measurement and any other assignment drops it: a frame may change
+    /// light, never a size the layout depends on.
+    func repaint(_ text: NSAttributedString) {
+        isRepainting = true
+        attributedText = text
+        isRepainting = false
+    }
+
+    override var attributedText: NSAttributedString? {
+        didSet { if !isRepainting { forget() } }
+    }
+
+    /// Everything that is not a repaint drops the measurement, and this is the only place that can
+    /// know about most of them.
+    ///
+    /// A memo that outlives its reasons is worse than no memo. A wrapping label is measured twice:
+    /// UIKit asks with no preferred width and gets the unwrapped size, then sets the width from the
+    /// bounds it was given and invalidates for the real answer — and a memo that swallowed the
+    /// second question would leave the label laid out at its one-line-per-newline height, clipping
+    /// or spilling out of whatever holds it. A font, a line-break mode, a trait, a text change made
+    /// through any road but `attributedText`: all of them arrive here and none of them are colour.
+    override func invalidateIntrinsicContentSize() {
+        if !isRepainting { forget() }
+        super.invalidateIntrinsicContentSize()
+    }
+
+    /// The width the answer was measured against, so a memo can only ever be handed back to the
+    /// question it answered. `preferredMaxLayoutWidth` is what a wrapping label wraps at once
+    /// layout has told it; before that there is only the bounds.
+    private var measuredWidth: CGFloat {
+        preferredMaxLayoutWidth > 0 ? preferredMaxLayoutWidth : bounds.width
+    }
+
+    private func forget() {
+        settledSize = nil
+        settledWidth = .nan
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let width = measuredWidth
+        if let settledSize, settledWidth == width { return settledSize }
+        let size = super.intrinsicContentSize
+        settledSize = size
+        settledWidth = width
+        return size
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -607,6 +668,12 @@ final class CodeBlockCell: UICollectionViewCell {
     private var source = ""
     private var onToggle: (() -> Void)?
     private var containerTop: NSLayoutConstraint!
+    /// The glyphs the label is currently showing, kept so a frame of the wave can be tinted over
+    /// them rather than built again from the highlighter's output.
+    private var paintedStorage: NSMutableAttributedString?
+    /// The text the label was last given, which is what decides whether this row is still the row
+    /// the reader was reading sideways.
+    private var laidOutText = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -706,33 +773,68 @@ final class CodeBlockCell: UICollectionViewCell {
         _ block: CodeBlock, expanded: Bool, cascade: CascadeTail? = nil,
         onToggle: @escaping () -> Void
     ) {
-        self.source = block.source
         self.onToggle = onToggle
-        codeScroll.setContentOffset(.zero, animated: false)
+        source = block.source
         langLabel.text = SyntaxHighlighter.displayName(for: block.language, source: block.source)
         var copyConfig = copyButton.configuration ?? .plain()
         copyConfig.image = UIImage(
             systemName: "doc.on.doc", withConfiguration:
                 UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
         copyButton.configuration = copyConfig
-        let lines = block.source.components(separatedBy: "\n")
-        let isLong = lines.count > Self.collapsedLineLimit
-        if isLong && !expanded {
-            let shortSource = lines.prefix(Self.collapsedLineLimit).joined(separator: "\n")
-            codeLabel.attributedText = Self.highlightedCode(
-                shortSource, language: block.language, cascade: nil)
-            codeLabel.washes = Self.washes(shortSource, language: block.language)
-            lineNumberLabel.text = Self.lineNumbers(count: Self.collapsedLineLimit)
-            toggleButton.setTitle(String(localized: "Show all \(lines.count) lines"), for: .normal)
-            toggleButton.isHidden = false
-        } else {
-            codeLabel.attributedText = Self.highlightedCode(
-                block.source, language: block.language, cascade: cascade)
-            codeLabel.washes = Self.washes(block.source, language: block.language)
-            lineNumberLabel.text = Self.lineNumbers(count: lines.count)
-            toggleButton.setTitle(String(localized: "Collapse"), for: .normal)
-            toggleButton.isHidden = !isLong
+        let layout = Self.laidOut(block.source, expanded: expanded)
+        rewindIfAnotherBlock(layout.text)
+        let base = Self.highlightedCode(layout.text, language: block.language)
+        let storage = NSMutableAttributedString(
+            attributedString: cascade.map { $0.paint(base, settled: Theme.Color.label) } ?? base)
+        paintedStorage = storage
+        codeLabel.attributedText = storage
+        codeLabel.washes = Self.washes(layout.text, language: block.language)
+        lineNumberLabel.text = Self.lineNumbers(count: layout.shownLines)
+        let title =
+            layout.isLong && !expanded
+            ? String(localized: "Show all \(layout.totalLines) lines")
+            : String(localized: "Collapse")
+        toggleButton.setTitle(title, for: .normal)
+        toggleButton.isHidden = !layout.isLong
+    }
+
+    /// Puts the block back at its first column, but only when it is a different block.
+    ///
+    /// A code row scrolls sideways because a line is longer than the phone, and where the reader
+    /// scrolled it to is theirs. `configure` runs again for every streamed arrival, for a frame the
+    /// wave could not paint in place, for an image elsewhere finishing its decode, for the toggle
+    /// and for the hand-back at the end of a turn — and rewinding on all of them meant a long line
+    /// could not be read at all: the next token pulled it back to column one. Text that continues
+    /// what was already there is the same block still being written, and it keeps its place; a cell
+    /// recycled onto another block, or a block collapsed back down, starts over.
+    private func rewindIfAnotherBlock(_ text: String) {
+        defer { laidOutText = text }
+        guard !text.hasPrefix(laidOutText) else { return }
+        codeScroll.setContentOffset(.zero, animated: false)
+    }
+
+    /// What the block actually lays out, which everything that touches the row has to agree on.
+    ///
+    /// A long block shows its first lines until the reader opens it, and that decision was being
+    /// made three times over: `configure` laid out the prefix, a frame of the wave painted the
+    /// whole source, and the pacer counted the whole source's characters. So the cell alternated
+    /// two different heights — opaque on every arrival, faded on every frame — and the reveal
+    /// finished while the reader was still fourteen lines behind, because the pacer was counting
+    /// characters the cell would never lay out. One answer, asked here, keyed off whether the
+    /// reader has opened the row and never off what the toggle button's title happens to say in
+    /// the language the phone is set to.
+    static func laidOut(_ source: String, expanded: Bool)
+        -> (text: String, shownLines: Int, totalLines: Int, isLong: Bool)
+    {
+        let lines = source.components(separatedBy: "\n")
+        let isLong = lines.count > collapsedLineLimit
+        guard isLong, !expanded else {
+            return (source, lines.count, lines.count, isLong)
         }
+        return (
+            lines.prefix(collapsedLineLimit).joined(separator: "\n"), collapsedLineLimit,
+            lines.count, true
+        )
     }
 
     /// The grounds under a diff's changed lines, as geometry for `DiffWashLabel` to paint. Any
@@ -745,30 +847,29 @@ final class CodeBlockCell: UICollectionViewCell {
         }
     }
 
-    /// The wave over freshly written code. The highlighter's own colours are the settled ones, so
-    /// a keyword leaves the wave the keyword colour rather than the prose colour — the cascade
-    /// tints what is there rather than replacing it.
-    private static func highlightedCode(
-        _ source: String, language: String?, cascade: CascadeTail?
-    ) -> NSAttributedString {
-        let highlighted = highlightedCode(source, language: language)
-        guard let cascade else { return highlighted }
-        return cascade.paint(highlighted, settled: Theme.Color.label)
-    }
-
-    /// A frame that moved only the band, as above: the same glyphs, freshly tinted.
+    /// A frame that moved only the band: the same glyphs, freshly tinted. The highlighter's own
+    /// colours are the settled ones, so a keyword leaves the wave the keyword colour rather than
+    /// the prose colour — the cascade tints what is there rather than replacing it.
     ///
-    /// The glyphs are whatever `configure` last laid out, which for a long block is its first
-    /// fourteen lines. Painting the whole source here instead would grow the cell to the full block
-    /// on the display's clock and shrink it back on the next arrival, with the gutter still
-    /// numbering fourteen — a frame is allowed to change light, never a size layout depends on.
-    func applyCascade(_ cascade: CascadeTail, block: CodeBlock) {
-        let lines = block.source.components(separatedBy: "\n")
-        let shown =
-            lines.count > Self.collapsedLineLimit && toggleButton.title(for: .normal) != String(localized: "Collapse")
-            ? lines.prefix(Self.collapsedLineLimit).joined(separator: "\n") : block.source
-        codeLabel.attributedText = Self.highlightedCode(
-            shown, language: block.language, cascade: cascade)
+    /// The glyphs are whatever `configure` laid out, which for a long block the reader has not
+    /// opened is its first fourteen lines. Painting the whole source here instead would grow the
+    /// cell to the full block on the display's clock and shrink it back on the next arrival, with
+    /// the gutter still numbering fourteen — a frame is allowed to change light, never a size the
+    /// layout depends on.
+    func applyCascade(_ cascade: CascadeTail, block: CodeBlock, expanded: Bool) {
+        let base = Self.highlightedCode(
+            Self.laidOut(block.source, expanded: expanded).text, language: block.language)
+        if let storage = paintedStorage, storage.length == base.length,
+            storage.string == base.string
+        {
+            cascade.repaint(storage, base: base, settled: Theme.Color.label)
+            codeLabel.repaint(storage)
+            return
+        }
+        let storage = NSMutableAttributedString(
+            attributedString: cascade.paint(base, settled: Theme.Color.label))
+        paintedStorage = storage
+        codeLabel.attributedText = storage
     }
 
     private static func lineNumbers(count: Int) -> String {
@@ -1114,6 +1215,15 @@ extension UIFont {
         guard let descriptor = fontDescriptor.withSymbolicTraits(fontDescriptor.symbolicTraits.union(traits))
         else { return self }
         return UIFont(descriptor: descriptor, size: 0)
+    }
+
+    /// Digits of one width, for anything that changes while a person is looking at it.
+    func monospacedDigits() -> UIFont {
+        let settings: [UIFontDescriptor.FeatureKey: Int] = [
+            .type: kNumberSpacingType, .selector: kMonospacedNumbersSelector,
+        ]
+        return UIFont(
+            descriptor: fontDescriptor.addingAttributes([.featureSettings: [settings]]), size: 0)
     }
 }
 

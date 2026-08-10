@@ -247,13 +247,13 @@ struct StreamCascadeTests {
     func gateGivesUpOnAnAbandonedToken() {
         var live = LiveCascade()
         let source = "Root cause is deeper: any *frame"
-        #expect(live.renderable(source, sealed: false, at: 0) == "Root cause is deeper: any ")
-        #expect(live.renderable(source, sealed: false, at: 0.4) == "Root cause is deeper: any ")
+        #expect(live.renderable(row: "row", source, sealed: false, at: 0) == "Root cause is deeper: any ")
+        #expect(live.renderable(row: "row", source, sealed: false, at: 0.4) == "Root cause is deeper: any ")
         #expect(live.owes)
-        #expect(live.renderable(source, sealed: false, at: 2) == source)
+        #expect(live.renderable(row: "row", source, sealed: false, at: 2) == source)
         #expect(!live.owes)
-        #expect(live.renderable(source, sealed: false, at: 2.1) == source)
-        #expect(live.renderable(source, sealed: false, at: 8) == source)
+        #expect(live.renderable(row: "row", source, sealed: false, at: 2.1) == source)
+        #expect(live.renderable(row: "row", source, sealed: false, at: 8) == source)
     }
 
     @Test("a cut that keeps moving is a token in flight, not an abandoned one")
@@ -262,10 +262,10 @@ struct StreamCascadeTests {
         var time = 0.0
         for tail in ["`one", "`one` and `two", "`one` and `two` and `three"] {
             time += 0.5
-            #expect(live.renderable(tail, sealed: false, at: time).count < tail.count)
+            #expect(live.renderable(row: "row", tail, sealed: false, at: time).count < tail.count)
         }
         let closed = "`one` and `two` and `three`"
-        #expect(live.renderable(closed, sealed: false, at: time + 0.5) == closed)
+        #expect(live.renderable(row: "row", closed, sealed: false, at: time + 0.5) == closed)
     }
 
     @Test("a reveal that owes text and stops moving is a stall, however settled it looks")
@@ -292,7 +292,7 @@ struct StreamCascadeTests {
     func aHeldGateIsADebt() {
         var live = LiveCascade()
         let source = "shown *held"
-        let safe = live.renderable(source, sealed: false, at: 0)
+        let safe = live.renderable(row: "row", source, sealed: false, at: 0)
         live.focus("row", rendered: safe, sealed: false, at: 0)
         var time = 0.0
         while !live.isSettled, time < 20 {
@@ -357,7 +357,7 @@ struct StreamCascadeTests {
         for end in 1...characters.count {
             time += 0.05
             let source = String(characters[..<end])
-            let rendered = live.renderable(source, sealed: false, at: time)
+            let rendered = live.renderable(row: "row", source, sealed: false, at: time)
             #expect(
                 source.hasPrefix(rendered),
                 "\(document.prefix(24))… rendered something that is not a prefix at \(end)")
@@ -396,6 +396,16 @@ struct StreamCascadeTests {
         #expect(CascadeGate.safeCut("hello *", at: 7, sealed: true) == 7)
     }
 
+    @Test("the floor belongs to the row that earned it, not to the next one")
+    func handedFloorIsPerRow() {
+        var live = LiveCascade()
+        let long = "a settled paragraph, long enough to have handed over a great deal of prose"
+        #expect(live.renderable(row: "one", long, sealed: false, at: 0) == long)
+        let short = "next row *op"
+        #expect(live.renderable(row: "two", short, sealed: false, at: 0.1) == "next row ")
+        #expect(live.renderable(row: "two", short, sealed: false, at: 0.2) == "next row ")
+    }
+
     @Test("code is not prose, so the gate does not read it as markdown")
     func codeBypassesTheGate() {
         let python = "def go(**kwargs):\n    self._value = 1"
@@ -403,7 +413,7 @@ struct StreamCascadeTests {
         #expect(LiveCascade.renderable(python, sealed: false).count < python.count)
 
         var live = LiveCascade()
-        #expect(live.renderable(python, sealed: false, markdown: false, at: 0) == python)
+        #expect(live.renderable(row: "row", python, sealed: false, markdown: false, at: 0) == python)
         #expect(!live.owes)
     }
 

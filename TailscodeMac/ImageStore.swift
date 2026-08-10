@@ -115,6 +115,12 @@ enum ImageDisk {
 
 /// A picture in the flow is a thumbnail, not a poster: the transcript is for reading, and a
 /// picture in it is a reference — small, scaled to fit, one click from the full-window viewer.
+///
+/// A row that has no picture yet draws a placeholder of a fixed size and says that it wants bytes.
+/// It does not say when: the placeholder is a fixed frame and the thumbnail that replaces it is the
+/// picture's own shape, so a decode that lands above the viewport is a height change above whoever
+/// has scrolled back. Which of those wants are worth crossing the tailnet for right now is the
+/// transcript's judgement, made against where the row actually sits.
 @MainActor
 enum ImageRowView {
     static func make(

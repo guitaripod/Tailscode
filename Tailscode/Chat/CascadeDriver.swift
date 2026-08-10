@@ -148,8 +148,12 @@ final class CascadeDriver {
     private var watchdog: Timer?
     private var ultracode = false
 
-    /// Called on a frame that changed something. The controller reconfigures exactly the live row.
-    var onFrame: (() -> Void)?
+    /// Called on a frame that changed something, saying whether the reveal itself moved or only the
+    /// band did. The controller repaints exactly the live row, and the answer is what tells it
+    /// whether a repaint it cannot make in place is worth a snapshot: the band moves every frame
+    /// and the reveal does not, so a row scrolled out of view would otherwise cost a whole-list
+    /// copy and an apply a hundred and twenty times a second for a paint nobody could see.
+    var onFrame: ((_ revealMoved: Bool) -> Void)?
 
     /// Called when the reveal stopped moving while it still owed the reader text. The controller
     /// hands that row back whole.
@@ -189,9 +193,15 @@ final class CascadeDriver {
     /// has not closed yet — and the gate must not run, because a gate whose give-up clock is reset
     /// by every arrival (the driver releases the row on each one) can never expire, and the row
     /// would sit cut at its last unmatched bracket for the rest of the turn.
-    func renderable(_ source: String, sealed: Bool) -> String {
+    ///
+    /// Only prose is judged as markdown. Code is written in the same punctuation — `**kwargs`,
+    /// `*ptr`, `self._value`, an odd backtick inside a comment — and every one of those reads as a
+    /// token that never closes, so a streaming code block does not type: it stops at the first one,
+    /// dumps the rest when the gate gives up, and stops again.
+    func renderable(row: String, _ source: String, sealed: Bool, markdown: Bool) -> String {
         guard Self.motionAllowed else { return source }
-        return live.renderable(source, sealed: sealed, at: CACurrentMediaTime())
+        return live.renderable(
+            row: row, source, sealed: sealed, markdown: markdown, at: CACurrentMediaTime())
     }
 
     /// The wave's second clock, and the reason a stuck answer cannot outlive its turn.
@@ -254,8 +264,9 @@ final class CascadeDriver {
     }
 
     @objc private func tick(_ link: CADisplayLink) {
+        let before = live.revealed
         guard live.advance(to: link.timestamp) else { return }
-        onFrame?()
+        onFrame?(live.revealed != before)
         if !live.isActive { stop() }
     }
 }
@@ -270,6 +281,14 @@ extension ChatRow {
         case .code(let block): return block.source
         default: return nil
         }
+    }
+
+    /// Whether the text this row is growing is prose, whose disappearing punctuation the gate is
+    /// there to protect, or code, which has none: the same characters are the language's syntax,
+    /// and holding a block behind them stops it typing altogether.
+    var streamsMarkdown: Bool {
+        if case .code = content { return false }
+        return true
     }
 
     /// The same row holding only the part of its source that is safe to render — never ending

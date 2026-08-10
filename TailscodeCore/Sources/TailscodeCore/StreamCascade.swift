@@ -417,6 +417,7 @@ public struct LiveCascade: Sendable {
     private var gateSince: Double = 0
     private var gateGaveUp = false
     private var handed = 0
+    private var handedRow: String?
     private var owedSince: Double?
     private var owedAt = -1
 
@@ -490,9 +491,21 @@ public struct LiveCascade: Sendable {
     /// screen leaving it again, which re-measures the paragraph and jumps the transcript under the
     /// reader. What has been shown has been shown: `handed` is the floor, and only a shorter source
     /// or a different row may lower it.
+    ///
+    /// Which is why the row has to be named here rather than left to `focus`. Every client asks
+    /// what to render before it points the wave at the row — it has to, since the length it hands
+    /// to `focus` is the length of what came back — so a floor and a give-up learned from the
+    /// previous row are still standing when the next row asks its first question. A short new row
+    /// against a tall old floor is handed over whole, unsafe punctuation and all, and then shrinks
+    /// on its second arrival. The gate is per-row, so the row is an argument.
     public mutating func renderable(
-        _ source: String, sealed: Bool, markdown: Bool = true, at time: Double
+        row: String, _ source: String, sealed: Bool, markdown: Bool = true, at time: Double
     ) -> String {
+        if row != handedRow {
+            handedRow = row
+            handed = 0
+            openGate()
+        }
         let count = source.count
         guard !sealed, markdown else { return handOver(source, count: count) }
         let cut = CascadeGate.safeCut(source, at: count)
@@ -557,8 +570,6 @@ public struct LiveCascade: Sendable {
             landed = 0
             total = 0
             cadence = StreamCadence(tuning: tuning)
-            openGate()
-            handed = 0
             owedSince = nil
             owedAt = -1
             return
@@ -567,7 +578,6 @@ public struct LiveCascade: Sendable {
             self.id = id
             total = length
             cadence = StreamCadence(tuning: tuning)
-            handed = 0
             if total > Self.adoptLimit || sealed {
                 cadence.adopt(total)
             } else {

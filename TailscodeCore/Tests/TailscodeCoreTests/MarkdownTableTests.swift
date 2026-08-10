@@ -97,6 +97,19 @@ import Testing
         #expect(segments == [.prose("one\n\ntwo")])
     }
 
+    /// The row identity every client builds from these is `part:seg<index>`, so a paragraph that
+    /// keeps its index keeps its cell. An opening fence with nothing behind it yet must therefore
+    /// leave the prose it follows exactly where it was, and add no row of its own.
+    @Test func openingAFenceLeavesTheProseAtItsIndex() {
+        #expect(MessageSegment.split("abc") == [.prose("abc")])
+        #expect(MessageSegment.split("abc\n```") == [.prose("abc")])
+        #expect(MessageSegment.split("abc\n```\n") == [.prose("abc")])
+        #expect(MessageSegment.split("abc\n```swift\n") == [.prose("abc")])
+        #expect(
+            MessageSegment.split("abc\n```swift\nlet a = 1")
+                == [.prose("abc"), .code(language: "swift", body: "let a = 1")])
+    }
+
     @Test func fencesSurviveAroundTables() {
         let text = "```swift\nlet a = 1\n\n\nlet b = 2\n```\n| a | b |\n|---|---|"
         let segments = MessageSegment.split(text)

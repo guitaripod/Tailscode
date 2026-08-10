@@ -290,6 +290,11 @@ struct TranscriptRow: Hashable {
     /// The agent's plan shows once: the last call that moved the to-do list becomes the board —
     /// the fold of every board call before it — and every earlier one stays the one-line tool row
     /// it was, so a long run reads as one plan updating rather than twenty snapshots.
+    ///
+    /// The row keeps one identity wherever it lands. Naming it after the call it is standing on
+    /// re-identified the whole card every time the agent revised its plan: a delete and an insert
+    /// where a person sees one card counting up, and on a keyed diff a move rather than a repaint.
+    /// There is only ever one board in a transcript, so it can simply say so.
     static func placeBoard(in rows: [TranscriptRow]) -> [TranscriptRow] {
         let calls = rows.compactMap { row -> ToolCall? in
             guard case .tool(let call) = row.kind, TaskBoard.isBoardCall(call.name) else {
@@ -298,12 +303,15 @@ struct TranscriptRow: Hashable {
             return call
         }
         let board = TaskBoard.fold(calls)
-        guard !board.isEmpty, let lastID = calls.last?.id else { return rows }
+        guard !board.isEmpty, let anchor = calls.last?.id else { return rows }
         return rows.map { row in
-            guard case .tool(let call) = row.kind, call.id == lastID else { return row }
-            return TranscriptRow(key: row.key, kind: .taskBoard(board))
+            guard case .tool(let call) = row.kind, call.id == anchor else { return row }
+            return TranscriptRow(key: Self.boardKey, kind: .taskBoard(board))
         }
     }
+
+    /// One board, one identity.
+    static let boardKey = "board"
 
     /// Compact mode: everything the agent did between two messages — the thoughts and the tool
     /// calls, failures included — folds to one line. Twelve greps, four edits and the thinking
@@ -625,7 +633,7 @@ struct TranscriptRow: Hashable {
         -> UnsafeMutablePointer<GtkWidget>
     {
         context.liveReasoning[key] = text
-        let header = Gtk.label(Self.thoughtHeader(text), css: "dim", selectable: false)
+        let header = Gtk.label(Self.thoughtHeader(text), css: "reasoning-label", selectable: false)
         let toggle = context.onToggle
         let reveal = context.revealRow
         return Gtk.disclosure(

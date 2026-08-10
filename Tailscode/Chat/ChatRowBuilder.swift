@@ -22,7 +22,7 @@ enum ChatRowBuilder {
             }
         }
         let board = TaskBoard.fold(boardCalls)
-        let boardCallID = board.isEmpty ? nil : boardCalls.last?.id
+        let boardCallID = board.isEmpty ? nil : Self.boardAnchor(boardCalls)
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
@@ -34,14 +34,22 @@ enum ChatRowBuilder {
                 lastDate = message.createdAt
             }
             var steps: [ActivityStep] = []
-            var groupID: String?
+            var activityRuns = 0
 
+            /// A run of work is named by its place in the message, not by the part that happens to
+            /// open it. Which part opens a run is decided by what gets pulled out of it — a
+            /// subagent card, the folded board, a workflow — and every one of those arrives from a
+            /// poll seconds after the content settled. Named by its first part, the run therefore
+            /// re-identifies the moment a card lands: a delete and an insert rather than a repaint,
+            /// which blinks the group out and silently collapses it if the reader had it open. Its
+            /// ordinal only changes when the message actually grows another run.
             func flushActivity() {
-                guard !steps.isEmpty, let groupID else { return }
+                guard !steps.isEmpty else { return }
                 rows.append(
                     ChatRow(
-                        id: "\(message.id):activity:\(groupID)", messageID: message.id,
+                        id: "\(message.id):activity:\(activityRuns)", messageID: message.id,
                         role: message.role, content: .activity(steps)))
+                activityRuns += 1
                 steps = []
             }
 
@@ -50,7 +58,6 @@ enum ChatRowBuilder {
                 switch part.kind {
                 case .reasoning(let text):
                     if text.isEmpty { continue }
-                    if steps.isEmpty { groupID = part.id }
                     steps.append(.reasoning(text))
                 case .tool(let call):
                     if var card = agents.byToolUse[call.id] {
@@ -66,7 +73,7 @@ enum ChatRowBuilder {
                         flushActivity()
                         rows.append(
                             ChatRow(
-                                id: "board:\(call.id)", messageID: message.id,
+                                id: Self.boardKey, messageID: message.id,
                                 role: message.role, content: .taskBoard(board)))
                         continue
                     }
@@ -79,7 +86,6 @@ enum ChatRowBuilder {
                         pendingUnattached = []
                         continue
                     }
-                    if steps.isEmpty { groupID = part.id }
                     steps.append(.tool(call))
                     if call.summary.kind == .workflow, !pendingUnattached.isEmpty {
                         flushActivity()
@@ -108,14 +114,9 @@ enum ChatRowBuilder {
                                     content: .text(remainder)))
                         }
                     } else {
-                        let segments = MessageSegment.split(text)
-                        for (index, segment) in segments.enumerated() {
-                            let segID = segments.count == 1 ? id : "\(id):seg\(index)"
-                            rows.append(
-                                ChatRow(
-                                    id: segID, messageID: message.id, role: message.role,
-                                    content: segment.chatContent))
-                        }
+                        rows.append(
+                            contentsOf: Self.segmentRows(
+                                text, id: id, messageID: message.id, role: message.role))
                     }
                 case .file(let file):
                     flushActivity()
@@ -147,6 +148,42 @@ enum ChatRowBuilder {
                 expandedGroups: agents.expandedGroups))
         return fuseActivity(rows)
     }
+
+    /// One row per block of an answer, named by the block's *place* in it — always, even while the
+    /// message is still a single paragraph of prose.
+    ///
+    /// Naming a lone segment after the part it came from looks tidier and is a bug. `split` answers
+    /// one prose segment until the first fence or table line lands and two the moment it does, so
+    /// the same paragraph re-identifies from `msg:part` to `msg:part:seg0` inside one arrival. The
+    /// snapshot reads that as a delete and two inserts: the cell holding the answer is destroyed
+    /// and re-measured mid-sentence, and the wave loses the row it was writing into and hands its
+    /// replacement the whole text at once — the reveal snaps to the end and starts again on an
+    /// empty code block. The index is the one name a paragraph keeps while everything after it
+    /// grows. Both desktops have always built it unconditionally; this client was the outlier.
+    private static func segmentRows(
+        _ text: String, id: String, messageID: String, role: MessageRole
+    ) -> [ChatRow] {
+        var rows: [ChatRow] = []
+        for (index, segment) in MessageSegment.split(text).enumerated() {
+            rows.append(
+                ChatRow(
+                    id: "\(id):seg\(index)", messageID: messageID, role: role,
+                    content: segment.chatContent))
+        }
+        return rows
+    }
+
+    /// Which tool call the folded board hangs off: the newest list the agent wrote, so the plan
+    /// stays where the work is rather than sitting at the top of a long conversation — or, past
+    /// the window a client renders, nowhere at all.
+    ///
+    /// It moves, then, and that is fine as long as it stays the same row while it moves. Naming the
+    /// row after the call it is standing on made every revision a delete and an insert where a
+    /// person sees one card counting up; `boardKey` is the identity, the anchor is only the place.
+    private static func boardAnchor(_ calls: [ToolCall]) -> String? { calls.last?.id }
+
+    /// There is only ever one board in a conversation, so it can simply say so.
+    static let boardKey = "board"
 
     static func strippedInterruption(_ text: String) -> (interrupted: Bool, remainder: String) {
         guard text.hasPrefix("[Request interrupted") else { return (false, text) }

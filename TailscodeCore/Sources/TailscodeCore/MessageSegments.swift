@@ -66,10 +66,26 @@ public enum MessageSegment: Hashable, Sendable {
             index += 1
         }
         if inFence {
-            segments.append(.code(language: language, body: code.joined(separator: "\n")))
+            flushOpenFence(&segments, language: language, code: code)
         } else {
             flushProse()
         }
         return segments
+    }
+
+    /// The block a fence has opened but not yet filled is not a segment.
+    ///
+    /// A fence line arrives before the code it announces does, so for the arrival where the model
+    /// has written "```" and nothing after it there is a block whose body is empty — and an empty
+    /// block is a row: an empty card under the paragraph, and the last row of the transcript, which
+    /// is the one the wave takes up and tries to write. A moment later the first line lands and the
+    /// same row has to be measured again. Nothing is lost by waiting: the block appears with its
+    /// first characters, at the index it will keep for the rest of the answer.
+    private static func flushOpenFence(
+        _ segments: inout [MessageSegment], language: String?, code: [String]
+    ) {
+        let body = code.joined(separator: "\n")
+        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        segments.append(.code(language: language, body: body))
     }
 }

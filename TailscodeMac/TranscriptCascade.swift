@@ -7,9 +7,10 @@ extension TranscriptViewController {
     /// stream has moved on — and only prose and code grow a character at a time, so a tool call
     /// landing after a paragraph settles that paragraph rather than freezing it half-written.
     ///
-    /// The row is held at its markdown-safe prefix so the renderer never sees `**bold` without its
-    /// closer; how much of what it rendered is on screen is the painter's business, applied to the
-    /// label after the diff has built it.
+    /// A prose row is held at its markdown-safe prefix so the renderer never sees `**bold` without
+    /// its closer; a code row is not held at all, because the gate reads markdown and code's
+    /// punctuation is its own language's. How much of what was rendered is on screen is the
+    /// painter's business, applied to the label after the diff has built it.
     func pacedByCascade(_ rows: [TranscriptRow], running: Bool) -> [TranscriptRow] {
         cascade.host = view
         let live = running ? rows.last.flatMap { $0.streamedText == nil ? nil : $0 } : nil
@@ -20,7 +21,8 @@ extension TranscriptViewController {
             if let released { handOver(released, in: rows) }
             return rows
         }
-        let safe = cascade.renderable(source, sealed: !running)
+        let safe = cascade.renderable(
+            row: live.key, source, sealed: !running, markdown: live.streamsMarkdown)
         var paced = rows
         let row = safe == source ? live : live.held(to: safe)
         paced[paced.count - 1] = row
