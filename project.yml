@@ -89,7 +89,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.10"
+        MARKETING_VERSION: "1.11"
         CURRENT_PROJECT_VERSION: "32"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
@@ -153,7 +153,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
-        MARKETING_VERSION: "1.10"
+        MARKETING_VERSION: "1.11"
         CURRENT_PROJECT_VERSION: "32"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -197,7 +197,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
-        MARKETING_VERSION: "1.10"
+        MARKETING_VERSION: "1.11"
         CURRENT_PROJECT_VERSION: "32"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -249,7 +249,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.10"
+        MARKETING_VERSION: "1.11"
         CURRENT_PROJECT_VERSION: "32"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
