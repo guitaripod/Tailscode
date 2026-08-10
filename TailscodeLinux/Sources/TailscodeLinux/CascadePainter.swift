@@ -153,6 +153,11 @@ final class CascadePainter: @unchecked Sendable {
         return live.renderable(source, sealed: sealed, at: Self.now)
     }
 
+    /// One frame's arithmetic without the display's clock, so the reveal can be checked without a
+    /// mapped window to serve frames.
+    @discardableResult
+    func advance(to time: Double) -> Bool { live.advance(to: time) }
+
     /// Paints one frame into the label the live row keeps its words in. The markup was converted
     /// and parsed when the stream last moved, so a frame is a substring and an attribute list
     /// rather than a markdown parse.

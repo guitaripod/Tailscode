@@ -1315,7 +1315,36 @@ public enum SelfTest {
         try expect(
             !painter.settle(label, markup: "an <b>unclosed row"),
             "a settle that could not be rendered must report a failure, not a repair")
-        return 6
+
+        // One emoji is one Swift Character and two code points, and Pango indexes code points. A
+        // reveal counted in the wrong unit saturates before the end of the paragraph, reports a
+        // settled row, and leaves the last characters unpainted until something rebuilds the row.
+        let withEmoji = "Ready ⚠️ now — done ✅ and the sentence carries on past the mark."
+        let emojiMarkup = PangoMarkdown.render(
+            withEmoji, dim: palette.textDim, code: palette.info, accent: palette.accent,
+            cache: false)
+        guard let emojiText = CascadePainter.renderedText(of: emojiMarkup) else {
+            throw SelfTestFailure("the emoji sentence does not render")
+        }
+        try expect(
+            emojiText.count != emojiText.unicodeScalars.count,
+            "this check is only meaningful while the sentence counts differently in each unit")
+        let paced = CascadePainter()
+        paced.focus(
+            "row:emoji", markup: emojiMarkup, sealed: false, ultracode: false, clock: nil)
+        var settledAt = 0.0
+        while paced.owes, settledAt < 40 {
+            settledAt += 1.0 / 120
+            paced.advance(to: settledAt)
+            _ = paced.paint(label)
+        }
+        try expect(
+            !paced.owes && paced.revealed == emojiText.unicodeScalars.count,
+            "the reveal must land on every code point the painter can index, not one short")
+        try expect(
+            gtk_label_get_text(op(label)).map { String(cString: $0) } == emojiText,
+            "a settled row must be holding every character of its sentence")
+        return 9
     }
 
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, so the check makes the
