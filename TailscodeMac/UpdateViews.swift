@@ -14,24 +14,24 @@ enum UpdateReadingViews {
         if let subtitle = reading.subtitle {
             views.append(
                 RowKit.wrapping(
-                    subtitle, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    subtitle, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         views.append(
             RowKit.wrapping(
-                reading.detail(now: now), font: MacTheme.Font.caption(),
+                reading.detail(now: now), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.secondaryLabel))
         views.append(versionLine(Localized.text("Running"), reading.installed))
         views.append(versionLine(Localized.text("Newest known"), reading.available))
         if let manager = reading.manager, !manager.isEmpty {
             views.append(
                 RowKit.label(
-                    Localized.text("Supervised by %@", manager), font: MacTheme.Font.caption(),
+                    Localized.text("Supervised by %@", manager), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
         for change in (reading.verdict.offer?.changes ?? []).prefix(5) {
             views.append(
                 RowKit.wrapping(
-                    "· \(change)", font: MacTheme.Font.caption(),
+                    "· \(change)", font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
         }
         return views
@@ -43,7 +43,7 @@ enum UpdateReadingViews {
     static func promise(_ invitation: UpdateInvitation) -> NSView? {
         guard let promise = invitation.promise else { return nil }
         return RowKit.wrapping(
-            promise, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            promise, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
     }
 
     /// Every offer is drawn the same way on purpose: nothing here is emphasised into looking
@@ -82,10 +82,10 @@ enum UpdateReadingViews {
 
     private static func versionLine(_ caption: String, _ fact: VersionFact) -> NSView {
         let label = RowKit.label(
-            caption, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            caption, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let value = RowKit.wrapping(
-            fact.line, font: MacTheme.Font.caption(),
+            fact.line, font: MacTheme.Ramp.font(.panelFootnote),
             color: fact.isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel)
         let row = NSStackView(views: [label, value])
         row.orientation = .horizontal
@@ -304,16 +304,16 @@ final class UpdateCardView: NSView {
     func applyTheme() {
         layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         layer?.borderColor = MacTheme.Color.separator.cgColor
-        title.font = MacTheme.Font.emphasis()
+        title.font = MacTheme.Ramp.font(.cardTitle)
         title.textColor = MacTheme.Color.label
-        headline.font = MacTheme.Font.caption()
+        headline.font = MacTheme.Ramp.font(.panelFootnote)
         headline.textColor = reading?.tone.color ?? MacTheme.Color.secondaryLabel
         for label in [subtitle, asideNote, supervisor, promise] {
-            label.font = MacTheme.Font.caption()
+            label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.tertiaryLabel
         }
         for label in [detail] + changes {
-            label.font = MacTheme.Font.caption()
+            label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.secondaryLabel
         }
         running.applyTheme()
@@ -377,9 +377,9 @@ final class UpdateVersionLine: NSStackView {
     }
 
     func applyTheme() {
-        caption.font = MacTheme.Font.caption()
+        caption.font = MacTheme.Ramp.font(.panelFootnote)
         caption.textColor = MacTheme.Color.tertiaryLabel
-        value.font = MacTheme.Font.caption()
+        value.font = MacTheme.Ramp.font(.panelFootnote)
         value.textColor = isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel
     }
 }
@@ -402,11 +402,11 @@ final class UpdateFooterView: NSView {
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        headline.font = MacTheme.Font.caption()
+        headline.font = MacTheme.Ramp.font(.panelFootnote)
         headline.lineBreakMode = .byTruncatingTail
         headline.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         headline.translatesAutoresizingMaskIntoConstraints = false
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.tertiaryLabel
         detail.lineBreakMode = .byTruncatingTail
         detail.setContentCompressionResistancePriority(.init(200), for: .horizontal)

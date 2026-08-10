@@ -129,7 +129,7 @@ final class NewChatViewController: UIViewController {
         field.smartDashesType = .no
         field.keyboardType = .URL
         field.clearButtonMode = .whileEditing
-        field.font = Theme.Font.body()
+        field.font = Theme.Ramp.font(.answer)
         field.delegate = self
         field.layer.borderWidth = 1.5
         field.layer.borderColor = UIColor.clear.cgColor
@@ -141,14 +141,14 @@ final class NewChatViewController: UIViewController {
         field.addTarget(self, action: #selector(fieldChanged), for: .editingChanged)
         field.translatesAutoresizingMaskIntoConstraints = false
 
-        hintLabel.font = .preferredFont(forTextStyle: .caption2)
+        hintLabel.font = Theme.Ramp.font(.panelFootnote)
         hintLabel.adjustsFontForContentSizeCategory = true
         hintLabel.textColor = Theme.Color.tertiaryLabel
         hintLabel.textAlignment = .center
         hintLabel.numberOfLines = 2
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        emptyLabel.font = .preferredFont(forTextStyle: .footnote)
+        emptyLabel.font = Theme.Ramp.font(.panelDetail)
         emptyLabel.adjustsFontForContentSizeCategory = true
         emptyLabel.textColor = Theme.Color.secondaryLabel
         emptyLabel.textAlignment = .center
@@ -247,11 +247,11 @@ final class NewChatViewController: UIViewController {
     private func configure(_ cell: UICollectionViewListCell, row: NewChatRow, index: Int) {
         var content = UIListContentConfiguration.subtitleCell()
         content.text = row.title
-        content.textProperties.font = Theme.Font.body()
+        content.textProperties.font = Theme.Ramp.font(.answer)
         content.textProperties.numberOfLines = 1
         if row.origin == .browse {
             content.secondaryText = row.detail
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption1)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelDetail)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
         } else {
             content.secondaryAttributedText = Self.highlighted(row)
@@ -298,7 +298,7 @@ final class NewChatViewController: UIViewController {
         guard !parts.isEmpty else { return nil }
         let label = UILabel()
         label.text = parts.joined(separator: " · ")
-        label.font = .preferredFont(forTextStyle: .caption2)
+        label.font = Theme.Ramp.font(.panelFootnote)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.tertiaryLabel
         label.sizeToFit()
@@ -316,7 +316,7 @@ final class NewChatViewController: UIViewController {
     /// per character, so they are walked into UTF-16 ranges rather than used as byte offsets — a
     /// path with one accented folder in it must not shift every highlight after it.
     private static func highlighted(_ row: NewChatRow) -> NSAttributedString {
-        let base = UIFont.preferredFont(forTextStyle: .caption1)
+        let base = Theme.Ramp.font(.panelDetail)
         let text = NSMutableAttributedString(
             string: row.path,
             attributes: [.font: base, .foregroundColor: Theme.Color.tertiaryLabel])
@@ -422,7 +422,7 @@ final class NewChatViewController: UIViewController {
             defaultsLabel.attributedText = nil
             return
         }
-        let font = UIFont.preferredFont(forTextStyle: .caption1)
+        let font = Theme.Ramp.font(.panelDetail)
         let line = NSMutableAttributedString(
             string: defaults.line,
             attributes: [.font: font, .foregroundColor: Theme.Color.secondaryLabel])
@@ -805,12 +805,12 @@ final class NewChatStatusView: UIView {
             pointSize: 30, weight: .regular)
         symbol.setContentHuggingPriority(.required, for: .vertical)
 
-        titleLabel.font = Theme.Font.headline()
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.numberOfLines = 0
         titleLabel.textAlignment = .center
 
-        detailLabel.font = .preferredFont(forTextStyle: .subheadline)
+        detailLabel.font = Theme.Ramp.font(.panelLabel)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0

@@ -42,11 +42,8 @@ enum MatrixTheme {
 
     static func css(for palette: Palette) -> String {
         let chrome = Preferences.scale(.chrome)
-        let prose = Preferences.scale(.prose)
-        let mono = Preferences.scale(.mono)
         func c(_ value: Double) -> String { String(format: "%.3frem", value * chrome) }
-        func p(_ value: Double) -> String { String(format: "%.3frem", value * prose) }
-        func m(_ value: Double) -> String { String(format: "%.3frem", value * mono) }
+        func t(_ role: TypeRole) -> String { TypeCSS.declarations(role) }
         let canvas = palette.canvas
         let canvasRaised = palette.canvasRaised
         let rule = palette.rule
@@ -120,7 +117,7 @@ enum MatrixTheme {
             border: 1px solid \(rule);
             border-radius: 6px;
             box-shadow: none;
-            font-size: \(c(0.85));
+            \(t(.control))
             min-height: 26px;
         }
         .sidebar-pane entry:focus-within { border-color: \(accent); }
@@ -141,29 +138,15 @@ enum MatrixTheme {
             background-color: \(accent);
             min-width: 2px;
         }
-        .prompt-glyph {
-            color: \(accent);
-            font-family: monospace;
-            font-weight: bold;
-        }
-        .prompt-text {
-            color: \(text);
-            font-family: monospace;
-            font-size: \(p(0.95));
-        }
-        .agent-text {
-            color: \(text);
-            font-size: \(p(0.95));
-        }
+        .prompt-glyph { color: \(accent); \(t(.promptGlyph)) }
+        .prompt-text { color: \(text); \(t(.prompt)) }
+        .agent-text { color: \(text); \(t(.answer)) }
         .md-table { padding: 2px 0; }
-        .md-table-header { color: \(text); font-size: \(p(0.92)); }
-        .md-table-cell { color: \(text); font-size: \(p(0.92)); }
-        .tool-line, .mono {
-            font-family: monospace;
-            font-size: \(m(0.88));
-        }
-        .tool-name { color: \(info); font-family: monospace; font-size: \(m(0.88)); }
-        .tool-detail { color: \(textDim); font-family: monospace; font-size: \(m(0.88)); }
+        .md-table-header { color: \(text); \(t(.tableHeader)) }
+        .md-table-cell { color: \(text); \(t(.tableCell)) }
+        .tool-line, .mono { \(t(.toolDetail)) }
+        .tool-name { color: \(info); \(t(.toolName)) }
+        .tool-detail { color: \(textDim); \(t(.toolDetail)) }
         .glyph-done { color: alpha(\(accent), 0.72); }
         .glyph-running { color: \(accent); }
         .glyph-needs { color: \(warn); }
@@ -173,11 +156,10 @@ enum MatrixTheme {
         .fact-warn .subtitle { color: \(warn); opacity: 1; }
         .fact-bad .subtitle { color: \(danger); opacity: 1; }
         .dim { color: \(textDim); }
-        .attachment { color: \(info); font-family: monospace; font-size: \(m(0.88)); }
+        .attachment { color: \(info); \(t(.attachment)) }
         .status-line {
             color: \(accentDim);
-            font-family: monospace;
-            font-size: \(m(0.82));
+            \(t(.statusLine))
             padding: 4px 26px;
             background-color: \(canvasRaised);
             border-top: 1px solid \(rule);
@@ -188,8 +170,7 @@ enum MatrixTheme {
             padding: 3px 22px;
         }
         .seg, .seg > button, .seg button {
-            font-family: monospace;
-            font-size: \(m(0.78));
+            \(t(.segment))
             min-height: 0;
             padding: 1px 6px;
             border: none;
@@ -219,14 +200,12 @@ enum MatrixTheme {
         .composer text, .composer textview, .composer textview text {
             background-color: transparent;
             color: \(text);
-            font-family: monospace;
-            font-size: \(m(0.92));
+            \(t(.composer))
         }
         .composer-normal { border-color: \(accent); }
         .composer-visual { border-color: \(info); }
         .vim-badge {
-            font-family: monospace;
-            font-size: \(m(0.72));
+            \(t(.badge))
             padding: 1px 6px;
             color: \(palette.onAccent);
             background-color: \(accent);
@@ -237,19 +216,17 @@ enum MatrixTheme {
             background-color: \(palette.codeBg);
             border-left: 2px solid \(rule);
             padding: 8px 12px;
-            font-family: monospace;
-            font-size: \(m(0.85));
             color: \(text);
+            \(t(.code))
         }
-        .diff-add { color: \(accent); font-family: monospace; font-size: \(m(0.85)); }
-        .diff-remove { color: \(danger); font-family: monospace; font-size: \(m(0.85)); }
-        .diff-line { font-family: monospace; font-size: \(m(0.85)); }
+        .diff-add { color: \(accent); \(t(.diff)) }
+        .diff-remove { color: \(danger); \(t(.diff)) }
+        .diff-line { \(t(.diff)) }
         .diff-wash-add { background-color: \(SyntaxPalette.diffLineBackground(.added, in: palette) ?? palette.codeBg); }
         .diff-wash-remove { background-color: \(SyntaxPalette.diffLineBackground(.removed, in: palette) ?? palette.codeBg); }
 
         .pill {
-            font-family: monospace;
-            font-size: \(c(0.72));
+            \(t(.pill))
             padding: 1px 6px;
             border-radius: 2px;
         }
@@ -300,59 +277,31 @@ enum MatrixTheme {
             border: 1px solid alpha(\(accent), 0.45);
             border-radius: 6px;
         }
-        .selection-count {
-            font-family: monospace;
-            font-size: \(m(0.82));
-            font-weight: 700;
-            color: \(accent);
-        }
+        .selection-count { \(t(.metricValue)) color: \(accent); }
         .selection-verb {
-            font-size: \(c(0.78));
+            \(t(.control))
             padding: 2px 6px;
             border: 1px solid alpha(\(text), 0.20);
             border-radius: 4px;
         }
         .selection-verb:hover { border-color: \(accent); }
-        .selection-split-header {
-            font-size: \(c(0.72));
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            opacity: 0.5;
-        }
-        .row-title { font-size: \(c(0.92)); color: \(text); }
-        .row-title-unread { font-size: \(c(0.92)); font-weight: 700; color: \(text); }
-        .row-detail { font-size: \(c(0.78)); opacity: 0.55; font-family: monospace; }
-        .row-model { font-size: \(c(0.78)); font-family: monospace; }
-        .row-project { font-size: \(c(0.78)); opacity: 0.9; color: \(text); font-family: monospace; }
-        .row-age {
-            font-size: \(c(0.75));
-            opacity: 0.45;
-            color: \(text);
-            font-family: monospace;
-            font-feature-settings: "tnum";
-        }
+        .selection-split-header { \(t(.sectionLabel)) opacity: 0.5; }
+        .row-title { \(t(.rowTitle)) color: \(text); }
+        .row-title-unread { \(t(.rowTitleStrong)) color: \(text); }
+        .row-detail { \(t(.rowDetail)) opacity: 0.55; }
+        .row-model { \(t(.rowMeta)) }
+        .row-project { \(t(.rowMeta)) opacity: 0.9; color: \(text); }
+        .row-age { \(t(.rowStamp)) opacity: 0.45; color: \(text); }
         .row-focused .row-project, .row-focused .row-age { opacity: 1; }
-        .row-note {
-            color: \(accent);
-            font-size: \(c(0.72));
-            opacity: 0.55;
-            font-family: monospace;
-        }
+        .row-note { color: \(accent); \(t(.rowNote)) opacity: 0.55; }
         .section-header {
-            font-size: \(c(0.72));
-            font-weight: 700;
-            letter-spacing: 0.08em;
+            \(t(.sectionLabel))
             opacity: 0.5;
             padding: 10px 8px 2px 8px;
         }
         .unread-dot { color: \(accent); font-size: \(c(0.7)); }
 
-        .model-summary {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.82));
-            padding: 0 2px;
-        }
+        .model-summary { color: \(textDim); \(t(.note)) padding: 0 2px; }
         .model-search {
             background-color: \(canvas);
             color: \(text);
@@ -360,7 +309,7 @@ enum MatrixTheme {
             border-radius: 4px;
         }
         .model-search:focus-within { border-color: \(accent); }
-        .model-search text { color: \(text); font-family: monospace; }
+        .model-search text { color: \(text); \(t(.composer)) }
         .model-row {
             padding: 0;
             border: none;
@@ -373,7 +322,7 @@ enum MatrixTheme {
         .model-row:hover { background-color: alpha(\(accent), 0.08); }
         .model-row:active { background-color: alpha(\(accent), 0.16); }
         .model-row-nested { margin-left: 26px; }
-        .model-check { color: \(accent); font-family: monospace; font-size: \(c(0.85)); }
+        .model-check { color: \(accent); \(t(.note)) }
         .model-chevron {
             padding: 0 6px;
             min-height: 0;
@@ -387,15 +336,12 @@ enum MatrixTheme {
         .model-chevron-glyph { color: \(textDim); font-size: \(c(0.8)); }
         .model-section-count {
             color: \(textDim);
-            font-family: monospace;
-            font-size: \(c(0.7));
+            \(t(.hint))
             opacity: 0.7;
             padding: 10px 8px 2px 8px;
         }
         .model-fact {
-            font-family: monospace;
-            font-size: \(c(0.66));
-            letter-spacing: 0.04em;
+            \(t(.pill))
             color: \(textDim);
             border: 1px solid alpha(\(textDim), 0.35);
             border-radius: 2px;
@@ -414,43 +360,21 @@ enum MatrixTheme {
             background: alpha(\(danger), 0.10);
         }
         .model-row-spent { color: \(textDim); }
-        .chooser-hint {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(c(0.72));
-            opacity: 0.75;
-            padding: 2px;
-        }
+        .chooser-hint { color: \(textDim); \(t(.hint)) opacity: 0.75; padding: 2px; }
 
-        .tree-row { font-family: monospace; font-size: \(m(0.85)); color: \(text); }
-        .tree-dir { color: \(info); font-family: monospace; font-size: \(m(0.85)); }
-        .tree-path { color: \(textDim); font-family: monospace; font-size: \(m(0.78)); }
+        .tree-row { \(t(.treeRow)) color: \(text); }
+        .tree-dir { color: \(info); \(t(.treeRow)) }
+        .tree-path { color: \(textDim); \(t(.treePath)) }
 
-        .code-header {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.75));
-            letter-spacing: 0.06em;
-        }
-        .code-copy { color: \(info); font-family: monospace; font-size: \(m(0.75)); padding: 0 6px; }
-        .code-body { font-family: monospace; font-size: \(m(0.85)); color: \(text); }
-        .tool-output {
-            font-family: monospace;
-            font-size: \(m(0.82));
-            color: \(textDim);
-        }
-        .reasoning-body {
-            color: \(textDim);
-            font-size: \(p(0.9));
-            font-style: italic;
-        }
+        .code-header { color: \(textDim); \(t(.codeLabel)) }
+        .code-copy { color: \(info); \(t(.codeAction)) padding: 0 6px; }
+        .code-body { \(t(.code)) color: \(text); }
+        .tool-output { \(t(.toolOutput)) color: \(textDim); }
+        .reasoning-body { color: \(textDim); \(t(.thought)) }
         .disclosure { padding: 0; min-height: 0; }
         .disclosure:hover { background-color: \(canvasRaised); }
-        .disclosure-chevron {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.78));
-        }
+        .disclosure-chevron { color: \(textDim); \(t(.thoughtLabel)) }
+        .reasoning-label { color: \(textDim); \(t(.thoughtLabel)) }
         .disclosure:hover .disclosure-chevron { color: \(accent); }
 
         .card {
@@ -460,10 +384,9 @@ enum MatrixTheme {
         }
         .card-permission { border-left: 2px solid \(warn); }
         .card-question { border-left: 2px solid \(warn); }
-        .card-title { font-size: \(p(0.95)); font-weight: 600; color: \(text); }
+        .card-title { \(t(.cardTitle)) color: \(text); }
         .answer-option {
-            font-family: monospace;
-            font-size: \(m(0.88));
+            \(t(.option))
             color: \(info);
             background-color: transparent;
             border: 1px solid \(rule);
@@ -480,26 +403,11 @@ enum MatrixTheme {
             color: \(text);
             border: 1px solid \(rule);
         }
-        .agent-live {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(0.78));
-        }
-        .interruption {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.8));
-            font-style: italic;
-        }
-        .seam-text {
-            color: \(special);
-            font-family: monospace;
-            font-size: \(p(0.78));
-            letter-spacing: 0.08em;
-        }
+        .agent-live { color: \(accent); \(t(.segment)) }
+        .interruption { color: \(textDim); \(t(.interruption)) }
+        .seam-text { color: \(special); \(t(.seamLabel)) }
         .seam-read, .seam-read:hover {
-            font-family: monospace;
-            font-size: \(m(0.75));
+            \(t(.codeAction))
             min-height: 0;
             padding: 1px 8px;
             color: \(info);
@@ -511,7 +419,7 @@ enum MatrixTheme {
         .seam-read:hover { border-color: \(info); background-color: alpha(\(info), 0.08); }
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
-        .seam-footnote { color: \(textDim); font-size: \(p(0.82)); }
+        .seam-footnote { color: \(textDim); \(t(.seamFootnote)) }
         .seam-bar trough {
             min-height: 4px;
             background-color: \(rule);
@@ -524,18 +432,17 @@ enum MatrixTheme {
             border: none;
             border-radius: 2px;
         }
-        .preflight-headline { font-size: \(p(1.15)); font-weight: 700; color: \(text); }
+        .preflight-headline { \(t(.headline)) color: \(text); }
         .reader-prose { background-color: \(canvas); }
         .reader-body, .reader-body text {
             background-color: \(canvas);
             color: \(text);
-            font-size: \(p(0.95));
+            \(t(.answer))
         }
         .reader-mono, .reader-mono text {
             background-color: \(canvas);
             color: \(text);
-            font-family: monospace;
-            font-size: \(m(0.85));
+            \(t(.code))
         }
         .subagent-card {
             border-left: 2px solid \(info);
@@ -547,72 +454,32 @@ enum MatrixTheme {
             padding: 8px 10px;
             background-color: \(palette.subagentBg);
         }
-        .workflow-name {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(0.9));
-            font-weight: bold;
-        }
-        .workflow-summary {
-            color: \(textDim);
-            font-size: \(p(0.85));
-        }
-        .workflow-elapsed {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.76));
-        }
-        .workflow-meter {
-            color: \(accentDim);
-            font-family: monospace;
-            font-size: \(m(0.8));
-            letter-spacing: -0.04em;
-        }
-        .workflow-meter-live {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(0.8));
-            letter-spacing: -0.04em;
-        }
-        .workflow-phase, .workflow-phase-done {
-            font-family: monospace;
-            font-size: \(m(0.78));
-        }
+        .workflow-name { color: \(accent); \(t(.workflowName)) }
+        .workflow-summary { color: \(textDim); \(t(.workflowSummary)) }
+        .workflow-elapsed { color: \(textDim); \(t(.workflowModel)) }
+        .workflow-meter { color: \(accentDim); \(t(.workflowMeter)) }
+        .workflow-meter-live { color: \(accent); \(t(.workflowMeter)) }
+        .workflow-phase, .workflow-phase-done { \(t(.workflowStep)) }
         .workflow-phase { color: \(textDim); }
         .workflow-phase-done { color: \(accent); }
-        .workflow-phase-title {
-            color: \(text);
-            font-family: monospace;
-            font-size: \(m(0.8));
-        }
-        .workflow-model {
-            color: \(special);
-            font-family: monospace;
-            font-size: \(m(0.72));
-        }
-        .workflow-answer { color: \(text); font-size: \(p(0.9)); }
+        .workflow-phase-title { color: \(text); \(t(.workflowStep)) }
+        .workflow-model { color: \(special); \(t(.workflowModel)) }
+        .workflow-answer { color: \(text); \(t(.cardBody)) }
         .image-part { border: 1px solid \(rule); }
         .task-board { border: 1px solid \(rule); border-radius: 8px; padding: 10px 12px; background-color: alpha(currentColor, 0.03); }
-        .task-board-head { font-size: \(c(0.8)); font-weight: 700; color: \(palette.accent); }
-        .task-board-item { font-size: \(c(0.86)); }
+        .task-board-head { \(t(.sectionLabel)) color: \(palette.accent); }
+        .task-board-item { \(t(.panelLabel)) }
 
-        .goal-line {
-            color: \(special);
-            font-family: monospace;
-            font-size: \(p(0.8));
-            padding: 2px 26px;
-        }
+        .goal-line { color: \(special); \(t(.chip)) padding: 2px 26px; }
         .banner-auth {
             color: \(palette.onAccent);
             background-color: \(warn);
-            font-family: monospace;
-            font-size: \(m(0.85));
+            \(t(.banner))
             padding: 4px 12px;
         }
         .pill-row { padding: 0px 22px 6px 22px; }
         .pill-row button {
-            font-family: monospace;
-            font-size: \(m(0.78));
+            \(t(.chip))
             min-height: 0;
             padding: 1px 8px;
             background-color: \(canvasRaised);
@@ -629,8 +496,7 @@ enum MatrixTheme {
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
 
         .chip {
-            font-family: monospace;
-            font-size: \(m(0.78));
+            \(t(.chip))
             min-height: 0;
             padding: 2px 10px;
             background-color: \(canvasRaised);
@@ -640,8 +506,7 @@ enum MatrixTheme {
         }
         .chip:hover { border-color: \(danger); color: \(danger); }
         .jump-pill {
-            font-family: monospace;
-            font-size: \(m(0.82));
+            \(t(.statusLine))
             padding: 4px 14px;
             border-radius: 14px;
             color: \(palette.onAccent);
@@ -657,66 +522,34 @@ enum MatrixTheme {
         .chat-pane { border: 1px solid transparent; }
         .video-pane { background-color: #000000; }
         .web-pane { background-color: \(canvas); }
-        .video-heading {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(1.1));
-            letter-spacing: 1px;
-        }
+        .video-heading { color: \(accent); \(t(.paneHeadline)) }
         .video-notice {
             color: \(textDim);
             background-color: alpha(\(accent), 0.10);
             border: 1px solid alpha(\(accent), 0.30);
             border-radius: 10px;
             padding: 8px 12px;
-            font-family: monospace;
-            font-size: \(m(0.8));
+            \(t(.note))
         }
         .watch-ask { background-color: \(canvas); }
-        .watch-section-detail {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.72));
-            opacity: 0.6;
-        }
-        .watch-meta {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.72));
-            opacity: 0.75;
-        }
-        .watch-note {
-            color: \(textDim);
-            font-family: monospace;
-            font-size: \(m(0.78));
-            opacity: 0.7;
-        }
+        .watch-section-detail { color: \(textDim); \(t(.hint)) opacity: 0.6; }
+        .watch-meta { color: \(textDim); \(t(.hint)) opacity: 0.75; }
+        .watch-note { color: \(textDim); \(t(.note)) opacity: 0.7; }
         .watch-thumb {
             background-color: alpha(\(text), 0.06);
             border: 1px solid \(rule);
             border-radius: 4px;
         }
-        .watch-followed { color: \(special); font-size: \(c(0.8)); }
-        .watch-step {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(0.82));
-            font-weight: bold;
-        }
-        .watch-code {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(1.6));
-            letter-spacing: 3px;
-        }
+        .watch-followed { color: \(special); \(t(.panelDetail)) }
+        .watch-step { color: \(accent); \(t(.statusLine)) font-weight: 700; }
+        .watch-code { color: \(accent); \(t(.pairingCode)) }
         .pill-source { color: \(info); border: 1px solid alpha(\(info), 0.5); }
         .pane-focused { border: 1px solid alpha(\(accent), 0.55); }
         .pane-identity {
             color: \(textDim);
             background-color: \(canvasRaised);
             border-bottom: 1px solid \(rule);
-            font-family: monospace;
-            font-size: \(m(0.72));
+            \(t(.paneIdentity))
             padding: 2px 10px;
         }
         .pane-focused .pane-identity { color: \(accent); }
@@ -725,12 +558,7 @@ enum MatrixTheme {
             border: 2px solid \(accent);
             border-radius: 4px;
         }
-        .drop-caption {
-            color: \(accent);
-            font-family: monospace;
-            font-size: \(m(0.85));
-            font-weight: bold;
-        }
+        .drop-caption { color: \(accent); \(t(.banner)) font-weight: 700; }
         .find-hit {
             background-color: \(palette.findHit);
             box-shadow: inset 2px 0 0 \(warn);
@@ -738,20 +566,11 @@ enum MatrixTheme {
         .usage-footer { border-top: 1px solid alpha(currentColor, 0.15); }
         .update-footer { border-top: 1px solid alpha(currentColor, 0.15); }
         .update-footer:hover { background-color: alpha(currentColor, 0.04); }
-        .gauge-ok, .gauge-warn, .gauge-danger {
-            font-family: monospace;
-            font-size: \(c(0.75));
-        }
+        .gauge-ok, .gauge-warn, .gauge-danger { \(t(.gauge)) }
         .gauge-ok { color: \(textDim); }
         .gauge-warn { color: \(warn); }
         .gauge-danger { color: \(danger); }
-        .gauge-reset {
-            font-family: monospace;
-            font-size: \(c(0.68));
-            color: \(textDim);
-            opacity: 0.8;
-            margin-bottom: 2px;
-        }
+        .gauge-reset { \(t(.gaugeCaption)) color: \(textDim); opacity: 0.8; margin-bottom: 2px; }
         .gauge-track {
             background-color: alpha(currentColor, 0.12);
             border-radius: 3px;
@@ -771,33 +590,29 @@ enum MatrixTheme {
             border-radius: 10px;
             padding: 12px 14px;
         }
-        .usage-provider { color: \(text); font-weight: 700; font-size: 1.05rem; }
-        .usage-plan { color: \(textDim); font-size: 0.85rem; }
+        .usage-provider { color: \(text); \(t(.panelTitle)) }
+        .usage-plan { color: \(textDim); \(t(.panelDetail)) }
         .usage-live {
             color: \(accent);
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
+            \(t(.metricLabel))
             border: 1px solid alpha(\(accent), 0.4);
             border-radius: 99px;
             padding: 1px 8px;
         }
         .usage-stale {
             color: \(textDim);
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
+            \(t(.metricLabel))
             border: 1px solid alpha(currentColor, 0.4);
             border-radius: 99px;
             padding: 1px 8px;
         }
-        .usage-gauge-label { color: \(text); font-size: 0.9rem; }
+        .usage-gauge-label { color: \(text); \(t(.panelLabel)) }
         .usage-rule { background-color: \(rule); min-height: 1px; margin: 2px 0px; }
-        .usage-detail-key { color: \(textDim); font-size: 0.85rem; }
-        .usage-detail-value { color: \(text); font-size: 0.85rem; }
-        .usage-source { color: \(textDim); font-size: 0.75rem; }
-        .spend-total { color: \(text); font-weight: 700; font-size: 1.6rem; }
-        .spend-caption { color: \(textDim); font-size: 0.72rem; letter-spacing: 0.06em; }
+        .usage-detail-key { color: \(textDim); \(t(.panelDetail)) }
+        .usage-detail-value { color: \(text); \(t(.metricDetail)) }
+        .usage-source { color: \(textDim); \(t(.panelFootnote)) }
+        .spend-total { color: \(text); \(t(.metricLarge)) }
+        .spend-caption { color: \(textDim); \(t(.metricLabel)) }
         .spend-bar { background-color: \(accentDim); border-radius: 2px; }
         .spend-bar-hot { background-color: \(accent); border-radius: 2px; }
         .git-added { color: \(accent); }
@@ -805,31 +620,26 @@ enum MatrixTheme {
         .git-changed { color: \(info); }
         .git-untracked { color: \(textDim); }
         .git-conflict { color: \(warn); font-weight: 700; }
-        .git-neutral {
-            color: \(text);
-            font-weight: 700;
-            font-size: 0.78rem;
-            letter-spacing: 0.06em;
-        }
+        .git-neutral { color: \(text); \(t(.pill)) }
         .git-neutral-ink { color: \(text); }
         .git-row { padding: 2px 4px; border-radius: 6px; }
         .git-row:hover { background-color: alpha(currentColor, 0.07); }
         .git-alert {
             color: \(warn);
-            font-weight: 700;
+            \(t(.control))
             border: 1px solid alpha(\(warn), 0.45);
             border-radius: 8px;
             padding: 4px 8px;
         }
-        .git-diff { font-family: monospace; font-size: 0.85rem; }
-        .analytics-total { color: \(text); font-weight: 700; font-size: 2.1rem; }
-        .analytics-hero-percent { font-weight: 700; font-size: 1.5rem; }
+        .git-diff { \(t(.diff)) }
+        .analytics-total { color: \(text); \(t(.metricHero)) }
+        .analytics-hero-percent { \(t(.metricLarge)) }
         .hero-ok { color: \(text); }
         .hero-warn { color: \(warn); }
         .hero-danger { color: \(danger); }
-        .analytics-delta-up { color: \(warn); font-size: 0.85rem; }
-        .analytics-delta-down { color: \(accent); font-size: 0.85rem; }
-        .analytics-delta-flat { color: \(textDim); font-size: 0.85rem; }
+        .analytics-delta-up { color: \(warn); \(t(.metricDetail)) }
+        .analytics-delta-down { color: \(accent); \(t(.metricDetail)) }
+        .analytics-delta-flat { color: \(textDim); \(t(.metricDetail)) }
         .analytics-bar { background-color: \(accentDim); border-radius: 2px; }
         .analytics-bar-today { background-color: \(accent); border-radius: 2px; }
         .analytics-hour { background-color: alpha(\(info), 0.75); border-radius: 2px; }
@@ -839,16 +649,16 @@ enum MatrixTheme {
             border-radius: 8px;
             padding: 8px 10px;
         }
-        .record-glyph { color: \(accent); font-size: 1.2rem; }
-        .record-title { color: \(textDim); font-size: 0.68rem; letter-spacing: 0.06em; }
-        .record-value { color: \(text); font-weight: 700; font-size: 0.9rem; }
-        .record-detail { color: \(textDim); font-size: 0.78rem; }
+        .record-glyph { color: \(accent); font-size: \(c(1.2)); }
+        .record-title { color: \(textDim); \(t(.metricLabel)) }
+        .record-value { color: \(text); \(t(.metricValue)) }
+        .record-detail { color: \(textDim); \(t(.metricDetail)) }
         .analytics-open {
             background-color: alpha(currentColor, 0.05);
             border: 1px solid \(rule);
             border-radius: 8px;
             color: \(text);
-            font-size: 0.85rem;
+            \(t(.control))
             padding: 8px 12px;
         }
         .analytics-open:hover { background-color: alpha(\(accent), 0.12); }

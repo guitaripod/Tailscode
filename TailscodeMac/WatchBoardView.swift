@@ -98,10 +98,10 @@ final class WatchBoardView: NSView {
     private static func header(_ section: WatchSection) -> NSView {
         let title = RowKit.label(
             section.title,
-            font: .systemFont(ofSize: 11 * MacTheme.UIScale.factor, weight: .semibold),
+            font: MacTheme.Ramp.font(.sectionLabel),
             color: MacTheme.Color.secondaryLabel)
         let detail = RowKit.label(
-            section.detail, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            section.detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         detail.isHidden = section.detail.isEmpty
         let row = NSStackView(views: [title, RowKit.spacer(), detail])
         row.orientation = .horizontal
@@ -161,11 +161,11 @@ final class WatchRowView: NSView {
         titleRow.spacing = 6
         titleRow.setViews([title, RowKit.spacer()], in: .leading)
 
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byTruncatingTail
 
-        note.font = .systemFont(ofSize: 10 * MacTheme.UIScale.factor)
+        note.font = MacTheme.Ramp.font(.panelFootnote)
         note.textColor = MacTheme.Color.tertiaryLabel
         note.lineBreakMode = .byTruncatingTail
 
@@ -198,7 +198,7 @@ final class WatchRowView: NSView {
 
     func configure(_ row: WatchRow, focused: Bool) {
         title.stringValue = row.title
-        title.font = row.isPrimary ? MacTheme.Font.emphasis() : MacTheme.Font.body()
+        title.font = row.isPrimary ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
         title.textColor = row.isActivatable ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel
         detail.stringValue = row.detail
         detail.isHidden = row.detail.isEmpty
@@ -271,7 +271,7 @@ final class WatchRowView: NSView {
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 9, weight: .semibold)
+        label.font = MacTheme.Ramp.font(.metricLabel)
         label.textColor = tint
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()

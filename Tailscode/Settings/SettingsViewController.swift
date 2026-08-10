@@ -789,7 +789,7 @@ final class SettingsViewController: UIViewController {
     /// require opening the screen that owns it.
     private func strengthBadge() -> UICellAccessory {
         let label = UILabel()
-        label.font = Theme.Font.subheadline()
+        label.font = Theme.Ramp.font(.panelLabel)
         label.textColor = Theme.Color.secondaryLabel
         label.text =
             AppPreferences.hapticsEnabled ? HapticStrength.label(AppPreferences.hapticIntensity) : ""

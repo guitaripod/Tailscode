@@ -133,10 +133,10 @@ final class SubagentGroupCell: UICollectionViewCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.adjustsFontForContentSizeCategory = true
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.rowDetail)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.adjustsFontForContentSizeCategory = true
 
@@ -273,13 +273,13 @@ final class SubagentCardCell: UICollectionViewCell {
         iconView.setContentHuggingPriority(.required, for: .horizontal)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 2
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        typeBadge.font = .preferredFont(forTextStyle: .caption2)
+        typeBadge.font = Theme.Ramp.font(.pill)
         typeBadge.textColor = Theme.Color.accent
         typeBadge.backgroundColor = Theme.Color.accent.withAlphaComponent(0.12)
         typeBadge.layer.cornerRadius = 5
@@ -290,7 +290,7 @@ final class SubagentCardCell: UICollectionViewCell {
 
         statusDot.layer.cornerRadius = 3
         statusDot.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.font = .preferredFont(forTextStyle: .caption2)
+        statusLabel.font = Theme.Ramp.font(.rowDetail)
         statusLabel.adjustsFontForContentSizeCategory = true
 
         spinner.hidesWhenStopped = true
@@ -303,7 +303,7 @@ final class SubagentCardCell: UICollectionViewCell {
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
-        previewLabel.font = .preferredFont(forTextStyle: .footnote)
+        previewLabel.font = Theme.Ramp.font(.cardBody)
         previewLabel.textColor = Theme.Color.secondaryLabel
         previewLabel.numberOfLines = 2
 
@@ -457,7 +457,7 @@ final class SubagentCardCell: UICollectionViewCell {
     /// and rendered as prose and code the way any other message would be.
     private static func reportView(_ report: String) -> UIView {
         let heading = UILabel()
-        heading.font = .preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
+        heading.font = Theme.Ramp.font(.sectionLabel)
         heading.textColor = Theme.Color.tertiaryLabel
         heading.text = String(localized: "REPORTED BACK")
         let column = UIStackView(arrangedSubviews: [heading])
@@ -483,10 +483,10 @@ final class SubagentCardCell: UICollectionViewCell {
         let label = DiffWashLabel()
         label.numberOfLines = 0
         label.lineBreakMode = SyntaxHighlighter.isDiff(block.language) ? .byClipping : .byCharWrapping
-        label.font = Theme.Font.mono(11)
+        label.font = Theme.Ramp.font(.code)
         label.textColor = Theme.Color.label
         label.attributedText = CodeBlockCell.highlightedCode(
-            block.source, language: block.language, font: Theme.Font.mono(11))
+            block.source, language: block.language, font: Theme.Ramp.font(.code))
         label.washes = CodeBlockCell.washes(block.source, language: block.language)
         label.translatesAutoresizingMaskIntoConstraints = false
         let box = UIView()

@@ -97,7 +97,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         auraHost.isUserInteractionEnabled = false
         addSubview(auraHost)
 
-        textView.font = Theme.Font.body()
+        textView.font = Theme.Ramp.font(.answer)
         textView.adjustsFontForContentSizeCategory = true
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: 1, left: 0, bottom: 1, right: 0)
@@ -113,7 +113,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.translatesAutoresizingMaskIntoConstraints = false
 
         placeholder.text = String(localized: "Message your agent…")
-        placeholder.font = Theme.Font.body()
+        placeholder.font = Theme.Ramp.font(.answer)
         placeholder.textColor = Theme.Color.tertiaryLabel
         placeholder.translatesAutoresizingMaskIntoConstraints = false
 

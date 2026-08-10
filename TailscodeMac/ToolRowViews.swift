@@ -45,7 +45,7 @@ enum ToolRowView {
         header.addArrangedSubview(glyphLabel(worst))
         header.addArrangedSubview(
             RowKit.label(
-                Localized.text("%@ tools", "\(calls.count)"), font: MacTheme.Font.mono(12),
+                Localized.text("%@ tools", "\(calls.count)"), font: MacTheme.Ramp.font(.code),
                 color: MacTheme.Color.label))
 
         var tally: [(String, Int)] = []
@@ -65,12 +65,12 @@ enum ToolRowView {
         if added > 0 {
             header.addArrangedSubview(
                 RowKit.label(
-                    "+\(added)", font: MacTheme.Font.mono(11), color: MacTheme.Color.success))
+                    "+\(added)", font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.success))
         }
         if removed > 0 {
             header.addArrangedSubview(
                 RowKit.label(
-                    "−\(removed)", font: MacTheme.Font.mono(11), color: MacTheme.Color.danger))
+                    "−\(removed)", font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.danger))
         }
 
         let toggle = context.onToggle
@@ -105,7 +105,7 @@ enum ToolRowView {
     static func reasoning(_ text: String, key: String, context: TranscriptContext) -> NSView {
         context.liveReasoning[key] = text
         let header = RowKit.label(
-            Self.thoughtHeader(text), font: MacTheme.Font.caption(),
+            Self.thoughtHeader(text), font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
         let toggle = context.onToggle
         let reveal = context.revealRow
@@ -118,7 +118,7 @@ enum ToolRowView {
         ) { [weak context] in
             RowKit.inset(
                 RowKit.wrapping(
-                    context?.liveReasoning[key] ?? text, font: MacTheme.Font.caption(),
+                    context?.liveReasoning[key] ?? text, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel),
                 leading: 14)
         }
@@ -147,7 +147,7 @@ enum ToolRowView {
         row.spacing = MacTheme.Spacing.s
         row.addArrangedSubview(glyphLabel(call.status))
         row.addArrangedSubview(
-            RowKit.label(call.name, font: MacTheme.Font.mono(12), color: MacTheme.Color.label))
+            RowKit.label(call.name, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
 
         var detail = summary.title ?? call.title ?? ""
         if detail == call.name { detail = "" }
@@ -161,19 +161,19 @@ enum ToolRowView {
             if stats.added > 0 {
                 row.addArrangedSubview(
                     RowKit.label(
-                        "+\(stats.added)", font: MacTheme.Font.mono(11),
+                        "+\(stats.added)", font: MacTheme.Ramp.font(.toolOutput),
                         color: MacTheme.Color.success))
             }
             if stats.removed > 0 {
                 row.addArrangedSubview(
                     RowKit.label(
-                        "−\(stats.removed)", font: MacTheme.Font.mono(11),
+                        "−\(stats.removed)", font: MacTheme.Ramp.font(.toolOutput),
                         color: MacTheme.Color.danger))
             }
         } else if let metric = summary.metric {
             row.addArrangedSubview(
                 RowKit.label(
-                    metric, font: MacTheme.Font.mono(11), color: MacTheme.Color.secondaryLabel))
+                    metric, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel))
         }
         return row
     }
@@ -197,11 +197,11 @@ enum ToolRowView {
                 line.spacing = 0
                 line.addArrangedSubview(
                     RowKit.wrapping(
-                        answered.question, font: MacTheme.Font.mono(11),
+                        answered.question, font: MacTheme.Ramp.font(.toolOutput),
                         color: MacTheme.Color.secondaryLabel))
                 line.addArrangedSubview(
                     RowKit.wrapping(
-                        "→ \(answered.answer)", font: MacTheme.Font.mono(12),
+                        "→ \(answered.answer)", font: MacTheme.Ramp.font(.code),
                         color: MacTheme.Color.label))
                 column.addArrangedSubview(line)
                 hasContent = true
@@ -221,14 +221,14 @@ enum ToolRowView {
         if let path = summary.filePath ?? summary.detail, !path.isEmpty {
             column.addArrangedSubview(
                 RowKit.wrapping(
-                    path, font: MacTheme.Font.mono(11), color: MacTheme.Color.secondaryLabel))
+                    path, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel))
             hasContent = true
         }
 
         for link in summary.links.prefix(6) {
             column.addArrangedSubview(
                 RowKit.wrapping(
-                    "· \(link.title)", font: MacTheme.Font.mono(11),
+                    "· \(link.title)", font: MacTheme.Ramp.font(.toolOutput),
                     color: MacTheme.Color.secondaryLabel))
             hasContent = true
         }
@@ -240,7 +240,7 @@ enum ToolRowView {
 
         if let output = displayableOutput(call, summary), !output.isEmpty {
             let label = RowKit.wrapping(
-                output, font: MacTheme.Font.mono(11), color: MacTheme.Color.secondaryLabel)
+                output, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
             column.addArrangedSubview(RowKit.heightCappedScroll(around: label, max: 300))
             if let full = fullOutput(call, summary), full.count > 1500 {
                 let present = context.presentText
@@ -285,7 +285,7 @@ enum ToolRowView {
         block.layer?.cornerRadius = 8
         for line in lines.prefix(80) {
             let text = RowKit.diffAttributed(
-                "\(line.prefix) \(line.text)", language: language, font: MacTheme.Font.mono(11))
+                "\(line.prefix) \(line.text)", language: language, font: MacTheme.Ramp.font(.toolOutput))
             let label = NSTextField(wrappingLabelWithString: "")
             label.attributedStringValue = text
             label.isSelectable = true
@@ -300,7 +300,7 @@ enum ToolRowView {
             block.addArrangedSubview(
                 RowKit.label(
                     Localized.text("… %@ more lines", "\(lines.count - 80)"),
-                    font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return block
     }
@@ -310,7 +310,7 @@ enum ToolRowView {
     static func glyphLabel(_ status: ToolStatus) -> NSTextField {
         let label = ActivityMarkLabel(frame: .zero)
         label.stringValue = glyph(status)
-        label.font = MacTheme.Font.mono(11)
+        label.font = MacTheme.Ramp.font(.toolOutput)
         label.textColor = tint(status)
         label.mark(status.activityIcon)
         return label
@@ -338,7 +338,7 @@ enum ToolRowView {
     /// glyph and the stats do not need.
     static func detailLabel(_ text: String) -> NSTextField {
         let label = RowKit.label(
-            text, font: MacTheme.Font.mono(11), color: MacTheme.Color.secondaryLabel)
+            text, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
         label.lineBreakMode = .byTruncatingMiddle
         label.setContentHuggingPriority(.init(1), for: .horizontal)
         label.setContentCompressionResistancePriority(.init(249), for: .horizontal)
@@ -364,7 +364,7 @@ final class ClickToCopyLabel: NSTextField {
         isBordered = false
         drawsBackground = false
         isSelectable = true
-        font = MacTheme.Font.mono(12)
+        font = MacTheme.Ramp.font(.code)
         textColor = MacTheme.Color.label
         cell?.wraps = true
         cell?.isScrollable = false
@@ -398,7 +398,7 @@ enum SubagentRowView {
         header.spacing = MacTheme.Spacing.s
         header.addArrangedSubview(ToolRowView.glyphLabel(call.status))
         header.addArrangedSubview(
-            RowKit.label("▸ agent", font: MacTheme.Font.mono(12), color: MacTheme.Color.label))
+            RowKit.label("▸ agent", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
         let title = call.summary.title ?? call.title ?? call.name
         header.addArrangedSubview(
             ToolRowView.detailLabel(
@@ -406,12 +406,12 @@ enum SubagentRowView {
         if let live = context.agentFacts[call.id], live.isActive {
             header.addArrangedSubview(
                 RowKit.label(
-                    StatusFacts.liveDetail(live), font: MacTheme.Font.caption(),
+                    StatusFacts.liveDetail(live), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.accent))
         } else if call.status == .completed {
             header.addArrangedSubview(
                 RowKit.label(
-                    Localized.text("done"), font: MacTheme.Font.caption(),
+                    Localized.text("done"), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.success))
         }
 
@@ -441,7 +441,7 @@ enum SubagentRowView {
                     body.addArrangedSubview(
                         RowKit.label(
                             Localized.text("No transcript for this agent."),
-                            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
                 }
                 for row in rows.suffix(160) {
                     body.addArrangedSubview(row.makeView(context: context))
@@ -449,7 +449,7 @@ enum SubagentRowView {
             } else {
                 body.addArrangedSubview(
                     RowKit.label(
-                        Localized.text("Loading transcript…"), font: MacTheme.Font.caption(),
+                        Localized.text("Loading transcript…"), font: MacTheme.Ramp.font(.panelFootnote),
                         color: MacTheme.Color.tertiaryLabel))
                 if context.isExpanded(key) { context.requestSubagent?(call) }
             }

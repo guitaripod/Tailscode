@@ -78,13 +78,13 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         playerView.isHidden = true
         addSubview(playerView)
 
-        headingLabel.font = MacTheme.Font.emphasis()
+        headingLabel.font = MacTheme.Ramp.font(.cardTitle)
         headingLabel.alignment = .center
-        reasonLabel.font = MacTheme.Font.caption()
+        reasonLabel.font = MacTheme.Ramp.font(.panelFootnote)
         reasonLabel.textColor = MacTheme.Color.secondaryLabel
         reasonLabel.alignment = .center
 
-        hintLabel.font = MacTheme.Font.caption()
+        hintLabel.font = MacTheme.Ramp.font(.panelFootnote)
         hintLabel.textColor = MacTheme.Color.secondaryLabel
         hintLabel.alignment = .left
         hintLabel.maximumNumberOfLines = 1
@@ -92,7 +92,7 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         field.placeholderString = slot.prompt
-        field.font = MacTheme.Font.body()
+        field.font = MacTheme.Ramp.font(.panelLabel)
         field.target = self
         field.action = #selector(submit)
         field.delegate = self
@@ -101,7 +101,7 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         boardView.translatesAutoresizingMaskIntoConstraints = false
         boardView.setContentCompressionResistancePriority(.init(1), for: .vertical)
 
-        noticeLabel.font = MacTheme.Font.caption()
+        noticeLabel.font = MacTheme.Ramp.font(.panelFootnote)
         noticeLabel.textColor = MacTheme.Color.secondaryLabel
         noticeLabel.alignment = .center
         noticeLabel.isSelectable = false

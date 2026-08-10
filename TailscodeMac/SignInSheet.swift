@@ -42,10 +42,10 @@ final class SignInSheet {
 
         let title = NSTextField(
             labelWithString: Localized.text("Sign in Claude on %@", serverName))
-        title.font = MacTheme.Font.emphasis()
+        title.font = MacTheme.Ramp.font(.cardTitle)
 
         status.stringValue = Localized.text("Asking %@ for a sign-in link…", serverName)
-        status.font = MacTheme.Font.caption()
+        status.font = MacTheme.Ramp.font(.panelFootnote)
         status.textColor = MacTheme.Color.secondaryLabel
 
         linkColumn.orientation = .vertical
@@ -53,7 +53,7 @@ final class SignInSheet {
         linkColumn.spacing = MacTheme.Spacing.s
 
         codeField.placeholderString = Localized.text("Paste the code the browser shows")
-        codeField.font = MacTheme.Font.mono()
+        codeField.font = MacTheme.Ramp.font(.code)
         codeField.isEnabled = false
         codeField.target = self
         codeField.action = #selector(submitCode)
@@ -108,7 +108,7 @@ final class SignInSheet {
         open.bezelStyle = .rounded
         open.identifier = NSUserInterfaceItemIdentifier(url)
         let address = NSTextField(wrappingLabelWithString: url)
-        address.font = MacTheme.Font.mono(11)
+        address.font = MacTheme.Ramp.font(.toolOutput)
         address.textColor = MacTheme.Color.secondaryLabel
         address.isSelectable = true
         linkColumn.addArrangedSubview(open)

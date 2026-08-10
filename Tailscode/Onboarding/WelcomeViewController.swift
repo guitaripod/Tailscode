@@ -66,7 +66,7 @@ final class WelcomeViewController: UIViewController {
             localized:
                 "Tailscode is the remote. Send a prompt from anywhere on your tailnet and watch the turn land — thinking, tool runs, approvals."
         )
-        subtitle.font = Theme.Font.subheadline()
+        subtitle.font = Theme.Ramp.font(.panelLabel)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = Theme.Color.secondaryLabel
         subtitle.numberOfLines = 0
@@ -104,12 +104,12 @@ final class WelcomeViewController: UIViewController {
         demoConfig.baseForegroundColor = Theme.Color.label
         demoConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var out = $0
-            out.font = Theme.Font.headline()
+            out.font = Theme.Ramp.font(.cardTitle)
             return out
         }
         demoConfig.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var out = $0
-            out.font = .preferredFont(forTextStyle: .caption2)
+            out.font = Theme.Ramp.font(.panelFootnote)
             out.foregroundColor = Theme.Color.secondaryLabel
             return out
         }
@@ -131,7 +131,7 @@ final class WelcomeViewController: UIViewController {
         let footnote = UILabel()
         footnote.text = String(
             localized: "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0.")
-        footnote.font = .preferredFont(forTextStyle: .caption2)
+        footnote.font = Theme.Ramp.font(.panelFootnote)
         footnote.adjustsFontForContentSizeCategory = true
         footnote.textColor = Theme.Color.tertiaryLabel
         footnote.textAlignment = .center
@@ -222,7 +222,7 @@ final class WelcomeViewController: UIViewController {
 
         let label = UILabel()
         label.text = text
-        label.font = Theme.Font.footnote()
+        label.font = Theme.Ramp.font(.panelDetail)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 0

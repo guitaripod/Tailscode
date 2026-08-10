@@ -59,11 +59,11 @@ final class ManualConnectViewController: UIViewController {
             + (device.user.map { " · \($0)" } ?? "")
         let header = UILabel()
         header.text = infoText
-        header.font = Theme.Font.subheadline()
+        header.font = Theme.Ramp.font(.panelLabel)
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
 
-        statusLabel.font = Theme.Font.caption()
+        statusLabel.font = Theme.Ramp.font(.panelFootnote)
         statusLabel.numberOfLines = 0
         statusLabel.textColor = Theme.Color.secondaryLabel
 

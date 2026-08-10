@@ -157,7 +157,7 @@ final class UsageFooterView: NSView {
             let slug = holding.slug
             let header = RowKit.label(
                 holding.providerName,
-                font: .systemFont(ofSize: 10, weight: .semibold),
+                font: MacTheme.Ramp.font(.metricLabel),
                 color: UsageFormat.brandColor(slug) ?? MacTheme.Color.secondaryLabel)
             column.addArrangedSubview(header)
             column.setCustomSpacing(5, after: header)
@@ -166,10 +166,10 @@ final class UsageFooterView: NSView {
                 let severity = UsageFormat.severity(fraction)
                 let color = UsageFormat.severityColor(severity)
 
-                let title = RowKit.label(gauge.label, font: MacTheme.Font.caption(), color: color)
+                let title = RowKit.label(gauge.label, font: MacTheme.Ramp.font(.panelFootnote), color: color)
                 title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
                 let percent = RowKit.label(
-                    UsageFormat.amount(for: gauge), font: MacTheme.Font.caption(),
+                    UsageFormat.amount(for: gauge), font: MacTheme.Ramp.font(.panelFootnote),
                     color: color)
                 percent.alignment = .right
                 percent.widthAnchor.constraint(equalToConstant: 34).isActive = true
@@ -189,7 +189,7 @@ final class UsageFooterView: NSView {
                     column.addArrangedSubview(
                         RowKit.label(
                             Localized.text("resets in %@", UsageFormat.countdown(to: resets)),
-                            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
                 }
             }
             if let last = column.arrangedSubviews.last {
@@ -310,7 +310,7 @@ final class UsagePanelViewController: NSViewController {
                     refreshing
                         ? Localized.text("Asking the providers…")
                         : Localized.text("No provider reports a quota."),
-                    font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel))
+                    font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
             return
         }
         let holdings = QuotaRollup.account(from: quotas)
@@ -323,7 +323,7 @@ final class UsagePanelViewController: NSViewController {
         if refreshing {
             column.addArrangedSubview(
                 RowKit.label(
-                    Localized.text("Refreshing…"), font: MacTheme.Font.caption(),
+                    Localized.text("Refreshing…"), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
     }
@@ -339,10 +339,10 @@ final class UsagePanelViewController: NSViewController {
         let severity = UsageFormat.severity(fraction)
 
         let caption = RowKit.label(
-            Localized.text("Tightest window"), font: .systemFont(ofSize: 10, weight: .semibold),
+            Localized.text("Tightest window"), font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
         let name = RowKit.label(
-            "\(quota.providerName) · \(gauge.label)", font: MacTheme.Font.emphasis(),
+            "\(quota.providerName) · \(gauge.label)", font: MacTheme.Ramp.font(.cardTitle),
             color: UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
         name.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let amount = RowKit.label(
@@ -368,7 +368,7 @@ final class UsagePanelViewController: NSViewController {
                 : Localized.text("resets in about %@", UsageFormat.countdown(to: resets))
             views.append(
                 RowKit.label(
-                    phrasing, font: MacTheme.Font.caption(),
+                    phrasing, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
         let hero = NSStackView(views: views)
@@ -401,13 +401,13 @@ final class UsagePanelViewController: NSViewController {
         card.translatesAutoresizingMaskIntoConstraints = false
 
         let name = RowKit.label(
-            quota.providerName, font: .systemFont(ofSize: 14, weight: .bold),
+            quota.providerName, font: MacTheme.Ramp.font(.panelTitle),
             color: UsageFormat.brandColor(slug) ?? MacTheme.Color.label)
         let header = NSStackView(views: [name])
         if !quota.subtitle.isEmpty {
             header.addArrangedSubview(
                 RowKit.label(
-                    quota.subtitle, font: MacTheme.Font.caption(),
+                    quota.subtitle, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
         }
         header.addArrangedSubview(RowKit.spacer())
@@ -425,10 +425,10 @@ final class UsagePanelViewController: NSViewController {
             card.addArrangedSubview(RowKit.hairline())
             for detail in quota.details {
                 let key = RowKit.label(
-                    detail.key, font: MacTheme.Font.caption(),
+                    detail.key, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel)
                 let value = RowKit.label(
-                    detail.value, font: MacTheme.Font.caption(), color: MacTheme.Color.label)
+                    detail.value, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
                 let row = NSStackView(views: [key, RowKit.spacer(), value])
                 row.orientation = .horizontal
                 row.spacing = MacTheme.Spacing.s
@@ -438,7 +438,7 @@ final class UsagePanelViewController: NSViewController {
 
         card.addArrangedSubview(
             RowKit.label(
-                QuotaRollup.provenance(holding), font: .systemFont(ofSize: 10),
+                QuotaRollup.provenance(holding), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel))
         return card
     }
@@ -452,10 +452,10 @@ final class UsagePanelViewController: NSViewController {
         block.spacing = 3
 
         let title = RowKit.label(
-            gauge.label, font: MacTheme.Font.caption(), color: MacTheme.Color.label)
+            gauge.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let amount = RowKit.label(
-            UsageFormat.amount(for: gauge), font: MacTheme.Font.caption(),
+            UsageFormat.amount(for: gauge), font: MacTheme.Ramp.font(.panelFootnote),
             color: UsageFormat.severityColor(severity))
         let row = NSStackView(views: [title, RowKit.spacer(), amount])
         row.orientation = .horizontal
@@ -476,7 +476,7 @@ final class UsagePanelViewController: NSViewController {
                 : Localized.text("resets in about %@", UsageFormat.countdown(to: resets))
             block.addArrangedSubview(
                 RowKit.label(
-                    phrasing, font: .systemFont(ofSize: 10), color: MacTheme.Color.tertiaryLabel))
+                    phrasing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return block
     }
@@ -484,7 +484,7 @@ final class UsagePanelViewController: NSViewController {
     private static func badge(live: Bool) -> NSView {
         let label = NSTextField(
             labelWithString: live ? Localized.text("LIVE") : Localized.text("CACHED"))
-        label.font = .systemFont(ofSize: 9, weight: .bold)
+        label.font = MacTheme.Ramp.font(.metricLabel)
         label.textColor = live ? MacTheme.Color.success : MacTheme.Color.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         let wrap = NSView()

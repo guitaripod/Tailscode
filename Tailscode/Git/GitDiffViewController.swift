@@ -43,7 +43,7 @@ final class GitDiffViewController: UIViewController {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.hidesWhenStopped = true
         view.addSubview(spinner)
-        emptyLabel.font = .preferredFont(forTextStyle: .footnote)
+        emptyLabel.font = Theme.Ramp.font(.panelDetail)
         emptyLabel.textColor = Theme.Color.secondaryLabel
         emptyLabel.textAlignment = .center
         emptyLabel.numberOfLines = 0
@@ -79,7 +79,7 @@ final class GitDiffViewController: UIViewController {
             guard let self else { return }
             var content = cell.defaultContentConfiguration()
             content.text = self.subtitleText
-            content.textProperties.font = .preferredFont(forTextStyle: .caption1)
+            content.textProperties.font = Theme.Ramp.font(.panelDetail)
             content.textProperties.color = Theme.Color.secondaryLabel
             content.textProperties.numberOfLines = 2
             let stats = GitPatchReader.stats(self.lines)

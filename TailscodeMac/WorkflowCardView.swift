@@ -31,21 +31,21 @@ enum WorkflowCardView {
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
         header.addArrangedSubview(
-            RowKit.label(glyph(run, now), font: MacTheme.Font.mono(12), color: glyphColor(run)))
+            RowKit.label(glyph(run, now), font: MacTheme.Ramp.font(.code), color: glyphColor(run)))
         header.addArrangedSubview(
-            RowKit.label("▸ workflow", font: MacTheme.Font.mono(12), color: MacTheme.Color.label))
+            RowKit.label("▸ workflow", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
         header.addArrangedSubview(
             RowKit.label(
                 run?.name ?? call.summary.title ?? Localized.text("Workflow"),
-                font: MacTheme.Font.mono(12).bold, color: MacTheme.Color.accent))
+                font: MacTheme.Ramp.font(.code).bold, color: MacTheme.Color.accent))
         let headline = RowKit.label(
-            run.map { $0.headline(at: now) } ?? "", font: MacTheme.Font.caption(),
+            run.map { $0.headline(at: now) } ?? "", font: MacTheme.Ramp.font(.panelFootnote),
             color: run.map(headlineColor) ?? MacTheme.Color.tertiaryLabel)
         headline.isHidden = run == nil
         header.addArrangedSubview(headline)
         let elapsed = RowKit.label(
             (run?.elapsed(at: now)).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         elapsed.isHidden = run?.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 
@@ -156,14 +156,14 @@ enum WorkflowCardView {
         guard let run else {
             body.addArrangedSubview(
                 RowKit.label(
-                    Localized.text("Starting…"), font: MacTheme.Font.caption(),
+                    Localized.text("Starting…"), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
             return RowKit.inset(body, leading: 26)
         }
 
         if let summary = run.summary {
             let label = RowKit.wrapping(
-                summary, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+                summary, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
             label.identifier = summaryID
             body.addArrangedSubview(label)
         }
@@ -205,11 +205,11 @@ enum WorkflowCardView {
         row.identifier = meterID
         row.addArrangedSubview(
             RowKit.label(
-                meterBar(run), font: MacTheme.Font.mono(11),
+                meterBar(run), font: MacTheme.Ramp.font(.toolOutput),
                 color: run.isLive ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel))
         row.addArrangedSubview(
             RowKit.label(
-                meterCaption(run), font: MacTheme.Font.caption(),
+                meterCaption(run), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel))
         return row
     }
@@ -237,19 +237,19 @@ enum WorkflowCardView {
         let done = !run.isLive
         row.addArrangedSubview(
             RowKit.label(
-                phaseMark(phase, of: run.phases.count, done: done), font: MacTheme.Font.mono(11),
+                phaseMark(phase, of: run.phases.count, done: done), font: MacTheme.Ramp.font(.toolOutput),
                 color: done ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel))
         row.addArrangedSubview(
-            RowKit.label(phase.title, font: MacTheme.Font.mono(12), color: MacTheme.Color.label))
+            RowKit.label(phase.title, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
         if let detail = phase.detail {
             row.addArrangedSubview(
                 RowKit.label(
-                    detail, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         if let model = phase.model {
             row.addArrangedSubview(
                 RowKit.label(
-                    shortModel(model), font: MacTheme.Font.mono(10), color: MacTheme.Color.mark))
+                    shortModel(model), font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.mark))
         }
         return row
     }
@@ -269,19 +269,19 @@ enum WorkflowCardView {
         header.spacing = MacTheme.Spacing.s
         header.addArrangedSubview(
             RowKit.label(
-                agentGlyph(agent, now: now), font: MacTheme.Font.mono(11),
+                agentGlyph(agent, now: now), font: MacTheme.Ramp.font(.toolOutput),
                 color: agentColor(agent)))
         header.addArrangedSubview(
             ToolRowView.detailLabel(
                 String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120))))
         let liveTool = agent.isActive ? agent.currentTool : nil
         let tool = RowKit.label(
-            liveTool ?? "", font: MacTheme.Font.caption(), color: MacTheme.Color.accent)
+            liveTool ?? "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.accent)
         tool.isHidden = liveTool == nil
         header.addArrangedSubview(tool)
         let elapsed = RowKit.label(
             agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         elapsed.isHidden = agent.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 
@@ -310,7 +310,7 @@ enum WorkflowCardView {
                     body.addArrangedSubview(
                         RowKit.label(
                             Localized.text("No transcript for this agent."),
-                            font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
                 }
                 for row in rows.suffix(160) {
                     body.addArrangedSubview(row.makeView(context: context))
@@ -318,7 +318,7 @@ enum WorkflowCardView {
             } else {
                 body.addArrangedSubview(
                     RowKit.label(
-                        Localized.text("Loading transcript…"), font: MacTheme.Font.caption(),
+                        Localized.text("Loading transcript…"), font: MacTheme.Ramp.font(.panelFootnote),
                         color: MacTheme.Color.tertiaryLabel))
                 if context.isExpanded(key) { context.requestWorkflowAgent?(agentID) }
             }

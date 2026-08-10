@@ -219,10 +219,10 @@ final class ShortcutCheatsheetViewController: UIViewController {
             cell, _, row in
             var content = UIListContentConfiguration.valueCell()
             content.text = row.what
-            content.textProperties.font = .preferredFont(forTextStyle: .body)
+            content.textProperties.font = Theme.Ramp.font(.answer)
             content.secondaryText = row.keys
             content.secondaryTextProperties.font = .monospacedSystemFont(
-                ofSize: UIFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
+                ofSize: Theme.Ramp.font(.panelLabel).pointSize, weight: .regular)
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             cell.contentConfiguration = content
         }

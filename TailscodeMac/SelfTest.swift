@@ -1136,7 +1136,7 @@ enum SelfTest {
             parts.map(\.text).joined(separator: " ") == state.badge,
             "the runs and the plain chip say different things")
         var badgeInks: Set<String> = []
-        let tinted = GitPanelViewController.tinted(state.summaryParts, font: MacTheme.Font.caption())
+        let tinted = GitPanelViewController.tinted(state.summaryParts, font: MacTheme.Ramp.font(.panelFootnote))
         tinted.enumerateAttribute(
             .foregroundColor, in: NSRange(location: 0, length: tinted.length)
         ) { value, _, _ in

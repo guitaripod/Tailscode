@@ -116,12 +116,12 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
         case .header(let title, let count):
             return RowKit.label(
                 "\(title.uppercased())  ·  \(count)",
-                font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+                font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         case .command(let command):
             let name = "/\(command.name)"
             let hint = command.argumentHint.map { " \($0)" } ?? ""
             let title = RowKit.label(
-                name + hint, font: MacTheme.Font.body(), color: MacTheme.Color.label)
+                name + hint, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
             let detailParts = [command.details, command.scope]
                 .compactMap { $0?.isEmpty == false ? $0 : nil }
             let lines = NSStackView(views: [title])
@@ -131,7 +131,7 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
             if let detail = detailParts.joined(separator: " · ").nilIfEmpty {
                 lines.addArrangedSubview(
                     RowKit.label(
-                        detail, font: MacTheme.Font.caption(),
+                        detail, font: MacTheme.Ramp.font(.panelFootnote),
                         color: MacTheme.Color.secondaryLabel))
             }
             lines.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)

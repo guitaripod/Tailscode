@@ -13,9 +13,9 @@ final class ChooserView: NSView {
 
     init() {
         super.init(frame: .zero)
-        heading.font = .systemFont(ofSize: 11 * MacTheme.UIScale.factor, weight: .semibold)
+        heading.font = MacTheme.Ramp.font(.sectionLabel)
         heading.textColor = MacTheme.Color.secondaryLabel
-        hint.font = MacTheme.Font.caption()
+        hint.font = MacTheme.Ramp.font(.panelFootnote)
         hint.textColor = MacTheme.Color.tertiaryLabel
 
         rows.orientation = .vertical
@@ -72,7 +72,7 @@ final class ChooserRowView: NSView {
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
 
-        number.font = MacTheme.Font.mono(10)
+        number.font = MacTheme.Ramp.font(.rowNote)
         number.textColor = MacTheme.Color.tertiaryLabel
         number.translatesAutoresizingMaskIntoConstraints = false
 
@@ -83,11 +83,11 @@ final class ChooserRowView: NSView {
         titleRow.alignment = .centerY
         titleRow.addArrangedSubview(title)
 
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byTruncatingTail
 
-        note.font = .systemFont(ofSize: 10 * MacTheme.UIScale.factor)
+        note.font = MacTheme.Ramp.font(.panelFootnote)
         note.textColor = MacTheme.Color.accent.withAlphaComponent(0.75)
         note.lineBreakMode = .byTruncatingTail
 
@@ -117,7 +117,7 @@ final class ChooserRowView: NSView {
     func configure(_ row: PaneChooserRow, number index: Int, focused: Bool) {
         number.stringValue = index <= 9 ? "\(index)" : " "
         title.stringValue = row.title
-        title.font = row.isPrimary ? MacTheme.Font.emphasis() : MacTheme.Font.body()
+        title.font = row.isPrimary ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
         detail.stringValue = row.detail
         note.stringValue = row.note ?? ""
         note.isHidden = row.note == nil
@@ -144,7 +144,7 @@ final class ChooserRowView: NSView {
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 9, weight: .semibold)
+        label.font = MacTheme.Ramp.font(.metricLabel)
         label.textColor = tint
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()

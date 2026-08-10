@@ -64,22 +64,22 @@ final class DiscoveryViewController: UIViewController {
             localized:
                 "A shortcut, not a requirement: with a Tailscale API token this lists your machines and checks which ones are already running an agent. You can always type the address instead."
         )
-        header.font = Theme.Font.subheadline()
+        header.font = Theme.Ramp.font(.panelLabel)
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
 
-        statusLabel.font = Theme.Font.caption()
+        statusLabel.font = Theme.Ramp.font(.panelFootnote)
         statusLabel.numberOfLines = 0
         statusLabel.textColor = Theme.Color.secondaryLabel
 
         scanButton.addTarget(self, action: #selector(scanTapped), for: .touchUpInside)
         configureButton.addTarget(self, action: #selector(configureTapped), for: .touchUpInside)
 
-        resultsHeader.font = Theme.Font.caption()
+        resultsHeader.font = Theme.Ramp.font(.panelFootnote)
         resultsHeader.textColor = Theme.Color.secondaryLabel
         resultsHeader.isHidden = true
 
-        emptyLabel.font = Theme.Font.subheadline()
+        emptyLabel.font = Theme.Ramp.font(.panelLabel)
         emptyLabel.textColor = Theme.Color.secondaryLabel
         emptyLabel.numberOfLines = 0
         emptyLabel.textAlignment = .center

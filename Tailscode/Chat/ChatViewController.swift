@@ -672,7 +672,7 @@ final class ChatViewController: UIViewController {
         findField.addAction(
             UIAction { [weak self] _ in self?.stepFind(1) }, for: .primaryActionTriggered)
 
-        findCountLabel.font = .preferredFont(forTextStyle: .caption1)
+        findCountLabel.font = Theme.Ramp.font(.panelDetail)
         findCountLabel.textColor = Theme.Color.secondaryLabel
         findCountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -881,7 +881,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func configureNavTitleView() {
-        navStatusLabel.font = .preferredFont(forTextStyle: .footnote)
+        navStatusLabel.font = Theme.Ramp.font(.panelDetail)
         navStatusLabel.textColor = Theme.Color.secondaryLabel
         navStatusLabel.adjustsFontSizeToFitWidth = true
         navStatusLabel.minimumScaleFactor = 0.8

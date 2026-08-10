@@ -111,7 +111,7 @@ final class AnalyticsWindowController: NSWindowController {
     private func renderMessage(_ text: String) {
         clearColumn()
         column.addArrangedSubview(
-            RowKit.label(text, font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel))
+            RowKit.label(text, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
         column.addArrangedSubview(footer())
     }
 
@@ -153,20 +153,20 @@ final class AnalyticsWindowController: NSWindowController {
 
     private func heroSection(_ analytics: UsageAnalytics) -> NSView {
         let windowLabel = RowKit.label(
-            analytics.windowLabel, font: .systemFont(ofSize: 10, weight: .semibold),
+            analytics.windowLabel, font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
         let money = RowKit.label(
             analytics.totalMoney, font: Self.heroFont(), color: MacTheme.Color.label)
         let perDay = RowKit.label(
-            analytics.perDayLine, font: MacTheme.Font.body(), color: MacTheme.Color.secondaryLabel)
+            analytics.perDayLine, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel)
         let activity = RowKit.label(
-            analytics.activityLine, font: MacTheme.Font.caption(),
+            analytics.activityLine, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
         var views: [NSView] = [windowLabel, money, perDay, activity]
         if let delta = analytics.deltaLine {
             views.append(
                 RowKit.label(
-                    delta, font: MacTheme.Font.emphasis(), color: trendColor(analytics.trend)))
+                    delta, font: MacTheme.Ramp.font(.cardTitle), color: trendColor(analytics.trend)))
         }
         return card(views: views)
     }
@@ -207,13 +207,13 @@ final class AnalyticsWindowController: NSWindowController {
             annotations.append(
                 RowKit.label(
                     Localized.text("Peak %@ %@ · %@", peak.weekdayLabel, peak.label, peak.money),
-                    font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         annotations.append(RowKit.spacer())
         if let today = analytics.days.last(where: { $0.isToday }) {
             annotations.append(
                 RowKit.label(
-                    Localized.text("Today %@", today.money), font: MacTheme.Font.caption(),
+                    Localized.text("Today %@", today.money), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
         let annotation = NSStackView(views: annotations)
@@ -239,7 +239,7 @@ final class AnalyticsWindowController: NSWindowController {
                         equalToConstant: max(2, Self.weekdayHeight * day.share)),
                 ])
                 let label = RowKit.label(
-                    day.label, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+                    day.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
                 let dayColumn = NSStackView(views: [bar, label])
                 dayColumn.orientation = .vertical
                 dayColumn.alignment = .centerX
@@ -272,7 +272,7 @@ final class AnalyticsWindowController: NSWindowController {
         if let clock = analytics.clockLine {
             views.append(
                 RowKit.label(
-                    clock, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    clock, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
     }
@@ -290,7 +290,7 @@ final class AnalyticsWindowController: NSWindowController {
         if let footnote {
             views.append(
                 RowKit.label(
-                    footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
     }
@@ -307,7 +307,7 @@ final class AnalyticsWindowController: NSWindowController {
         if let cache = analytics.cacheLine {
             views.append(
                 RowKit.label(
-                    cache, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    cache, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
     }
@@ -342,14 +342,14 @@ final class AnalyticsWindowController: NSWindowController {
         symbol.contentTintColor = MacTheme.Color.accent
         symbol.translatesAutoresizingMaskIntoConstraints = false
         let title = RowKit.label(
-            record.title, font: .systemFont(ofSize: 10, weight: .semibold),
+            record.title, font: MacTheme.Ramp.font(.metricLabel),
             color: MacTheme.Color.tertiaryLabel)
         let value = RowKit.label(
-            record.value, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+            record.value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         var views: [NSView] = [symbol, title, value]
         if let detail = record.detail {
             let caption = RowKit.wrapping(
-                detail, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+                detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
             caption.maximumNumberOfLines = 2
             caption.cell?.truncatesLastVisibleLine = true
             caption.preferredMaxLayoutWidth = 210
@@ -398,7 +398,7 @@ final class AnalyticsWindowController: NSWindowController {
         if let line = MacGameCenter.shared.unavailableLine {
             views.append(
                 RowKit.wrapping(
-                    line, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    line, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
     }
@@ -419,7 +419,7 @@ final class AnalyticsWindowController: NSWindowController {
         if earned.count > 12 {
             views.append(
                 RowKit.label(
-                    "+\(earned.count - 12)", font: MacTheme.Font.caption(),
+                    "+\(earned.count - 12)", font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
         }
         views.append(RowKit.spacer())
@@ -437,7 +437,7 @@ final class AnalyticsWindowController: NSWindowController {
             icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
             icon.contentTintColor = MacTheme.Color.accent
             icon.translatesAutoresizingMaskIntoConstraints = false
-            let text = RowKit.wrapping(line, font: MacTheme.Font.body(), color: MacTheme.Color.label)
+            let text = RowKit.wrapping(line, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
             let row = NSStackView(views: [icon, text])
             row.orientation = .horizontal
             row.alignment = .top
@@ -446,14 +446,14 @@ final class AnalyticsWindowController: NSWindowController {
         }
         views.append(
             RowKit.wrapping(
-                analytics.source, font: MacTheme.Font.caption(),
+                analytics.source, font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel))
         if !analytics.missingServers.isEmpty {
             views.append(
                 RowKit.wrapping(
                     Localized.text(
                         "Not counted: %@", analytics.missingServers.joined(separator: ", ")),
-                    font: MacTheme.Font.caption(), color: MacTheme.Color.warning))
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.warning))
         }
         return card(views: views)
     }
@@ -461,10 +461,10 @@ final class AnalyticsWindowController: NSWindowController {
     private func meterRow(
         label: String, detail: String, money: String?, share: Double, hot: Bool
     ) -> NSView {
-        let name = RowKit.label(label, font: MacTheme.Font.caption(), color: MacTheme.Color.label)
+        let name = RowKit.label(label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         name.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let count = RowKit.label(
-            detail, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         count.setContentHuggingPriority(.required, for: .horizontal)
         var topViews: [NSView] = [name, RowKit.spacer(), count]
         if let money {
@@ -500,12 +500,12 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func heading(_ text: String, trailing: String? = nil) -> NSView {
-        let title = RowKit.label(text, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+        let title = RowKit.label(text, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         var views: [NSView] = [title, RowKit.spacer()]
         if let trailing {
             views.append(
                 RowKit.label(
-                    trailing, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         let row = NSStackView(views: views)
         row.orientation = .horizontal
@@ -544,7 +544,7 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private static func heroFont() -> NSFont {
-        let base = NSFont.systemFont(ofSize: 34, weight: .bold)
+        let base = MacTheme.Ramp.font(.metricHero)
         guard let descriptor = base.fontDescriptor.withDesign(.rounded),
             let rounded = NSFont(descriptor: descriptor, size: 34)
         else { return base }

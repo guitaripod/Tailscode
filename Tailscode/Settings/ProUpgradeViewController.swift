@@ -59,7 +59,7 @@ final class ProUpgradeViewController: UIViewController {
 
         let heroTitle = UILabel()
         heroTitle.text = String(localized: "Support Tailscode")
-        heroTitle.font = Theme.Font.headline()
+        heroTitle.font = Theme.Ramp.font(.cardTitle)
         heroTitle.textAlignment = .center
 
         let heroBody = UILabel()
@@ -67,7 +67,7 @@ final class ProUpgradeViewController: UIViewController {
             localized:
                 "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development."
         )
-        heroBody.font = Theme.Font.subheadline()
+        heroBody.font = Theme.Ramp.font(.panelLabel)
         heroBody.textColor = Theme.Color.secondaryLabel
         heroBody.textAlignment = .center
         heroBody.numberOfLines = 0
@@ -125,12 +125,12 @@ final class ProUpgradeViewController: UIViewController {
         stack.addArrangedSubview(purchaseButton)
 
         restoreButton.setTitle(String(localized: "Restore purchases"), for: .normal)
-        restoreButton.titleLabel?.font = Theme.Font.caption()
+        restoreButton.titleLabel?.font = Theme.Ramp.font(.panelFootnote)
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
         stack.addArrangedSubview(restoreButton)
 
         tipHeader.text = String(localized: "Or leave a tip — no unlock, just thanks")
-        tipHeader.font = Theme.Font.caption()
+        tipHeader.font = Theme.Ramp.font(.panelFootnote)
         tipHeader.textColor = Theme.Color.secondaryLabel
         tipHeader.textAlignment = .center
         tipHeader.isHidden = true
@@ -142,7 +142,7 @@ final class ProUpgradeViewController: UIViewController {
         tipStack.distribution = .fillEqually
         stack.addArrangedSubview(tipStack)
 
-        statusLabel.font = Theme.Font.caption()
+        statusLabel.font = Theme.Ramp.font(.panelFootnote)
         statusLabel.textColor = Theme.Color.secondaryLabel
         statusLabel.textAlignment = .center
         statusLabel.numberOfLines = 0
@@ -176,7 +176,7 @@ final class ProUpgradeViewController: UIViewController {
 
         let label = UILabel()
         label.text = text
-        label.font = Theme.Font.subheadline()
+        label.font = Theme.Ramp.font(.panelLabel)
         label.numberOfLines = 0
 
         let row = UIStackView(arrangedSubviews: [icon, label])

@@ -93,6 +93,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case chatDragToPane
     case clickToActivate
     case uiScale
+    case typeRamp
     case themePicker
     case settingsSurface
     case goalControl
@@ -456,6 +457,10 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .uiScale, area: "app", title: "Type scale",
             spec: "Reading size is adjustable and persists under tailscode.uiScale (or the platform's own type system)."),
+        CapabilityDefinition(
+            id: .typeRamp, area: "app", title: "Type ramp",
+            spec:
+                "Every place the app sets type names a TypeRole from Core's shared ramp (Typography.spec) and no client invents a size, a weight, a tracking or a leading of its own. A role carries the axis it scales with (chrome, prose, mono), the face it is set in — prose, mono, or canvas, which is the client's own voice for the two things a person types — and the four values a client would otherwise guess. The ramp exists to make type say what an accent rule was saying alone: the prompt is the heavier voice and the answer the lighter one with the leading, because the question is a heading over its own answer; a name outweighs its detail inside a row (a tool's name is semibold, its arguments are not); tracking is spent only on small labels that would clot and display numbers that would sprawl; and anything that changes while a person watches it is set in tabular figures, so a settled number never reads as motion. TypographyTests proves the claims, so a client that drifts fails the build rather than the eye."),
         CapabilityDefinition(
             id: .themePicker, area: "app", title: "Theme",
             spec: "One catalog of named themes (AppTheme.all in Core), chosen on every client and persisted under tailscode.theme, with light or dark pinned separately under tailscode.appearance because picking Gruvbox should not also decide whether it is night. Each theme carries its own two appearances and follows the system between them unless pinned; every slot is published through Palette.corrected(), which walks lightness in OKLab until the colour clears WCAG on its own canvas, so a theme that cannot be made readable fails the build (ThemeTests). The slots are meanings, not decorations — accent is motion, warn is attention, danger is failure, info is what the agent touched, special is a standing mark — and no client may spend one on a second meaning. Where the client paints every pixel (Linux GTK) the palette is the whole window. Where the OS owns the materials (iOS and macOS Liquid Glass) the palette owns the content layer only and the glass is left alone to drink from it: no bar, sidebar or glass surface takes a palette background, ink that sits on glass stays a system colour so it flips with the material, and the palette reaches the chrome through the app tint and through the canvas the chrome floats over. Those two clients also offer System — the platform's own colours, and their default — because an app whose materials Apple drew has a real answer to give when someone wants no theme at all."),

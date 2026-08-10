@@ -93,6 +93,7 @@ enum ParityManifest {
         case .chatDragToPane: return .implemented("acceptChatDrops")
         case .clickToActivate: return .implemented("onPressCapture")
         case .uiScale: return .implemented("UIScale")
+        case .typeRamp: return .implemented("TypeCSS")
         case .themePicker: return .implemented("MatrixTheme")
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")

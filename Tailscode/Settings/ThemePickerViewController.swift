@@ -199,9 +199,9 @@ final class ThemeSwatchCell: UICollectionViewListCell {
         card.clipsToBounds = true
         contentView.addSubview(card)
 
-        nameLabel.font = Theme.Font.headline()
+        nameLabel.font = Theme.Ramp.font(.cardTitle)
         nameLabel.numberOfLines = 1
-        blurbLabel.font = Theme.Font.footnote()
+        blurbLabel.font = Theme.Ramp.font(.panelDetail)
         blurbLabel.numberOfLines = 2
 
         signals.axis = .horizontal

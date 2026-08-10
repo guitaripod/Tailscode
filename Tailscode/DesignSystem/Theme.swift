@@ -194,6 +194,86 @@ enum Theme {
         static let control: CGFloat = 10
     }
 
+    /// The shared ramp resolved into UIKit, with Dynamic Type left in charge of the growing.
+    ///
+    /// A role's ratio is applied to the body face at the default content size and the result is
+    /// handed to `UIFontMetrics`, so a role stays in proportion to every other role at every
+    /// accessibility size — which reading the *current* body size and scaling it again would break
+    /// by growing it twice. Tracking and leading are not font properties on Apple's platforms, so
+    /// `attributes(_:)` carries the whole setting where the label takes an attributed string, and
+    /// `font(_:)` is the honest subset for the many that do not.
+    enum Ramp {
+        /// What one unit of the ramp is worth on a phone, per axis. Prose is the body size, which is
+        /// what a transcript has always been set in; the chrome of a list is a step below it; and
+        /// monospace is smaller again, because a face whose every glyph is an em reads larger than a
+        /// proportional one at the same point size.
+        private static func base(_ axis: TypeAxis) -> Double {
+            switch axis {
+            case .prose: return Double(baseSize(of: .body))
+            case .chrome: return 16
+            case .mono: return 14
+            }
+        }
+
+        static func font(_ role: TypeRole) -> UIFont {
+            let spec = Typography.spec(role)
+            let size = CGFloat(spec.size(base: base(spec.axis)))
+            let weight = weight(spec.weight)
+            let face: UIFont =
+                switch spec.family {
+                case .mono: .monospacedSystemFont(ofSize: size, weight: weight)
+                case .prose, .canvas: .systemFont(ofSize: size, weight: weight)
+                }
+            let faced = spec.italic ? face.withTraits(.traitItalic) : face
+            let figured = spec.figures == .tabular ? faced.monospacedDigits() : faced
+            return UIFontMetrics(forTextStyle: .body).scaledFont(for: figured)
+        }
+
+        static func attributes(
+            _ role: TypeRole, color: UIColor = Theme.Color.label,
+            alignment: NSTextAlignment = .natural
+        ) -> [NSAttributedString.Key: Any] {
+            let spec = Typography.spec(role)
+            let font = font(role)
+            var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+            if spec.tracking != 0 {
+                attributes[.tracking] = spec.tracking(forSize: Double(font.pointSize))
+            }
+            if spec.lineHeight != 1 || alignment != .natural {
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = alignment
+                if spec.lineHeight != 1 {
+                    paragraph.lineHeightMultiple = spec.lineHeight
+                }
+                attributes[.paragraphStyle] = paragraph
+            }
+            return attributes
+        }
+
+        /// The leading a role asks for, as the extra a plain `UILabel` needs between its lines.
+        static func lineSpacing(_ role: TypeRole) -> CGFloat {
+            let spec = Typography.spec(role)
+            guard spec.lineHeight != 1 else { return 0 }
+            return font(role).lineHeight * CGFloat(spec.lineHeight - 1)
+        }
+
+        private static func weight(_ weight: TypeWeight) -> UIFont.Weight {
+            switch weight {
+            case .regular: return .regular
+            case .medium: return .medium
+            case .semibold: return .semibold
+            case .bold: return .bold
+            }
+        }
+
+        private static func baseSize(of style: UIFont.TextStyle) -> CGFloat {
+            UIFontDescriptor.preferredFontDescriptor(
+                withTextStyle: style,
+                compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+            ).pointSize
+        }
+    }
+
     enum Font {
         static func body() -> UIFont { .preferredFont(forTextStyle: .body) }
         static func headline() -> UIFont { .preferredFont(forTextStyle: .headline) }

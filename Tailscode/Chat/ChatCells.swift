@@ -150,7 +150,7 @@ final class TextBubbleCell: UICollectionViewCell {
         trailingPin.isActive = false
         textView.textAlignment = .natural
         bubble.backgroundColor = Theme.Color.danger.withAlphaComponent(0.08)
-        textView.font = .preferredFont(forTextStyle: .footnote)
+        textView.font = Theme.Ramp.font(.cardBody)
         textView.textColor = Theme.Color.danger
         let attachment = NSTextAttachment(
             image: UIImage(
@@ -160,10 +160,7 @@ final class TextBubbleCell: UICollectionViewCell {
         let string = NSMutableAttributedString(attachment: attachment)
         string.append(NSAttributedString(
             string: "  \(text)",
-            attributes: [
-                .font: UIFont.preferredFont(forTextStyle: .footnote),
-                .foregroundColor: Theme.Color.danger,
-            ]))
+            attributes: Theme.Ramp.attributes(.cardBody, color: Theme.Color.danger)))
         textView.attributedText = string
     }
 
@@ -182,7 +179,7 @@ final class TextBubbleCell: UICollectionViewCell {
         if timestamp {
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.tertiaryLabel
-            textView.font = .preferredFont(forTextStyle: .caption2)
+            textView.font = Theme.Ramp.font(.rowStamp)
             textView.textAlignment = .center
             textView.text = text
             leadingPin.isActive = false
@@ -205,11 +202,11 @@ final class TextBubbleCell: UICollectionViewCell {
         if reasoning {
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.secondaryLabel
-            textView.font = Theme.Type.font(.thought)
+            textView.font = Theme.Ramp.font(.thought)
             if let cascade {
                 let string = NSAttributedString(
                     string: text,
-                    attributes: Theme.Type.attributes(
+                    attributes: Theme.Ramp.attributes(
                         .thought, color: Theme.Color.secondaryLabel))
                 textView.attributedText = cascade.paint(
                     string, settled: Theme.Color.secondaryLabel)
@@ -223,15 +220,15 @@ final class TextBubbleCell: UICollectionViewCell {
         } else if isUser {
             bubble.backgroundColor = Theme.Color.userBubble
             textView.textColor = Theme.Color.onAccent
-            textView.font = Theme.Type.font(.prompt)
+            textView.font = Theme.Ramp.font(.prompt)
             textView.attributedText = NSAttributedString(
                 string: text,
-                attributes: Theme.Type.attributes(.prompt, color: Theme.Color.onAccent))
+                attributes: Theme.Ramp.attributes(.prompt, color: Theme.Color.onAccent))
             textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
             bubble.backgroundColor = Theme.Color.assistantBubble
             textView.textColor = Theme.Color.label
-            textView.font = Theme.Type.font(.answer)
+            textView.font = Theme.Ramp.font(.answer)
             let rendered = Self.rendered(text, color: Theme.Color.label)
             textView.attributedText =
                 cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
@@ -249,7 +246,7 @@ final class TextBubbleCell: UICollectionViewCell {
         if reasoning {
             let string = NSAttributedString(
                 string: text,
-                attributes: Theme.Type.attributes(.thought, color: Theme.Color.secondaryLabel))
+                attributes: Theme.Ramp.attributes(.thought, color: Theme.Color.secondaryLabel))
             textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
             return
         }
@@ -274,17 +271,17 @@ final class TextBubbleCell: UICollectionViewCell {
     static func rendered(_ text: String, color: UIColor) -> NSAttributedString {
         let key = "\(text)#\(color.description)" as NSString
         if let cached = renderCache.object(forKey: key) { return cached }
-        let base = Theme.Type.font(.answer)
+        let base = Theme.Ramp.font(.answer)
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         let result: NSAttributedString
         if var attr = try? AttributedString(markdown: text, options: options) {
             attr.font = base
             attr.foregroundColor = color
-            let headingFont = Theme.Type.font(.cardTitle)
+            let headingFont = Theme.Ramp.font(.cardTitle)
             for run in attr.runs {
                 if run.inlinePresentationIntent?.contains(.code) == true {
-                    attr[run.range].font = Theme.Type.font(.code)
+                    attr[run.range].font = Theme.Ramp.font(.code)
                     attr[run.range].backgroundColor = Theme.Color.reasoningBackground
                 }
                 if run.inlinePresentationIntent?.contains(.emphasized) == true {
@@ -303,7 +300,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 let line = mutable.attributedSubstring(from: substringRange).string
                 let marks = line.prefix(while: { $0 == "#" }).count
                 if marks >= 1, marks <= 6, line.dropFirst(marks).hasPrefix(" ") {
-                    let font = marks <= 2 ? Theme.Type.font(.headline) : headingFont
+                    let font = marks <= 2 ? Theme.Ramp.font(.headline) : headingFont
                     mutable.addAttribute(.font, value: font, range: substringRange)
                     edits.append(
                         (NSRange(location: substringRange.location, length: marks + 1), ""))
@@ -476,12 +473,12 @@ final class PermissionCell: UICollectionViewCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = Theme.Type.font(.cardTitle)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = Theme.Type.font(.cardBody)
+        detailLabel.font = Theme.Ramp.font(.cardBody)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -682,7 +679,7 @@ final class CodeBlockCell: UICollectionViewCell {
         container.layer.cornerCurve = .continuous
         container.translatesAutoresizingMaskIntoConstraints = false
 
-        langLabel.font = Theme.Font.mono(11)
+        langLabel.font = Theme.Ramp.font(.codeLabel)
         langLabel.textColor = Theme.Color.tertiaryLabel
         langLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -703,19 +700,19 @@ final class CodeBlockCell: UICollectionViewCell {
         codeScroll.translatesAutoresizingMaskIntoConstraints = false
 
         codeLabel.numberOfLines = 0
-        codeLabel.font = Theme.Font.mono(12)
+        codeLabel.font = Self.monoFont
         codeLabel.textColor = Theme.Color.label
         codeLabel.lineBreakMode = .byClipping
         codeLabel.translatesAutoresizingMaskIntoConstraints = false
 
         lineNumberLabel.numberOfLines = 0
-        lineNumberLabel.font = Theme.Font.mono(12)
+        lineNumberLabel.font = Self.monoFont
         lineNumberLabel.textColor = Theme.Color.tertiaryLabel
         lineNumberLabel.textAlignment = .right
         lineNumberLabel.isAccessibilityElement = false
         lineNumberLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        toggleButton.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
+        toggleButton.titleLabel?.font = Theme.Ramp.font(.panelDetail)
         toggleButton.setTitleColor(Theme.Color.accent, for: .normal)
         toggleButton.contentHorizontalAlignment = .leading
         toggleButton.translatesAutoresizingMaskIntoConstraints = false
@@ -876,7 +873,7 @@ final class CodeBlockCell: UICollectionViewCell {
         (1...count).map { "\($0)" }.joined(separator: "\n")
     }
 
-    static let monoFont = Theme.Font.mono(12)
+    static var monoFont: UIFont { Theme.Ramp.font(.code) }
 
     private static let highlightCache: NSCache<NSString, NSAttributedString> = {
         let cache = NSCache<NSString, NSAttributedString>()
@@ -1140,9 +1137,7 @@ final class ActivityGroupCell: UICollectionViewCell {
             : (failed ? Theme.Color.warning : Theme.Color.accent).withAlphaComponent(0.12)
         container.layer.cornerRadius = isCompact ? 12 : Theme.Radius.card
         glass.layer.cornerRadius = container.layer.cornerRadius
-        summaryLabel.font = isCompact
-            ? UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold)
-            : UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        summaryLabel.font = Theme.Ramp.font(isCompact ? .toolName : .cardTitle)
         summaryLabel.textColor = failed ? Theme.Color.warning : Theme.Color.secondaryLabel
 
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1418,22 +1413,22 @@ final class QuestionCell: UICollectionViewCell {
 
         let title = UILabel()
         title.text = String(localized: "The agent has a question")
-        title.font = .preferredFont(forTextStyle: .caption1)
+        title.font = Theme.Ramp.font(.panelFootnote)
         title.textColor = Theme.Color.secondaryLabel
         stack.addArrangedSubview(title)
 
         for (questionIndex, item) in request.questions.enumerated() {
             if !item.header.isEmpty {
                 let header = UILabel()
-                header.text = item.header.uppercased()
-                header.font = .systemFont(ofSize: 11, weight: .bold)
-                header.textColor = Theme.Color.accent
+                header.attributedText = NSAttributedString(
+                    string: item.header.uppercased(),
+                    attributes: Theme.Ramp.attributes(.sectionLabel, color: Theme.Color.accent))
                 stack.addArrangedSubview(header)
                 stack.setCustomSpacing(Theme.Spacing.xs, after: header)
             }
             let question = UILabel()
             question.text = item.question
-            question.font = Theme.Font.headline()
+            question.font = Theme.Ramp.font(.cardTitle)
             question.numberOfLines = 0
             stack.addArrangedSubview(question)
 
@@ -1457,7 +1452,7 @@ final class QuestionCell: UICollectionViewCell {
         footer.axis = .horizontal
         footer.spacing = Theme.Spacing.m
         skipButton.setTitle(String(localized: "Skip"), for: .normal)
-        skipButton.titleLabel?.font = Theme.Font.caption()
+        skipButton.titleLabel?.font = Theme.Ramp.font(.control)
         skipButton.setTitleColor(Theme.Color.secondaryLabel, for: .normal)
         skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
         footer.addArrangedSubview(skipButton)
@@ -1484,11 +1479,11 @@ final class QuestionCell: UICollectionViewCell {
         config.background.cornerRadius = Theme.Radius.control
         config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
         var titleAttr = AttributedString(option.label)
-        titleAttr.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleAttr.font = Theme.Ramp.font(.cardTitle)
         config.attributedTitle = titleAttr
         if !option.description.isEmpty {
             var subAttr = AttributedString(option.description)
-            subAttr.font = UIFont.preferredFont(forTextStyle: .caption1)
+            subAttr.font = Theme.Ramp.font(.panelDetail)
             subAttr.foregroundColor = Theme.Color.secondaryLabel
             config.attributedSubtitle = subAttr
             config.titlePadding = 2
@@ -1518,7 +1513,7 @@ final class QuestionCell: UICollectionViewCell {
         let custom = selection.custom[questionIndex]
         var titleAttr = AttributedString(
             custom?.isEmpty == false ? custom! : String(localized: "Other…"))
-        titleAttr.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        titleAttr.font = Theme.Ramp.font(.panelLabel)
         config.attributedTitle = titleAttr
         config.image = UIImage(
             systemName: custom?.isEmpty == false ? "pencil.circle.fill" : "pencil.circle",

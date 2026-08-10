@@ -133,10 +133,10 @@ final class SidebarSessionCell: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
-        glyph.font = MacTheme.Font.body()
+        glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.translatesAutoresizingMaskIntoConstraints = false
 
-        title.font = MacTheme.Font.body()
+        title.font = MacTheme.Ramp.font(.panelLabel)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -146,12 +146,12 @@ final class SidebarSessionCell: NSView {
         titleRow.addArrangedSubview(title)
         titleRow.translatesAutoresizingMaskIntoConstraints = false
 
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byTruncatingTail
         detail.translatesAutoresizingMaskIntoConstraints = false
 
-        age.font = .monospacedDigitSystemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .regular)
+        age.font = .monospacedDigitSystemFont(ofSize: MacTheme.Ramp.font(.panelFootnote).pointSize, weight: .regular)
         age.textColor = MacTheme.Color.tertiaryLabel
         age.alignment = .right
         age.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -201,26 +201,26 @@ final class SidebarSessionCell: NSView {
         let activity = marked ? nil : model.state.activity
         badge.activity = activity
         glyph.stringValue = activity == nil ? (marked ? "✓" : model.state.glyph.text) : ""
-        glyph.font = MacTheme.Font.body()
+        glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.textColor = marked ? MacTheme.Color.accent : Self.glyphColor(model.state)
         title.stringValue = model.title
-        title.font = model.unread ? MacTheme.Font.emphasis() : MacTheme.Font.body()
+        title.font = model.unread ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
         let facets = model.facets(vocabulary)
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         let line = NSMutableAttributedString()
         if let chip = ModelBadge.chip(for: model.entry) {
             line.append(Self.chipText(chip))
             line.append(
                 NSAttributedString(
                     string: "  ",
-                    attributes: [.font: MacTheme.Font.caption()]))
+                    attributes: [.font: MacTheme.Ramp.font(.panelFootnote)]))
         }
         if let snippet = model.snippet {
             line.append(
                 NSAttributedString(
                     string: snippet,
                     attributes: [
-                        .font: MacTheme.Font.caption(),
+                        .font: MacTheme.Ramp.font(.panelFootnote),
                         .foregroundColor: MacTheme.Color.accent,
                     ]))
         } else {
@@ -229,7 +229,7 @@ final class SidebarSessionCell: NSView {
         detail.attributedStringValue = line
         age.stringValue = facets.age
         age.font = .monospacedDigitSystemFont(
-            ofSize: MacTheme.Font.caption().pointSize, weight: .regular)
+            ofSize: MacTheme.Ramp.font(.panelFootnote).pointSize, weight: .regular)
         age.textColor = MacTheme.Color.tertiaryLabel
         for view in titleRow.arrangedSubviews.dropFirst() {
             titleRow.removeArrangedSubview(view)
@@ -258,7 +258,7 @@ final class SidebarSessionCell: NSView {
     /// line the same way the Linux chips do. Ultracode is not a heat, so its word is set letter
     /// by letter from the shared rainbow, each held to the canvas's own contrast floor.
     static func chipText(_ chip: ModelChip) -> NSAttributedString {
-        let font = NSFont.systemFont(ofSize: MacTheme.Font.caption().pointSize, weight: .semibold)
+        let font = MacTheme.Ramp.font(.rowTitleStrong)
         let text = NSMutableAttributedString(
             string: chip.name,
             attributes: [.font: font, .foregroundColor: MacTheme.Color.modelIdentity(chip)])
@@ -293,7 +293,7 @@ final class SidebarSessionCell: NSView {
     /// by word to find the only part that identifies anything.
     private static func detailText(_ facets: SessionRowFacets) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        let font = MacTheme.Font.caption()
+        let font = MacTheme.Ramp.font(.panelFootnote)
         if let project = facets.project {
             text.append(
                 NSAttributedString(
@@ -322,7 +322,7 @@ final class SidebarSessionCell: NSView {
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 9, weight: .semibold)
+        label.font = MacTheme.Ramp.font(.metricLabel)
         label.textColor = tint
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()
@@ -350,12 +350,12 @@ final class SidebarMissedCell: NSView {
 
     init() {
         super.init(frame: .zero)
-        glyph.font = MacTheme.Font.body()
+        glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.translatesAutoresizingMaskIntoConstraints = false
-        title.font = MacTheme.Font.body()
+        title.font = MacTheme.Ramp.font(.panelLabel)
         title.lineBreakMode = .byTruncatingTail
         title.translatesAutoresizingMaskIntoConstraints = false
-        detail.font = MacTheme.Font.caption()
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byTruncatingTail
         detail.translatesAutoresizingMaskIntoConstraints = false
@@ -385,7 +385,7 @@ final class SidebarMissedCell: NSView {
         glyph.textColor =
             item.isBlocking ? face.tone.color : face.tone.color.withAlphaComponent(0.72)
         title.stringValue = item.title
-        title.font = item.isBlocking ? MacTheme.Font.emphasis() : MacTheme.Font.body()
+        title.font = item.isBlocking ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
         detail.stringValue =
             "\(item.kindLabel) · \(StatusFacts.age(Date().timeIntervalSince(item.at))) ago"
         setAccessibilityLabel("\(item.title) — \(item.kindLabel)")
@@ -402,9 +402,9 @@ final class SidebarSearchResultCell: NSView {
 
     init() {
         super.init(frame: .zero)
-        title.font = MacTheme.Font.body()
+        title.font = MacTheme.Ramp.font(.panelLabel)
         title.lineBreakMode = .byTruncatingTail
-        where_.font = MacTheme.Font.caption()
+        where_.font = MacTheme.Ramp.font(.panelFootnote)
         where_.textColor = MacTheme.Color.secondaryLabel
         where_.lineBreakMode = .byTruncatingTail
         quotes.orientation = .vertical
@@ -429,7 +429,7 @@ final class SidebarSearchResultCell: NSView {
 
     func configure(with result: TranscriptSearch.Row) {
         title.stringValue = result.title
-        title.font = result.isTitleOnly ? MacTheme.Font.body() : MacTheme.Font.emphasis()
+        title.font = result.isTitleOnly ? MacTheme.Ramp.font(.panelLabel) : MacTheme.Ramp.font(.cardTitle)
         where_.stringValue =
             ([result.project, result.profileName].compactMap { $0 }
             + (result.isTitleOnly ? [Localized.text("title only")] : []))
@@ -445,7 +445,7 @@ final class SidebarSearchResultCell: NSView {
             let more = NSTextField(
                 labelWithString: Localized.text(
                     "… %@ more in this chat", "\(result.total - result.matches.count)"))
-            more.font = MacTheme.Font.caption()
+            more.font = MacTheme.Ramp.font(.panelFootnote)
             more.textColor = MacTheme.Color.tertiaryLabel
             quotes.addArrangedSubview(more)
         }
@@ -454,11 +454,11 @@ final class SidebarSearchResultCell: NSView {
 
     private static func quote(_ match: TranscriptMatch) -> NSView {
         let kind = NSTextField(labelWithString: TranscriptSearch.label(for: match))
-        kind.font = MacTheme.Font.caption()
+        kind.font = MacTheme.Ramp.font(.panelFootnote)
         kind.textColor = MacTheme.Color.accent
         kind.setContentCompressionResistancePriority(.required, for: .horizontal)
         let text = NSTextField(labelWithString: match.text)
-        text.font = MacTheme.Font.caption()
+        text.font = MacTheme.Ramp.font(.panelFootnote)
         text.textColor = MacTheme.Color.secondaryLabel
         text.lineBreakMode = .byTruncatingTail
         let row = NSStackView(views: [kind, text])
@@ -478,14 +478,14 @@ final class SidebarHeaderCell: NSView {
 
     init() {
         super.init(frame: .zero)
-        title.font = .systemFont(ofSize: 10, weight: .semibold)
+        title.font = MacTheme.Ramp.font(.metricLabel)
         title.textColor = MacTheme.Color.secondaryLabel
         title.translatesAutoresizingMaskIntoConstraints = false
-        count.font = .systemFont(ofSize: 10, weight: .semibold)
+        count.font = MacTheme.Ramp.font(.metricLabel)
         count.textColor = MacTheme.Color.tertiaryLabel
         count.translatesAutoresizingMaskIntoConstraints = false
         clear.title = Localized.text("clear")
-        clear.font = .systemFont(ofSize: 10, weight: .semibold)
+        clear.font = MacTheme.Ramp.font(.metricLabel)
         clear.bezelStyle = .inline
         clear.isBordered = false
         clear.contentTintColor = MacTheme.Color.secondaryLabel
@@ -547,14 +547,14 @@ final class SidebarBulkBar: NSView {
         layer?.cornerRadius = MacTheme.Radius.control
         layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.12).cgColor
 
-        badge.font = MacTheme.Font.mono(11)
+        badge.font = MacTheme.Ramp.font(.toolOutput)
         badge.textColor = MacTheme.Color.accent
         badge.setContentHuggingPriority(.required, for: .horizontal)
 
         let clear = NSButton(title: "✕", target: self, action: #selector(clearMarks))
         clear.isBordered = false
         clear.bezelStyle = .accessoryBar
-        clear.font = MacTheme.Font.caption()
+        clear.font = MacTheme.Ramp.font(.panelFootnote)
         clear.contentTintColor = MacTheme.Color.secondaryLabel
         clear.toolTip = Localized.text("Clear the marks")
         clear.setAccessibilityLabel(Localized.text("Clear the marks"))
@@ -567,7 +567,7 @@ final class SidebarBulkBar: NSView {
         secondary.spacing = MacTheme.Spacing.xs
         secondary.alignment = .centerY
         secondary.distribution = .fillProportionally
-        splitHeader.font = MacTheme.Font.caption()
+        splitHeader.font = MacTheme.Ramp.font(.panelFootnote)
         splitHeader.textColor = MacTheme.Color.secondaryLabel
         splitRow.orientation = .horizontal
         splitRow.spacing = MacTheme.Spacing.xs
@@ -632,7 +632,7 @@ final class SidebarBulkBar: NSView {
             title: arrangement.title, target: self, action: #selector(splitPicked))
         button.isBordered = false
         button.bezelStyle = .accessoryBar
-        button.font = MacTheme.Font.caption()
+        button.font = MacTheme.Ramp.font(.panelFootnote)
         button.contentTintColor = MacTheme.Color.accent
         button.image = NSImage(
             systemSymbolName: arrangement.symbolName,
@@ -657,7 +657,7 @@ final class SidebarBulkBar: NSView {
         let button = NSButton(title: title, target: self, action: #selector(verbPicked))
         button.isBordered = false
         button.bezelStyle = .accessoryBar
-        button.font = MacTheme.Font.caption()
+        button.font = MacTheme.Ramp.font(.panelFootnote)
         button.contentTintColor =
             action.isDestructive ? MacTheme.Color.danger : MacTheme.Color.accent
         button.lineBreakMode = .byTruncatingTail
@@ -708,15 +708,15 @@ final class SidebarMessageCell: NSView {
         label.stringValue = text
         switch style {
         case .banner:
-            label.font = MacTheme.Font.caption()
+            label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.danger
             label.alignment = .left
         case .empty:
-            label.font = MacTheme.Font.body()
+            label.font = MacTheme.Ramp.font(.panelLabel)
             label.textColor = MacTheme.Color.tertiaryLabel
             label.alignment = .center
         case .action:
-            label.font = MacTheme.Font.caption()
+            label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.secondaryLabel
             label.alignment = .center
         }

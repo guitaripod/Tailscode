@@ -36,7 +36,7 @@ final class TerminalPane: NSViewController {
 
         notice.stringValue = Localized.text(
             "Running one command at a time in a login shell — not a full terminal")
-        notice.font = MacTheme.Font.caption()
+        notice.font = MacTheme.Ramp.font(.panelFootnote)
         notice.textColor = MacTheme.Color.tertiaryLabel
         notice.lineBreakMode = .byTruncatingTail
         notice.translatesAutoresizingMaskIntoConstraints = false
@@ -96,7 +96,7 @@ final class TerminalPane: NSViewController {
         output.isEditable = false
         output.isRichText = false
         output.drawsBackground = false
-        output.font = MacTheme.Font.mono(12)
+        output.font = MacTheme.Ramp.font(.code)
         output.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.xs)
         output.autoresizingMask = [.width]
         output.isVerticallyResizable = true
@@ -108,7 +108,7 @@ final class TerminalPane: NSViewController {
     }
 
     private func configureField() {
-        field.font = MacTheme.Font.mono(12)
+        field.font = MacTheme.Ramp.font(.code)
         field.placeholderString = Localized.text("Run a command…")
         field.target = self
         field.action = #selector(runFromField)
@@ -178,7 +178,7 @@ final class TerminalPane: NSViewController {
             emphasized
             ? NSFont.monospacedSystemFont(
                 ofSize: 12 * MacTheme.UIScale.factor, weight: .semibold)
-            : MacTheme.Font.mono(12)
+            : MacTheme.Ramp.font(.code)
         storage.append(
             NSAttributedString(
                 string: text.hasSuffix("\n") ? text : text + "\n",

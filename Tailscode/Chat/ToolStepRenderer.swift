@@ -19,7 +19,7 @@ final class ToolStepRenderer {
         case .reasoning(let text):
             let label = UILabel()
             label.numberOfLines = 0
-            label.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitItalic)
+            label.font = Theme.Ramp.font(.thought)
             label.textColor = Theme.Color.secondaryLabel
             label.text = text
             return label
@@ -59,13 +59,13 @@ final class ToolStepRenderer {
         attributed.append(
             NSAttributedString(
                 string: "\(call.name)  ",
-                attributes: [.font: UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold)]))
+                attributes: [.font: Theme.Ramp.font(.toolName)]))
         attributed.append(
             NSAttributedString(
                 string: call.status.rawValue,
                 attributes: [
                     .foregroundColor: statusColor,
-                    .font: UIFont.preferredFont(forTextStyle: .caption1),
+                    .font: Theme.Ramp.font(.toolDetail),
                 ]))
         if linkable, let chevron = UIImage(
             systemName: "chevron.right.circle.fill",
@@ -238,14 +238,14 @@ final class ToolStepRenderer {
         let line = NSMutableAttributedString(
             string: name,
             attributes: [
-                .font: UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold),
+                .font: Theme.Ramp.font(.toolName),
                 .foregroundColor: Theme.Color.label,
             ])
         if let metric = summary.metric {
             line.append(NSAttributedString(
                 string: "  ·  \(metric)",
                 attributes: [
-                    .font: UIFont.preferredFont(forTextStyle: .caption1),
+                    .font: Theme.Ramp.font(.toolDetail),
                     .foregroundColor: Theme.Color.secondaryLabel,
                 ]))
         }
@@ -254,7 +254,7 @@ final class ToolStepRenderer {
                 line.append(NSAttributedString(
                     string: "  +\(stats.added)",
                     attributes: [
-                        .font: Theme.Font.mono(11),
+                        .font: Theme.Ramp.font(.codeLabel),
                         .foregroundColor: Theme.Color.success,
                     ]))
             }
@@ -262,7 +262,7 @@ final class ToolStepRenderer {
                 line.append(NSAttributedString(
                     string: "  −\(stats.removed)",
                     attributes: [
-                        .font: Theme.Font.mono(11),
+                        .font: Theme.Ramp.font(.codeLabel),
                         .foregroundColor: Theme.Color.danger,
                     ]))
             }
@@ -285,14 +285,14 @@ final class ToolStepRenderer {
         attributed.append(NSAttributedString(
             string: link.title,
             attributes: [
-                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .font: Theme.Ramp.font(.toolDetail),
                 .foregroundColor: Theme.Color.accent,
             ]))
         if let host = link.url.host {
             attributed.append(NSAttributedString(
                 string: "  \(host)",
                 attributes: [
-                    .font: UIFont.preferredFont(forTextStyle: .caption2),
+                    .font: Theme.Ramp.font(.treePath),
                     .foregroundColor: Theme.Color.tertiaryLabel,
                 ]))
         }
@@ -313,7 +313,7 @@ final class ToolStepRenderer {
     static func titleLabel(_ text: String) -> UILabel {
         let label = UILabel()
         label.numberOfLines = 2
-        label.font = .preferredFont(forTextStyle: .footnote)
+        label.font = Theme.Ramp.font(.toolDetail)
         label.textColor = Theme.Color.label
         label.text = text
         return label
@@ -323,7 +323,7 @@ final class ToolStepRenderer {
         let label = UILabel()
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingHead
-        label.font = .preferredFont(forTextStyle: .caption2)
+        label.font = Theme.Ramp.font(.treePath)
         label.textColor = Theme.Color.tertiaryLabel
         label.text = text
         return label
@@ -333,18 +333,18 @@ final class ToolStepRenderer {
         let label = UILabel()
         label.numberOfLines = 4
         label.lineBreakMode = .byTruncatingTail
-        label.font = Theme.Font.mono(11)
+        label.font = Theme.Ramp.font(.toolOutput)
         label.textColor = Theme.Color.label
         let attributed = NSMutableAttributedString(
             string: "$ ",
             attributes: [
-                .font: Theme.Font.mono(11),
+                .font: Theme.Ramp.font(.codeLabel),
                 .foregroundColor: Theme.Color.tertiaryLabel,
             ])
         attributed.append(NSAttributedString(
             string: command,
             attributes: [
-                .font: Theme.Font.mono(11),
+                .font: Theme.Ramp.font(.codeLabel),
                 .foregroundColor: Theme.Color.label,
             ]))
         label.attributedText = attributed
@@ -353,7 +353,7 @@ final class ToolStepRenderer {
 
     static func outputLabel(_ text: String) -> UILabel {
         let label = UILabel()
-        label.font = Theme.Font.mono(11)
+        label.font = Theme.Ramp.font(.toolOutput)
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 10
         label.lineBreakMode = .byTruncatingTail
@@ -381,7 +381,7 @@ final class ToolStepRenderer {
         attributed.append(NSAttributedString(
             string: text,
             attributes: [
-                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .font: Theme.Ramp.font(.toolDetail),
                 .foregroundColor: Theme.Color.label,
             ]))
         return attributed
@@ -419,7 +419,7 @@ final class ToolStepRenderer {
                 attributed.append(NSAttributedString(attachment: attachment))
             }
             var textAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.preferredFont(forTextStyle: .footnote),
+                .font: Theme.Ramp.font(.panelLabel),
                 .foregroundColor: done ? Theme.Color.tertiaryLabel : Theme.Color.label,
             ]
             if done { textAttrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
@@ -441,7 +441,7 @@ final class ToolStepRenderer {
             let lines = ToolDiff.lines(for: call)
         else { return nil }
         let language = ToolDiff.language(for: call)
-        let mono = Theme.Font.mono(11)
+        let mono = Theme.Ramp.font(.toolOutput)
         let stack = UIStackView()
         stack.axis = .vertical
         stack.alignment = .fill

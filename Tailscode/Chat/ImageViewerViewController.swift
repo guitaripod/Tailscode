@@ -129,11 +129,11 @@ final class ImageViewerViewController: UIViewController {
     }
 
     private func buildChrome() {
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline)
+        titleLabel.font = Theme.Ramp.font(.panelLabel)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = .white
         titleLabel.lineBreakMode = .byTruncatingMiddle
-        subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
+        subtitleLabel.font = Theme.Ramp.font(.panelFootnote)
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.7)
         let titles = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
@@ -557,7 +557,7 @@ final class ImagePageCell: UICollectionViewCell {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(spinner)
 
-        failure.font = Theme.Font.subheadline()
+        failure.font = Theme.Ramp.font(.panelLabel)
         failure.textColor = UIColor.white.withAlphaComponent(0.7)
         failure.textAlignment = .center
         failure.numberOfLines = 3

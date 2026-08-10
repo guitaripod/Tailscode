@@ -47,7 +47,7 @@ final class PillsRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        vimBadge.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        vimBadge.font = MacTheme.Ramp.font(.badge)
         vimBadge.textColor = MacTheme.Color.label
         vimBadge.translatesAutoresizingMaskIntoConstraints = false
         vimBadgeWrap.wantsLayer = true
@@ -63,7 +63,7 @@ final class PillsRow: NSView {
         ])
         vimBadgeWrap.isHidden = true
 
-        destinationLabel.font = MacTheme.Font.caption()
+        destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
         destinationLabel.textColor = MacTheme.Color.tertiaryLabel
         destinationLabel.lineBreakMode = .byTruncatingMiddle
         destinationLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -158,7 +158,7 @@ final class PillsRow: NSView {
     /// Ultracode is a power, not a level, so its pill does not take a heat: the word itself is
     /// set letter by letter from the shared rainbow, the same stops the aura travels.
     func setEffortRainbow(_ word: String) {
-        let font = effortPill.font ?? MacTheme.Font.caption()
+        let font = effortPill.font ?? MacTheme.Ramp.font(.panelFootnote)
         let text = NSMutableAttributedString()
         for (index, letter) in word.enumerated() {
             text.append(
@@ -201,7 +201,7 @@ final class MenuPill: NSButton {
         self.title = title
         bezelStyle = .rounded
         controlSize = .small
-        font = MacTheme.Font.caption()
+        font = MacTheme.Ramp.font(.panelFootnote)
         target = self
         action = #selector(popUp)
         translatesAutoresizingMaskIntoConstraints = false

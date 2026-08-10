@@ -93,7 +93,7 @@ final class AnalyticsViewController: UIViewController {
 
     private func setupStateViews() {
         spinner.hidesWhenStopped = true
-        stateLabel.font = Theme.Font.subheadline()
+        stateLabel.font = Theme.Ramp.font(.panelLabel)
         stateLabel.textColor = Theme.Color.secondaryLabel
         stateLabel.textAlignment = .center
         stateLabel.numberOfLines = 0
@@ -167,13 +167,13 @@ final class AnalyticsViewController: UIViewController {
         if !analytics.machines.isEmpty { column.addArrangedSubview(machines(analytics)) }
         if !analytics.insights.isEmpty { column.addArrangedSubview(insights(analytics)) }
 
-        let source = label(analytics.source, style: .caption2, color: Theme.Color.tertiaryLabel)
+        let source = label(analytics.source, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
         column.addArrangedSubview(source)
         if !analytics.missingServers.isEmpty {
             let names = analytics.missingServers.joined(separator: ", ")
             column.addArrangedSubview(
                 label(
-                    String(localized: "Not counted: \(names)"), style: .caption2,
+                    String(localized: "Not counted: \(names)"), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel))
         }
         primeBarAnimation()
@@ -188,15 +188,15 @@ final class AnalyticsViewController: UIViewController {
         money.minimumScaleFactor = 0.6
 
         let window = label(
-            analytics.windowLabel, style: .caption1, color: Theme.Color.secondaryLabel)
+            analytics.windowLabel, role: .panelDetail, color: Theme.Color.secondaryLabel)
         let perDay = label(
-            analytics.perDayLine, style: .subheadline, color: Theme.Color.secondaryLabel)
+            analytics.perDayLine, role: .panelLabel, color: Theme.Color.secondaryLabel)
         let activity = label(
-            analytics.activityLine, style: .footnote, color: Theme.Color.secondaryLabel)
+            analytics.activityLine, role: .metricDetail, color: Theme.Color.secondaryLabel)
 
         var views: [UIView] = [money, window, perDay, activity]
         if let deltaLine = analytics.deltaLine {
-            views.append(label(deltaLine, style: .footnote, color: deltaColor(analytics.trend)))
+            views.append(label(deltaLine, role: .metricDetail, color: deltaColor(analytics.trend)))
         }
         return card(views)
     }
@@ -219,13 +219,13 @@ final class AnalyticsViewController: UIViewController {
             annotations.append(
                 label(
                     String(localized: "Peak \(peak.weekdayLabel) \(peak.label) · \(peak.money)"),
-                    style: .caption2, color: Theme.Color.tertiaryLabel))
+                    role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         annotations.append(UIView())
         if let today = analytics.days.last(where: \.isToday) {
             annotations.append(
                 label(
-                    String(localized: "Today \(today.money)"), style: .caption2,
+                    String(localized: "Today \(today.money)"), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel))
         }
         if annotations.count > 1 {
@@ -273,7 +273,7 @@ final class AnalyticsViewController: UIViewController {
             hourColumns(analytics),
         ]
         if let clockLine = analytics.clockLine {
-            views.append(label(clockLine, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(clockLine, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         return card(views)
     }
@@ -305,7 +305,7 @@ final class AnalyticsViewController: UIViewController {
                 bar.heightAnchor.constraint(equalToConstant: height),
             ])
 
-            let name = label(meter.label, style: .caption2, color: Theme.Color.secondaryLabel)
+            let name = label(meter.label, role: .panelFootnote, color: Theme.Color.secondaryLabel)
             name.textAlignment = .center
             let columnStack = UIStackView(arrangedSubviews: [container, name])
             columnStack.axis = .vertical
@@ -374,7 +374,7 @@ final class AnalyticsViewController: UIViewController {
     {
         var views: [UIView] = [heading(title, trailing: nil)]
         if let caption {
-            views.append(label(caption, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(caption, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         for (index, row) in meters.enumerated() {
             views.append(
@@ -395,7 +395,7 @@ final class AnalyticsViewController: UIViewController {
                     hot: tier.id == "output"))
         }
         if let cacheLine = analytics.cacheLine {
-            views.append(label(cacheLine, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(cacheLine, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         return card(views)
     }
@@ -426,15 +426,15 @@ final class AnalyticsViewController: UIViewController {
             pointSize: 20, weight: .semibold)
         symbol.contentMode = .scaleAspectFit
 
-        let title = label(record.title, style: .caption1, color: Theme.Color.secondaryLabel)
-        let value = label(record.value, style: .subheadline, color: Theme.Color.label, bold: true)
+        let title = label(record.title, role: .panelDetail, color: Theme.Color.secondaryLabel)
+        let value = label(record.value, role: .metricValue, color: Theme.Color.label)
 
         let tile = UIStackView(arrangedSubviews: [symbol, title, value])
         tile.axis = .vertical
         tile.alignment = .leading
         tile.spacing = Theme.Spacing.xs
         if let detail = record.detail {
-            let detailLabel = label(detail, style: .footnote, color: Theme.Color.tertiaryLabel)
+            let detailLabel = label(detail, role: .metricDetail, color: Theme.Color.tertiaryLabel)
             detailLabel.numberOfLines = 2
             tile.addArrangedSubview(detailLabel)
         }
@@ -464,7 +464,7 @@ final class AnalyticsViewController: UIViewController {
             views.append(dashboardButton(title))
         }
         if let line = GameCenterCoordinator.shared.unavailableLine {
-            views.append(label(line, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(line, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         return card(views)
     }
@@ -485,7 +485,7 @@ final class AnalyticsViewController: UIViewController {
         if earned.count > 10 {
             row.addArrangedSubview(
                 label(
-                    "+\(earned.count - 10)", style: .caption1,
+                    "+\(earned.count - 10)", role: .panelDetail,
                     color: Theme.Color.secondaryLabel))
         }
         row.addArrangedSubview(UIView())
@@ -532,7 +532,7 @@ final class AnalyticsViewController: UIViewController {
             symbol.contentMode = .scaleAspectFit
             symbol.setContentHuggingPriority(.required, for: .horizontal)
             symbol.setContentCompressionResistancePriority(.required, for: .horizontal)
-            let text = label(line, style: .footnote, color: Theme.Color.label)
+            let text = label(line, role: .metricDetail, color: Theme.Color.label)
             let row = UIStackView(arrangedSubviews: [symbol, text])
             row.axis = .horizontal
             row.alignment = .firstBaseline
@@ -568,10 +568,10 @@ final class AnalyticsViewController: UIViewController {
 
     private func heading(_ text: String, trailing: String?) -> UIView {
         var views: [UIView] = [
-            label(text, style: .headline, color: Theme.Color.label), UIView(),
+            label(text, role: .panelTitle, color: Theme.Color.label), UIView(),
         ]
         if let trailing {
-            views.append(label(trailing, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(trailing, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         let row = UIStackView(arrangedSubviews: views)
         row.axis = .horizontal
@@ -583,8 +583,8 @@ final class AnalyticsViewController: UIViewController {
     private func meter(
         label name: String, value: String, detail: String, fraction: Double, hot: Bool
     ) -> UIView {
-        let title = label(name, style: .footnote, color: Theme.Color.label)
-        let count = label(detail, style: .caption2, color: Theme.Color.tertiaryLabel)
+        let title = label(name, role: .metricDetail, color: Theme.Color.label)
+        let count = label(detail, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
         count.setContentHuggingPriority(.required, for: .horizontal)
         let money = UILabel()
         money.text = value
@@ -637,14 +637,13 @@ final class AnalyticsViewController: UIViewController {
         return stack
     }
 
-    private func label(
-        _ text: String, style: UIFont.TextStyle, color: UIColor, bold: Bool = false
-    ) -> UILabel {
+    /// Every reading on this screen is set from the shared ramp: the role decides the size, the
+    /// weight, the tracking and whether the digits share a width, so a column of numbers stays a
+    /// column while it changes.
+    private func label(_ text: String, role: TypeRole, color: UIColor) -> UILabel {
         let label = UILabel()
-        label.text = text
-        label.font = bold
-            ? .preferredFont(forTextStyle: style).withTraits(.traitBold)
-            : .preferredFont(forTextStyle: style)
+        label.attributedText = NSAttributedString(
+            string: text, attributes: Theme.Ramp.attributes(role, color: color))
         label.adjustsFontForContentSizeCategory = true
         label.textColor = color
         label.numberOfLines = 0

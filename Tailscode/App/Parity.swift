@@ -92,6 +92,7 @@ enum ParityManifest {
         case .chatDragToPane: return .notApplicable("no panes to drag a chat into; the list opens a chat into the one conversation surface a phone has")
         case .clickToActivate: return .notApplicable("a touch has no ambiguity to resolve: one conversation fills the screen, so there is no unfocused pane or second region a tap could mean instead")
         case .uiScale: return .implemented("Theme")
+        case .typeRamp: return .implemented("Theme.Type")
         case .themePicker: return .implemented("ThemePickerViewController")
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")

@@ -69,7 +69,7 @@ final class FormField: UIView {
     ) {
         super.init(frame: .zero)
         titleLabel.text = title.localizedUppercase
-        titleLabel.font = .preferredFont(forTextStyle: .caption2)
+        titleLabel.font = Theme.Ramp.font(.panelFootnote)
         titleLabel.textColor = Theme.Color.secondaryLabel
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.numberOfLines = 0
@@ -86,7 +86,7 @@ final class FormField: UIView {
         textField.returnKeyType = returnKey
         textField.enablesReturnKeyAutomatically = false
         textField.clearButtonMode = secure ? .never : .whileEditing
-        textField.font = Theme.Font.body()
+        textField.font = Theme.Ramp.font(.answer)
         textField.adjustsFontForContentSizeCategory = true
         textField.accessibilityLabel = title
         textField.addAction(UIAction { [weak self] _ in self?.onSubmit?() }, for: .primaryActionTriggered)
@@ -150,13 +150,13 @@ final class EmptyStateView: UIView {
 
         let titleLabel = UILabel()
         titleLabel.text = title
-        titleLabel.font = Theme.Font.headline()
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
 
         let messageLabel = UILabel()
         messageLabel.text = message
-        messageLabel.font = Theme.Font.subheadline()
+        messageLabel.font = Theme.Ramp.font(.panelLabel)
         messageLabel.textColor = Theme.Color.secondaryLabel
         messageLabel.textAlignment = .center
         messageLabel.numberOfLines = 0
@@ -199,7 +199,7 @@ final class BannerView: UIView {
         icon.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
 
-        label.font = .preferredFont(forTextStyle: .footnote)
+        label.font = Theme.Ramp.font(.panelDetail)
         label.adjustsFontForContentSizeCategory = true
         label.textAlignment = .left
         label.numberOfLines = 2
@@ -298,7 +298,7 @@ final class ChatEmptyStateView: UIView {
 
         let titleLabel = UILabel()
         titleLabel.text = String(localized: "What should your agent do?")
-        titleLabel.font = Theme.Font.headline()
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
 
@@ -359,7 +359,7 @@ final class ToastView: UIView {
         addSubview(glass)
 
         label.text = message
-        label.font = .preferredFont(forTextStyle: .subheadline)
+        label.font = Theme.Ramp.font(.panelLabel)
         label.textColor = Theme.Color.onGlass
         label.textAlignment = .center
         label.numberOfLines = 2
@@ -443,7 +443,7 @@ final class AttachmentChip: UIView {
 
         let titleLabel = UILabel()
         titleLabel.text = label
-        titleLabel.font = .preferredFont(forTextStyle: .caption2)
+        titleLabel.font = Theme.Ramp.font(.panelFootnote)
         titleLabel.textColor = Theme.Color.label
         titleLabel.lineBreakMode = .byTruncatingMiddle
         titleLabel.translatesAutoresizingMaskIntoConstraints = false

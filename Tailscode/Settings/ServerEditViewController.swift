@@ -46,11 +46,11 @@ final class ServerEditViewController: UIViewController {
             localized:
                 "The address is verified before it is saved, so a typo fails here rather than as errors in every chat."
         )
-        header.font = Theme.Font.subheadline()
+        header.font = Theme.Ramp.font(.panelLabel)
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
 
-        statusLabel.font = Theme.Font.caption()
+        statusLabel.font = Theme.Ramp.font(.panelFootnote)
         statusLabel.textColor = Theme.Color.secondaryLabel
         statusLabel.numberOfLines = 0
 

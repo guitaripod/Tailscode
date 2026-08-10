@@ -151,10 +151,10 @@ final class SavedChatsViewController: UIViewController {
             var content = UIListContentConfiguration.subtitleCell()
             content.text = row.chat.displayTitle
             content.textProperties.font = row.unread
-                ? Theme.Font.body().withTraits(.traitBold) : Theme.Font.body()
+                ? Theme.Ramp.font(.rowTitleStrong) : Theme.Ramp.font(.rowTitle)
             content.textProperties.numberOfLines = 1
             content.secondaryText = Self.detail(for: row)
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color = Self.detailColor(for: row)
             content.secondaryTextProperties.numberOfLines = 1
             content.textToSecondaryTextVerticalPadding = 2

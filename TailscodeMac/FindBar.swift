@@ -20,13 +20,13 @@ final class FindBar: NSView {
         translatesAutoresizingMaskIntoConstraints = false
 
         field.placeholderString = Localized.text("Find in this conversation")
-        field.font = MacTheme.Font.body()
+        field.font = MacTheme.Ramp.font(.panelLabel)
         field.delegate = self
         field.sendsSearchStringImmediately = true
         field.translatesAutoresizingMaskIntoConstraints = false
         field.widthAnchor.constraint(equalToConstant: 220).isActive = true
 
-        countLabel.font = MacTheme.Font.caption()
+        countLabel.font = MacTheme.Ramp.font(.panelFootnote)
         countLabel.textColor = MacTheme.Color.onGlassSecondary
 
         let previous = symbolButton("chevron.up", tip: Localized.text("Previous match")) {

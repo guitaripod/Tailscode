@@ -94,6 +94,7 @@ enum ParityManifest {
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")
         case .uiScale: return .implemented("UIScale")
+        case .typeRamp: return .implemented("MacTheme.Type")
         case .themePicker: return .implemented("MacTheme.Chrome")
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")

@@ -336,7 +336,7 @@ final class HomeViewController: UIViewController {
         config.buttonSize = .mini
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var out = $0
-            out.font = .systemFont(ofSize: 11, weight: .bold)
+            out.font = Theme.Ramp.font(.metricLabel)
             return out
         }
         let button = UIButton(configuration: config)
@@ -793,13 +793,13 @@ final class HomeViewController: UIViewController {
 
         let title = UILabel()
         title.text = String(localized: "No conversations yet")
-        title.font = .preferredFont(forTextStyle: .headline)
+        title.font = Theme.Ramp.font(.cardTitle)
         title.textColor = Theme.Color.secondaryLabel
         title.textAlignment = .center
 
         let subtitle = UILabel()
         subtitle.text = String(localized: "Start one below.")
-        subtitle.font = .preferredFont(forTextStyle: .subheadline)
+        subtitle.font = Theme.Ramp.font(.panelLabel)
         subtitle.textColor = Theme.Color.tertiaryLabel
         subtitle.textAlignment = .center
 

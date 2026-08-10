@@ -190,7 +190,7 @@ final class ServerDetailViewController: UIViewController {
             content.text = reading.headline
             content.secondaryText = reading.detail()
             content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.font = Theme.Font.footnote()
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelDetail)
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(
                 systemName: reading.icon.symbol,
@@ -203,7 +203,7 @@ final class ServerDetailViewController: UIViewController {
             content.secondaryText = reading?.installed.line
             content.secondaryTextProperties.numberOfLines = 0
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.font = Theme.Font.subheadline()
+            content.textProperties.font = Theme.Ramp.font(.panelLabel)
         case .updateAction:
             guard let invitation = reading?.invitation else { break }
             content.text = invitation.label

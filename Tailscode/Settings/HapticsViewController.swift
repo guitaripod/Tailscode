@@ -67,7 +67,7 @@ final class HapticsViewController: UIViewController {
         readout.adjustsFontForContentSizeCategory = true
         readout.textAlignment = .center
 
-        readoutDetail.font = Theme.Font.subheadline()
+        readoutDetail.font = Theme.Ramp.font(.panelLabel)
         readoutDetail.textColor = Theme.Color.secondaryLabel
         readoutDetail.textAlignment = .center
         readoutDetail.numberOfLines = 0
@@ -110,7 +110,7 @@ final class HapticsViewController: UIViewController {
             config.title = preset.title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
                 var attributes = $0
-                attributes.font = Theme.Font.footnote()
+                attributes.font = Theme.Ramp.font(.panelDetail)
                 return attributes
             }
             let button = UIButton(configuration: config)
@@ -125,11 +125,11 @@ final class HapticsViewController: UIViewController {
     private func switchCard() -> UIView {
         let title = UILabel()
         title.text = String(localized: "Haptic feedback")
-        title.font = Theme.Font.headline()
+        title.font = Theme.Ramp.font(.cardTitle)
 
         let subtitle = UILabel()
         subtitle.text = String(localized: "The wait reported to your hand — sent, progress, done")
-        subtitle.font = Theme.Font.footnote()
+        subtitle.font = Theme.Ramp.font(.panelDetail)
         subtitle.textColor = Theme.Color.secondaryLabel
         subtitle.numberOfLines = 0
 
@@ -161,11 +161,11 @@ final class HapticsViewController: UIViewController {
     private func cueRow(_ cue: HapticCue) -> UIView {
         let title = UILabel()
         title.text = cue.title
-        title.font = Theme.Font.subheadline()
+        title.font = Theme.Ramp.font(.panelLabel)
 
         let detail = UILabel()
         detail.text = cue.detail
-        detail.font = Theme.Font.caption()
+        detail.font = Theme.Ramp.font(.panelFootnote)
         detail.textColor = Theme.Color.secondaryLabel
         detail.numberOfLines = 0
 
@@ -177,7 +177,7 @@ final class HapticsViewController: UIViewController {
         config.title = String(localized: "Play")
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var attributes = $0
-            attributes.font = Theme.Font.footnote()
+            attributes.font = Theme.Ramp.font(.panelDetail)
             return attributes
         }
         let button = UIButton(configuration: config)
@@ -196,7 +196,7 @@ final class HapticsViewController: UIViewController {
 
     private func footnote() -> UIView {
         let label = UILabel()
-        label.font = Theme.Font.caption()
+        label.font = Theme.Ramp.font(.panelFootnote)
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 0
         label.textAlignment = .center
@@ -216,7 +216,7 @@ final class HapticsViewController: UIViewController {
     private func sectionLabel(_ text: String) -> UILabel {
         let label = UILabel()
         label.text = text
-        label.font = Theme.Font.footnote()
+        label.font = Theme.Ramp.font(.panelDetail)
         label.textColor = Theme.Color.secondaryLabel
         return label
     }
@@ -344,7 +344,7 @@ final class HapticsViewController: UIViewController {
             config.title = button.configuration?.title
             config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
                 var attributes = $0
-                attributes.font = Theme.Font.footnote()
+                attributes.font = Theme.Ramp.font(.panelDetail)
                 return attributes
             }
             button.configuration = config

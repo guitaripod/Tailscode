@@ -48,15 +48,15 @@ final class WebSlotView: NSView {
         webView.isHidden = true
         addSubview(webView)
 
-        headingLabel.font = MacTheme.Font.emphasis()
-        reasonLabel.font = MacTheme.Font.caption()
+        headingLabel.font = MacTheme.Ramp.font(.cardTitle)
+        reasonLabel.font = MacTheme.Ramp.font(.panelFootnote)
         reasonLabel.textColor = MacTheme.Color.secondaryLabel
-        hintLabel.font = MacTheme.Font.caption()
+        hintLabel.font = MacTheme.Ramp.font(.panelFootnote)
         hintLabel.textColor = MacTheme.Color.secondaryLabel
         hintLabel.stringValue = slot.hint
 
         field.placeholderString = slot.prompt
-        field.font = MacTheme.Font.body()
+        field.font = MacTheme.Ramp.font(.panelLabel)
         field.target = self
         field.action = #selector(submit)
         field.translatesAutoresizingMaskIntoConstraints = false

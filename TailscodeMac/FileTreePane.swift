@@ -42,7 +42,7 @@ final class FileTreePane: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        pathLabel.font = MacTheme.Font.caption()
+        pathLabel.font = MacTheme.Ramp.font(.panelFootnote)
         pathLabel.textColor = MacTheme.Color.tertiaryLabel
         pathLabel.lineBreakMode = .byTruncatingHead
         pathLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -54,7 +54,7 @@ final class FileTreePane: NSViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         messageLabel.stringValue = Localized.text("Open a conversation to see its project files.")
-        messageLabel.font = MacTheme.Font.caption()
+        messageLabel.font = MacTheme.Ramp.font(.panelFootnote)
         messageLabel.textColor = MacTheme.Color.tertiaryLabel
         messageLabel.alignment = .center
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -223,7 +223,7 @@ extension FileTreePane: NSOutlineViewDelegate {
             outlineView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView
             ?? makeCell(identifier)
         cell.textField?.stringValue = node.file.name
-        cell.textField?.font = MacTheme.Font.body()
+        cell.textField?.font = MacTheme.Ramp.font(.panelLabel)
         cell.imageView?.image = NSImage(
             systemSymbolName: node.file.isDirectory ? "folder" : "doc.text",
             accessibilityDescription: nil)

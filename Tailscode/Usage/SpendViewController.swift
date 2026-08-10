@@ -50,7 +50,7 @@ final class SpendViewController: UIViewController {
         column.addArrangedSubview(expensive())
         let source = UILabel()
         source.text = spend.source
-        source.font = .preferredFont(forTextStyle: .caption2)
+        source.font = Theme.Ramp.font(.panelFootnote)
         source.textColor = Theme.Color.tertiaryLabel
         source.numberOfLines = 0
         column.addArrangedSubview(source)
@@ -73,12 +73,12 @@ final class SpendViewController: UIViewController {
 
     /// The number, then the facts that make it mean something.
     private func header() -> UIView {
-        let name = label(chatTitle, style: .caption1, color: Theme.Color.secondaryLabel)
+        let name = label(chatTitle, role: .panelDetail, color: Theme.Color.secondaryLabel)
         name.numberOfLines = 1
         name.lineBreakMode = .byTruncatingTail
         let money = UILabel()
         money.text = spend.badge
-        money.font = .systemFont(ofSize: 40, weight: .bold)
+        money.font = Theme.Ramp.font(.metricHero)
         money.textColor = Theme.Color.label
         money.adjustsFontSizeToFitWidth = true
         money.minimumScaleFactor = 0.6
@@ -89,8 +89,8 @@ final class SpendViewController: UIViewController {
         facts.spacing = Theme.Spacing.s
         for (caption, value) in spend.headline {
             let cell = UIStackView(arrangedSubviews: [
-                label(value, style: .subheadline, color: Theme.Color.label, bold: true),
-                label(caption.uppercased(), style: .caption2, color: Theme.Color.tertiaryLabel),
+                label(value, role: .metricValue, color: Theme.Color.label),
+                label(caption.uppercased(), role: .panelFootnote, color: Theme.Color.tertiaryLabel),
             ])
             cell.axis = .vertical
             cell.spacing = 1
@@ -141,11 +141,11 @@ final class SpendViewController: UIViewController {
         if let first = spend.turns.first?.at, let last = spend.turns.last?.at {
             let span = UIStackView(arrangedSubviews: [
                 label(
-                    first.formatted(.dateTime.hour().minute()), style: .caption2,
+                    first.formatted(.dateTime.hour().minute()), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel),
                 UIView(),
                 label(
-                    last.formatted(.dateTime.hour().minute()), style: .caption2,
+                    last.formatted(.dateTime.hour().minute()), role: .panelFootnote,
                     color: Theme.Color.tertiaryLabel),
             ])
             span.axis = .horizontal
@@ -189,18 +189,17 @@ final class SpendViewController: UIViewController {
         if ranked.isEmpty {
             views.append(
                 label(
-                    String(localized: "Nothing has been spent yet."), style: .footnote,
+                    String(localized: "Nothing has been spent yet."), role: .metricDetail,
                     color: Theme.Color.secondaryLabel))
         }
         for turn in ranked {
             let money = label(
-                SessionSpend.money(turn.costUSD), style: .subheadline, color: Theme.Color.label,
-                bold: true)
+                SessionSpend.money(turn.costUSD), role: .metricValue, color: Theme.Color.label)
             money.setContentHuggingPriority(.required, for: .horizontal)
             money.setContentCompressionResistancePriority(.required, for: .horizontal)
             let prompt = label(
                 turn.prompt ?? String(localized: "a turn with no prompt of its own"),
-                style: .footnote, color: Theme.Color.secondaryLabel)
+                role: .metricDetail, color: Theme.Color.secondaryLabel)
             prompt.numberOfLines = 2
             let row = UIStackView(arrangedSubviews: [money, prompt])
             row.axis = .horizontal
@@ -213,10 +212,10 @@ final class SpendViewController: UIViewController {
 
     private func heading(_ text: String, trailing: String?) -> UIView {
         var views: [UIView] = [
-            label(text, style: .headline, color: Theme.Color.label), UIView(),
+            label(text, role: .panelTitle, color: Theme.Color.label), UIView(),
         ]
         if let trailing {
-            views.append(label(trailing, style: .caption2, color: Theme.Color.tertiaryLabel))
+            views.append(label(trailing, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         let row = UIStackView(arrangedSubviews: views)
         row.axis = .horizontal
@@ -228,10 +227,10 @@ final class SpendViewController: UIViewController {
     private func meter(
         label name: String, value: String, detail: String, fraction: Double, hot: Bool
     ) -> UIView {
-        let title = label(name, style: .footnote, color: Theme.Color.label)
-        let count = label(detail, style: .caption2, color: Theme.Color.tertiaryLabel)
+        let title = label(name, role: .metricDetail, color: Theme.Color.label)
+        let count = label(detail, role: .panelFootnote, color: Theme.Color.tertiaryLabel)
         count.setContentHuggingPriority(.required, for: .horizontal)
-        let money = label(value, style: .subheadline, color: Theme.Color.label, bold: true)
+        let money = label(value, role: .metricValue, color: Theme.Color.label)
         money.setContentHuggingPriority(.required, for: .horizontal)
         let top = UIStackView(arrangedSubviews: [title, UIView(), count, money])
         top.axis = .horizontal
@@ -278,14 +277,13 @@ final class SpendViewController: UIViewController {
         return stack
     }
 
-    private func label(
-        _ text: String, style: UIFont.TextStyle, color: UIColor, bold: Bool = false
-    ) -> UILabel {
+    /// Every reading on this screen is set from the shared ramp: the role decides the size, the
+    /// weight, the tracking and whether the digits share a width, so a column of numbers stays a
+    /// column while it changes.
+    private func label(_ text: String, role: TypeRole, color: UIColor) -> UILabel {
         let label = UILabel()
-        label.text = text
-        label.font = bold
-            ? .preferredFont(forTextStyle: style).withTraits(.traitBold)
-            : .preferredFont(forTextStyle: style)
+        label.attributedText = NSAttributedString(
+            string: text, attributes: Theme.Ramp.attributes(role, color: color))
         label.adjustsFontForContentSizeCategory = true
         label.textColor = color
         label.numberOfLines = 0

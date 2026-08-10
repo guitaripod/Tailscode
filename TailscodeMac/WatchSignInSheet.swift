@@ -58,13 +58,13 @@ final class WatchSignInSheet {
         sheet.isReleasedWhenClosed = false
         sheet.title = Localized.text("Sign in to %@", source.label)
 
-        headingLabel.font = MacTheme.Font.emphasis()
-        detailLabel.font = MacTheme.Font.caption()
+        headingLabel.font = MacTheme.Ramp.font(.cardTitle)
+        detailLabel.font = MacTheme.Ramp.font(.panelFootnote)
         detailLabel.textColor = MacTheme.Color.secondaryLabel
-        instructionLabel.font = MacTheme.Font.caption()
+        instructionLabel.font = MacTheme.Ramp.font(.panelFootnote)
         instructionLabel.textColor = MacTheme.Color.secondaryLabel
 
-        codeLabel.font = MacTheme.Font.mono(22)
+        codeLabel.font = MacTheme.Ramp.font(.pairingCode)
         codeLabel.textColor = MacTheme.Color.label
         codeLabel.isSelectable = true
         copyButton.title = Localized.text("Copy")

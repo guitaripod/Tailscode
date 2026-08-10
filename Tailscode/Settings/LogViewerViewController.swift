@@ -109,7 +109,7 @@ final class LogViewerViewController: UIViewController {
             string: String(localized: "… earlier entries omitted — Share exports the full log")
                 + "\n",
             attributes: [
-                .font: Theme.Font.mono(11),
+                .font: Theme.Ramp.font(.toolOutput),
                 .foregroundColor: Theme.Color.secondaryLabel,
             ])
         result.append(rendered)
@@ -124,7 +124,7 @@ final class LogViewerViewController: UIViewController {
     }
 
     private nonisolated static func colorized(_ text: String, errorsOnly: Bool) -> NSAttributedString {
-        let mono = Theme.Font.mono(11)
+        let mono = Theme.Ramp.font(.toolOutput)
         let result = NSMutableAttributedString()
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             let isError = line.contains("] ERROR ")

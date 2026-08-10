@@ -364,10 +364,10 @@ final class PreferencesWindow: NSWindowController {
         let current = MediaClientConfig.youtube
         let identity = NSTextField(string: current?.id ?? "")
         identity.placeholderString = YouTubeSetup.idPrompt
-        identity.font = MacTheme.Font.mono(11)
+        identity.font = MacTheme.Ramp.font(.toolOutput)
         let secret = NSSecureTextField(string: current?.secret ?? "")
         secret.placeholderString = YouTubeSetup.secretPrompt
-        secret.font = MacTheme.Font.mono(11)
+        secret.font = MacTheme.Ramp.font(.toolOutput)
         let fields = NSStackView(views: [identity, secret])
         fields.orientation = .vertical
         fields.alignment = .leading
@@ -447,7 +447,7 @@ final class PreferencesWindow: NSWindowController {
         title: String, subtitle: String, options: [String], selected: Int, action: Selector
     ) -> NSView {
         let label = NSTextField(labelWithString: title)
-        label.font = MacTheme.Font.body()
+        label.font = MacTheme.Ramp.font(.panelLabel)
         let popUp = NSPopUpButton()
         popUp.addItems(withTitles: options)
         popUp.selectItem(at: min(selected, max(0, options.count - 1)))
@@ -486,9 +486,9 @@ final class PreferencesWindow: NSWindowController {
         valueLabel: NSTextField, action: Selector
     ) -> NSView {
         let label = NSTextField(labelWithString: title)
-        label.font = MacTheme.Font.body()
+        label.font = MacTheme.Ramp.font(.panelLabel)
         valueLabel.stringValue = "\(value)"
-        valueLabel.font = MacTheme.Font.mono(11)
+        valueLabel.font = MacTheme.Ramp.font(.toolOutput)
         valueLabel.alignment = .right
         valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         let stepper = NSStepper()
@@ -518,9 +518,9 @@ final class PreferencesWindow: NSWindowController {
         title: String, subtitle: String, value: Double, valueLabel: NSTextField, action: Selector
     ) -> NSView {
         let label = NSTextField(labelWithString: title)
-        label.font = MacTheme.Font.body()
+        label.font = MacTheme.Ramp.font(.panelLabel)
         valueLabel.stringValue = HapticStrength.label(value)
-        valueLabel.font = MacTheme.Font.mono(11)
+        valueLabel.font = MacTheme.Ramp.font(.toolOutput)
         valueLabel.alignment = .right
         valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         let slider = NSSlider(
@@ -544,7 +544,7 @@ final class PreferencesWindow: NSWindowController {
 
     private func buttonRow(title: String, subtitle: String, button: NSButton) -> NSView {
         let label = NSTextField(labelWithString: title)
-        label.font = MacTheme.Font.body()
+        label.font = MacTheme.Ramp.font(.panelLabel)
         button.bezelStyle = .rounded
         button.setContentHuggingPriority(.required, for: .horizontal)
         let filler = NSView()

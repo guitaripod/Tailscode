@@ -42,7 +42,7 @@ final class SpendPanelViewController: NSViewController {
         if spend.models.count > 1 { column.addArrangedSubview(models()) }
         column.addArrangedSubview(expensive())
         column.addArrangedSubview(
-            RowKit.label(spend.source, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+            RowKit.label(spend.source, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
 
         let clip = RowKit.FlippedClip()
         clip.drawsBackground = false
@@ -74,10 +74,10 @@ final class SpendPanelViewController: NSViewController {
     /// money, because it is the money it qualifies.
     private func header() -> NSView {
         let name = RowKit.label(
-            chatTitle, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+            chatTitle, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         name.lineBreakMode = .byTruncatingTail
         let money = RowKit.label(
-            spend.badge, font: .systemFont(ofSize: 30, weight: .semibold),
+            spend.badge, font: MacTheme.Ramp.font(.metricLarge),
             color: MacTheme.Color.label)
 
         let facts = NSStackView()
@@ -86,9 +86,9 @@ final class SpendPanelViewController: NSViewController {
         facts.alignment = .top
         for (label, value) in spend.headline {
             let cell = NSStackView(views: [
-                RowKit.label(value, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label),
+                RowKit.label(value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
                 RowKit.label(
-                    label.uppercased(), font: .systemFont(ofSize: 9, weight: .semibold),
+                    label.uppercased(), font: MacTheme.Ramp.font(.metricLabel),
                     color: MacTheme.Color.tertiaryLabel),
             ])
             cell.orientation = .vertical
@@ -136,11 +136,11 @@ final class SpendPanelViewController: NSViewController {
         if let first = spend.turns.first?.at, let last = spend.turns.last?.at {
             let span = NSStackView(views: [
                 RowKit.label(
-                    Self.clock(first), font: MacTheme.Font.caption(),
+                    Self.clock(first), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel),
                 RowKit.spacer(),
                 RowKit.label(
-                    Self.clock(last), font: MacTheme.Font.caption(),
+                    Self.clock(last), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel),
             ])
             span.orientation = .horizontal
@@ -185,17 +185,17 @@ final class SpendPanelViewController: NSViewController {
         if ranked.isEmpty {
             views.append(
                 RowKit.label(
-                    Localized.text("Nothing has been spent yet."), font: MacTheme.Font.caption(),
+                    Localized.text("Nothing has been spent yet."), font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
         }
         for turn in ranked {
             let money = RowKit.label(
-                SessionSpend.money(turn.costUSD), font: MacTheme.Font.emphasis(),
+                SessionSpend.money(turn.costUSD), font: MacTheme.Ramp.font(.cardTitle),
                 color: MacTheme.Color.label)
             money.setContentHuggingPriority(.required, for: .horizontal)
             let prompt = RowKit.label(
                 turn.prompt ?? Localized.text("a turn with no prompt of its own"),
-                font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+                font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
             prompt.lineBreakMode = .byTruncatingTail
             prompt.toolTip = tooltip(for: turn)
             let row = NSStackView(views: [money, prompt])
@@ -208,12 +208,12 @@ final class SpendPanelViewController: NSViewController {
     }
 
     private func heading(_ text: String, trailing: String?) -> NSView {
-        let title = RowKit.label(text, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+        let title = RowKit.label(text, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         var views: [NSView] = [title, RowKit.spacer()]
         if let trailing {
             views.append(
                 RowKit.label(
-                    trailing, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    trailing, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         let row = NSStackView(views: views)
         row.orientation = .horizontal
@@ -224,12 +224,12 @@ final class SpendPanelViewController: NSViewController {
     private func meter(
         label: String, value: String, detail: String, fraction: Double, hot: Bool
     ) -> NSView {
-        let name = RowKit.label(label, font: MacTheme.Font.caption(), color: MacTheme.Color.label)
+        let name = RowKit.label(label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         let count = RowKit.label(
-            detail, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+            detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         count.setContentHuggingPriority(.required, for: .horizontal)
         let money = RowKit.label(
-            value, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label)
+            value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         money.setContentHuggingPriority(.required, for: .horizontal)
         let top = NSStackView(views: [name, RowKit.spacer(), count, money])
         top.orientation = .horizontal

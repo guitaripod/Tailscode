@@ -167,8 +167,8 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     private func stepRow(number: String, title: String, pill: NSTextField?) -> NSView {
         var views: [NSView] = [
             RowKit.label(
-                "\(number) ·", font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel),
-            RowKit.label(title, font: MacTheme.Font.body(), color: MacTheme.Color.label),
+                "\(number) ·", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel),
+            RowKit.label(title, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label),
         ]
         if let pill {
             views.append(RowKit.spacer())
@@ -183,7 +183,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
 
     private func commandRow(label: String, command: String) -> NSView {
         let text = RowKit.label(
-            command, font: MacTheme.Font.mono(), color: MacTheme.Color.secondaryLabel)
+            command, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.secondaryLabel)
         text.lineBreakMode = .byTruncatingTail
         let copy = RowKit.ActionButton(title: Localized.text("Copy")) {
             NSPasteboard.general.clearContents()
@@ -192,7 +192,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         copy.bezelStyle = .accessoryBar
         let row = NSStackView(views: [
             RowKit.label(
-                label, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel),
+                label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel),
             text, copy,
         ])
         row.orientation = .horizontal

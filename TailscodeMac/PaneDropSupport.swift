@@ -20,7 +20,7 @@ final class PaneDropHighlightView: NSView {
         layer?.borderWidth = 1.5
         layer?.cornerRadius = 8
         isHidden = true
-        label.font = MacTheme.Font.emphasis()
+        label.font = MacTheme.Ramp.font(.cardTitle)
         label.textColor = MacTheme.Color.label
         label.alignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false

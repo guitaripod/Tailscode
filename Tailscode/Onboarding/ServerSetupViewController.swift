@@ -315,7 +315,7 @@ final class ServerSetupViewController: UIViewController {
         addressHint.numberOfLines = 0
 
         checkingSpinner.hidesWhenStopped = true
-        checkingLabel.font = .preferredFont(forTextStyle: .caption1)
+        checkingLabel.font = Theme.Ramp.font(.panelDetail)
         checkingLabel.adjustsFontForContentSizeCategory = true
         checkingLabel.textColor = Theme.Color.secondaryLabel
         checkingLabel.numberOfLines = 0
@@ -335,7 +335,7 @@ final class ServerSetupViewController: UIViewController {
             UIAction { [weak self] _ in self?.passwordChanged() }, for: .editingChanged)
         passwordField.onSubmit = { [weak self] in self?.footerTapped() }
 
-        passwordNote.font = .preferredFont(forTextStyle: .caption2)
+        passwordNote.font = Theme.Ramp.font(.panelFootnote)
         passwordNote.adjustsFontForContentSizeCategory = true
         passwordNote.textColor = Theme.Color.tertiaryLabel
         passwordNote.numberOfLines = 0
@@ -352,7 +352,7 @@ final class ServerSetupViewController: UIViewController {
         let scanCaption = UILabel()
         scanCaption.text = String(
             localized: "Optional. Needs a Tailscale API token with Devices read access.")
-        scanCaption.font = .preferredFont(forTextStyle: .caption2)
+        scanCaption.font = Theme.Ramp.font(.panelFootnote)
         scanCaption.adjustsFontForContentSizeCategory = true
         scanCaption.textColor = Theme.Color.tertiaryLabel
         scanCaption.numberOfLines = 0
@@ -383,7 +383,7 @@ final class ServerSetupViewController: UIViewController {
         config.contentInsets = NSDirectionalEdgeInsets(top: 11, leading: 0, bottom: 11, trailing: 0)
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var out = $0
-            out.font = .preferredFont(forTextStyle: .footnote)
+            out.font = Theme.Ramp.font(.panelDetail)
             return out
         }
         button.configuration = config

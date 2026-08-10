@@ -40,7 +40,7 @@ final class StatusBandView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
-        noticeLabel.font = MacTheme.Font.mono(11)
+        noticeLabel.font = MacTheme.Ramp.font(.toolOutput)
         noticeLabel.textColor = MacTheme.Color.secondaryLabel
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeLabel.setContentCompressionResistancePriority(.init(200), for: .horizontal)
@@ -117,7 +117,7 @@ final class StatusBandView: NSView {
     private static func title(_ text: String, css: String) -> NSAttributedString {
         NSAttributedString(
             string: text,
-            attributes: [.font: MacTheme.Font.mono(11), .foregroundColor: color(for: css)])
+            attributes: [.font: MacTheme.Ramp.font(.toolOutput), .foregroundColor: color(for: css)])
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
@@ -141,7 +141,7 @@ final class StatusBandView: NSView {
 
     private static func tinted(_ parts: [GitBadgePart]) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        let font = MacTheme.Font.mono(11)
+        let font = MacTheme.Ramp.font(.toolOutput)
         for part in parts {
             if text.length > 0 { text.append(NSAttributedString(string: " ")) }
             text.append(
@@ -167,7 +167,7 @@ final class StatusBandView: NSView {
         switch segment.kind {
         case .plain:
             let label = RowKit.label(
-                segment.text, font: MacTheme.Font.mono(11), color: Self.color(for: segment.css))
+                segment.text, font: MacTheme.Ramp.font(.toolOutput), color: Self.color(for: segment.css))
             if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
             return label

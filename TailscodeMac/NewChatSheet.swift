@@ -128,18 +128,18 @@ final class NewChatSheet: NSObject {
         let content = NSView()
         sheet.contentView = content
 
-        heading.font = MacTheme.Font.emphasis()
+        heading.font = MacTheme.Ramp.font(.cardTitle)
         heading.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(heading)
 
-        defaultsLabel.font = MacTheme.Font.caption()
+        defaultsLabel.font = MacTheme.Ramp.font(.panelFootnote)
         defaultsLabel.textColor = MacTheme.Color.secondaryLabel
         defaultsLabel.lineBreakMode = .byTruncatingTail
         defaultsLabel.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(defaultsLabel)
 
         field.placeholderString = Localized.text("Where the agent works, e.g. ~/Dev/thing")
-        field.font = MacTheme.Font.mono()
+        field.font = MacTheme.Ramp.font(.code)
         field.delegate = self
         field.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(field)
@@ -163,7 +163,7 @@ final class NewChatSheet: NSObject {
         content.addSubview(scroll)
 
         empty.stringValue = Localized.text("Type the folder the agent should work in.")
-        empty.font = MacTheme.Font.body()
+        empty.font = MacTheme.Ramp.font(.panelLabel)
         empty.textColor = MacTheme.Color.tertiaryLabel
         empty.alignment = .center
         empty.isHidden = true
@@ -174,7 +174,7 @@ final class NewChatSheet: NSObject {
         status.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(status)
 
-        hint.font = MacTheme.Font.mono(10)
+        hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
         hint.lineBreakMode = .byTruncatingTail
         hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -327,7 +327,7 @@ final class NewChatSheet: NSObject {
             defaultsLabel.stringValue = ""
             return
         }
-        let font = MacTheme.Font.caption()
+        let font = MacTheme.Ramp.font(.panelFootnote)
         let text = NSMutableAttributedString(
             string: defaults.line,
             attributes: [.font: font, .foregroundColor: MacTheme.Color.secondaryLabel])
@@ -587,7 +587,7 @@ private final class NewChatRowView: NSTableCellView {
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
 
-        number.font = MacTheme.Font.mono(10)
+        number.font = MacTheme.Ramp.font(.rowNote)
         number.textColor = MacTheme.Color.tertiaryLabel
         number.translatesAutoresizingMaskIntoConstraints = false
 
@@ -626,14 +626,14 @@ private final class NewChatRowView: NSTableCellView {
     func configure(_ row: NewChatRow, number index: Int, focused: Bool) {
         number.stringValue = index <= 9 ? "\(index)" : " "
         title.stringValue = row.title
-        title.font = MacTheme.Font.emphasis()
+        title.font = MacTheme.Ramp.font(.cardTitle)
         layer?.backgroundColor =
             focused
             ? MacTheme.Color.accent.withAlphaComponent(0.18).cgColor : NSColor.clear.cgColor
         setAccessibilityLabel(row.title)
         if row.origin == .browse {
             path.stringValue = row.detail
-            path.font = MacTheme.Font.caption()
+            path.font = MacTheme.Ramp.font(.panelFootnote)
             path.textColor = MacTheme.Color.secondaryLabel
         } else {
             path.attributedStringValue = Self.highlighted(row)
@@ -663,7 +663,7 @@ private final class NewChatRowView: NSTableCellView {
         let text = NSMutableAttributedString(
             string: row.path,
             attributes: [
-                .font: MacTheme.Font.mono(10), .foregroundColor: MacTheme.Color.secondaryLabel,
+                .font: MacTheme.Ramp.font(.rowNote), .foregroundColor: MacTheme.Color.secondaryLabel,
             ])
         let characters = Array(row.path)
         for offset in row.highlight where offset < characters.count {
@@ -688,7 +688,7 @@ private final class NewChatRowView: NSTableCellView {
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 9 * MacTheme.UIScale.factor, weight: .semibold)
+        label.font = MacTheme.Ramp.font(.metricLabel)
         label.textColor = tint
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()
@@ -725,11 +725,11 @@ final class NewChatStatusView: NSView {
         symbol.translatesAutoresizingMaskIntoConstraints = false
         symbol.contentTintColor = MacTheme.Color.danger
         symbol.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 22, weight: .regular)
-        title.font = MacTheme.Font.emphasis()
+        title.font = MacTheme.Ramp.font(.cardTitle)
         title.lineBreakMode = .byWordWrapping
         title.maximumNumberOfLines = 3
         title.translatesAutoresizingMaskIntoConstraints = false
-        detail.font = MacTheme.Font.body()
+        detail.font = MacTheme.Ramp.font(.panelLabel)
         detail.textColor = MacTheme.Color.secondaryLabel
         detail.translatesAutoresizingMaskIntoConstraints = false
 

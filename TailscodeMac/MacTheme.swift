@@ -198,6 +198,80 @@ enum MacTheme {
         }
     }
 
+    /// The shared ramp resolved into AppKit, scaled by the window's own type preference.
+    ///
+    /// A Mac has no Dynamic Type, so `UIScale.factor` is what grows the ramp — the same knob the
+    /// desktop already had, now applied to a role's size rather than to a handful of token faces.
+    /// Tracking and leading are attributes rather than font properties here too, so a label that
+    /// must carry them takes `attributes(_:)` and everything else takes `font(_:)`.
+    enum Ramp {
+        /// What one unit of the ramp is worth in points, per axis: the Mac's own 13pt body for
+        /// prose, a step below for the chrome of a list, and a step below that for monospace, whose
+        /// every glyph is an em and so reads larger at the same size.
+        private static func base(_ axis: TypeAxis) -> Double {
+            switch axis {
+            case .prose: return 14
+            case .chrome: return 14
+            case .mono: return 13.5
+            }
+        }
+
+        static func font(_ role: TypeRole) -> NSFont {
+            let spec = Typography.spec(role)
+            let size = CGFloat(spec.size(base: base(spec.axis), scale: Double(UIScale.factor)))
+            let weight = weight(spec.weight)
+            let face: NSFont =
+                switch spec.family {
+                case .mono: .monospacedSystemFont(ofSize: size, weight: weight)
+                case .prose, .canvas: .systemFont(ofSize: size, weight: weight)
+                }
+            let faced = spec.italic ? italic(face) : face
+            guard spec.figures == .tabular else { return faced }
+            return NSFont(
+                descriptor: faced.fontDescriptor.addingAttributes([
+                    .featureSettings: [[
+                        NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+                        NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+                    ]]
+                ]), size: size) ?? faced
+        }
+
+        static func attributes(
+            _ role: TypeRole, color: NSColor = MacTheme.Color.label,
+            alignment: NSTextAlignment = .natural
+        ) -> [NSAttributedString.Key: Any] {
+            let spec = Typography.spec(role)
+            let font = font(role)
+            var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+            if spec.tracking != 0 {
+                attributes[.tracking] = spec.tracking(forSize: Double(font.pointSize))
+            }
+            if spec.lineHeight != 1 || alignment != .natural {
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = alignment
+                if spec.lineHeight != 1 {
+                    paragraph.lineHeightMultiple = CGFloat(spec.lineHeight)
+                }
+                attributes[.paragraphStyle] = paragraph
+            }
+            return attributes
+        }
+
+        private static func italic(_ font: NSFont) -> NSFont {
+            let descriptor = font.fontDescriptor.withSymbolicTraits(.italic)
+            return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
+        }
+
+        private static func weight(_ weight: TypeWeight) -> NSFont.Weight {
+            switch weight {
+            case .regular: return .regular
+            case .medium: return .medium
+            case .semibold: return .semibold
+            case .bold: return .bold
+            }
+        }
+    }
+
     /// Type scale as a live, keyboard-driven preference, under the same `tailscode.uiScale` key
     /// the Linux desktop persists. AppKit has no global font DPI knob, so the factor multiplies
     /// the token fonts and the markdown renderer instead — views rebuilt after a step come out

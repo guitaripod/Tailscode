@@ -225,7 +225,7 @@ final class UpdateCenterViewController: UIViewController {
             content.text = reading.headline
             content.secondaryText = reading.detail()
             content.secondaryTextProperties.numberOfLines = 0
-            content.secondaryTextProperties.font = Theme.Font.footnote()
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelDetail)
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(
                 systemName: reading.icon.symbol,
@@ -239,19 +239,19 @@ final class UpdateCenterViewController: UIViewController {
             content.secondaryText = reading.installed.line
             content.secondaryTextProperties.numberOfLines = 0
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.font = Theme.Font.subheadline()
+            content.textProperties.font = Theme.Ramp.font(.panelLabel)
         case .available(let key):
             guard let reading = reading(key) else { break }
             content.text = String(localized: "Available")
             content.secondaryText = reading.available.line
             content.secondaryTextProperties.numberOfLines = 0
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-            content.textProperties.font = Theme.Font.subheadline()
+            content.textProperties.font = Theme.Ramp.font(.panelLabel)
         case .change(let key, let index):
             guard let change = reading(key)?.verdict.offer?.changes[safe: index] else { break }
             content.text = change
             content.textProperties.numberOfLines = 2
-            content.textProperties.font = Theme.Font.footnote()
+            content.textProperties.font = Theme.Ramp.font(.panelDetail)
             content.textProperties.color = Theme.Color.secondaryLabel
             content.image = UIImage(
                 systemName: "circle.fill",

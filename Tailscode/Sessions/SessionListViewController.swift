@@ -255,7 +255,7 @@ final class SessionListViewController: UIViewController {
         chipBar.addSubview(chipStack)
         view.addSubview(chipBar)
 
-        unreachableLabel.font = .preferredFont(forTextStyle: .caption2)
+        unreachableLabel.font = Theme.Ramp.font(.panelFootnote)
         unreachableLabel.textColor = Theme.Color.danger
         unreachableLabel.numberOfLines = 1
         unreachableLabel.isHidden = true
@@ -315,7 +315,7 @@ final class SessionListViewController: UIViewController {
         config.cornerStyle = .capsule
         config.buttonSize = .small
         var attributed = AttributedString(title)
-        attributed.font = UIFont.preferredFont(forTextStyle: .footnote)
+        attributed.font = Theme.Ramp.font(.panelDetail)
             .withTraits(isSelected ? .traitBold : [])
         config.attributedTitle = attributed
         if isSelected {
@@ -495,7 +495,7 @@ final class SessionListViewController: UIViewController {
             let count = targets(for: action, in: marked).count
             var config = button.configuration
             var title = AttributedString(BulkChatCopy.button(action, count: count))
-            title.font = UIFont.preferredFont(forTextStyle: .caption1)
+            title.font = Theme.Ramp.font(.panelDetail)
             config?.attributedTitle = title
             button.configuration = config
             button.isEnabled = count > 0
@@ -698,14 +698,14 @@ final class SessionListViewController: UIViewController {
         var content = UIListContentConfiguration.subtitleCell()
         content.text = Self.displayTitle(entry.session.title)
         content.textProperties.font =
-            row.unread ? Theme.Font.body().withTraits(.traitBold) : Theme.Font.body()
+            row.unread ? Theme.Ramp.font(.rowTitleStrong) : Theme.Ramp.font(.rowTitle)
         content.textProperties.numberOfLines = 1
 
         let facets = row.facets(vocabulary)
         content.secondaryAttributedText = ModelChipText.line(
             chip: ModelBadge.chip(for: entry),
             pieces: ModelChipText.facetPieces(facets, snippet: row.snippet),
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
+            size: Theme.Ramp.font(.panelFootnote).pointSize)
         content.secondaryTextProperties.numberOfLines = 1
         content.textToSecondaryTextVerticalPadding = 2
         content.prefersSideBySideTextAndSecondaryText = false
@@ -1146,8 +1146,7 @@ final class SessionListViewController: UIViewController {
         let color = activity.icon.tone.color
         let label = UILabel()
         label.text = pill.text
-        label.font = UIFontMetrics(forTextStyle: .caption2)
-            .scaledFont(for: .systemFont(ofSize: 10, weight: .bold))
+        label.font = Theme.Ramp.font(.pill)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = color
         label.sizeToFit()
@@ -1579,14 +1578,14 @@ final class FileBrowserViewController: UIViewController {
                 content.secondaryText = favPath
                 content.image = UIImage(systemName: "star.fill")
                 content.imageProperties.tintColor = Theme.Color.special
-                content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+                content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             case .recent(let recentPath):
                 content.text = (recentPath as NSString).lastPathComponent
                 content.secondaryText = recentPath
                 content.image = UIImage(systemName: "clock")
                 content.imageProperties.tintColor = Theme.Color.secondaryLabel
-                content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+                content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             case .node(let node):
                 content.text = node.name
@@ -1601,7 +1600,7 @@ final class FileBrowserViewController: UIViewController {
                     cell.accessories = []
                 }
             }
-            content.textProperties.font = Theme.Font.body()
+            content.textProperties.font = Theme.Ramp.font(.answer)
             cell.contentConfiguration = content
         }
 

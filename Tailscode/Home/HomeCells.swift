@@ -32,12 +32,12 @@ final class MissedActivityCell: GlassCardCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -324,7 +324,7 @@ final class LiveSessionCell: GlassCardCell {
         super.init(frame: frame)
         dot.translatesAutoresizingMaskIntoConstraints = false
 
-        stateLabel.font = .systemFont(ofSize: 10, weight: .heavy)
+        stateLabel.font = Theme.Ramp.font(.pill)
         stateLabel.translatesAutoresizingMaskIntoConstraints = false
 
         ageLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
@@ -332,12 +332,12 @@ final class LiveSessionCell: GlassCardCell {
         ageLabel.textAlignment = .right
         ageLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 2
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -372,7 +372,7 @@ final class LiveSessionCell: GlassCardCell {
         titleLabel.text = card.title
         detailLabel.attributedText = ModelChipText.line(
             chip: card.chip, pieces: card.pieces,
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
+            size: Theme.Ramp.font(.panelFootnote).pointSize)
         ageLabel.text = card.age
         let activity: ActivityKind =
             switch card.presence {
@@ -439,12 +439,12 @@ final class ProjectCell: GlassCardCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        nameLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        nameLabel.font = Theme.Ramp.font(.cardTitle)
         nameLabel.textColor = Theme.Color.label
         nameLabel.numberOfLines = 1
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.textColor = Theme.Color.tertiaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -503,12 +503,12 @@ final class ServerAlertCell: GlassCardCell {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -576,7 +576,7 @@ final class RecentSessionCell: GlassCardCell {
         titleLabel.numberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.textColor = Theme.Color.tertiaryLabel
         detailLabel.numberOfLines = 1
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -647,12 +647,12 @@ final class RecentSessionCell: GlassCardCell {
             .withTintColor(tint, renderingMode: .alwaysOriginal)
         unreadBadge.isHidden = !unread
         titleLabel.font = unread
-            ? .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
-            : .preferredFont(forTextStyle: .subheadline)
+            ? Theme.Ramp.font(.cardTitle)
+            : Theme.Ramp.font(.panelLabel)
         titleLabel.text = title
         detailLabel.attributedText = ModelChipText.line(
             chip: chip, pieces: pieces,
-            size: UIFont.preferredFont(forTextStyle: .caption2).pointSize)
+            size: Theme.Ramp.font(.panelFootnote).pointSize)
         if let badge, let image = UIImage(
             systemName: badge,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
@@ -794,7 +794,7 @@ final class QuotaCardCell: GlassCardCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        providerLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        providerLabel.font = Theme.Ramp.font(.cardTitle)
         providerLabel.textColor = Theme.Color.label
         providerLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -845,7 +845,7 @@ final class QuotaCardCell: GlassCardCell {
 
     private static func gaugeRow(_ gauge: UsageQuota.Gauge) -> UIView {
         let label = UILabel()
-        label.font = .preferredFont(forTextStyle: .caption2)
+        label.font = Theme.Ramp.font(.panelFootnote)
         label.textColor = Theme.Color.secondaryLabel
         label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -896,11 +896,11 @@ final class HomeHeaderView: UICollectionReusableView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        titleLabel.font = .preferredFont(forTextStyle: .footnote).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.rowTitleStrong)
         titleLabel.textColor = Theme.Color.secondaryLabel
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        actionButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
+        actionButton.titleLabel?.font = Theme.Ramp.font(.panelDetail)
         actionButton.translatesAutoresizingMaskIntoConstraints = false
         actionButton.addAction(
             UIAction { [weak self] _ in

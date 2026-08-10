@@ -73,13 +73,13 @@ final class ImageBubbleCell: UICollectionViewCell {
         imageView.isAccessibilityElement = true
         imageView.accessibilityTraits = [.image, .button]
         imageView.translatesAutoresizingMaskIntoConstraints = false
-        caption.font = Theme.Font.caption()
+        caption.font = Theme.Ramp.font(.panelFootnote)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.secondaryLabel
         caption.lineBreakMode = .byTruncatingMiddle
         caption.isHidden = true
         caption.translatesAutoresizingMaskIntoConstraints = false
-        failure.font = Theme.Font.caption()
+        failure.font = Theme.Ramp.font(.panelFootnote)
         failure.textColor = Theme.Color.tertiaryLabel
         failure.textAlignment = .center
         failure.numberOfLines = 2

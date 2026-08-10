@@ -25,7 +25,7 @@ final class RingGaugeView: UIView {
         progressLayer.strokeEnd = 0
         layer.addSublayer(progressLayer)
 
-        percentLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        percentLabel.font = Theme.Ramp.font(.metricLarge)
         percentLabel.textColor = Theme.Color.label
         percentLabel.textAlignment = .center
         percentLabel.adjustsFontSizeToFitWidth = true

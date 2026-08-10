@@ -42,7 +42,7 @@ final class AttachmentChips: NSView {
             }
             chip.bezelStyle = .rounded
             chip.controlSize = .small
-            chip.font = MacTheme.Font.caption()
+            chip.font = MacTheme.Ramp.font(.panelFootnote)
             chip.toolTip = attachment.name
             chip.translatesAutoresizingMaskIntoConstraints = false
             row.addArrangedSubview(chip)

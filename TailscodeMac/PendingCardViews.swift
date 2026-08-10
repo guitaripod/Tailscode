@@ -17,18 +17,18 @@ enum PendingCards {
         heading.alignment = .firstBaseline
         heading.spacing = MacTheme.Spacing.s
         heading.addArrangedSubview(
-            RowKit.label("⏸", font: MacTheme.Font.mono(12), color: MacTheme.Color.warning))
+            RowKit.label("⏸", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.warning))
         let what = request.title ?? request.toolName ?? Localized.text("a tool")
         heading.addArrangedSubview(
             RowKit.wrapping(
-                Localized.text("Allow %@?", what), font: MacTheme.Font.emphasis(),
+                Localized.text("Allow %@?", what), font: MacTheme.Ramp.font(.cardTitle),
                 color: MacTheme.Color.label))
         card.addArrangedSubview(heading)
 
         if let tool = request.toolName, request.title != nil, tool != request.title {
             card.addArrangedSubview(
                 RowKit.label(
-                    tool, font: MacTheme.Font.mono(11), color: MacTheme.Color.secondaryLabel))
+                    tool, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel))
         }
 
         let once = RowKit.ActionButton(title: Localized.text("Allow once · y")) { respond(.once) }
@@ -71,12 +71,12 @@ enum PendingCards {
             if !item.header.isEmpty {
                 section.addArrangedSubview(
                     RowKit.label(
-                        item.header.uppercased(), font: MacTheme.Font.caption(),
+                        item.header.uppercased(), font: MacTheme.Ramp.font(.panelFootnote),
                         color: MacTheme.Color.tertiaryLabel))
             }
             section.addArrangedSubview(
                 RowKit.wrapping(
-                    item.question, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label))
+                    item.question, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label))
 
             let single = !item.multiple && request.questions.count == 1
             for option in item.options {
@@ -142,7 +142,7 @@ enum PendingCards {
         ).isActive = true
         if let footnote = story.footnote {
             let elapsed = RowKit.label(
-                footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+                footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
             card.addArrangedSubview(elapsed)
             elapsedLabel(elapsed)
         }
@@ -157,7 +157,7 @@ enum PendingCards {
         if let footnote = story.footnote {
             card.addArrangedSubview(
                 RowKit.wrapping(
-                    footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card
     }
@@ -282,7 +282,7 @@ enum PendingCards {
             self.draft = draft
             super.init(frame: .zero)
             placeholderString = Localized.text("Your own answer…")
-            font = MacTheme.Font.mono(12)
+            font = MacTheme.Ramp.font(.code)
             translatesAutoresizingMaskIntoConstraints = false
             target = self
             action = #selector(entered)

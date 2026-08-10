@@ -259,15 +259,15 @@ final class UpdateBoardViewController: NSViewController {
         scroll.backgroundColor = MacTheme.Color.canvas
         heroCard.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         heroCard.layer?.borderColor = MacTheme.Color.separator.cgColor
-        heroHeadline.font = .systemFont(ofSize: 17 * MacTheme.UIScale.factor, weight: .bold)
+        heroHeadline.font = MacTheme.Ramp.font(.headline)
         heroHeadline.textColor = MacTheme.Color.label
-        heroDetail.font = MacTheme.Font.caption()
+        heroDetail.font = MacTheme.Ramp.font(.panelFootnote)
         heroDetail.textColor = MacTheme.Color.secondaryLabel
-        heroChecked.font = MacTheme.Font.caption()
+        heroChecked.font = MacTheme.Ramp.font(.panelFootnote)
         heroChecked.textColor = MacTheme.Color.tertiaryLabel
-        emptyLabel.font = MacTheme.Font.body()
+        emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
         emptyLabel.textColor = MacTheme.Color.secondaryLabel
-        statusLabel.font = MacTheme.Font.caption()
+        statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.textColor = MacTheme.Color.secondaryLabel
         for card in cards.values { card.applyTheme() }
     }

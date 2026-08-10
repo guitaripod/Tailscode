@@ -75,7 +75,7 @@ final class EnhancePreviewViewController: UIViewController, PromptEnhanceOverlay
             let bubble = UILabel()
             bubble.text = text
             bubble.numberOfLines = 0
-            bubble.font = Theme.Font.body()
+            bubble.font = Theme.Ramp.font(.answer)
             bubble.textColor = isUser ? Theme.Color.onAccent : Theme.Color.label
             bubble.backgroundColor = isUser ? Theme.Color.accent : Theme.Color.assistantBubble
             bubble.textAlignment = .natural

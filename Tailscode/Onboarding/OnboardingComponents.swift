@@ -315,7 +315,7 @@ final class SetupStepCard: UIView {
         badge.layer.cornerRadius = 15
         badge.layer.borderWidth = 1.5
         badgeNumber.text = "\(index)"
-        badgeNumber.font = .systemFont(ofSize: 14, weight: .semibold)
+        badgeNumber.font = Theme.Ramp.font(.control)
         badgeNumber.textAlignment = .center
         badgeNumber.translatesAutoresizingMaskIntoConstraints = false
         badgeCheck.image = UIImage(
@@ -329,14 +329,14 @@ final class SetupStepCard: UIView {
         badge.addSubview(badgeCheck)
 
         titleLabel.text = title
-        titleLabel.font = Theme.Font.headline()
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 0
         titleLabel.accessibilityLabel = String(localized: "Step \(index) of \(total): \(title)")
 
         detailLabel.text = detail
-        detailLabel.font = Theme.Font.footnote()
+        detailLabel.font = Theme.Ramp.font(.panelDetail)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0
@@ -480,7 +480,7 @@ final class StatusPillView: UIView {
         isHidden = true
         icon.contentMode = .center
         icon.setContentCompressionResistancePriority(.required, for: .horizontal)
-        label.font = .preferredFont(forTextStyle: .caption2)
+        label.font = Theme.Ramp.font(.panelFootnote)
         label.adjustsFontForContentSizeCategory = true
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingMiddle
@@ -673,13 +673,13 @@ final class AgentChoiceCard: UIControl {
         glyph.translatesAutoresizingMaskIntoConstraints = false
 
         titleLabel.text = title
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline)
+        titleLabel.font = Theme.Ramp.font(.panelLabel)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 0
 
         detailLabel.text = detail
-        detailLabel.font = .preferredFont(forTextStyle: .caption2)
+        detailLabel.font = Theme.Ramp.font(.panelFootnote)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0
@@ -762,10 +762,10 @@ final class DiagnosisCardView: UIView {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline)
+        titleLabel.font = Theme.Ramp.font(.panelLabel)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.numberOfLines = 0
-        detailLabel.font = Theme.Font.footnote()
+        detailLabel.font = Theme.Ramp.font(.panelDetail)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0

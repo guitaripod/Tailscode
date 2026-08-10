@@ -44,7 +44,7 @@ enum ModelChipText {
     static func line(
         chip: ModelChip?, pieces: [(text: String, color: UIColor)], size: CGFloat
     ) -> NSAttributedString {
-        let font = UIFont.preferredFont(forTextStyle: .caption2).withSize(size)
+        let font = Theme.Ramp.font(.panelFootnote).withSize(size)
         let line = NSMutableAttributedString()
         if let chip { line.append(runs(for: chip, size: size)) }
         for piece in pieces where !piece.text.isEmpty {

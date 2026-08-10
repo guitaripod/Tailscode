@@ -94,24 +94,24 @@ enum MacDialogs {
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let headline = NSTextField(labelWithString: facts.headline)
-        headline.font = .systemFont(ofSize: 15 * MacTheme.UIScale.factor, weight: .bold)
+        headline.font = MacTheme.Ramp.font(.headline)
         column.addArrangedSubview(headline)
         column.setCustomSpacing(MacTheme.Spacing.xs, after: headline)
         let subtitle = NSTextField(labelWithString: facts.subtitle)
-        subtitle.font = MacTheme.Font.caption()
+        subtitle.font = MacTheme.Ramp.font(.panelFootnote)
         subtitle.textColor = MacTheme.Color.secondaryLabel
         column.addArrangedSubview(subtitle)
 
         for paragraph in facts.paragraphs {
             let body = NSTextField(wrappingLabelWithString: paragraph)
-            body.font = MacTheme.Font.body()
+            body.font = MacTheme.Ramp.font(.panelLabel)
             body.textColor = MacTheme.Color.secondaryLabel
             column.addArrangedSubview(body)
             body.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
         }
 
         let caption = NSTextField(labelWithString: facts.fieldCaption.uppercased())
-        caption.font = .systemFont(ofSize: 10 * MacTheme.UIScale.factor, weight: .semibold)
+        caption.font = MacTheme.Ramp.font(.metricLabel)
         caption.textColor = MacTheme.Color.tertiaryLabel
         column.addArrangedSubview(caption)
         column.setCustomSpacing(MacTheme.Spacing.xs, after: caption)
@@ -130,7 +130,7 @@ enum MacDialogs {
 
         for line in [facts.lastTime, facts.wait].compactMap({ $0 }) {
             let note = NSTextField(wrappingLabelWithString: line)
-            note.font = MacTheme.Font.caption()
+            note.font = MacTheme.Ramp.font(.panelFootnote)
             note.textColor = MacTheme.Color.tertiaryLabel
             column.addArrangedSubview(note)
             note.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
@@ -201,7 +201,7 @@ enum MacDialogs {
 
     static func sectionHeader(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        label.font = MacTheme.Ramp.font(.sectionLabel)
         label.textColor = MacTheme.Color.secondaryLabel
         return label
     }
@@ -209,7 +209,7 @@ enum MacDialogs {
     static func detailLabel(_ text: String, wraps: Bool = false) -> NSTextField {
         let label =
             wraps ? NSTextField(wrappingLabelWithString: text) : NSTextField(labelWithString: text)
-        label.font = MacTheme.Font.caption()
+        label.font = MacTheme.Ramp.font(.panelFootnote)
         label.textColor = MacTheme.Color.secondaryLabel
         if !wraps { label.lineBreakMode = .byTruncatingMiddle }
         return label

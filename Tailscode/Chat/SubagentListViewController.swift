@@ -68,7 +68,7 @@ final class SubagentListViewController: UIViewController {
             guard let agent = self?.agents.first(where: { $0.id == agentID }) else { return }
             var content = UIListContentConfiguration.subtitleCell()
             content.text = agent.title
-            content.textProperties.font = Theme.Font.body()
+            content.textProperties.font = Theme.Ramp.font(.answer)
             content.textProperties.numberOfLines = 2
             var parts: [String] = []
             if agent.isCompleted {
@@ -88,7 +88,7 @@ final class SubagentListViewController: UIViewController {
             }
             if let type = agent.agentType { parts.append(type) }
             content.secondaryText = parts.joined(separator: " · ")
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color =
                 agent.isActive ? Theme.Color.success : Theme.Color.tertiaryLabel
             content.textToSecondaryTextVerticalPadding = 2

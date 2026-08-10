@@ -112,7 +112,7 @@ final class TranscriptSearchViewController: UIViewController {
         ) { [weak self] view, _, _ in
             var content = view.defaultContentConfiguration()
             content.text = self?.board.flatMap(TranscriptSearch.caveat)
-            content.textProperties.font = .preferredFont(forTextStyle: .caption1)
+            content.textProperties.font = Theme.Ramp.font(.panelDetail)
             content.textProperties.color = Theme.Color.secondaryLabel
             view.contentConfiguration = content
         }
@@ -141,11 +141,11 @@ final class TranscriptSearchCell: UICollectionViewListCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 1
 
-        whereLabel.font = .preferredFont(forTextStyle: .caption2)
+        whereLabel.font = Theme.Ramp.font(.panelFootnote)
         whereLabel.textColor = Theme.Color.secondaryLabel
         whereLabel.numberOfLines = 1
 
@@ -184,7 +184,7 @@ final class TranscriptSearchCell: UICollectionViewListCell {
         for match in row.matches.prefix(3) { quotes.addArrangedSubview(Self.quote(match)) }
         if row.total > row.matches.count {
             let more = UILabel()
-            more.font = .preferredFont(forTextStyle: .caption2)
+            more.font = Theme.Ramp.font(.panelFootnote)
             more.textColor = Theme.Color.tertiaryLabel
             more.text = String(localized: "… \(row.total - row.matches.count) more in this chat")
             quotes.addArrangedSubview(more)
@@ -194,13 +194,13 @@ final class TranscriptSearchCell: UICollectionViewListCell {
 
     private static func quote(_ match: TranscriptMatch) -> UIView {
         let kind = UILabel()
-        kind.font = .preferredFont(forTextStyle: .caption2).withTraits(.traitBold)
+        kind.font = Theme.Ramp.font(.metricLabel)
         kind.textColor = Theme.Color.accent
         kind.text = TranscriptSearch.label(for: match)
         kind.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let text = UILabel()
-        text.font = .preferredFont(forTextStyle: .caption2)
+        text.font = Theme.Ramp.font(.panelFootnote)
         text.textColor = Theme.Color.secondaryLabel
         text.text = match.text
         text.numberOfLines = 2

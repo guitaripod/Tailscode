@@ -79,7 +79,7 @@ final class QuickAskPanel: NSPanel {
         isReleasedWhenClosed = false
 
         field.placeholderString = Localized.text("Ask anything — no project, no setup")
-        field.font = .systemFont(ofSize: 14)
+        field.font = MacTheme.Ramp.font(.composer)
         field.target = self
         field.action = #selector(submit)
         field.delegate = self
@@ -106,7 +106,7 @@ final class QuickAskPanel: NSPanel {
         attachButton.target = self
         attachButton.action = #selector(pickAttachments)
 
-        status.font = .systemFont(ofSize: 11)
+        status.font = MacTheme.Ramp.font(.panelFootnote)
         status.textColor = MacTheme.Color.secondaryLabel
         status.lineBreakMode = .byTruncatingTail
 
@@ -237,7 +237,7 @@ final class QuickAskPanel: NSPanel {
             }
             row.bezelStyle = .inline
             row.controlSize = .small
-            row.font = MacTheme.Font.caption()
+            row.font = MacTheme.Ramp.font(.panelFootnote)
             starters.addArrangedSubview(row)
         }
         let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
@@ -251,14 +251,14 @@ final class QuickAskPanel: NSPanel {
             }
             row.bezelStyle = .inline
             row.controlSize = .small
-            row.font = MacTheme.Font.caption()
+            row.font = MacTheme.Ramp.font(.panelFootnote)
             starters.addArrangedSubview(row)
         }
     }
 
     private func sectionLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        label.font = MacTheme.Font.caption()
+        label.font = MacTheme.Ramp.font(.panelFootnote)
         label.textColor = MacTheme.Color.secondaryLabel
         return label
     }

@@ -63,7 +63,7 @@ final class ModelChooserSheet: NSObject {
         sheet.contentView = content
 
         summary.stringValue = chooser.summary
-        summary.font = MacTheme.Font.mono(11)
+        summary.font = MacTheme.Ramp.font(.toolOutput)
         summary.textColor = MacTheme.Color.secondaryLabel
         summary.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(summary)
@@ -91,7 +91,7 @@ final class ModelChooserSheet: NSObject {
         scroll.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(scroll)
 
-        empty.font = MacTheme.Font.body()
+        empty.font = MacTheme.Ramp.font(.panelLabel)
         empty.textColor = MacTheme.Color.secondaryLabel
         empty.alignment = .center
         empty.isHidden = true
@@ -99,7 +99,7 @@ final class ModelChooserSheet: NSObject {
         content.addSubview(empty)
 
         let hint = NSTextField(labelWithString: chooser.hint)
-        hint.font = MacTheme.Font.mono(10)
+        hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
         hint.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(hint)
@@ -289,10 +289,10 @@ private final class ModelChooserHeaderView: NSTableCellView {
     init(section: ModelChooserSection) {
         super.init(frame: .zero)
         let title = NSTextField(labelWithString: section.title.uppercased())
-        title.font = .systemFont(ofSize: 10 * MacTheme.UIScale.factor, weight: .bold)
+        title.font = MacTheme.Ramp.font(.metricLabel)
         title.textColor = MacTheme.Color.secondaryLabel
         let detail = NSTextField(labelWithString: section.detail)
-        detail.font = MacTheme.Font.mono(9)
+        detail.font = MacTheme.Ramp.font(.gaugeCaption)
         detail.textColor = MacTheme.Color.tertiaryLabel
         for view in [title, detail] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -321,7 +321,7 @@ private final class ModelChooserRowView: NSTableCellView {
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let check = NSTextField(labelWithString: row.isSelected ? "✓" : "")
-        check.font = MacTheme.Font.body()
+        check.font = MacTheme.Ramp.font(.panelLabel)
         check.textColor = MacTheme.Color.accent
 
         let line = NSStackView(views: [check, title])
@@ -352,7 +352,7 @@ private final class ModelChooserRowView: NSTableCellView {
         column.spacing = 1
         if !row.detail.isEmpty {
             let detail = NSTextField(labelWithString: row.detail)
-            detail.font = MacTheme.Font.mono(10)
+            detail.font = MacTheme.Ramp.font(.rowNote)
             detail.textColor = MacTheme.Color.tertiaryLabel
             detail.lineBreakMode = .byTruncatingTail
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -375,7 +375,7 @@ private final class ModelChooserRowView: NSTableCellView {
         let text = NSMutableAttributedString(
             string: row.title,
             attributes: [
-                .font: MacTheme.Font.body(),
+                .font: MacTheme.Ramp.font(.panelLabel),
                 .foregroundColor: row.wall == nil
                     ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel,
             ])
@@ -386,7 +386,7 @@ private final class ModelChooserRowView: NSTableCellView {
             text.addAttributes(
                 [
                     .foregroundColor: MacTheme.Color.accent,
-                    .font: MacTheme.Font.emphasis(),
+                    .font: MacTheme.Ramp.font(.cardTitle),
                 ], range: NSRange(location: start, length: length))
         }
         return text
@@ -405,7 +405,7 @@ private final class ModelChooserRowView: NSTableCellView {
 
     private static func pill(text: String, tint: NSColor, tooltip: String) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = .monospacedSystemFont(ofSize: 9 * MacTheme.UIScale.factor, weight: .medium)
+        label.font = MacTheme.Ramp.font(.gaugeCaption)
         label.textColor = tint
         label.toolTip = tooltip
         label.translatesAutoresizingMaskIntoConstraints = false

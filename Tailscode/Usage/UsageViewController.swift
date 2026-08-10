@@ -161,12 +161,12 @@ final class UsageViewController: UIViewController {
     }
 
     private func buildContent() {
-        updatedLabel.font = Theme.Font.caption()
+        updatedLabel.font = Theme.Ramp.font(.panelFootnote)
         updatedLabel.textColor = Theme.Color.secondaryLabel
         updatedLabel.textAlignment = .center
         updatedLabel.isHidden = true
 
-        errorLabel.font = Theme.Font.subheadline()
+        errorLabel.font = Theme.Ramp.font(.panelLabel)
         errorLabel.textColor = Theme.Color.danger
         errorLabel.numberOfLines = 0
         errorLabel.isHidden = true
@@ -637,13 +637,13 @@ private final class HeroCard: UIView {
             ring.heightAnchor.constraint(equalToConstant: 140),
         ])
 
-        titleLabel.font = Theme.Font.headline()
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.textAlignment = .center
         titleLabel.numberOfLines = 2
         titleLabel.text = "—"
 
-        captionLabel.font = Theme.Font.mono(11)
+        captionLabel.font = Theme.Ramp.font(.toolOutput)
         captionLabel.textColor = Theme.Color.secondaryLabel
         captionLabel.textAlignment = .center
         captionLabel.numberOfLines = 2
@@ -735,7 +735,7 @@ private final class ProviderCard: UIView {
     private func quotaCard() -> UIView {
         let title = UILabel()
         title.text = cardTitle
-        title.font = .systemFont(ofSize: 18, weight: .bold)
+        title.font = Theme.Ramp.font(.panelTitle)
         title.textColor = Theme.Color.label
         title.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -750,7 +750,7 @@ private final class ProviderCard: UIView {
         header.spacing = Theme.Spacing.s
 
         subtitleLabel.text = "—"
-        subtitleLabel.font = Theme.Font.caption()
+        subtitleLabel.font = Theme.Ramp.font(.panelFootnote)
         subtitleLabel.textColor = Theme.Color.secondaryLabel
         subtitleLabel.numberOfLines = 0
 
@@ -771,7 +771,7 @@ private final class ProviderCard: UIView {
     private func gaugeRow(_ gauge: GaugeVM, accent: UIColor) -> UIView {
         let name = UILabel()
         name.text = gauge.name
-        name.font = Theme.Font.subheadline()
+        name.font = Theme.Ramp.font(.panelLabel)
         name.textColor = Theme.Color.label
         name.numberOfLines = 1
         name.adjustsFontSizeToFitWidth = true
@@ -812,7 +812,7 @@ private final class ProviderCard: UIView {
 
         let caption = UILabel()
         caption.text = gauge.caption
-        caption.font = Theme.Font.mono(11)
+        caption.font = Theme.Ramp.font(.toolOutput)
         caption.textColor = Theme.Color.secondaryLabel
         caption.numberOfLines = 2
         captionLabels.append(caption)
@@ -827,7 +827,7 @@ private final class ProviderCard: UIView {
 
     private func pill() -> UIView {
         pillLabel.text = "—"
-        pillLabel.font = .systemFont(ofSize: 11, weight: .bold)
+        pillLabel.font = Theme.Ramp.font(.metricLabel)
         pillLabel.textColor = .black
         pillLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -847,7 +847,7 @@ private final class ProviderCard: UIView {
 
     private func noteLabelView() -> UILabel {
         noteLabel.text = " "
-        noteLabel.font = Theme.Font.caption()
+        noteLabel.font = Theme.Ramp.font(.panelFootnote)
         noteLabel.textColor = Theme.Color.secondaryLabel
         noteLabel.numberOfLines = 0
         return noteLabel
@@ -880,13 +880,13 @@ private final class ProviderCard: UIView {
     private func detailRow(_ title: String, _ value: String) -> UIView {
         let label = UILabel()
         label.text = title
-        label.font = Theme.Font.subheadline()
+        label.font = Theme.Ramp.font(.panelLabel)
         label.textColor = Theme.Color.label
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let valueLabel = UILabel()
         valueLabel.text = value
-        valueLabel.font = Theme.Font.mono(13)
+        valueLabel.font = Theme.Ramp.font(.code)
         valueLabel.textColor = Theme.Color.secondaryLabel
         valueLabel.textAlignment = .right
         valueLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -939,7 +939,7 @@ private final class DisclosureRow: UIControl {
     override init(frame: CGRect) {
         super.init(frame: frame)
         titleLabel.text = String(localized: "Plan details")
-        titleLabel.font = Theme.Font.subheadline()
+        titleLabel.font = Theme.Ramp.font(.panelLabel)
         titleLabel.textColor = Theme.Color.label
 
         chevron.tintColor = Theme.Color.secondaryLabel
@@ -997,7 +997,7 @@ private final class MonthCard: UIControl {
 
         let title = UILabel()
         title.text = String(localized: "The month in numbers")
-        title.font = .systemFont(ofSize: 18, weight: .bold)
+        title.font = Theme.Ramp.font(.panelTitle)
         title.textColor = Theme.Color.label
 
         totalLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)

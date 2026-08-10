@@ -167,14 +167,14 @@ final class CommandCatalogViewController: UIViewController {
         let line = NSMutableAttributedString(
             string: "/\(command.name)",
             attributes: [
-                .font: Theme.Font.body(), .foregroundColor: Theme.Color.label,
+                .font: Theme.Ramp.font(.answer), .foregroundColor: Theme.Color.label,
             ])
         guard let hint = command.argumentHint, !hint.isEmpty else { return line }
         line.append(
             NSAttributedString(
                 string: " \(hint)",
                 attributes: [
-                    .font: Theme.Font.mono(12), .foregroundColor: Theme.Color.tertiaryLabel,
+                    .font: Theme.Ramp.font(.code), .foregroundColor: Theme.Color.tertiaryLabel,
                 ]))
         return line
     }

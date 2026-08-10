@@ -67,7 +67,7 @@ final class CompactionCell: UICollectionViewCell {
 
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)
-        titleLabel.font = UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 0
@@ -83,7 +83,7 @@ final class CompactionCell: UICollectionViewCell {
         header.alignment = .firstBaseline
         header.spacing = Theme.Spacing.s
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption1)
+        detailLabel.font = Theme.Ramp.font(.panelDetail)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.numberOfLines = 0
@@ -97,7 +97,7 @@ final class CompactionCell: UICollectionViewCell {
         track.addSubview(fill)
         fillWidth = fill.widthAnchor.constraint(equalTo: track.widthAnchor, multiplier: 0.05)
 
-        footnote.font = .preferredFont(forTextStyle: .caption2)
+        footnote.font = Theme.Ramp.font(.panelFootnote)
         footnote.adjustsFontForContentSizeCategory = true
         footnote.textColor = Theme.Color.tertiaryLabel
         footnote.numberOfLines = 0

@@ -98,14 +98,14 @@ final class CompactPreflightViewController: UIViewController {
 
         let headline = UILabel()
         headline.text = facts.headline
-        headline.font = UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
+        headline.font = Theme.Ramp.font(.headline)
         headline.adjustsFontForContentSizeCategory = true
         headline.numberOfLines = 0
         headline.textAlignment = .center
 
         let subtitle = UILabel()
         subtitle.text = facts.subtitle
-        subtitle.font = .preferredFont(forTextStyle: .footnote)
+        subtitle.font = Theme.Ramp.font(.seamFootnote)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = Theme.Color.secondaryLabel
         subtitle.textAlignment = .center
@@ -125,7 +125,7 @@ final class CompactPreflightViewController: UIViewController {
     private func body(_ text: String, color: UIColor = Theme.Color.secondaryLabel) -> UIView {
         let label = UILabel()
         label.text = text
-        label.font = .preferredFont(forTextStyle: .subheadline)
+        label.font = Theme.Ramp.font(.panelLabel)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = color
         label.numberOfLines = 0
@@ -135,12 +135,12 @@ final class CompactPreflightViewController: UIViewController {
     private func instructionsField() -> UIView {
         let caption = UILabel()
         caption.text = facts.fieldCaption.uppercased()
-        caption.font = .preferredFont(forTextStyle: .caption2)
+        caption.font = Theme.Ramp.font(.metricLabel)
         caption.adjustsFontForContentSizeCategory = true
         caption.textColor = Theme.Color.tertiaryLabel
 
         instructions.placeholder = facts.fieldPlaceholder
-        instructions.font = Theme.Font.body()
+        instructions.font = Theme.Ramp.font(.composer)
         instructions.adjustsFontForContentSizeCategory = true
         instructions.borderStyle = .none
         instructions.autocapitalizationType = .none
@@ -263,7 +263,7 @@ final class CompactionSummaryViewController: UIViewController {
         container.backgroundColor = Theme.Color.secondaryBackground
 
         let label = UILabel()
-        label.font = .preferredFont(forTextStyle: .footnote)
+        label.font = Theme.Ramp.font(.seamFootnote)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.secondaryLabel
         label.numberOfLines = 0

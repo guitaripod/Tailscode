@@ -133,7 +133,7 @@ final class TableCell: UICollectionViewCell {
         guard header else { return base }
         let bold = NSMutableAttributedString(attributedString: base)
         bold.addAttribute(
-            .font, value: UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold),
+            .font, value: Theme.Ramp.font(.rowTitleStrong),
             range: NSRange(location: 0, length: bold.length))
         return bold
     }

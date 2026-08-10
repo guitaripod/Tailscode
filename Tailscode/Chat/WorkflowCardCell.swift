@@ -70,24 +70,24 @@ final class WorkflowCardCell: UICollectionViewCell {
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.setContentHuggingPriority(.required, for: .horizontal)
 
-        titleLabel.font = .preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.workflowName)
         titleLabel.textColor = Theme.Color.label
         titleLabel.adjustsFontForContentSizeCategory = true
-        headlineLabel.font = .preferredFont(forTextStyle: .caption2)
+        headlineLabel.font = Theme.Ramp.font(.workflowModel)
         headlineLabel.adjustsFontForContentSizeCategory = true
         headlineLabel.setContentHuggingPriority(.required, for: .horizontal)
         elapsedLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         elapsedLabel.textColor = Theme.Color.tertiaryLabel
         elapsedLabel.setContentHuggingPriority(.required, for: .horizontal)
-        summaryLabel.font = .preferredFont(forTextStyle: .caption1)
+        summaryLabel.font = Theme.Ramp.font(.workflowSummary)
         summaryLabel.textColor = Theme.Color.secondaryLabel
         summaryLabel.numberOfLines = 3
         summaryLabel.adjustsFontForContentSizeCategory = true
-        answerLabel.font = .preferredFont(forTextStyle: .footnote)
+        answerLabel.font = Theme.Ramp.font(.cardBody)
         answerLabel.textColor = Theme.Color.label
         answerLabel.numberOfLines = 0
         answerLabel.adjustsFontForContentSizeCategory = true
-        meterLabel.font = .preferredFont(forTextStyle: .caption2)
+        meterLabel.font = Theme.Ramp.font(.workflowMeter)
         meterLabel.textColor = Theme.Color.tertiaryLabel
         meterLabel.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -245,13 +245,13 @@ final class WorkflowCardCell: UICollectionViewCell {
         phaseDots.append(dot)
 
         let title = UILabel()
-        title.font = .preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
+        title.font = Theme.Ramp.font(.workflowStep)
         title.textColor = Theme.Color.label
         title.text = phase.title
         title.setContentHuggingPriority(.required, for: .horizontal)
 
         let detail = UILabel()
-        detail.font = .preferredFont(forTextStyle: .caption2)
+        detail.font = Theme.Ramp.font(.workflowModel)
         detail.textColor = Theme.Color.tertiaryLabel
         detail.text = phase.detail
         detail.lineBreakMode = .byTruncatingTail
@@ -280,7 +280,7 @@ final class WorkflowCardCell: UICollectionViewCell {
         glyph.setContentHuggingPriority(.required, for: .horizontal)
 
         let title = UILabel()
-        title.font = .preferredFont(forTextStyle: .caption1)
+        title.font = Theme.Ramp.font(.workflowStep)
         title.textColor = Theme.Color.label
         title.lineBreakMode = .byTruncatingTail
 

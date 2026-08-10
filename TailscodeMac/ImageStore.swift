@@ -134,7 +134,7 @@ enum ImageRowView {
         let isImage = (reference.mime ?? "").hasPrefix("image/")
         guard isImage else {
             return RowKit.label(
-                "📎 \(name)", font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+                "📎 \(name)", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
         }
         let column = NSStackView()
         column.orientation = .vertical
@@ -165,7 +165,7 @@ enum ImageRowView {
             column.addArrangedSubview(
                 RowKit.label(
                     "\(name) · \(entry.pixelWidth)×\(entry.pixelHeight)",
-                    font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel))
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         } else {
             let frame = NSView()
             frame.wantsLayer = true
@@ -173,7 +173,7 @@ enum ImageRowView {
             frame.layer?.cornerRadius = 6
             frame.translatesAutoresizingMaskIntoConstraints = false
             let label = RowKit.label(
-                Localized.text("🖼 %@ — loading…", name), font: MacTheme.Font.caption(),
+                Localized.text("🖼 %@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel)
             frame.addSubview(label)
             NSLayoutConstraint.activate([
@@ -232,7 +232,7 @@ final class ImageViewer: NSObject {
     private let scrollView = NSScrollView()
     private let imageView = NSImageView()
     private let counterLabel = RowKit.label(
-        "", font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel)
+        "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
     private let zoomButton = NSButton(title: "", target: nil, action: nil)
     private var oneToOne = false
     private static var open: ImageViewer?

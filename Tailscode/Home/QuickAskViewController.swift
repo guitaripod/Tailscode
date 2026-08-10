@@ -150,7 +150,7 @@ final class QuickAskViewController: UIViewController {
 
     private func buildHeader() {
         titleLabel.text = String(localized: "Quick ask")
-        titleLabel.font = UIFont.preferredFont(forTextStyle: .title2).withTraits(.traitBold)
+        titleLabel.font = Theme.Ramp.font(.metricLarge)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -555,7 +555,7 @@ final class QuickAskViewController: UIViewController {
     private func sectionLabel(_ text: String) -> UILabel {
         let label = UILabel()
         label.text = text
-        label.font = UIFont.preferredFont(forTextStyle: .footnote).withTraits(.traitBold)
+        label.font = Theme.Ramp.font(.rowTitleStrong)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.secondaryLabel
         return label
@@ -1115,11 +1115,11 @@ final class QuickAskRowButton: UIButton {
             top: Theme.Spacing.m, leading: Theme.Spacing.m, bottom: Theme.Spacing.m,
             trailing: Theme.Spacing.m)
         var name = AttributedString(title)
-        name.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        name.font = Theme.Ramp.font(.panelLabel)
         name.foregroundColor = Theme.Color.label
         config.attributedTitle = name
         var subtitle = AttributedString(detail)
-        subtitle.font = UIFont.preferredFont(forTextStyle: .caption1)
+        subtitle.font = Theme.Ramp.font(.panelDetail)
         subtitle.foregroundColor = Theme.Color.secondaryLabel
         config.attributedSubtitle = subtitle
         config.titleAlignment = .leading

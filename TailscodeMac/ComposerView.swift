@@ -325,7 +325,7 @@ final class ComposerView: NSView {
 
     private func configureEditor() {
         textView.isRichText = false
-        textView.font = MacTheme.Font.mono(13)
+        textView.font = MacTheme.Ramp.font(.toolDetail)
         textView.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.s)
         textView.drawsBackground = false
         textView.allowsUndo = true
@@ -348,7 +348,7 @@ final class ComposerView: NSView {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         placeholderLabel.stringValue = Localized.text("Message… (/ for commands)")
-        placeholderLabel.font = MacTheme.Font.mono(13)
+        placeholderLabel.font = MacTheme.Ramp.font(.toolDetail)
         placeholderLabel.textColor = MacTheme.Color.tertiaryLabel
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
 

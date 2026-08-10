@@ -193,7 +193,7 @@ final class SlashCommandPalette: UIView {
     private func makeHeader(_ title: String) -> UIView {
         let label = UILabel()
         label.text = title.uppercased()
-        label.font = .preferredFont(forTextStyle: .caption2)
+        label.font = Theme.Ramp.font(.hint)
         label.adjustsFontForContentSizeCategory = true
         label.textColor = Theme.Color.onGlassSecondary
         let container = UIView()
@@ -223,12 +223,12 @@ final class SlashCommandPalette: UIView {
         let container = UIView()
         let title = UILabel()
         title.text = String(localized: "No command called /\(query)")
-        title.font = Theme.Font.subheadline()
+        title.font = Theme.Ramp.font(.rowTitle)
         title.adjustsFontForContentSizeCategory = true
         title.textColor = Theme.Color.onGlass
         let detail = UILabel()
         detail.text = String(localized: "Send it and it goes as an ordinary message.")
-        detail.font = .preferredFont(forTextStyle: .caption2)
+        detail.font = Theme.Ramp.font(.rowDetail)
         detail.adjustsFontForContentSizeCategory = true
         detail.textColor = Theme.Color.onGlassSecondary
         detail.numberOfLines = 2
@@ -301,7 +301,7 @@ final class SlashRowView: UIControl {
         titleLabel.lineBreakMode = .byTruncatingTail
 
         subtitleLabel.text = subtitleText
-        subtitleLabel.font = .preferredFont(forTextStyle: .caption2)
+        subtitleLabel.font = Theme.Ramp.font(.rowDetail)
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.textColor = Theme.Color.onGlassSecondary
         subtitleLabel.numberOfLines = 1
@@ -351,7 +351,7 @@ final class SlashRowView: UIControl {
     /// hint follows inline rather than as a trailing chip — a chip wide enough to hold
     /// `<what the summary must keep>` would eat the description it sits beside.
     private static func attributedTitle(_ command: SlashCommand) -> NSAttributedString {
-        let base = Theme.Font.subheadline()
+        let base = Theme.Ramp.font(.rowTitle)
         let string = NSMutableAttributedString(
             string: command.title,
             attributes: [.font: base, .foregroundColor: Theme.Color.onGlass])
@@ -370,7 +370,7 @@ final class SlashRowView: UIControl {
                 NSAttributedString(
                     string: " \(hint)",
                     attributes: [
-                        .font: Theme.Font.mono(11),
+                        .font: Theme.Ramp.font(.rowNote),
                         .foregroundColor: Theme.Color.onGlassSecondary,
                     ]))
         }
@@ -407,7 +407,7 @@ final class SlashArgumentView: UIView {
 
         let detail = UILabel()
         detail.text = command.subtitle.isEmpty ? nil : command.subtitle
-        detail.font = .preferredFont(forTextStyle: .caption2)
+        detail.font = Theme.Ramp.font(.rowDetail)
         detail.adjustsFontForContentSizeCategory = true
         detail.textColor = Theme.Color.onGlassSecondary
         detail.numberOfLines = 2
@@ -441,7 +441,7 @@ final class SlashArgumentView: UIView {
         let name = NSMutableAttributedString(
             string: command.title,
             attributes: [
-                .font: Theme.Font.subheadline(),
+                .font: Theme.Ramp.font(.rowTitle),
                 .foregroundColor: command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlass,
             ])
         let trailing =
@@ -453,7 +453,7 @@ final class SlashArgumentView: UIView {
             NSAttributedString(
                 string: trailing,
                 attributes: [
-                    .font: Theme.Font.mono(12),
+                    .font: Theme.Ramp.font(.code),
                     .foregroundColor: typed.isEmpty
                         ? Theme.Color.onGlassSecondary : Theme.Color.onGlass,
                 ]))

@@ -96,7 +96,7 @@ final class ArchivedChatsViewController: UIViewController {
             cell, _, entry in
             var content = UIListContentConfiguration.subtitleCell()
             content.text = SessionListViewController.displayTitle(entry.session.title)
-            content.textProperties.font = Theme.Font.body()
+            content.textProperties.font = Theme.Ramp.font(.answer)
             content.textProperties.numberOfLines = 1
             var parts: [String] = [entry.profileName]
             if let dir = entry.session.directory {
@@ -104,7 +104,7 @@ final class ArchivedChatsViewController: UIViewController {
             }
             parts.append(SessionRowModel.age(of: entry.session.updatedAt))
             content.secondaryText = parts.joined(separator: " · ")
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             content.secondaryTextProperties.numberOfLines = 1
             content.textToSecondaryTextVerticalPadding = 2

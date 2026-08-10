@@ -30,7 +30,7 @@ final class EnhancedPromptCell: UICollectionViewCell {
         icon.setContentHuggingPriority(.required, for: .horizontal)
         icon.translatesAutoresizingMaskIntoConstraints = false
 
-        badge.font = .preferredFont(forTextStyle: .caption1)
+        badge.font = Theme.Ramp.font(.panelDetail)
         badge.adjustsFontForContentSizeCategory = true
         badge.textColor = Theme.Color.accent
         badge.translatesAutoresizingMaskIntoConstraints = false
@@ -40,7 +40,7 @@ final class EnhancedPromptCell: UICollectionViewCell {
         textView.alwaysBounceVertical = false
         textView.backgroundColor = .clear
         textView.textColor = Theme.Color.label
-        textView.font = Theme.Font.body()
+        textView.font = Theme.Ramp.font(.answer)
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
@@ -149,7 +149,7 @@ final class EnhanceMessageCell: UICollectionViewCell {
     private func build() {
         icon.tintColor = Theme.Color.secondaryLabel
         icon.contentMode = .scaleAspectFit
-        message.font = Theme.Font.subheadline()
+        message.font = Theme.Ramp.font(.panelLabel)
         message.adjustsFontForContentSizeCategory = true
         message.textColor = Theme.Color.secondaryLabel
         message.textAlignment = .center

@@ -255,13 +255,13 @@ final class ServerSignInViewController: UIViewController {
         headline.textColor = Theme.Color.label
         headline.numberOfLines = 0
 
-        detail.font = Theme.Font.subheadline()
+        detail.font = Theme.Ramp.font(.panelLabel)
         detail.adjustsFontForContentSizeCategory = true
         detail.textColor = Theme.Color.secondaryLabel
         detail.numberOfLines = 0
 
         codeField.placeholder = String(localized: "Paste the code")
-        codeField.font = Theme.Font.mono(15)
+        codeField.font = Theme.Ramp.font(.pairingCode)
         codeField.adjustsFontForContentSizeCategory = true
         codeField.borderStyle = .roundedRect
         codeField.autocorrectionType = .no
@@ -275,7 +275,7 @@ final class ServerSignInViewController: UIViewController {
 
         action.addAction(UIAction { [weak self] _ in self?.actionTapped() }, for: .touchUpInside)
 
-        statusLabel.font = Theme.Font.footnote()
+        statusLabel.font = Theme.Ramp.font(.panelDetail)
         statusLabel.adjustsFontForContentSizeCategory = true
         statusLabel.textColor = Theme.Color.secondaryLabel
         statusLabel.textAlignment = .center
@@ -350,7 +350,7 @@ private final class StepCard: UIView {
         layer.cornerCurve = .continuous
 
         marker.text = "\(number)"
-        marker.font = Theme.Font.headline()
+        marker.font = Theme.Ramp.font(.cardTitle)
         marker.textAlignment = .center
         marker.textColor = Theme.Color.onAccent
         marker.backgroundColor = Theme.Color.accent
@@ -364,13 +364,13 @@ private final class StepCard: UIView {
         tick.translatesAutoresizingMaskIntoConstraints = false
 
         title.text = titleText
-        title.font = Theme.Font.headline()
+        title.font = Theme.Ramp.font(.cardTitle)
         title.adjustsFontForContentSizeCategory = true
         title.textColor = Theme.Color.label
         title.numberOfLines = 0
 
         detail.text = detailText
-        detail.font = Theme.Font.footnote()
+        detail.font = Theme.Ramp.font(.panelDetail)
         detail.adjustsFontForContentSizeCategory = true
         detail.textColor = Theme.Color.secondaryLabel
         detail.numberOfLines = 0

@@ -21,7 +21,7 @@ enum TaskBoardView {
         card.translatesAutoresizingMaskIntoConstraints = false
 
         let header = RowKit.label(
-            board.headline, font: .systemFont(ofSize: 11, weight: .bold),
+            board.headline, font: MacTheme.Ramp.font(.sectionLabel),
             color: MacTheme.Color.accent)
         card.addArrangedSubview(header)
         card.setCustomSpacing(MacTheme.Spacing.s, after: header)
@@ -51,7 +51,7 @@ enum TaskBoardView {
         let done = item.status == .completed
         let text = item.status == .inProgress ? (item.activeForm ?? item.subject) : item.subject
         var attrs: [NSAttributedString.Key: Any] = [
-            .font: MacTheme.Font.caption(),
+            .font: MacTheme.Ramp.font(.panelFootnote),
             .foregroundColor: done ? MacTheme.Color.tertiaryLabel : MacTheme.Color.label,
         ]
         if done { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }

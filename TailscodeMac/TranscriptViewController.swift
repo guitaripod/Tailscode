@@ -173,7 +173,7 @@ final class TranscriptViewController: NSViewController {
         container.addSubview(scrollView)
 
         emptyLabel.stringValue = Localized.text("Pick a conversation")
-        emptyLabel.font = MacTheme.Font.body()
+        emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
         emptyLabel.textColor = MacTheme.Color.tertiaryLabel
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(emptyLabel)
@@ -182,7 +182,7 @@ final class TranscriptViewController: NSViewController {
         chooserView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(chooserView)
 
-        identityLabel.font = MacTheme.Font.caption()
+        identityLabel.font = MacTheme.Ramp.font(.panelFootnote)
         identityLabel.textColor = MacTheme.Color.secondaryLabel
         identityLabel.lineBreakMode = .byTruncatingMiddle
         identityLabel.isHidden = true
@@ -646,7 +646,7 @@ final class TranscriptViewController: NSViewController {
         earlierButton.isHidden = true
         earlierButton.isBordered = false
         earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
-        earlierButton.font = MacTheme.Font.caption()
+        earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
 
         canvas.orientation = .vertical
         canvas.alignment = .width
@@ -743,7 +743,7 @@ final class TranscriptViewController: NSViewController {
 
     private func configureJumpPill() -> NSView {
         jumpButton.isBordered = false
-        jumpButton.font = MacTheme.Font.emphasis()
+        jumpButton.font = MacTheme.Ramp.font(.cardTitle)
         jumpButton.contentTintColor = MacTheme.Color.onGlass
         jumpButton.target = self
         jumpButton.action = #selector(jumpToBottom)
@@ -893,7 +893,7 @@ final class TranscriptViewController: NSViewController {
         let label = NSTextField(
             wrappingLabelWithString: Localized.text(
                 "⚠ Claude is signed out on %@ — every turn will refuse until it signs in.", name))
-        label.font = MacTheme.Font.caption()
+        label.font = MacTheme.Ramp.font(.panelFootnote)
         label.setContentHuggingPriority(.init(1), for: .horizontal)
         let signIn = RowKit.ActionButton(title: Localized.text("Sign in")) { [weak self] in
             guard let self, let window = self.view.window else { return }
@@ -1758,7 +1758,7 @@ final class TranscriptViewController: NSViewController {
     static func codeRendering(_ body: String) -> NSAttributedString {
         NSAttributedString(
             string: body,
-            attributes: [.font: MacTheme.Font.mono(12), .foregroundColor: MacTheme.Color.label])
+            attributes: [.font: MacTheme.Ramp.font(.code), .foregroundColor: MacTheme.Color.label])
     }
 
     /// Where a live row keeps the words: prose is the label itself, a code block keeps its body
@@ -2229,7 +2229,7 @@ final class TranscriptViewController: NSViewController {
 
         if let subtitle {
             let header = RowKit.label(
-                subtitle, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel)
+                subtitle, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
             column.addArrangedSubview(
                 RowKit.inset(header, leading: MacTheme.Spacing.l, top: MacTheme.Spacing.m))
             column.addArrangedSubview(RowKit.hairline(verticalPadding: 8))
@@ -2240,7 +2240,7 @@ final class TranscriptViewController: NSViewController {
             let text = scrollable.documentView as? NSTextView
             text?.isEditable = false
             text?.string = body
-            text?.font = MacTheme.Font.mono(12)
+            text?.font = MacTheme.Ramp.font(.code)
             text?.textContainerInset = NSSize(
                 width: MacTheme.Spacing.l, height: MacTheme.Spacing.m)
             scrollable.drawsBackground = false

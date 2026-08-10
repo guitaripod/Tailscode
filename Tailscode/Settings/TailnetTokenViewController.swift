@@ -25,7 +25,7 @@ final class TailnetTokenViewController: UIViewController {
             localized:
                 "Generate an API access token with Devices read access on the Tailscale keys page. One paste is all you need."
         )
-        header.font = Theme.Font.subheadline()
+        header.font = Theme.Ramp.font(.panelLabel)
         header.textColor = Theme.Color.secondaryLabel
         header.numberOfLines = 0
 
@@ -33,7 +33,7 @@ final class TailnetTokenViewController: UIViewController {
 
         let openButton = UIButton(type: .system)
         openButton.setTitle(String(localized: "Open Keys page to generate token"), for: .normal)
-        openButton.titleLabel?.font = Theme.Font.caption()
+        openButton.titleLabel?.font = Theme.Ramp.font(.panelFootnote)
         openButton.addAction(
             UIAction { _ in
                 guard let url = URL(string: "https://login.tailscale.com/admin/settings/keys")
@@ -46,7 +46,7 @@ final class TailnetTokenViewController: UIViewController {
             localized:
                 "Stored only in the Keychain. Used solely to list your Tailscale devices — connecting to a server never needs it."
         )
-        note.font = Theme.Font.caption()
+        note.font = Theme.Ramp.font(.panelFootnote)
         note.textColor = Theme.Color.tertiaryLabel
         note.numberOfLines = 0
 

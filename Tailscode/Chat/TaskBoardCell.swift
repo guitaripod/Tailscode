@@ -24,7 +24,7 @@ final class TaskBoardCell: UICollectionViewCell {
         card.layer.cornerCurve = .continuous
         card.translatesAutoresizingMaskIntoConstraints = false
 
-        header.font = .preferredFont(forTextStyle: .caption1).withTraits(.traitBold)
+        header.font = Theme.Ramp.font(.sectionLabel)
         header.adjustsFontForContentSizeCategory = true
         header.textColor = Theme.Color.accent
         header.numberOfLines = 0
@@ -97,7 +97,7 @@ final class TaskBoardCell: UICollectionViewCell {
         let done = item.status == .completed
         let text = item.status == .inProgress ? (item.activeForm ?? item.subject) : item.subject
         var attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.preferredFont(forTextStyle: .footnote),
+            .font: Theme.Ramp.font(.panelDetail),
             .foregroundColor: done ? Theme.Color.tertiaryLabel : Theme.Color.label,
         ]
         if done { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }

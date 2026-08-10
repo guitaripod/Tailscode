@@ -74,7 +74,7 @@ final class ServersWindow: NSWindowController {
 
         addressField.placeholderString = Localized.text(
             "Tailnet address — 100.x.y.z, name.tailnet.ts.net, host:port")
-        addressField.font = MacTheme.Font.mono()
+        addressField.font = MacTheme.Ramp.font(.code)
         nameField.placeholderString = Localized.text("Label (optional)")
         passwordField.placeholderString = Localized.text("Password")
         claudeRadio.target = self
@@ -86,7 +86,7 @@ final class ServersWindow: NSWindowController {
         kindRow.orientation = .horizontal
         kindRow.spacing = MacTheme.Spacing.s
 
-        statusLabel.font = MacTheme.Font.caption()
+        statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.textColor = MacTheme.Color.secondaryLabel
 
         let close = NSButton(title: Localized.text("Close"), target: self, action: #selector(closeWindow))
@@ -135,7 +135,7 @@ final class ServersWindow: NSWindowController {
 
     private func makeRow(_ profile: ConnectionProfile) -> NSView {
         let title = NSTextField(labelWithString: profile.name)
-        title.font = MacTheme.Font.emphasis()
+        title.font = MacTheme.Ramp.font(.cardTitle)
         let detail = MacDialogs.detailLabel(
             "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))")
 
@@ -274,7 +274,7 @@ final class ServersWindow: NSWindowController {
         box.arrangedSubviews.forEach { $0.removeFromSuperview() }
         box.addArrangedSubview(
             RowKit.label(
-                reading.headline, font: MacTheme.Font.emphasis(), color: reading.tone.color))
+                reading.headline, font: MacTheme.Ramp.font(.cardTitle), color: reading.tone.color))
         for line in UpdateReadingViews.lines(for: reading) {
             box.addArrangedSubview(line)
         }
@@ -340,7 +340,7 @@ final class ServersWindow: NSWindowController {
         let warning = NSTextField(
             wrappingLabelWithString: Localized.text(
                 "⚠ Claude is signed out — every turn will refuse until it signs in."))
-        warning.font = MacTheme.Font.caption()
+        warning.font = MacTheme.Ramp.font(.panelFootnote)
         warning.textColor = MacTheme.Color.warning
         box.addArrangedSubview(warning)
         box.addArrangedSubview(

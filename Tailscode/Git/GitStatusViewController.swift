@@ -131,8 +131,8 @@ final class GitStatusViewController: UIViewController {
                 systemName: row.kind.symbol,
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .footnote))
             content.imageProperties.tintColor = row.tone.color
-            content.textProperties.font = .preferredFont(forTextStyle: .subheadline)
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.textProperties.font = Theme.Ramp.font(.panelLabel)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             content.secondaryTextProperties.lineBreakMode = .byTruncatingHead
             cell.contentConfiguration = content
@@ -158,11 +158,11 @@ final class GitStatusViewController: UIViewController {
             var content = cell.defaultContentConfiguration()
             content.text = row.subject
             content.textProperties.numberOfLines = 2
-            content.textProperties.font = .preferredFont(forTextStyle: .subheadline)
+            content.textProperties.font = Theme.Ramp.font(.panelLabel)
             var detail = [row.short, row.author, row.age]
             if !row.refs.isEmpty { detail.insert(row.refs.joined(separator: " · "), at: 1) }
             content.secondaryText = detail.joined(separator: " · ")
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             content.image = UIImage(
                 systemName: row.isHead ? "circle.circle.fill" : "circle",
@@ -177,7 +177,7 @@ final class GitStatusViewController: UIViewController {
             cell, _, text in
             var content = cell.defaultContentConfiguration()
             content.text = text
-            content.textProperties.font = .preferredFont(forTextStyle: .footnote)
+            content.textProperties.font = Theme.Ramp.font(.panelDetail)
             content.textProperties.color = Theme.Color.secondaryLabel
             content.textProperties.numberOfLines = 0
             cell.contentConfiguration = content
@@ -218,9 +218,8 @@ final class GitStatusViewController: UIViewController {
             case .header, .note:
                 content.text = nil
             }
-            content.textProperties.font = .preferredFont(forTextStyle: .caption1).withTraits(
-                .traitBold)
-            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .caption2)
+            content.textProperties.font = Theme.Ramp.font(.rowTitleStrong)
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             content.prefersSideBySideTextAndSecondaryText = true
             cell.contentConfiguration = content
@@ -390,16 +389,16 @@ final class GitHeaderCell: UICollectionViewListCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        branch.font = .systemFont(ofSize: 26, weight: .bold)
+        branch.font = Theme.Ramp.font(.metricLarge)
         branch.textColor = Theme.Color.label
         branch.adjustsFontSizeToFitWidth = true
         branch.minimumScaleFactor = 0.6
         branch.lineBreakMode = .byTruncatingMiddle
-        sync.font = .preferredFont(forTextStyle: .subheadline)
-        summary.font = .preferredFont(forTextStyle: .footnote)
+        sync.font = Theme.Ramp.font(.panelLabel)
+        summary.font = Theme.Ramp.font(.panelDetail)
         summary.textColor = Theme.Color.secondaryLabel
         summary.numberOfLines = 0
-        alert.font = .preferredFont(forTextStyle: .footnote).withTraits(.traitBold)
+        alert.font = Theme.Ramp.font(.rowTitleStrong)
         alert.textColor = Theme.Color.warning
         alert.numberOfLines = 0
         alertBox.backgroundColor = Theme.Color.warning.withAlphaComponent(0.14)
@@ -447,19 +446,19 @@ final class GitHeaderCell: UICollectionViewListCell {
         sync.text = state.sync
         sync.textColor = state.syncTone.color
         summary.attributedText = GitInk.line(
-            state.summaryParts, font: .preferredFont(forTextStyle: .footnote))
+            state.summaryParts, font: Theme.Ramp.font(.panelDetail))
         alert.text = state.alert
         alertBox.isHidden = state.alert == nil
         facts.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for fact in state.facts {
             let name = UILabel()
             name.text = fact.label
-            name.font = .preferredFont(forTextStyle: .caption1)
+            name.font = Theme.Ramp.font(.panelDetail)
             name.textColor = Theme.Color.tertiaryLabel
             name.setContentHuggingPriority(.required, for: .horizontal)
             let value = UILabel()
             value.text = fact.value
-            value.font = .preferredFont(forTextStyle: .caption1)
+            value.font = Theme.Ramp.font(.panelDetail)
             value.textColor = fact.tone == .neutral ? Theme.Color.label : fact.tone.color
             value.textAlignment = .right
             value.lineBreakMode = .byTruncatingHead

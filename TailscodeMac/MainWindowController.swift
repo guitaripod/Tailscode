@@ -1519,17 +1519,17 @@ final class MainWindowController: NSWindowController {
             let target = used < (total + 1) / 2 ? left : right
             used += section.rows.count + 2
             let header = NSTextField(labelWithString: section.title)
-            header.font = .systemFont(ofSize: 11, weight: .semibold)
+            header.font = MacTheme.Ramp.font(.sectionLabel)
             header.textColor = MacTheme.Color.secondaryLabel
             target.addArrangedSubview(header)
             target.setCustomSpacing(6, after: header)
             for row in section.rows {
                 let keys = NSTextField(labelWithString: row.keys)
-                keys.font = MacTheme.Font.mono(11)
+                keys.font = MacTheme.Ramp.font(.toolOutput)
                 keys.lineBreakMode = .byTruncatingTail
                 keys.widthAnchor.constraint(equalToConstant: 160).isActive = true
                 let what = NSTextField(labelWithString: row.what)
-                what.font = MacTheme.Font.caption()
+                what.font = MacTheme.Ramp.font(.panelFootnote)
                 what.textColor = MacTheme.Color.secondaryLabel
                 let line = NSStackView(views: [keys, what])
                 line.orientation = .horizontal
@@ -1548,7 +1548,7 @@ final class MainWindowController: NSWindowController {
         let footer = NSTextField(
             labelWithString: Localized.text(
                 "Rebind any of these: %@", ShortcutSet.configURL.path))
-        footer.font = MacTheme.Font.caption()
+        footer.font = MacTheme.Ramp.font(.panelFootnote)
         footer.textColor = MacTheme.Color.tertiaryLabel
         let content = NSStackView(views: [columns, footer])
         content.orientation = .vertical

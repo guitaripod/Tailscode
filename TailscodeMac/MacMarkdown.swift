@@ -45,7 +45,7 @@ enum MacMarkdown {
     /// One inline span's whole styling, carried through the walk so nested emphasis composes
     /// instead of replacing.
     private struct Style {
-        var size: CGFloat = 13
+        var size: CGFloat = MacMarkdown.size(.answer)
         var bold = false
         var italic = false
         var strike = false
@@ -69,7 +69,7 @@ enum MacMarkdown {
             if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
                 let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
                 var style = Style()
-                style.size = hashes <= 1 ? 19 : hashes == 2 ? 16 : 13
+                style.size = hashes <= 2 ? size(.headline) : size(.cardTitle)
                 style.bold = true
                 return inline(body, base: style)
             }
@@ -158,7 +158,7 @@ enum MacMarkdown {
     /// without the block grammar, so a dashed cell never becomes a rule.
     static func tableCell(_ text: String, header: Bool) -> NSAttributedString {
         var style = Style()
-        style.size = 12
+        style.size = size(.tableCell)
         style.bold = header
         if header { style.color = .secondaryLabelColor }
         return inline(text, base: style)
@@ -360,7 +360,7 @@ enum MacMarkdown {
                 if isCode, let span = Int(digits), codeSpans.indices.contains(span) {
                     var code = style
                     code.mono = true
-                    code.size = max(11, style.size - 1)
+                    code.size = size(.code)
                     code.background = .quaternarySystemFill
                     assembled.append(
                         NSAttributedString(string: codeSpans[span], attributes: attributes(code)))
@@ -378,6 +378,13 @@ enum MacMarkdown {
         }
         flush()
         return assembled
+    }
+
+    /// A role's size before the window's own type preference is applied — the preference is
+    /// multiplied in once, where the font is actually made.
+    nonisolated static func size(_ role: TypeRole) -> CGFloat {
+        let spec = Typography.spec(role)
+        return CGFloat(spec.size(base: spec.axis == .mono ? 13.5 : 14))
     }
 
     private static func attributes(_ style: Style) -> [NSAttributedString.Key: Any] {

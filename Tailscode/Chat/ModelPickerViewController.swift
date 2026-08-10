@@ -105,7 +105,7 @@ final class ModelPickerViewController: UIViewController {
             guard let self, let row = self.row(for: id) else { return }
             var content = cell.defaultContentConfiguration()
             content.attributedText = Self.title(row)
-            content.textProperties.font = Theme.Font.body()
+            content.textProperties.font = Theme.Ramp.font(.answer)
             if row.isAuto {
                 content.secondaryText = row.detail
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -114,7 +114,7 @@ final class ModelPickerViewController: UIViewController {
             } else {
                 content.secondaryText = row.detail
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-                content.secondaryTextProperties.font = Theme.Font.mono(11)
+                content.secondaryTextProperties.font = Theme.Ramp.font(.toolOutput)
             }
             if let wall = row.wall {
                 content.textProperties.color = Theme.Color.tertiaryLabel
@@ -181,7 +181,7 @@ final class ModelPickerViewController: UIViewController {
             text.addAttributes(
                 [
                     .foregroundColor: Theme.Color.accent,
-                    .font: UIFont.preferredFont(forTextStyle: .body).withTraits(.traitBold),
+                    .font: Theme.Ramp.font(.headline),
                 ], range: NSRange(location: start, length: length))
         }
         return text

@@ -345,7 +345,7 @@ struct TranscriptRow: Hashable {
             return Self.prompt(text)
         case .interruption:
             return RowKit.label(
-                "⌧ " + Localized.text("interrupted"), font: MacTheme.Font.caption(),
+                "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel)
         case .agentProse(_, let rendered):
             return RowKit.attributedLabel(rendered)
@@ -381,7 +381,8 @@ struct TranscriptRow: Hashable {
         rule.layer?.backgroundColor = MacTheme.Color.accent.cgColor
         rule.translatesAutoresizingMaskIntoConstraints = false
 
-        let label = RowKit.wrapping(text, font: MacTheme.Font.body(), color: MacTheme.Color.label)
+        let label = RowKit.wrapping(
+            text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label)
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(rule)
@@ -509,7 +510,7 @@ struct TranscriptRow: Hashable {
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         let tag = RowKit.label(
-            SyntaxHighlighter.displayName(for: language, source: body), font: MacTheme.Font.caption(),
+            SyntaxHighlighter.displayName(for: language, source: body), font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.tertiaryLabel)
         header.addArrangedSubview(tag)
         header.addArrangedSubview(RowKit.spacer())
@@ -575,7 +576,7 @@ struct TranscriptRow: Hashable {
         if let footnote = story.footnote {
             card.addArrangedSubview(
                 RowKit.wrapping(
-                    footnote, font: MacTheme.Font.caption(), color: MacTheme.Color.tertiaryLabel))
+                    footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
 
         if let summary = story.summary, story.isReadable {
@@ -621,14 +622,14 @@ enum RowKit {
         icon.contentTintColor = tint
         icon.setContentHuggingPriority(.required, for: .horizontal)
         let header = NSStackView(views: [
-            icon, label(story.title, font: MacTheme.Font.emphasis(), color: MacTheme.Color.label),
+            icon, label(story.title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
         ])
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
         card.addArrangedSubview(
             wrapping(
-                story.detail, font: MacTheme.Font.caption(), color: MacTheme.Color.secondaryLabel))
+                story.detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         return card
     }
 
@@ -692,7 +693,7 @@ enum RowKit {
         let button = ActionButton(title: title, action: action)
         button.isBordered = false
         button.contentTintColor = MacTheme.Color.accent
-        button.font = MacTheme.Font.caption()
+        button.font = MacTheme.Ramp.font(.panelFootnote)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }
@@ -715,7 +716,7 @@ enum RowKit {
     /// label does not wrap: a long line runs off the right and is scrolled to, because a line of
     /// code that reflowed is a line you cannot read and cannot count.
     static func code(_ body: String, language: String?) -> NSTextField {
-        let font = MacTheme.Font.mono(12)
+        let font = MacTheme.Ramp.font(.code)
         let label: NSTextField
         if SyntaxHighlighter.isDiff(language) {
             let washed = DiffWashField(labelWithAttributedString: diffAttributed(body, font: font))

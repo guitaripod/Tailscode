@@ -32,7 +32,7 @@ final class ToastPresenter {
         draining = true
 
         let label = NSTextField(labelWithString: text)
-        label.font = MacTheme.Font.body()
+        label.font = MacTheme.Ramp.font(.panelLabel)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         let padded = NSView()
