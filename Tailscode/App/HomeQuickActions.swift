@@ -10,7 +10,7 @@ enum HomeQuickActions {
     static let newChat = "com.guitaripod.tailscode.compose"
     static let saved = "com.guitaripod.tailscode.saved"
     static let usage = "com.guitaripod.tailscode.usage"
-    static let addServer = "com.guitaripod.tailscode.connect"
+    static let quickAsk = "com.guitaripod.tailscode.ask"
     static let resume = "com.guitaripod.tailscode.resume"
 
     /// Keeps the dynamic Resume item pointed at the session list's most recent

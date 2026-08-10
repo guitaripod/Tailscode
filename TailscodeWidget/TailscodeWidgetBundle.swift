@@ -6,6 +6,7 @@ struct TailscodeWidgetBundle: WidgetBundle {
     var body: some Widget {
         UsageWidget()
         TopUsageControl()
+        QuickAskControl()
         LiveActivityWidget()
     }
 }

@@ -64,9 +64,9 @@ targets:
           - UIApplicationShortcutItemType: com.guitaripod.tailscode.usage
             UIApplicationShortcutItemTitle: Usage
             UIApplicationShortcutItemIconSymbolName: gauge.with.dots.needle.50percent
-          - UIApplicationShortcutItemType: com.guitaripod.tailscode.connect
-            UIApplicationShortcutItemTitle: Add Server
-            UIApplicationShortcutItemIconSymbolName: server.rack
+          - UIApplicationShortcutItemType: com.guitaripod.tailscode.ask
+            UIApplicationShortcutItemTitle: Quick Ask
+            UIApplicationShortcutItemIconSymbolName: sparkle
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:
@@ -122,6 +122,7 @@ targets:
       - path: Tailscode/LiveActivity/ChatActivityAttributes.swift
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageControlIntents.swift
+      - path: Tailscode/Home/QuickAskControlIntent.swift
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Usage/LiveQuotaFetcher.swift

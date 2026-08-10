@@ -977,10 +977,17 @@ final class HomeViewController: UIViewController {
             animated: true)
     }
 
-    /// One tap from Home summons the surface; where the conversation opens afterwards is the
-    /// same road every conversation takes, with the words sent the moment the chat is up. With
-    /// no servers the gesture goes to setup instead of presenting a dead text box.
-    private func presentQuickAsk() {
+    /// One gesture summons the surface — the chrome's sparkle, the icon's jump list, the
+    /// Control Center tile — and where the conversation opens afterwards is the same road every
+    /// conversation takes, with the words sent the moment the chat is up. With no servers the
+    /// gesture goes to setup instead of presenting a dead text box, and a surface already up is
+    /// left alone rather than stacked on.
+    func presentQuickAsk() {
+        if let presented = presentedViewController {
+            guard !(presented is QuickAskViewController) else { return }
+            dismiss(animated: true) { [weak self] in self?.presentQuickAsk() }
+            return
+        }
         Theme.Haptics.tap()
         guard !viewModel.servers.isEmpty else {
             presentServerSetup()

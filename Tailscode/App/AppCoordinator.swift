@@ -153,7 +153,7 @@ final class AppCoordinator: NSObject {
         case HomeQuickActions.newChat: target = .compose
         case HomeQuickActions.saved: target = .saved
         case HomeQuickActions.usage: target = .usage
-        case HomeQuickActions.addServer: target = .addServer
+        case HomeQuickActions.quickAsk: target = .quickAsk
         case HomeQuickActions.resume:
             guard let sessionID = item.userInfo?["sessionID"] as? String else { return false }
             target = .resume(sessionID: sessionID)
@@ -167,7 +167,7 @@ final class AppCoordinator: NSObject {
         case compose
         case saved
         case usage
-        case addServer
+        case quickAsk
         case resume(sessionID: String)
     }
 
@@ -179,8 +179,8 @@ final class AppCoordinator: NSObject {
             if let home { home.pushSaved() } else { pendingShortcut = .saved }
         case .usage:
             if let home { home.pushUsage() } else { pendingShortcut = .usage }
-        case .addServer:
-            if let home { home.presentServerSetup() } else { pendingShortcut = .addServer }
+        case .quickAsk:
+            if let home { home.presentQuickAsk() } else { pendingShortcut = .quickAsk }
         case .resume(let sessionID):
             if let home { home.openSession(withID: sessionID) } else {
                 pendingShortcut = .resume(sessionID: sessionID)
@@ -267,11 +267,16 @@ final class AppCoordinator: NSObject {
         welcome.openSetup(prefilling: address)
     }
 
-    /// The Top Usage control opens the app and leaves a route flag in the shared App Group
+    /// A Control opens the app and leaves a route flag in the shared App Group
     /// (a custom URL scheme is unreliable from a Control). Consume it on foreground.
+    /// The quick ask route goes through the same parking as a long-press, so a cold
+    /// launch from Control Center still lands on the composer once Home exists.
     func handleControlRouteIfNeeded() {
-        guard let route = UsageWidgetStore.takePendingControlRoute() else { return }
-        if route == "usage" { handle(URL(string: "tailscode://usage")!) }
+        switch UsageWidgetStore.takePendingControlRoute() {
+        case "usage": handle(URL(string: "tailscode://usage")!)
+        case "ask": perform(.quickAsk)
+        default: return
+        }
     }
 
     private var home: HomeViewController? {
