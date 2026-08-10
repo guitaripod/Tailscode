@@ -835,19 +835,25 @@ final class HomeViewController: UIViewController {
 
     /// Clearing the way to a chat and pushing it are two navigation transitions, and starting the
     /// second before the first has finished is how a deep link corrupts the stack: the push waits
-    /// for the dismissal it depends on.
+    /// for the dismissal it depends on. A notification tap can also arrive mid-transition or before
+    /// Home has a window, so the push itself is deferred until the stack is quiet.
     private func land(on entry: SessionEntry) {
+        loadViewIfNeeded()
         view.endEditing(true)
-        guard let presented = presentedViewController else {
-            navigationController?.popToRootViewController(animated: false)
-            openChat(for: entry)
+        let open = { [weak self] in
+            guard let self else { return }
+            if let nav = self.navigationController, nav.topViewController !== self {
+                nav.popToRootViewController(animated: false)
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.openChat(for: entry)
+            }
+        }
+        if let presented = presentedViewController {
+            presented.dismiss(animated: false, completion: open)
             return
         }
-        presented.dismiss(animated: false) { [weak self] in
-            guard let self else { return }
-            self.navigationController?.popToRootViewController(animated: false)
-            self.openChat(for: entry)
-        }
+        open()
     }
 
     /// Stays parked until the session actually appears: the cold-launch
@@ -869,6 +875,17 @@ final class HomeViewController: UIViewController {
     private func openChat(for entry: SessionEntry, seeding choice: ModelChoice? = nil)
         -> ChatViewModel?
     {
+        guard let nav = navigationController else { return nil }
+        if let top = nav.topViewController as? ChatViewController, top.sessionID == entry.session.id
+        {
+            return nil
+        }
+        if nav.transitionCoordinator != nil {
+            DispatchQueue.main.async { [weak self] in
+                _ = self?.openChat(for: entry, seeding: choice)
+            }
+            return nil
+        }
         guard let backend = viewModel.backend(for: entry) else { return nil }
         SessionSeenStore.markSeen(entry.session.id)
         let chatViewModel =
@@ -878,8 +895,7 @@ final class HomeViewController: UIViewController {
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
         if let choice { chatViewModel.seed(choice) }
-        navigationController?.pushViewController(
-            ChatViewController(viewModel: chatViewModel), animated: true)
+        nav.pushViewController(ChatViewController(viewModel: chatViewModel), animated: true)
         return chatViewModel
     }
 

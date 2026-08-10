@@ -132,7 +132,7 @@ final class SubagentListViewController: UIViewController {
         snapshot.appendItems(agents.map(\.id), toSection: .main)
         snapshot.reconfigureItems(
             agents.filter { rendered[$0.id] != nil && rendered[$0.id] != $0 }.map(\.id))
-        rendered = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0) })
+        rendered = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
         dataSource.apply(snapshot, animatingDifferences: true)
         updateEmptyState()
     }

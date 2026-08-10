@@ -259,9 +259,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
     /// about. Anything else lands on whatever the app was showing, which is what a tap with
     /// nothing to say means.
     private static func destination(route: String?, sessionID: String?) -> URL? {
-        if let route { return URL(string: "tailscode://\(route)") }
-        guard let sessionID else { return nil }
-        return URL(string: "tailscode://session/\(sessionID)")
+        if let route, let url = URL(string: "tailscode://\(route)") { return url }
+        guard let sessionID, !sessionID.isEmpty else { return nil }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: allowed) ?? sessionID
+        return URL(string: "tailscode://session/\(encoded)")
     }
 
     /// The lock-screen answer: rebuild the backend the request came from and respond by name.

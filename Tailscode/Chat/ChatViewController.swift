@@ -1439,11 +1439,12 @@ final class ChatViewController: UIViewController {
         updateWorkflowTicker()
         let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
-            runs: Dictionary(uniqueKeysWithValues: runs.map { ($0.id, $0) }))
+            runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }))
         let previous = rowsByID
-        rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-        orderedIDs = rows.map(\.id)
-        paceCascade(rows)
+        let uniqueRows = Self.dedupeRows(rows)
+        rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })
+        orderedIDs = uniqueRows.map(\.id)
+        paceCascade(uniqueRows)
         streamingActivityID = orderedIDs.last(where: { id in
             guard let content = rowsByID[id]?.content else { return false }
             if case .activity = content { return true }
@@ -1451,7 +1452,7 @@ final class ChatViewController: UIViewController {
         })
 
         if AppPreferences.autoExpandThinking {
-            for row in rows where isActivity(row) && !seenReasoning.contains(row.id) {
+            for row in uniqueRows where isActivity(row) && !seenReasoning.contains(row.id) {
                 seenReasoning.insert(row.id)
                 expandedReasoning.insert(row.id)
             }
@@ -1484,7 +1485,7 @@ final class ChatViewController: UIViewController {
             viewModel.localEchoes.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
         let previousCompaction = liveCompaction
-        updateLiveCompaction(state.compaction, seams: rows.count(where: { Self.isSeam($0) }))
+        updateLiveCompaction(state.compaction, seams: uniqueRows.count(where: { Self.isSeam($0) }))
         if let liveCompaction {
             ids.append(liveCompaction.id)
         } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
@@ -1496,30 +1497,33 @@ final class ChatViewController: UIViewController {
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
         Self.logPendingPhantom(state: state, viewModel: viewModel)
-        renderedIDOrder = ids
-        let idSet = Set(ids)
+        var seenIDs = Set<String>()
+        let uniqueIDs = ids.filter { seenIDs.insert($0).inserted }
+        renderedIDOrder = uniqueIDs
+        let idSet = Set(uniqueIDs)
         let entranceEligible = hasRevealed && !userScrolledUp
         let entranceBubbles =
             entranceEligible
-            ? ids.filter {
+            ? uniqueIDs.filter {
                 !lastRenderedIDs.contains($0)
                     && ($0.hasPrefix("local:") || $0.hasPrefix("queued:"))
             } : []
         let entranceThinking =
-            entranceEligible && ids.contains("thinking") && !lastRenderedIDs.contains("thinking")
+            entranceEligible && uniqueIDs.contains("thinking")
+            && !lastRenderedIDs.contains("thinking")
         lastRenderedIDs = idSet
 
         let handOffEmptyState =
             isHandingOffEmptyState && !emptyState.isHidden && !entranceBubbles.isEmpty
         isHandingOffEmptyState = false
         deferEmptyStateHide = handOffEmptyState
-        updatePlaceholders(hasRows: !ids.isEmpty, for: state)
+        updatePlaceholders(hasRows: !uniqueIDs.isEmpty, for: state)
         deferEmptyStateHide = false
 
         let nearBottom = isNearBottom()
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
         snapshot.appendSections([.main])
-        snapshot.appendItems(ids, toSection: .main)
+        snapshot.appendItems(uniqueIDs, toSection: .main)
 
         var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
         if let liveCompaction, liveCompaction != previousCompaction {
@@ -2066,6 +2070,15 @@ final class ChatViewController: UIViewController {
         contextChip.configuration?.baseForegroundColor =
             contextEstimate > 300_000 ? Theme.Color.warning : Theme.Color.secondaryLabel
         contextChip.isHidden = false
+    }
+
+    /// A transcript that names the same row twice is a trap for the diffable data source and for
+    /// `Dictionary(uniqueKeysWithValues:)` — both refuse duplicate keys. Keeping the first of each
+    /// id preserves the order the builder intended and drops the later collision rather than
+    /// crashing the chat a notification just opened.
+    private static func dedupeRows(_ rows: [ChatRow]) -> [ChatRow] {
+        var seen = Set<String>()
+        return rows.filter { seen.insert($0.id).inserted }
     }
 
     private static func collectToolStatuses(from steps: [ActivityStep]) -> [String: ToolStatus] {

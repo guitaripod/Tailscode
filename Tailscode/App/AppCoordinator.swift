@@ -55,10 +55,10 @@ final class AppCoordinator: NSObject {
         route(animated: false)
         window.makeKeyAndVisible()
         UpdateMonitor.checkIfDue()
-        if let parked = PendingRoute.take() { handle(parked) }
+        if let parked = PendingRoute.take() { deliver(parked) }
         #if DEBUG
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
-                handle(URL(string: "tailscode://session/\(sessionID)")!)
+                deliver(URL(string: "tailscode://session/\(sessionID)")!)
             }
             if CommandLine.arguments.contains("--usage") {
                 openUsageForDebug()
@@ -239,14 +239,15 @@ final class AppCoordinator: NSObject {
             return
         }
         guard url.host() == "session" else { return }
-        let sessionID = url.lastPathComponent
-        guard !sessionID.isEmpty else { return }
+        let sessionID = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let decoded = sessionID.removingPercentEncoding ?? sessionID
+        guard !decoded.isEmpty else { return }
         guard let home else {
             pendingSessionLink = (url, Date())
             return
         }
         pendingSessionLink = nil
-        home.openSession(withID: sessionID)
+        home.openSession(withID: decoded)
     }
 
     /// Fills the setup screen in from a link the server itself can print, so the
