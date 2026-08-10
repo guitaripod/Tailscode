@@ -373,7 +373,7 @@ enum MatrixTheme {
         .reasoning-body { color: \(textDim); \(t(.thought)) }
         .disclosure { padding: 0; min-height: 0; }
         .disclosure:hover { background-color: \(canvasRaised); }
-        .disclosure-chevron { color: \(textDim); \(t(.thoughtLabel)) }
+        .disclosure-chevron { color: \(textDim); \(t(.note)) }
         .reasoning-label { color: \(textDim); \(t(.thoughtLabel)) }
         .disclosure:hover .disclosure-chevron { color: \(accent); }
 

@@ -74,8 +74,11 @@ public struct TypeSpec: Sendable, Equatable {
     /// Letter spacing in ems. Positive opens a small tracked label; negative tightens a display
     /// number, which is the only place tightening is ever an improvement.
     public let tracking: Double
-    /// Line height as a multiple of the size. `1` means the face's own leading, which is right for
-    /// anything that is one line by construction.
+    /// Line height as a multiple of **the face's own leading**, which is what every toolkit here
+    /// actually multiplies (GTK's `line-height`, AppKit and UIKit's `lineHeightMultiple`) — never a
+    /// multiple of the point size. A face already leads itself by about a third of its size, so the
+    /// numbers that buy a paragraph air live just above 1, and 1 itself — the face left alone — is
+    /// right for anything that is one line by construction.
     public let lineHeight: Double
     public let figures: TypeFigures
     public let italic: Bool
@@ -201,14 +204,14 @@ public enum Typography {
         switch role {
         case .prompt:
             return TypeSpec(
-                axis: .prose, family: .canvas, ratio: 0.92, weight: .medium, lineHeight: 1.45)
+                axis: .prose, family: .canvas, ratio: 0.92, weight: .medium, lineHeight: 1.04)
         case .promptGlyph:
             return TypeSpec(axis: .prose, family: .canvas, ratio: 0.92, weight: .bold)
         case .answer:
-            return TypeSpec(axis: .prose, family: .prose, ratio: 0.98, lineHeight: 1.55)
+            return TypeSpec(axis: .prose, family: .prose, ratio: 0.98, lineHeight: 1.08)
         case .thought:
             return TypeSpec(
-                axis: .prose, family: .prose, ratio: 0.9, lineHeight: 1.5, italic: true)
+                axis: .prose, family: .prose, ratio: 0.9, lineHeight: 1.06, italic: true)
         case .thoughtLabel:
             return TypeSpec(
                 axis: .mono, family: .mono, ratio: 0.78, weight: .semibold, tracking: 0.06)
@@ -226,9 +229,9 @@ public enum Typography {
         case .toolDetail:
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.88)
         case .toolOutput:
-            return TypeSpec(axis: .mono, family: .mono, ratio: 0.82, lineHeight: 1.4)
+            return TypeSpec(axis: .mono, family: .mono, ratio: 0.82, lineHeight: 1.1)
         case .code:
-            return TypeSpec(axis: .mono, family: .mono, ratio: 0.85, lineHeight: 1.45)
+            return TypeSpec(axis: .mono, family: .mono, ratio: 0.85, lineHeight: 1.15)
         case .codeLabel:
             return TypeSpec(
                 axis: .mono, family: .mono, ratio: 0.75, weight: .medium, tracking: 0.06)
@@ -236,7 +239,7 @@ public enum Typography {
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.75, weight: .medium)
         case .diff:
             return TypeSpec(
-                axis: .mono, family: .mono, ratio: 0.85, lineHeight: 1.4, figures: .tabular)
+                axis: .mono, family: .mono, ratio: 0.85, figures: .tabular)
         case .attachment:
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.88, weight: .medium)
         case .treeRow:
@@ -251,14 +254,14 @@ public enum Typography {
             return TypeSpec(
                 axis: .prose, family: .prose, ratio: 0.95, weight: .semibold, tracking: -0.005)
         case .cardBody:
-            return TypeSpec(axis: .prose, family: .prose, ratio: 0.9, lineHeight: 1.5)
+            return TypeSpec(axis: .prose, family: .prose, ratio: 0.9, lineHeight: 1.06)
         case .option:
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.88, weight: .medium)
         case .seamLabel:
             return TypeSpec(
                 axis: .prose, family: .mono, ratio: 0.78, weight: .semibold, tracking: 0.1)
         case .seamFootnote:
-            return TypeSpec(axis: .prose, family: .prose, ratio: 0.82, lineHeight: 1.4)
+            return TypeSpec(axis: .prose, family: .prose, ratio: 0.82, lineHeight: 1.05)
         case .paneHeadline:
             return TypeSpec(
                 axis: .prose, family: .mono, ratio: 1.1, weight: .bold, tracking: 0.04)
@@ -314,7 +317,7 @@ public enum Typography {
         case .chip:
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.78, weight: .medium)
         case .composer:
-            return TypeSpec(axis: .prose, family: .canvas, ratio: 0.95, lineHeight: 1.4)
+            return TypeSpec(axis: .prose, family: .canvas, ratio: 0.95, lineHeight: 1.05)
         case .banner:
             return TypeSpec(axis: .mono, family: .mono, ratio: 0.85, weight: .medium)
         case .note:
@@ -346,7 +349,7 @@ public enum Typography {
             return TypeSpec(
                 axis: .mono, family: .mono, ratio: 0.9, weight: .bold, tracking: 0.01)
         case .workflowSummary:
-            return TypeSpec(axis: .prose, family: .prose, ratio: 0.85, lineHeight: 1.45)
+            return TypeSpec(axis: .prose, family: .prose, ratio: 0.85, lineHeight: 1.06)
         case .workflowMeter:
             return TypeSpec(
                 axis: .mono, family: .mono, ratio: 0.8, weight: .medium, tracking: -0.04,

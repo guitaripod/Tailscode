@@ -51,7 +51,7 @@ import Testing
             let spec = Typography.spec(role)
             #expect(spec.ratio >= 0.6 && spec.ratio <= 2.5, "\(role.rawValue) is off the ramp")
             #expect(spec.tracking >= -0.05 && spec.tracking <= 0.12, "\(role.rawValue) is spaced out")
-            #expect(spec.lineHeight >= 1 && spec.lineHeight <= 1.8, "\(role.rawValue) leads badly")
+            #expect(spec.lineHeight >= 1 && spec.lineHeight <= 1.2, "\(role.rawValue) leads badly")
         }
     }
 
