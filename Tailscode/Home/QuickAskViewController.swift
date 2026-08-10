@@ -4,17 +4,21 @@ import CodingAgentKitApple
 import UIKit
 
 /// A question owes no form: the sheet is one composer aimed by memory, and sending is the whole
-/// ceremony. The aim is `QuickAskDefaults.target` — the server the last quick ask used while it
-/// is still connected — worn as a chip one tap changes; the conversation minted carries no
-/// project directory, and afterwards it is any other chat. The mint happens here so the sheet
-/// can keep the words through a failed create, but where the conversation opens stays the
-/// host's: `onOpen` receives the entry with the text still unsent.
+/// ceremony. The aim is one chip and one menu — which machine answers and which model it answers
+/// on — and both halves are the quick ask's own: `QuickAskDefaults` keeps them per server, beside
+/// the composer's memory rather than inside it, so asking a throwaway question on a cheap model
+/// never re-aims the project chats and never has to be set up twice. The conversation minted
+/// carries no project directory and is stamped with the aim, and afterwards it is any other chat.
+/// The mint happens here so the sheet can keep the words through a failed create, but where the
+/// conversation opens stays the host's: `onOpen` receives the entry with the text still unsent.
 @MainActor
 final class QuickAskViewController: UIViewController, UITextViewDelegate {
-    var onOpen: ((SessionEntry, String) -> Void)?
+    var onOpen: ((SessionEntry, String, ModelChoice) -> Void)?
 
     private let viewModel: SessionListViewModel
     private var targetProfileID: String?
+    private var aim = ModelChoice()
+    private var resolvedAimFor: String?
     private let targetButton = UIButton(type: .system)
     private let textView = UITextView()
     private let placeholder = UILabel()
@@ -135,9 +139,11 @@ final class QuickAskViewController: UIViewController, UITextViewDelegate {
         viewModel.servers.first { $0.id == targetProfileID }
     }
 
-    /// The chip states the aim as a fact; the menu is the one action that changes it. A fleet of
-    /// one still shows the chip — the surface names its target rather than assuming the person
-    /// remembers which machine answers.
+    /// The chip states the whole aim as a fact — the machine and the model it answers on — and
+    /// the menu behind it is the one action that changes either. A fleet of one still shows the
+    /// chip: the surface names its target rather than assuming the person remembers which
+    /// machine answers, and the model half is the reason a question can be pointed at something
+    /// cheap and stay there.
     private func refreshTarget() {
         guard let profile = targetProfile else {
             targetButton.configuration?.title = String(localized: "No servers")
@@ -145,22 +151,167 @@ final class QuickAskViewController: UIViewController, UITextViewDelegate {
             refreshSendButton()
             return
         }
-        targetButton.configuration?.title = profile.name
+        targetButton.configuration?.title = aimLabel(for: profile)
         targetButton.configuration?.image = UIImage(
             systemName: profile.backend.symbolName,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11))
-        targetButton.menu = UIMenu(
-            title: String(localized: "Ask on…"),
-            children: viewModel.servers.map { server in
-                UIAction(
-                    title: server.name, subtitle: server.backend.displayName,
-                    state: server.id == targetProfileID ? .on : .off
-                ) { [weak self] _ in
-                    self?.targetProfileID = server.id
-                    self?.refreshTarget()
-                }
-            })
+        targetButton.menu = aimMenu(for: profile)
+        resolveAimIfNeeded(for: profile)
         refreshSendButton()
+    }
+
+    /// One line for two facts, and the model half is dropped rather than faked on a backend that
+    /// has neither a model nor an effort to name.
+    private func aimLabel(for profile: ConnectionProfile) -> String {
+        guard aimIsSelectable(on: profile) else { return profile.name }
+        return "\(profile.name) · \(ModelBadge.label(model: aim.model, effort: aim.effort))"
+    }
+
+    private func aimIsSelectable(on profile: ConnectionProfile) -> Bool {
+        guard let backend = viewModel.backend(forProfileID: profile.id) else { return false }
+        return backend.capabilities.supportsModelSelection
+            || backend.capabilities.supportsReasoningEffort
+    }
+
+    /// Servers first, then the model — one menu rather than two chips, because a lookup is aimed
+    /// once and the aim is a single thought. The model rows resolve when the menu opens, so a
+    /// catalog still in flight when the sheet was drawn is not what the person is offered.
+    private func aimMenu(for profile: ConnectionProfile) -> UIMenu {
+        var sections: [UIMenuElement] = []
+        if viewModel.servers.count > 1 {
+            sections.append(
+                UIMenu(
+                    title: String(localized: "Ask on"), options: .displayInline,
+                    children: viewModel.servers.map { server in
+                        UIAction(
+                            title: server.name, subtitle: server.backend.displayName,
+                            state: server.id == targetProfileID ? .on : .off
+                        ) { [weak self] _ in self?.aimServer(server.id) }
+                    }))
+        }
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            aimIsSelectable(on: profile)
+        else { return UIMenu(children: sections) }
+        sections.append(
+            UIMenu(
+                title: String(localized: "Model"), options: .displayInline,
+                children: [modelElement(for: profile, backend: backend)]))
+        if QuickAskDefaults.hasOwnAim(forProfileID: profile.id) {
+            sections.append(
+                UIMenu(
+                    options: .displayInline,
+                    children: [
+                        UIAction(
+                            title: String(localized: "Follow this server"),
+                            subtitle: String(localized: "Use what a new chat here would"),
+                            image: UIImage(systemName: "arrow.uturn.backward")
+                        ) { [weak self] _ in
+                            QuickAskDefaults.clearOwnAim(forProfileID: profile.id)
+                            self?.reresolveAim()
+                        }
+                    ]))
+        }
+        return UIMenu(children: sections)
+    }
+
+    private func modelElement(for profile: ConnectionProfile, backend: any CodingAgentBackend)
+        -> UIMenuElement
+    {
+        UIDeferredMenuElement.uncached { [weak self] completion in
+            Task { @MainActor in
+                guard let self else { return completion([]) }
+                let models =
+                    backend.capabilities.supportsModelSelection
+                    ? await ModelCatalog.models(for: profile.id, backend: backend) : []
+                completion(
+                    ModelMenu.elements(
+                        models: models, choice: self.aim,
+                        efforts: backend.reasoningEffortOptions,
+                        allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                        quotas: QuotaSurface.relevantQuotas(
+                            for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
+                        actions: ModelMenu.Actions(
+                            selectModel: { [weak self] selection in
+                                QuickAskDefaults.recordModel(selection, forProfileID: profile.id)
+                                self?.aim.model = selection
+                                self?.pickedAim(for: profile)
+                            },
+                            selectEffort: { [weak self] level in
+                                QuickAskDefaults.recordEffort(level, forProfileID: profile.id)
+                                self?.aim.effort = level
+                                self?.pickedAim(for: profile)
+                            },
+                            browseAll: { [weak self] in
+                                self?.presentModelPicker(profile: profile, models: models)
+                            })))
+            }
+        }
+    }
+
+    private func aimServer(_ profileID: String) {
+        targetProfileID = profileID
+        Theme.Haptics.selection()
+        reresolveAim()
+    }
+
+    private func pickedAim(for profile: ConnectionProfile) {
+        resolvedAimFor = profile.id
+        Theme.Haptics.selection()
+        refreshTarget()
+    }
+
+    private func reresolveAim() {
+        resolvedAimFor = nil
+        aim = ModelChoice()
+        refreshTarget()
+    }
+
+    /// The chip names what the question will actually run on, so the aim is resolved the way a
+    /// chat resolves it — through the quick ask's own memory when it has one, the server's until
+    /// then — rather than left blank until something is picked by hand.
+    private func resolveAimIfNeeded(for profile: ConnectionProfile) {
+        guard resolvedAimFor != profile.id, aimIsSelectable(on: profile),
+            let backend = viewModel.backend(forProfileID: profile.id)
+        else { return }
+        resolvedAimFor = profile.id
+        Task { @MainActor in
+            let resolved = await ChatModelResolver.choice(
+                profileID: profile.id, backend: backend,
+                contextID: QuickAskDefaults.aimContext(forProfileID: profile.id))
+            guard targetProfileID == profile.id else { return }
+            aim = resolved
+            refreshTarget()
+        }
+    }
+
+    private func presentModelPicker(profile: ConnectionProfile, models: [ModelInfo]) {
+        guard !models.isEmpty else { return }
+        Theme.Haptics.tap()
+        let picker = ModelPickerViewController(
+            sources: ModelFleet.sources(
+                profiles: viewModel.servers, current: profile.id,
+                currentModels: models,
+                allowsServerDefault: profile.backend == .claudeCode),
+            selected: aim.model,
+            quotas: QuotaSurface.relevantQuotas(
+                for: profile.backend, among: UsageWidgetStore.cachedQuotas())
+        ) { [weak self] pick in
+            guard let self else { return }
+            guard !pick.isElsewhere else {
+                QuickAskDefaults.adopt(pick)
+                self.aimServer(pick.profileID)
+                return
+            }
+            QuickAskDefaults.recordModel(pick.selection, forProfileID: profile.id)
+            self.aim.model = pick.selection
+            self.pickedAim(for: profile)
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     private var draft: String {
@@ -202,12 +353,14 @@ final class QuickAskViewController: UIViewController, UITextViewDelegate {
                 return
             }
             QuickAskDefaults.record(profileID: profile.id)
+            QuickAskDefaults.stamp(profileID: profile.id, sessionID: entry.session.id)
             Theme.Haptics.success()
             let onOpen = onOpen
+            let aim = aim
             if let presenter = presentingViewController {
-                presenter.dismiss(animated: true) { onOpen?(entry, text) }
+                presenter.dismiss(animated: true) { onOpen?(entry, text, aim) }
             } else {
-                onOpen?(entry, text)
+                onOpen?(entry, text, aim)
             }
         }
     }

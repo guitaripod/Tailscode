@@ -994,9 +994,8 @@ final class HomeViewController: UIViewController {
             return
         }
         QuickAskViewController.present(from: self, viewModel: viewModel).onOpen = {
-            [weak self] entry, text in
-            guard let self else { return }
-            self.openChat(for: entry, seeding: self.modelChoices[entry.profileID])?.send(text)
+            [weak self] entry, text, aim in
+            self?.openChat(for: entry, seeding: aim)?.send(text)
         }
     }
 

@@ -73,22 +73,31 @@ enum ChatModelResolver {
         backend.agentType == .claudeCode
     }
 
+    /// - Parameter contextID: which memory the pick is read from, for a surface that keeps its
+    ///   own aim on a server rather than the server's — a quick ask, whose model is deliberately
+    ///   not the composer's. Defaults to the server itself.
     static func choice(
-        profileID: String, backend: any CodingAgentBackend, sessionKey: String? = nil
+        profileID: String, backend: any CodingAgentBackend, sessionKey: String? = nil,
+        contextID: String? = nil
     ) async -> ModelChoice {
         ModelChoice(
-            model: await model(profileID: profileID, backend: backend, sessionKey: sessionKey),
-            effort: effort(profileID: profileID, backend: backend, sessionKey: sessionKey))
+            model: await model(
+                profileID: profileID, backend: backend, sessionKey: sessionKey,
+                contextID: contextID),
+            effort: effort(
+                profileID: profileID, backend: backend, sessionKey: sessionKey,
+                contextID: contextID))
     }
 
     static func model(
         profileID: String, backend: any CodingAgentBackend, sessionKey: String? = nil,
-        sessionModel: String? = nil
+        sessionModel: String? = nil, contextID: String? = nil
     ) async -> ModelSelection? {
+        let context = contextID ?? profileID
         let stored =
             sessionKey.flatMap { ModelPreferenceStore.model(forKey: $0) }
-            ?? ModelPreferenceStore.resolveSessionModel(sessionModel, contextID: profileID)
-            ?? ModelPreferenceStore.globalModel(forContextID: profileID)
+            ?? ModelPreferenceStore.resolveSessionModel(sessionModel, contextID: context)
+            ?? ModelPreferenceStore.globalModel(forContextID: context)
         if let stored { return stored }
         guard !honoursServerDefault(backend) else { return nil }
         return await serverDefault(profileID: profileID, backend: backend)
@@ -96,11 +105,11 @@ enum ChatModelResolver {
 
     static func effort(
         profileID: String, backend: any CodingAgentBackend, sessionKey: String? = nil,
-        sessionEffort: String? = nil
+        sessionEffort: String? = nil, contextID: String? = nil
     ) -> String? {
         guard backend.capabilities.supportsReasoningEffort else { return nil }
         return EffortPreferenceStore.initialEffort(
-            sessionKey: sessionKey, contextID: profileID, sessionEffort: sessionEffort)
+            sessionKey: sessionKey, contextID: contextID ?? profileID, sessionEffort: sessionEffort)
     }
 
     private static let defaultPrefix = "tailscode.defaultModel."

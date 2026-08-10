@@ -1437,8 +1437,7 @@ final class MainWindowController: NSWindowController {
             return
         }
         QuickAskPanel.present(
-            over: window, servers: profiles.map { (profileID: $0.id, name: $0.name) },
-            preferredServer: currentEntry?.profileID
+            over: window, servers: profiles, preferredServer: currentEntry?.profileID
         ) { [weak self] profileID, text, done in
             guard let self,
                 let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
@@ -1474,6 +1473,7 @@ final class MainWindowController: NSWindowController {
             }
             done(nil)
             guard let self else { return }
+            QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,

@@ -1932,7 +1932,7 @@ final class MainWindow: @unchecked Sendable {
     /// the copy the dialog captured would hit the same wrong port again.
     private func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil,
+        firstMessage: String? = nil, quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Task { [weak self] in
@@ -1944,7 +1944,7 @@ final class MainWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in
                 self?.createChat(
                     on: profile, directory: directory, into: pane, firstMessage: firstMessage,
-                    done: done)
+                    quickAsk: quickAsk, done: done)
             }
         }
     }
@@ -1953,9 +1953,12 @@ final class MainWindow: @unchecked Sendable {
     ///   conversation exists — queued on the pane keyed to the minted session in the same main
     ///   loop turn that opens it, so nothing can slip between the queue and the open and no
     ///   other conversation can ever inherit them. A failed mint queues nothing.
+    /// - Parameter quickAsk: stamps the minted conversation with the quick ask's own aim, so the
+    ///   question runs on the model it was aimed at rather than on the server's own memory, which
+    ///   the aim deliberately left alone.
     private func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil,
+        firstMessage: String? = nil, quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
@@ -1972,6 +1975,9 @@ final class MainWindow: @unchecked Sendable {
                 return
             }
             Trace.mark("createChat session created")
+            if quickAsk {
+                QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
+            }
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,
@@ -2602,20 +2608,19 @@ final class MainWindow: @unchecked Sendable {
         let fallback = pane.entry?.profileID
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
-            let servers = profiles.map { (profileID: $0.id, name: $0.name) }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                guard !servers.isEmpty else {
+                guard !profiles.isEmpty else {
                     self.presentServers()
                     return
                 }
                 QuickAskWindow.present(
-                    servers: servers, preferredServer: fallback, parent: self.window
+                    servers: profiles, preferredServer: fallback, parent: self.window
                 ) { [weak self] profileID, text, done in
                     Gtk.onMain { [weak self] in
                         self?.createChat(
                             onProfileID: profileID, directory: nil, into: pane,
-                            firstMessage: text, done: done)
+                            firstMessage: text, quickAsk: true, done: done)
                     }
                 }
             }
