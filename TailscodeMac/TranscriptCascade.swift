@@ -17,7 +17,7 @@ extension TranscriptViewController {
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
         guard let live, let source = live.streamedText, live.key != abandoned else {
             cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
+            if let released { handOver(released, in: rows) }
             return rows
         }
         let safe = cascade.renderable(source, sealed: !running)
@@ -28,12 +28,23 @@ extension TranscriptViewController {
             row.key, rendered: row.renderedText ?? "", sealed: !running,
             ultracode: composer.auraActive)
         guard cascade.key == row.key else {
-            if let released { settleCascade(on: released, in: rows) }
+            if let released { handOver(released, in: rows) }
             return rows
         }
         lastStreamedKey = row.key
-        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
+        if let released, released != cascade.key { handOver(released, in: paced) }
         return paced
+    }
+
+    /// The wave letting go of a row, made good. A settle that could not be made here is put on the
+    /// repair clock rather than dropped: this is the last state the transcript will see for a turn
+    /// that just ended, and the wave has already given up the display link it would have needed.
+    private func handOver(_ key: String, in rows: [TranscriptRow]) {
+        if settleCascade(on: key, in: rows) {
+            if lastStreamedKey == key { lastStreamedKey = nil }
+            return
+        }
+        scheduleTailRepair(on: key)
     }
 
     /// A row that stopped being written ends up whole, whatever the wave was doing when it let go.
@@ -50,7 +61,51 @@ extension TranscriptViewController {
         guard let key = lastStreamedKey, key != cascade.key else { return }
         if settleCascade(on: key, in: rows) || !lastFullRows.contains(where: { $0.key == key }) {
             lastStreamedKey = nil
+            return
         }
+        scheduleTailRepair(on: key)
+    }
+
+    /// A settle that could not be made, tried again on a clock of its own.
+    ///
+    /// Every other road back to a whole row runs through a state arriving: the diff, the release
+    /// path, the tail settle. A turn that has just ended sends no more states, and the wave let go
+    /// of its display link and its watchdog in the same breath — so a settle that failed at exactly
+    /// that moment is the last thing anybody was ever going to try, and the row keeps the prefix
+    /// for as long as the chat is open. This is the clock nothing else can take down.
+    ///
+    /// It gives up on being polite before it gives up on the reader: three refusals and the row's
+    /// bookkeeping is thrown away so the ordinary diff has to build it again from the words the
+    /// transcript actually holds.
+    func scheduleTailRepair(on key: String) {
+        repairKey = key
+        guard tailRepair == nil else { return }
+        var attempts = 0
+        tailRepair = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard let key = self.repairKey, key != self.cascade.key else {
+                    self.stopTailRepair()
+                    return
+                }
+                if self.settleCascade(on: key, in: self.lastFullRows) {
+                    if self.lastStreamedKey == key { self.lastStreamedKey = nil }
+                    self.stopTailRepair()
+                    return
+                }
+                attempts += 1
+                guard attempts >= 3 else { return }
+                self.stopTailRepair()
+                if self.lastStreamedKey == key { self.lastStreamedKey = nil }
+                self.rebuildStreamedTail(from: key)
+            }
+        }
+    }
+
+    func stopTailRepair() {
+        tailRepair?.invalidate()
+        tailRepair = nil
+        repairKey = nil
     }
 
     /// The reveal stopped moving while it still owed the reader text — the display link died under
@@ -66,7 +121,11 @@ extension TranscriptViewController {
         abandoned = key
         lastStreamedKey = key
         guard let key else { return }
-        if settleCascade(on: key, in: lastFullRows) { lastStreamedKey = nil }
+        if settleCascade(on: key, in: lastFullRows) {
+            lastStreamedKey = nil
+        } else {
+            scheduleTailRepair(on: key)
+        }
     }
 
     /// One frame of the wave, painted into the live row's own label instead of through the row
@@ -94,6 +153,7 @@ extension TranscriptViewController {
         default:
             return false
         }
+        cascade.landed()
         if followsBottom { scrollToBottom() }
         return true
     }

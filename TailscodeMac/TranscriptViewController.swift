@@ -106,6 +106,13 @@ final class TranscriptViewController: NSViewController {
     /// A row the wave gave up on. It is not taken back: restarting a reveal that already snapped to
     /// whole would rewind the answer under the reader.
     var abandoned: String?
+    /// The clock that keeps trying a settle nothing else would ever try again. The wave lets go of
+    /// its display link and its watchdog in the same breath, and a turn that ended sends no more
+    /// states, so a settle that failed at that moment has no other road back.
+    var tailRepair: Timer?
+    /// The row the repair clock is trying to hand back, which is not always the row the wave last
+    /// held: a turn can end and the next one start writing before a failed settle has landed.
+    var repairKey: String?
     private(set) var lastFullRows: [TranscriptRow] = []
     private var lastFullCount = 0
     private var windowLimit = 400
@@ -281,6 +288,7 @@ final class TranscriptViewController: NSViewController {
         lastFullRows = []
         lastFullCount = 0
         lastStreamedKey = nil
+        stopTailRepair()
         abandoned = nil
         followsBottom = true
         pendingSignature = "\u{0}"
@@ -516,6 +524,7 @@ final class TranscriptViewController: NSViewController {
         lastFullRows = []
         lastFullCount = 0
         lastStreamedKey = nil
+        stopTailRepair()
         abandoned = nil
         echoedPrompt = nil
         pendingSignature = "\u{0}"
@@ -1428,6 +1437,24 @@ final class TranscriptViewController: NSViewController {
         renderedRows[last] = rows[last]
         if followsBottom { scrollToBottom() }
         return true
+    }
+
+    /// Forgets everything the transcript believes about the row the wave was painting and the rows
+    /// after it, so the next fill cannot compare them equal and skip them. The words are the
+    /// transcript's own, so nothing is refetched — only redrawn.
+    func rebuildStreamedTail(from key: String) {
+        guard !placeholderShown, let index = renderedRows.lastIndex(where: { $0.key == key }),
+            index < rowViews.count
+        else { return }
+        for viewToDrop in rowViews[index...] {
+            if viewToDrop === highlightedView { clearFindHighlight() }
+            viewToDrop.removeFromSuperview()
+        }
+        rowViews.removeSubrange(index...)
+        renderedRows.removeSubrange(index...)
+        let limit = max(windowLimit, Self.transcriptWindowPreference)
+        let rows = lastFullRows
+        applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }
 
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {

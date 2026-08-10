@@ -281,6 +281,7 @@ struct StreamCascadeTests {
         while !live.isSettled, time < 20 {
             time += 1.0 / 120
             live.advance(to: time)
+            live.lands(live.revealed, at: time)
         }
         #expect(live.isSettled)
         #expect(!live.owes)
@@ -297,10 +298,51 @@ struct StreamCascadeTests {
         while !live.isSettled, time < 20 {
             time += 1.0 / 120
             live.advance(to: time)
+            live.lands(live.revealed, at: time)
         }
         #expect(live.isSettled)
         #expect(live.owes)
         #expect(live.stalled(at: time + 2))
+    }
+
+    @Test("a reveal nobody painted is a debt, however far the arithmetic ran")
+    func anUnpaintedRevealIsADebt() {
+        var live = LiveCascade()
+        let text = "Good. Net changes on the host, and the rest of the sentence after them."
+        live.focus("row", rendered: text, sealed: false, at: 0)
+        var time = 0.0
+        while !live.isSettled, time < 20 {
+            time += 1.0 / 120
+            live.advance(to: time)
+            if live.revealed <= 9 { live.lands(live.revealed, at: time) }
+        }
+        #expect(live.isSettled)
+        #expect(live.landed == 9)
+        #expect(live.owes)
+        #expect(live.stalled(at: time + 2))
+    }
+
+    @Test("a frame that lands pays the reader and restarts the clock")
+    func aLandedFrameRestartsTheClock() {
+        var live = LiveCascade()
+        live.focus("row", rendered: "one two three four five six", sealed: false, at: 0)
+        live.advance(to: 0)
+        live.advance(to: 0.5)
+        live.lands(live.revealed, at: 0.5)
+        #expect(live.landed > 0)
+        #expect(!live.stalled(at: 1.2))
+        #expect(live.stalled(at: 1.6))
+    }
+
+    @Test("a row whose words all reached the screen owes nothing")
+    func aFullyPaintedRowIsQuiet() {
+        var live = LiveCascade()
+        let text = "short enough"
+        live.focus("row", rendered: text, sealed: true, at: 0)
+        live.lands(live.revealed, at: 0)
+        #expect(live.landed == text.count)
+        #expect(!live.owes)
+        #expect(!live.stalled(at: 30))
     }
 
     @Test("entrances stagger in order and stop staggering")

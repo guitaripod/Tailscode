@@ -21,6 +21,14 @@ final class ChatPane: @unchecked Sendable {
     var lastStreamedKey: String?
     /// A row the wave gave up on, which it may not take back while the stream is still in it.
     var abandoned: String?
+    /// Whether a settle that could not be made is being tried again, and how many times it has
+    /// been. The wave lets go on the same main loop the settle rides on, so a settle that failed
+    /// has no clock left of its own — this is that clock.
+    private var repairingTail = false
+    private var tailRepairs = 0
+    /// The row the repair clock is trying to hand back, which is not always the row the wave last
+    /// held: a turn can end and the next one start writing before a failed settle has landed.
+    private var repairKey: String?
     let transcriptBox = Gtk.box(
         GTK_ORIENTATION_VERTICAL, spacing: Preferences.denseRows ? 3 : 10)
     private let pendingBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
@@ -713,6 +721,8 @@ final class ChatPane: @unchecked Sendable {
         lastFullRows = []
         lastFullCount = 0
         lastStreamedKey = nil
+        repairingTail = false
+        repairKey = nil
         abandoned = nil
         followsBottom = true
         gtk_widget_set_visible(earlierButton, 0)
@@ -853,6 +863,8 @@ final class ChatPane: @unchecked Sendable {
         lastFullRows = []
         lastFullCount = 0
         lastStreamedKey = nil
+        repairingTail = false
+        repairKey = nil
         abandoned = nil
         pendingSignature = "\u{0}"
         compactingElapsed = nil
@@ -1305,7 +1317,74 @@ final class ChatPane: @unchecked Sendable {
         guard let key = lastStreamedKey, key != cascade.key else { return }
         if settleCascade(on: key, in: rows) || !lastFullRows.contains(where: { $0.key == key }) {
             lastStreamedKey = nil
+            return
         }
+        scheduleTailRepair(on: key)
+    }
+
+    /// A settle that could not be made, tried again on a clock of its own.
+    ///
+    /// Every other road back to a whole row runs through a state arriving: the diff, the release
+    /// path, the tail settle. A turn that has just ended sends no more states, and the wave let go
+    /// of its frame clock and its watchdog in the same breath — so a settle that failed at exactly
+    /// that moment is the last thing anybody was ever going to try, and the row keeps the prefix
+    /// for as long as the chat is open. This is the clock nothing else can take down.
+    ///
+    /// It gives up on being polite before it gives up on the reader: three refusals and the row's
+    /// bookkeeping is thrown away so the ordinary diff has to build it again from the words the
+    /// pane actually holds, which is slower, loses a selection inside that one row, and is still
+    /// enormously better than a paragraph that stops mid-sentence.
+    func scheduleTailRepair(on key: String) {
+        repairKey = key
+        guard !repairingTail else { return }
+        repairingTail = true
+        tailRepairs = 0
+        repairStreamedTail()
+    }
+
+    private func repairStreamedTail() {
+        Gtk.after(320) { [weak self] in
+            guard let self, self.repairingTail else { return }
+            guard let key = self.repairKey, key != self.cascade.key else {
+                self.repairingTail = false
+                self.repairKey = nil
+                return
+            }
+            if self.settleCascade(on: key, in: self.lastFullRows) {
+                if self.lastStreamedKey == key { self.lastStreamedKey = nil }
+                self.repairingTail = false
+                self.repairKey = nil
+                return
+            }
+            self.tailRepairs += 1
+            guard self.tailRepairs >= 3 else {
+                self.repairStreamedTail()
+                return
+            }
+            self.repairingTail = false
+            self.repairKey = nil
+            if self.lastStreamedKey == key { self.lastStreamedKey = nil }
+            self.rebuildStreamedTail(from: key)
+        }
+    }
+
+    /// Forgets everything the pane believes about the row the wave was painting and the rows after
+    /// it, so the next fill cannot compare them equal and skip them. The words are the pane's own,
+    /// so nothing is refetched — only redrawn.
+    private func rebuildStreamedTail(from key: String) {
+        guard !placeholderShown, let index = renderedRows.lastIndex(where: { $0.key == key }),
+            index < rowWidgets.count
+        else { return }
+        for bits in rowWidgets[index...] {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
+            if bits == highlightedRow { highlightedRow = 0 }
+            gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+        }
+        rowWidgets.removeSubrange(index...)
+        renderedRows.removeSubrange(index...)
+        let limit = max(windowLimit, Preferences.transcriptWindow)
+        let rows = lastFullRows
+        applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }
 
     /// The reveal stopped moving while it still owed the reader text — the frame clock died under
@@ -1321,7 +1400,11 @@ final class ChatPane: @unchecked Sendable {
         abandoned = key
         lastStreamedKey = key
         guard let key else { return }
-        if settleCascade(on: key, in: lastFullRows) { lastStreamedKey = nil }
+        if settleCascade(on: key, in: lastFullRows) {
+            lastStreamedKey = nil
+        } else {
+            scheduleTailRepair(on: key)
+        }
     }
 
     /// The wave letting go of a row is not the same as the row being rebuilt. A turn that simply

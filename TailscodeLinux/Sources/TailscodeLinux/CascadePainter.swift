@@ -175,10 +175,13 @@ final class CascadePainter: @unchecked Sendable {
             rgb[distance] = painted.rgb
             alpha[distance] = painted.alpha
         }
-        return markup.withUnsafeBufferPointer { bytes in
+        let shown = live.revealed
+        let landed = markup.withUnsafeBufferPointer { bytes in
             tailscode_label_reveal(
-                label, bytes.baseAddress, Int32(live.revealed), Int32(span), &rgb, &alpha) >= 0
+                label, bytes.baseAddress, Int32(shown), Int32(span), &rgb, &alpha) >= 0
         }
+        if landed { live.lands(shown, at: Self.now) }
+        return landed
     }
 
     /// Hands the whole row back, unpaced and untinted — what a row that is no longer live must

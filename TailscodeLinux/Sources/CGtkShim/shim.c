@@ -1236,6 +1236,12 @@ int tailscode_label_reveal(
         gtk_label_set_attributes(GTK_LABEL(label), NULL);
         gtk_label_set_markup(GTK_LABEL(label), markup);
         tailscode_label_keep_wrapping(GTK_LABEL(label));
+        /* A settle is a promise that the row is now whole, and the caller stops watching it the
+           moment the promise is made. So the promise is measured rather than assumed: the label is
+           asked what it is holding, and a label that did not take the words says so while somebody
+           is still listening. */
+        const char *landed = gtk_label_get_text(GTK_LABEL(label));
+        if (!landed || strcmp(landed, tailscode_reveal_text) != 0) return -1;
         return length;
     }
 

@@ -93,6 +93,10 @@ final class ChatViewController: UIViewController {
     /// on a row means showing the reader everything the agent wrote, which is this and never the
     /// paced copy the data source is holding.
     private var wholeCascadeRow: ChatRow?
+    /// The clock that keeps trying a hand-back nothing else would ever try again — the wave lets go
+    /// of its display link and its watchdog in the same breath, and a turn that ended sends no more
+    /// states.
+    private var cascadeRepair: Timer?
 
     var sessionID: String { viewModel.session.id }
     init(viewModel: ChatViewModel) {
@@ -1134,11 +1138,15 @@ final class ChatViewController: UIViewController {
     /// jump under the reader. Only a row with no cell on screen falls back to a reconfigure.
     private func repaintCascade() {
         guard let id = cascade.key else { return }
-        if repaintLiveCellInPlace(id) { return }
+        if repaintLiveCellInPlace(id) {
+            cascade.landed()
+            return
+        }
         var snapshot = dataSource.snapshot()
         guard snapshot.itemIdentifiers.contains(id) else { return }
         snapshot.reconfigureItems([id])
         dataSource.apply(snapshot, animatingDifferences: false)
+        cascade.landed()
     }
 
     /// The row the agent is writing into, revealed at reading speed rather than in whatever lumps
@@ -1156,7 +1164,13 @@ final class ChatViewController: UIViewController {
         if let abandonedCascadeRow, abandonedCascadeRow != live?.id { self.abandonedCascadeRow = nil }
         guard let live, let source = live.streamedText, live.id != abandonedCascadeRow else {
             cascade.release()
-            if let released { settledCascadeRows.insert(released) }
+            if let released {
+                if let whole = wholeCascadeRow, whole.id == released, rowsByID[released] == nil {
+                    rowsByID[released] = whole
+                }
+                wholeCascadeRow = nil
+                settledCascadeRows.insert(released)
+            }
             return
         }
         let safe = cascade.renderable(source, sealed: !viewModel.isBusy)
@@ -1185,10 +1199,45 @@ final class ChatViewController: UIViewController {
         if let whole = wholeCascadeRow, whole.id == key { rowsByID[key] = whole }
         wholeCascadeRow = nil
         var snapshot = dataSource.snapshot()
-        guard snapshot.itemIdentifiers.contains(key) else { return }
+        guard snapshot.itemIdentifiers.contains(key) else {
+            scheduleCascadeRepair(key)
+            return
+        }
         snapshot.reconfigureItems([key])
         dataSource.apply(snapshot, animatingDifferences: false)
         settledCascadeRows.remove(key)
+    }
+
+    /// A row the wave let go of that the data source could not be told about, tried again on a
+    /// clock of its own.
+    ///
+    /// Every other road back to a whole row runs through a state arriving, and a turn that has just
+    /// ended sends no more states — while the wave gave up its display link and its watchdog in the
+    /// same breath. So a hand-back that could not be made at that moment is the last thing anybody
+    /// was ever going to try, and the row keeps the prefix for as long as the chat is open.
+    private func scheduleCascadeRepair(_ key: String) {
+        cascadeRepair?.invalidate()
+        var attempts = 0
+        cascadeRepair = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: true) {
+            [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, self.cascade.key != key else {
+                    timer.invalidate()
+                    return
+                }
+                attempts += 1
+                var snapshot = self.dataSource.snapshot()
+                guard snapshot.itemIdentifiers.contains(key) else {
+                    if attempts >= 6 { timer.invalidate() }
+                    return
+                }
+                timer.invalidate()
+                self.cascadeRepair = nil
+                snapshot.reconfigureItems([key])
+                self.dataSource.apply(snapshot, animatingDifferences: false)
+                self.settledCascadeRows.remove(key)
+            }
+        }
     }
 
     /// One frame of the wave over the cell where it stands, so the data source never hears about

@@ -211,6 +211,13 @@ final class CascadePainter {
         watchdog = nil
     }
 
+    /// What the transcript just proved it put on screen. The reveal is arithmetic and arithmetic
+    /// paints nothing, so a frame that quietly painted no row leaves the debt standing and the
+    /// watchdog is the one that notices.
+    func landed() {
+        live.lands(live.revealed, at: CACurrentMediaTime())
+    }
+
     /// The wave a row should paint, or nil when it is not the live one.
     func tail(for key: String) -> CascadeTail? {
         guard live.id == key, Self.motionAllowed else { return nil }

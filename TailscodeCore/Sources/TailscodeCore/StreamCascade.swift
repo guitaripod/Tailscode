@@ -370,6 +370,16 @@ public struct LiveCascade: Sendable {
     /// is measured once when it arrives and never again, so no glyph ever moves after it lands and
     /// no line ever re-wraps under the reader. A frame changes colours, never layout.
     public private(set) var revealed = 0
+    /// How many rendered characters a client has *proved* are on screen.
+    ///
+    /// The reveal is arithmetic, and arithmetic paints nothing. Every client hands its live row's
+    /// widget to the wave and stops diffing it, so a paint that quietly did not happen — the row is
+    /// no longer the last one rendered, its widget was rebuilt between frames, the label is not
+    /// where a row of that kind keeps its words — leaves the reader looking at a prefix while the
+    /// pacer counts happily up to the end and reports nothing owed. So the debt is counted against
+    /// what landed, never against what was computed: a reveal nobody can see is a reveal that never
+    /// happened.
+    public private(set) var landed = 0
     public private(set) var total = 0
     public private(set) var phase: Double = 0
     private var cadence: StreamCadence
@@ -389,11 +399,14 @@ public struct LiveCascade: Sendable {
     public var isSettled: Bool { cadence.isSettled }
     public var rate: Double { cadence.rate }
 
-    /// Whether the reader is still owed words: either the reveal is behind what arrived, or the
-    /// renderer is being held behind a markdown token that has not closed yet. The second half is
-    /// the one a settled reveal hides — a row can have caught up with every character it was given
-    /// and still be a sentence short, because the gate never handed the last clause over.
-    public var owes: Bool { !cadence.isSettled || (gateCut != nil && !gateGaveUp) }
+    /// Whether the reader is still owed words: fewer characters are on screen than the row has, or
+    /// the renderer is being held behind a markdown token that has not closed yet. The second half
+    /// is the one a settled reveal hides — a row can have caught up with every character it was
+    /// given and still be a sentence short, because the gate never handed the last clause over.
+    ///
+    /// Measured against `landed` rather than `revealed`, so the one failure a pacer cannot see —
+    /// a frame that painted nothing — reads as the debt it is instead of as a finished row.
+    public var owes: Bool { landed < total || (gateCut != nil && !gateGaveUp) }
 
     /// Whether the debt has gone unpaid long enough that nothing is going to pay it.
     ///
@@ -467,6 +480,7 @@ public struct LiveCascade: Sendable {
         guard let id else {
             self.id = nil
             revealed = 0
+            landed = 0
             total = 0
             cadence = StreamCadence(tuning: tuning)
             openGate()
@@ -484,6 +498,7 @@ public struct LiveCascade: Sendable {
                 cadence.observe(available: total, sealed: sealed)
             }
             revealed = cadence.revealed
+            landed = 0
             phase = StreamCascade.phase(at: time)
             markDebt(at: time)
             return
@@ -491,21 +506,30 @@ public struct LiveCascade: Sendable {
         total = rendered.count
         cadence.observe(available: total, sealed: sealed)
         revealed = min(revealed, total)
+        landed = min(landed, total)
         markDebt(at: time)
     }
 
-    /// When the reader was last paid. The clock restarts every time the reveal moves and every time
-    /// the debt is cleared; it keeps running while the same characters stay owed, which is the only
-    /// state that means nothing is writing this row any more.
+    /// What the client just proved it put on screen, which is the only number the debt is timed
+    /// against. A client that painted nothing says nothing, and the clock keeps running.
+    public mutating func lands(_ shown: Int, at time: Double) {
+        guard id != nil else { return }
+        landed = min(max(shown, 0), total)
+        markDebt(at: time)
+    }
+
+    /// When the reader was last paid. The clock restarts every time a character actually reaches
+    /// the screen and every time the debt is cleared; it keeps running while the same characters
+    /// stay owed, which is the only state that means nothing is writing this row any more.
     private mutating func markDebt(at time: Double) {
         guard owes else {
             owedSince = nil
             owedAt = -1
             return
         }
-        if owedSince == nil || revealed != owedAt {
+        if owedSince == nil || landed != owedAt {
             owedSince = time
-            owedAt = revealed
+            owedAt = landed
         }
     }
 

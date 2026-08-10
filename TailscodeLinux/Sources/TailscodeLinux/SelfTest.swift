@@ -1273,7 +1273,49 @@ public enum SelfTest {
         try expect(
             settled.alpha == 65535, "a glyph the wave has passed must be fully opaque again")
         checks += 1
-        return checks
+        return try checks + checkReveal(expect)
+    }
+
+    /// The regression the screenshots kept showing: a turn that ends while the reveal is nine
+    /// characters into a sentence, and a row that keeps those nine characters for good.
+    ///
+    /// Everything here happens on a real label, because every earlier fix to this was proved
+    /// against arithmetic that was already right. The paint is a prefix on purpose; what is asserted
+    /// is that the row is whole again the moment the wave lets go, that the wave knows it is owed
+    /// text until somebody proves otherwise, and that a settle nobody could make reports a failure
+    /// instead of a repair.
+    private static func checkReveal(_ expect: (Bool, String) throws -> Void) throws -> Int {
+        let sentence = "Good. Net changes on the host: `1920x1200@89` and the rest of the answer."
+        let palette = MatrixTheme.palette
+        let markup = PangoMarkdown.render(
+            sentence, dim: palette.textDim, code: palette.info, accent: palette.accent,
+            cache: false)
+        guard let whole = CascadePainter.renderedText(of: markup) else {
+            throw SelfTestFailure("the sentence under test does not render")
+        }
+        guard gtk_init_check() != 0 else { return 0 }
+        let label = Gtk.label("", css: "agent-prose", selectable: true)
+        let painter = CascadePainter()
+        painter.focus(
+            "row:part", markup: markup, sealed: false, ultracode: false, clock: nil)
+        try expect(painter.isActive, "the wave must take a row it was pointed at")
+        try expect(painter.owes, "a row nobody has painted yet is owed to the reader")
+        try expect(painter.paint(label), "the wave must paint the label it was given")
+        try expect(
+            gtk_label_get_text(op(label)).map { String(cString: $0) } == whole,
+            "a reveal must lay the whole paragraph out and hide the tail, never cut it")
+
+        painter.release()
+        try expect(
+            painter.settle(label, markup: markup),
+            "a settle onto a live label must land, and must say that it did")
+        try expect(
+            gtk_label_get_text(op(label)).map { String(cString: $0) } == whole,
+            "a row the wave let go of must be holding every word it has")
+        try expect(
+            !painter.settle(label, markup: "an <b>unclosed row"),
+            "a settle that could not be rendered must report a failure, not a repair")
+        return 6
     }
 
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, so the check makes the

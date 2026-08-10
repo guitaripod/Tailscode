@@ -21,7 +21,7 @@ extension ChatPane {
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
         guard let live, let source = live.streamedText, live.key != abandoned else {
             cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
+            if let released { handOver(released, in: rows) }
             return rows
         }
         let safe = cascade.renderable(source, sealed: !running)
@@ -30,19 +30,30 @@ extension ChatPane {
         paced[paced.count - 1] = row
         guard let markup = Self.cascadeMarkup(for: row) else {
             cascade.release()
-            if let released { settleCascade(on: released, in: rows) }
+            if let released { handOver(released, in: rows) }
             return rows
         }
         cascade.focus(
             row.key, markup: markup, sealed: !running,
             ultracode: auraActive || ultracodeInFlight, clock: transcriptBox)
         guard cascade.key == row.key else {
-            if let released { settleCascade(on: released, in: rows) }
+            if let released { handOver(released, in: rows) }
             return rows
         }
         lastStreamedKey = row.key
-        if let released, released != cascade.key { settleCascade(on: released, in: paced) }
+        if let released, released != cascade.key { handOver(released, in: paced) }
         return paced
+    }
+
+    /// The wave letting go of a row, made good. A settle that could not be made here is put on the
+    /// repair clock rather than dropped: this is the last state the pane will see for a turn that
+    /// just ended, and the wave has already given up the frame clock it would have needed.
+    private func handOver(_ key: String, in rows: [TranscriptRow]) {
+        if settleCascade(on: key, in: rows) {
+            if lastStreamedKey == key { lastStreamedKey = nil }
+            return
+        }
+        scheduleTailRepair(on: key)
     }
 
     /// One frame of the wave, painted into the live row's own label. The markup is the one the
