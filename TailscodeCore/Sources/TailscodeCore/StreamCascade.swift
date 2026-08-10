@@ -148,6 +148,13 @@ public struct StreamCadence: Sendable {
 /// marker after it is inverted. Honouring only recent markers is what keeps one unmatched asterisk
 /// from stalling an entire answer — a marker that has gone this long without a partner is
 /// arithmetic or a bullet, and showing it beats freezing the paragraph behind it.
+///
+/// A marker is read together with the character after it, and at the end of an unsealed buffer
+/// there is no character after it: a trailing `*` reads as literal punctuation and a trailing `]`
+/// reads as the end of a bracket, and the very next token can reverse both. A reversed verdict
+/// moves the cut backwards, which is text leaving the screen. So a final character whose meaning
+/// the next arrival decides is simply not offered yet — one glyph held for one arrival, against a
+/// buffer that is four hundred milliseconds deep.
 public enum CascadeGate {
     public static let window = 168
 
@@ -193,6 +200,7 @@ public enum CascadeGate {
         var cursor = characters.startIndex
         var position = 0
         var previous: Character?
+        var undecidedTail = false
         while position < limit {
             let character = characters[cursor]
             let next: Character? =
@@ -208,7 +216,11 @@ public enum CascadeGate {
                 {
                     break
                 }
-                if !doubled, next == " " || next == nil { break }
+                if !doubled, next == " " { break }
+                if !doubled, next == nil {
+                    undecidedTail = true
+                    break
+                }
                 let marker: Marker
                 switch (character, doubled) {
                 case ("*", false): marker = .star
@@ -219,11 +231,17 @@ public enum CascadeGate {
                 toggle(marker, at: position)
                 step = doubled ? 2 : 1
             case "~":
-                guard next == "~" else { break }
+                guard next == "~" else {
+                    if next == nil { undecidedTail = true }
+                    break
+                }
                 toggle(.doubleTilde, at: position)
                 step = 2
             case "[":
                 pending[Marker.bracket.rawValue] = position
+            case "]":
+                if next == nil { undecidedTail = true }
+                if next != "(" { pending[Marker.bracket.rawValue] = nil }
             case ")":
                 pending[Marker.bracket.rawValue] = nil
             default:
@@ -241,7 +259,7 @@ public enum CascadeGate {
             guard let open, open >= limit - window else { continue }
             if earliest == nil || open < earliest! { earliest = open }
         }
-        return earliest ?? limit
+        return min(earliest ?? limit, undecidedTail ? limit - 1 : limit)
     }
 }
 
@@ -335,12 +353,23 @@ public enum StreamCascade {
         )
     }
 
+    /// The beat between two rows arriving, and the furthest into the future any row may be pushed.
+    ///
+    /// A client that queues entrances against a clock of its own rather than against a position in
+    /// one batch needs both numbers, not the delay for an index — a batch that restarts its stagger
+    /// at zero is what lets a later row become readable while the gap above it is still blank. The
+    /// ceiling is what keeps a burst of forty rows from staggering for two seconds.
+    public static let entranceStep = 0.045
+    public static let entranceCeiling = 0.34
+
     /// A row's share of the entrance stagger. New rows do not all appear at once — a tool row, its
     /// picture and the prose after it arrive as a run — so they land in order, a beat apart, and
     /// the transcript grows in one direction instead of blinking.
-    public static func entranceDelay(index: Int, of count: Int, step: Double = 0.045) -> Double {
+    public static func entranceDelay(index: Int, of count: Int, step: Double = entranceStep)
+        -> Double
+    {
         guard count > 1 else { return 0 }
-        return min(0.34, Double(max(0, index)) * step)
+        return min(entranceCeiling, Double(max(0, index)) * step)
     }
 
     /// Ease-out for entrances and for the empty-to-first-row handoff, shared so the whole product
@@ -387,6 +416,7 @@ public struct LiveCascade: Sendable {
     private var gateCut: Int?
     private var gateSince: Double = 0
     private var gateGaveUp = false
+    private var handed = 0
     private var owedSince: Double?
     private var owedAt = -1
 
@@ -422,8 +452,15 @@ public struct LiveCascade: Sendable {
     /// What the client should render: the markdown-safe prefix of the source. Held at the last
     /// position where no inline token is half-open, so the renderer never sees `**bold` without
     /// its closer and no answer ever flashes its punctuation.
-    public static func renderable(_ source: String, sealed: Bool) -> String {
-        guard !sealed else { return source }
+    ///
+    /// `markdown` is false for content that is not prose. The gate reads inline markdown, and code
+    /// is full of characters that are markdown's punctuation and the language's syntax at the same
+    /// time — `**kwargs`, `*ptr`, `self._value`, an odd number of backticks in a comment. Judged as
+    /// markdown they are unclosed tokens, so a streaming code block does not type: it freezes
+    /// behind the first one, dumps when the gate gives up, and freezes again. Code has no inline
+    /// tokens to protect, so it has nothing to be held back for.
+    public static func renderable(_ source: String, sealed: Bool, markdown: Bool = true) -> String {
+        guard !sealed, markdown else { return source }
         let count = source.count
         let cut = CascadeGate.safeCut(source, at: count)
         guard cut < count else { return source }
@@ -446,26 +483,43 @@ public struct LiveCascade: Sendable {
     /// gate that forgot would re-hold the same marker on the very next arrival, and the tail of the
     /// paragraph would appear and disappear once a second for the rest of the turn. The marker has
     /// been judged literal; it stays judged until the cut moves somewhere else.
-    public mutating func renderable(_ source: String, sealed: Bool, at time: Double) -> String {
-        guard !sealed else {
-            openGate()
-            return source
-        }
+    ///
+    /// And whatever the gate decides, the row never hands back less than it has already handed
+    /// over. The cut is not monotone — a marker ages out of the window while a later one is still
+    /// open, a give-up is forgotten when the cut moves — and every one of those is text that was on
+    /// screen leaving it again, which re-measures the paragraph and jumps the transcript under the
+    /// reader. What has been shown has been shown: `handed` is the floor, and only a shorter source
+    /// or a different row may lower it.
+    public mutating func renderable(
+        _ source: String, sealed: Bool, markdown: Bool = true, at time: Double
+    ) -> String {
         let count = source.count
+        guard !sealed, markdown else { return handOver(source, count: count) }
         let cut = CascadeGate.safeCut(source, at: count)
-        guard cut < count else {
-            openGate()
-            return source
-        }
+        guard cut < count else { return handOver(source, count: count) }
         if gateCut != cut {
             gateCut = cut
             gateSince = time
             gateGaveUp = false
         }
         if !gateGaveUp, time - gateSince < tuning.patience {
-            return String(source.prefix(cut))
+            let shown = max(cut, min(handed, count))
+            guard shown < count else {
+                handed = count
+                return source
+            }
+            handed = shown
+            return String(source.prefix(shown))
         }
         gateGaveUp = true
+        handed = count
+        return source
+    }
+
+    /// The row has nothing half-open, so the gate has nothing to remember about it.
+    private mutating func handOver(_ source: String, count: Int) -> String {
+        openGate()
+        handed = count
         return source
     }
 
@@ -504,6 +558,7 @@ public struct LiveCascade: Sendable {
             total = 0
             cadence = StreamCadence(tuning: tuning)
             openGate()
+            handed = 0
             owedSince = nil
             owedAt = -1
             return
@@ -512,6 +567,7 @@ public struct LiveCascade: Sendable {
             self.id = id
             total = length
             cadence = StreamCadence(tuning: tuning)
+            handed = 0
             if total > Self.adoptLimit || sealed {
                 cadence.adopt(total)
             } else {

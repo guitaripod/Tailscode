@@ -103,7 +103,9 @@ final class CascadePainter: @unchecked Sendable {
     /// Whether the desktop wants motion at all, read per turn rather than per frame.
     static var motionAllowed: Bool { tailscode_animations_enabled() != 0 }
 
-    private static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
+    /// The one clock every timed thing in a pane reads: the display's own monotonic time in
+    /// seconds. An entrance queued against it lines up with the reveal moving on it.
+    static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
 
     /// The rendered text behind markup — what a reader sees, which is what the reveal counts. The
     /// shim parses once and remembers, so asking for it costs nothing on a frame that has already
@@ -148,9 +150,10 @@ final class CascadePainter: @unchecked Sendable {
     /// With motion switched off nothing reveals, so nothing needs protecting from a marker that
     /// has not closed yet — and a gate whose give-up clock is reset by every arrival can never
     /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
-    func renderable(_ source: String, sealed: Bool) -> String {
+    /// `markdown` is false for a row that streams code, which the gate must not read as prose.
+    func renderable(_ source: String, sealed: Bool, markdown: Bool) -> String {
         guard Self.motionAllowed else { return source }
-        return live.renderable(source, sealed: sealed, at: Self.now)
+        return live.renderable(source, sealed: sealed, markdown: markdown, at: Self.now)
     }
 
     /// One frame's arithmetic without the display's clock, so the reveal can be checked without a
@@ -274,31 +277,78 @@ final class CascadePainter: @unchecked Sendable {
 /// it arrive together, and landing them all on the same frame reads as the transcript jumping;
 /// landing them a beat apart, in order, reads as it growing. Same easing as everything else, so
 /// the whole product moves with one hand.
+/// A fade is owned by the widget it is running on, and a widget can be rebuilt halfway through
+/// one. The row's value changes — a tool call reaches its result, a thought counts itself up —
+/// and the pane makes a new widget for it; the old fade then keeps running on a detached widget
+/// until it notices it has no parent, while the replacement is drawn at full opacity because its
+/// key has already been seen. The row pops. So every run is registered against its widget, a
+/// superseded run stops at its next frame, and the pane can read where a fade had got to and hand
+/// that opacity to the widget replacing it.
 enum CascadeEntrance {
     private static let frames = 11
+    private nonisolated(unsafe) static var runs: [UInt: Int] = [:]
+    private nonisolated(unsafe) static var lastRun = 0
 
     /// The widget is referenced for the length of the fade and released at the end, because a row
     /// can be diffed away mid-animation and a timeout holding a raw pointer into a freed widget is
     /// a crash rather than a dropped frame.
-    static func animate(_ widget: UnsafeMutablePointer<GtkWidget>, index: Int, of count: Int) {
-        guard CascadePainter.motionAllowed else { return }
-        gtk_widget_set_opacity(widget, 0)
+    ///
+    /// `delay` is seconds from now, decided by the pane against its own clock rather than by a
+    /// position in one batch. `opacity` is where the fade starts, which is zero for a row nobody
+    /// has seen and wherever the previous widget had got to for one being handed over.
+    static func animate(
+        _ widget: UnsafeMutablePointer<GtkWidget>, delay: Double, from opacity: Double = 0,
+        onFinish: (@Sendable () -> Void)? = nil
+    ) {
+        guard CascadePainter.motionAllowed else {
+            onFinish?()
+            return
+        }
+        gtk_widget_set_opacity(widget, opacity)
         g_object_ref(UnsafeMutableRawPointer(widget))
         let bits = UInt(bitPattern: widget)
-        let delay = StreamCascade.entranceDelay(index: index, of: count)
-        Gtk.after(UInt32(delay * 1000)) { step(bits, frame: 0) }
+        lastRun += 1
+        let run = lastRun
+        runs[bits] = run
+        let first = startingFrame(for: opacity)
+        Gtk.after(UInt32(max(0, delay) * 1000)) {
+            step(bits, run: run, frame: first, onFinish: onFinish)
+        }
     }
 
-    private static func step(_ bits: UInt, frame: Int) {
+    /// Stops the fade running on a widget the pane is about to throw away. The run releases its
+    /// reference on its next frame, which is why the widget stays alive long enough to be read.
+    static func cancel(_ bits: UInt) {
+        runs[bits] = nil
+    }
+
+    /// Which frame of the fade already shows this much of the row, so a handover continues the
+    /// curve instead of restarting it. The inverse of ``StreamCascade/ease(_:)``.
+    private static func startingFrame(for opacity: Double) -> Int {
+        guard opacity > 0 else { return 0 }
+        let clamped = min(max(opacity, 0), 1)
+        let progress = 1 - pow(1 - clamped, 1.0 / 3.0)
+        return min(frames, Int((progress * Double(frames)).rounded(.down)))
+    }
+
+    private static func step(
+        _ bits: UInt, run: Int, frame: Int, onFinish: (@Sendable () -> Void)?
+    ) {
         guard let held = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+        guard runs[bits] == run else {
+            g_object_unref(held)
+            return
+        }
         let widget = held.assumingMemoryBound(to: GtkWidget.self)
         let progress = StreamCascade.ease(Double(frame) / Double(frames))
         gtk_widget_set_opacity(widget, progress)
         guard frame < frames, gtk_widget_get_parent(widget) != nil else {
             gtk_widget_set_opacity(widget, 1)
+            runs[bits] = nil
             g_object_unref(held)
+            onFinish?()
             return
         }
-        Gtk.after(16) { step(bits, frame: frame + 1) }
+        Gtk.after(16) { step(bits, run: run, frame: frame + 1, onFinish: onFinish) }
     }
 }

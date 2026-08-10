@@ -310,6 +310,12 @@ struct TranscriptRow: Hashable {
     /// around them are one fact: "it worked". The run keeps every step inside it, one tap away;
     /// only what is its own card (a subagent, a workflow, a picture) never joins a run, and a run
     /// with no tools stays its own thought rows so a lone reflection still reads as one.
+    ///
+    /// Those thought rows get one key each, suffixed by their position in the run the way a run's
+    /// own body names its steps. A run's key is the key of the row that opened it, and handing that
+    /// one key to every thought in a tool-less stretch made two rows the same row to everything
+    /// downstream: the diff's anchor resolved to the first of them and tore the tail down on every
+    /// arrival, only the first animated its entrance, and opening one thought opened all of them.
     static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
         var run: [ActivityStep] = []
@@ -322,9 +328,10 @@ struct TranscriptRow: Hashable {
                 return nil
             }
             if tools.isEmpty {
-                for step in run {
+                for (offset, step) in run.enumerated() {
                     if case .reasoning(let text) = step {
-                        fused.append(TranscriptRow(key: runKey, kind: .reasoning(text)))
+                        fused.append(
+                            TranscriptRow(key: "\(runKey):r\(offset)", kind: .reasoning(text)))
                     }
                 }
             } else if tools.count == 1, run.count == 1 {
@@ -360,6 +367,27 @@ struct TranscriptRow: Hashable {
         case .agentProse(let text, _): return text
         case .codeBlock(_, let body): return body
         default: return nil
+        }
+    }
+
+    /// Whether the text this row streams is prose, whose half-open inline markdown the gate has to
+    /// hold back, or code, which has none of it to protect and everything to lose by being judged
+    /// as if it did: `**kwargs`, `*ptr`, `self._value` and an odd count of backticks in a comment
+    /// are all unclosed markdown tokens and all ordinary syntax, so a code block read through the
+    /// gate freezes behind the first one, dumps when the gate gives up, and freezes again.
+    var streamsMarkdown: Bool {
+        if case .codeBlock = kind { return false }
+        return true
+    }
+
+    /// Whether this row's arrival is worth a fade. A prompt the person typed has been on screen
+    /// since they pressed Enter — it is echoed locally and only later confirmed by the server under
+    /// the server's own key — so animating it, and the turn break above it, blinks the words they
+    /// just wrote out of the transcript and fades them back in.
+    var announcesArrival: Bool {
+        switch kind {
+        case .userText, .turnBreak: return false
+        default: return true
         }
     }
 

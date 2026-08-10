@@ -11,7 +11,9 @@ extension ChatPane {
     /// call landing after a paragraph settles that paragraph rather than freezing it half-written.
     ///
     /// The row itself is held at its markdown-safe prefix, so the renderer never sees `**bold`
-    /// without its closer. How much of what it rendered is actually on screen is the painter's
+    /// without its closer. A code block is exempt: its punctuation is the language's rather than
+    /// markdown's, and judged as markdown it is nothing but unclosed tokens, so it is handed over
+    /// as it arrives. How much of what it rendered is actually on screen is the painter's
     /// business, applied to the widget after the diff has built it — and if the painter will not
     /// take the row (reduced motion, markup the parser refuses) the cut goes with it: a prefix
     /// nothing is going to reveal is just an answer with its last words missing.
@@ -24,7 +26,8 @@ extension ChatPane {
             if let released { handOver(released, in: rows) }
             return rows
         }
-        let safe = cascade.renderable(source, sealed: !running)
+        let safe = cascade.renderable(
+            source, sealed: !running, markdown: live.streamsMarkdown)
         var paced = rows
         let row = safe == source ? live : live.truncated(to: safe)
         paced[paced.count - 1] = row

@@ -345,6 +345,68 @@ struct StreamCascadeTests {
         #expect(!live.stalled(at: 30))
     }
 
+    /// Every prefix of a document, handed over one character at a time, must produce a rendered
+    /// string that only ever grows. A shorter answer than the frame before it is text leaving the
+    /// screen, and text leaving the screen re-measures the paragraph — the one thing the whole
+    /// cascade exists to prevent.
+    private func neverRewinds(_ document: String, file: String = #file, line: Int = #line) {
+        var live = LiveCascade()
+        var time = 0.0
+        var shown = 0
+        let characters = Array(document)
+        for end in 1...characters.count {
+            time += 0.05
+            let source = String(characters[..<end])
+            let rendered = live.renderable(source, sealed: false, at: time)
+            #expect(
+                source.hasPrefix(rendered),
+                "\(document.prefix(24))… rendered something that is not a prefix at \(end)")
+            #expect(
+                rendered.count >= shown,
+                "\(document.prefix(24))… rewound \(shown) → \(rendered.count) at \(end)")
+            shown = rendered.count
+        }
+    }
+
+    @Test("the rendered answer never gets shorter, whatever the gate decides")
+    func revealIsMonotone() {
+        neverRewinds("see [ref " + String(repeating: "x", count: 140) + " and **bold")
+        neverRewinds("Here is **bold** and *italic* and `code` and a [link](https://x.dev) done.")
+        neverRewinds("def go(**kwargs):\n    self._value = other._value * 2\n    return `x`")
+        neverRewinds("the array [0] holds the value and we keep writing after it for a while")
+        neverRewinds("trailing emphasis *w* and ~~struck~~ and an unclosed [bracket at the end")
+        neverRewinds(String(repeating: "a marker * every so often, ", count: 12))
+    }
+
+    @Test("a bracket is closed by its own bracket, not only by a link's parenthesis")
+    func gateClosesBrackets() {
+        let log = Array("the array [0] holds the value and we keep writing after it")
+        #expect(CascadeGate.safeCut(log, at: log.count) == log.count)
+        let tagged = Array("[INFO] started, [WARN] retried, and then it settled")
+        #expect(CascadeGate.safeCut(tagged, at: tagged.count) == tagged.count)
+        let link = Array("read [the docs](https://x.dev")
+        #expect(CascadeGate.safeCut(link, at: link.count) == 5)
+    }
+
+    @Test("a marker at the very end is not judged until the next character decides it")
+    func gateWaitsForTheDecidingCharacter() {
+        #expect(CascadeGate.safeCut("hello *", at: 7) == 6)
+        #expect(CascadeGate.safeCut("hello *w", at: 8) == 6)
+        #expect(CascadeGate.safeCut("hello there", at: 11) == 11)
+        #expect(CascadeGate.safeCut("hello *", at: 7, sealed: true) == 7)
+    }
+
+    @Test("code is not prose, so the gate does not read it as markdown")
+    func codeBypassesTheGate() {
+        let python = "def go(**kwargs):\n    self._value = 1"
+        #expect(LiveCascade.renderable(python, sealed: false, markdown: false) == python)
+        #expect(LiveCascade.renderable(python, sealed: false).count < python.count)
+
+        var live = LiveCascade()
+        #expect(live.renderable(python, sealed: false, markdown: false, at: 0) == python)
+        #expect(!live.owes)
+    }
+
     @Test("entrances stagger in order and stop staggering")
     func entrances() {
         #expect(StreamCascade.entranceDelay(index: 0, of: 5) == 0)

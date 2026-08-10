@@ -108,6 +108,13 @@ final class ChatPane: @unchecked Sendable {
     /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in
     /// from nothing is a flicker, not an arrival. Only the first sight of a key animates.
     private var enteredRows: Set<String> = []
+    /// The widget each unfinished entrance is running on, by row key, so a row rebuilt mid-fade can
+    /// be handed the opacity it had reached and the orphaned run can be stopped.
+    private var entranceInFlight: [String: UInt] = [:]
+    /// The pane's own entrance clock: the earliest moment the next row may begin fading in, in the
+    /// display's monotonic seconds. Batches queue behind each other on it instead of each restarting
+    /// the stagger from zero.
+    private var nextEntranceAt: Double = 0
     var placeholderShown = false
     private var currentPlaceholder: String?
     private var chooser: PaneChooser?
@@ -686,6 +693,17 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// Points the pane at another conversation, and every closure the last one left in flight is
+    /// answered by the session it was started for rather than by the pane it lands in.
+    ///
+    /// Cancelling the stream task does not recall the work it already handed to the main loop:
+    /// `Gtk.onMain` is a `g_idle_add`, and an idle that has been queued runs. So the swap of
+    /// `entry` here is followed, one idle later, by the previous conversation's last state being
+    /// rendered into this pane — and by that transcript being cached under the *new* session's id,
+    /// which is the one thing in the pane that outlives the mistake: the wrong rows are replayed
+    /// verbatim every later time that chat is opened. Every closure carrying a conversation's state
+    /// across an await therefore captures the session it belongs to and drops itself if the pane
+    /// has moved on.
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         guard sessionID != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
@@ -766,6 +784,7 @@ final class ChatPane: @unchecked Sendable {
         host?.paneOpened(self)
         Gtk.onMain { [weak self] in self?.host?.scheduleSidebarRender() }
 
+        let sessionID = entry.session.id
         streamTask = Task { [weak self] in
             guard let self else { return }
             if await ServerDirectory.shared.profiles().isEmpty {
@@ -777,16 +796,18 @@ final class ChatPane: @unchecked Sendable {
                 }), let backend = await ServerDirectory.shared.backend(for: profile)
             else {
                 Gtk.onMain { [weak self] in
-                    self?.showPlaceholder(Localized.text("That server is not configured."))
+                    guard let self, self.sessionID == sessionID else { return }
+                    self.showPlaceholder(Localized.text("That server is not configured."))
                 }
                 return
             }
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.sessionID == sessionID else { return }
                 self.backend = backend
                 self.host?.workspaceSyncIfFocused(self)
             }
-            self.loadSessionExtras(backend: backend, directory: entry.session.directory)
+            self.loadSessionExtras(
+                backend: backend, directory: entry.session.directory, sessionID: sessionID)
             let conversation = AgentConversation(
                 backend: backend, sessionID: entry.session.id, cache: AppCache.sessionCache)
             self.conversation = conversation
@@ -796,7 +817,7 @@ final class ChatPane: @unchecked Sendable {
                 let model = self.chosenModel
                 let effort = self.chosenEffort
                 Gtk.onMain { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.sessionID == sessionID else { return }
                     self.echoedPrompt = queued.text
                     if Ultracode.invokes(queued.text) || effort == Ultracode.effortLevel {
                         self.ultracodeInFlight = true
@@ -825,13 +846,14 @@ final class ChatPane: @unchecked Sendable {
                             Data("BUILD \(messages.count) messages -> \(rows.count) rows in \(ms)ms\n".utf8))
                     }
                     Gtk.onMain { [weak self] in
-                        self?.apply(state: state, rows: rows)
+                        guard let self, self.sessionID == sessionID else { return }
+                        self.apply(state: state, rows: rows)
                     }
                     if state.messages.count != countedMessages {
                         countedMessages = state.messages.count
                         let estimate = StatusFacts.estimateContextTokens(state.messages)
                         Gtk.onMain { [weak self] in
-                            guard let self else { return }
+                            guard let self, self.sessionID == sessionID else { return }
                             self.contextEstimate = estimate
                             self.updateStatus()
                         }
@@ -902,12 +924,14 @@ final class ChatPane: @unchecked Sendable {
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
     /// the models the server offers, the commands it resolves, and whether its Claude is signed in.
-    private func loadSessionExtras(backend: any CodingAgentBackend, directory: String?) {
+    private func loadSessionExtras(
+        backend: any CodingAgentBackend, directory: String?, sessionID: String
+    ) {
         Task { [weak self] in
             let models = (try? await backend.availableModels()) ?? []
             let commands = (try? await backend.availableCommands(directory: directory)) ?? []
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.sessionID == sessionID else { return }
                 self.models = models
                 if let profileID = self.entry?.profileID {
                     ModelCatalogStore.store(models, for: profileID)
@@ -921,7 +945,8 @@ final class ChatPane: @unchecked Sendable {
             Task { [weak self] in
                 guard let auth = try? await authenticating.authStatus() else { return }
                 Gtk.onMain { [weak self] in
-                    self?.renderAuthBanner(auth, backend: authenticating)
+                    guard let self, self.sessionID == sessionID else { return }
+                    self.renderAuthBanner(auth, backend: authenticating)
                 }
             }
         }
@@ -1079,9 +1104,7 @@ final class ChatPane: @unchecked Sendable {
     private func renderChooser() {
         guard let model = chooser else { return }
         Gtk.removeChildren(of: transcriptBox)
-        renderedRows = []
-        rowWidgets = []
-        highlightedRow = 0
+        forgetRowWidgets()
         placeholderShown = true
         currentPlaceholder = nil
         pendingReveal = false
@@ -1113,9 +1136,7 @@ final class ChatPane: @unchecked Sendable {
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
         Gtk.removeChildren(of: transcriptBox)
-        renderedRows = []
-        rowWidgets = []
-        highlightedRow = 0
+        forgetRowWidgets()
         placeholderShown = true
         pendingReveal = false
         gtk_widget_set_opacity(transcriptBox, 1)
@@ -1125,17 +1146,26 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// The rendering path, shaped around what a person is looking at: tail-first fill, chunked
-    /// backfill on idle, widget reuse before the first changed row, and a follow decision that is
-    /// the person's, not the scrollbar's. `renderedRows` is always a contiguous slice of the
-    /// applied row list that reaches its end.
+    /// backfill on idle, widget reuse for every row whose identity survived, and a follow decision
+    /// that is the person's, not the scrollbar's. `renderedRows` is always a contiguous slice of
+    /// the applied row list that reaches its end.
+    ///
+    /// Every consumer of a row list here assumes each key names one row: the anchor search below
+    /// takes the first key it finds, `enteredRows` is a set, and `context.expanded` is keyed by the
+    /// same string. A duplicate is therefore not a cosmetic problem but a torn tail on every
+    /// arrival, so a build that produces one says so where it is produced rather than being
+    /// diagnosed later from the flicker.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        assert(
+            Set(rows.map(\.key)).count == rows.count,
+            "transcript rows share a key: "
+                + Dictionary(grouping: rows, by: \.key).filter { $0.value.count > 1 }
+                    .keys.sorted().joined(separator: ", "))
         if updatedLastRowInPlace(rows) { return }
         let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
-            renderedRows = []
-            rowWidgets = []
-            highlightedRow = 0
+            forgetRowWidgets()
             placeholderShown = false
             currentPlaceholder = nil
             gtk_widget_set_opacity(transcriptBox, 0)
@@ -1159,13 +1189,7 @@ final class ChatPane: @unchecked Sendable {
                 }
             }
             if let anchor {
-                for bits in rowWidgets[..<anchor.rendered] {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
-                    if bits == highlightedRow { highlightedRow = 0 }
-                    gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
-                }
-                rowWidgets.removeSubrange(..<anchor.rendered)
-                renderedRows.removeSubrange(..<anchor.rendered)
+                for _ in 0..<anchor.rendered { removeRowWidget(at: 0) }
                 start = anchor.row
             } else {
                 tearDownAllRows()
@@ -1176,22 +1200,7 @@ final class ChatPane: @unchecked Sendable {
             start = max(0, rows.count - chunk)
             appendRowWidgets(rows[start...])
         } else {
-            var same = 0
-            while same < renderedRows.count, start + same < rows.count,
-                renderedRows[same] == rows[start + same]
-            {
-                same += 1
-            }
-            for bits in rowWidgets[same...] {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
-                if bits == highlightedRow { highlightedRow = 0 }
-                gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
-            }
-            rowWidgets.removeSubrange(same...)
-            renderedRows.removeSubrange(same...)
-            let tailFrom = start + renderedRows.count
-            let tailEnd = min(rows.count, tailFrom + chunk)
-            appendRowWidgets(rows[tailFrom..<tailEnd])
+            reconcileRows(with: rows, from: start)
         }
 
         let tailDone = start + renderedRows.count >= rows.count
@@ -1207,6 +1216,7 @@ final class ChatPane: @unchecked Sendable {
             }
             renderedRows.insert(contentsOf: rows[from..<start], at: 0)
             rowWidgets.insert(contentsOf: bits, at: 0)
+            enteredRows.formUnion(rows[from..<start].lazy.map(\.key))
             start = from
         }
 
@@ -1238,29 +1248,163 @@ final class ChatPane: @unchecked Sendable {
         if complete, gtk_widget_get_visible(findBar) != 0 { runFind(retarget: false) }
     }
 
+    /// Turns what is on screen into what the rows say, by identity rather than by value.
+    ///
+    /// The applier this replaces walked the two lists comparing rows *whole* and threw away
+    /// everything from the first pair that differed. That is right only for a transcript that grows
+    /// at its end, and this one does not: a tool result lands on a call fifty rows back, a second
+    /// TodoWrite demotes the row the previous one had promoted, a picture finishes decoding. Each
+    /// of those changes one row's value in the middle and cost the entire tail below it — torn
+    /// down, re-appended a batch per idle hop, the transcript visibly collapsing and regrowing over
+    /// several frames — and not one of them was an insertion. `RowDiff` answers from the keys
+    /// alone, so a value change can only ever repaint the row it happened to, and the ordinary
+    /// streaming case moves no widget at all.
+    ///
+    /// Nothing here is chunked. Chunking is for the first fill, where the rows have never been on
+    /// screen and the cost is real; a tail being put back from rows the pane already holds must
+    /// land in one frame, because the alternative is the collapse this exists to remove.
+    private func reconcileRows(with rows: [TranscriptRow], from start: Int) {
+        let window = Array(rows[start...])
+        let plan = RowDiff.plan(from: renderedRows.map(\.key), to: window.map(\.key))
+        if !plan.isOrderPreserving {
+            for index in plan.removals.reversed() { removeRowWidget(at: index) }
+            for index in plan.insertions { insertRowWidget(window[index], at: index) }
+        }
+        guard renderedRows.count == window.count else {
+            tearDownAllRows()
+            appendRowWidgets(window[...])
+            return
+        }
+        for index in renderedRows.indices where renderedRows[index] != window[index] {
+            renderedRows[index] = window[index]
+            rebuildRow(at: index)
+        }
+    }
+
     private func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
-        let entering = !placeholderShown && !pendingReveal && fillComplete && followsBottom
-        for (offset, row) in rows.enumerated() {
+        for row in rows {
             let widget = row.makeWidget(context: context)
             gtk_box_append(ptr(transcriptBox), widget)
-            let firstSight = enteredRows.insert(row.key).inserted
-            if entering, firstSight, row.key != cascade.key {
-                CascadeEntrance.animate(widget, index: offset, of: rows.count)
-            }
             rowWidgets.append(UInt(bitPattern: widget))
             renderedRows.append(row)
+            noteEntrance(of: widget, for: row)
         }
+    }
+
+    /// A row arriving somewhere other than the end, put in the box between the neighbours it will
+    /// have. The insertions are applied in ascending order, so everything before this index is
+    /// already the row it should be and the widget before it is the one to insert after.
+    private func insertRowWidget(_ row: TranscriptRow, at index: Int) {
+        guard index <= rowWidgets.count else { return }
+        let widget = row.makeWidget(context: context)
+        let previous: UnsafeMutablePointer<GtkWidget>? =
+            index > 0
+            ? UnsafeMutableRawPointer(bitPattern: rowWidgets[index - 1]).map { ptr($0) } : nil
+        gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
+        rowWidgets.insert(UInt(bitPattern: widget), at: index)
+        renderedRows.insert(row, at: index)
+        noteEntrance(of: widget, for: row)
+    }
+
+    private func removeRowWidget(at index: Int) {
+        guard index < rowWidgets.count, index < renderedRows.count else { return }
+        let bits = rowWidgets[index]
+        if bits == highlightedRow { clearFindHighlight() }
+        if entranceInFlight[renderedRows[index].key] == bits {
+            entranceInFlight[renderedRows[index].key] = nil
+        }
+        CascadeEntrance.cancel(bits)
+        if let raw = UnsafeMutableRawPointer(bitPattern: bits) {
+            gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+        }
+        rowWidgets.remove(at: index)
+        renderedRows.remove(at: index)
+    }
+
+    /// One row's widget remade where it stands, which is the whole answer to a row whose value
+    /// changed and whose identity did not: it keeps its place in the box, its neighbours are not
+    /// touched, and a fade it was still in the middle of is carried across rather than restarted or
+    /// left running on the widget being thrown away.
+    private func rebuildRow(at index: Int) {
+        guard index < rowWidgets.count, index < renderedRows.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+        else { return }
+        if rowWidgets[index] == highlightedRow { clearFindHighlight() }
+        let key = renderedRows[index].key
+        let carried = takeEntrance(of: rowWidgets[index], for: key)
+        let old: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+        let previous: UnsafeMutablePointer<GtkWidget>? =
+            index > 0
+            ? UnsafeMutableRawPointer(bitPattern: rowWidgets[index - 1]).map { ptr($0) } : nil
+        gtk_box_remove(ptr(transcriptBox), old)
+        let widget = renderedRows[index].makeWidget(context: context)
+        gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
+        rowWidgets[index] = UInt(bitPattern: widget)
+        if let carried { beginEntrance(of: widget, for: key, delay: 0, from: carried) }
+    }
+
+    /// Whether a row appearing on screen fades in, and when it may start.
+    ///
+    /// The stagger belongs to the pane rather than to the batch a row happened to arrive in. Given
+    /// a position within one slice, a state carrying seven rows starts the last of them a third of
+    /// a second out while the next state's first row starts immediately — so a newer row below is
+    /// readable while the gap above it is still blank. Queued against one clock the batches simply
+    /// follow each other, and the ceiling keeps a burst from staggering for two seconds.
+    private func noteEntrance(of widget: UnsafeMutablePointer<GtkWidget>, for row: TranscriptRow) {
+        let firstSight = enteredRows.insert(row.key).inserted
+        guard !placeholderShown, !pendingReveal, fillComplete, followsBottom, firstSight,
+            row.announcesArrival, row.key != cascade.key
+        else { return }
+        let now = CascadePainter.now
+        let at = min(max(now, nextEntranceAt), now + StreamCascade.entranceCeiling)
+        nextEntranceAt = at + StreamCascade.entranceStep
+        beginEntrance(of: widget, for: row.key, delay: at - now)
+    }
+
+    private func beginEntrance(
+        of widget: UnsafeMutablePointer<GtkWidget>, for key: String, delay: Double,
+        from opacity: Double = 0
+    ) {
+        let bits = UInt(bitPattern: widget)
+        entranceInFlight[key] = bits
+        CascadeEntrance.animate(widget, delay: delay, from: opacity) { [weak self] in
+            guard let self, self.entranceInFlight[key] == bits else { return }
+            self.entranceInFlight[key] = nil
+        }
+    }
+
+    /// How far into its entrance a row had got, and the end of that run. A rebuilt row's old widget
+    /// has nothing left to fade in, but the fade does not know that: it goes on setting the opacity
+    /// of something detached while the replacement — whose key `enteredRows` has already seen, so
+    /// it does not animate — is drawn at full strength. The row pops mid-fade. Handing the opacity
+    /// over instead continues the same curve on the new widget.
+    private func takeEntrance(of bits: UInt, for key: String) -> Double? {
+        guard entranceInFlight[key] == bits, let raw = UnsafeMutableRawPointer(bitPattern: bits)
+        else { return nil }
+        entranceInFlight[key] = nil
+        CascadeEntrance.cancel(bits)
+        return gtk_widget_get_opacity(ptr(raw) as UnsafeMutablePointer<GtkWidget>)
     }
 
     private func tearDownAllRows() {
         enteredRows.removeAll(keepingCapacity: true)
         for bits in rowWidgets {
+            CascadeEntrance.cancel(bits)
             guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
             gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
         }
+        forgetRowWidgets()
+    }
+
+    /// Drops everything the pane believes about the widgets it had, for the paths that empty the
+    /// transcript box wholesale. The entrance clock goes with them: a queue built up for rows that
+    /// no longer exist would delay the first row of whatever fills the pane next.
+    private func forgetRowWidgets() {
         renderedRows = []
         rowWidgets = []
         highlightedRow = 0
+        entranceInFlight.removeAll(keepingCapacity: true)
+        nextEntranceAt = 0
     }
 
     /// A streamed token changes exactly one row, and rebuilding its widget for every arrival is
@@ -1381,13 +1525,7 @@ final class ChatPane: @unchecked Sendable {
         guard !placeholderShown, let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowWidgets.count
         else { return }
-        for bits in rowWidgets[index...] {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { continue }
-            if bits == highlightedRow { highlightedRow = 0 }
-            gtk_box_remove(ptr(transcriptBox), ptr(raw) as UnsafeMutablePointer<GtkWidget>)
-        }
-        rowWidgets.removeSubrange(index...)
-        renderedRows.removeSubrange(index...)
+        while renderedRows.count > index { removeRowWidget(at: renderedRows.count - 1) }
         let limit = max(windowLimit, Preferences.transcriptWindow)
         let rows = lastFullRows
         applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
@@ -1499,18 +1637,7 @@ final class ChatPane: @unchecked Sendable {
     private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
         guard !placeholderShown else { return }
         for index in renderedRows.indices where predicate(renderedRows[index]) {
-            guard index < rowWidgets.count,
-                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
-            else { continue }
-            if rowWidgets[index] == highlightedRow { clearFindHighlight() }
-            let old: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-            let previous: UnsafeMutablePointer<GtkWidget>? =
-                index > 0
-                ? UnsafeMutableRawPointer(bitPattern: rowWidgets[index - 1]).map { ptr($0) } : nil
-            gtk_box_remove(ptr(transcriptBox), old)
-            let widget = renderedRows[index].makeWidget(context: context)
-            gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
-            rowWidgets[index] = UInt(bitPattern: widget)
+            rebuildRow(at: index)
         }
     }
 
@@ -1795,7 +1922,7 @@ final class ChatPane: @unchecked Sendable {
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
             let repository = await Self.readGit(backend: backend, session: entry.session)
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.sessionID == sessionID else { return }
                 self.usage = usage
                 self.git = repository.map { GitState(snapshot: $0) }
                 self.spend = report.map(SessionSpend.init(report:))
@@ -3041,7 +3168,7 @@ final class ChatPane: @unchecked Sendable {
                 (try? await backend.subagentMessages(sessionID: sessionID, agentID: agentID)) ?? []
             let rows = TranscriptRow.rows(for: messages)
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.sessionID == sessionID else { return }
                 self.inFlightSubagents.remove(agentID)
                 self.context.subagentRows[WorkflowAgentRows.key(agentID)] = rows
                 self.replaceRows {
@@ -3072,7 +3199,7 @@ final class ChatPane: @unchecked Sendable {
             let rows = TranscriptRow.rows(for: messages)
             let callID = call.id
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.sessionID == sessionID else { return }
                 self.context.subagentRows[callID] = rows
                 self.replaceRows {
                     if case .subagent(let spawned) = $0.kind { return spawned.id == callID }
@@ -3164,12 +3291,16 @@ final class ChatPane: @unchecked Sendable {
     private func rebuildTranscriptRows() {
         guard let state = lastState else { return }
         let tail = rowTailMessages
+        let sessionID = self.sessionID
         Task.detached { [weak self] in
             guard let self else { return }
             let messages =
                 state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
             let rows = self.rowBuilder.rows(for: messages)
-            Gtk.onMain { [weak self] in self?.apply(state: state, rows: rows) }
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID else { return }
+                self.apply(state: state, rows: rows)
+            }
         }
     }
 
