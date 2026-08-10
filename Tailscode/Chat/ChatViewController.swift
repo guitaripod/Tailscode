@@ -96,7 +96,7 @@ final class ChatViewController: UIViewController {
     /// The clock that keeps trying a hand-back nothing else would ever try again — the wave lets go
     /// of its display link and its watchdog in the same breath, and a turn that ended sends no more
     /// states.
-    private var cascadeRepair: Timer?
+    private var cascadeRepair: Task<Void, Never>?
 
     var sessionID: String { viewModel.session.id }
     init(viewModel: ChatViewModel) {
@@ -109,6 +109,8 @@ final class ChatViewController: UIViewController {
     deinit {
         elapsedTicker?.cancel()
         revealFallback?.cancel()
+        workflowTicker?.cancel()
+        cascadeRepair?.cancel()
     }
 
     override func viewDidLoad() {
@@ -1178,7 +1180,7 @@ final class ChatViewController: UIViewController {
         wholeCascadeRow = live
         rowsByID[row.id] = row
         cascade.focus(
-            row.id, rendered: Self.renderedText(of: row), sealed: !viewModel.isBusy,
+            row.id, length: Self.renderedLength(of: row), sealed: !viewModel.isBusy,
             ultracode: viewModel.ultracodeInFlight
                 || viewModel.currentEffort == Ultracode.effortLevel)
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
@@ -1216,26 +1218,17 @@ final class ChatViewController: UIViewController {
     /// same breath. So a hand-back that could not be made at that moment is the last thing anybody
     /// was ever going to try, and the row keeps the prefix for as long as the chat is open.
     private func scheduleCascadeRepair(_ key: String) {
-        cascadeRepair?.invalidate()
-        var attempts = 0
-        cascadeRepair = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: true) {
-            [weak self] timer in
-            MainActor.assumeIsolated {
-                guard let self, self.cascade.key != key else {
-                    timer.invalidate()
-                    return
-                }
-                attempts += 1
+        cascadeRepair?.cancel()
+        cascadeRepair = Task { [weak self] in
+            for _ in 0..<6 {
+                try? await Task.sleep(for: .milliseconds(320))
+                guard !Task.isCancelled, let self, self.cascade.key != key else { return }
                 var snapshot = self.dataSource.snapshot()
-                guard snapshot.itemIdentifiers.contains(key) else {
-                    if attempts >= 6 { timer.invalidate() }
-                    return
-                }
-                timer.invalidate()
-                self.cascadeRepair = nil
+                guard snapshot.itemIdentifiers.contains(key) else { continue }
                 snapshot.reconfigureItems([key])
-                self.dataSource.apply(snapshot, animatingDifferences: false)
+                await self.dataSource.apply(snapshot, animatingDifferences: false)
                 self.settledCascadeRows.remove(key)
+                return
             }
         }
     }
@@ -1261,15 +1254,18 @@ final class ChatViewController: UIViewController {
     }
 
     /// What the reveal counts: the characters a reader will actually see, markers already eaten by
-    /// the renderer whose output the cell will show.
-    private static func renderedText(of row: ChatRow) -> String {
+    /// the renderer whose output the cell will show — measured in UTF-16 code units, because that
+    /// is what `CascadeTail` indexes the cell's storage by. Counting graphemes here and slicing
+    /// UTF-16 there is one number apart per emoji, and the row's last characters stay painted clear
+    /// for good while the pacer reports it settled.
+    private static func renderedLength(of row: ChatRow) -> Int {
         switch row.content {
         case .text(let text):
-            return TextBubbleCell.rendered(text, color: Theme.Color.label).string
+            return TextBubbleCell.rendered(text, color: Theme.Color.label).length
         case .code(let block):
-            return block.source
+            return CodeBlockCell.highlightedCode(block.source, language: block.language).length
         default:
-            return ""
+            return 0
         }
     }
 
@@ -1647,21 +1643,18 @@ final class ChatViewController: UIViewController {
     @discardableResult
     private func applyQuotaExhaustion(for state: ConversationState) -> Bool {
         guard Date() > suppressBannerUntil, state.status != .running else { return false }
-        let quotas = UsageWidgetStore.cachedQuotas()
+        let quotas = QuotaSurface.relevantQuotas(
+            for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
         let model = viewModel.displayedModel?.modelID
         let failure: String? = {
             guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
             return f.message
         }()
-        let exhaustion: QuotaExhaustion?
-        if let failure {
-            exhaustion = QuotaSurface.resolve(
-                failureMessage: failure, quotas: quotas, model: model)
-        } else {
-            exhaustion = QuotaSurface.hottestExhausted(
-                in: QuotaSurface.relevantQuotas(for: viewModel.backend.agentType, among: quotas),
-                model: model)
-        }
+        let exhaustion =
+            failure.flatMap {
+                QuotaSurface.resolve(failureMessage: $0, quotas: quotas, model: model)
+            } ?? (failure == nil
+                ? QuotaSurface.hottestExhausted(in: quotas, model: model) : nil)
         guard let exhaustion else { return false }
         banner.show(
             QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,
@@ -2429,8 +2422,8 @@ final class ChatViewController: UIViewController {
             workflowTicker = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
-                    guard !Task.isCancelled else { return }
-                    self?.advanceWorkflowClock()
+                    guard !Task.isCancelled, let self else { return }
+                    self.advanceWorkflowClock()
                 }
             }
         } else if !live {

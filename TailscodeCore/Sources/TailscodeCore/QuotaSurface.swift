@@ -66,12 +66,18 @@ public enum QuotaSurface {
     /// model-scoped wall only when it is that model's. A model nobody named is answered by the
     /// account-wide walls alone, because a scoped wall attributed to a chat that may not be on
     /// that model is exactly the notice nobody can act on.
+    ///
+    /// A window whose own stated reset has already passed is not a wall, whatever fraction the last
+    /// snapshot recorded. The reading is a photograph of a moment that has ended: the provider said
+    /// when the window would open again, that time is behind us, and continuing to quote the
+    /// photograph is how a spent window ends up telling somebody it is used up and resets in 0m.
     public static func walls(
-        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil
+        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil,
+        now: Date = Date()
     ) -> [QuotaExhaustion] {
         quotas.flatMap { quota in
             quota.gauges
-                .filter { $0.fraction >= exhaustedFloor }
+                .filter { $0.fraction >= exhaustedFloor && ($0.resetsAt.map { $0 > now } ?? true) }
                 .compactMap { gauge -> QuotaExhaustion? in
                     let scope = QuotaBinding.scope(of: gauge)
                     guard QuotaBinding.governs(scope, model: model, named: name) else { return nil }
@@ -87,9 +93,10 @@ public enum QuotaSurface {
     /// model-specific window when several are full, because the tightest clock is the one that
     /// unlocks the next send.
     public static func hottestExhausted(
-        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil
+        in quotas: [UsageQuota], model: String? = nil, named name: String? = nil,
+        now: Date = Date()
     ) -> QuotaExhaustion? {
-        walls(in: quotas, model: model, named: name)
+        walls(in: quotas, model: model, named: name, now: now)
             .max(by: { a, b in
                 if a.fraction != b.fraction { return a.fraction < b.fraction }
                 let aReset = a.resetsAt?.timeIntervalSince1970 ?? .infinity
@@ -98,43 +105,72 @@ public enum QuotaSurface {
             })
     }
 
-    /// Whether a turn failure is the provider saying "no more", not a bug in our plumbing.
+    /// Failures that carry a limit word and are not a wall: a reply that ran past its own output
+    /// ceiling, a prompt that ran past the context window, an attachment too big to send.
+    ///
+    /// These are the shape of one turn, not the state of the month, and they are the reason this
+    /// list exists rather than a longer needle list. Reading one as a wall costs twice: it invents
+    /// a wall nobody hit, and it replaces the one sentence that says how to fix the turn — raise
+    /// the ceiling, shorten the prompt — with an invitation to switch model and wait for a reset
+    /// that is never coming. A limit the account can spend past by waiting is a wall; a limit that
+    /// describes the request is not.
+    private static let notWalls = [
+        "output token", "output_token", "token maximum", "max_tokens", "maximum tokens",
+        "context window", "context length", "context_length", "context limit",
+        "prompt is too", "input is too", "too long", "too large",
+    ]
+
+    /// Whether a turn failure is the provider saying "no more", not a bug in our plumbing and not
+    /// the turn describing its own size.
     public static func isQuotaFailure(_ message: String) -> Bool {
         let lower = message.lowercased()
+        guard !notWalls.contains(where: { lower.contains($0) }) else { return false }
         let needles = [
             "rate limit", "rate_limit", "ratelimit",
             "usage limit", "usage_limit",
-            "quota", "exceeded your", "exceeded the",
+            "quota", "exceeded your",
             "too many requests", "429",
             "you've hit", "you have hit", "you've reached", "you have reached",
             "out of credits", "out of capacity", "capacity exceeded",
+            "credit balance is too low",
             "spend limit", "billing limit", "limit reached",
             "throttl",
         ]
         return needles.contains { lower.contains($0) }
     }
 
-    /// Prefer the wall the failed turn itself hit, then live gauges for the window name and
-    /// reset, and fall back to classifying the failure string alone. A failure that names its
-    /// provider is the turn's own wall — a full gauge on some *other* provider (say Claude's
-    /// weekly, while this turn died on opencode-go) must not rewrite it.
+    /// The wall standing in front of this turn, or nil when nothing is.
+    ///
+    /// A failure string is a guess and the gauges are a measurement, so the measurement decides.
+    /// The guess is only ever needed for the one case it was written for: the turn died of a wall
+    /// the gauges have not caught up with yet. Where a provider is answering and reports room, the
+    /// account demonstrably has room, and whatever killed the turn was something else — which is
+    /// the whole difference between telling somebody to switch model and wait, and letting them
+    /// read the sentence that actually says what went wrong.
+    ///
+    /// The measurement is asked of the provider the failure names, never of the account: a full
+    /// Claude weekly is not the explanation for a turn that died on opencode-go, and a live
+    /// opencode-go reading is not permission to dismiss Claude's wall.
     public static func resolve(
         failureMessage: String?, quotas: [UsageQuota], model: String? = nil,
-        named name: String? = nil
+        named name: String? = nil, now: Date = Date()
     ) -> QuotaExhaustion? {
-        if let message = failureMessage, isQuotaFailure(message) {
-            let named = QuotaExhaustion(
-                provider: providerHint(in: message) ?? Localized.text("Provider"),
-                window: windowHint(in: message) ?? Localized.text("Usage"),
-                fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false,
-                source: .failure)
-            if providerHint(in: message) != nil {
-                return named
-            }
-            if let gauge = hottestExhausted(in: quotas, model: model, named: name) { return gauge }
-            return named
+        guard let message = failureMessage, isQuotaFailure(message) else {
+            return hottestExhausted(in: quotas, model: model, named: name, now: now)
         }
-        return hottestExhausted(in: quotas, model: model, named: name)
+        let hint = providerHint(in: message)
+        let attributed = hint.map { provider in
+            quotas.filter { ProviderBrand.slug($0.providerName) == ProviderBrand.slug(provider) }
+        } ?? quotas
+        if let gauge = hottestExhausted(in: attributed, model: model, named: name, now: now) {
+            return gauge
+        }
+        guard !attributed.contains(where: \.live) else { return nil }
+        return QuotaExhaustion(
+            provider: hint ?? Localized.text("Provider"),
+            window: windowHint(in: message) ?? Localized.text("Usage"),
+            fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false,
+            source: .failure)
     }
 
     /// Banner / phase line: names what is used up.

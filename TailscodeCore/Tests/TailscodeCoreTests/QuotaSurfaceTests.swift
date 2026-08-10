@@ -157,3 +157,95 @@ struct QuotaSurfaceTests {
         #expect(QuotaSurface.parsedReset(in: "try again later") == nil)
     }
 }
+
+/// The wall the app kept inventing: a turn that died of something with a limit word in it, over an
+/// account with nothing spent.
+@Suite("Quota walls answer to the gauges")
+struct QuotaEvidenceTests {
+    private func gauge(
+        _ label: String, _ fraction: Double, resetsIn: TimeInterval? = 3600
+    ) -> UsageQuota.Gauge {
+        UsageQuota.Gauge(
+            key: label.lowercased(), label: label, fraction: fraction,
+            resetsAt: resetsIn.map { Date().addingTimeInterval($0) }, trustedReset: true)
+    }
+
+    private func quota(
+        _ provider: String, _ gauges: [UsageQuota.Gauge], live: Bool = true
+    ) -> UsageQuota {
+        UsageQuota(
+            providerName: provider, subtitle: "", source: "test", live: live, gauges: gauges,
+            details: [])
+    }
+
+    private var roomy: [UsageQuota] {
+        [quota("Claude", [gauge("5-hour session", 0.15), gauge("Weekly · all models", 0.07)])]
+    }
+
+    @Test("A reply that ran past its own output ceiling is not a wall")
+    func outputCeilingIsNotAWall() {
+        let message = """
+            API Error: Claude's response exceeded the 32000 output token maximum. To configure this \
+            behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.
+            """
+        #expect(!QuotaSurface.isQuotaFailure(message))
+        #expect(QuotaSurface.resolve(failureMessage: message, quotas: roomy) == nil)
+        #expect(
+            QuotaSurface.statusFailureMessage(failure: message, quotas: roomy) == message,
+            "the sentence that says how to fix the turn must survive")
+    }
+
+    @Test("A prompt past the context window is not a wall either")
+    func contextIsNotAWall() {
+        for message in [
+            "Prompt is too long: 210000 tokens > 200000 maximum context length",
+            "Input is too large for the context window",
+        ] {
+            #expect(!QuotaSurface.isQuotaFailure(message), "\(message)")
+        }
+    }
+
+    @Test("A provider that is answering and reports room vetoes a guessed wall")
+    func liveRoomVetoesTheGuess() {
+        let message = "429 rate limit from claude"
+        #expect(QuotaSurface.isQuotaFailure(message))
+        #expect(QuotaSurface.resolve(failureMessage: message, quotas: roomy) == nil)
+    }
+
+    @Test("With no live reading to contradict it, the failure still speaks")
+    func noReadingKeepsTheGuess() {
+        let message = "429 rate limit from claude"
+        let dark = [quota("Claude", [], live: false)]
+        let wall = QuotaSurface.resolve(failureMessage: message, quotas: dark)
+        #expect(wall?.provider == "Claude")
+        #expect(wall?.source == .failure)
+        #expect(QuotaSurface.resolve(failureMessage: message, quotas: []) != nil)
+    }
+
+    @Test("A full window on another provider cannot explain this provider's failure")
+    func anotherProvidersWallIsNotEvidence() {
+        let quotas = [
+            quota("Claude", [gauge("Weekly", 1.0)]),
+            quota("Grok", [gauge("Tokens", 0.2)]),
+        ]
+        let wall = QuotaSurface.resolve(failureMessage: "grok is throttling you", quotas: quotas)
+        #expect(wall == nil, "Grok is answering with room; Claude's wall is not Grok's")
+    }
+
+    @Test("A gauge that is genuinely full still speaks, and names its own window")
+    func arealWallSurvives() {
+        let quotas = [quota("Claude", [gauge("5-hour session", 1.0, resetsIn: 900)])]
+        let wall = QuotaSurface.resolve(failureMessage: "usage limit reached", quotas: quotas)
+        #expect(wall?.source == .gauge)
+        #expect(wall?.window == "5-hour session")
+    }
+
+    @Test("A window whose reset has passed is not a wall, whatever the snapshot recorded")
+    func aSpentWindowExpires() {
+        let stale = [quota("Claude", [gauge("Weekly", 1.0, resetsIn: -60)])]
+        #expect(QuotaSurface.walls(in: stale).isEmpty)
+        #expect(QuotaSurface.hottestExhausted(in: stale) == nil)
+        let standing = [quota("Claude", [gauge("Weekly", 1.0, resetsIn: 60)])]
+        #expect(QuotaSurface.hottestExhausted(in: standing) != nil)
+    }
+}

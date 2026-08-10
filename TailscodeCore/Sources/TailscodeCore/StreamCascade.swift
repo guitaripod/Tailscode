@@ -476,7 +476,27 @@ public struct LiveCascade: Sendable {
 
     /// Points the wave at the row the stream is writing into, with that row's rendered text.
     /// Passing nil lets go of it.
+    /// Points the wave at a row whose length the client has measured in the units its own painter
+    /// indexes by.
+    ///
+    /// "How long is this text" has three answers and every client needs a different one: UIKit and
+    /// AppKit slice an `NSAttributedString` by UTF-16 code unit, Pango walks UTF-8 by code point,
+    /// and Swift's `String.count` is grapheme clusters — which is none of them. A single emoji is
+    /// one cluster, two UTF-16 units and one code point, so a reveal counted in clusters and
+    /// painted in UTF-16 saturates before the end of the paragraph and leaves the last characters
+    /// painted at zero alpha for good, reporting a settled row all the while. The count belongs to
+    /// whoever does the indexing.
+    public mutating func focus(_ id: String?, length: Int, sealed: Bool, at time: Double) {
+        focus(id, rendered: nil, length: length, sealed: sealed, at: time)
+    }
+
     public mutating func focus(_ id: String?, rendered: String, sealed: Bool, at time: Double) {
+        focus(id, rendered: rendered, length: rendered.count, sealed: sealed, at: time)
+    }
+
+    private mutating func focus(
+        _ id: String?, rendered _: String?, length: Int, sealed: Bool, at time: Double
+    ) {
         guard let id else {
             self.id = nil
             revealed = 0
@@ -490,7 +510,7 @@ public struct LiveCascade: Sendable {
         }
         if id != self.id {
             self.id = id
-            total = rendered.count
+            total = length
             cadence = StreamCadence(tuning: tuning)
             if total > Self.adoptLimit || sealed {
                 cadence.adopt(total)
@@ -503,7 +523,7 @@ public struct LiveCascade: Sendable {
             markDebt(at: time)
             return
         }
-        total = rendered.count
+        total = length
         cadence.observe(available: total, sealed: sealed)
         revealed = min(revealed, total)
         landed = min(landed, total)

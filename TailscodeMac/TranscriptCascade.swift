@@ -25,7 +25,7 @@ extension TranscriptViewController {
         let row = safe == source ? live : live.held(to: safe)
         paced[paced.count - 1] = row
         cascade.focus(
-            row.key, rendered: row.renderedText ?? "", sealed: !running,
+            row.key, length: Self.renderedLength(of: row), sealed: !running,
             ultracode: composer.auraActive)
         guard cascade.key == row.key else {
             if let released { handOver(released, in: rows) }
@@ -34,6 +34,18 @@ extension TranscriptViewController {
         lastStreamedKey = row.key
         if let released, released != cascade.key { handOver(released, in: paced) }
         return paced
+    }
+
+    /// What the reveal counts, measured in the units `CascadeTail` indexes the label's storage by:
+    /// UTF-16 code units. Counting graphemes here and slicing UTF-16 there is one number apart per
+    /// emoji, and the row's last characters stay painted clear for good while the pacer reports it
+    /// settled.
+    static func renderedLength(of row: TranscriptRow) -> Int {
+        switch row.kind {
+        case .agentProse(_, let rendered): return rendered.length
+        case .codeBlock(_, let body): return codeRendering(body).length
+        default: return 0
+        }
     }
 
     /// The wave letting go of a row, made good. A settle that could not be made here is put on the

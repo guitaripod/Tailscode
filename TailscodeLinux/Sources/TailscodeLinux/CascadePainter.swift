@@ -131,7 +131,7 @@ final class CascadePainter: @unchecked Sendable {
             return
         }
         self.markup = bytes
-        live.focus(id, rendered: rendered, sealed: sealed, at: Self.now)
+        live.focus(id, length: rendered.unicodeScalars.count, sealed: sealed, at: Self.now)
         start(on: clock)
         watch()
     }
@@ -145,8 +145,12 @@ final class CascadePainter: @unchecked Sendable {
     /// The markdown-safe prefix of what the agent has written, held only while a closer might still
     /// be coming. The judgement is Core's: a cut that stops moving is the end of a part, not a
     /// token in flight, and the rest of the row is handed over rather than held for the turn.
+    /// With motion switched off nothing reveals, so nothing needs protecting from a marker that
+    /// has not closed yet — and a gate whose give-up clock is reset by every arrival can never
+    /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
     func renderable(_ source: String, sealed: Bool) -> String {
-        live.renderable(source, sealed: sealed, at: Self.now)
+        guard Self.motionAllowed else { return source }
+        return live.renderable(source, sealed: sealed, at: Self.now)
     }
 
     /// Paints one frame into the label the live row keeps its words in. The markup was converted

@@ -757,9 +757,18 @@ final class CodeBlockCell: UICollectionViewCell {
     }
 
     /// A frame that moved only the band, as above: the same glyphs, freshly tinted.
+    ///
+    /// The glyphs are whatever `configure` last laid out, which for a long block is its first
+    /// fourteen lines. Painting the whole source here instead would grow the cell to the full block
+    /// on the display's clock and shrink it back on the next arrival, with the gutter still
+    /// numbering fourteen — a frame is allowed to change light, never a size layout depends on.
     func applyCascade(_ cascade: CascadeTail, block: CodeBlock) {
+        let lines = block.source.components(separatedBy: "\n")
+        let shown =
+            lines.count > Self.collapsedLineLimit && toggleButton.title(for: .normal) != String(localized: "Collapse")
+            ? lines.prefix(Self.collapsedLineLimit).joined(separator: "\n") : block.source
         codeLabel.attributedText = Self.highlightedCode(
-            block.source, language: block.language, cascade: cascade)
+            shown, language: block.language, cascade: cascade)
     }
 
     private static func lineNumbers(count: Int) -> String {
