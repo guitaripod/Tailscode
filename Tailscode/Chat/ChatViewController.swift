@@ -3610,7 +3610,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
         else { return }
         provider.loadDataRepresentation(forTypeIdentifier: "public.image") { [weak self] data, _ in
             guard let data else { return }
-            let (mime, ext) = Self.imageType(of: data)
+            let (mime, ext) = ImageBytes.kind(of: data)
             Task { @MainActor in
                 self?.pendingAttachments.append(
                     PromptAttachment(
@@ -3619,16 +3619,6 @@ extension ChatViewController: PHPickerViewControllerDelegate {
                 self?.presentAttachmentToast()
             }
         }
-    }
-
-    /// Sniffs the container format from magic bytes so the declared mime
-    /// matches the actual data (PHPicker returns HEIC/PNG originals, not JPEG).
-    private nonisolated static func imageType(of data: Data) -> (mime: String, ext: String) {
-        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return ("image/jpeg", "jpg") }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return ("image/png", "png") }
-        if data.count >= 12, data[4...7].elementsEqual("ftyp".utf8) { return ("image/heic", "heic") }
-        if data.starts(with: [0x47, 0x49, 0x46]) { return ("image/gif", "gif") }
-        return ("image/jpeg", "jpg")
     }
 
     private func presentAttachmentToast() {
@@ -3655,6 +3645,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
             attachmentStrip.addArrangedSubview(chip)
         }
         attachmentStrip.isHidden = pendingAttachments.isEmpty
+        composer.carriesAttachments = !pendingAttachments.isEmpty
         view.setNeedsLayout()
     }
 }

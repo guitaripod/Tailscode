@@ -5,51 +5,75 @@ import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
-/// The quick-ask surface, drawn: one entry, the aim it remembered, and nothing else. Enter is
-/// the whole ceremony — the words go out as a new conversation with no project directory on the
-/// server named in the chip, and the window stays up only long enough for that server to answer,
-/// so a failed mint keeps the question in hand rather than swallowing it. The aim is both halves
-/// and both are the quick ask's own: tab or a click moves the machine, `m` or the model chip
-/// opens the catalog, and `QuickAskDefaults` remembers each per server beside the composer's
-/// memory rather than inside it.
+/// The quick-ask surface, drawn: one entry, the aim it remembered, and what the aim can be
+/// handed. Enter is the whole ceremony — the words and anything attached to them go out as a new
+/// conversation with no project directory on the server named in the chip, and the window stays
+/// up only long enough for that server to answer, so a failed mint keeps the question in hand
+/// rather than swallowing it. The aim is both halves and both are the quick ask's own: tab or a
+/// click moves the machine, `alt+m` or the model chip opens the catalog, and `QuickAskDefaults`
+/// remembers each per server beside the composer's memory rather than inside it.
+///
+/// Owing no form is not the same as being able to do nothing. `alt+a` attaches a file and
+/// `alt+v` takes the clipboard's picture, offered only where the aim can read them; the empty
+/// window argues for itself with `QuickAskStarters` — `alt+1…9`, or a click — and hands back the
+/// last few questions asked on this machine, so the blank entry is a way into everything the
+/// agent can do instead of a text field with a placeholder.
 final class QuickAskWindow: @unchecked Sendable {
     nonisolated(unsafe) private(set) static var open: QuickAskWindow?
 
     private let servers: [ConnectionProfile]
+    private let recents: [SessionEntry]
     private var targetIndex: Int
     private let onAsk:
-        @Sendable (String, String, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
+        @Sendable (String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) ->
+            Void) -> Void
+    private let onResume: @Sendable (SessionEntry) -> Void
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
     private let target: UnsafeMutablePointer<GtkWidget>
     private let model: UnsafeMutablePointer<GtkWidget>
+    private let attach: UnsafeMutablePointer<GtkWidget>
+    private let chips: UnsafeMutablePointer<GtkWidget>
+    private let starters: UnsafeMutablePointer<GtkWidget>
     private let hint: UnsafeMutablePointer<GtkWidget>
+    private var attachments: [PendingAttachment] = []
+    private var offered: [QuickAskStarter] = []
+    private var pastedImageCount = 0
     private var asking = false
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
-    ///   when it worked, or with the reason it did not; the words travel with the mint, so the
-    ///   caller owns getting them sent once the chat exists.
+    ///   when it worked, or with the reason it did not; the words and their attachments travel
+    ///   with the mint, so the caller owns getting them sent once the chat exists.
+    /// - Parameter onResume: opens a question already asked on this machine rather than asking a
+    ///   new one.
     static func present(
-        servers: [ConnectionProfile], preferredServer: String?,
+        servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
-        onAsk: @escaping @Sendable (String, String, @escaping @Sendable (NewChatFailure?) -> Void)
-            -> Void
+        onAsk: @escaping @Sendable (
+            String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void,
+        onResume: @escaping @Sendable (SessionEntry) -> Void
     ) {
         guard !servers.isEmpty else { return }
         open?.close()
         open = QuickAskWindow(
-            servers: servers, preferredServer: preferredServer, parent: parent, onAsk: onAsk)
+            servers: servers, preferredServer: preferredServer, recents: recents, parent: parent,
+            onAsk: onAsk, onResume: onResume)
     }
 
     private init(
-        servers: [ConnectionProfile], preferredServer: String?,
+        servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
-        onAsk: @escaping @Sendable (String, String, @escaping @Sendable (NewChatFailure?) -> Void)
-            -> Void
+        onAsk: @escaping @Sendable (
+            String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void,
+        onResume: @escaping @Sendable (SessionEntry) -> Void
     ) {
         self.servers = servers
+        self.recents = recents
         self.onAsk = onAsk
+        self.onResume = onResume
         let aimed = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
         targetIndex = servers.firstIndex { $0.id == aimed } ?? 0
@@ -57,7 +81,7 @@ final class QuickAskWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Quick ask"))
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 520, -1)
+        gtk_window_set_default_size(ptr(window), 560, -1)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
@@ -66,15 +90,18 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_entry_set_placeholder_text(
             ptr(entry), Localized.text("Ask anything — no project, no setup"))
         Gtk.addClass(entry, "model-search")
-        hint = Gtk.label(
-            Localized.text("enter to ask · tab for the server · m for the model · esc to close"),
-            css: "chooser-hint", selectable: false)
+        hint = Gtk.label("", css: "chooser-hint", selectable: false)
         target = Gtk.button("", css: ["flat", "dim"]) {
             Gtk.onMain { QuickAskWindow.open?.cycleTarget() }
         }
         model = Gtk.button("", css: ["flat", "dim"]) {
             Gtk.onMain { QuickAskWindow.open?.chooseModel() }
         }
+        attach = Gtk.button("📎", css: ["flat", "dim"]) {
+            Gtk.onMain { QuickAskWindow.open?.pickAttachments() }
+        }
+        chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.margins(column, top: 14, bottom: 12, leading: 14, trailing: 14)
@@ -89,12 +116,18 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_box_append(ptr(header), spacer)
         gtk_box_append(ptr(header), target)
         gtk_box_append(ptr(header), model)
+        gtk_box_append(ptr(header), attach)
         gtk_box_append(ptr(column), header)
         gtk_box_append(ptr(column), entry)
+        gtk_box_append(ptr(column), chips)
         gtk_box_append(ptr(column), hint)
+        gtk_box_append(ptr(column), starters)
 
         Gtk.connect(UnsafeMutableRawPointer(entry), "activate") { [weak self] in
             Gtk.onMain { [weak self] in self?.submit() }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
+            Gtk.onMain { [weak self] in self?.refreshStarterVisibility() }
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -106,11 +139,22 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.cycleTarget() }
                 return true
             }
-            if keyval == UInt32(UnicodeScalar("m").value), state & KeyChord.altMask != 0 {
+            guard state & KeyChord.altMask != 0 else { return false }
+            if keyval == UInt32(UnicodeScalar("m").value) {
                 Gtk.onMain { [weak self] in self?.chooseModel() }
                 return true
             }
-            return false
+            if keyval == UInt32(UnicodeScalar("a").value) {
+                Gtk.onMain { [weak self] in self?.pickAttachments() }
+                return true
+            }
+            if keyval == UInt32(UnicodeScalar("v").value) {
+                Gtk.onMain { [weak self] in self?.pasteImageAttachment() }
+                return true
+            }
+            guard let digit = Keymap.digit(keyval), digit > 0 else { return false }
+            Gtk.onMain { [weak self] in self?.pickStarter(at: digit - 1) }
+            return true
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") {
             Gtk.onMain { QuickAskWindow.open = nil }
@@ -129,17 +173,6 @@ final class QuickAskWindow: @unchecked Sendable {
         targetIndex = (targetIndex + 1) % servers.count
         refreshTarget()
         FileHandle.standardOutput.write(Data("ASK target=\(targetServer.name)\n".utf8))
-    }
-
-    private func refreshTarget() {
-        let server = targetServer
-        gtk_button_set_label(ptr(target), Localized.text("→ %@", server.name))
-        gtk_button_set_label(
-            ptr(model),
-            ModelBadge.label(
-                model: QuickAskDefaults.model(forProfileID: server.id),
-                effort: QuickAskDefaults.effort(forProfileID: server.id)))
-        gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
     }
 
     /// The whole catalog, from the fleet's own cache — a machine's models are a fact about that
@@ -165,18 +198,207 @@ final class QuickAskWindow: @unchecked Sendable {
         }
     }
 
+    /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
+    /// the strip that the new model cannot read is dropped out loud rather than carried to a send
+    /// the other machine would refuse.
+    private var abilities: QuickAskAbilities {
+        let server = targetServer
+        let selection = QuickAskDefaults.model(forProfileID: server.id)
+        let capabilities = selection.flatMap { pick in
+            ModelCatalogStore.cached(server.id).first {
+                $0.providerID == pick.providerID && $0.id == pick.modelID
+            }?.capabilities
+        }
+        return QuickAskAbilities.resolve(supportsAttachments: true, model: capabilities)
+    }
+
+    private func refreshTarget() {
+        let server = targetServer
+        gtk_button_set_label(ptr(target), Localized.text("→ %@", server.name))
+        gtk_button_set_label(
+            ptr(model),
+            ModelBadge.label(
+                model: QuickAskDefaults.model(forProfileID: server.id),
+                effort: QuickAskDefaults.effort(forProfileID: server.id)))
+        gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
+        let able = abilities
+        gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
+        let kept = attachments.filter { able.accepts(mime: $0.mime) }
+        let dropped = attachments.count - kept.count
+        attachments = kept
+        renderAttachments()
+        renderStarters()
+        guard !asking else { return }
+        setHint(
+            dropped > 0
+                ? QuickAskComposition.droppedNotice(count: dropped)
+                : (servers.count < 2
+                    ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
+                    : Localized.text("Enter sends, esc closes")))
+    }
+
+    private func setHint(_ text: String) {
+        gtk_label_set_text(op(hint), text)
+    }
+
+    /// The empty window's argument for itself: what this thing can be asked to do, offered
+    /// against what the aim can take, and the last few questions asked here. It gets out of the
+    /// way the moment there is a question and comes back if the entry is emptied again.
+    private func renderStarters() {
+        Gtk.removeChildren(of: starters)
+        offered = QuickAskStarters.offered(for: abilities)
+        gtk_box_append(
+            ptr(starters),
+            Gtk.label(Localized.text("Try"), css: "row-detail", selectable: false))
+        for (index, starter) in offered.enumerated() {
+            let label = index < 9
+                ? "\(starter.glyph)  \(starter.title) — \(starter.detail)   alt+\(index + 1)"
+                : "\(starter.glyph)  \(starter.title) — \(starter.detail)"
+            gtk_box_append(
+                ptr(starters),
+                Gtk.button(label, css: ["flat", "row"]) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.pickStarter(at: index) }
+                })
+        }
+        let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
+        guard !asked.isEmpty else {
+            refreshStarterVisibility()
+            return
+        }
+        gtk_box_append(
+            ptr(starters),
+            Gtk.label(Localized.text("Asked here"), css: "row-detail", selectable: false))
+        for entry in asked {
+            let title = AgentSession.isPlaceholderTitle(entry.session.title)
+                ? Localized.text("Untitled question") : entry.session.title
+            gtk_box_append(
+                ptr(starters),
+                Gtk.button("↻  \(title)", css: ["flat", "row"]) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.resume(entry) }
+                })
+        }
+        refreshStarterVisibility()
+    }
+
+    /// The rows are the empty state and nothing more, and a window that kept their height after
+    /// they left would be a pane of dead space under the question: the toplevel is asked for its
+    /// natural height again every time they come or go.
+    private func refreshStarterVisibility() {
+        let empty = Dialogs.entryText(entry).isEmpty && attachments.isEmpty
+        let visible: Int32 = empty && !asking ? 1 : 0
+        guard gtk_widget_get_visible(starters) != visible else { return }
+        gtk_widget_set_visible(starters, visible)
+        gtk_window_set_default_size(ptr(window), 560, -1)
+    }
+
+    /// A starter is the first half of a sentence, never a question the app asked on somebody's
+    /// behalf: the words land in the entry with the caret at their end, and a row that needs a
+    /// file opens the chooser for it in the same gesture.
+    private func pickStarter(at index: Int) {
+        guard !asking, offered.indices.contains(index) else { return }
+        let starter = offered[index]
+        QuickAskStarterRecents.record(starter.id)
+        if Dialogs.entryText(entry).isEmpty {
+            gtk_editable_set_text(op(entry), starter.prompt)
+            gtk_editable_set_position(op(entry), -1)
+        }
+        gtk_widget_grab_focus(entry)
+        refreshStarterVisibility()
+        switch starter.opens {
+        case .files, .photos: pickAttachments()
+        case .camera, .none: break
+        }
+        FileHandle.standardOutput.write(Data("ASK starter=\(starter.id)\n".utf8))
+    }
+
+    private func resume(_ entry: SessionEntry) {
+        guard !asking else { return }
+        let onResume = onResume
+        let session = entry
+        close()
+        onResume(session)
+    }
+
+    private func pickAttachments() {
+        guard !asking, abilities.attachments else { return }
+        Gtk.openFiles(parent: window) { [weak self] paths in
+            guard let self else { return }
+            for path in paths {
+                switch AttachmentIntake.read(path: path) {
+                case .success(let attachment):
+                    guard self.abilities.accepts(mime: attachment.mime) else {
+                        self.setHint(
+                            Localized.text("This model can't read %@", attachment.name))
+                        continue
+                    }
+                    self.attachments.append(attachment)
+                case .failure(let refusal):
+                    self.setHint(refusal.message)
+                }
+            }
+            self.renderAttachments()
+        }
+    }
+
+    private func pasteImageAttachment() {
+        guard !asking, abilities.vision else { return }
+        Gtk.readClipboardImage { [weak self] data in
+            guard let self else { return }
+            guard let data else {
+                self.setHint(Localized.text("The clipboard holds no picture."))
+                return
+            }
+            guard data.count <= AttachmentIntake.byteCap else {
+                self.setHint(
+                    Localized.text(
+                        "That picture is %@ — the cap is 8 MB",
+                        AttachmentIntake.sizeText(data.count)))
+                return
+            }
+            self.pastedImageCount += 1
+            self.attachments.append(
+                PendingAttachment(
+                    name: "pasted-\(self.pastedImageCount).png", mime: "image/png", data: data))
+            self.renderAttachments()
+        }
+    }
+
+    private func renderAttachments() {
+        Gtk.removeChildren(of: chips)
+        gtk_widget_set_visible(chips, attachments.isEmpty ? 0 : 1)
+        gtk_button_set_label(
+            ptr(attach), attachments.isEmpty ? "📎" : "📎 \(attachments.count)")
+        for attachment in attachments {
+            let title = "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))  ✕"
+            let id = attachment.id
+            gtk_box_append(
+                ptr(chips),
+                Gtk.button(title, css: ["chip"]) { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        self.attachments.removeAll { $0.id == id }
+                        self.renderAttachments()
+                    }
+                })
+        }
+        refreshStarterVisibility()
+    }
+
     /// The window outlives Enter the way the new-chat modal outlives Start: the mint happens on
     /// another machine, and a surface that vanished the instant a request went out could never
-    /// say it failed. Success closes it; failure names itself and gives the words back.
+    /// say it failed. Success closes it; failure names itself and gives the words — and the
+    /// pictures — back.
     private func submit() {
         guard !asking else { return }
         let text = Dialogs.entryText(entry).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         asking = true
         gtk_widget_set_sensitive(entry, 0)
-        gtk_label_set_text(op(hint), Localized.text("Asking %@…", targetServer.name))
+        gtk_widget_set_sensitive(attach, 0)
+        refreshStarterVisibility()
+        setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
-        onAsk(server.id, text) { [weak self] failure in
+        onAsk(server.id, text, attachments) { [weak self] failure in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 guard let failure else {
@@ -187,8 +409,10 @@ final class QuickAskWindow: @unchecked Sendable {
                 }
                 self.asking = false
                 gtk_widget_set_sensitive(self.entry, 1)
+                gtk_widget_set_sensitive(self.attach, 1)
                 gtk_widget_grab_focus(self.entry)
-                gtk_label_set_text(op(self.hint), "\(failure.title) — \(failure.detail)")
+                self.setHint("\(failure.title) — \(failure.detail)")
+                self.refreshStarterVisibility()
                 FileHandle.standardOutput.write(Data("ASK failed \(failure.title)\n".utf8))
             }
         }
@@ -200,6 +424,10 @@ final class QuickAskWindow: @unchecked Sendable {
 
     func driveGo() {
         submit()
+    }
+
+    func driveStarter(_ index: Int) {
+        pickStarter(at: index)
     }
 
     private func close() {

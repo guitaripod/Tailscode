@@ -47,7 +47,8 @@ final class ChatPane: @unchecked Sendable {
     private var git: GitState?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
-    private var pendingFirstMessage: (sessionID: String, text: String)?
+    private var pendingFirstMessage:
+        (sessionID: String, text: String, attachments: [PendingAttachment])?
     private var notice: String?
     let entryView = gtk_text_view_new()!
     private let sendButton = gtk_button_new_with_label("Send")!
@@ -664,14 +665,18 @@ final class ChatPane: @unchecked Sendable {
     /// built that session's conversation: the same send a composer's Enter performs, echoed the
     /// same way. The key is what makes misdelivery impossible: a stream that reaches the words
     /// for any other session drops them rather than sending a question into a stranger's chat.
-    func queueFirstMessage(_ text: String, forSession sessionID: String) {
-        pendingFirstMessage = (sessionID, text)
+    func queueFirstMessage(
+        _ text: String, attachments: [PendingAttachment] = [], forSession sessionID: String
+    ) {
+        pendingFirstMessage = (sessionID, text, attachments)
     }
 
     /// The one read of the queue, serialized through the GTK main loop because the queue is
     /// written there: whichever stream task reaches its conversation first takes the whole value,
     /// and everyone else sees nothing.
-    private func takeQueuedFirstMessage() async -> (sessionID: String, text: String)? {
+    private func takeQueuedFirstMessage() async
+        -> (sessionID: String, text: String, attachments: [PendingAttachment])?
+    {
         await withCheckedContinuation { continuation in
             Gtk.onMain { [weak self] in
                 let queued = self?.pendingFirstMessage
@@ -799,7 +804,8 @@ final class ChatPane: @unchecked Sendable {
                     }
                 }
                 try? await conversation.send(
-                    queued.text, model: model, reasoningEffort: effort)
+                    queued.text, model: model, reasoningEffort: effort,
+                    attachments: queued.attachments.map(\.prompt))
             }
             var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil

@@ -284,6 +284,8 @@ final class MainWindow: @unchecked Sendable {
                     QuickAskWindow.open?.driveType(argument)
                 case "askgo":
                     QuickAskWindow.open?.driveGo()
+                case "askstarter":
+                    QuickAskWindow.open?.driveStarter((Int(argument) ?? 1) - 1)
                 case "up":
                     self.activePane.scroll(by: -(Double(argument) ?? 200))
                 case "down":
@@ -1932,7 +1934,8 @@ final class MainWindow: @unchecked Sendable {
     /// the copy the dialog captured would hit the same wrong port again.
     private func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil, quickAsk: Bool = false,
+        firstMessage: String? = nil, attachments: [PendingAttachment] = [],
+        quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Task { [weak self] in
@@ -1944,7 +1947,7 @@ final class MainWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in
                 self?.createChat(
                     on: profile, directory: directory, into: pane, firstMessage: firstMessage,
-                    quickAsk: quickAsk, done: done)
+                    attachments: attachments, quickAsk: quickAsk, done: done)
             }
         }
     }
@@ -1958,7 +1961,8 @@ final class MainWindow: @unchecked Sendable {
     ///   the aim deliberately left alone.
     private func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil, quickAsk: Bool = false,
+        firstMessage: String? = nil, attachments: [PendingAttachment] = [],
+        quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
@@ -1992,7 +1996,8 @@ final class MainWindow: @unchecked Sendable {
                 self.renderSidebar()
                 let target = pane ?? self.activePane
                 if let firstMessage {
-                    target.queueFirstMessage(firstMessage, forSession: entry.session.id)
+                    target.queueFirstMessage(
+                        firstMessage, attachments: attachments, forSession: entry.session.id)
                 }
                 target.open(entry, freshlyCreated: true)
             }
@@ -2615,14 +2620,23 @@ final class MainWindow: @unchecked Sendable {
                     return
                 }
                 QuickAskWindow.present(
-                    servers: profiles, preferredServer: fallback, parent: self.window
-                ) { [weak self] profileID, text, done in
-                    Gtk.onMain { [weak self] in
-                        self?.createChat(
-                            onProfileID: profileID, directory: nil, into: pane,
-                            firstMessage: text, quickAsk: true, done: done)
-                    }
-                }
+                    servers: profiles, preferredServer: fallback, recents: self.entries,
+                    parent: self.window,
+                    onAsk: { [weak self] profileID, text, attachments, done in
+                        Gtk.onMain { [weak self] in
+                            self?.createChat(
+                                onProfileID: profileID, directory: nil, into: pane,
+                                firstMessage: text, attachments: attachments, quickAsk: true,
+                                done: done)
+                        }
+                    },
+                    onResume: { [weak self] entry in
+                        Gtk.onMain { [weak self] in
+                            guard let self else { return }
+                            pane.open(entry)
+                            self.renderSidebar()
+                        }
+                    })
             }
         }
     }

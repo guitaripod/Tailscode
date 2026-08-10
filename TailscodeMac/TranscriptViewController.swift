@@ -127,7 +127,8 @@ final class TranscriptViewController: NSViewController {
     private var pinScheduled = false
     private var unseenRows = 0
     private var echoedPrompt: String?
-    private var pendingFirstMessage: (sessionID: String, text: String)?
+    private var pendingFirstMessage:
+        (sessionID: String, text: String, attachments: [PendingAttachment])?
     private var pendingSignature = "\u{0}"
     private var compactingElapsed: NSTextField?
     private var sessionRows: [String: [TranscriptRow]] = [:]
@@ -348,7 +349,8 @@ final class TranscriptViewController: NSViewController {
             if queued.sessionID == entry.session.id {
                 let choice = composer.promptChoice
                 sendPrompt(
-                    queued.text, model: choice.model, effort: choice.effort, attachments: [])
+                    queued.text, model: choice.model, effort: choice.effort,
+                    attachments: queued.attachments.map(\.prompt))
             }
         }
     }
@@ -358,8 +360,10 @@ final class TranscriptViewController: NSViewController {
     /// open() builds that session's conversation. Any other open drops them: the key is what
     /// makes sending a question into a stranger's chat impossible, and the caller queues in the
     /// same main-actor turn that opens the minted chat, so nothing can slip in between.
-    func queueFirstMessage(_ text: String, forSession sessionID: String) {
-        pendingFirstMessage = (sessionID, text)
+    func queueFirstMessage(
+        _ text: String, attachments: [PendingAttachment] = [], forSession sessionID: String
+    ) {
+        pendingFirstMessage = (sessionID, text, attachments)
     }
 
     /// Re-dials without disturbing the stream — the socket a sleeping Mac wakes up holding looks

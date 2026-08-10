@@ -39,6 +39,23 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             }
         }
     }
+    /// A picture handed over with no words is still a question, so the composer with something in
+    /// its strip is a composer that can send. The strip belongs to whoever owns the attachments,
+    /// which is why the fact is told rather than counted here.
+    var carriesAttachments = false {
+        didSet {
+            guard carriesAttachments != oldValue else { return }
+            updateSendButton()
+        }
+    }
+
+    /// What the box says when it is empty. A quick ask is not a chat, and "Message your agent…"
+    /// is the wrong sentence in front of a question.
+    var placeholderText: String {
+        get { placeholder.text ?? "" }
+        set { placeholder.text = newValue }
+    }
+
     private var textViewLeadingToAttach: NSLayoutConstraint?
     private var textViewLeadingToBar: NSLayoutConstraint?
     private var lastMeasuredWidth: CGFloat = 0
@@ -205,7 +222,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// While a turn runs the button is Stop, unless the user has typed —
     /// then it becomes a queue-send (steering) button; Stop returns on clear.
     private func updateSendButton() {
-        let hasText = !trimmed.isEmpty
+        let hasText = !trimmed.isEmpty || carriesAttachments
         let showStop = isBusy && !hasText
         let symbol = showStop ? "stop.fill" : "arrow.up"
         var config = sendButton.configuration ?? .filled()
@@ -292,7 +309,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     @objc private func sendTapped() {
         let text = trimmed
-        if text.isEmpty {
+        if text.isEmpty, !carriesAttachments {
             if isBusy { delegate?.composerDidTapStop() }
             return
         }
@@ -340,6 +357,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     }
 
     var currentText: String { trimmed }
+
+    /// Exactly what is in the box, indentation and trailing newlines included. A draft being kept
+    /// for later is the keystrokes it was, not the message `currentText` would have sent.
+    var rawText: String { textView.text ?? "" }
 
     /// The Send button, so the enhance bubble can grow out of and retract into it.
     var sendControlAnchor: UIView { sendButton }

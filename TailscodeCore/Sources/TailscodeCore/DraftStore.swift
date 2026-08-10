@@ -19,6 +19,10 @@ public enum DraftScope: Hashable, Sendable {
     /// A free-typed answer to an `AskUserQuestion`, which outlives a restart because the question
     /// itself does: it is derived from the transcript, not from anything in memory.
     case answer(profileID: String, sessionID: String, questionID: String)
+    /// The quick-ask composer, which has no session and no folder — what it is writing to is the
+    /// machine the question is aimed at, so a half-typed question comes back when the surface is
+    /// summoned again rather than dying with a sheet somebody swiped away.
+    case quickAsk(profileID: String)
 
     public var key: String {
         switch self {
@@ -28,6 +32,7 @@ public enum DraftScope: Hashable, Sendable {
         case let .goal(profileID, sessionID): return "goal:\(profileID)/\(sessionID)"
         case let .answer(profileID, sessionID, questionID):
             return "answer:\(profileID)/\(sessionID)#\(questionID)"
+        case let .quickAsk(profileID): return "ask:\(profileID)"
         }
     }
 

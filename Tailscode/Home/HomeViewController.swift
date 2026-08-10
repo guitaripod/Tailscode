@@ -84,6 +84,12 @@ final class HomeViewController: UIViewController {
                     self?.pushSaved()
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_ASK"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.presentQuickAsk()
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -993,9 +999,13 @@ final class HomeViewController: UIViewController {
             presentServerSetup()
             return
         }
-        QuickAskViewController.present(from: self, viewModel: viewModel).onOpen = {
-            [weak self] entry, text, aim in
-            self?.openChat(for: entry, seeding: aim)?.send(text)
+        let ask = QuickAskViewController.present(from: self, viewModel: viewModel)
+        ask.onOpen = { [weak self] entry, text, aim, attachments in
+            self?.openChat(for: entry, seeding: aim)?
+                .send(text, attachments: attachments)
+        }
+        ask.onResume = { [weak self] entry in
+            self?.openChat(for: entry)
         }
     }
 

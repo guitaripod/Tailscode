@@ -694,6 +694,14 @@ public enum Keymap {
     public static let control: UInt32 = 1 << 2
     public static let shift: UInt32 = 1 << 0
 
+    /// The number a key is, when it is one. The digit row and the keypad are two keyvals for the
+    /// same intent, and a list that answers `1` has to answer both.
+    public static func digit(_ keyval: UInt32) -> Int? {
+        if (0x0030...0x0039).contains(keyval) { return Int(keyval - 0x0030) }
+        if (0xFFB0...0xFFB9).contains(keyval) { return Int(keyval - 0xFFB0) }
+        return nil
+    }
+
     public static func scalar(_ keyval: UInt32) -> Character? {
         guard let scalar = Unicode.Scalar(keyval), keyval < 0x110000 else { return nil }
         return Character(scalar)

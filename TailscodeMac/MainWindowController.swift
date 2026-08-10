@@ -1437,16 +1437,21 @@ final class MainWindowController: NSWindowController {
             return
         }
         QuickAskPanel.present(
-            over: window, servers: profiles, preferredServer: currentEntry?.profileID
-        ) { [weak self] profileID, text, done in
-            guard let self,
-                let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
-            else {
-                done(NewChatDiagnosis.noSuchServer())
-                return
-            }
-            self.mintQuickAsk(on: profile, text: text, done: done)
-        }
+            over: window, servers: profiles, preferredServer: currentEntry?.profileID,
+            recents: sidebar.entries,
+            onAsk: { [weak self] profileID, text, attachments, done in
+                guard let self,
+                    let profile = ServerDirectory.shared.profiles.first(where: {
+                        $0.id == profileID
+                    })
+                else {
+                    done(NewChatDiagnosis.noSuchServer())
+                    return
+                }
+                self.mintQuickAsk(
+                    on: profile, text: text, attachments: attachments, done: done)
+            },
+            onResume: { [weak self] entry in self?.sidebar.open(entry) })
     }
 
     /// The quick-ask mint queues the words — keyed to the minted session — and opens the chat in
@@ -1454,7 +1459,7 @@ final class MainWindowController: NSWindowController {
     /// open, and no other conversation can ever inherit the question. A failed mint queues
     /// nothing and answers the panel with its reason.
     private func mintQuickAsk(
-        on profile: ConnectionProfile, text: String,
+        on profile: ConnectionProfile, text: String, attachments: [PendingAttachment],
         done: @escaping @MainActor (NewChatFailure?) -> Void
     ) {
         guard let backend = ServerDirectory.shared.backend(for: profile) else {
@@ -1478,7 +1483,8 @@ final class MainWindowController: NSWindowController {
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,
                 backendType: profile.backend, session: session)
-            self.transcript.queueFirstMessage(text, forSession: entry.session.id)
+            self.transcript.queueFirstMessage(
+                text, attachments: attachments, forSession: entry.session.id)
             self.sidebar.noteCreated(entry)
             self.transcript.focusComposer()
             await self.sidebar.refresh()

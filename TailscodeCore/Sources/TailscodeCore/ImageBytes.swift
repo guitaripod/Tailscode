@@ -19,6 +19,15 @@ public enum ImageBytes {
         return nil
     }
 
+    /// What to call the bytes when they are handed to a model: the container they actually are,
+    /// never the one a picker's filename claimed. A pasteboard image, a camera frame and a photo
+    /// library original arrive as three different containers under the same request, and a mime
+    /// that disagrees with the bytes is refused on the other machine.
+    public static func kind(of data: Data) -> (mime: String, ext: String) {
+        let ext = sniffedExtension(data) ?? "jpg"
+        return (AttachmentIntake.mime(forExtension: ext), ext)
+    }
+
     /// The name to save under: the given one, gaining the sniffed extension only when it has
     /// none of its own.
     public static func exportFilename(_ filename: String, data: Data) -> String {

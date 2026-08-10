@@ -113,6 +113,129 @@ extension DeviceStores {
             }
         }
 
+        @Test("A backend that takes nothing is offered nothing")
+        func noAttachmentsMeansNoRows() {
+            let abilities = QuickAskAbilities.resolve(supportsAttachments: false, model: nil)
+            #expect(!abilities.attachments)
+            #expect(!abilities.vision)
+            #expect(!abilities.accepts(mime: "text/plain"))
+            let offered = QuickAskStarters.offered(for: abilities, recents: [])
+            #expect(!offered.contains { $0.needs != .nothing })
+            #expect(!offered.isEmpty)
+        }
+
+        @Test("A model the catalog cannot describe keeps the backend's word")
+        func unknownModelIsTrusted() {
+            let abilities = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            #expect(abilities.attachments)
+            #expect(abilities.vision)
+        }
+
+        @Test("A model that reads files but cannot see refuses only the pictures")
+        func blindModelKeepsFiles() {
+            let abilities = QuickAskAbilities.resolve(
+                supportsAttachments: true,
+                model: ModelCapabilities(attachment: true, imageInput: false, pdfInput: true))
+            #expect(abilities.accepts(mime: "text/plain"))
+            #expect(!abilities.accepts(mime: "image/png"))
+            let offered = QuickAskStarters.offered(for: abilities, recents: [])
+            #expect(offered.contains { $0.needs == .attachments })
+            #expect(!offered.contains { $0.needs == .vision })
+        }
+
+        @Test("A camera belongs to the device, never to the server")
+        func cameraIsTheDevices() {
+            let phone = QuickAskAbilities.resolve(
+                supportsAttachments: true, model: nil, camera: true)
+            #expect(QuickAskStarters.offered(for: phone, recents: []).contains { $0.opens == .camera })
+            let desk = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            #expect(!QuickAskStarters.offered(for: desk, recents: []).contains { $0.opens == .camera })
+        }
+
+        @Test("What this device reaches for floats without hiding the rest")
+        func recentStartersFloat() {
+            let abilities = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            let offered = QuickAskStarters.offered(for: abilities, recents: ["translate", "web"])
+            #expect(offered.first?.id == "translate")
+            #expect(offered.dropFirst().first?.id == "web")
+            #expect(offered.count == QuickAskStarters.offered(for: abilities, recents: []).count)
+            #expect(Set(offered.map(\.id)).count == offered.count)
+        }
+
+        @Test("A remembered errand the aim cannot carry out is dropped like any other")
+        func recentStarterStillNeedsTheAim() {
+            let offered = QuickAskStarters.offered(for: .words, recents: ["photo", "file"])
+            #expect(!offered.contains { $0.id == "photo" || $0.id == "file" })
+        }
+
+        @Test("Every starter leaves a half-sentence and no starter sends one")
+        func startersAreStems() {
+            #expect(QuickAskStarters.all.allSatisfy { !$0.prompt.isEmpty })
+            #expect(Set(QuickAskStarters.all.map(\.id)).count == QuickAskStarters.all.count)
+        }
+
+        @Test("Recent errands are kept newest first and bounded")
+        func starterRecentsAreBounded() {
+            let previous = QuickAskStarterRecents.recent()
+            QuickAskStarterRecents.clear()
+            for id in ["explain", "web", "image", "draft"] {
+                QuickAskStarterRecents.record(id)
+            }
+            QuickAskStarterRecents.record("web")
+            let kept = QuickAskStarterRecents.recent()
+            #expect(kept.first == "web")
+            #expect(kept.count == QuickAskStarterRecents.capacity)
+            #expect(Set(kept).count == kept.count)
+            QuickAskStarterRecents.clear()
+            for id in previous.reversed() { QuickAskStarterRecents.record(id) }
+        }
+
+        @Test("Asked here is this server's project-less chats, newest first")
+        func recentAsksAreProjectless() {
+            let now = Date()
+            func entry(_ id: String, directory: String?, ago: TimeInterval, parent: String? = nil)
+                -> SessionEntry
+            {
+                SessionEntry(
+                    profileID: "studio", profileName: "studio", host: "studio",
+                    backendType: .claudeCode,
+                    session: AgentSession(
+                        id: id, agentType: .claudeCode, title: id, parentID: parent,
+                        directory: directory, createdAt: now.addingTimeInterval(-ago),
+                        updatedAt: now.addingTimeInterval(-ago)))
+            }
+            let elsewhere = SessionEntry(
+                profileID: "laptop", profileName: "laptop", host: "laptop",
+                backendType: .claudeCode,
+                session: AgentSession(
+                    id: "other", agentType: .claudeCode, title: "other", directory: nil,
+                    createdAt: now, updatedAt: now))
+            let asks = QuickAskRecents.asks(
+                among: [
+                    entry("old", directory: nil, ago: 900),
+                    entry("project", directory: "/src", ago: 10),
+                    entry("fresh", directory: nil, ago: 60),
+                    entry("subagent", directory: nil, ago: 5, parent: "fresh"),
+                    elsewhere,
+                ], profileID: "studio")
+            #expect(asks.map(\.session.id) == ["fresh", "old"])
+        }
+
+        @Test("A picture with no words is still a question")
+        func attachmentAloneCanSend() {
+            #expect(!QuickAskComposition.canSend(text: "  \n ", attachments: 0))
+            #expect(QuickAskComposition.canSend(text: "  ", attachments: 1))
+            #expect(QuickAskComposition.canSend(text: "why", attachments: 0))
+        }
+
+        @Test("The draft belongs to the machine the question is aimed at")
+        func draftIsPerServer() {
+            #expect(DraftScope.quickAsk(profileID: "studio").key == "ask:studio")
+            #expect(
+                DraftScope.quickAsk(profileID: "studio").key
+                    != DraftScope.quickAsk(profileID: "laptop").key)
+        }
+
         @Test("The minted conversation is stamped with the aim it was asked on")
         func mintCarriesTheAim() {
             withCleanAim("studio") {
