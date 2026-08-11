@@ -69,6 +69,11 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
     private var sidebarScrollTarget: Double?
     private var sidebarScrollRestore: Double?
+    /// The row widgets on screen, in the order they were appended, so the accent can move between
+    /// two of them without rebuilding the list around them. Cleared before every teardown: a
+    /// pointer here must never outlive the row it names.
+    private var sidebarRows: [SidebarRowWidget] = []
+    private var sidebarReveal: String?
     private var visible: [SessionRowModel] = []
     private var unreachable: [String] = []
     private var watchSummary: WatchSummary?
@@ -625,13 +630,16 @@ final class MainWindow: @unchecked Sendable {
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
         Gtk.margins(sidebarList, top: 2, bottom: 8, leading: 6, trailing: 6)
-        gtk_scrolled_window_set_child(op(scroller), sidebarList)
+        gtk_scrolled_window_set_child(op(scroller), makeSidebarViewport())
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(column), scroller)
         sidebarScroller = scroller
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
             Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
-                Gtk.onMain { [weak self] in self?.reapplySidebarScroll() }
+                Gtk.onMain { [weak self] in
+                    self?.reapplySidebarScroll()
+                    self?.applySidebarReveal()
+                }
             }
         }
 
@@ -666,6 +674,21 @@ final class MainWindow: @unchecked Sendable {
         Gtk.addClass(toolbar, "sidebar-pane")
         sidebarPane = toolbar
         return toolbar
+    }
+
+    /// The chat list moves when this window says so, and for no other reason. A scrolled window
+    /// wraps whatever it is given in a viewport that scrolls itself to keep the focused widget
+    /// visible, and every row here is a button: a rebuild that destroys the row holding focus, a
+    /// press that lands on a row, `ctrl+w h` — each of them re-homes focus inside the list, and the
+    /// viewport answers by scrolling somewhere nobody asked to go, under a reader who was mid-list.
+    /// So the viewport is built here rather than conjured, with that behaviour off, and the one
+    /// case that genuinely wants the list to move — the keyboard cursor walking past the fold —
+    /// is `applySidebarReveal`, which scrolls the least it can rather than centring on the row.
+    private func makeSidebarViewport() -> UnsafeMutablePointer<GtkWidget> {
+        let viewport = gtk_viewport_new(nil, nil)!
+        gtk_viewport_set_scroll_to_focus(op(viewport), 0)
+        gtk_viewport_set_child(op(viewport), sidebarList)
+        return viewport
     }
 
     /// The tiling tree on the left of the content area, the project it works in on the right.
@@ -758,7 +781,6 @@ final class MainWindow: @unchecked Sendable {
     /// file tree, the terminal and the remembered last-session all follow the eye.
     func focusedPaneChanged() {
         refreshChromeForActivePane()
-        lastSidebar = nil
         renderSidebar()
     }
 
@@ -1040,14 +1062,18 @@ final class MainWindow: @unchecked Sendable {
         let missed = ActivityInbox.ordered(limit: 5)
         let snapshot = (
             visible, unreachable, filter,
-            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
+            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
         )
-        if let last = lastSidebar, last == snapshot { return }
+        if let last = lastSidebar, last == snapshot {
+            markFocusedRow(selectedID)
+            return
+        }
         lastSidebar = snapshot
 
         let scrollTarget = sidebarScrollTarget ?? sidebarScrollValue()
         sidebarScrollTarget = nil
         defer { restoreSidebarScroll(scrollTarget) }
+        sidebarRows = []
 
         Gtk.removeChildren(of: sidebarBanner)
         if let scope = projectScope {
@@ -1138,20 +1164,23 @@ final class MainWindow: @unchecked Sendable {
                 ptr(sidebarList), SidebarRow.header(title, count: members.count))
             for row in members {
                 guard built < sidebarLimit else { break }
-                gtk_box_append(
-                    ptr(sidebarList),
-                    SidebarRow.make(
-                        row, focused: row.entry.session.id == selectedID,
-                        marked: marks.contains(row.entry), vocabulary: vocabulary,
-                        onOpen: { [weak self] in
-                            self?.open(row.entry)
-                        },
-                        onMark: { [weak self] in
-                            Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
-                        },
-                        onMenu: { [weak self] bits, x, y in
-                            self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
-                        }))
+                let widget = SidebarRow.make(
+                    row, focused: row.entry.session.id == selectedID,
+                    marked: marks.contains(row.entry), vocabulary: vocabulary,
+                    onOpen: { [weak self] in
+                        self?.open(row.entry)
+                    },
+                    onMark: { [weak self] in
+                        Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
+                    },
+                    onMenu: { [weak self] bits, x, y in
+                        self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
+                    })
+                gtk_box_append(ptr(sidebarList), widget)
+                sidebarRows.append(
+                    SidebarRowWidget(
+                        key: SessionPinStore.key(row.entry.profileID, row.entry.session.id),
+                        sessionID: row.entry.session.id, widget: widget))
                 built += 1
             }
         }
@@ -1465,10 +1494,6 @@ final class MainWindow: @unchecked Sendable {
     /// settling; the target is dropped after a beat so a later window resize cannot replay a
     /// stale position.
     private func restoreSidebarScroll(_ value: Double) {
-        guard value > 0 else {
-            sidebarScrollRestore = nil
-            return
-        }
         sidebarScrollRestore = value
         reapplySidebarScroll()
         Gtk.after(400) { [weak self] in
@@ -1484,6 +1509,54 @@ final class MainWindow: @unchecked Sendable {
         let ceiling = max(
             0, gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
         gtk_adjustment_set_value(adjustment, min(target, ceiling))
+    }
+
+    /// Which chat is open changes far more often than which chats there are — every press in
+    /// another pane is one — and rebuilding a list of six hundred rows to move an accent is both
+    /// the cost of that press and the only chance the list ever gets to move under the reader. So
+    /// the accent is taken off the rows that are on screen and put on the one that is open.
+    private func markFocusedRow(_ selectedID: String?) {
+        for row in sidebarRows {
+            SidebarRow.setFocused(row.widget, row.sessionID == selectedID)
+        }
+    }
+
+    /// The list follows the keyboard cursor, and that is the only reason it moves on its own: a
+    /// row already in view is left exactly where it is, and one past either edge is brought just
+    /// inside it rather than centred, so J down a long list reads as the list following a hand.
+    /// A rebuild has no allocations to measure yet, so the row is named as a standing target that
+    /// the layout pass re-tries — and a reveal outranks the position the rebuild was holding,
+    /// which is the one case where the two disagree.
+    private func revealCursorRow() {
+        guard cursor < visible.count else { return }
+        let entry = visible[cursor].entry
+        let target = SessionPinStore.key(entry.profileID, entry.session.id)
+        sidebarReveal = target
+        applySidebarReveal()
+        Gtk.after(120) { [weak self] in
+            guard let self, self.sidebarReveal == target else { return }
+            self.sidebarReveal = nil
+        }
+    }
+
+    private func applySidebarReveal() {
+        guard let target = sidebarReveal,
+            let row = sidebarRows.first(where: { $0.key == target }), let sidebarScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(sidebarScroller))
+        else { return }
+        let height = Double(gtk_widget_get_height(row.widget))
+        let top = tailscode_widget_offset_y(row.widget, sidebarList)
+        guard height > 0, top >= 0 else { return }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        let value = gtk_adjustment_get_value(adjustment)
+        let landing =
+            top < value
+            ? top
+            : top + height > value + page ? min(top + height - page, gtk_adjustment_get_upper(adjustment) - page) : value
+        sidebarReveal = nil
+        guard landing != value else { return }
+        sidebarScrollRestore = nil
+        gtk_adjustment_set_value(adjustment, max(0, landing))
     }
 
     /// The highlight follows the conversation that is open, never a position. The keyboard cursor
@@ -2702,7 +2775,9 @@ final class MainWindow: @unchecked Sendable {
         focused = pane
         if pane != .transcript { activePane.dismissCompletion() }
         switch pane {
-        case .chats: gtk_widget_grab_focus(sidebarList)
+        case .chats:
+            gtk_widget_grab_focus(sidebarList)
+            revealCursorRow()
         case .transcript: activePane.focusTranscript()
         case .files: gtk_widget_grab_focus(fileTree.widget)
         case .terminal: terminal.takeFocus()
@@ -2714,6 +2789,7 @@ final class MainWindow: @unchecked Sendable {
         cursor = max(0, min(visible.count - 1, cursor + delta))
         if cursor >= sidebarLimit { sidebarLimit = cursor + 60 }
         openCursor()
+        revealCursorRow()
     }
 
     private func openCursor() {
@@ -2976,4 +3052,12 @@ final class MainWindow: @unchecked Sendable {
         if days > 0 { return "\(days)d \(hours)h" }
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
+}
+
+/// A chat row that is on screen: the widget, and the two identities the window needs to find it
+/// again — the pin key a reveal names it by, and the bare session id the accent is decided on.
+private struct SidebarRowWidget {
+    let key: String
+    let sessionID: String
+    let widget: UnsafeMutablePointer<GtkWidget>
 }

@@ -247,6 +247,18 @@ enum SidebarRow {
         return holder
     }
 
+    /// The accent moved, not the list: a row that is already on screen is re-marked in place. The
+    /// row's own button is the holder's last child — the mark that selects it comes first — and it
+    /// is the only thing `focused` ever decided.
+    static func setFocused(_ holder: UnsafeMutablePointer<GtkWidget>, _ focused: Bool) {
+        guard let button = gtk_widget_get_last_child(holder) else { return }
+        if focused {
+            gtk_widget_add_css_class(button, "row-focused")
+        } else {
+            gtk_widget_remove_css_class(button, "row-focused")
+        }
+    }
+
     /// The second line, read as three things rather than one: what the conversation is in, where
     /// it lives, and how long ago it moved. The age is pinned to the trailing edge in monospace so
     /// it forms a straight column down the list — a staleness that has to be found at the end of a
