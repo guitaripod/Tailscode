@@ -215,7 +215,9 @@ enum SidebarRow {
             gtk_box_append(ptr(titleRow), makePill(Localized.text("SAVED"), css: "pill-saved"))
         }
         if model.unread, model.state.pill == nil {
-            gtk_box_append(ptr(titleRow), Gtk.label("●", css: "unread-dot", selectable: false))
+            let dot = Gtk.label("●", css: "unread-dot", selectable: false)
+            gtk_label_set_ellipsize(op(dot), PANGO_ELLIPSIZE_NONE)
+            gtk_box_append(ptr(titleRow), dot)
         }
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
@@ -310,9 +312,13 @@ enum SidebarRow {
         return button
     }
 
+    /// A pill is a word or it is nothing: three letters ellipsized to two and a dot say less than
+    /// the state they stand for, so the pill keeps its whole width and the title — which ellipsizes
+    /// gracefully and has room to spare — is what gives way when the list is narrow.
     private static func makePill(_ text: String, css: String) -> UnsafeMutablePointer<GtkWidget> {
         let label = Gtk.label(text, css: "pill", selectable: false)
         Gtk.addClass(label, css)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
         gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
         return label
     }
@@ -342,6 +348,7 @@ enum SidebarRow {
             }
         }
         let label = Gtk.markupLabel(markup, css: "row-model", wrap: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
         gtk_label_set_selectable(op(label), 0)
         return label
     }

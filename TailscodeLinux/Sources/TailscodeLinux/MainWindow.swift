@@ -143,8 +143,11 @@ final class MainWindow: @unchecked Sendable {
         gtk_paned_set_end_child(op(split), makeContentPane())
         gtk_paned_set_position(op(split), Preferences.divider(.sidebar) ?? 300)
         gtk_paned_set_resize_start_child(op(split), 0)
-        gtk_paned_set_shrink_start_child(op(split), 0)
+        gtk_paned_set_shrink_start_child(op(split), 1)
         gtk_paned_set_resize_end_child(op(split), 1)
+        Gtk.onNotify(UnsafeMutableRawPointer(split), property: "position") { [weak self] in
+            self?.holdSidebarFloor()
+        }
         splitWidget = split
 
         let stack = gtk_paned_new(GTK_ORIENTATION_VERTICAL)!
@@ -2785,6 +2788,20 @@ final class MainWindow: @unchecked Sendable {
         MatrixTheme.install()
         terminal.applyPalette(MatrixTheme.palette)
         splitHost.eachPane { $0.retheme() }
+    }
+
+    /// The width the chat list may never fall under, and the reason the sidebar is allowed to be
+    /// squeezed below what it naturally wants at all: a list whose rows carry a pill that comes and
+    /// goes has a natural width that comes and goes with it, and a divider GTK is free to push out
+    /// to that width moves the whole tiling tree every time a chat starts or stops answering. So
+    /// the divider is exactly where it was put, and the floor is held here rather than by the rows.
+    private static let sidebarFloor: Int32 = 190
+
+    private func holdSidebarFloor() {
+        guard let splitWidget else { return }
+        let position = gtk_paned_get_position(op(splitWidget))
+        guard position < Self.sidebarFloor, gtk_widget_get_width(splitWidget) > 400 else { return }
+        gtk_paned_set_position(op(splitWidget), Self.sidebarFloor)
     }
 
     /// The dividers are read back rather than watched: a size saved a few seconds after the drag
