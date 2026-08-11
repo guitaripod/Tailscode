@@ -579,8 +579,8 @@ final class QuickAskViewController: UIViewController {
     private func resume(_ entry: SessionEntry) {
         Theme.Haptics.tap()
         stashDraft()
-        let onResume = onResume
-        dismiss(animated: true) { onResume?(entry) }
+        onResume?(entry)
+        (presentingViewController ?? self).dismiss(animated: true)
     }
 
 
@@ -744,16 +744,16 @@ final class QuickAskViewController: UIViewController {
         }
     }
 
+    /// The handover is one movement: the conversation is opened and the question sent while this
+    /// sheet still covers the stack, and the sheet then slides away onto a chat that already holds
+    /// the words. Dismissing first and opening in the completion made a person watch two
+    /// animations take turns — and put the open inside the exact moment a navigation transition is
+    /// running, which is where the question used to be dropped.
     private func hand(_ entry: SessionEntry, text: String) {
-        let onOpen = onOpen
-        let aim = aim
         let payload = attachments.map(\.prompt)
         attachments = []
-        if let presenter = presentingViewController {
-            presenter.dismiss(animated: true) { onOpen?(entry, text, aim, payload) }
-        } else {
-            onOpen?(entry, text, aim, payload)
-        }
+        onOpen?(entry, text, aim, payload)
+        (presentingViewController ?? self).dismiss(animated: true)
     }
 
     /// One state change, one redraw: the starters and the status card are never both on screen,

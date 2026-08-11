@@ -2124,8 +2124,17 @@ final class MainWindow: @unchecked Sendable {
                         firstMessage, attachments: attachments, forSession: entry.session.id)
                 }
                 target.open(entry, freshlyCreated: true)
+                /// The surface that asked is told inside the same main-loop turn that put the
+                /// conversation on screen, so what it does next — closing itself — can only
+                /// happen over a window that is already showing the answer's chat. Answering
+                /// from the task thread let the two race, and a modal closing first left the
+                /// keyboard on whatever the sidebar had focused.
+                done(nil)
+                Gtk.onMain { [weak target] in
+                    guard let target, target.sessionID == entry.session.id else { return }
+                    target.focusComposer()
+                }
             }
-            done(nil)
             await self?.refresh()
             Trace.mark("createChat refresh done")
         }

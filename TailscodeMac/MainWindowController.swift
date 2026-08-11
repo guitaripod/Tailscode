@@ -1486,8 +1486,10 @@ final class MainWindowController: NSWindowController {
                 done(minted.failureValue)
                 return
             }
-            done(nil)
-            guard let self else { return }
+            guard let self else {
+                done(nil)
+                return
+            }
             QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
@@ -1496,6 +1498,11 @@ final class MainWindowController: NSWindowController {
             self.transcript.queueFirstMessage(
                 text, attachments: attachments, forSession: entry.session.id)
             self.sidebar.noteCreated(entry)
+            /// The panel is answered — which is what closes it — only once the conversation is
+            /// on screen behind it, and the keyboard is moved after the close rather than
+            /// before: a field focused under a panel that is still key loses the focus again
+            /// the moment that panel goes.
+            done(nil)
             self.transcript.focusComposer()
             await self.sidebar.refresh()
         }
