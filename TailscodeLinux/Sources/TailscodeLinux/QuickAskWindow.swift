@@ -43,6 +43,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private var offered: [QuickAskStarter] = []
     private var pastedImageCount = 0
     private var asking = false
+    private var summonWatch: NSObjectProtocol?
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
     ///   when it worked, or with the reason it did not; the words and their attachments travel
@@ -109,7 +110,7 @@ final class QuickAskWindow: @unchecked Sendable {
         }
         gtk_widget_set_valign(send, GTK_ALIGN_CENTER)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
 
         /// The window wears the desktop's own bar rather than a row of its own that has to be
         /// read as one: the name of the thing is in the title, the machine it will ask is the
@@ -181,6 +182,18 @@ final class QuickAskWindow: @unchecked Sendable {
             Gtk.onMain { QuickAskWindow.open = nil }
         }
 
+        /// The desktop answers about the chord seconds after the app starts, which is often after
+        /// this window has already been opened by that very chord.
+        summonWatch = NotificationCenter.default.addObserver(
+            forName: Summon.didChange, object: nil, queue: nil
+        ) { _ in
+            Gtk.onMain {
+                guard let open = QuickAskWindow.open else { return }
+                adw_window_title_set_subtitle(
+                    op(UnsafeMutableRawPointer(open.title)), Self.subtitle())
+            }
+        }
+
         refreshTarget()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
@@ -237,8 +250,7 @@ final class QuickAskWindow: @unchecked Sendable {
         let server = targetServer
         gtk_button_set_label(ptr(target), server.name)
         adw_window_title_set_subtitle(
-            op(UnsafeMutableRawPointer(title)),
-            servers.count < 2 ? server.name : Localized.text("Asks %@ — tab moves it", server.name))
+            op(UnsafeMutableRawPointer(title)), Self.subtitle())
         gtk_button_set_label(
             ptr(model),
             ModelBadge.label(
@@ -257,7 +269,18 @@ final class QuickAskWindow: @unchecked Sendable {
         setHint(
             dropped > 0
                 ? QuickAskComposition.droppedNotice(count: dropped)
-                : Localized.text("Enter sends · esc closes"))
+                : (servers.count < 2
+                    ? Localized.text("Enter sends · esc closes")
+                    : Localized.text("Enter sends · tab moves the machine · esc closes")))
+    }
+
+    /// The bar's second line teaches the thing a person cannot discover from inside this window:
+    /// that it can be opened without the app in front of them. The machine it will ask is already
+    /// the chip beside it, so saying that here too would spend the line on something visible.
+    private static func subtitle() -> String {
+        let state = Summon.shared.state
+        guard state.isLive, let chord = state.chord else { return "" }
+        return Localized.text("%@ from anywhere", chord.display(on: .linux))
     }
 
     /// The send arrow is lit by the same rule that lets Enter through, so the one control and the
@@ -329,24 +352,38 @@ final class QuickAskWindow: @unchecked Sendable {
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "ask-row")
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = Gtk.label(glyph, css: "ask-glyph", selectable: false)
+        let mark = whole(Gtk.label(glyph, css: "ask-glyph", selectable: false))
         gtk_label_set_xalign(op(mark), 0.5)
         gtk_label_set_width_chars(op(mark), 2)
+        gtk_widget_set_valign(mark, GTK_ALIGN_BASELINE)
         gtk_box_append(ptr(line), mark)
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_widget_set_hexpand(words, 1)
         gtk_widget_set_halign(words, GTK_ALIGN_START)
-        gtk_box_append(ptr(words), Gtk.label(title, css: "ask-row-title", selectable: false))
-        gtk_box_append(ptr(words), Gtk.label(detail, css: "row-detail", selectable: false))
+        gtk_box_append(
+            ptr(words), whole(Gtk.label(title, css: "ask-row-title", selectable: false)))
+        let note = Gtk.label(detail, css: "ask-row-detail", selectable: false)
+        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
+        gtk_box_append(ptr(words), note)
         gtk_box_append(ptr(line), words)
         if let keycap {
-            let cap = Gtk.label(keycap, css: "ask-keycap", selectable: false)
+            let cap = whole(Gtk.label(keycap, css: "ask-keycap", selectable: false))
             gtk_widget_set_valign(cap, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), cap)
         }
         gtk_button_set_child(ptr(button), line)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
         return button
+    }
+
+    /// A label that is never shortened. Every label in this app ellipsizes by default, which is
+    /// right for a title that has to share a row with something bigger and wrong for the three
+    /// words that say which key does this — "alt+…" is not a shortcut anybody can press.
+    private func whole(_ label: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>
+    {
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_hexpand(label, 0)
+        return label
     }
 
     /// The rows are the empty state and nothing more, and a window that kept their height after
@@ -505,6 +542,8 @@ final class QuickAskWindow: @unchecked Sendable {
     }
 
     private func close() {
+        if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
+        summonWatch = nil
         gtk_window_destroy(ptr(window))
         Self.open = nil
     }

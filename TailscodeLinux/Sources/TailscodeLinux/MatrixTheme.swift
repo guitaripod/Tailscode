@@ -407,8 +407,8 @@ enum MatrixTheme {
         .ask-section {
             \(t(.sectionLabel))
             color: \(textDim);
-            opacity: 0.55;
-            padding: 10px 6px 2px 6px;
+            opacity: 0.5;
+            padding: 14px 10px 4px 10px;
         }
         .ask-hint { color: \(textDim); \(t(.hint)) opacity: 0.7; padding: 0 6px; }
         .ask-row {
@@ -424,7 +424,8 @@ enum MatrixTheme {
         .ask-row:active { background-color: alpha(\(accent), 0.18); }
         .ask-glyph { color: \(accent); \(t(.rowTitleStrong)) }
         .ask-row-title { \(t(.rowTitleStrong)) color: \(text); }
-        .ask-row:hover .row-detail { opacity: 0.8; }
+        .ask-row-detail { \(t(.rowDetail)) color: \(textDim); opacity: 0.72; }
+        .ask-row:hover .ask-row-detail { opacity: 0.9; }
         .ask-keycap {
             \(t(.pill))
             color: \(textDim);
