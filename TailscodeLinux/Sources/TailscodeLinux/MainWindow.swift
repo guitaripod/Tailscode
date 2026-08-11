@@ -999,13 +999,17 @@ final class MainWindow: @unchecked Sendable {
             ?? rows.first { $0.state == .live }?.entry
         orbKinds = rows.map { $0.state.activity }
         refreshOrb()
+        let observations = rows.map {
+            ActivityObservation(
+                profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
+                title: $0.title, isActive: $0.entry.session.isActive == true)
+        }
         Notifier.shared.observeListing(
-            rows.map {
-                ActivityObservation(
-                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                    title: $0.title, isActive: $0.entry.session.isActive == true)
-            },
-            openSessionID: selectedID, windowActive: windowIsActive)
+            observations, openSessionID: selectedID, windowActive: windowIsActive)
+        ActivityInbox.reconcile(
+            observations,
+            authoritativeProfileIDs: listedFromNetwork
+                ? Set(observations.map(\.profileID)) : [])
         let archivedKeys = ArchivedChatStore.all()
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))

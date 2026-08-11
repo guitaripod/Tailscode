@@ -510,7 +510,18 @@ final class HomeViewController: UIViewController {
         HomeQuickActions.refresh(entries: viewModel.entries)
         updateComposer()
         applySnapshot()
+        await adoptDeliveredNotices()
         startEnrichment(force: reason == .user)
+    }
+
+    /// A notice the bridge pushed while the app was not running was never written down here, so
+    /// the listing that just landed is the first moment its session can be placed on a server.
+    private func adoptDeliveredNotices() async {
+        let owners = Dictionary(
+            viewModel.entries.map { ($0.session.id, $0.profileID) }, uniquingKeysWith: { first, _ in
+                first
+            })
+        await NotificationManager.adoptDelivered { owners[$0] }
     }
 
     /// Deliberately not awaited by `performLoad`: quota and scan work is

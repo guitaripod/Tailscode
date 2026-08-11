@@ -994,11 +994,17 @@ final class ChatPane: @unchecked Sendable {
             ultracodeInFlight = false
             refreshUltracodeAura()
         }
+        if Ultracode.turnInvoked(state), !ultracodeInFlight {
+            ultracodeInFlight = true
+            refreshUltracodeAura()
+        }
         if let entry {
             Notifier.shared.observeConversation(
                 profileID: entry.profileID, sessionID: entry.session.id,
-                title: entry.session.hasPlaceholderTitle
-                    ? Localized.text("New conversation") : entry.session.title,
+                title: MissedActivity.name(
+                    title: entry.session.title,
+                    latestPrompt: state.messages.last { $0.role == .user }?
+                        .parts.compactMap(\.text).joined(separator: "\n")),
                 state: state, windowActive: host?.windowIsActive ?? false)
         }
         var rows = rows

@@ -105,6 +105,64 @@ enum NotificationManager {
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
+    /// Opening a conversation answers every notice about it, in both places a notice lives.
+    ///
+    /// The inbox alone is not enough now that it adopts what Notification Center kept: a banner
+    /// left standing after the chat has been read is a notice about nothing, and the next adoption
+    /// pass would file it all over again.
+    static func clearNotices(sessionID: String) {
+        ActivityInbox.clear(sessionID: sessionID)
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let identifiers = delivered.filter {
+                $0.request.content.userInfo["sessionID"] as? String == sessionID
+            }.map(\.request.identifier)
+            guard !identifiers.isEmpty else { return }
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+    }
+
+    /// Adopts what Notification Center is still holding.
+    ///
+    /// The inbox is written by whoever raises a notice, which works for every notice this app
+    /// raises and for none of the ones it doesn't: a bridge pushes the end of a turn to a phone
+    /// whose app is not running, and there is nobody here to write it down — the banner arrives,
+    /// the list stays empty, and Missed silently misses the very thing it exists for. Notification
+    /// Center kept the notice, though, so it is read back and adopted the moment the app is
+    /// looking again. A push carries no profile, so each is placed by the session it names; one
+    /// whose session this device cannot see yet is left in Notification Center for the next pass
+    /// rather than filed under a server it might not belong to.
+    ///
+    /// The bridge's own turn-end notice is given the identifier the local one would have had, so
+    /// the same turn cannot be listed twice by two machines that both noticed it.
+    static func adoptDelivered(profileForSession: (String) -> String?) async {
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        var adopted: [MissedActivity] = []
+        for notice in delivered {
+            let content = notice.request.content
+            guard let sessionID = content.userInfo["sessionID"] as? String, !sessionID.isEmpty,
+                let profileID = profileForSession(sessionID)
+            else { continue }
+            let raised = notice.request.identifier
+            let fromServer = notice.request.trigger is UNPushNotificationTrigger
+            adopted.append(
+                MissedActivity(
+                    identifier: fromServer ? "done:\(sessionID)" : raised,
+                    profileID: profileID, sessionID: sessionID, title: content.title,
+                    body: content.body, reason: reason(forIdentifier: fromServer ? "done:" : raised),
+                    at: notice.date))
+        }
+        ActivityInbox.record(adopted)
+    }
+
+    /// What a delivered notice was about, read from the name it was raised under — the only thing
+    /// a notification carries that says which of the four it is.
+    private static func reason(forIdentifier identifier: String) -> MissedActivity.Reason {
+        if identifier.hasPrefix("perm:") { return .needsApproval }
+        if identifier.hasPrefix("question:") { return .needsAnswer }
+        return .turnEnded
+    }
+
     /// - Parameters:
     ///   - permission: the request an approval is about, carried whole so the notification's own
     ///     Approve and Deny buttons can answer it without opening the app.

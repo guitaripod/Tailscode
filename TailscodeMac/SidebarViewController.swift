@@ -59,6 +59,9 @@ final class SidebarViewController: NSViewController {
 
     private(set) var entries: [SessionEntry] = []
     private var unreachable: [String] = []
+    /// Whether any listing on screen has come from a server rather than from the disk cache. The
+    /// cache is what was last seen, which is no evidence that a chat missing from it was deleted.
+    private var listedFromNetwork = false
     private var visible: [SessionRowModel] = []
     /// Every row the list knows about, before the filter and the archive view narrow it — what a
     /// bulk verb acts on, so a mark survives a keystroke in the filter field.
@@ -194,7 +197,7 @@ final class SidebarViewController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let cached = SessionListCache.load()
-        if !cached.isEmpty { applyEntries(cached, unreachable: []) }
+        if !cached.isEmpty { applyEntries(cached, unreachable: [], fromNetwork: false) }
     }
 
     override func viewDidAppear() {
@@ -526,9 +529,12 @@ final class SidebarViewController: NSViewController {
 
     /// Opens the conversation that was open last, not merely the newest one: reopening where you
     /// were is the difference between a window that restores and a window that resets.
-    private func applyEntries(_ entries: [SessionEntry], unreachable: [String]) {
+    private func applyEntries(
+        _ entries: [SessionEntry], unreachable: [String], fromNetwork: Bool = true
+    ) {
         self.entries = entries
         self.unreachable = unreachable
+        listedFromNetwork = listedFromNetwork || fromNetwork
         if let fresh = freshlyCreated {
             if entries.contains(where: { $0.session.id == fresh.session.id }) {
                 freshlyCreated = nil
@@ -569,13 +575,16 @@ final class SidebarViewController: NSViewController {
         known = models
         refreshOrb()
         selection.prune(to: models.map(\.entry))
-        MacNotifier.shared.observeListing(
-            models.map {
-                ActivityObservation(
-                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                    title: $0.title, isActive: $0.entry.session.isActive == true)
-            },
-            openSessionID: selectedID)
+        let observations = models.map {
+            ActivityObservation(
+                profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
+                title: $0.title, isActive: $0.entry.session.isActive == true)
+        }
+        MacNotifier.shared.observeListing(observations, openSessionID: selectedID)
+        ActivityInbox.reconcile(
+            observations,
+            authoritativeProfileIDs: listedFromNetwork
+                ? Set(observations.map(\.profileID)) : [])
         let archivedKeys = ArchivedChatStore.all()
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))

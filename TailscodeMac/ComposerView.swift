@@ -185,6 +185,10 @@ final class ComposerView: NSView {
             ultracodeInFlight = false
             refreshAura()
         }
+        if Ultracode.turnInvoked(state), !ultracodeInFlight {
+            ultracodeInFlight = true
+            refreshAura()
+        }
     }
 
     /// The send path: trim, keep nothing the draft store would resurrect, let a typed slash

@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 
 /// The shared definition of "ultracode is happening": one detector, one state
@@ -28,6 +29,24 @@ public enum Ultracode {
         effort: String?, draft: String, inFlightInvoked: Bool = false
     ) -> Bool {
         effort == effortLevel || invokes(draft) || inFlightInvoked
+    }
+
+    /// Whether the turn in flight was summoned by word — read from the transcript rather than
+    /// from having been the one who typed it.
+    ///
+    /// The word is a property of the prompt, not of the device that sent it, and the server
+    /// decides on exactly this text (`SessionStore.invokesUltracode`), so a client reading the
+    /// same prompt can never disagree with the machine running it. Without this, a turn started
+    /// with the word on one desk ran ultracode while every other desk watching the same
+    /// conversation showed a plain one — the one client that happened to send it lit up, and the
+    /// fact belonged to the conversation all along.
+    ///
+    /// Only while the turn is actually running: the word in a prompt three answers back describes
+    /// a turn that is over, and the transcript keeps it forever.
+    public static func turnInvoked(_ state: ConversationState) -> Bool {
+        guard state.isBusy, let prompt = state.messages.last(where: { $0.role == .user })
+        else { return false }
+        return invokes(prompt.parts.compactMap(\.text).joined(separator: "\n"))
     }
 
     /// How long one full turn of the aura takes, and how long one breath of its

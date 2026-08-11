@@ -272,6 +272,13 @@ final class SessionListViewModel {
         unreachable = verdicts
         SessionListCache.save(entries)
         SavedChatStore.reconcile(with: entries)
+        ActivityInbox.reconcile(
+            entries.map {
+                ActivityObservation(
+                    profileID: $0.profileID, sessionID: $0.session.id, title: $0.session.title,
+                    isActive: $0.session.isActive == true)
+            },
+            authoritativeProfileIDs: Set(fresh.keys))
         if changed {
             AppLogger.session.info(
                 "loaded \(entries.count) sessions across \(sources.count) servers")

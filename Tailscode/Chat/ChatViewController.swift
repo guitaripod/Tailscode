@@ -129,7 +129,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        ActivityInbox.clear(sessionID: viewModel.session.id)
+        NotificationManager.clearNotices(sessionID: viewModel.session.id)
         title = navDisplayTitle
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.backButtonDisplayMode = .minimal
@@ -1597,7 +1597,7 @@ final class ChatViewController: UIViewController {
             lastNotifiedPermissionID = permission.id
             NotificationManager.notify(
                 kind: .approval,
-                title: viewModel.title,
+                title: viewModel.alertTitle,
                 body: permission.toolName.map { String(localized: "Approval needed: \($0)") }
                     ?? String(localized: "Approval needed."),
                 identifier: "perm:\(permission.id)", sessionID: viewModel.session.id,
@@ -1608,7 +1608,7 @@ final class ChatViewController: UIViewController {
             Theme.Haptics.needsYou()
             NotificationManager.notify(
                 kind: .question,
-                title: viewModel.title,
+                title: viewModel.alertTitle,
                 body: question.questions.first?.question
                     ?? String(localized: "The agent has a question."),
                 identifier: "question:\(question.id)", sessionID: viewModel.session.id,

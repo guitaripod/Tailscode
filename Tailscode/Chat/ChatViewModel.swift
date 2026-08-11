@@ -47,6 +47,16 @@ final class ChatViewModel {
     private(set) lazy var displayTitle: String = session.title
     var title: String { displayTitle }
 
+    /// What a notice about this chat calls it. A turn that ends is news before the server has
+    /// named the conversation it happened in, so the notification and the row it leaves behind
+    /// would both read "New chat" — the words that started it are the name a person recognises.
+    var alertTitle: String {
+        MissedActivity.name(
+            title: displayTitle,
+            latestPrompt: state.messages.last { $0.role == .user }?
+                .parts.compactMap(\.text).joined(separator: "\n"))
+    }
+
     /// The session as this chat now understands it: the server usually auto-titles
     /// a conversation after its first turn, long after the list that opened it.
     var sessionSnapshot: AgentSession {
@@ -408,6 +418,10 @@ final class ChatViewModel {
                         self.onModelChange?()
                     }
                 }
+                if Ultracode.turnInvoked(state), !self.ultracodeInFlight {
+                    self.ultracodeInFlight = true
+                    self.onModelChange?()
+                }
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
                 self.state = state
                 if (self.displayedModel, self.displayedEffort) != displayedBefore {
@@ -419,7 +433,7 @@ final class ChatViewModel {
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
                 SessionActivity.shared.update(
                     sessionID: self.session.id, profileID: self.contextID,
-                    title: self.displayTitle,
+                    title: self.alertTitle,
                     status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
                     keepAlive: self)
                 self.syncLiveActivity(with: state)

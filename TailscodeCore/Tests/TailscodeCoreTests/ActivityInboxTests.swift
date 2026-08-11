@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 import Testing
 
@@ -72,6 +73,89 @@ extension DeviceStores {
       #expect(ActivityInbox.count == ActivityInbox.limit)
     }
 
+    private func row(
+      _ session: String, title: String, active: Bool = false, profile: String = "p1"
+    ) -> ActivityObservation {
+      ActivityObservation(
+        profileID: profile, sessionID: session, title: title, isActive: active)
+    }
+
+    @Test("A notice raised before the server named the chat takes the name when it lands")
+    func reconcileAdoptsTheRealName() {
+      fresh()
+      ActivityInbox.record([
+        ActivityAlert(
+          profileID: "p1", sessionID: "s1", identifier: "done:s1", title: "New chat",
+          body: "Your agent finished.", reason: .turnEnded)
+      ])
+      ActivityInbox.reconcile(
+        [row("s1", title: "Audit the parity manifests")], authoritativeProfileIDs: ["p1"])
+      #expect(ActivityInbox.all().first?.title == "Audit the parity manifests")
+    }
+
+    @Test("A name the server has not written yet never overwrites one that was")
+    func reconcileKeepsTheBetterName() {
+      fresh()
+      ActivityInbox.record([alert("done:s1")])
+      ActivityInbox.reconcile([row("s1", title: "New chat")], authoritativeProfileIDs: ["p1"])
+      #expect(ActivityInbox.all().first?.title == "A chat")
+    }
+
+    @Test("A chat that is gone from a server that answered goes with it")
+    func reconcileDropsDeleted() {
+      fresh()
+      ActivityInbox.record([alert("done:s1", session: "s1"), alert("done:s2", session: "s2")])
+      ActivityInbox.reconcile([row("s2", title: "Still here")], authoritativeProfileIDs: ["p1"])
+      #expect(ActivityInbox.all().map(\.sessionID) == ["s2"])
+    }
+
+    @Test("A server that said nothing has not said its chats are gone")
+    func silenceIsNotDeletion() {
+      fresh()
+      ActivityInbox.record([alert("done:s1")])
+      ActivityInbox.reconcile([], authoritativeProfileIDs: [])
+      #expect(ActivityInbox.count == 1)
+      ActivityInbox.reconcile([row("other", title: "x", profile: "p2")], authoritativeProfileIDs: ["p2"])
+      #expect(ActivityInbox.count == 1)
+    }
+
+    @Test("Finished is not news about a chat that is working again — a question still is")
+    func reconcileDropsSupersededNews() {
+      fresh()
+      ActivityInbox.record([
+        alert("done:s1", session: "s1"),
+        alert("question:1", session: "s2", reason: .needsAnswer),
+      ])
+      ActivityInbox.reconcile(
+        [row("s1", title: "A chat", active: true), row("s2", title: "A chat", active: true)],
+        authoritativeProfileIDs: ["p1"])
+      #expect(ActivityInbox.all().map(\.identifier) == ["question:1"])
+    }
+
+    @Test("A refresh that changes nothing changes nothing")
+    func reconcileIsQuietWhenNothingMoved() {
+      fresh()
+      let entries = [
+        MissedActivity(
+          identifier: "done:s1", profileID: "p1", sessionID: "s1", title: "A chat",
+          body: "b", reason: .turnEnded)
+      ]
+      #expect(
+        ActivityInbox.reconciled(
+          entries, rows: [row("s1", title: "A chat")], authoritative: ["p1"]) == nil)
+      #expect(ActivityInbox.reconciled([], rows: [], authoritative: ["p1"]) == nil)
+    }
+
+    @Test("A notice about an unnamed chat is named by the words that started it")
+    func nameFallsBackToThePrompt() {
+      #expect(MissedActivity.name(title: "A chat", latestPrompt: "anything") == "A chat")
+      #expect(
+        MissedActivity.name(title: "New chat", latestPrompt: "Fix the parity gate")
+          == "Fix the parity gate")
+      #expect(MissedActivity.name(title: "", latestPrompt: "   ") == "New conversation")
+      #expect(MissedActivity.name(title: "New chat", latestPrompt: nil) == "New conversation")
+    }
+
     @Test("Only a blocked turn is a turn still waiting on someone")
     func blockingIsTheRequests() {
       fresh()
@@ -128,5 +212,45 @@ struct UltracodeAuraTests {
   func periodsAreNotHarmonic() {
     let ratio = Ultracode.auraTurnSeconds / (Ultracode.auraBreathSeconds * 2)
     #expect(abs(ratio - ratio.rounded()) > 0.05)
+  }
+
+  private func state(
+    _ prompts: [String], status: BackendStatus, assistant: String? = nil
+  ) -> ConversationState {
+    var messages = prompts.enumerated().map { index, text in
+      ChatMessage(
+        id: "u\(index)", role: .user, agentType: .claudeCode,
+        parts: [MessagePart(id: "u\(index):0", kind: .text(text))],
+        createdAt: Date(timeIntervalSince1970: Double(index)))
+    }
+    if let assistant {
+      messages.append(
+        ChatMessage(
+          id: "a", role: .assistant, agentType: .claudeCode,
+          parts: [MessagePart(id: "a:0", kind: .text(assistant))],
+          createdAt: Date(timeIntervalSince1970: 100)))
+    }
+    return ConversationState(messages: messages, status: status, hasLoadedTranscript: true)
+  }
+
+  @Test("A turn summoned by word belongs to the conversation, not to whoever typed it")
+  func runningTurnCarriesTheWord() {
+    #expect(Ultracode.turnInvoked(state(["ultracode: audit this"], status: .running)))
+    #expect(
+      Ultracode.turnInvoked(
+        state(["plain first", "now ULTRACODE it"], status: .running, assistant: "working")))
+  }
+
+  @Test("A word in a turn that already ended lights nothing")
+  func settledTurnsAreQuiet() {
+    #expect(!Ultracode.turnInvoked(state(["ultracode: audit this"], status: .idle)))
+    #expect(!Ultracode.turnInvoked(state(["ultracode then", "plain now"], status: .running)))
+    #expect(!Ultracode.turnInvoked(state([], status: .running)))
+  }
+
+  @Test("The client reads the word exactly as the server that ran it does")
+  func agreesWithTheServer() {
+    #expect(!Ultracode.turnInvoked(state(["the ultracoder wrote this"], status: .running)))
+    #expect(Ultracode.invokes("ultracode: audit this"))
   }
 }
