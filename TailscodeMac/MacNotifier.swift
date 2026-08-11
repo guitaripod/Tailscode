@@ -185,32 +185,44 @@ final class MacNotifier: NSObject {
     }
 }
 
+/// Both delegate methods take the completion-handler form, never `async`: the async variants
+/// hand their compiler-generated completion to whatever concurrency thread the method resumed
+/// on, and the system does app-lifecycle work inside that completion — the shape that crashed
+/// the iOS client mid-foreground. The completion is invoked from the main thread, after the work.
 extension MacNotifier: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter, willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler:
+            @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        nonisolated(unsafe) let complete = completionHandler
+        DispatchQueue.main.async { complete([.banner, .list, .sound]) }
     }
 
     nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
-    ) async {
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         let content = response.notification.request.content
         let payload = content.userInfo["permission"] as? String
         let profileID = content.userInfo["profileID"] as? String
         let sessionID = content.userInfo["sessionID"] as? String
         let identifier = response.notification.request.identifier
-        switch response.actionIdentifier {
-        case AlertCategory.approveActionID, AlertCategory.denyActionID:
-            let approve = response.actionIdentifier == AlertCategory.approveActionID
-            await Self.decide(
-                payload: payload, profileID: profileID, identifier: identifier, approve: approve)
-        default:
-            guard let sessionID else { return }
-            await MainActor.run {
-                NSApp.activate(ignoringOtherApps: true)
-                MacNotifier.shared.onOpen?(sessionID)
+        let action = response.actionIdentifier
+        nonisolated(unsafe) let complete = completionHandler
+        Task { @MainActor in
+            switch action {
+            case AlertCategory.approveActionID, AlertCategory.denyActionID:
+                await Self.decide(
+                    payload: payload, profileID: profileID, identifier: identifier,
+                    approve: action == AlertCategory.approveActionID)
+            default:
+                if let sessionID {
+                    NSApp.activate(ignoringOtherApps: true)
+                    MacNotifier.shared.onOpen?(sessionID)
+                }
             }
+            complete()
         }
     }
 
