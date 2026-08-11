@@ -54,7 +54,7 @@ if Arguments.contains("--themes") {
 
 let knownOptions: Set<String> = [
     "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode",
-    "--version", "--help", "-h", "--themes", "--force-desktop", "--demo",
+    "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
 ]
 if let stray = Arguments.flags.first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)
@@ -86,14 +86,50 @@ nonisolated(unsafe) let app = adw_application_new("com.guitaripod.tailscode", GA
 /// Building a fresh `MainWindow` each time stacked a whole second app inside the one process —
 /// sidebar, tiling tree, terminal, polling timers, every session's stream — and let go of none of
 /// it, so the window count and the memory both only ever went up.
+/// Whether this launch is a question rather than a visit. A summon that arrives before the app is
+/// standing opens the window and the composer on top of it; one that arrives after is carried to
+/// the process that already exists as an action rather than as a second app.
+nonisolated(unsafe) var wantsAsk = Arguments.contains("--ask")
+
 Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
     if let existing = mainWindow {
         existing.raise()
-        return
+    } else {
+        let window = MainWindow()
+        mainWindow = window
+        window.present(in: app)
+        Summon.shared.start { mainWindow?.summonQuickAsk() }
     }
-    let window = MainWindow()
-    mainWindow = window
-    window.present(in: app)
+    if wantsAsk {
+        wantsAsk = false
+        mainWindow?.summonQuickAsk()
+    }
+}
+
+/// The one thing this app can be asked to do from outside its own window. GApplication proxies an
+/// action to the instance that already holds the session bus name, which is what lets a chord bound
+/// anywhere on the desktop reach the running app instead of starting a second one.
+AppActions.installAsk(on: UnsafeMutableRawPointer(app)) {
+    if mainWindow == nil {
+        g_application_activate(ptr(app))
+    }
+    mainWindow?.summonQuickAsk()
+}
+
+/// A `--ask` that finds the name already taken hands the request over and gets out of the way.
+/// Registering here rather than inside `run` is what makes that answerable at all: `is_remote` has
+/// no meaning until the application has tried for the name.
+if wantsAsk {
+    var registerError: UnsafeMutablePointer<GError>?
+    g_application_register(ptr(app), nil, &registerError)
+    if let registerError { g_error_free(registerError) }
+    if g_application_get_is_remote(ptr(app)) != 0 {
+        g_action_group_activate_action(op(UnsafeMutableRawPointer(app)), "ask", nil)
+        if let connection = g_application_get_dbus_connection(ptr(app)) {
+            g_dbus_connection_flush_sync(connection, nil, nil)
+        }
+        exit(0)
+    }
 }
 
 /// Whatever the last window did not get to write. `close-request` covers the ordinary quit while

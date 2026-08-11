@@ -438,6 +438,8 @@ enum SettingsDialog {
         let watch = group(WatchAccounts.heading, on: page, description: WatchAccounts.description)
         renderWatchAccounts(into: watch, parent: page)
 
+        SummonRows.install(on: page, window: window)
+
         let keyboard = group(
             Localized.text("Keyboard"), on: page,
             description: Localized.text(

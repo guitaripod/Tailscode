@@ -7,13 +7,16 @@ import TailscodeCore
 /// the person, not about the toolkit. Type size has no row here — ⌘± owns it — but the theme does:
 /// it is the one preference whose result is the window you are picking it in.
 @MainActor
-final class PreferencesWindow: NSWindowController {
+final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private let onComposerChanged: @MainActor () -> Void
     private let onTranscriptChanged: @MainActor () -> Void
     private let onReloadShortcuts: @MainActor () -> Void
     private let linesLabel = NSTextField(labelWithString: "")
     private let windowLabel = NSTextField(labelWithString: "")
     private let hapticLabel = NSTextField(labelWithString: "")
+    private let summonButton = NSButton(title: "", target: nil, action: nil)
+    private let summonState = NSTextField(labelWithString: "")
+    private var summonRecorder: Any?
     private var hapticStop = -1
     private let watchAccounts = NSStackView()
     /// The block the accounts notification calls. A block observer is held by the notification
@@ -21,6 +24,7 @@ final class PreferencesWindow: NSWindowController {
     /// `nonisolated(unsafe)` because `deinit` is the one place that must reach it and `deinit` is
     /// not on the main actor.
     private nonisolated(unsafe) var accountsWatch: (any NSObjectProtocol)?
+    private nonisolated(unsafe) var summonWatch: (any NSObjectProtocol)?
 
     init(
         onComposerChanged: @escaping @MainActor () -> Void,
@@ -36,6 +40,7 @@ final class PreferencesWindow: NSWindowController {
         window.title = Localized.text("Settings")
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
         window.contentView = makeContent()
         window.center()
         accountsWatch = NotificationCenter.default.addObserver(
@@ -43,11 +48,16 @@ final class PreferencesWindow: NSWindowController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.renderWatchAccounts() }
         }
+        summonWatch = NotificationCenter.default.addObserver(
+            forName: MacSummon.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.renderSummon() }
+        }
     }
 
     deinit {
-        guard let accountsWatch else { return }
-        NotificationCenter.default.removeObserver(accountsWatch)
+        if let accountsWatch { NotificationCenter.default.removeObserver(accountsWatch) }
+        if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
     }
 
     @available(*, unavailable)
@@ -55,6 +65,12 @@ final class PreferencesWindow: NSWindowController {
 
     func present() {
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// A recorder left running would keep swallowing every keystroke in the app after the window
+    /// that started it is gone.
+    func windowWillClose(_ notification: Notification) {
+        stopRecordingSummon()
     }
 
     private var defaults: UserDefaults { .standard }
@@ -200,6 +216,21 @@ final class PreferencesWindow: NSWindowController {
         watchAccounts.spacing = MacTheme.Spacing.s
         column.addArrangedSubview(watchAccounts)
         renderWatchAccounts()
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(
+            MacDialogs.sectionHeader(Localized.text("Ask from anywhere")))
+        column.addArrangedSubview(
+            switchRow(
+                title: Localized.text("Summon with a chord"),
+                subtitle: Localized.text(
+                    "One chord, pressed in any app on this Mac, opens the question box"),
+                value: SummonSettings.isEnabled, action: #selector(summonEnabledChanged)))
+        summonButton.target = self
+        summonButton.action = #selector(recordSummonChord)
+        column.addArrangedSubview(
+            chordRow(title: Localized.text("Chord"), button: summonButton, detail: summonState))
+        renderSummon()
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Keyboard")))
@@ -540,6 +571,92 @@ final class PreferencesWindow: NSWindowController {
         column.spacing = 2
         row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         return column
+    }
+
+    /// The chord row, whose detail line is the only place this app can say what the machine did
+    /// with the key — a global shortcut that was refused looks exactly like one that works from
+    /// everywhere inside the app.
+    private func chordRow(title: String, button: NSButton, detail: NSTextField) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = MacTheme.Ramp.font(.panelLabel)
+        button.bezelStyle = .rounded
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        let filler = NSView()
+        filler.setContentHuggingPriority(.init(1), for: .horizontal)
+        let row = NSStackView(views: [label, filler, button])
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        detail.font = MacTheme.Ramp.font(.rowDetail)
+        detail.textColor = .secondaryLabelColor
+        detail.lineBreakMode = .byWordWrapping
+        detail.maximumNumberOfLines = 0
+        let column = NSStackView(views: [row, detail])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        detail.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        return column
+    }
+
+    private func renderSummon() {
+        let state = MacSummon.shared.state
+        summonButton.title =
+            summonRecorder == nil
+            ? SummonSettings.chord.display(on: .apple) : Localized.text("Press a chord…")
+        summonState.stringValue =
+            [state.line(on: .apple), state.detail(on: .apple)]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    @objc private func summonEnabledChanged(_ sender: NSButton) {
+        SummonSettings.setEnabled(sender.state == .on)
+        MacSummon.shared.refresh()
+    }
+
+    /// A chord is picked by pressing it. The monitor swallows the press rather than letting it
+    /// reach the window, which is what makes recording ⌘-anything possible at all, and the press
+    /// is judged before it is kept: a chord that would break another app on this Mac is named and
+    /// refused rather than quietly claimed.
+    @objc private func recordSummonChord() {
+        guard summonRecorder == nil else {
+            stopRecordingSummon()
+            return
+        }
+        summonRecorder = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            MainActor.assumeIsolated { self?.heardSummonChord(event) }
+            return nil
+        }
+        renderSummon()
+    }
+
+    private func heardSummonChord(_ event: NSEvent) {
+        if event.keyCode == 53 {
+            stopRecordingSummon()
+            return
+        }
+        guard let key = SummonKeys.name(appleKeyCode: UInt32(event.keyCode)) else {
+            NSSound.beep()
+            return
+        }
+        let flags = event.modifierFlags
+        let chord = SummonChord(
+            control: flags.contains(.control), alt: flags.contains(.option),
+            shift: flags.contains(.shift), meta: flags.contains(.command), key: key)
+        if case .refused(let reason) = SummonJudge.judge(chord, on: .apple) {
+            summonState.stringValue = reason
+            NSSound.beep()
+            return
+        }
+        SummonSettings.setChord(chord)
+        stopRecordingSummon()
+        MacSummon.shared.refresh()
+    }
+
+    private func stopRecordingSummon() {
+        if let summonRecorder { NSEvent.removeMonitor(summonRecorder) }
+        summonRecorder = nil
+        renderSummon()
     }
 
     private func buttonRow(title: String, subtitle: String, button: NSButton) -> NSView {

@@ -280,6 +280,8 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "ask":
                     self.presentQuickAsk()
+                case "summon":
+                    self.summonQuickAsk()
                 case "asktype":
                     QuickAskWindow.open?.driveType(argument)
                 case "askgo":
@@ -2612,6 +2614,15 @@ final class MainWindow: @unchecked Sendable {
     /// conversation with no project directory. The pane's queued first message goes out the
     /// moment the mint's own open() has built the conversation, and a mint that fails takes the
     /// words back so the next chat this pane opens cannot inherit them.
+    /// A question that arrived from somewhere else on the desktop. The window comes forward first
+    /// because the composer is inside it: a summon that opened a text field behind another app's
+    /// window would take the keystrokes that followed with it.
+    func summonQuickAsk() {
+        raise()
+        if QuickAskWindow.open != nil { return }
+        presentQuickAsk()
+    }
+
     private func presentQuickAsk() {
         let pane = activePane
         let fallback = pane.entry?.profileID

@@ -106,6 +106,7 @@ enum ParityManifest {
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")
         case .quickAsk: return .implemented("QuickAskViewController")
+        case .summonAnywhere: return .notApplicable("iOS gives no app a key from the whole system — there is no chord to claim and nothing to press it in, since another app is the whole screen; the phone's share of asking from outside the app is the icon's jump list and the Control Center tile, which quickAsk already carries")
         case .updateCenter: return .implemented("UpdateCenterViewController")
         }
     }

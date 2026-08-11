@@ -1432,6 +1432,14 @@ final class MainWindowController: NSWindowController {
     /// The chord summons one field and nothing else; the words land in the focused pane as a new
     /// conversation with no project directory. With no servers the chord goes to setup instead
     /// of presenting a dead field.
+    /// A question that arrived from another app. The window comes forward first because the field
+    /// is inside it: a panel that opened behind whatever was frontmost would take the keystrokes
+    /// meant for the question with it.
+    func summonQuickAsk() {
+        window?.makeKeyAndOrderFront(nil)
+        presentQuickAsk()
+    }
+
     private func presentQuickAsk() {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
