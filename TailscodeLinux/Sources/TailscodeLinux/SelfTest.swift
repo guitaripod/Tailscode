@@ -104,6 +104,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkAnalyticsShare()
+            report("analytics share: \(checks) claims hold — words, card and PNG")
+        } catch {
+            report("analytics share: \(error)")
+            failures += 1
+        }
+
+        do {
             try checkActivityMotion()
             report("activity: \(ActivityKind.everyState.count) states move as they mean")
         } catch {
@@ -1694,6 +1702,36 @@ public enum SelfTest {
             throw SelfTestFailure("the panel does not say where its numbers came from")
         }
         return spend.turns.count + spend.tiers.count + spend.headline.count
+    }
+
+    /// The share card is Core geometry painted by the shim: a demo ledger must yield words, a
+    /// stable filename, and a non-empty PNG whose signature is a real image — not a layout that
+    /// only looks right once someone opens the panel by hand.
+    private static func checkAnalyticsShare() throws -> Int {
+        guard
+            let analytics = UsageAnalytics(
+                servers: [("demo", DemoWorld.demoAnalytics())], missingServers: [])
+        else { throw SelfTestFailure("demo analytics produced nothing to share") }
+        let package = AnalyticsShare(analytics)
+        guard package.plainText.contains(analytics.totalMoney) else {
+            throw SelfTestFailure("plain text lost the total")
+        }
+        guard package.markdown.contains(analytics.totalMoney) else {
+            throw SelfTestFailure("markdown lost the total")
+        }
+        guard package.filename.hasSuffix(".png"), package.filename.hasPrefix("tailscode-month-")
+        else { throw SelfTestFailure("filename: \(package.filename)") }
+        guard package.card.height > 400, AnalyticsShare.Card.width == 1080 else {
+            throw SelfTestFailure("card geometry drifted")
+        }
+        guard let png = AnalyticsCardRenderer.png(package, scale: 1), png.count > 800 else {
+            throw SelfTestFailure("renderer produced no PNG")
+        }
+        let signature = [UInt8](png.prefix(8))
+        guard signature == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] else {
+            throw SelfTestFailure("PNG signature missing")
+        }
+        return 5
     }
 
     /// The moving half of the same contract: work has to move, an answer the agent is waiting for

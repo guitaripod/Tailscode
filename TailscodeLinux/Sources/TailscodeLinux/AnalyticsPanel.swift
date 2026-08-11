@@ -33,13 +33,19 @@ enum AnalyticsPanel {
         gtk_box_append(ptr(content), scroller)
 
         let windowBits = UInt(bitPattern: window)
+        let actions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(actions, GTK_ALIGN_END)
+        Gtk.margins(actions, top: 4)
+
+        let shareSlot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(actions), shareSlot)
+
         let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
             guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
             gtk_window_destroy(ptr(raw))
         }
-        gtk_widget_set_halign(dismiss, GTK_ALIGN_END)
-        Gtk.margins(dismiss, top: 4)
-        gtk_box_append(ptr(content), dismiss)
+        gtk_box_append(ptr(actions), dismiss)
+        gtk_box_append(ptr(content), actions)
         Gtk.onKey(window) { keyval, _ in
             guard keyval == Keymap.escape else { return false }
             guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return true }
@@ -50,16 +56,68 @@ enum AnalyticsPanel {
         gtk_widget_grab_focus(dismiss)
 
         g_object_ref(UnsafeMutableRawPointer(column))
+        g_object_ref(UnsafeMutableRawPointer(shareSlot))
+        g_object_ref(UnsafeMutableRawPointer(window))
         let columnBits = UInt(bitPattern: column)
+        let shareBits = UInt(bitPattern: shareSlot)
+        let heldWindowBits = UInt(bitPattern: window)
         Task.detached {
             let analytics = await gather()
             Gtk.onMain {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: columnBits) else { return }
-                defer { g_object_unref(raw) }
-                guard gtk_widget_get_root(ptr(raw)) != nil else { return }
-                render(analytics, into: ptr(raw))
+                defer {
+                    if let raw = UnsafeMutableRawPointer(bitPattern: columnBits) {
+                        g_object_unref(raw)
+                    }
+                    if let raw = UnsafeMutableRawPointer(bitPattern: shareBits) {
+                        g_object_unref(raw)
+                    }
+                    if let raw = UnsafeMutableRawPointer(bitPattern: heldWindowBits) {
+                        g_object_unref(raw)
+                    }
+                }
+                guard let columnRaw = UnsafeMutableRawPointer(bitPattern: columnBits),
+                    gtk_widget_get_root(ptr(columnRaw)) != nil
+                else { return }
+                render(analytics, into: ptr(columnRaw))
+                guard let shareRaw = UnsafeMutableRawPointer(bitPattern: shareBits),
+                    let windowRaw = UnsafeMutableRawPointer(bitPattern: heldWindowBits),
+                    let analytics
+                else { return }
+                installShare(
+                    analytics, into: ptr(shareRaw), window: ptr(windowRaw))
             }
         }
+    }
+
+    private static func installShare(
+        _ analytics: UsageAnalytics,
+        into slot: UnsafeMutablePointer<GtkWidget>,
+        window: UnsafeMutablePointer<GtkWidget>
+    ) {
+        Gtk.removeChildren(of: slot)
+        let package = AnalyticsShare(analytics)
+        let windowBits = UInt(bitPattern: window)
+        let copy = Gtk.button(Localized.text("Copy card")) {
+            if let png = AnalyticsCardRenderer.png(package) {
+                png.withUnsafeBytes { raw in
+                    guard let base = raw.baseAddress else { return }
+                    tailscode_clipboard_set_text_and_image_png(
+                        package.plainText, base, gsize(png.count))
+                }
+            } else {
+                Gtk.copyToClipboard(package.plainText)
+            }
+        }
+        let save = Gtk.button(Localized.text("Save image…")) {
+            guard let png = AnalyticsCardRenderer.png(package),
+                let windowRaw = UnsafeMutableRawPointer(bitPattern: windowBits)
+            else { return }
+            Gtk.saveFile(
+                parent: ptr(windowRaw), suggestedName: package.filename, data: png
+            ) { _ in }
+        }
+        gtk_box_append(ptr(slot), copy)
+        gtk_box_append(ptr(slot), save)
     }
 
     /// Every Claude server the app knows, asked for its whole ledger. A server that answers nil

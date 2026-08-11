@@ -92,6 +92,32 @@ void tailscode_select_folder(
 void tailscode_clipboard_read_image(
     void (*handler)(const void *bytes, gsize len, void *data), void *data);
 
+/// Puts PNG bytes on the clipboard as an image. No-op when the display has no clipboard.
+void tailscode_clipboard_set_image_png(const void *bytes, gsize len);
+
+/// Puts text and a PNG on the clipboard together so a paste target that wants either gets it.
+void tailscode_clipboard_set_text_and_image_png(
+    const char *text, const void *bytes, gsize len);
+
+/// Opens a Save dialog prefilled with `suggested_name` and writes `bytes` to the chosen path.
+/// Calls back with the absolute path on success, or NULL when cancelled or the write failed.
+void tailscode_file_save(
+    GtkWindow *parent, const char *suggested_name, const void *bytes, gsize len,
+    void (*handler)(const char *path, void *data), void *data);
+
+/// Renders a month-in-numbers share card into a PNG. Layout is the same fixed geometry Core
+/// measures (`AnalyticsShare.Card`); colours are six-digit hex without the leading `#`. Returns
+/// newly-allocated PNG bytes (caller frees with `g_free`) and writes their length to `out_len`,
+/// or NULL on failure.
+unsigned char *tailscode_analytics_card_png(
+    int width, int height, double scale, double pad,
+    const char *canvas, const char *raised, const char *rule, const char *text,
+    const char *text_dim, const char *accent, const char *info, const char *warn,
+    const char *special,
+    const char *const *kinds, const char *const *a, const char *const *b,
+    const char *const *c, const double *d0, const double *d1, const int *i0,
+    int block_count, gsize *out_len);
+
 /// The widget's vertical offset inside `ancestor`, or -1 when the two are not connected — what a
 /// scroll-to-row needs from graphene without importing it.
 double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor);

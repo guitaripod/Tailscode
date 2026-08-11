@@ -49,6 +49,32 @@ extension Gtk {
         tailscode_select_folder(window, initial, callback, box)
     }
 
+    /// Writes bytes through the desktop's Save dialog. Calls back with the path, or nil when
+    /// cancelled or the write failed.
+    static func saveFile(
+        parent: UnsafeMutablePointer<GtkWidget>?, suggestedName: String, data: Data,
+        _ handler: @escaping (String?) -> Void
+    ) {
+        let box = Unmanaged.passRetained(PathBox(handler)).toOpaque()
+        let callback: @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void = {
+            path, raw in
+            guard let raw else { return }
+            let box = Unmanaged<PathBox>.fromOpaque(raw).takeRetainedValue()
+            box.handler(path.map { String(cString: $0) })
+        }
+        let window: UnsafeMutablePointer<GtkWindow>? = parent.map {
+            ptr(UnsafeMutableRawPointer($0))
+        }
+        data.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else {
+                handler(nil)
+                return
+            }
+            tailscode_file_save(
+                window, suggestedName, base, gsize(data.count), callback, box)
+        }
+    }
+
     /// The clipboard as PNG bytes, or nil when it holds no picture.
     static func readClipboardImage(_ handler: @escaping (Data?) -> Void) {
         let box = Unmanaged.passRetained(ImageBox(handler)).toOpaque()

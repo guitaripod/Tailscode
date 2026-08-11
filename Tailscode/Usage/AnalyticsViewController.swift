@@ -38,6 +38,7 @@ final class AnalyticsViewController: UIViewController {
         title = String(localized: "The month in numbers")
         setupScroll()
         setupStateViews()
+        refreshShareButton()
         NotificationCenter.default.addObserver(
             self, selector: #selector(gameCenterStandingChanged),
             name: GameCenterCoordinator.standingChanged, object: nil)
@@ -47,6 +48,31 @@ final class AnalyticsViewController: UIViewController {
             showLoading()
             startLoad()
         }
+    }
+
+    private func refreshShareButton() {
+        guard analytics != nil else {
+            navigationItem.rightBarButtonItem = nil
+            return
+        }
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.arrow.up"), style: .plain, target: self,
+            action: #selector(shareTapped))
+        navigationItem.rightBarButtonItem?.accessibilityLabel = String(localized: "Share")
+    }
+
+    @objc private func shareTapped() {
+        guard let analytics else { return }
+        let share = AnalyticsShare(analytics)
+        var items: [Any] = [share.plainText]
+        if let url = AnalyticsCardRenderer.temporaryFile(share) {
+            items.insert(url, at: 0)
+        }
+        let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
+        sheet.popoverPresentationController?.sourceView = view
+        Theme.Haptics.success()
+        present(sheet, animated: true)
     }
 
     override func viewDidLayoutSubviews() {
@@ -127,6 +153,7 @@ final class AnalyticsViewController: UIViewController {
             analytics = UsageAnalytics(servers: haul.servers, missingServers: haul.missing)
             GameCenterCoordinator.shared.note(analytics)
             render()
+            refreshShareButton()
             refresher.endRefreshing()
             loadTask = nil
         }

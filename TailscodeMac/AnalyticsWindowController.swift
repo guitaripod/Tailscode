@@ -529,14 +529,49 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func footer() -> NSView {
+        var views: [NSView] = [RowKit.spacer()]
+        if analytics != nil {
+            let share = RowKit.ActionButton(title: Localized.text("Share")) { [weak self] in
+                self?.share(from: self?.window?.contentView)
+            }
+            share.bezelStyle = .rounded
+            share.controlSize = .small
+            views.append(share)
+        }
         let refresh = RowKit.ActionButton(title: Localized.text("Refresh")) { [weak self] in
             self?.reload()
         }
         refresh.bezelStyle = .rounded
         refresh.controlSize = .small
-        let row = NSStackView(views: [RowKit.spacer(), refresh])
+        views.append(refresh)
+        let row = NSStackView(views: views)
         row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
         return row
+    }
+
+    private func share(from anchor: NSView?) {
+        guard let analytics else { return }
+        let package = AnalyticsShare(analytics)
+        var items: [Any] = [package.plainText]
+        if let rendered = AnalyticsCardRenderer.png(package) {
+            items.insert(rendered.image, at: 0)
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("shared-analytics", isDirectory: true)
+            try? FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(rendered.filename)
+            if (try? rendered.data.write(to: url, options: .atomic)) != nil {
+                items.insert(url, at: 0)
+            }
+        }
+        let picker = NSSharingServicePicker(items: items)
+        let source = anchor ?? window?.contentView
+        guard let source else { return }
+        let rect =
+            anchor.map { $0.bounds }
+            ?? NSRect(x: source.bounds.midX - 1, y: source.bounds.minY + 12, width: 2, height: 2)
+        picker.show(relativeTo: rect, of: source, preferredEdge: .minY)
     }
 
     private func clearColumn() {

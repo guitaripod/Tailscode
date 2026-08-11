@@ -1,5 +1,8 @@
 #include "include/CGtkShim.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <pango/pangocairo.h>
+#include <string.h>
+#include <stdio.h>
 
 /// How a Swift closure that a signal was holding is let go of.
 ///
@@ -2088,3 +2091,358 @@ void tailscode_web_zoom(TailscodeWeb *web, double level) {
 void tailscode_web_free(TailscodeWeb *web) { (void)web; }
 
 #endif
+
+static gboolean tailscode_hex_rgb(const char *hex, double *r, double *g, double *b) {
+    if (!hex) return FALSE;
+    if (hex[0] == '#') hex++;
+    if (strlen(hex) < 6) return FALSE;
+    unsigned int value = 0;
+    if (sscanf(hex, "%06x", &value) != 1) return FALSE;
+    *r = ((value >> 16) & 0xff) / 255.0;
+    *g = ((value >> 8) & 0xff) / 255.0;
+    *b = (value & 0xff) / 255.0;
+    return TRUE;
+}
+
+static void tailscode_cairo_set_hex(cairo_t *cr, const char *hex, double alpha) {
+    double r = 0.5, g = 0.5, b = 0.5;
+    tailscode_hex_rgb(hex, &r, &g, &b);
+    cairo_set_source_rgba(cr, r, g, b, alpha);
+}
+
+static void tailscode_cairo_round_rect(
+    cairo_t *cr, double x, double y, double w, double h, double radius) {
+    if (w <= 0 || h <= 0) return;
+    if (radius > w / 2.0) radius = w / 2.0;
+    if (radius > h / 2.0) radius = h / 2.0;
+    if (radius <= 0) {
+        cairo_rectangle(cr, x, y, w, h);
+        return;
+    }
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + w - radius, y + radius, radius, -G_PI_2, 0);
+    cairo_arc(cr, x + w - radius, y + h - radius, radius, 0, G_PI_2);
+    cairo_arc(cr, x + radius, y + h - radius, radius, G_PI_2, G_PI);
+    cairo_arc(cr, x + radius, y + radius, radius, G_PI, 3 * G_PI_2);
+    cairo_close_path(cr);
+}
+
+static void tailscode_pango_draw(
+    cairo_t *cr, PangoLayout *layout, const char *text, double x, double y, double width,
+    int size, int weight, const char *hex, double tracking, int align) {
+    if (!text) text = "";
+    pango_layout_set_text(layout, text, -1);
+    pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+    PangoFontDescription *font = pango_font_description_new();
+    pango_font_description_set_family(font, "Inter, Cantarell, sans-serif");
+    pango_font_description_set_absolute_size(font, size * PANGO_SCALE);
+    pango_font_description_set_weight(font, weight);
+    pango_layout_set_font_description(layout, font);
+    pango_font_description_free(font);
+    if (align == 1) pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+    else if (align == 2) pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+    else pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
+    if (tracking != 0) {
+        PangoAttrList *attrs = pango_attr_list_new();
+        pango_attr_list_insert(attrs, pango_attr_letter_spacing_new((int)(tracking * PANGO_SCALE)));
+        pango_layout_set_attributes(layout, attrs);
+        pango_attr_list_unref(attrs);
+    } else {
+        pango_layout_set_attributes(layout, NULL);
+    }
+    tailscode_cairo_set_hex(cr, hex, 1.0);
+    cairo_move_to(cr, x, y);
+    pango_cairo_show_layout(cr, layout);
+}
+
+static int tailscode_split_csv(const char *csv, double *out, int max) {
+    if (!csv || !*csv) return 0;
+    int count = 0;
+    char *copy = g_strdup(csv);
+    char *save = NULL;
+    for (char *tok = strtok_r(copy, ",", &save); tok && count < max; tok = strtok_r(NULL, ",", &save)) {
+        out[count++] = g_ascii_strtod(tok, NULL);
+    }
+    g_free(copy);
+    return count;
+}
+
+static int tailscode_split_csv_int(const char *csv, int *out, int max) {
+    if (!csv || !*csv) return 0;
+    int count = 0;
+    char *copy = g_strdup(csv);
+    char *save = NULL;
+    for (char *tok = strtok_r(copy, ",", &save); tok && count < max; tok = strtok_r(NULL, ",", &save)) {
+        out[count++] = (int)g_ascii_strtoll(tok, NULL, 10);
+    }
+    g_free(copy);
+    return count;
+}
+
+static cairo_status_t tailscode_png_write(void *closure, const unsigned char *data, unsigned int length) {
+    g_byte_array_append((GByteArray *)closure, data, length);
+    return CAIRO_STATUS_SUCCESS;
+}
+
+void tailscode_clipboard_set_image_png(const void *bytes, gsize len) {
+    if (!bytes || len == 0) return;
+    GdkDisplay *display = gdk_display_get_default();
+    GdkClipboard *clipboard = display ? gdk_display_get_clipboard(display) : NULL;
+    if (!clipboard) return;
+    GBytes *gbytes = g_bytes_new(bytes, len);
+    GdkTexture *texture = gdk_texture_new_from_bytes(gbytes, NULL);
+    g_bytes_unref(gbytes);
+    if (!texture) return;
+    gdk_clipboard_set_texture(clipboard, texture);
+    g_object_unref(texture);
+}
+
+void tailscode_clipboard_set_text_and_image_png(const char *text, const void *bytes, gsize len) {
+    GdkDisplay *display = gdk_display_get_default();
+    GdkClipboard *clipboard = display ? gdk_display_get_clipboard(display) : NULL;
+    if (!clipboard) return;
+    GdkContentProvider *providers[2];
+    int count = 0;
+    if (text && *text) {
+        providers[count++] = gdk_content_provider_new_typed(G_TYPE_STRING, text);
+    }
+    if (bytes && len > 0) {
+        GBytes *gbytes = g_bytes_new(bytes, len);
+        GdkTexture *texture = gdk_texture_new_from_bytes(gbytes, NULL);
+        g_bytes_unref(gbytes);
+        if (texture) {
+            providers[count++] = gdk_content_provider_new_typed(GDK_TYPE_TEXTURE, texture);
+            g_object_unref(texture);
+        }
+    }
+    if (count == 0) return;
+    if (count == 1) {
+        gdk_clipboard_set_content(clipboard, providers[0]);
+        g_object_unref(providers[0]);
+        return;
+    }
+    GdkContentProvider *union_provider = gdk_content_provider_new_union(providers, count);
+    gdk_clipboard_set_content(clipboard, union_provider);
+    g_object_unref(union_provider);
+}
+
+typedef struct {
+    void (*handler)(const char *path, void *data);
+    void *data;
+    GBytes *bytes;
+} TailscodeFileSave;
+
+static void tailscode_file_save_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeFileSave *box = raw;
+    GFile *file = gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), result, NULL);
+    if (!file) {
+        box->handler(NULL, box->data);
+        g_bytes_unref(box->bytes);
+        g_free(box);
+        return;
+    }
+    gsize len = 0;
+    const void *data = g_bytes_get_data(box->bytes, &len);
+    GError *error = NULL;
+    gboolean ok = g_file_replace_contents(
+        file, data, len, NULL, FALSE, G_FILE_CREATE_REPLACE_DESTINATION, NULL, NULL, &error);
+    if (error) g_error_free(error);
+    char *path = ok ? g_file_get_path(file) : NULL;
+    box->handler(path, box->data);
+    g_free(path);
+    g_object_unref(file);
+    g_bytes_unref(box->bytes);
+    g_free(box);
+}
+
+void tailscode_file_save(
+    GtkWindow *parent, const char *suggested_name, const void *bytes, gsize len,
+    void (*handler)(const char *path, void *data), void *data) {
+    if (!bytes || len == 0) {
+        handler(NULL, data);
+        return;
+    }
+    TailscodeFileSave *box = g_new0(TailscodeFileSave, 1);
+    box->handler = handler;
+    box->data = data;
+    box->bytes = g_bytes_new(bytes, len);
+    GtkFileDialog *dialog = gtk_file_dialog_new();
+    if (suggested_name && *suggested_name) {
+        gtk_file_dialog_set_initial_name(dialog, suggested_name);
+    }
+    gtk_file_dialog_save(dialog, parent, NULL, tailscode_file_save_done, box);
+    g_object_unref(dialog);
+}
+
+unsigned char *tailscode_analytics_card_png(
+    int width, int height, double scale, double pad,
+    const char *canvas, const char *raised, const char *rule, const char *text,
+    const char *text_dim, const char *accent, const char *info, const char *warn,
+    const char *special,
+    const char *const *kinds, const char *const *a, const char *const *b,
+    const char *const *c, const double *d0, const double *d1, const int *i0,
+    int block_count, gsize *out_len) {
+    (void)raised;
+    (void)d1;
+    if (out_len) *out_len = 0;
+    if (width <= 0 || height <= 0 || scale <= 0) return NULL;
+    int pw = (int)(width * scale + 0.5);
+    int ph = (int)(height * scale + 0.5);
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
+    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surface);
+        return NULL;
+    }
+    cairo_t *cr = cairo_create(surface);
+    cairo_scale(cr, scale, scale);
+    tailscode_cairo_set_hex(cr, canvas, 1.0);
+    cairo_paint(cr);
+
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    double content = width - pad * 2.0;
+    double y = pad;
+    const double daily_h = 120.0;
+    const double daily_bar_w = 18.0;
+    const double weekday_h = 56.0;
+
+    for (int i = 0; i < block_count; i++) {
+        const char *kind = kinds[i] ? kinds[i] : "";
+        if (strcmp(kind, "brand") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 18, PANGO_WEIGHT_BOLD, accent, 4, 0);
+            y += 22;
+        } else if (strcmp(kind, "kicker") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
+            y += 28;
+        } else if (strcmp(kind, "hero") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 84, PANGO_WEIGHT_BOLD, text, 0, 0);
+            y += 88;
+        } else if (strcmp(kind, "body") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0);
+            y += 28 * 1.28 * 2;
+        } else if (strcmp(kind, "dim") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 24, PANGO_WEIGHT_NORMAL, text_dim, 0, 0);
+            y += 24 * 1.28 * 2;
+        } else if (strcmp(kind, "trend") == 0) {
+            const char *ink = text_dim;
+            if (i0[i] == 0) ink = warn;
+            else if (i0[i] == 1) ink = accent;
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 28, PANGO_WEIGHT_SEMIBOLD, ink, 0, 0);
+            y += 28 * 1.28;
+        } else if (strcmp(kind, "daily") == 0 || strcmp(kind, "weekday") == 0) {
+            double shares[64];
+            int todays[64];
+            int empties[64];
+            memset(shares, 0, sizeof(shares));
+            memset(todays, 0, sizeof(todays));
+            memset(empties, 0, sizeof(empties));
+            int n = tailscode_split_csv(a[i], shares, 64);
+            tailscode_split_csv_int(b[i], todays, 64);
+            tailscode_split_csv_int(c[i], empties, 64);
+            gboolean is_week = strcmp(kind, "weekday") == 0;
+            double chart_h = is_week ? weekday_h : daily_h;
+            if (n > 0) {
+                if (is_week) {
+                    double column = content / n;
+                    double bar_w = column * 0.45;
+                    if (bar_w > 28) bar_w = 28;
+                    const char *labels[] = {"M", "T", "W", "T", "F", "S", "S"};
+                    for (int k = 0; k < n; k++) {
+                        double mid = pad + column * (k + 0.5);
+                        double h = empties[k] ? 3 : (chart_h * shares[k]);
+                        if (h < 4 && !empties[k]) h = 4;
+                        double by = y + chart_h - h;
+                        const char *fill = empties[k] ? rule : (shares[k] >= 0.999 ? accent : info);
+                        double alpha = (!empties[k] && shares[k] < 0.999) ? 0.85 : 1.0;
+                        tailscode_cairo_round_rect(cr, mid - bar_w / 2.0, by, bar_w, h, 3);
+                        tailscode_cairo_set_hex(cr, fill, alpha);
+                        cairo_fill(cr);
+                        if (k < 7) {
+                            tailscode_pango_draw(
+                                cr, layout, labels[k], mid - column / 2.0, y + chart_h + 6, column,
+                                16, PANGO_WEIGHT_MEDIUM, text_dim, 0, 1);
+                        }
+                    }
+                    y += chart_h + 22;
+                } else {
+                    double gap = n > 1 ? (content - daily_bar_w * n) / (n - 1) : 0;
+                    if (gap < 1) gap = 1;
+                    for (int k = 0; k < n; k++) {
+                        double x = pad + k * (daily_bar_w + gap);
+                        double h = empties[k] ? (daily_h * 0.04) : (daily_h * shares[k]);
+                        if (h < 2) h = 2;
+                        if (!empties[k] && h < 4) h = 4;
+                        double by = y + daily_h - h;
+                        const char *fill = empties[k] ? rule : (todays[k] ? accent : info);
+                        double alpha = (!empties[k] && !todays[k]) ? 0.85 : 1.0;
+                        tailscode_cairo_round_rect(cr, x, by, daily_bar_w, h, daily_bar_w * 0.35);
+                        tailscode_cairo_set_hex(cr, fill, alpha);
+                        cairo_fill(cr);
+                    }
+                    y += daily_h;
+                }
+            } else {
+                y += is_week ? (weekday_h + 22) : daily_h;
+            }
+        } else if (strcmp(kind, "section") == 0) {
+            char *upper = g_utf8_strup(a[i] ? a[i] : "", -1);
+            tailscode_pango_draw(cr, layout, upper, pad, y, content, 22, PANGO_WEIGHT_BOLD, text_dim, 2, 0);
+            g_free(upper);
+            y += 26;
+        } else if (strcmp(kind, "meter") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content * 0.55, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
+            if (c[i] && c[i][0]) {
+                tailscode_pango_draw(cr, layout, c[i], pad, y, content, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 2);
+            }
+            double track_y = y + 28;
+            double track_h = 10;
+            tailscode_cairo_round_rect(cr, pad, track_y, content, track_h, track_h / 2.0);
+            tailscode_cairo_set_hex(cr, rule, 1.0);
+            cairo_fill(cr);
+            double share = d0[i];
+            if (share < 0) share = 0;
+            if (share > 1) share = 1;
+            double fill_w = content * share;
+            if (fill_w < track_h) fill_w = track_h;
+            if (share > 0) {
+                tailscode_cairo_round_rect(cr, pad, track_y, fill_w, track_h, track_h / 2.0);
+                tailscode_cairo_set_hex(cr, i0[i] ? accent : info, 1.0);
+                cairo_fill(cr);
+            }
+            y += 44;
+        } else if (strcmp(kind, "record") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, 36, 24, PANGO_WEIGHT_SEMIBOLD, special, 0, 0);
+            tailscode_pango_draw(cr, layout, b[i], pad + 40, y, content - 40, 18, PANGO_WEIGHT_MEDIUM, text_dim, 0, 0);
+            tailscode_pango_draw(cr, layout, c[i], pad + 40, y + 20, content - 40, 24, PANGO_WEIGHT_SEMIBOLD, text, 0, 0);
+            y += 48;
+        } else if (strcmp(kind, "insight") == 0) {
+            char *line = g_strdup_printf("✦  %s", a[i] ? a[i] : "");
+            tailscode_pango_draw(cr, layout, line, pad, y, content, 28, PANGO_WEIGHT_NORMAL, text, 0, 0);
+            g_free(line);
+            y += 28 * 1.28 * 3;
+        } else if (strcmp(kind, "rule") == 0) {
+            tailscode_cairo_set_hex(cr, rule, 1.0);
+            cairo_rectangle(cr, pad, y, content, 1);
+            cairo_fill(cr);
+            y += 1;
+        } else if (strcmp(kind, "foot") == 0) {
+            tailscode_pango_draw(cr, layout, a[i], pad, y, content, 20, PANGO_WEIGHT_NORMAL, text_dim, 0, 0);
+            y += 20 * 1.28 * 2;
+        } else if (strcmp(kind, "spacer") == 0) {
+            y += d0[i];
+        }
+    }
+
+    g_object_unref(layout);
+    cairo_destroy(cr);
+
+    GByteArray *array = g_byte_array_new();
+    cairo_status_t status = cairo_surface_write_to_png_stream(surface, tailscode_png_write, array);
+    cairo_surface_destroy(surface);
+    if (status != CAIRO_STATUS_SUCCESS || array->len == 0) {
+        g_byte_array_free(array, TRUE);
+        return NULL;
+    }
+    if (out_len) *out_len = array->len;
+    return g_byte_array_free(array, FALSE);
+}

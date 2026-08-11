@@ -178,7 +178,7 @@ public enum DemoWorld {
     /// Thirty plausible days for the demo screenshots: a working rhythm with quiet weekends, a
     /// three-model split, evenings that run hot, and records worth showing. Deterministic — the
     /// same screenshot twice — via a tiny seeded generator rather than anything random.
-    static func demoAnalytics(now: Date = Date()) -> UsageAnalyticsReport {
+    public static func demoAnalytics(now: Date = Date()) -> UsageAnalyticsReport {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone.current
         let formatter = DateFormatter()
