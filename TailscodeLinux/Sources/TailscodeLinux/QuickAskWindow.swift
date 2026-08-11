@@ -156,6 +156,10 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.cycleTarget() }
                 return true
             }
+            if state & KeyChord.controlMask != 0, keyval == UInt32(UnicodeScalar("v").value) {
+                Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
+                return true
+            }
             guard state & KeyChord.altMask != 0 else { return false }
             if keyval == UInt32(UnicodeScalar("m").value) {
                 Gtk.onMain { [weak self] in self?.chooseModel() }
@@ -166,7 +170,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 return true
             }
             if keyval == UInt32(UnicodeScalar("v").value) {
-                Gtk.onMain { [weak self] in self?.pasteImageAttachment() }
+                Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
                 return true
             }
             guard let digit = Keymap.digit(keyval), digit > 0 else { return false }
@@ -405,26 +409,29 @@ final class QuickAskWindow: @unchecked Sendable {
         }
     }
 
-    private func pasteImageAttachment() {
-        guard !asking, abilities.vision else { return }
-        Gtk.readClipboardImage { [weak self] data in
-            guard let self else { return }
-            guard let data else {
-                self.setHint(Localized.text("The clipboard holds no picture."))
-                return
+    /// The clipboard, whatever it is holding. A screenshot and a file copied in a file manager
+    /// both become chips here rather than making a person save one and pick the other back up, and
+    /// words go in at the caret. What the aim cannot be handed says so in the hint line.
+    private func pasteFromClipboard() {
+        guard !asking else { return }
+        let able = abilities
+        let named = pastedImageCount
+        Gtk.readClipboard { offer in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                let plan = PasteIntake.plan(for: offer, abilities: able, alreadyNamed: named)
+                self.pastedImageCount = plan.named
+                if let text = plan.text, !text.isEmpty {
+                    var position = gtk_editable_get_position(op(self.entry))
+                    gtk_editable_insert_text(op(self.entry), text, -1, &position)
+                    gtk_editable_set_position(op(self.entry), position)
+                }
+                if !plan.attachments.isEmpty {
+                    self.attachments.append(contentsOf: plan.attachments)
+                    self.renderAttachments()
+                }
+                if let notice = plan.notices.first { self.setHint(notice) }
             }
-            guard data.count <= AttachmentIntake.byteCap else {
-                self.setHint(
-                    Localized.text(
-                        "That picture is %@ — the cap is 8 MB",
-                        AttachmentIntake.sizeText(data.count)))
-                return
-            }
-            self.pastedImageCount += 1
-            self.attachments.append(
-                PendingAttachment(
-                    name: "pasted-\(self.pastedImageCount).png", mime: "image/png", data: data))
-            self.renderAttachments()
         }
     }
 

@@ -32,6 +32,20 @@ void tailscode_connect_key(
 /// Whether the widget that currently has focus inside `root` is one that takes text.
 gboolean tailscode_focus_is_editable(GtkWidget *root);
 
+/// What the clipboard is holding, asked before anything is read: a paste is an attach when a file
+/// manager or a screenshot tool put it there, and the composer has to decide which without waiting
+/// on an async read it may not need.
+gboolean tailscode_clipboard_has_files(void);
+gboolean tailscode_clipboard_has_image(void);
+
+/// The clipboard's files as local paths. Empty when what it holds cannot be reached on this disk.
+void tailscode_clipboard_read_files(
+    void (*handler)(const char *const *paths, gsize count, void *data), void *data);
+
+/// The clipboard's words, read by this app rather than by the widget, so an overlong paste can
+/// become the file it already is instead of landing in the box.
+void tailscode_clipboard_read_text(void (*handler)(const char *text, void *data), void *data);
+
 /// Decodes image bytes into a texture the app can keep and reuse across renders. NULL when the
 /// bytes are not a decodable image. The caller owns the returned reference.
 GdkTexture *tailscode_texture_from_bytes(const void *data, gsize len);

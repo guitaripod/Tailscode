@@ -22,6 +22,9 @@ final class ChatViewController: UIViewController {
     private var orderedIDs: [String] = []
     private var renderedIDOrder: [String] = []
     private var pendingAttachments: [PromptAttachment] = []
+    /// Names pasted pictures apart, so two screenshots in one prompt are two files rather than one
+    /// overwriting the other on the machine that reads them.
+    private var pastedImageCount = 0
     private var pendingPermission: PermissionRequest?
     private var pendingQuestion: QuestionRequest?
     /// The compaction happening right now, or the one that was just refused. Finished ones are
@@ -3696,6 +3699,26 @@ extension ChatViewController: ComposerViewDelegate {
             "enhance: long-press chars=\(text.count) available=\(enhancement.isAvailable) enhanceable=\(PromptEnhancementController.isEnhanceable(text))")
         enhancement.requestNow(for: text)
         presentEnhanceOverlay(original: text)
+    }
+
+    func composerDidPasteImage(_ data: Data, mime: String) {
+        guard viewModel.canAttachImages else {
+            presentToast(String(localized: "This model can't see images."))
+            return
+        }
+        guard data.count <= Self.attachmentSizeLimit else {
+            let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            presentToast(String(localized: "That picture is \(size) — attachments are capped at 8 MB."))
+            return
+        }
+        pastedImageCount += 1
+        pendingAttachments.append(
+            PromptAttachment(
+                mime: mime, filename: "pasted-\(pastedImageCount).png", data: data))
+        composer.showsAttach = true
+        updateAttachmentStrip()
+        Theme.Haptics.success()
+        presentToast(String(localized: "Picture attached — it'll be sent with your next message."))
     }
 
     func composerDidPasteLargeText(_ text: String) {

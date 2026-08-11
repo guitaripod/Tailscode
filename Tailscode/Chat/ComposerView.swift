@@ -7,6 +7,10 @@ protocol ComposerViewDelegate: AnyObject {
     func composerTextDidChange(_ text: String)
     func composerDidLongPressSend(from view: UIView)
     func composerDidPasteLargeText(_ text: String)
+    /// A picture on the pasteboard, pasted into the box. A screenshot is the commonest thing a
+    /// phone has in hand, and making someone save it to Photos and pick it back up through the
+    /// attach menu is a detour the clipboard already answered.
+    func composerDidPasteImage(_ data: Data, mime: String)
     /// Built when the attach menu opens, so it always reflects what the model
     /// selected right now can actually accept.
     func composerAttachOptions() -> [UIMenuElement]
@@ -19,7 +23,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     weak var delegate: ComposerViewDelegate?
 
     private let bar = Theme.Glass.view(interactive: false)
-    private let textView = UITextView()
+    private let textView = PastingTextView()
     private let placeholder = UILabel()
     private let sendButton = UIButton(type: .system)
     private let attachButton = UIButton(type: .system)
@@ -110,6 +114,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.inlinePredictionType = .yes
         textView.isScrollEnabled = false
         textView.delegate = self
+        textView.onPasteImage = { [weak self] data, mime in
+            self?.delegate?.composerDidPasteImage(data, mime: mime)
+        }
         textView.translatesAutoresizingMaskIntoConstraints = false
 
         placeholder.text = String(localized: "Message your agent…")
@@ -418,5 +425,24 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textViewDidChange(textView)
         resyncKeyboard()
         textView.becomeFirstResponder()
+    }
+}
+
+/// A text view that is asked about a paste before UIKit takes it. Only a pasteboard holding a
+/// picture is intercepted — words, and the overlong paste the delegate turns into a file, stay on
+/// UIKit's own path so selection, undo and the system menu keep behaving exactly as they do
+/// everywhere else on the phone.
+final class PastingTextView: UITextView {
+    var onPasteImage: ((Data, String) -> Void)?
+
+    override func paste(_ sender: Any?) {
+        let pasteboard = UIPasteboard.general
+        if pasteboard.hasImages, !pasteboard.hasStrings {
+            if let png = pasteboard.image?.pngData() {
+                onPasteImage?(png, "image/png")
+                return
+            }
+        }
+        super.paste(sender)
     }
 }

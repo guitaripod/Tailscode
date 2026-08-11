@@ -472,6 +472,99 @@ void tailscode_clipboard_read_image(
     gdk_clipboard_read_texture_async(clipboard, NULL, tailscode_clipboard_read_done, box);
 }
 
+static GdkClipboard *tailscode_clipboard(void) {
+    GdkDisplay *display = gdk_display_get_default();
+    return display ? gdk_display_get_clipboard(display) : NULL;
+}
+
+gboolean tailscode_clipboard_has_files(void) {
+    GdkClipboard *clipboard = tailscode_clipboard();
+    if (!clipboard) return FALSE;
+    GdkContentFormats *formats = gdk_clipboard_get_formats(clipboard);
+    if (!formats) return FALSE;
+    return gdk_content_formats_contain_gtype(formats, GDK_TYPE_FILE_LIST) ||
+           gdk_content_formats_contain_mime_type(formats, "text/uri-list");
+}
+
+gboolean tailscode_clipboard_has_image(void) {
+    GdkClipboard *clipboard = tailscode_clipboard();
+    if (!clipboard) return FALSE;
+    GdkContentFormats *formats = gdk_clipboard_get_formats(clipboard);
+    if (!formats) return FALSE;
+    return gdk_content_formats_contain_gtype(formats, GDK_TYPE_TEXTURE) ||
+           gdk_content_formats_contain_mime_type(formats, "image/png") ||
+           gdk_content_formats_contain_mime_type(formats, "image/jpeg");
+}
+
+typedef struct {
+    void (*handler)(const char *const *paths, gsize count, void *data);
+    void *data;
+} TailscodeFileListRead;
+
+static void tailscode_clipboard_files_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeFileListRead *box = raw;
+    const GValue *value =
+        gdk_clipboard_read_value_finish(GDK_CLIPBOARD(source), result, NULL);
+    if (!value || !G_VALUE_HOLDS(value, GDK_TYPE_FILE_LIST)) {
+        box->handler(NULL, 0, box->data);
+        g_free(box);
+        return;
+    }
+    GSList *list = g_value_get_boxed(value);
+    guint total = g_slist_length(list);
+    char **paths = g_new0(char *, total ? total : 1);
+    guint found = 0;
+    for (GSList *node = list; node; node = node->next) {
+        char *path = g_file_get_path(G_FILE(node->data));
+        if (path) paths[found++] = path;
+    }
+    box->handler((const char *const *)paths, found, box->data);
+    for (guint index = 0; index < found; index++) g_free(paths[index]);
+    g_free(paths);
+    g_free(box);
+}
+
+void tailscode_clipboard_read_files(
+    void (*handler)(const char *const *paths, gsize count, void *data), void *data) {
+    GdkClipboard *clipboard = tailscode_clipboard();
+    if (!clipboard) {
+        handler(NULL, 0, data);
+        return;
+    }
+    TailscodeFileListRead *box = g_new0(TailscodeFileListRead, 1);
+    box->handler = handler;
+    box->data = data;
+    gdk_clipboard_read_value_async(
+        clipboard, GDK_TYPE_FILE_LIST, G_PRIORITY_DEFAULT, NULL,
+        tailscode_clipboard_files_done, box);
+}
+
+typedef struct {
+    void (*handler)(const char *text, void *data);
+    void *data;
+} TailscodeTextRead;
+
+static void tailscode_clipboard_text_done(GObject *source, GAsyncResult *result, gpointer raw) {
+    TailscodeTextRead *box = raw;
+    char *text = gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source), result, NULL);
+    box->handler(text, box->data);
+    g_free(text);
+    g_free(box);
+}
+
+void tailscode_clipboard_read_text(
+    void (*handler)(const char *text, void *data), void *data) {
+    GdkClipboard *clipboard = tailscode_clipboard();
+    if (!clipboard) {
+        handler(NULL, data);
+        return;
+    }
+    TailscodeTextRead *box = g_new0(TailscodeTextRead, 1);
+    box->handler = handler;
+    box->data = data;
+    gdk_clipboard_read_text_async(clipboard, NULL, tailscode_clipboard_text_done, box);
+}
+
 void tailscode_set_accessible_label(GtkWidget *widget, const char *label) {
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);

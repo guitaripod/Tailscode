@@ -21,7 +21,7 @@ final class ComposerView: NSView {
     var attachmentCount: Int { attachments.count }
     var availableCommands: [AgentCommand] { commands }
 
-    private let textView = NSTextView()
+    private let textView = PastingTextView()
     private let scrollView = NSScrollView()
     private let fieldContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "")
@@ -334,6 +334,7 @@ final class ComposerView: NSView {
         textView.drawsBackground = false
         textView.allowsUndo = true
         textView.delegate = self
+        textView.onPaste = { [weak self] in self?.takeClipboard() ?? false }
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -739,6 +740,43 @@ final class ComposerView: NSView {
         addPastedImage(data)
     }
 
+    /// ⌘V is an attach as much as a paste. What the clipboard is holding is read into the shape
+    /// Core decides against, and only a paste that is words is handed back to the text view — so
+    /// the ordinary case keeps AppKit's own undo, selection and smart-quote behaviour, and a
+    /// screenshot or a file copied in the Finder becomes a chip instead of nothing at all.
+    private func takeClipboard() -> Bool {
+        let pasteboard = NSPasteboard.general
+        var offer = ClipboardOffer()
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            offer.paths = urls.filter(\.isFileURL).map(\.path)
+        }
+        if offer.paths.isEmpty, let data = pasteboard.data(forType: .png) ?? pngFromTIFF(pasteboard)
+        {
+            offer.image = data
+        }
+        if offer.paths.isEmpty, offer.image == nil {
+            offer.text = pasteboard.string(forType: .string)
+        }
+        let plan = PasteIntake.plan(
+            for: offer, abilities: pasteAbilities, alreadyNamed: pastedImageCount)
+        pastedImageCount = plan.named
+        if let notice = plan.notices.first { onToast?(notice) }
+        guard plan.text == nil else { return false }
+        guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
+        attachments.append(contentsOf: plan.attachments)
+        syncChips()
+        return true
+    }
+
+    private var pasteAbilities: QuickAskAbilities {
+        QuickAskAbilities.resolve(
+            supportsAttachments: attachmentsSupported,
+            model: chosenModel.flatMap { pick in
+                models.first { $0.providerID == pick.providerID && $0.id == pick.modelID }?
+                    .capabilities
+            })
+    }
+
     private func addPastedImage(_ data: Data) {
         guard data.count <= AttachmentIntake.byteCap else {
             onToast?(
@@ -945,5 +983,23 @@ final class ComposerView: NSView {
 extension ComposerView: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         editorContentChanged()
+    }
+}
+
+/// A text view whose paste is asked about first. AppKit routes ⌘V and the Edit menu's Paste to
+/// `paste(_:)`, so one override covers both, and the composer answers whether it took the
+/// clipboard for itself — a paste that was words is handed straight back to AppKit rather than
+/// re-implemented, which is what keeps undo, selection and the system's own behaviour intact.
+final class PastingTextView: NSTextView {
+    var onPaste: (() -> Bool)?
+
+    override func paste(_ sender: Any?) {
+        guard onPaste?() != true else { return }
+        super.paste(sender)
+    }
+
+    override func pasteAsPlainText(_ sender: Any?) {
+        guard onPaste?() != true else { return }
+        super.pasteAsPlainText(sender)
     }
 }

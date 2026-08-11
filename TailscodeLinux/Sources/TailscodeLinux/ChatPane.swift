@@ -2371,6 +2371,11 @@ final class ChatPane: @unchecked Sendable {
             }
         }
 
+        if control, !shift, Keymap.scalar(keyval) == "v" {
+            pasteIntoComposer()
+            return true
+        }
+
         let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
         if isReturn, !shift, Preferences.sendOnReturn || control {
             sendFromComposer()
@@ -2814,6 +2819,43 @@ final class ChatPane: @unchecked Sendable {
         CommandCatalog.present(parent: root, commands: commands) { [weak self] command in
             Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
         }
+    }
+
+    /// A paste is an attach as much as a paste, so the composer takes the clipboard rather than
+    /// letting the text widget take it: files and pictures become chips where they would otherwise
+    /// have to be saved to disk and picked back up, and only words go in as words. What this model
+    /// cannot be handed is refused by name in the notice line rather than dropped.
+    private func pasteIntoComposer() {
+        let able = QuickAskAbilities.resolve(
+            supportsAttachments: backend?.capabilities.supportsAttachments != false,
+            model: chosenModel.flatMap { pick in
+                models.first { $0.providerID == pick.providerID && $0.id == pick.modelID }?
+                    .capabilities
+            })
+        let named = pastedImageCount
+        Gtk.readClipboard { offer in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                let plan = PasteIntake.plan(for: offer, abilities: able, alreadyNamed: named)
+                self.pastedImageCount = plan.named
+                if let text = plan.text, !text.isEmpty { self.insertAtCaret(text) }
+                if !plan.attachments.isEmpty {
+                    self.attachments.append(contentsOf: plan.attachments)
+                    self.renderAttachments()
+                }
+                if let notice = plan.notices.first { self.setNotice(notice) }
+            }
+        }
+    }
+
+    /// Where a paste actually lands, which is at the caret and never at the end: the composer is a
+    /// document a person moves around in, and vim's shadow of it has to be told what was written
+    /// or the next normal-mode key would edit a string that no longer exists.
+    private func insertAtCaret(_ text: String) {
+        let buffer = gtk_text_view_get_buffer(ptr(entryView))
+        gtk_text_buffer_insert_at_cursor(buffer, text, -1)
+        gtk_widget_grab_focus(entryView)
+        vim.reset(to: composerText(), cursor: composerCursor(), mode: vim.mode)
     }
 
     func insertIntoComposer(_ text: String) {

@@ -328,7 +328,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .attachments, area: "composer", title: "Attachments",
             spec:
-                "Files and images attach via the shared AttachmentIntake (size-capped), show as removable chips, and ride out with send."),
+                "Files and images attach via the shared AttachmentIntake (size-capped), show as removable chips, and ride out with send. A paste is an attach as much as a paste: the clipboard is read into one shape (ClipboardOffer) and PasteIntake decides what it means, so all three clients agree without deciding anything themselves — files copied in a file manager become chips under their own names, a picture becomes a chip rather than nothing at all, an overlong paste becomes the file it already is, and only words go in as words, at the caret. What the aim cannot be handed is refused by name rather than dropped silently, and the ordinary word paste is handed back to the platform untouched so undo, selection and the system's own behaviour keep working. A phone has no file manager to copy from, so its clipboard offers pictures and words and the surface says so."),
         CapabilityDefinition(
             id: .drafts, area: "composer", title: "Nothing typed is ever lost",
             spec:

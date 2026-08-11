@@ -912,6 +912,17 @@ extension QuickAskViewController: ComposerViewDelegate {
                 localized: "Attached \(text.count.formatted()) characters — sent with the question."))
     }
 
+    /// A screenshot in hand is the commonest thing a phone has to show an agent, so pasting one
+    /// attaches it rather than doing nothing at all.
+    func composerDidPasteImage(_ data: Data, mime: String) {
+        guard abilities.vision else {
+            toast(String(localized: "This model can't read pictures."))
+            return
+        }
+        pastedImageCount += 1
+        attach(data: data, name: "pasted-\(pastedImageCount).png", mime: mime)
+    }
+
     /// Photos and files are different errands, and only the ones this aim can carry out are
     /// offered: a model that cannot see is never handed a photo picker.
     func composerAttachOptions() -> [UIMenuElement] {
