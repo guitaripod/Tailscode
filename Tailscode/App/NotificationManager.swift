@@ -216,6 +216,12 @@ enum NotificationManager {
 /// Routes notification taps to the session they concern, and answers an approval's own buttons
 /// without ever opening the app — the decision travels straight to the server the request came
 /// from.
+///
+/// Both delegate methods are implemented in their completion-handler form, never as `async`: the
+/// async variants hand their compiler-generated completion to whatever concurrency thread the
+/// method resumed on, and UIKit runs its state-restoration snapshot synchronously inside that
+/// completion when a tap is foregrounding the app — main-thread-only work that asserts and aborts
+/// on any other thread. The completion must be invoked from the main thread, after the work.
 final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = NotificationRouter()
 
@@ -223,35 +229,49 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
     /// (app switcher, banner pull-down) get no presentation and vanish. Remote
     /// pushes arriving while the app is actively foregrounded (the chat already
     /// on screen) go to the list silently instead of bannering over it.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        guard notification.request.trigger is UNPushNotificationTrigger else {
-            return [.banner, .list, .sound]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler:
+            @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let isPush = notification.request.trigger is UNPushNotificationTrigger
+        nonisolated(unsafe) let complete = completionHandler
+        DispatchQueue.main.async {
+            guard isPush else {
+                complete([.banner, .list, .sound])
+                return
+            }
+            let isActive = UIApplication.shared.applicationState == .active
+            complete(isActive ? [.list] : [.banner, .list, .sound])
         }
-        let isActive = await MainActor.run { UIApplication.shared.applicationState == .active }
-        return isActive ? [.list] : [.banner, .list, .sound]
     }
 
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
         let content = response.notification.request.content
         let payload = content.userInfo["permission"] as? String
         let profileID = content.userInfo["profileID"] as? String
         let sessionID = content.userInfo["sessionID"] as? String
+        let route = content.userInfo["route"] as? String
         let identifier = response.notification.request.identifier
-        switch response.actionIdentifier {
-        case AlertCategory.approveActionID, AlertCategory.denyActionID:
-            let approve = response.actionIdentifier == AlertCategory.approveActionID
-            await Self.decide(
-                payload: payload, profileID: profileID, identifier: identifier, approve: approve)
-        default:
-            let route = content.userInfo["route"] as? String
-            guard let url = Self.destination(route: route, sessionID: sessionID) else { return }
-            await MainActor.run { PendingRoute.deliver(url) }
+        let action = response.actionIdentifier
+        nonisolated(unsafe) let complete = completionHandler
+        Task { @MainActor in
+            switch action {
+            case AlertCategory.approveActionID, AlertCategory.denyActionID:
+                await Self.decide(
+                    payload: payload, profileID: profileID, identifier: identifier,
+                    approve: action == AlertCategory.approveActionID)
+            default:
+                if let url = Self.destination(route: route, sessionID: sessionID) {
+                    PendingRoute.deliver(url)
+                }
+            }
+            complete()
         }
     }
 
