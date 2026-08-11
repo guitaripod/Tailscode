@@ -54,6 +54,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case compactionSeam
     case permissionCards
     case failureSurface
+    case answerlessTurn
     case authBanner
     case followBottom
     case transcriptFind
@@ -295,6 +296,10 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .failureSurface, area: "transcript", title: "Failures say so",
             spec: "lastFailure surfaces as a visible banner/row with the message, never a silent stall."),
+        CapabilityDefinition(
+            id: .answerlessTurn, area: "transcript", title: "A turn that said nothing says so",
+            spec:
+                "A turn can finish having produced nothing at all — no words, no tool call, no picture, and no error, which is what a provider refusing a request mid-stream leaves behind. Every part of the transcript is built from what a turn produced, so that outcome draws nothing anywhere: the spinner stops, the transcript sits exactly as it was, and the question reads as ignored. ChatMessage.isAnswerless names it from the message itself — assistant, completed, no error, and not one part carrying content — excluding a turn somebody stopped by hand, whose emptiness they already understand. AnswerlessTurnReading turns it into the row's words, and no client writes its own: what happened, the server's own finish word quoted when it adds anything, and — when the question carried pictures, which is the commonest thing a model is refused for holding — that fact and the remedy that follows from it. Nothing claims a cause the transcript cannot show. The row is settled, so it holds perfectly still, and it offers exactly one action: send the same words again, without the pictures where they were there, which every client wires to the ordinary send so the retry is a message like any other. The words come from the prompt in the transcript rather than from a send this device happens to remember, so the row works on a conversation opened from another machine."),
         CapabilityDefinition(
             id: .authBanner, area: "transcript", title: "Signed-out Claude is a state",
             spec:

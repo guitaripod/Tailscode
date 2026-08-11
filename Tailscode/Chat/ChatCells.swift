@@ -27,6 +27,7 @@ struct ChatRow: Hashable {
         case image(FileReference)
         case timestamp(String)
         case error(String)
+        case answerless(AnswerlessTurn)
     }
 }
 

@@ -451,6 +451,9 @@ final class ChatPane: @unchecked Sendable {
         context.toast = { [weak self] text in
             Gtk.onMain { [weak self] in self?.host?.toast(text) }
         }
+        context.askAgain = { [weak self] words in
+            Gtk.onMain { [weak self] in self?.askAgain(words) }
+        }
         context.presentText = { [weak self] title, subtitle, body, mono in
             Gtk.onMain { [weak self] in
                 Dialogs.reader(
@@ -2948,6 +2951,20 @@ final class ChatPane: @unchecked Sendable {
                 text, model: model, reasoningEffort: effort,
                 attachments: outgoing.map(\.prompt))
         }
+    }
+
+    /// The words of a turn that said nothing, asked again. They go through the composer rather
+    /// than straight to the backend so the retry is the same send as any other — echoed, drafted,
+    /// and refused for the same reasons — and anything half-typed is kept rather than replaced.
+    private func askAgain(_ words: String) {
+        guard !words.isEmpty else { return }
+        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard pending.isEmpty else {
+            setNotice(Localized.text("Send or clear what is in the composer first."))
+            return
+        }
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), words, -1)
+        sendFromComposer()
     }
 
     private func attachRows() -> [(String, String?, @Sendable () -> Void)] {

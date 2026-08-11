@@ -812,6 +812,13 @@ final class TranscriptViewController: NSViewController {
         context.toast = { [weak self] text in
             self?.onToast?(text)
         }
+        context.askAgain = { [weak self] words in
+            guard let self, !words.isEmpty else { return }
+            guard self.composer.sendAgain(words) else {
+                self.onToast?(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
+        }
         earlierButton.target = self
         earlierButton.action = #selector(showEarlierRows)
     }

@@ -115,6 +115,18 @@ final class ChatViewController: UIViewController {
     private var cascadeRepair: Task<Void, Never>?
 
     var sessionID: String { viewModel.session.id }
+
+    /// A question handed to a chat already on screen — a quick ask aimed at the conversation this
+    /// device is already looking at. It goes out as an ordinary send rather than through the open,
+    /// which has nothing left to do.
+    func deliver(_ text: String, attachments: [PromptAttachment]) {
+        guard isViewLoaded else {
+            viewModel.send(text, attachments: attachments)
+            return
+        }
+        sendDraft(text, attachments: attachments)
+    }
+
     init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
@@ -441,6 +453,8 @@ final class ChatViewController: UIViewController {
             CompactionCell.self, forCellWithReuseIdentifier: CompactionCell.reuseID)
         collectionView.register(
             TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)
+        collectionView.register(
+            AnswerlessTurnCell.self, forCellWithReuseIdentifier: AnswerlessTurnCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1121,6 +1135,12 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
                 cell.configureError(text)
                 return cell
+            case .answerless(let turn):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: AnswerlessTurnCell.reuseID, for: indexPath)
+                    as! AnswerlessTurnCell
+                cell.configure(turn) { [weak self] in self?.askAgain(turn) }
+                return cell
             }
         }
     }
@@ -1589,7 +1609,11 @@ final class ChatViewController: UIViewController {
         noteUnread(orderedIDs.filter { previous[$0] == nil }.count)
         updateNavStatus(for: state)
         if wasRunning && state.status != .running {
-            Theme.Haptics.received()
+            if state.messages.last?.isAnswerless == true {
+                Theme.Haptics.warning()
+            } else {
+                Theme.Haptics.received()
+            }
             refreshSpend()
             refreshGit()
         }
@@ -3343,6 +3367,8 @@ final class ChatViewController: UIViewController {
             case .compaction(let row):
                 out.append(Self.compactionMarkdown(row))
                 continue
+            case .answerless(let turn):
+                body = "_\(turn.title) — \(turn.detail)_"
             case .timestamp, .error:
                 continue
             }
@@ -3671,16 +3697,33 @@ extension ChatViewController: ComposerViewDelegate {
         }
     }
 
-    private func sendDraft(_ text: String, model: ModelSelection? = nil, effort: String? = nil) {
-        let attachments = pendingAttachments
-        pendingAttachments = []
-        composer.showsAttach = canAttachAnything
-        updateAttachmentStrip()
+    /// - Parameter carrying: pictures and files that came with the words from somewhere other
+    ///   than the composer — a quick ask handing its question over. The composer's own strip is
+    ///   then left alone: what is clipped to a half-typed prompt belongs to that prompt.
+    private func sendDraft(
+        _ text: String, model: ModelSelection? = nil, effort: String? = nil,
+        attachments carrying: [PromptAttachment]? = nil
+    ) {
+        let attachments = carrying ?? pendingAttachments
+        if carrying == nil {
+            pendingAttachments = []
+            composer.showsAttach = canAttachAnything
+            updateAttachmentStrip()
+        }
         userScrolledUp = false
         animateNextRender = true
         isHandingOffEmptyState = !emptyState.isHidden && emptyState.alpha > 0
         DraftStore.clear(draftScope)
         viewModel.send(text, model: model, effort: effort, attachments: attachments)
+    }
+
+    /// The one action a turn that said nothing offers: the same words, sent again the ordinary
+    /// way. The pictures that went with them are bytes on the server rather than in this
+    /// transcript, so they are deliberately not carried over — which is also the remedy when a
+    /// picture is what the turn choked on.
+    private func askAgain(_ turn: AnswerlessTurn) {
+        guard turn.offersRemedy, !viewModel.isBusy else { return }
+        sendDraft(turn.prompt)
     }
 
     func composerTextDidChange(_ text: String) {
@@ -4070,6 +4113,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return file.filename ?? file.mime
         case .compaction(let row):
             return row.compaction?.summary
+        case .answerless(let turn):
+            return turn.detail
         case .timestamp, .error:
             return nil
         }

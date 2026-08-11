@@ -213,6 +213,18 @@ final class ComposerView: NSView {
         onSubmitPrompt?(text, chosenModel, chosenEffort, outgoing.map(\.prompt))
     }
 
+    /// Words handed to the composer from the transcript — the one action a turn that said
+    /// nothing offers — sent the ordinary way. Anything half-typed keeps the box: a retry may
+    /// not throw away a sentence somebody is in the middle of.
+    func sendAgain(_ words: String) -> Bool {
+        guard textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        setEditorText(words, caretAtEnd: true)
+        sendNow()
+        return true
+    }
+
     func insertText(_ text: String) {
         setEditorText(textView.string + text, caretAtEnd: true)
         takeFocus()

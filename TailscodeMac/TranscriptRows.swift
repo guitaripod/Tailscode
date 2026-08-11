@@ -36,6 +36,9 @@ final class TranscriptContext {
     var presentText: ((_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     /// A short confirmation the window floats over everything — "Command copied".
     var toast: ((String) -> Void)?
+    /// The words of a turn that said nothing, sent again — the transcript's own send, so the
+    /// retry is a message like any other rather than a second road into the backend.
+    var askAgain: ((String) -> Void)?
 
     func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
 }
@@ -107,6 +110,7 @@ struct TranscriptRow: Hashable {
         case file(FileReference, mine: Bool)
         case taskBoard(TaskBoard)
         case compaction(Compaction)
+        case answerless(AnswerlessTurn)
         case turnBreak
     }
 
@@ -149,7 +153,7 @@ struct TranscriptRow: Hashable {
     }
 
     @MainActor
-    static func rows(for message: ChatMessage) -> [TranscriptRow] {
+    static func rows(for message: ChatMessage, prompt: ChatMessage? = nil) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
@@ -203,6 +207,10 @@ struct TranscriptRow: Hashable {
                 continue
             }
         }
+        if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
+            rows.append(
+                TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
         return rows
     }
 
@@ -211,8 +219,10 @@ struct TranscriptRow: Hashable {
     @MainActor
     static func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
+        var prompt: ChatMessage?
         for message in messages {
-            let rows = Self.rows(for: message)
+            let rows = Self.rows(for: message, prompt: prompt)
+            if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
@@ -331,6 +341,8 @@ struct TranscriptRow: Hashable {
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
             return compaction.summary ?? ""
+        case .answerless(let turn):
+            return "\(turn.title) \(turn.detail)"
         case .interruption:
             return "interrupted"
         case .turnBreak:
@@ -369,6 +381,8 @@ struct TranscriptRow: Hashable {
             return TaskBoardView.make(board)
         case .compaction(let compaction):
             return Self.seam(compaction, key: key, context: context)
+        case .answerless(let turn):
+            return Self.answerless(turn, context: context)
         case .turnBreak:
             return RowKit.hairline(verticalPadding: 10)
         }
@@ -592,6 +606,21 @@ struct TranscriptRow: Hashable {
         column.addArrangedSubview(RowKit.hairline())
         return column
     }
+
+    /// A turn that finished having said nothing. It is a card rather than a prose row because
+    /// there is no prose — the transcript would otherwise show the question and then simply the
+    /// next thing, with the whole turn missing.
+    @MainActor
+    private static func answerless(_ turn: AnswerlessTurn, context: TranscriptContext) -> NSView {
+        let card = RowKit.card(
+            symbol: AnswerlessTurn.symbol, title: turn.title, detail: turn.detail,
+            tint: AnswerlessTurn.tone.color)
+        guard turn.offersRemedy else { return card }
+        let askAgain = context.askAgain
+        let words = turn.prompt
+        card.addArrangedSubview(RowKit.linkButton(turn.action) { askAgain?(words) })
+        return card
+    }
 }
 
 /// The small vocabulary every row view speaks: labels that wrap, labels that truncate, hairlines,
@@ -602,6 +631,12 @@ enum RowKit {
     /// tone, the bold title and the detail line. Callers append what their state adds — a bar, a
     /// ticking clock, a reader link.
     static func compactionCard(_ story: CompactionStory, tint: NSColor) -> NSStackView {
+        card(symbol: story.symbol, title: story.title, detail: story.detail, tint: tint)
+    }
+
+    /// The shape every stated-outcome card in the transcript wears: a symbol in its tint, the
+    /// fact, and the sentence under it.
+    static func card(symbol: String, title: String, detail: String, tint: NSColor) -> NSStackView {
         let card = NSStackView()
         card.orientation = .vertical
         card.alignment = .leading
@@ -617,19 +652,19 @@ enum RowKit {
         card.layer?.borderColor = MacTheme.Color.separator.cgColor
 
         let icon = NSImageView()
-        icon.image = NSImage(systemSymbolName: story.symbol, accessibilityDescription: story.title)?
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
         icon.contentTintColor = tint
         icon.setContentHuggingPriority(.required, for: .horizontal)
         let header = NSStackView(views: [
-            icon, label(story.title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
+            icon, label(title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
         ])
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
         card.addArrangedSubview(
             wrapping(
-                story.detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
+                detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         return card
     }
 

@@ -493,6 +493,7 @@ enum MatrixTheme {
         .seam-read:hover { border-color: \(info); background-color: alpha(\(info), 0.08); }
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
+        .card-answerless { border-left: 2px solid \(warn); }
         .seam-footnote { color: \(textDim); \(t(.seamFootnote)) }
         .seam-bar trough {
             min-height: 4px;

@@ -49,6 +49,7 @@ enum ParityManifest {
         case .compactionSeam: return .implemented("Compaction")
         case .permissionCards: return .implemented("PendingCards")
         case .failureSurface: return .implemented("StatusBandView")
+        case .answerlessTurn: return .implemented("answerless")
         case .authBanner: return .implemented("authBanner")
         case .followBottom: return .implemented("jumpButton")
         case .transcriptFind: return .implemented("FindBar")

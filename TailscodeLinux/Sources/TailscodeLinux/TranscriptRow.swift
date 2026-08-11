@@ -44,6 +44,9 @@ final class TranscriptContext: @unchecked Sendable {
         (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     /// A short confirmation the window floats over everything — "Command copied".
     var toast: (@Sendable (String) -> Void)?
+    /// The words of a turn that said nothing, sent again — the pane's own send, so the retry is a
+    /// message like any other rather than a second road into the backend.
+    var askAgain: (@Sendable (String) -> Void)?
     /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
     /// the moment ``store(textureBits:data:forKey:)`` lands it.
     var onImageStored: (@Sendable (String) -> Void)?
@@ -126,13 +129,16 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
         let writing = messages.last?.id
+        var prompt: ChatMessage?
         for message in messages {
             let rows: [TranscriptRow]
             if let hit = cache[message.id], hit.message == message {
                 rows = hit.rows
             } else {
-                rows = TranscriptRow.rows(for: message, cacheMarkup: message.id != writing)
+                rows = TranscriptRow.rows(
+                    for: message, prompt: prompt, cacheMarkup: message.id != writing)
             }
+            if message.role == .user { prompt = message }
             next[message.id] = (message, rows)
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
@@ -176,6 +182,7 @@ struct TranscriptRow: Hashable {
         case file(FileReference, mine: Bool)
         case taskBoard(TaskBoard)
         case compaction(Compaction)
+        case answerless(AnswerlessTurn)
         case turnBreak
     }
 
@@ -206,7 +213,9 @@ struct TranscriptRow: Hashable {
     ///   message a turn is currently writing into is a different string on every arrival, so
     ///   remembering its markup fills the memo with a thousand prefixes of one answer and evicts
     ///   the settled segments the memo exists for.
-    static func rows(for message: ChatMessage, cacheMarkup: Bool = true) -> [TranscriptRow] {
+    static func rows(
+        for message: ChatMessage, prompt: ChatMessage? = nil, cacheMarkup: Bool = true
+    ) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
@@ -268,6 +277,10 @@ struct TranscriptRow: Hashable {
                 continue
             }
         }
+        if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
+            rows.append(
+                TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
         return rows
     }
 
@@ -275,8 +288,10 @@ struct TranscriptRow: Hashable {
     /// density.
     static func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
+        var prompt: ChatMessage?
         for message in messages {
-            let rows = Self.rows(for: message)
+            let rows = Self.rows(for: message, prompt: prompt)
+            if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
@@ -446,6 +461,8 @@ struct TranscriptRow: Hashable {
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
             return compaction.summary ?? ""
+        case .answerless(let turn):
+            return "\(turn.title) \(turn.detail)"
         case .interruption:
             return "interrupted"
         case .turnBreak:
@@ -484,6 +501,8 @@ struct TranscriptRow: Hashable {
             return TaskBoardView.make(board)
         case .compaction(let compaction):
             return Self.seam(compaction, key: key, context: context)
+        case .answerless(let turn):
+            return Self.answerless(turn, context: context)
         case .turnBreak:
             let rule = Gtk.hairline()
             Gtk.margins(rule, top: 10, bottom: 10)
@@ -790,5 +809,41 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(column), card)
         gtk_box_append(ptr(column), Gtk.hairline())
         return column
+    }
+
+    /// A turn that finished having said nothing. It is a card rather than a prose row because
+    /// there is no prose — the transcript would otherwise show the question and then simply the
+    /// next thing, with the whole turn missing.
+    private static func answerless(
+        _ turn: AnswerlessTurn, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-answerless")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading),
+            Gtk.label(AnswerlessTurn.glyph, css: AnswerlessTurn.tone.glyphCSS, selectable: false))
+        let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        if turn.offersRemedy {
+            let askAgain = context.askAgain
+            let words = turn.prompt
+            let button = Gtk.button(turn.action, css: ["flat", "seam-read"]) {
+                askAgain?(words)
+            }
+            gtk_widget_set_halign(button, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), button)
+        }
+        return card
     }
 }

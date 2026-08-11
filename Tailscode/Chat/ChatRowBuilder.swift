@@ -23,8 +23,10 @@ enum ChatRowBuilder {
         }
         let board = TaskBoard.fold(boardCalls)
         let boardCallID = board.isEmpty ? nil : Self.boardAnchor(boardCalls)
+        var lastPrompt: ChatMessage?
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
+            defer { if message.role == .user { lastPrompt = message } }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
                 rows.append(ChatRow(
                     id: "ts:\(message.id)", messageID: message.id, role: .system,
@@ -140,6 +142,11 @@ enum ChatRowBuilder {
                 rows.append(ChatRow(
                     id: "\(message.id):error", messageID: message.id, role: message.role,
                     content: .error(error)))
+            }
+            if let answerless = AnswerlessTurnReading.read(message, prompt: lastPrompt) {
+                rows.append(ChatRow(
+                    id: "\(message.id):answerless", messageID: message.id, role: message.role,
+                    content: .answerless(answerless)))
             }
         }
         rows.append(

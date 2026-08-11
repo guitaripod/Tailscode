@@ -39,6 +39,8 @@ enum ChatFind {
             return ""
         case .error(let message):
             return message
+        case .answerless(let turn):
+            return "\(turn.title) \(turn.detail)"
         }
     }
 
