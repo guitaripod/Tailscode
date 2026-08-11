@@ -239,7 +239,7 @@ enum AnalyticsCardRenderer {
         if let money = meter.money {
             drawText(
                 money, at: origin, width: width, size: AnalyticsShare.Card.meterSize,
-                weight: .semibold, color: nsColor(palette.text), align: .trailing)
+                weight: .semibold, color: nsColor(palette.text), align: .right)
         }
         let trackY = origin.y + 28
         let trackHeight = AnalyticsShare.Card.meterTrackHeight
