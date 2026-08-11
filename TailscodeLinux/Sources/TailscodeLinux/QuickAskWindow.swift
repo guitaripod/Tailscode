@@ -31,9 +31,11 @@ final class QuickAskWindow: @unchecked Sendable {
 
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
+    private let title: UnsafeMutablePointer<GtkWidget>
     private let target: UnsafeMutablePointer<GtkWidget>
     private let model: UnsafeMutablePointer<GtkWidget>
     private let attach: UnsafeMutablePointer<GtkWidget>
+    private let send: UnsafeMutablePointer<GtkWidget>
     private let chips: UnsafeMutablePointer<GtkWidget>
     private let starters: UnsafeMutablePointer<GtkWidget>
     private let hint: UnsafeMutablePointer<GtkWidget>
@@ -81,7 +83,7 @@ final class QuickAskWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Quick ask"))
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 560, -1)
+        gtk_window_set_default_size(ptr(window), 620, -1)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
@@ -89,36 +91,48 @@ final class QuickAskWindow: @unchecked Sendable {
         entry = gtk_entry_new()!
         gtk_entry_set_placeholder_text(
             ptr(entry), Localized.text("Ask anything — no project, no setup"))
-        Gtk.addClass(entry, "model-search")
-        hint = Gtk.label("", css: "chooser-hint", selectable: false)
-        target = Gtk.button("", css: ["flat", "dim"]) {
+        gtk_entry_set_has_frame(ptr(entry), 0)
+        Gtk.addClass(entry, "ask-entry")
+        gtk_widget_set_hexpand(entry, 1)
+        hint = Gtk.label("", css: "ask-hint", selectable: false)
+        target = Gtk.button("", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.cycleTarget() }
         }
-        model = Gtk.button("", css: ["flat", "dim"]) {
+        model = Gtk.button("", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.chooseModel() }
         }
-        attach = Gtk.button("📎", css: ["flat", "dim"]) {
+        attach = Gtk.button("📎", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.pickAttachments() }
         }
+        send = Gtk.button("↵", css: ["flat", "ask-send"]) {
+            Gtk.onMain { QuickAskWindow.open?.submit() }
+        }
+        gtk_widget_set_valign(send, GTK_ALIGN_CENTER)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
 
+        /// The window wears the desktop's own bar rather than a row of its own that has to be
+        /// read as one: the name of the thing is in the title, the machine it will ask is the
+        /// subtitle under it, and the two controls that change either sit where a header keeps
+        /// controls. Nothing in the body then competes with the question.
+        title = adw_window_title_new(Localized.text("Quick ask"), "")!
+        let header = adw_header_bar_new()!
+        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
+        adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), target)
+        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), attach)
+        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), model)
+        gtk_window_set_titlebar(ptr(window), header)
+
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
-        Gtk.margins(column, top: 14, bottom: 12, leading: 14, trailing: 14)
+        Gtk.margins(column, top: 16, bottom: 14, leading: 16, trailing: 16)
         gtk_window_set_child(ptr(window), column)
 
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(header),
-            Gtk.label(Localized.text("Quick ask"), css: "section-header", selectable: false))
-        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        gtk_widget_set_hexpand(spacer, 1)
-        gtk_box_append(ptr(header), spacer)
-        gtk_box_append(ptr(header), target)
-        gtk_box_append(ptr(header), model)
-        gtk_box_append(ptr(header), attach)
-        gtk_box_append(ptr(column), header)
-        gtk_box_append(ptr(column), entry)
+        let field = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(field, "ask-field")
+        gtk_box_append(ptr(field), Gtk.label("›", css: "ask-caret", selectable: false))
+        gtk_box_append(ptr(field), entry)
+        gtk_box_append(ptr(field), send)
+        gtk_box_append(ptr(column), field)
         gtk_box_append(ptr(column), chips)
         gtk_box_append(ptr(column), hint)
         gtk_box_append(ptr(column), starters)
@@ -127,7 +141,10 @@ final class QuickAskWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.submit() }
         }
         Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
-            Gtk.onMain { [weak self] in self?.refreshStarterVisibility() }
+            Gtk.onMain { [weak self] in
+                self?.refreshStarterVisibility()
+                self?.refreshSend()
+            }
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -214,7 +231,10 @@ final class QuickAskWindow: @unchecked Sendable {
 
     private func refreshTarget() {
         let server = targetServer
-        gtk_button_set_label(ptr(target), Localized.text("→ %@", server.name))
+        gtk_button_set_label(ptr(target), server.name)
+        adw_window_title_set_subtitle(
+            op(UnsafeMutableRawPointer(title)),
+            servers.count < 2 ? server.name : Localized.text("Asks %@ — tab moves it", server.name))
         gtk_button_set_label(
             ptr(model),
             ModelBadge.label(
@@ -228,13 +248,24 @@ final class QuickAskWindow: @unchecked Sendable {
         attachments = kept
         renderAttachments()
         renderStarters()
+        refreshSend()
         guard !asking else { return }
         setHint(
             dropped > 0
                 ? QuickAskComposition.droppedNotice(count: dropped)
-                : (servers.count < 2
-                    ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
-                    : Localized.text("Enter sends, esc closes")))
+                : Localized.text("Enter sends · esc closes"))
+    }
+
+    /// The send arrow is lit by the same rule that lets Enter through, so the one control and the
+    /// one key can never disagree about whether there is a question yet.
+    private func refreshSend() {
+        let ready = QuickAskComposition.canSend(
+            text: Dialogs.entryText(entry).trimmingCharacters(in: .whitespacesAndNewlines),
+            attachments: attachments.count)
+        gtk_widget_set_sensitive(send, ready && !asking ? 1 : 0)
+        if ready { Gtk.addClass(send, "ask-send-ready") } else {
+            gtk_widget_remove_css_class(send, "ask-send-ready")
+        }
     }
 
     private func setHint(_ text: String) {
@@ -247,16 +278,14 @@ final class QuickAskWindow: @unchecked Sendable {
     private func renderStarters() {
         Gtk.removeChildren(of: starters)
         offered = QuickAskStarters.offered(for: abilities)
-        gtk_box_append(
-            ptr(starters),
-            Gtk.label(Localized.text("Try"), css: "row-detail", selectable: false))
+        gtk_box_append(ptr(starters), section(Localized.text("Try")))
         for (index, starter) in offered.enumerated() {
-            let label = index < 9
-                ? "\(starter.glyph)  \(starter.title) — \(starter.detail)   alt+\(index + 1)"
-                : "\(starter.glyph)  \(starter.title) — \(starter.detail)"
             gtk_box_append(
                 ptr(starters),
-                Gtk.button(label, css: ["flat", "row"]) { [weak self] in
+                row(
+                    glyph: starter.glyph, title: starter.title, detail: starter.detail,
+                    keycap: index < 9 ? "alt+\(index + 1)" : nil
+                ) { [weak self] in
                     Gtk.onMain { [weak self] in self?.pickStarter(at: index) }
                 })
         }
@@ -265,19 +294,55 @@ final class QuickAskWindow: @unchecked Sendable {
             refreshStarterVisibility()
             return
         }
-        gtk_box_append(
-            ptr(starters),
-            Gtk.label(Localized.text("Asked here"), css: "row-detail", selectable: false))
+        gtk_box_append(ptr(starters), section(Localized.text("Asked here")))
         for entry in asked {
             let title = AgentSession.isPlaceholderTitle(entry.session.title)
                 ? Localized.text("Untitled question") : entry.session.title
             gtk_box_append(
                 ptr(starters),
-                Gtk.button("↻  \(title)", css: ["flat", "row"]) { [weak self] in
+                row(
+                    glyph: "↻", title: title, detail: Localized.text("asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt)),
+                    keycap: nil
+                ) { [weak self] in
                     Gtk.onMain { [weak self] in self?.resume(entry) }
                 })
         }
         refreshStarterVisibility()
+    }
+
+    private func section(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        Gtk.label(text, css: "ask-section", selectable: false)
+    }
+
+    /// One row, built rather than written: the glyph keeps its own column so every title starts at
+    /// the same place, the detail is the quieter half of the same line, and the key that would do
+    /// this without the mouse sits at the end wearing the shape of a key.
+    private func row(
+        glyph: String, title: String, detail: String, keycap: String?,
+        onClick: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "ask-row")
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        let mark = Gtk.label(glyph, css: "ask-glyph", selectable: false)
+        gtk_label_set_xalign(op(mark), 0.5)
+        gtk_label_set_width_chars(op(mark), 2)
+        gtk_box_append(ptr(line), mark)
+        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        gtk_widget_set_hexpand(words, 1)
+        gtk_widget_set_halign(words, GTK_ALIGN_START)
+        gtk_box_append(ptr(words), Gtk.label(title, css: "ask-row-title", selectable: false))
+        gtk_box_append(ptr(words), Gtk.label(detail, css: "row-detail", selectable: false))
+        gtk_box_append(ptr(line), words)
+        if let keycap {
+            let cap = Gtk.label(keycap, css: "ask-keycap", selectable: false)
+            gtk_widget_set_valign(cap, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(line), cap)
+        }
+        gtk_button_set_child(ptr(button), line)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
+        return button
     }
 
     /// The rows are the empty state and nothing more, and a window that kept their height after
@@ -395,6 +460,7 @@ final class QuickAskWindow: @unchecked Sendable {
         asking = true
         gtk_widget_set_sensitive(entry, 0)
         gtk_widget_set_sensitive(attach, 0)
+        gtk_widget_set_sensitive(send, 0)
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
@@ -410,6 +476,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 self.asking = false
                 gtk_widget_set_sensitive(self.entry, 1)
                 gtk_widget_set_sensitive(self.attach, 1)
+                self.refreshSend()
                 gtk_widget_grab_focus(self.entry)
                 self.setHint("\(failure.title) — \(failure.detail)")
                 self.refreshStarterVisibility()

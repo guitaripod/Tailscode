@@ -362,6 +362,79 @@ enum MatrixTheme {
         .model-row-spent { color: \(textDim); }
         .chooser-hint { color: \(textDim); \(t(.hint)) opacity: 0.75; padding: 2px; }
 
+        .ask-field {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+            padding: 6px 10px;
+        }
+        .ask-field:focus-within {
+            border-color: \(accent);
+            background-color: alpha(\(accent), 0.05);
+        }
+        .ask-caret { color: \(accent); \(t(.composer)) opacity: 0.8; }
+        .ask-entry {
+            background: none;
+            background-image: none;
+            border: none;
+            box-shadow: none;
+            outline: none;
+            min-height: 30px;
+            padding: 0;
+            color: \(text);
+            \(t(.composer))
+        }
+        .ask-entry text { background: none; color: \(text); }
+        .ask-entry text selection { background-color: alpha(\(accent), 0.30); color: \(text); }
+        .ask-send {
+            color: \(textDim);
+            \(t(.composer))
+            min-width: 30px;
+            padding: 0 6px;
+            border-radius: 8px;
+            opacity: 0.45;
+        }
+        .ask-send-ready { color: \(accent); opacity: 1; }
+        .ask-send:hover { background-color: alpha(\(accent), 0.14); }
+        .ask-chip {
+            \(t(.chip))
+            color: \(textDim);
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid alpha(\(textDim), 0.28);
+        }
+        .ask-chip:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
+        .ask-section {
+            \(t(.sectionLabel))
+            color: \(textDim);
+            opacity: 0.55;
+            padding: 10px 6px 2px 6px;
+        }
+        .ask-hint { color: \(textDim); \(t(.hint)) opacity: 0.7; padding: 0 6px; }
+        .ask-row {
+            padding: 7px 10px;
+            border: none;
+            border-radius: 10px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .ask-row:hover { background-color: alpha(\(accent), 0.10); }
+        .ask-row:active { background-color: alpha(\(accent), 0.18); }
+        .ask-glyph { color: \(accent); \(t(.rowTitleStrong)) }
+        .ask-row-title { \(t(.rowTitleStrong)) color: \(text); }
+        .ask-row:hover .row-detail { opacity: 0.8; }
+        .ask-keycap {
+            \(t(.pill))
+            color: \(textDim);
+            border: 1px solid alpha(\(textDim), 0.30);
+            border-radius: 5px;
+            padding: 1px 6px;
+            opacity: 0.75;
+        }
+        .ask-row:hover .ask-keycap { color: \(accent); border-color: alpha(\(accent), 0.55); opacity: 1; }
+
         .tree-row { \(t(.treeRow)) color: \(text); }
         .tree-dir { color: \(info); \(t(.treeRow)) }
         .tree-path { color: \(textDim); \(t(.treePath)) }
