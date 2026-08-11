@@ -96,6 +96,11 @@ harness_env() {
         XDG_CONFIG_HOME="$CONFIG_HOME"
         XDG_DATA_HOME="$DATA_HOME"
         XDG_STATE_HOME="$STATE/home/state"
+        # HOME and the cache too: AppCache's FileSessionCache lives in .cachesDirectory,
+        # and sharing ~/.cache/tailscode with the installed app restores the person's real
+        # last session — title and all — into a harness pane.
+        HOME="$STATE/home"
+        XDG_CACHE_HOME="$STATE/home/cache"
         TAILSCODE_DEV_DISPLAY="$DEV_DISPLAY"
         GSK_RENDERER="${TAILSCODE_DEV_RENDERER:-cairo}"
         LIBGL_ALWAYS_SOFTWARE=1
