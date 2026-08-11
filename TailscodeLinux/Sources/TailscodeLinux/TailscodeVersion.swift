@@ -2,7 +2,7 @@ enum TailscodeVersion {
     /// The one number the three clients share — `project.yml`'s marketing version. A desktop that
     /// stamped itself with a number of its own would make "what is this running" a different
     /// question on every desk, and the update surface compares this against what a checkout says.
-    static let current = "1.11"
+    static let current = "1.13"
 
     static let usage = """
         tailscode — drive your coding agents over Tailscale
