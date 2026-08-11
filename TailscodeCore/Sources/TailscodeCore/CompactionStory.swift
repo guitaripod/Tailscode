@@ -43,13 +43,22 @@ public struct CompactionStory: Sendable, Hashable {
             summary: compaction.summary)
     }
 
-    public static func running(startedAt: Date, now: Date = Date()) -> CompactionStory {
+    /// `waiting` is a prompt this device has already handed over while the summarize runs. The
+    /// send button says a message goes into a queue rather than out, so the card owes the reader
+    /// the other half of that sentence: the wait is the compaction's, and the message is not lost
+    /// in it.
+    public static func running(startedAt: Date, waiting: Bool = false, now: Date = Date())
+        -> CompactionStory
+    {
         CompactionStory(
             symbol: "arrow.down.right.and.arrow.up.left",
             tone: .accent,
             title: Localized.text("Compacting…"),
-            detail: Localized.text(
-                "Re-reading the conversation to summarize it. This can take a minute or two."),
+            detail: waiting
+                ? Localized.text(
+                    "Re-reading the conversation to summarize it. Your message is queued behind it.")
+                : Localized.text(
+                    "Re-reading the conversation to summarize it. This can take a minute or two."),
             footnote: elapsedLine(startedAt: startedAt, now: now),
             keptFraction: nil,
             sweeps: true,

@@ -1488,7 +1488,9 @@ final class ChatViewController: UIViewController {
             viewModel.localEchoes.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
         let previousCompaction = liveCompaction
-        updateLiveCompaction(state.compaction, seams: uniqueRows.count(where: { Self.isSeam($0) }))
+        updateLiveCompaction(
+            state.compaction, seams: uniqueRows.count(where: { Self.isSeam($0) }),
+            queued: !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty)
         if let liveCompaction {
             ids.append(liveCompaction.id)
         } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
@@ -2168,7 +2170,7 @@ final class ChatViewController: UIViewController {
     /// is held until the seam it promised is actually among the rows. A refusal promises no seam
     /// and is dropped as soon as the server stops reporting it, and a promise nothing keeps expires
     /// rather than leaving the transcript claiming work that is not happening.
-    private func updateLiveCompaction(_ activity: CompactionActivity?, seams: Int) {
+    private func updateLiveCompaction(_ activity: CompactionActivity?, seams: Int, queued: Bool) {
         if let activity {
             if let failure = activity.failure {
                 liveCompaction = CompactionRow(id: Self.liveCompactionID, state: .failed(failure))
@@ -2176,7 +2178,8 @@ final class ChatViewController: UIViewController {
                 unwatchSeamPromise()
             } else {
                 liveCompaction = CompactionRow(
-                    id: Self.liveCompactionID, state: .running(startedAt: activity.startedAt))
+                    id: Self.liveCompactionID,
+                    state: .running(startedAt: activity.startedAt, waiting: queued))
                 if promisedSeamCount == nil { promisedSeamCount = seams + 1 }
                 promisedSeamDeadline = Date().addingTimeInterval(Self.seamPatience)
                 watchSeamPromise()

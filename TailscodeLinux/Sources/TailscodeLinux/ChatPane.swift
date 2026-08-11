@@ -1658,7 +1658,7 @@ final class ChatPane: @unchecked Sendable {
     /// then questions. Rebuilt only when what is pending actually changes.
     private func renderPendingCards(_ state: ConversationState) {
         let compactionKey = state.compaction.map {
-            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970)"
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(echoedPrompt != nil)"
         } ?? ""
         let signature = (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
             .joined(separator: "|") + "|" + compactionKey
@@ -1688,7 +1688,9 @@ final class ChatPane: @unchecked Sendable {
                 compactingStartedAt = compaction.startedAt
                 gtk_box_append(
                     ptr(pendingBox),
-                    PendingCards.compacting(startedAt: compaction.startedAt) { [weak self] label in
+                    PendingCards.compacting(
+                        startedAt: compaction.startedAt, waiting: echoedPrompt != nil
+                    ) { [weak self] label in
                         self?.compactingElapsed = label
                     })
             }
@@ -3441,6 +3443,11 @@ final class ChatPane: @unchecked Sendable {
             state.messages = [before]
             state.status = .running
             state.compaction = CompactionActivity(startedAt: now.addingTimeInterval(-75))
+        case "queued":
+            state.messages = [before]
+            state.status = .running
+            state.compaction = CompactionActivity(startedAt: now.addingTimeInterval(-75))
+            echoedPrompt = "and while you are at it, run the tests"
         case "failed":
             state.messages = [before]
             state.compaction = CompactionActivity(

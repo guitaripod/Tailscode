@@ -137,10 +137,10 @@ enum PendingCards {
     /// is handed back so the pane's own one-second clock can keep it honest without rebuilding the
     /// card.
     static func compacting(
-        startedAt: Date,
+        startedAt: Date, waiting: Bool,
         elapsedLabel: (UnsafeMutablePointer<GtkWidget>) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let story = CompactionStory.running(startedAt: startedAt)
+        let story = CompactionStory.running(startedAt: startedAt, waiting: waiting)
         let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         Gtk.addClass(card, "card")
         Gtk.addClass(card, "card-compaction")

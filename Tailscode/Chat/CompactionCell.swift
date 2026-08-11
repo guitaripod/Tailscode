@@ -7,7 +7,9 @@ import UIKit
 struct CompactionRow: Hashable {
     enum State: Hashable {
         case done(Compaction)
-        case running(startedAt: Date)
+        /// `waiting` is a prompt this device has handed over while the summarize runs, so the card
+        /// can say where it went rather than leave the reader wondering.
+        case running(startedAt: Date, waiting: Bool)
         case failed(String)
     }
 
@@ -156,8 +158,8 @@ final class CompactionCell: UICollectionViewCell {
         switch row.state {
         case .done(let compaction):
             configureDone(compaction)
-        case .running(let started):
-            configureRunning(startedAt: started)
+        case .running(let started, let waiting):
+            configureRunning(startedAt: started, waiting: waiting)
         case .failed(let reason):
             configureFailed(reason)
         }
@@ -170,8 +172,8 @@ final class CompactionCell: UICollectionViewCell {
         track.isHidden = story.keptFraction == nil
     }
 
-    private func configureRunning(startedAt: Date) {
-        let story = CompactionStory.running(startedAt: startedAt)
+    private func configureRunning(startedAt: Date, waiting: Bool) {
+        let story = CompactionStory.running(startedAt: startedAt, waiting: waiting)
         apply(story, tint: Theme.Color.accent)
         track.isHidden = false
         self.startedAt = startedAt

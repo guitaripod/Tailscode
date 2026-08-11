@@ -126,9 +126,9 @@ enum PendingCards {
     /// the words say what and for how long. The elapsed line is handed back so the transcript's
     /// own one-second clock can keep it honest without rebuilding the card.
     static func compacting(
-        startedAt: Date, elapsedLabel: (NSTextField) -> Void
+        startedAt: Date, waiting: Bool, elapsedLabel: (NSTextField) -> Void
     ) -> NSView {
-        let story = CompactionStory.running(startedAt: startedAt)
+        let story = CompactionStory.running(startedAt: startedAt, waiting: waiting)
         let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
         let spinner = NSProgressIndicator()
         spinner.style = .bar

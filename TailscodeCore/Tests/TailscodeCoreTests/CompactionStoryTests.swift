@@ -49,6 +49,17 @@ struct CompactionStoryTests {
         #expect(!story.isReadable)
     }
 
+    @Test("A prompt queued behind a compaction is said out loud, not left to the reader")
+    func queuedBehindRunningStory() {
+        let start = Date(timeIntervalSince1970: 0)
+        let alone = CompactionStory.running(startedAt: start, now: start)
+        let waited = CompactionStory.running(startedAt: start, waiting: true, now: start)
+        #expect(waited.detail != alone.detail)
+        #expect(waited.detail.contains("queued"))
+        #expect(waited.footnote == alone.footnote)
+        #expect(waited.sweeps)
+    }
+
     @Test("A refused compaction leads with the reason and ends on reassurance")
     func failedStory() {
         let story = CompactionStory.failed("Context too small to compact")

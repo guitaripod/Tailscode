@@ -1949,7 +1949,7 @@ final class TranscriptViewController: NSViewController {
     /// streamed token, and cards that flicker under a click swallow the click.
     private func renderPendingCards(_ state: ConversationState) {
         let compactionKey = state.compaction.map {
-            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970)"
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(echoedPrompt != nil)"
         } ?? ""
         let signature =
             (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
@@ -1975,7 +1975,9 @@ final class TranscriptViewController: NSViewController {
                 pendingStack.addArrangedSubview(PendingCards.compactionFailure(failure))
             } else {
                 pendingStack.addArrangedSubview(
-                    PendingCards.compacting(startedAt: compaction.startedAt) { [weak self] label in
+                    PendingCards.compacting(
+                        startedAt: compaction.startedAt, waiting: echoedPrompt != nil
+                    ) { [weak self] label in
                         self?.compactingElapsed = label
                     })
             }
