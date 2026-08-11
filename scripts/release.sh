@@ -48,8 +48,12 @@ PY
 
 echo "== staging $ROOT → $STAGE"
 mkdir -p "$STAGE"
+# build-* and nested .build trees are multi-GB host leftovers (build-mac, SPM
+# caches under TailscodeLinux/TailscodeCore). Shipping them into the guest made
+# the rsync hang for tens of minutes and is never needed to archive.
 rsync -a --delete \
-  --exclude .git --exclude build --exclude build-sim --exclude build-device \
+  --exclude .git --exclude build --exclude 'build-*' \
+  --exclude .build --exclude '**/.build' --exclude '.swiftpm' --exclude '**/.swiftpm' \
   --exclude DerivedData --exclude vendor --exclude '*.xcuserstate' \
   "$ROOT/" "$STAGE/"
 
