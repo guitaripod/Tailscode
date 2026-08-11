@@ -151,7 +151,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .sessionSections, area: "chat list", title: "Sessions grouped into sections",
             spec:
-                "The list groups rows into PINNED / LIVE NOW / SAVED / RECENT via groupIntoSections, dropping empty sections so no heading ever sits over nothing. A conversation with a turn in flight — running, or stopped to ask something — leads the list in LIVE NOW rather than being findable only by sorting on recency; membership is decided on the (profile, session) pair, never a bare session id."),
+                "The list groups rows into PINNED / LIVE NOW / SAVED / RECENT via groupIntoSections, dropping empty sections so no heading ever sits over nothing. A conversation with a turn in flight — running, or stopped to ask something — leads the list in LIVE NOW rather than being findable only by sorting on recency; membership is decided on the (profile, session) pair, never a bare session id. Inside LIVE NOW the order is when each conversation began, newest first, and never recency of activity: a working chat's updatedAt is a clock rather than an identity, so ordering on it makes two working chats trade places several times a second under a reader trying to click one. The section already says a row is working; where it sits must hold still for as long as it is there."),
         CapabilityDefinition(
             id: .sessionRowStatus, area: "chat list", title: "Row state pill and glyph",
             spec:

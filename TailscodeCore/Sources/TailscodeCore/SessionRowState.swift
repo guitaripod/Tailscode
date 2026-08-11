@@ -196,6 +196,13 @@ public enum SessionSection: String, CaseIterable, Sendable {
 /// Membership is decided on `(profileID, sessionID)` rather than the bare session id, because the
 /// same id on two servers is two different chats: keying on the id alone let one machine's live
 /// conversation swallow another machine's row out of every section below it.
+///
+/// LIVE NOW is ordered by when each conversation began, newest first, and never by recency of
+/// activity: a working chat's `updatedAt` is a clock rather than an identity — it moves every time
+/// a token lands — so ordering the section on it made two working chats trade places several times
+/// a second under a reader trying to click one. The section a row is *in* already says it is
+/// working; where it sits in that section must be a fact that holds still for as long as it is
+/// there, and the moment it started is the one fact about a live turn that cannot change.
 public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
     func key(_ row: SessionRowModel) -> String {
         SessionPinStore.key(row.entry.profileID, row.entry.session.id)
@@ -210,7 +217,10 @@ public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [S
         return a < b
     }
     var seen = Set(pinned.map(key))
-    let live = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }
+    let live = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }.sorted {
+        $0.entry.session.createdAt == $1.entry.session.createdAt
+            ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
+    }
     seen.formUnion(live.map(key))
     let saved = rows.filter { $0.saved && !seen.contains(key($0)) }
     seen.formUnion(saved.map(key))

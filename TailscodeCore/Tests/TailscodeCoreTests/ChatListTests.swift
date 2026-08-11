@@ -155,6 +155,28 @@ struct ChatListTests {
         #expect(grouped[2].1.map(\.entry.session.id) == ["c"])
     }
 
+    @Test("LIVE NOW holds still while its rows work")
+    func liveOrderDoesNotFollowActivity() {
+        let older = entry(sessionID: "a", active: true, updated: Date(timeIntervalSince1970: 100))
+        let newer = entry(sessionID: "b", active: true, updated: Date(timeIntervalSince1970: 200))
+        let settled = groupIntoSections([row(older), row(newer)])[0].1
+        #expect(settled.map(\.entry.session.id) == ["b", "a"])
+
+        let ticked = SessionEntry(
+            profileID: "one", profileName: "one", host: "one", backendType: .claudeCode,
+            session: AgentSession(
+                id: "a", agentType: .claudeCode, title: "chat", directory: "/tmp/one",
+                createdAt: Date(timeIntervalSince1970: 100),
+                updatedAt: Date(timeIntervalSince1970: 9999), isActive: true))
+        let afterATokenLanded = groupIntoSections([row(ticked), row(newer)])[0].1
+        #expect(
+            afterATokenLanded.map(\.entry.session.id) == ["b", "a"],
+            "a token landing in one live chat moved it past the other")
+
+        let reversed = groupIntoSections([row(newer), row(older)])[0].1
+        #expect(reversed.map(\.entry.session.id) == ["b", "a"])
+    }
+
     @Test("A saved chat that goes live is listed once, in LIVE NOW")
     func savedAndLive() {
         let both = row(entry(sessionID: "a", active: true), saved: true)
