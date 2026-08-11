@@ -140,7 +140,11 @@ public final class VimEngine {
         }
     }
 
-    private static let modeEntries: Set<Character> = ["i", "a", "o", "v", "V"]
+    /// Every key that leaves normal mode belongs to the engine, including the shifted half of the
+    /// pairs: `A` appends at the end of the line the way `a` appends after the cursor, and a
+    /// composer whose `A` reached the app's shortcut table instead was an editor missing a verb
+    /// every vim user's hand already knows.
+    private static let modeEntries: Set<Character> = ["i", "a", "I", "A", "o", "O", "v", "V"]
     private static let commandKeys: Set<Character> = Set(
         "iaIAoOvVdcy<>=xXsSCDYpPu~JrfFtT;,gGhjklwWbBeE0^$}{%")
 
@@ -236,7 +240,7 @@ public final class VimEngine {
             switch character {
             case "a": document.cursor = min(document.cursor + 1, document.characters.count)
             case "I": document.cursor = firstNonBlank(of: document.cursor)
-            case "A": document.cursor = lineEnd(of: document.cursor) + 1
+            case "A": document.cursor = lineEnd(of: document.cursor)
             case "o":
                 document.cursor = min(lineEnd(of: document.cursor) + 1, document.characters.count)
                 insert("\n", at: document.cursor)

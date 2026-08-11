@@ -274,7 +274,7 @@ public enum ShortcutRegistry {
             category: .chats, action: .toggleProjectScope, contexts: [.normal], defaults: ["p"]),
         .init(
             id: "chat.quickAsk", title: Localized.text("Quick ask"), category: .chats,
-            action: .quickAsk, contexts: [.normal], defaults: ["A"]),
+            action: .quickAsk, contexts: [.normal], defaults: []),
         .init(
             id: "scroll.down", title: Localized.text("Scroll down"), category: .conversation,
             action: .scrollDown, contexts: [.normal], defaults: ["j"]),

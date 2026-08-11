@@ -696,7 +696,10 @@ enum SelfTest {
         try expect(action(set, chord("e"), .normal) == .archiveSelected, "e archives")
         try expect(
             action(set, chord("p"), .normal) == .toggleProjectScope, "p scopes to the project")
-        try expect(action(set, chord("a", shift: true), .normal) == .quickAsk, "A quick asks")
+        try expect(
+            action(set, chord("a", shift: true), .normal) == nil,
+            "A is spent on a shortcut the machine-wide chord already covers, and the composer's "
+                + "vim wants it")
         try expect(action(set, chord("x"), .normal) == .deleteSelected, "x deletes")
         try expect(action(set, chord(" "), .normal) == .toggleMarked, "space marks a chat")
         try expect(

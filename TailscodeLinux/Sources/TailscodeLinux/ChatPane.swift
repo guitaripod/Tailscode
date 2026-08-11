@@ -361,6 +361,7 @@ final class ChatPane: @unchecked Sendable {
         Gtk.addClass(row, "pill-row")
 
         gtk_widget_set_visible(vimBadge, 0)
+        gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(row), vimBadge)
         gtk_box_append(ptr(row), destinationLabel)
 

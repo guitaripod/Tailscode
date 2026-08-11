@@ -50,6 +50,7 @@ final class PillsRow: NSView {
         vimBadge.font = MacTheme.Ramp.font(.badge)
         vimBadge.textColor = MacTheme.Color.label
         vimBadge.translatesAutoresizingMaskIntoConstraints = false
+        vimBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
         vimBadgeWrap.wantsLayer = true
         vimBadgeWrap.layer?.cornerRadius = 5
         vimBadgeWrap.translatesAutoresizingMaskIntoConstraints = false
