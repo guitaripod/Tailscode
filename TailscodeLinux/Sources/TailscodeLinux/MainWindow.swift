@@ -2111,7 +2111,10 @@ final class MainWindow: @unchecked Sendable {
                 host: profile.baseURL.host ?? profile.name,
                 backendType: profile.backend, session: session)
             Gtk.onMain { [weak self, weak pane] in
-                guard let self else { return }
+                guard let self else {
+                    done(nil)
+                    return
+                }
                 if !self.entries.contains(where: { $0.session.id == entry.session.id }) {
                     self.entries.insert(entry, at: 0)
                 }
