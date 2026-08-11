@@ -43,6 +43,11 @@ final class MainWindow: @unchecked Sendable {
     private var projectPaned: UnsafeMutablePointer<GtkWidget>?
     private var terminalPaned: UnsafeMutablePointer<GtkWidget>?
     private var sidebarPane: UnsafeMutablePointer<GtkWidget>?
+    private var sidebarTitle: UnsafeMutablePointer<GtkWidget>?
+    /// The name's own width, remembered rather than re-measured: GTK measures a hidden widget as
+    /// nothing, so a title taken off for being too wide would measure zero, look like it fits, and
+    /// come straight back — the flicker of a header arguing with itself once per frame.
+    private var sidebarTitleWidth: Int32 = 0
     private var lastSidebar: ([SessionRowModel], [String], String, String)?
 
     /// The last full row list per session, shared across every pane so a chat reopened anywhere —
@@ -586,8 +591,7 @@ final class MainWindow: @unchecked Sendable {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
         adw_header_bar_set_show_end_title_buttons(op(header), 0)
-        adw_header_bar_set_title_widget(
-            op(header), Gtk.label("TAILSCODE", css: "section-header", selectable: false))
+        adw_header_bar_set_title_widget(op(header), makeSidebarTitle())
         adw_header_bar_pack_start(
             op(header),
             Gtk.button("+", css: ["flat"]) { [weak self] in self?.presentNewChat() })
@@ -674,6 +678,44 @@ final class MainWindow: @unchecked Sendable {
         Gtk.addClass(toolbar, "sidebar-pane")
         sidebarPane = toolbar
         return toolbar
+    }
+
+    /// A name is a word or it is nothing. The app's own name spelled TAILSCO… is a header that
+    /// looks broken rather than a header that ran out of room, so the label never ellipsizes and
+    /// gives way whole: below the width it needs the title simply is not drawn, and the two
+    /// buttons either side of it — new chat, settings — keep the bar they were always the point of.
+    private func makeSidebarTitle() -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label("TAILSCODE", css: "section-header", selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        sidebarTitle = label
+        return label
+    }
+
+    /// What the two buttons either side of the name need before the name may have the rest: new
+    /// chat on one side, settings and its chevron on the other, and the margins between them.
+    private static let sidebarTitleClearance: Int32 = 130
+
+    /// The divider's position rather than the pane's allocation: this runs from `notify::position`,
+    /// where the drag has already moved the divider and GTK has not yet laid the pane out, so the
+    /// allocation is still the width the title was last judged against — and a header that decides
+    /// on a stale width is a `+` button that disappears for one drag and comes back on the next.
+    private func fitSidebarTitle() {
+        guard let sidebarTitle else { return }
+        let width =
+            splitWidget.map { gtk_paned_get_position(op($0)) }
+            ?? sidebarPane.map { gtk_widget_get_width($0) } ?? 0
+        guard width > 0 else { return }
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        var minimumBaseline: Int32 = 0
+        var naturalBaseline: Int32 = 0
+        gtk_widget_measure(
+            sidebarTitle, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, &minimumBaseline,
+            &naturalBaseline)
+        sidebarTitleWidth = max(sidebarTitleWidth, natural)
+        guard sidebarTitleWidth > 0 else { return }
+        gtk_widget_set_visible(
+            sidebarTitle, width >= sidebarTitleWidth + Self.sidebarTitleClearance ? 1 : 0)
     }
 
     /// The chat list moves when this window says so, and for no other reason. A scrolled window
@@ -2874,6 +2916,8 @@ final class MainWindow: @unchecked Sendable {
     private static let sidebarFloor: Int32 = 190
 
     private func holdSidebarFloor() {
+        fitSidebarTitle()
+        Gtk.after(60) { [weak self] in self?.fitSidebarTitle() }
         guard let splitWidget else { return }
         let position = gtk_paned_get_position(op(splitWidget))
         guard position < Self.sidebarFloor, gtk_widget_get_width(splitWidget) > 400 else { return }
@@ -2912,6 +2956,7 @@ final class MainWindow: @unchecked Sendable {
 
     private func rememberDividers() {
         clampDividers()
+        fitSidebarTitle()
         rememberWindow()
         Preferences.setLastSession(activePane.sessionID)
         if let splitWidget, gtk_widget_get_visible(sidebarPane ?? splitWidget) != 0 {
