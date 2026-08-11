@@ -504,6 +504,27 @@ public enum SummonReach: Sendable, Equatable {
     }
 }
 
+/// The reasons a desktop gives for not granting a key, worded once here so no client invents a
+/// sentence for a state it did not diagnose. Each one names the thing that would fix it, because a
+/// refusal a person cannot act on is the same as silence.
+public enum SummonObstacle: Sendable, Equatable {
+    case noAppIdentity(desktop: String)
+    case noPortal(desktop: String)
+
+    public var line: String {
+        switch self {
+        case .noAppIdentity(let desktop):
+            return Localized.text(
+                "%@ only grants a key to an app it launched itself, and this Tailscode was started another way. Open it from its launcher entry, or bind the command below.",
+                desktop)
+        case .noPortal(let desktop):
+            return Localized.text(
+                "%@ has no global-shortcuts portal, so no app on it can be granted a key. Bind the command below instead.",
+                desktop)
+        }
+    }
+}
+
 /// Whether a key is claimed at all, and which one. Kept beside the quick ask's own memory because
 /// it is the same preference — where a question comes from — asked one level further out.
 public enum SummonSettings {

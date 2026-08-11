@@ -32,6 +32,7 @@ final class Summon: @unchecked Sendable {
     private var activationSubscription: UInt32?
     private var changeSubscription: UInt32?
     private var tokenCounter = 0
+    private var attempt = 0
 
     private(set) var state: SummonState = .off
 
@@ -69,8 +70,24 @@ final class Summon: @unchecked Sendable {
             publish(.unavailable(reason))
             return
         }
+        attempt += 1
+        let round = attempt
+        awaitAnswer(for: chord, round: round)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.connectAndBind(chord)
+        }
+    }
+
+    /// A desktop that is asking the person whether this app may take a key answers whenever they
+    /// do, which can be never. Silence is therefore given a face of its own rather than left to
+    /// look like a chord that works: the surface says the key was asked for and not yet granted,
+    /// and the real answer replaces it whenever it arrives.
+    private func awaitAnswer(for chord: SummonChord, round: Int) {
+        Gtk.after(12_000) { [weak self] in
+            guard let self, self.attempt == round, !self.state.isLive else { return }
+            if case .off = self.state {
+                self.publish(.awaiting(chord, where: self.desktop.name))
+            }
         }
     }
 
@@ -100,11 +117,7 @@ final class Summon: @unchecked Sendable {
             return
         }
         guard portalVersion(bus) != nil else {
-            publish(
-                .unavailable(
-                    Localized.text(
-                        "%@ has no global-shortcuts portal, so no app on it can be granted a key. Bind the command below instead.",
-                        desktop.name)))
+            publish(.unavailable(SummonObstacle.noPortal(desktop: desktop.name).line))
             return
         }
         let token = nextToken()
@@ -115,10 +128,11 @@ final class Summon: @unchecked Sendable {
             "handle_token": g_variant_new_string(token),
             "session_handle_token": g_variant_new_string(nextToken()),
         ])
-        guard call(bus, method: "CreateSession", arguments: variantTuple([options])) != nil else {
-            publish(
-                .unavailable(
-                    Localized.text("%@ refused to open a shortcuts session.", desktop.name)))
+        var refusal: String?
+        guard call(bus, method: "CreateSession", arguments: variantTuple([options]), failure: &refusal)
+            != nil
+        else {
+            publish(.unavailable(diagnose(refusal)))
             return
         }
     }
@@ -148,8 +162,10 @@ final class Summon: @unchecked Sendable {
         let arguments = variantTuple([
             g_variant_new_object_path(handle), list, g_variant_new_string(""), options,
         ])
-        guard call(bus, method: "BindShortcuts", arguments: arguments) != nil else {
-            publish(.unavailable(Localized.text("%@ refused the key.", desktop.name)))
+        var refusal: String?
+        guard call(bus, method: "BindShortcuts", arguments: arguments, failure: &refusal) != nil
+        else {
+            publish(.unavailable(diagnose(refusal)))
             return
         }
     }
@@ -251,14 +267,30 @@ final class Summon: @unchecked Sendable {
         return g_variant_get_uint32(inner)
     }
 
-    private func call(_ bus: OpaquePointer, method: String, arguments: OpaquePointer?)
-        -> String?
-    {
+    /// What the portal said when it said no. The refusal a desktop gives for a key is the whole
+    /// diagnosis — a session that could not be opened at all and one that was opened and left
+    /// unbound are different problems with different fixes — so the message is carried out rather
+    /// than thrown away with the error.
+    private func diagnose(_ refusal: String?) -> String {
+        guard let refusal else {
+            return Localized.text("%@ refused to grant a key and said no more.", desktop.name)
+        }
+        if refusal.contains("app id") || refusal.contains("NotAllowed") {
+            return SummonObstacle.noAppIdentity(desktop: desktop.name).line
+        }
+        return refusal
+    }
+
+    private func call(
+        _ bus: OpaquePointer, method: String, arguments: OpaquePointer?,
+        failure: inout String?
+    ) -> String? {
         var error: UnsafeMutablePointer<GError>?
         let reply = g_dbus_connection_call_sync(
             bus, portalBus, portalPath, portalInterface, method, arguments, nil,
             GDBusCallFlags(rawValue: 0), 10000, nil, &error)
         if let error {
+            if let message = error.pointee.message { failure = String(cString: message) }
             g_error_free(error)
             return nil
         }

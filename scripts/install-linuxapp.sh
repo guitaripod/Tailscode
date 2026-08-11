@@ -67,8 +67,18 @@ update-desktop-database "$APPS_DIR" 2>/dev/null || true
 
 echo "installed $("$BIN_DIR/tailscode" --version 2>/dev/null || echo "$BIN_DIR/tailscode")"
 
+# A restart has to look like a launch. The desktop's own portal only grants a key from the whole
+# session to an app it can name, and it names one by the systemd scope its .desktop entry started
+# it in — an app resurrected with a bare `nohup` inherits the caller's cgroup instead, is refused an
+# app id, and quietly loses its global chord until the next launcher click.
 if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
-    nohup "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
+    if command -v systemd-run >/dev/null 2>&1; then
+        systemd-run --user --scope --quiet \
+            -u "app-com.guitaripod.tailscode-$$" \
+            "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
+    else
+        nohup "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
+    fi
     sleep 2
     NEW_PIDS=$(pgrep -f "$BIN_DIR/tailscode$" || true)
     for pid in $NEW_PIDS; do
