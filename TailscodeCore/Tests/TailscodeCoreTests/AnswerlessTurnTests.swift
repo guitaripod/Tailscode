@@ -131,3 +131,12 @@ struct AnswerlessTurnTests {
         #expect(reading?.offersRemedy == false)
     }
 }
+
+@Suite("A turn the machine cut off")
+struct InterruptedTurnTests {
+    @Test("Self-check of the interrupted-turn card stays clean")
+    func selfCheck() {
+        let issues = InterruptedTurnCheck.run()
+        #expect(issues.isEmpty, "InterruptedTurnCheck: \(issues)")
+    }
+}

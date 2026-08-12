@@ -27,6 +27,10 @@ final class ChatViewController: UIViewController {
     private var pastedImageCount = 0
     private var pendingPermission: PermissionRequest?
     private var pendingQuestion: QuestionRequest?
+    /// A turn this session's server was stopped in the middle of, waiting to be picked back up or
+    /// let go. It survives a reconnect and a relaunch because the server holds it, not this device.
+    private var interrupted: InterruptedTurn?
+    private static let interruptedRowID = "interrupted"
     /// The compaction happening right now, or the one that was just refused. Finished ones are
     /// rows in the transcript and need no state here.
     private var liveCompaction: CompactionRow?
@@ -455,6 +459,8 @@ final class ChatViewController: UIViewController {
             TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)
         collectionView.register(
             AnswerlessTurnCell.self, forCellWithReuseIdentifier: AnswerlessTurnCell.reuseID)
+        collectionView.register(
+            InterruptedTurnCell.self, forCellWithReuseIdentifier: InterruptedTurnCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -999,6 +1005,16 @@ final class ChatViewController: UIViewController {
                 cell.configure(text: echo.text, role: .user, reasoning: false)
                 return cell
             }
+            if id == Self.interruptedRowID, let turn = self.interrupted {
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: InterruptedTurnCell.reuseID, for: indexPath)
+                    as! InterruptedTurnCell
+                cell.configure(
+                    turn,
+                    onResume: { [weak self] in self?.viewModel.resumeInterruptedTurn() },
+                    onDismiss: { [weak self] in self?.viewModel.dismissInterruptedTurn() })
+                return cell
+            }
             if id.hasPrefix("question:"), let request = self.pendingQuestion {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: QuestionCell.reuseID, for: indexPath) as! QuestionCell
@@ -1518,9 +1534,13 @@ final class ChatViewController: UIViewController {
         {
             ids.append("thinking")
         }
+        // A turn the machine cut off is docked at the very end, below anything still open: it is
+        // an account of what already happened, and it must not push a live question off screen.
+        interrupted = InterruptedTurnReading.read(state.interruption)
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
+        if interrupted != nil { ids.append(Self.interruptedRowID) }
         Self.logPendingPhantom(state: state, viewModel: viewModel)
         var seenIDs = Set<String>()
         let uniqueIDs = ids.filter { seenIDs.insert($0).inserted }

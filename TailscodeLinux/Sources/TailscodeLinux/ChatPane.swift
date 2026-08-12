@@ -454,6 +454,12 @@ final class ChatPane: @unchecked Sendable {
         context.askAgain = { [weak self] words in
             Gtk.onMain { [weak self] in self?.askAgain(words) }
         }
+        context.resumeInterrupted = { [weak self] in
+            Gtk.onMain { [weak self] in self?.resumeInterruptedTurn() }
+        }
+        context.dismissInterrupted = { [weak self] in
+            Gtk.onMain { [weak self] in self?.dismissInterruptedTurn() }
+        }
         context.presentText = { [weak self] title, subtitle, body, mono in
             Gtk.onMain { [weak self] in
                 Dialogs.reader(
@@ -1023,6 +1029,14 @@ final class ChatPane: @unchecked Sendable {
                 }
                 rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
             }
+        }
+        // A turn the machine cut off is docked at the very end: it is an account of what already
+        // happened, and it belongs below everything that did.
+        if let cutOff = InterruptedTurnReading.read(state.interruption) {
+            if !rows.isEmpty {
+                rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
+            }
+            rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
         }
         lastFullRows = rows
         refreshWorkflowRuns()
@@ -2967,6 +2981,26 @@ final class ChatPane: @unchecked Sendable {
         sendFromComposer()
     }
 
+    /// Continues a turn the server's machine stopped in the middle of. The work resumes on that
+    /// machine, so nothing is sent from here and the card comes down on the server's answer.
+    private func resumeInterruptedTurn() {
+        guard let conversation else { return }
+        Task {
+            do {
+                try await conversation.resumeInterruptedTurn()
+            } catch {
+                Gtk.onMain { [weak self] in
+                    self?.setNotice(Localized.text("The server could not pick that turn back up."))
+                }
+            }
+        }
+    }
+
+    private func dismissInterruptedTurn() {
+        guard let conversation else { return }
+        Task { try? await conversation.dismissInterruptedTurn() }
+    }
+
     private func attachRows() -> [(String, String?, @Sendable () -> Void)] {
         guard backend?.capabilities.supportsAttachments != false else {
             return [(Localized.text("This server does not take attachments"), nil, {})]
@@ -3418,6 +3452,36 @@ final class ChatPane: @unchecked Sendable {
     /// A synthetic conversation around a compaction — the finished seam, the summarize still
     /// running, or the refusal — so every face of the card can be photographed headlessly without
     /// spending minutes compacting a real transcript.
+    /// A conversation whose turn the machine was pulled out from under, so the card can be driven
+    /// and photographed headlessly without stopping a real server mid-answer.
+    func driverInterruptedDemo(_ mode: String) {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-cut-prompt", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "t", kind: .text("port the toggles to the mac and keep the tests green"))
+            ],
+            createdAt: now.addingTimeInterval(-900))
+        var state = ConversationState(messages: [asked], status: .idle, hasLoadedTranscript: true)
+        state.interruption = TurnInterruption(
+            turnID: "demo-turn", prompt: "port the toggles to the mac and keep the tests green",
+            startedAt: now.addingTimeInterval(-900), detectedAt: now.addingTimeInterval(-120),
+            progress: mode == "clean"
+                ? TurnInterruption.Progress()
+                : TurnInterruption.Progress(
+                    toolCount: 9, lastTool: "Edit",
+                    filesTouched: [
+                        "/home/m/Dev/Tailscode/TailscodeMac/Toggles.swift",
+                        "/home/m/Dev/Tailscode/TailscodeMac/Theme.swift",
+                    ],
+                    commands: ["swift build", "swift test --filter Toggles"],
+                    partialAnswer: "I have moved the first two toggles across and"),
+            queued: mode == "queued" ? ["then do the same for the sidebar"] : [],
+            resumedAt: mode == "resumed" ? now : nil)
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+    }
+
     func driverCompactionDemo(_ mode: String) {
         let now = Date()
         let compaction = Compaction(

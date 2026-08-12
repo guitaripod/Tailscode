@@ -47,6 +47,10 @@ final class TranscriptContext: @unchecked Sendable {
     /// The words of a turn that said nothing, sent again — the pane's own send, so the retry is a
     /// message like any other rather than a second road into the backend.
     var askAgain: (@Sendable (String) -> Void)?
+    /// A turn the server's machine cut off, picked back up or let go on that machine. Both go
+    /// through the pane, which is the one place that knows which conversation is being looked at.
+    var resumeInterrupted: (@Sendable () -> Void)?
+    var dismissInterrupted: (@Sendable () -> Void)?
     /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
     /// the moment ``store(textureBits:data:forKey:)`` lands it.
     var onImageStored: (@Sendable (String) -> Void)?
@@ -183,6 +187,8 @@ struct TranscriptRow: Hashable {
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
+        /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
+        case interruptedTurn(InterruptedTurn)
         case turnBreak
     }
 
@@ -463,6 +469,8 @@ struct TranscriptRow: Hashable {
             return compaction.summary ?? ""
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .interruptedTurn(let turn):
+            return "\(turn.title) \(turn.prompt)"
         case .interruption:
             return "interrupted"
         case .turnBreak:
@@ -503,6 +511,8 @@ struct TranscriptRow: Hashable {
             return Self.seam(compaction, key: key, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
+        case .interruptedTurn(let turn):
+            return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
             let rule = Gtk.hairline()
             Gtk.margins(rule, top: 10, bottom: 10)
@@ -844,6 +854,68 @@ struct TranscriptRow: Hashable {
             gtk_widget_set_halign(button, GTK_ALIGN_START)
             gtk_box_append(ptr(card), button)
         }
+        return card
+    }
+
+    /// A turn the machine was pulled out from under. The account of what the work had already done
+    /// is the substance of it — a person decides between continuing and starting over on whether
+    /// anything on that machine changed — so it is drawn as lines rather than as a sentence.
+    private static func interruptedTurn(
+        _ turn: InterruptedTurn, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-interrupted")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading),
+            Gtk.label(InterruptedTurn.glyph, css: InterruptedTurn.tone.glyphCSS, selectable: false))
+        let title = Gtk.label(turn.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        if !turn.prompt.isEmpty {
+            let prompt = Gtk.label(turn.prompt, css: "row-title", wrap: true, selectable: true)
+            gtk_widget_set_halign(prompt, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), prompt)
+        }
+
+        let detail = Gtk.label(turn.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        for line in turn.progress {
+            let row = Gtk.label("· \(line)", css: "row-detail", wrap: true, selectable: false)
+            gtk_widget_set_halign(row, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), row)
+        }
+
+        if !turn.queued.isEmpty {
+            let waiting = Gtk.label(
+                turn.queued.count == 1
+                    ? Localized.text("One prompt was waiting behind it and never ran.")
+                    : Localized.text(
+                        "%@ prompts were waiting behind it and never ran.", "\(turn.queued.count)"),
+                css: "row-note", wrap: true, selectable: false)
+            gtk_widget_set_halign(waiting, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), waiting)
+        }
+
+        let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(buttons, GTK_ALIGN_START)
+        if !turn.isResumed, let resume = context.resumeInterrupted {
+            gtk_box_append(
+                ptr(buttons),
+                Gtk.button(turn.resumeTitle, css: ["flat", "seam-read"]) { resume() })
+        }
+        if let dismiss = context.dismissInterrupted {
+            gtk_box_append(
+                ptr(buttons), Gtk.button(turn.dismissTitle, css: ["flat"]) { dismiss() })
+        }
+        gtk_box_append(ptr(card), buttons)
         return card
     }
 }

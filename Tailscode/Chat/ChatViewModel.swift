@@ -817,6 +817,31 @@ final class ChatViewModel {
         }
     }
 
+    /// Continues a turn the server's machine cut off. The work happens on that machine — this is
+    /// not a resend — so the card comes down when the server says it took it, not on the press.
+    func resumeInterruptedTurn() {
+        AppLogger.chat.info("interrupted turn resumed")
+        Task {
+            do {
+                try await conversation.resumeInterruptedTurn()
+            } catch {
+                onError?(Self.readable(error))
+            }
+        }
+    }
+
+    /// Lets the interrupted turn go. Nothing in the transcript changes; only the offer stops.
+    func dismissInterruptedTurn() {
+        AppLogger.chat.info("interrupted turn dismissed")
+        Task {
+            do {
+                try await conversation.dismissInterruptedTurn()
+            } catch {
+                onError?(Self.readable(error))
+            }
+        }
+    }
+
     func rejectQuestion(_ question: QuestionRequest) {
         AppLogger.chat.info("question \(question.id) skipped")
         Task {

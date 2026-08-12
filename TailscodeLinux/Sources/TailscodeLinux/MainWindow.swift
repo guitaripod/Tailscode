@@ -241,6 +241,9 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo()
+                case "cutoffdemo":
+                    self.activePane.driverInterruptedDemo(
+                        argument.isEmpty ? "busy" : argument)
                 case "compactdemo":
                     self.activePane.driverCompactionDemo(argument.isEmpty ? "done" : argument)
                 case "compactui":

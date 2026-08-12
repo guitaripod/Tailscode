@@ -819,6 +819,23 @@ final class TranscriptViewController: NSViewController {
                 return
             }
         }
+        context.resumeInterrupted = { [weak self] in
+            guard let conversation = self?.conversation else { return }
+            Task { [weak self] in
+                do {
+                    try await conversation.resumeInterruptedTurn()
+                } catch {
+                    await MainActor.run {
+                        self?.onToast?(
+                            Localized.text("The server could not pick that turn back up."))
+                    }
+                }
+            }
+        }
+        context.dismissInterrupted = { [weak self] in
+            guard let conversation = self?.conversation else { return }
+            Task { try? await conversation.dismissInterruptedTurn() }
+        }
         earlierButton.target = self
         earlierButton.action = #selector(showEarlierRows)
     }
@@ -952,7 +969,7 @@ final class TranscriptViewController: NSViewController {
         {
             self.echoedPrompt = nil
         }
-        let shown = echoed(confirmed)
+        let shown = docked(echoed(confirmed), state: state)
         let appended = max(0, shown.count - lastFullCount)
         lastFullCount = shown.count
         let limit = max(windowLimit, Self.transcriptWindowPreference)
@@ -1003,6 +1020,19 @@ final class TranscriptViewController: NSViewController {
             rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
         }
         rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
+        return rows
+    }
+
+    /// A turn the machine cut off is docked at the very end: it is an account of what already
+    /// happened, and it belongs below everything that did. Like the echo, it is added on the way
+    /// to the screen and never memoized — the server owns it, not this device.
+    private func docked(_ rows: [TranscriptRow], state: ConversationState) -> [TranscriptRow] {
+        guard let cutOff = InterruptedTurnReading.read(state.interruption) else { return rows }
+        var rows = rows
+        if !rows.isEmpty {
+            rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
+        }
+        rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
         return rows
     }
 

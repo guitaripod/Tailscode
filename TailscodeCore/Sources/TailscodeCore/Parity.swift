@@ -55,6 +55,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case permissionCards
     case failureSurface
     case answerlessTurn
+    case interruptedTurn
     case authBanner
     case followBottom
     case transcriptFind
@@ -84,6 +85,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case newChat
     case newChatDefaults
     case newChatFailure
+    case newChatPathCompletion
     case keyboardShortcuts
     case shortcutCheatsheet
     case fileBrowser
@@ -301,6 +303,11 @@ public enum CapabilityRegistry {
             spec:
                 "A turn can finish having produced nothing at all — no words, no tool call, no picture, and no error, which is what a provider refusing a request mid-stream leaves behind. Every part of the transcript is built from what a turn produced, so that outcome draws nothing anywhere: the spinner stops, the transcript sits exactly as it was, and the question reads as ignored. ChatMessage.isAnswerless names it from the message itself — assistant, completed, no error, and not one part carrying content — excluding a turn somebody stopped by hand, whose emptiness they already understand. AnswerlessTurnReading turns it into the row's words, and no client writes its own: what happened, the server's own finish word quoted when it adds anything, and — when the question carried pictures, which is the commonest thing a model is refused for holding — that fact and the remedy that follows from it. Nothing claims a cause the transcript cannot show. The row is settled, so it holds perfectly still, and it offers exactly one action: send the same words again, without the pictures where they were there, which every client wires to the ordinary send so the retry is a message like any other. The words come from the prompt in the transcript rather than from a send this device happens to remember, so the row works on a conversation opened from another machine."),
         CapabilityDefinition(
+            id: .interruptedTurn, area: "transcript",
+            title: "A turn the machine cut off is not a turn that was ignored",
+            spec:
+                "A server that stops mid-answer — updated, killed, slept, powered off — leaves a conversation indistinguishable from one where the model had nothing to say: the prompt is there, no answer follows, the spinner is gone. It is the one failure that must never render as silence, because the agent may have been three files into an edit. The server names it (TurnInterruption on ConversationState, fetched on every refetch and delivered live on the stream, so a client that was not connected when it happened still finds out), InterruptedTurnReading writes the words once in Core, and all three clients draw the same card docked at the end of the transcript: what was asked, how long the turn had run, when the stop was noticed — never why, because nobody knows — and the account of what the work had actually done, read off the agent's own transcript rather than off anything it claimed: tools counted, the one it was inside, the files it wrote to named without their paths, the commands it ran, how far the answer had got, and the prompts that were queued behind it and never ran. A turn that had done nothing says exactly that, because 'nothing on the machine changed' is the fact that decides whether starting over is safe. It is a settled state and holds perfectly still. Two actions and no more: pick it back up, which continues the work on the server that holds it, and let it go, which drops the record and touches no transcript. The card comes down on the server's answer rather than on the press, and a turn already resumed keeps the card, saying so, rather than vanishing into another silence. A backend that cannot answer the question is not a backend that answered 'nothing was interrupted' — an unsupported route leaves the question unanswered and the surface absent, never a false all-clear."),
+        CapabilityDefinition(
             id: .authBanner, area: "transcript", title: "Signed-out Claude is a state",
             spec:
                 "A signed-out CLI shows as a warning banner in chat that leads to the sign-in flow; never tell someone to open a terminal."),
@@ -413,6 +420,11 @@ public enum CapabilityRegistry {
             id: .newChatDefaults, area: "servers", title: "A new chat says what it will start with",
             spec:
                 "The new-chat surface states, before Start is pressed, which server will host the conversation and which model it will open with. The server is named outright — NewChatChooser.heading carries the machine and agent even when only one is configured — and the model is NewChatDefaults: resolved exactly the way the composer resolves a first turn (the pick this device recorded for that server, else the server's own default, with the effort beside it), re-read every time the server choice changes so switching machines re-labels the chat before it exists. The model wears its family colour and the effort its heat wherever the client already colours chips, a device with no pick says the server decides rather than guessing a name, and the whole fact reads as one sentence for a screen reader. Never a chat whose model is discovered on the first answer."),
+        CapabilityDefinition(
+            id: .newChatPathCompletion, area: "servers",
+            title: "The path field is a shell",
+            spec:
+                "A path typed into the new-chat modal completes against the server's real disk, not this device's memory: the moment the query looks like a path, the chooser names the folder it sits in (NewChatChooser.wantedListing — asked once per folder, because the parent only changes at slash boundaries) and the client answers it over the /files route the file browser already rides, offering every subdirectory whose name the letters find, case-blind, ranked and highlighted by the same FuzzyRank as everything else (PathCompletion.matches). Tab at the top of the list is the shell's tab: the longest continuation every candidate shares, spelled the way the disk spells it, a lone candidate completing whole with its trailing slash so the walk continues without another keystroke (PathCompletion.completed); a cursor deliberately walked onto a row keeps the old meaning and adopts that row. A listing that comes back for a query the person has already left, or from a server no longer chosen, is dropped rather than rendered stale; a folder the server refused is neither offered nor asked for again; and a bridge too old to list says nothing, so the modal degrades to exactly what it was. The rows read live off the disk wear no badge — the remembered ones keep theirs — and Enter on any of them starts the chat there like Enter always did."),
         CapabilityDefinition(
             id: .newChatFailure, area: "servers", title: "A chat that cannot start says why",
             spec:
