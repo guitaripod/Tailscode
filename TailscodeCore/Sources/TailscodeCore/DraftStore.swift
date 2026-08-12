@@ -283,15 +283,27 @@ public enum DraftStore {
     /// typed into. Eviction is by recency alone and nothing else: the oldest go first, however
     /// small they are, and the draft being typed right now is never the one dropped whatever it
     /// weighs — a long prompt is exactly the one nobody could bear to retype.
+    /// The budget is measured in bytes rather than in characters, because this runs on every
+    /// keystroke: a grapheme count walks every draft the device is holding — a device that has been
+    /// typed into all week — while the UTF-8 length is already known to a native string. The budget
+    /// is a ceiling on how much is kept, so counting a little high on the way to it is honest.
     private static func bounded(_ map: [String: Draft]) -> [String: Draft] {
-        var total = map.values.reduce(0) { $0 + $1.text.count }
-        guard map.count > capacity || total > characterBudget else { return map }
+        var total = 0
+        for draft in map.values {
+            total += draft.text.utf8.count
+            if total > characterBudget { return evicted(map) }
+        }
+        return map.count > capacity ? evicted(map) : map
+    }
+
+    private static func evicted(_ map: [String: Draft]) -> [String: Draft] {
+        var total = map.values.reduce(0) { $0 + $1.text.utf8.count }
         var order = map.sorted { ($0.value.at, $0.key) > ($1.value.at, $1.key) }
         while order.count > capacity {
-            total -= order.removeLast().value.text.count
+            total -= order.removeLast().value.text.utf8.count
         }
         while total > characterBudget, order.count > 1 {
-            total -= order.removeLast().value.text.count
+            total -= order.removeLast().value.text.utf8.count
         }
         return Dictionary(uniqueKeysWithValues: order.map { ($0.key, $0.value) })
     }

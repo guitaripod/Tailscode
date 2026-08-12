@@ -18,6 +18,57 @@ enum HomeItem: Hashable {
     case usagePlaceholder(Int)
 }
 
+extension HomeItem {
+    /// Everything the cell for this item would draw, folded to one value.
+    ///
+    /// Identity answers which card a row *is* — deliberately just the session or the bookmark, so a
+    /// refresh reconfigures a row rather than animating it away and back. It says nothing about
+    /// whether anything on the row moved, and the board is rebuilt by everything that moves
+    /// anywhere: without this, one agent's step reconfigured every visible card, and each of those
+    /// re-measures itself. The two ages that tick on their own (a missed notice, a quota window)
+    /// are folded as the words they render as, so a row redraws exactly when its own reading
+    /// changes and not once a second before it.
+    var contentSignature: Int {
+        var hasher = Hasher()
+        switch self {
+        case .alert(let card):
+            hasher.combine(card.name)
+        case .missed(let item):
+            hasher.combine(item.title)
+            hasher.combine(item.reason)
+            hasher.combine(StatusFacts.age(Date().timeIntervalSince(item.at)))
+        case .live(let card):
+            hasher.combine(card.title)
+            hasher.combine(card.detail)
+            hasher.combine(card.age)
+            hasher.combine(card.presence)
+            hasher.combine(card.chip?.name)
+            hasher.combine(card.chip?.effort)
+        case .saved(let card):
+            hasher.combine(card.title)
+            hasher.combine(card.detail)
+            hasher.combine(card.unread)
+        case .project(let card):
+            hasher.combine(card.name)
+            hasher.combine(card.profileName)
+            hasher.combine(card.backend)
+            hasher.combine(card.chatCount)
+        case .recent(let card):
+            hasher.combine(card.title)
+            hasher.combine(card.detail)
+            hasher.combine(card.unread)
+            hasher.combine(card.chip?.name)
+            hasher.combine(card.chip?.effort)
+        case .usage(let card):
+            hasher.combine(card.quota)
+            hasher.combine(QuotaCardCell.countdown(card.quota))
+        case .placeholder(let index), .usagePlaceholder(let index):
+            hasher.combine(index)
+        }
+        return hasher.finalize()
+    }
+}
+
 /// One thing that happened while the app was away, as a way back into the chat
 /// it happened in. Blocking first, then by when — the same order the desktops
 /// put them in, because it is the order they matter in.
@@ -791,6 +842,7 @@ final class QuotaPlaceholderCell: ShimmerCardCell {
 final class QuotaCardCell: GlassCardCell {
     private let providerLabel = UILabel()
     private let gaugeStack = UIStackView()
+    private let gaugeRows = (0..<3).map { _ in GaugeRow() }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -801,6 +853,7 @@ final class QuotaCardCell: GlassCardCell {
         gaugeStack.axis = .vertical
         gaugeStack.spacing = Theme.Spacing.s
         gaugeStack.translatesAutoresizingMaskIntoConstraints = false
+        gaugeRows.forEach(gaugeStack.addArrangedSubview)
 
         [providerLabel, gaugeStack].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
@@ -819,17 +872,18 @@ final class QuotaCardCell: GlassCardCell {
 
     func configure(_ card: QuotaCard) {
         var header = card.quota.providerName
-        if let session = card.quota.gauges.first(where: { $0.trustedReset }),
-            let resetsAt = session.resetsAt, resetsAt > Date()
-        {
-            let minutes = max(1, Int(resetsAt.timeIntervalSinceNow / 60))
-            let countdown = minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h \(minutes % 60)m"
+        if let countdown = Self.countdown(card.quota) {
             header += "  ·  " + String(localized: "resets in \(countdown)")
         }
         providerLabel.text = header
-        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for gauge in card.quota.gauges.prefix(3) {
-            gaugeStack.addArrangedSubview(Self.gaugeRow(gauge))
+        let gauges = Array(card.quota.gauges.prefix(3))
+        for (index, row) in gaugeRows.enumerated() {
+            guard index < gauges.count else {
+                row.isHidden = true
+                continue
+            }
+            row.isHidden = false
+            row.apply(gauges[index])
         }
         accessibilityLabel = card.quota.providerName
         accessibilityValue = card.quota.gauges.prefix(3)
@@ -843,34 +897,46 @@ final class QuotaCardCell: GlassCardCell {
         accessibilityTraits = .button
     }
 
-    private static func gaugeRow(_ gauge: UsageQuota.Gauge) -> UIView {
-        let label = UILabel()
+    /// How long until the window this card is mostly about resets, when the provider actually said
+    /// so. Shared with the card's content signature so a countdown that has not moved a minute
+    /// does not redraw the card.
+    static func countdown(_ quota: UsageQuota) -> String? {
+        guard let session = quota.gauges.first(where: { $0.trustedReset }),
+            let resetsAt = session.resetsAt, resetsAt > Date()
+        else { return nil }
+        let minutes = max(1, Int(resetsAt.timeIntervalSinceNow / 60))
+        return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h \(minutes % 60)m"
+    }
+}
+
+/// One quota bar, built once and re-pointed at whatever gauge the card now carries. The card is
+/// reconfigured whenever anything on the board moves, and rebuilding six views and a constraint
+/// solve per bar to change two numbers was the most expensive `configure` on Home.
+private final class GaugeRow: UIStackView {
+    private let label = UILabel()
+    private let percent = UILabel()
+    private let track = UIView()
+    private let fill = UIView()
+    private var fillWidth: NSLayoutConstraint?
+
+    init() {
+        super.init(frame: .zero)
         label.font = Theme.Ramp.font(.panelFootnote)
         label.textColor = Theme.Color.secondaryLabel
-        label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let percent = UILabel()
         percent.font = UIFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-        percent.textColor = gauge.fraction > 0.85 ? Theme.Color.danger : Theme.Color.label
-        let raw = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
-        percent.text = QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: raw)
         percent.setContentHuggingPriority(.required, for: .horizontal)
 
         let top = UIStackView(arrangedSubviews: [label, percent])
         top.axis = .horizontal
         top.spacing = Theme.Spacing.s
 
-        let track = UIView()
         track.backgroundColor = Theme.Color.reasoningBackground
         track.layer.cornerRadius = 3
         track.translatesAutoresizingMaskIntoConstraints = false
         track.heightAnchor.constraint(equalToConstant: 6).isActive = true
 
-        let fill = UIView()
-        fill.backgroundColor =
-            gauge.fraction > 0.85
-            ? Theme.Color.danger : (gauge.fraction > 0.6 ? Theme.Color.warning : Theme.Color.accent)
         fill.layer.cornerRadius = 3
         fill.translatesAutoresizingMaskIntoConstraints = false
         track.addSubview(fill)
@@ -878,14 +944,31 @@ final class QuotaCardCell: GlassCardCell {
             fill.topAnchor.constraint(equalTo: track.topAnchor),
             fill.bottomAnchor.constraint(equalTo: track.bottomAnchor),
             fill.leadingAnchor.constraint(equalTo: track.leadingAnchor),
-            fill.widthAnchor.constraint(
-                equalTo: track.widthAnchor, multiplier: max(0.02, min(1, gauge.fraction))),
         ])
 
-        let column = UIStackView(arrangedSubviews: [top, track])
-        column.axis = .vertical
-        column.spacing = 4
-        return column
+        axis = .vertical
+        spacing = 4
+        addArrangedSubview(top)
+        addArrangedSubview(track)
+    }
+
+    @available(*, unavailable) required init(coder: NSCoder) { fatalError() }
+
+    func apply(_ gauge: UsageQuota.Gauge) {
+        label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
+        let raw = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        percent.text = QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: raw)
+        percent.textColor = gauge.fraction > 0.85 ? Theme.Color.danger : Theme.Color.label
+        fill.backgroundColor =
+            gauge.fraction > 0.85
+            ? Theme.Color.danger : (gauge.fraction > 0.6 ? Theme.Color.warning : Theme.Color.accent)
+        let width = max(0.02, min(1, gauge.fraction))
+        guard fillWidth?.multiplier != CGFloat(width) else { return }
+        fillWidth?.isActive = false
+        let constraint = fill.widthAnchor.constraint(
+            equalTo: track.widthAnchor, multiplier: CGFloat(width))
+        constraint.isActive = true
+        fillWidth = constraint
     }
 }
 

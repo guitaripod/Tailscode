@@ -209,11 +209,17 @@ enum Theme {
         /// proportional one at the same point size.
         private static func base(_ axis: TypeAxis) -> Double {
             switch axis {
-            case .prose: return Double(baseSize(of: .body))
+            case .prose: return proseBase
             case .chrome: return 16
             case .mono: return 14
             }
         }
+
+        /// The ramp's own unit is the body size *at the default setting*, so it is a constant of the
+        /// design rather than of the device, and asking the descriptor system for it again is the
+        /// same answer at the cost of a trait collection. Every label on a busy screen goes through
+        /// here on every configure.
+        private static let proseBase = Double(baseSize(of: .body))
 
         static func font(_ role: TypeRole) -> UIFont {
             let spec = Typography.spec(role)

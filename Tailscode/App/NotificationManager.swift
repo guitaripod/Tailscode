@@ -122,6 +122,26 @@ enum NotificationManager {
         }
     }
 
+    /// Emptying the list answers every notice in it, in both places a notice lives.
+    ///
+    /// The list is only half of where a notice is kept. `adoptDelivered` files whatever Notification
+    /// Center is still holding, and it runs on every load — so a Clear that emptied the list alone
+    /// was undone by the next poll seconds later, with the original timestamps, which reads as the
+    /// same entries coming back by themselves. The horizon in `ActivityInbox` makes the dismissal
+    /// stick even against an adoption already in flight; this takes the banners themselves back, so
+    /// Notification Center agrees with the list about what has been dealt with.
+    static func clearAllNotices() {
+        ActivityInbox.clearAll()
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let identifiers = delivered.filter {
+                ($0.request.content.userInfo["sessionID"] as? String)?.isEmpty == false
+            }.map(\.request.identifier)
+            guard !identifiers.isEmpty else { return }
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+    }
+
     /// Adopts what Notification Center is still holding.
     ///
     /// The inbox is written by whoever raises a notice, which works for every notice this app

@@ -18,7 +18,7 @@ extension DeviceStores {
   struct ActivityInboxTests {
 
     private func fresh() {
-      UserDefaults.standard.removeObject(forKey: ActivityInbox.storageKey)
+      ActivityInbox.forgetForTesting()
     }
 
     private func alert(
@@ -62,6 +62,46 @@ extension DeviceStores {
       ActivityInbox.record([alert("done:s2", session: "s2")])
       ActivityInbox.clear(sessionID: "s1")
       #expect(ActivityInbox.all().map(\.sessionID) == ["s2"])
+    }
+
+    @Test("What was cleared does not come back when the same notice is filed again")
+    func clearingOutlastsTheNotice() {
+      fresh()
+      let raised = Date()
+      ActivityInbox.record([alert("done:s1")], at: raised)
+      ActivityInbox.clearAll(at: raised.addingTimeInterval(1))
+      ActivityInbox.record([alert("done:s1")], at: raised)
+      #expect(ActivityInbox.all().isEmpty)
+    }
+
+    @Test("Clearing one chat does not silence the next thing that happens in it")
+    func clearingDoesNotSilenceLaterNews() {
+      fresh()
+      let raised = Date()
+      ActivityInbox.record([alert("done:s1")], at: raised)
+      ActivityInbox.clear(sessionID: "s1", at: raised.addingTimeInterval(1))
+      ActivityInbox.record([alert("done:s1")], at: raised.addingTimeInterval(2))
+      #expect(ActivityInbox.all().map(\.identifier) == ["done:s1"])
+    }
+
+    @Test("Clearing one chat says nothing about another")
+    func clearingIsNotAGlobalSilence() {
+      fresh()
+      let raised = Date()
+      ActivityInbox.record([alert("done:s1", session: "s1")], at: raised)
+      ActivityInbox.clear(sessionID: "s1", at: raised.addingTimeInterval(1))
+      ActivityInbox.record([alert("done:s2", session: "s2")], at: raised)
+      #expect(ActivityInbox.all().map(\.sessionID) == ["s2"])
+    }
+
+    @Test("An answered request cannot be filed again from a notice still standing")
+    func withdrawalOutlastsTheNotice() {
+      fresh()
+      let raised = Date()
+      ActivityInbox.record([alert("perm:1", reason: .needsApproval)], at: raised)
+      ActivityInbox.withdraw(["perm:1"], at: raised.addingTimeInterval(1))
+      ActivityInbox.record([alert("perm:1", reason: .needsApproval)], at: raised)
+      #expect(ActivityInbox.all().isEmpty)
     }
 
     @Test("A day of a busy fleet cannot grow without bound")

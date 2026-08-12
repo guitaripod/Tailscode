@@ -61,8 +61,8 @@ public struct ActivityWatch: Sendable {
     private var listingActive: [String: Bool] = [:]
     private var listingPrimed = false
     private var openWasRunning: [String: Bool] = [:]
-    private var notifiedPermissionIDs: Set<String> = []
-    private var notifiedQuestionIDs: Set<String> = []
+    private var notifiedPermissionIDs: [String: Set<String>] = [:]
+    private var notifiedQuestionIDs: [String: Set<String>] = [:]
 
     public init() {}
 
@@ -96,6 +96,11 @@ public struct ActivityWatch: Sendable {
     /// question. Returns the alerts to raise and the identifiers of request notifications that
     /// stopped being true — an approval notice left standing after it was answered is a lie
     /// the user taps into and finds nothing.
+    ///
+    /// Every set here is per conversation, like `openWasRunning`. A desktop watches more than one
+    /// at once, and one shared set means every observation of chat A reads chat B's still-pending
+    /// approval as answered: it withdraws the notice, forgets it, and raises it again the next time
+    /// B is looked at — a banner on a loop over a request nobody touched.
     public mutating func observeConversation(
         profileID: String, sessionID: String, title: String, state: ConversationState
     ) -> (alerts: [ActivityAlert], withdrawals: [String]) {
@@ -118,8 +123,8 @@ public struct ActivityWatch: Sendable {
 
         let permissionIDs = Set(state.pendingPermissions.map(\.id))
         for permission in state.pendingPermissions
-        where !notifiedPermissionIDs.contains(permission.id) {
-            notifiedPermissionIDs.insert(permission.id)
+        where !(notifiedPermissionIDs[key]?.contains(permission.id) ?? false) {
+            notifiedPermissionIDs[key, default: []].insert(permission.id)
             let tool = permission.toolName ?? permission.title ?? Localized.text("a tool")
             alerts.append(
                 ActivityAlert(
@@ -132,8 +137,8 @@ public struct ActivityWatch: Sendable {
 
         let questions = state.pendingQuestions
         let questionIDs = Set(questions.map(\.id))
-        for question in questions where !notifiedQuestionIDs.contains(question.id) {
-            notifiedQuestionIDs.insert(question.id)
+        for question in questions where !(notifiedQuestionIDs[key]?.contains(question.id) ?? false) {
+            notifiedQuestionIDs[key, default: []].insert(question.id)
             let text = question.questions.first?.question ?? ""
             alerts.append(
                 ActivityAlert(
@@ -146,13 +151,13 @@ public struct ActivityWatch: Sendable {
         }
 
         var withdrawals: [String] = []
-        for id in notifiedPermissionIDs where !permissionIDs.contains(id) {
+        for id in notifiedPermissionIDs[key] ?? [] where !permissionIDs.contains(id) {
             withdrawals.append("perm:\(id)")
-            notifiedPermissionIDs.remove(id)
+            notifiedPermissionIDs[key]?.remove(id)
         }
-        for id in notifiedQuestionIDs where !questionIDs.contains(id) {
+        for id in notifiedQuestionIDs[key] ?? [] where !questionIDs.contains(id) {
             withdrawals.append("question:\(id)")
-            notifiedQuestionIDs.remove(id)
+            notifiedQuestionIDs[key]?.remove(id)
         }
         return (alerts, withdrawals)
     }

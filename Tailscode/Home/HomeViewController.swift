@@ -31,8 +31,15 @@ final class HomeViewController: UIViewController {
     private var modelChoices: [String: ModelChoice] = [:]
     private var resolvingModels: Set<String> = []
     private var appliedComposerState: String?
+    private var appliedComposeButtonState: String?
     private var composerDraftScope: DraftScope?
     private var resolvedComposeTarget: (profileID: String, directory: String?)?
+    private var scheduledSnapshot = false
+    private var deferredSnapshot = false
+    /// What each card was last drawn from. A diffable identity says which card a row *is*, never
+    /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
+    /// whole board on a tick that changed one word.
+    private var appliedContent: [HomeItem: Int] = [:]
 
     init() {
         let sources = ConnectionController.shared.allBackends().map {
@@ -119,6 +126,7 @@ final class HomeViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if deferredSnapshot { renderSnapshot() }
         if hasAppeared { Task { await load() } }
         hasAppeared = true
     }
@@ -265,7 +273,7 @@ final class HomeViewController: UIViewController {
             UIApplication.willTerminateNotification,
         ] {
             NotificationCenter.default.addObserver(
-                self, selector: #selector(flushDraft), name: name, object: nil)
+                self, selector: #selector(flushState), name: name, object: nil)
         }
     }
 
@@ -293,10 +301,15 @@ final class HomeViewController: UIViewController {
 
     @objc private func sceneWillResign() {
         stopLiveRefresh()
-        DraftStore.flush()
+        flushState()
     }
 
-    @objc private func flushDraft() { DraftStore.flush() }
+    /// Everything this screen writes on a trailing edge, taken now — the debounce window is not
+    /// something a process about to be suspended can wait out.
+    @objc private func flushState() {
+        DraftStore.flush()
+        SessionListCache.flushPendingSave()
+    }
 
     @objc private func openSettings() {
         view.endEditing(true)
@@ -381,6 +394,10 @@ final class HomeViewController: UIViewController {
     /// offer the pick first.
     private func updateComposeButton() {
         let servers = viewModel.servers
+        let state = servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }
+            .joined(separator: "\u{1}")
+        guard state != appliedComposeButtonState else { return }
+        appliedComposeButtonState = state
         let compose = UIImage(systemName: "square.and.pencil")
         let composeItem: UIBarButtonItem
         if servers.count > 1 {
@@ -615,7 +632,33 @@ final class HomeViewController: UIViewController {
         }
     }
 
+    /// Rebuilding the board is what everything that moves asks for, and almost none of them are
+    /// asking for it now.
+    ///
+    /// A finished turn alone runs this three or four times in a row — the listing upsert, the
+    /// activity change, the load's own pass — and the live cadence asks again every couple of
+    /// seconds, from a screen that is very often behind a chat nobody would see it redraw. So a
+    /// request is a request: it is dropped entirely while Home is off screen (`viewWillAppear`
+    /// takes the deferred one), and otherwise coalesced to one pass per runloop turn, so a burst
+    /// costs what one change costs. The deep link is the exception on the off-screen path — it is
+    /// parked with a deadline and a notification tap must not wait behind a screen coming back.
     private func applySnapshot() {
+        guard viewIfLoaded?.window != nil else {
+            deferredSnapshot = true
+            consumePendingDeepLink()
+            return
+        }
+        guard !scheduledSnapshot else { return }
+        scheduledSnapshot = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.scheduledSnapshot else { return }
+            self.scheduledSnapshot = false
+            self.renderSnapshot()
+        }
+    }
+
+    private func renderSnapshot() {
+        deferredSnapshot = false
         savedChats = SavedChatStore.all()
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
         if hasLoadedOnce {
@@ -653,10 +696,14 @@ final class HomeViewController: UIViewController {
         }
         let isUnread = SessionSeenStore.unreadEvaluator()
         let liveIDs = Set(live.map(\.session.id))
-        let savedCards = savedChats
-            .filter { isOpenable($0) && !liveIDs.contains($0.sessionID) }
-            .prefix(3)
-            .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) }
+        let serverIDs = Set(viewModel.servers.map(\.id))
+        let listed = Set(viewModel.entries.map { "\($0.profileID)\u{1}\($0.session.id)" })
+        let savedCards = Array(
+            savedChats.lazy
+                .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
+                .filter { !liveIDs.contains($0.sessionID) }
+                .prefix(3)
+                .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
         if !savedCards.isEmpty {
             snapshot.appendSections([.saved])
             snapshot.appendItems(savedCards.map(HomeItem.saved), toSection: .saved)
@@ -692,8 +739,15 @@ final class HomeViewController: UIViewController {
         }
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
-        let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }
-        if !carried.isEmpty { snapshot.reconfigureItems(carried) }
+        var content: [HomeItem: Int] = [:]
+        var stale: [HomeItem] = []
+        for item in snapshot.itemIdentifiers {
+            let signature = item.contentSignature
+            content[item] = signature
+            if existing.contains(item), appliedContent[item] != signature { stale.append(item) }
+        }
+        appliedContent = content
+        if !stale.isEmpty { snapshot.reconfigureItems(stale) }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
         updateEmptyState(itemCount: snapshot.numberOfItems)
         applyOrbState()
@@ -706,7 +760,7 @@ final class HomeViewController: UIViewController {
     private func openMissed(_ item: MissedActivity) {
         guard let entry = viewModel.entries.first(where: { $0.session.id == item.sessionID })
         else {
-            ActivityInbox.clear(sessionID: item.sessionID)
+            NotificationManager.clearNotices(sessionID: item.sessionID)
             applySnapshot()
             return
         }
@@ -716,24 +770,28 @@ final class HomeViewController: UIViewController {
     /// Home lists a saved chat only while it is something you can actually open.
     /// A bookmark whose conversation was deleted, or whose server was
     /// disconnected, is a tidying-up job for the Saved screen, not a launch pad.
-    private func isOpenable(_ chat: SavedChat) -> Bool {
-        guard viewModel.servers.contains(where: { $0.id == chat.profileID }) else { return false }
-        if viewModel.entries.contains(where: {
-            $0.profileID == chat.profileID && $0.session.id == chat.sessionID
-        }) { return true }
+    private func isOpenable(_ chat: SavedChat, servers: Set<String>, listed: Set<String>) -> Bool {
+        guard servers.contains(chat.profileID) else { return false }
+        if listed.contains("\(chat.profileID)\u{1}\(chat.sessionID)") { return true }
         return !hasLoadedOnce || viewModel.unreachable.contains(chat.profileID)
     }
 
     /// Only structural changes animate, and only once something is on screen to
     /// animate from: a card arriving should slide the list open rather than snap
     /// it, but the per-second content churn of a running agent must not.
+    ///
+    /// A reorder is not a structural change to a reader — the same cards are there — so a poll that
+    /// moves the most recent chat up settles rather than animating, and nothing animates at all
+    /// under a finger: a batch update landing mid-scroll fights the scroll it lands on.
     private func shouldAnimate(
         from previous: NSDiffableDataSourceSnapshot<HomeSection, HomeItem>,
         to next: NSDiffableDataSourceSnapshot<HomeSection, HomeItem>
     ) -> Bool {
-        guard view.window != nil, !previous.itemIdentifiers.isEmpty else { return false }
+        guard view.window != nil, !previous.itemIdentifiers.isEmpty,
+            !collectionView.isDragging, !collectionView.isDecelerating
+        else { return false }
         return previous.sectionIdentifiers != next.sectionIdentifiers
-            || previous.itemIdentifiers != next.itemIdentifiers
+            || Set(previous.itemIdentifiers) != Set(next.itemIdentifiers)
     }
 
     /// Skeletons to hold open for cards that are still out. One per source that
@@ -1060,8 +1118,7 @@ final class HomeViewController: UIViewController {
 
     private func configureCollectionView() {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
-            guard let self,
-                let section = self.dataSource?.snapshot().sectionIdentifiers[safe: index]
+            guard let self, let section = self.dataSource?.sectionIdentifier(for: index)
             else { return Self.listSection() }
             switch section {
             case .live: return Self.liveSection()
@@ -1274,7 +1331,7 @@ final class HomeViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
             guard let self,
-                let section = self.dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
+                let section = self.dataSource.sectionIdentifier(for: indexPath.section)
             else { return }
             switch section {
             case .alerts:
@@ -1285,7 +1342,7 @@ final class HomeViewController: UIViewController {
                     actionTitle: String(localized: "Clear")
                 ) {
                     Theme.Haptics.tap()
-                    ActivityInbox.clearAll()
+                    NotificationManager.clearAllNotices()
                     self.applySnapshot()
                 }
             case .live:

@@ -62,7 +62,7 @@ final class SessionListViewModel {
             entries.removeAll { $0.profileID == profile.id && $0.session.id == session.id }
             entries.append(entry)
             entries.sort { $0.session.updatedAt > $1.session.updatedAt }
-            SessionListCache.save(entries)
+            SessionListCache.scheduleSave(entries)
             onChange?()
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
@@ -270,7 +270,7 @@ final class SessionListViewModel {
         let changed = collected.count != entries.count || verdicts != unreachable
         entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = verdicts
-        SessionListCache.save(entries)
+        SessionListCache.scheduleSave(entries)
         SavedChatStore.reconcile(with: entries)
         ActivityInbox.reconcile(
             entries.map {
@@ -361,7 +361,7 @@ final class SessionListViewModel {
         guard let backend = backend(for: entry) else { return }
         entries.removeAll { $0 == entry }
         forgetLocally(entry)
-        SessionListCache.save(entries)
+        SessionListCache.scheduleSave(entries)
         onChange?()
         do {
             try await backend.deleteSession(entry.session.id)
@@ -382,7 +382,7 @@ final class SessionListViewModel {
         let doomed = Set(deletable)
         entries.removeAll { doomed.contains($0) }
         for entry in deletable { forgetLocally(entry) }
-        SessionListCache.save(entries)
+        SessionListCache.scheduleSave(entries)
         onChange?()
         let results = await withTaskGroup(of: (Int, String?).self) { group in
             for (index, entry) in deletable.enumerated() {

@@ -92,16 +92,49 @@ public enum ActivityInbox {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.activity.missed"
 
+    /// Deliberately under the list's own key rather than beside it: the desktop's durable settings
+    /// file captures state by key prefix, and a horizon that evaporated on the next launch would
+    /// resurrect everything the person cleared that morning.
+    static let clearedKey = "tailscode.activity.missed.cleared"
+
     /// How many edges are worth keeping. A day of a busy fleet is hundreds, and a list nobody can
     /// read to the end is the same as no list — the newest are the ones still worth acting on.
     public static let limit = 60
 
+    /// How long a clear is remembered for. A notice's identifier is derived from stable data — the
+    /// session, the permission, the question — so it names the same event forever, and a horizon
+    /// kept forever would be a list of every notice the app ever raised. A day outlives every way
+    /// a cleared notice comes back (a banner still in Notification Center, a request still pending
+    /// through a relaunch) and nothing beyond that is still the same news.
+    static let clearedHorizon: TimeInterval = 86_400
+
     public static let didChange = Notification.Name("tailscode.activity.missed.didChange")
 
+    /// Read on every render of every surface that shows the list, written only when something
+    /// happens, so the decode is done once and held until this process writes again.
+    nonisolated(unsafe) private static var cache: [MissedActivity]?
+    nonisolated(unsafe) private static var clearedCache: [String: Date]?
+    private static let decoder = JSONDecoder()
+    private static let encoder = JSONEncoder()
+
+    /// The process cache is what makes the list cheap to read on every render, so a suite that
+    /// emptied `UserDefaults` behind it would be testing a list this process no longer believes in.
+    static func forgetForTesting() {
+        defaults.removeObject(forKey: storageKey)
+        defaults.removeObject(forKey: clearedKey)
+        cache = nil
+        clearedCache = nil
+    }
+
     public static func all() -> [MissedActivity] {
+        if let cache { return cache }
         guard let data = defaults.data(forKey: storageKey),
-            let stored = try? JSONDecoder().decode([MissedActivity].self, from: data)
-        else { return [] }
+            let stored = try? decoder.decode([MissedActivity].self, from: data)
+        else {
+            cache = []
+            return []
+        }
+        cache = stored
         return stored
     }
 
@@ -137,13 +170,51 @@ public enum ActivityInbox {
     public static func record(_ entries: [MissedActivity]) {
         guard !entries.isEmpty else { return }
         var current = all()
+        let horizon = cleared()
         var changed = false
-        for entry in entries where !current.contains(where: { $0.identifier == entry.identifier }) {
+        for entry in entries
+        where !current.contains(where: { $0.identifier == entry.identifier })
+            && !wasCleared(entry, horizon: horizon)
+        {
             current.insert(entry, at: 0)
             changed = true
         }
         guard changed else { return }
         write(Array(current.prefix(limit)))
+    }
+
+    /// Whether a notice is the one that was already dismissed rather than a new one wearing the
+    /// same name.
+    ///
+    /// Every producer names its notice after the thing it is about — the session, the permission,
+    /// the question — so the identifier alone cannot tell a re-raise from a repeat. The moment can:
+    /// a notice is dismissed *after* it happened, so anything stamped at or before the clear is the
+    /// same news coming back and anything after it is genuinely newer. This is what makes clearing
+    /// stick against a banner still sitting in the system's own notification list, a request still
+    /// pending across a relaunch, and a second client that never saw the clear.
+    static func wasCleared(_ entry: MissedActivity, horizon: [String: Date]) -> Bool {
+        guard let at = horizon[entry.identifier] else { return false }
+        return entry.at <= at
+    }
+
+    static func cleared() -> [String: Date] {
+        if let clearedCache { return clearedCache }
+        let stored = defaults.dictionary(forKey: clearedKey) as? [String: Double] ?? [:]
+        let horizon = stored.mapValues(Date.init(timeIntervalSince1970:))
+        clearedCache = horizon
+        return horizon
+    }
+
+    /// Records that these notices were dismissed, and forgets the dismissals old enough that the
+    /// event behind them cannot still be in flight.
+    private static func markCleared(_ identifiers: [String], at now: Date) {
+        guard !identifiers.isEmpty else { return }
+        var horizon = cleared()
+        let floor = now.addingTimeInterval(-clearedHorizon)
+        horizon = horizon.filter { $0.value > floor }
+        for identifier in identifiers { horizon[identifier] = now }
+        clearedCache = horizon
+        defaults.set(horizon.mapValues(\.timeIntervalSince1970), forKey: clearedKey)
     }
 
     /// Holds the list against what the servers are saying right now.
@@ -203,31 +274,37 @@ public enum ActivityInbox {
     /// A request answered on the server is no longer something you missed. The notifier withdraws
     /// the notice for exactly this reason, and a list left holding it would send someone to a chat
     /// that is waiting on nothing.
-    public static func withdraw(_ identifiers: [String]) {
+    public static func withdraw(_ identifiers: [String], at now: Date = Date()) {
         guard !identifiers.isEmpty else { return }
         let dropped = Set(identifiers)
         let current = all()
         let kept = current.filter { !dropped.contains($0.identifier) }
+        markCleared(identifiers, at: now)
         guard kept.count != current.count else { return }
         write(kept)
     }
 
     /// Opening a chat is looking at it, which is the only thing that clears its edges — a glance at
     /// the list is not, or the list would empty itself the moment it was drawn.
-    public static func clear(sessionID: String) {
+    public static func clear(sessionID: String, at now: Date = Date()) {
         let current = all()
         let kept = current.filter { $0.sessionID != sessionID }
+        markCleared(
+            current.filter { $0.sessionID == sessionID }.map(\.identifier), at: now)
         guard kept.count != current.count else { return }
         write(kept)
     }
 
-    public static func clearAll() {
-        guard !all().isEmpty else { return }
+    public static func clearAll(at now: Date = Date()) {
+        let current = all()
+        guard !current.isEmpty else { return }
+        markCleared(current.map(\.identifier), at: now)
         write([])
     }
 
     private static func write(_ entries: [MissedActivity]) {
-        if let data = try? JSONEncoder().encode(entries) {
+        cache = entries
+        if let data = try? encoder.encode(entries) {
             defaults.set(data, forKey: storageKey)
         }
         NotificationCenter.default.post(name: didChange, object: nil)

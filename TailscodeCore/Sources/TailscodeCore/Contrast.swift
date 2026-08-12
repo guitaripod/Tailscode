@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// WCAG contrast, computed from the hex strings a theme is actually written in, so a palette can
 /// be asserted rather than eyeballed: a signal colour that no longer reads on its canvas is a bug
@@ -88,7 +89,25 @@ public enum Contrast {
     /// what a palette got wrong and to leave alone what it got right. Returns nil only if the hue
     /// cannot reach the target at any lightness, which is a palette the caller must be told about
     /// rather than one to silently approximate.
+    /// The answer is a pure function of three values out of a tiny domain — a palette's slots, a
+    /// handful of canvases, one ratio — and every label on a busy list asks for it while it is
+    /// being drawn, so it is worked out once and then remembered. A binary search over OKLab is
+    /// twenty-four cube roots deep, and a rainbow-lettered chip asks for one per letter per resolve.
     public static func adjusted(_ hex: String, on background: String, ratio target: Double)
+        -> String?
+    {
+        let key = "\(hex)|\(background)|\(target)"
+        if let memo = cache.withLock({ $0[key] }) { return memo.value }
+        let answer = search(hex, on: background, ratio: target)
+        cache.withLock { $0[key] = Memo(value: answer) }
+        return answer
+    }
+
+    private struct Memo: Sendable { let value: String? }
+
+    private static let cache = Mutex<[String: Memo]>([:])
+
+    private static func search(_ hex: String, on background: String, ratio target: Double)
         -> String?
     {
         guard let color = RGB(hex), let canvas = RGB(background) else { return nil }
