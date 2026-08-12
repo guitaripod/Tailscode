@@ -29,6 +29,10 @@ final class NewChatSheet: NSObject {
     /// What the sheet is doing. It outlives Start: a chat is minted on another machine, and a
     /// sheet that closes the instant a request goes out cannot say whether it worked.
     private var phase: NewChatPhase = .asking
+    /// Folders already read off a server's disk, kept for the sheet's life so walking back up a
+    /// path never asks the machine twice, and a folder it refused is refused from memory.
+    private var listings: [NewChatListingRequest: NewChatListing] = [:]
+    private var fetching: Set<NewChatListingRequest> = []
     private var lastAttempt: (profile: ConnectionProfile, directory: String?)?
     private let status = NewChatStatusView()
     private let cancel = NSButton()
@@ -232,6 +236,39 @@ final class NewChatSheet: NSObject {
         monitor = nil
     }
 
+    /// The shell half: whatever folder the chooser says it wants, answered from this sheet's own
+    /// memory when it can be, and read off the server once when it cannot. A listing back for a
+    /// query the person has already left is dropped by the chooser rather than rendered stale.
+    private func serviceListing() {
+        guard let request = chooser.wantedListing else { return }
+        if let cached = listings[request] {
+            chooser.offer(cached)
+            return
+        }
+        guard fetching.insert(request).inserted else { return }
+        guard let profile = profiles.first(where: { $0.id == request.profileID }),
+            let backend = ServerDirectory.shared.backend(for: profile) as? any FileBrowsingBackend
+        else {
+            listings[request] = NewChatListing(
+                profileID: request.profileID, parent: request.parent, folders: [], failed: true)
+            fetching.remove(request)
+            return
+        }
+        Task { [weak self] in
+            let nodes = try? await backend.listFiles(path: request.parent)
+            guard let self else { return }
+            self.fetching.remove(request)
+            let listing = NewChatListing(
+                profileID: request.profileID, parent: request.parent,
+                folders: nodes.map { $0.filter(\.isDirectory).map(\.name) } ?? [],
+                failed: nodes == nil)
+            self.listings[request] = listing
+            self.chooser.offer(listing)
+            self.serviceListing()
+            if self.phase == .asking { self.rebuild() }
+        }
+    }
+
     /// Only a server that is this same Mac offers to browse: a native folder picker is the truth
     /// about this disk and a lie about anyone else's, and a remote listing is the file tree's job,
     /// not a modal's.
@@ -270,6 +307,7 @@ final class NewChatSheet: NSObject {
                 let command = NewChatChooser.command(for: chord, mode: self.chooser.mode)
             else { return event }
             let answer = self.chooser.handle(command)
+            self.serviceListing()
             self.rebuild()
             self.apply(answer.outcome)
             return answer.handled ? nil : event
@@ -569,6 +607,7 @@ extension NewChatSheet: NSTableViewDataSource, NSTableViewDelegate {
 extension NewChatSheet: NSTextFieldDelegate {
     func controlTextDidChange(_ notification: Notification) {
         chooser.type(field.stringValue)
+        serviceListing()
         rebuild()
     }
 }
@@ -683,6 +722,7 @@ private final class NewChatRowView: NSTableCellView {
         case .project: return MacTheme.Color.secondaryLabel
         case .typed: return MacTheme.Color.accent
         case .browse: return MacTheme.Color.secondaryLabel
+        case .listed: return MacTheme.Color.secondaryLabel
         }
     }
 

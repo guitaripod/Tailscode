@@ -38,6 +38,10 @@ final class NewChatViewController: UIViewController {
     }
 
     private let viewModel: SessionListViewModel
+    /// Folders already read off a server's disk, kept for the sheet's life so walking back up a
+    /// path never asks the machine twice, and a folder it refused is refused from memory.
+    private var listings: [NewChatListingRequest: NewChatListing] = [:]
+    private var fetching: Set<NewChatListingRequest> = []
     private let purpose: NewChatPurpose
     private var chooser: NewChatChooser
     private let serverButton = UIButton(configuration: Theme.Glass.buttonConfiguration())
@@ -345,6 +349,7 @@ final class NewChatViewController: UIViewController {
         case .project: return "folder.fill"
         case .typed: return "plus.circle"
         case .browse: return "folder.badge.plus"
+        case .listed: return "folder"
         }
     }
 
@@ -355,6 +360,7 @@ final class NewChatViewController: UIViewController {
         case .project: return Theme.Color.accent
         case .typed: return Theme.Color.accent
         case .browse: return Theme.Color.accent
+        case .listed: return Theme.Color.secondaryLabel
         }
     }
 
@@ -452,7 +458,42 @@ final class NewChatViewController: UIViewController {
 
     @objc private func fieldChanged() {
         chooser.type(field.text ?? "")
+        serviceListing()
         reload()
+    }
+
+    /// The shell half: whatever folder the chooser says it wants, answered from this sheet's own
+    /// memory when it can be, and read off the server once when it cannot. A listing back for a
+    /// query the person has already left is dropped by the chooser rather than rendered stale.
+    private func serviceListing() {
+        guard let request = chooser.wantedListing else { return }
+        if let cached = listings[request] {
+            chooser.offer(cached)
+            return
+        }
+        guard fetching.insert(request).inserted else { return }
+        guard
+            let backend = viewModel.backend(forProfileID: request.profileID)
+                as? (any FileBrowsingBackend)
+        else {
+            listings[request] = NewChatListing(
+                profileID: request.profileID, parent: request.parent, folders: [], failed: true)
+            fetching.remove(request)
+            return
+        }
+        Task { [weak self] in
+            let nodes = try? await backend.listFiles(path: request.parent)
+            guard let self else { return }
+            self.fetching.remove(request)
+            let listing = NewChatListing(
+                profileID: request.profileID, parent: request.parent,
+                folders: nodes.map { $0.filter(\.isDirectory).map(\.name) } ?? [],
+                failed: nodes == nil)
+            self.listings[request] = listing
+            self.chooser.offer(listing)
+            self.serviceListing()
+            self.reload()
+        }
     }
 
     @objc private func startTapped() {
@@ -741,6 +782,7 @@ final class NewChatViewController: UIViewController {
             return false
         }
         let answer = chooser.handle(command)
+        serviceListing()
         syncMode()
         reload()
         apply(answer.outcome)

@@ -216,6 +216,66 @@ struct ChatListTests {
         #expect(FuzzyRank.hit("", in: "/home/m")?.highlight.isEmpty == true)
     }
 
+    @Test("A path splits into the folder to list and the name to finish")
+    func pathCompletionParts() {
+        #expect(PathCompletion.parent(of: "/home/m/De") == "/home/m")
+        #expect(PathCompletion.component(of: "/home/m/De") == "De")
+        #expect(PathCompletion.parent(of: "/home/m/") == "/home/m")
+        #expect(PathCompletion.component(of: "/home/m/") == "")
+        #expect(PathCompletion.parent(of: "~/De") == "~")
+        #expect(PathCompletion.parent(of: "~") == "~")
+        #expect(PathCompletion.component(of: "~") == "")
+        #expect(PathCompletion.parent(of: "/ho") == "/")
+        #expect(PathCompletion.parent(of: "/") == "/")
+        #expect(PathCompletion.parent(of: "dev") == nil)
+        #expect(PathCompletion.joined(parent: "/", name: "srv") == "/srv")
+        #expect(PathCompletion.joined(parent: "~", name: "Dev") == "~/Dev")
+    }
+
+    @Test("Tab finishes what the disk can vouch for, spelled the disk's way")
+    func pathCompletionTab() {
+        let listing = NewChatListing(
+            profileID: "a", parent: "/home/m",
+            folders: ["Desktop", "Dev", "Documents", "notes"])
+        #expect(PathCompletion.completed(query: "/home/m/dev", listing: listing) == "/home/m/Dev/")
+        #expect(PathCompletion.completed(query: "/home/m/De", listing: listing) == nil)
+        #expect(PathCompletion.completed(query: "/home/m/D", listing: listing) == nil)
+        #expect(
+            PathCompletion.completed(
+                query: "/home/m/De",
+                listing: NewChatListing(
+                    profileID: "a", parent: "/home/m", folders: ["Desktop", "Destined"]))
+                == "/home/m/Des")
+        #expect(PathCompletion.completed(query: "/home/m/n", listing: listing) == "/home/m/notes/")
+        #expect(PathCompletion.completed(query: "/home/m/zz", listing: listing) == nil)
+        #expect(PathCompletion.completed(query: "/other/D", listing: listing) == nil)
+        #expect(
+            PathCompletion.completed(
+                query: "/home/m/x",
+                listing: NewChatListing(
+                    profileID: "a", parent: "/home/m", folders: [], failed: true)) == nil)
+        let root = NewChatListing(profileID: "a", parent: "/", folders: ["srv", "opt"])
+        #expect(PathCompletion.completed(query: "/s", listing: root) == "/srv/")
+        let home = NewChatListing(profileID: "a", parent: "~", folders: ["Dev"])
+        #expect(PathCompletion.completed(query: "~/d", listing: home) == "~/Dev/")
+        #expect(PathCompletion.commonPrefix(of: ["Tailscode", "tailscale"]) == "Tailsc")
+        #expect(PathCompletion.commonPrefix(of: ["one"]) == "one")
+        #expect(PathCompletion.commonPrefix(of: []) == "")
+    }
+
+    @Test("The disk's folders rank case-blind with their letters marked")
+    func pathCompletionMatches() {
+        let listing = NewChatListing(
+            profileID: "a", parent: "/home/m", folders: ["Dev", "notes", "media"])
+        let all = PathCompletion.matches(query: "/home/m/", listing: listing)
+        #expect(all.map(\.name) == ["Dev", "media", "notes"])
+        let some = PathCompletion.matches(query: "/home/m/dE", listing: listing)
+        #expect(some.map(\.name) == ["Dev"])
+        #expect(some.first?.highlight == [8, 9])
+        #expect(some.first?.path == "/home/m/Dev")
+        #expect(PathCompletion.matches(query: "kontu", listing: listing).isEmpty)
+    }
+
     @Test("A folder name is read off the path, parent and all")
     func pathParts() {
         #expect(NewChatChooser.name(of: "/home/m/Dev/thing") == "thing")

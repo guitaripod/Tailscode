@@ -34,6 +34,11 @@ final class NewChatWindow: @unchecked Sendable {
     /// same server, so a corrected port lands the person in the chat they asked for.
     private var lastAttempt: (profileID: String, directory: String?)?
 
+    /// Folders already read off a server's disk, kept for the window's life so walking back up a
+    /// path never asks the machine twice, and a folder it refused is refused from memory.
+    private var listings: [NewChatListingRequest: NewChatListing] = [:]
+    private var fetching: Set<NewChatListingRequest> = []
+
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
     private let heading: UnsafeMutablePointer<GtkWidget>
@@ -275,7 +280,45 @@ final class NewChatWindow: @unchecked Sendable {
         let typed = String(cString: raw)
         guard typed != chooser.query else { return }
         chooser.type(typed)
+        serviceListing()
         render()
+    }
+
+    /// The shell half: whatever folder the chooser says it wants, answered from this window's own
+    /// memory when it can be, and read off the server once when it cannot. The answer lands on the
+    /// main context and is offered back to the chooser, which drops anything the person has
+    /// already typed past.
+    private func serviceListing() {
+        guard let request = chooser.wantedListing else { return }
+        if let cached = listings[request] {
+            chooser.offer(cached)
+            return
+        }
+        guard fetching.insert(request).inserted else { return }
+        Task { [weak self] in
+            let folders = await Self.readFolders(request)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.fetching.remove(request)
+                let listing = NewChatListing(
+                    profileID: request.profileID, parent: request.parent,
+                    folders: folders ?? [], failed: folders == nil)
+                self.listings[request] = listing
+                self.chooser.offer(listing)
+                self.serviceListing()
+                self.render()
+            }
+        }
+    }
+
+    private static func readFolders(_ request: NewChatListingRequest) async -> [String]? {
+        let directory = ServerDirectory.shared
+        guard
+            let profile = await directory.profiles().first(where: { $0.id == request.profileID }),
+            let backend = await directory.backend(for: profile) as? any FileBrowsingBackend,
+            let nodes = try? await backend.listFiles(path: request.parent)
+        else { return nil }
+        return nodes.filter(\.isDirectory).map(\.name)
     }
 
     /// Puts the model's own text into the field, caret at the end, so the next letter continues
@@ -329,6 +372,7 @@ final class NewChatWindow: @unchecked Sendable {
             apply(outcome)
             return true
         }
+        serviceListing()
         writeQuery(chooser.query)
         render()
         if chooser.mode != before { applyMode() }
@@ -365,6 +409,7 @@ final class NewChatWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 self.chooser.type(picked)
+                self.serviceListing()
                 self.writeQuery(picked)
                 self.render()
                 self.applyMode()

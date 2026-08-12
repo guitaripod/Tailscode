@@ -43,6 +43,9 @@ public enum NewChatOrigin: Int, Sendable, Equatable, Comparable, CaseIterable {
     case typed = 3
     /// The server's own folder listing, opened as a screen of its own.
     case browse = 4
+    /// A folder read live off the server's disk because the query is a path — the shell's answer,
+    /// standing beside the remembered ones.
+    case listed = 5
 
     public static func < (lhs: NewChatOrigin, rhs: NewChatOrigin) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -55,6 +58,7 @@ public enum NewChatOrigin: Int, Sendable, Equatable, Comparable, CaseIterable {
         case .project: return nil
         case .typed: return Localized.text("New")
         case .browse: return nil
+        case .listed: return nil
         }
     }
 }
@@ -176,6 +180,7 @@ public struct NewChatChooser: Sendable, Equatable {
     public private(set) var cursor: Int
     public private(set) var mode: NewChatMode
     public private(set) var rows: [NewChatRow]
+    public private(set) var listing: NewChatListing?
 
     /// - Parameter preferredServer: the server the person last started a chat on, pre-chosen rather
     ///   than merely pre-focused — one machine is the overwhelmingly common answer and re-asking it
@@ -255,6 +260,32 @@ public struct NewChatChooser: Sendable, Equatable {
         rebuild()
     }
 
+    /// What the shell half of this modal wants fetched: the folder the typed path sits in, on the
+    /// server the chat would start on — asked only while the query is a path, and only once per
+    /// folder, because the parent changes at `/` boundaries rather than on every letter.
+    public var wantedListing: NewChatListingRequest? {
+        guard let server else { return nil }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parent = PathCompletion.parent(of: trimmed) else { return nil }
+        let request = NewChatListingRequest(profileID: server.profileID, parent: parent)
+        if let listing, listing.profileID == request.profileID, listing.parent == request.parent {
+            return nil
+        }
+        return request
+    }
+
+    /// A listing back from the server. One that no longer answers the query being typed — the
+    /// person has moved on, or switched servers — is dropped rather than rendered stale.
+    public mutating func offer(_ answered: NewChatListing) {
+        guard answered.profileID == server?.profileID else { return }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard PathCompletion.parent(of: trimmed) == answered.parent else { return }
+        listing = answered
+        let path = focused?.path
+        rebuild()
+        if let path, let index = rows.firstIndex(where: { $0.path == path }) { cursor = index }
+    }
+
     public mutating func chooseServer(_ profileID: String) {
         guard let index = servers.firstIndex(where: { $0.profileID == profileID }) else { return }
         serverIndex = index
@@ -292,9 +323,7 @@ public struct NewChatChooser: Sendable, Equatable {
         case .activate:
             return (true, activate())
         case .complete:
-            guard let row = focused, row.origin != .browse else { return (true, nil) }
-            query = row.path
-            rebuild()
+            return (true, complete())
         case .nextServer:
             guard servers.count > 1 else { return (true, nil) }
             serverIndex = (serverIndex + 1) % servers.count
@@ -335,6 +364,25 @@ public struct NewChatChooser: Sendable, Equatable {
         return .start(profileID: server.profileID, directory: directory)
     }
 
+    /// Tab. At the top of the list it is the shell's tab — the unambiguous rest of the folder
+    /// name, case corrected to the disk — because the top row is the typed path itself; a cursor
+    /// deliberately walked onto a row keeps the old meaning and adopts that row whole.
+    private mutating func complete() -> NewChatOutcome? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cursor == 0, let listing, listing.profileID == server?.profileID,
+            let extended = PathCompletion.completed(query: trimmed, listing: listing),
+            extended != trimmed
+        {
+            query = extended
+            rebuild()
+            return nil
+        }
+        guard let row = focused, row.origin != .browse else { return nil }
+        query = row.path
+        rebuild()
+        return nil
+    }
+
     /// Carries the person's place across a re-gather — a folder just starred, a listing that
     /// arrived — so the list changing under the cursor does not move it.
     public func restated(directories: [String: NewChatDirectories], entries: [SessionEntry] = [])
@@ -343,6 +391,8 @@ public struct NewChatChooser: Sendable, Equatable {
         var next = NewChatChooser(
             servers: servers, directories: directories, entries: entries,
             preferredServer: server?.profileID, query: query, mode: mode)
+        next.listing = listing
+        next.rebuild()
         if let path = focused?.path,
             let index = next.rows.firstIndex(where: { $0.path == path })
         {
@@ -357,13 +407,13 @@ public struct NewChatChooser: Sendable, Equatable {
         rows = Self.build(
             directories: server.map { directories[$0.profileID] ?? NewChatDirectories() }
                 ?? NewChatDirectories(),
-            query: query, server: server, chatCounts: chatCounts)
+            query: query, server: server, chatCounts: chatCounts, listing: listing)
         cursor = min(cursor, max(0, rows.count - 1))
     }
 
     private static func build(
         directories: NewChatDirectories, query: String, server: NewChatServer?,
-        chatCounts: [String: Int]
+        chatCounts: [String: Int], listing: NewChatListing?
     ) -> [NewChatRow] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var ordered: [(origin: NewChatOrigin, path: String, rank: Int)] = []
@@ -399,7 +449,18 @@ public struct NewChatChooser: Sendable, Equatable {
         }
 
         var rows = matched.prefix(visibleLimit).map(\.row)
-        if isPathLike(trimmed), !seen.contains(trimmed) {
+        if let listing, let profileID = server?.profileID, listing.profileID == profileID {
+            var shown = Set(rows.map(\.path))
+            for candidate in PathCompletion.matches(query: trimmed, listing: listing)
+            where shown.insert(candidate.path).inserted && rows.count < visibleLimit {
+                rows.append(
+                    NewChatRow(
+                        origin: .listed, path: candidate.path, title: candidate.name,
+                        detail: parent(of: candidate.path), highlight: candidate.highlight,
+                        chats: chatCounts["\(profileID)\u{1}\(candidate.path)"] ?? 0))
+            }
+        }
+        if isPathLike(trimmed), !seen.contains(trimmed), !rows.contains(where: { $0.path == trimmed }) {
             rows.insert(
                 NewChatRow(
                     origin: .typed, path: trimmed, title: name(of: trimmed),
@@ -591,6 +652,58 @@ public enum NewChatChooserCheck {
         expect(chooser.mode == .typing, "i goes back to the field")
         expect(chooser.handle(.complete).outcome == nil, "tab completes rather than starting")
         expect(chooser.query == "/home/m/Dev/starred", "and fills the field from the cursor")
+
+        var shell = NewChatChooser(servers: [alpha, beta], directories: directories)
+        expect(shell.wantedListing == nil, "an empty field asks the disk for nothing")
+        shell.type("kontu")
+        expect(shell.wantedListing == nil, "bare letters are a search, not a walk")
+        shell.type("/home/m/De")
+        expect(
+            shell.wantedListing == NewChatListingRequest(profileID: "a", parent: "/home/m"),
+            "a typed path asks for the folder it sits in")
+        shell.offer(
+            NewChatListing(
+                profileID: "a", parent: "/home/m", folders: ["Desktop", "Dev", "notes"]))
+        expect(shell.wantedListing == nil, "an answered folder is not asked for again")
+        expect(
+            shell.rows.contains { $0.origin == .listed && $0.path == "/home/m/Dev" },
+            "the disk's own folders join the list")
+        expect(
+            shell.rows.contains { $0.origin == .listed && $0.path == "/home/m/notes" } == false,
+            "but only the ones the letters find")
+        expect(shell.rows.first?.origin == .typed, "the typed path still leads")
+        _ = shell.handle(.complete)
+        expect(shell.query == "/home/m/De", "a tab with nothing shared to add holds still")
+        shell.type("/home/m/dev")
+        _ = shell.handle(.complete)
+        expect(shell.query == "/home/m/Dev/", "a lone match completes whole, case corrected")
+        expect(
+            shell.wantedListing == NewChatListingRequest(profileID: "a", parent: "/home/m/Dev"),
+            "and the walk continues into it")
+        shell.offer(NewChatListing(profileID: "a", parent: "/home/m/Dev", folders: [], failed: true))
+        expect(shell.wantedListing == nil, "a folder the server refused is not asked for again")
+        expect(
+            shell.rows.contains { $0.origin == .listed } == false,
+            "and offers no rows it cannot vouch for")
+        _ = shell.handle(.nextServer)
+        expect(
+            shell.wantedListing == NewChatListingRequest(profileID: "b", parent: "/home/m/Dev"),
+            "switching servers asks the new machine")
+        shell.offer(NewChatListing(profileID: "a", parent: "/home/m/Dev", folders: ["stale"]))
+        expect(
+            shell.rows.contains { $0.origin == .listed } == false,
+            "an answer from the wrong server is dropped")
+
+        var lcp = NewChatChooser(servers: [alpha], directories: [:], query: "/srv/pro")
+        lcp.offer(
+            NewChatListing(
+                profileID: "a", parent: "/srv", folders: ["projects", "Programs", "other"]))
+        _ = lcp.handle(.complete)
+        expect(lcp.query == "/srv/pro", "an ambiguous tab adds only what every match shares")
+        expect(
+            lcp.rows.contains { $0.path == "/srv/projects" }
+                && lcp.rows.contains { $0.path == "/srv/Programs" },
+            "and the choices stay on screen, found case-blind")
 
         var normal = NewChatChooser(servers: [alpha], directories: directories, mode: .normal)
         expect(normal.heading == alpha.title, "one server is still named, never inferred")
