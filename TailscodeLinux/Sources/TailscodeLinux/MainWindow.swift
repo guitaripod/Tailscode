@@ -2289,8 +2289,12 @@ final class MainWindow: @unchecked Sendable {
             parent: window, facts: CompactPreflight.make(state: pane.lastState),
             initialInstruction: initialInstruction,
             draft: pane.compactionScope
-        ) { instruction in
-            Task { try? await conversation.compact(instructions: instruction) }
+        ) { [choice = pane.promptChoice] instruction in
+            Task {
+                try? await conversation.compact(
+                    instructions: instruction, model: choice.model,
+                    reasoningEffort: choice.effort)
+            }
         }
     }
 

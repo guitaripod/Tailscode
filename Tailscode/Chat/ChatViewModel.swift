@@ -338,16 +338,22 @@ final class ChatViewModel {
     /// Runs a server-side command. Where a command is just prompt text (any CLI-backed agent) it
     /// goes through the ordinary send path, so it echoes into the transcript, engages the thinking
     /// state, and starts a Live Activity exactly like a typed message — anything else would make
-    /// the app look frozen until the server streamed something back.
+    /// the app look frozen until the server streamed something back. A command is a turn either
+    /// way, so it leaves carrying the model and effort the composer is wearing: a run that carried
+    /// nothing let the server answer on its own default, and the chat then renamed itself after a
+    /// model nobody picked.
     func run(_ command: AgentCommand, arguments: String? = nil) {
         if backend.resolvesCommandsFromPromptText {
             send(command.invocation(arguments: arguments))
             return
         }
+        let model = selectedModel
+        let effort = currentEffort
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await conversation.run(command, arguments: arguments)
+                try await conversation.run(
+                    command, arguments: arguments, model: model, reasoningEffort: effort)
             } catch {
                 self.onError?(String(localized: "Couldn't run /\(command.name)."))
             }

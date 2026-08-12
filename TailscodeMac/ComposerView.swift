@@ -9,7 +9,7 @@ import TailscodeCore
 @MainActor
 final class ComposerView: NSView {
     var onSubmitPrompt: ((String, ModelSelection?, String?, [PromptAttachment]) -> Void)?
-    var onRunCommand: ((AgentCommand, String?) -> Void)?
+    var onRunCommand: ((AgentCommand, String?, ModelSelection?, String?) -> Void)?
     var onCompactRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
     var onToast: ((String) -> Void)?
@@ -683,7 +683,7 @@ final class ComposerView: NSView {
             return true
         case .run(let command, let arguments):
             SlashRecents.record(command.name)
-            onRunCommand?(command, arguments)
+            onRunCommand?(command, arguments, chosenModel, chosenEffort)
             return true
         case .plainText:
             return false

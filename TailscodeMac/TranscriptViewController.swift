@@ -689,9 +689,12 @@ final class TranscriptViewController: NSViewController {
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
             self?.sendPrompt(text, model: model, effort: effort, attachments: attachments)
         }
-        composer.onRunCommand = { [weak self] command, arguments in
+        composer.onRunCommand = { [weak self] command, arguments, model, effort in
             guard let conversation = self?.conversation else { return }
-            Task { try? await conversation.run(command, arguments: arguments) }
+            Task {
+                try? await conversation.run(
+                    command, arguments: arguments, model: model, reasoningEffort: effort)
+            }
         }
         composer.onCompactRequested = { [weak self] instruction in
             self?.presentCompactPreflight(initialInstruction: instruction)
@@ -884,9 +887,11 @@ final class TranscriptViewController: NSViewController {
             facts: CompactPreflight.make(state: lastState),
             initialInstruction: initialInstruction,
             draft: .compaction(profileID: entry.profileID, sessionID: entry.session.id)
-        ) { instruction in
+        ) { [choice = composer.promptChoice] instruction in
             Task {
-                try? await conversation.compact(instructions: instruction)
+                try? await conversation.compact(
+                    instructions: instruction, model: choice.model,
+                    reasoningEffort: choice.effort)
             }
         }
     }
@@ -1333,15 +1338,22 @@ final class TranscriptViewController: NSViewController {
             clear.hasDestructiveAction = true
         }
         alert.addButton(withTitle: Localized.text("Cancel"))
+        let choice = composer.promptChoice
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn {
                 let condition = field.stringValue.trimmingCharacters(
                     in: .whitespacesAndNewlines)
                 guard !condition.isEmpty else { return }
                 DraftStore.clear(scope)
-                Task { try? await conversation.setGoal(condition) }
+                Task {
+                    try? await conversation.setGoal(
+                        condition, model: choice.model, reasoningEffort: choice.effort)
+                }
             } else if hasGoal, response == .alertSecondButtonReturn {
-                Task { try? await conversation.clearGoal() }
+                Task {
+                    try? await conversation.clearGoal(
+                        model: choice.model, reasoningEffort: choice.effort)
+                }
             }
         }
     }

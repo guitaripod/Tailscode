@@ -147,6 +147,10 @@ final class ChatPane: @unchecked Sendable {
     private let aura = AuraPainter()
     var ultracodeInFlight = false
 
+    /// What the next turn out of this pane runs on, however it is started — a typed prompt, a
+    /// slash command, or a compaction someone opened from the window's own chrome.
+    var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+
     var sessionID: String? { entry?.session.id }
     var auraActive: Bool { aura.isActive }
 
@@ -3442,7 +3446,12 @@ final class ChatPane: @unchecked Sendable {
         case .run(let command, let arguments):
             guard let conversation else { return false }
             SlashRecents.record(command.name)
-            Task { try? await conversation.run(command, arguments: arguments) }
+            let model = chosenModel
+            let effort = chosenEffort
+            Task {
+                try? await conversation.run(
+                    command, arguments: arguments, model: model, reasoningEffort: effort)
+            }
             return true
         case .plainText:
             return false

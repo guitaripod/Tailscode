@@ -332,7 +332,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .slashDispatch, area: "composer", title: "A typed command runs",
             spec:
-                "A slash command typed out and sent goes exactly where picking it from the list would have sent it, through the shared SlashDispatch.decide: /compact always through its preflight carrying whatever instruction was typed after it, a command the server knows through the command route with its arguments, and anything the server has never heard of out as the plain words that were written — the server is the authority on its own grammar, and an agent that resolves its own slash grammar from prompt text gets the prompt untouched."),
+                "A slash command typed out and sent goes exactly where picking it from the list would have sent it, through the shared SlashDispatch.decide: /compact always through its preflight carrying whatever instruction was typed after it, a command the server knows through the command route with its arguments and the model and effort the composer is wearing, and anything the server has never heard of out as the plain words that were written — the server is the authority on its own grammar, and an agent that resolves its own slash grammar from prompt text gets the prompt untouched."),
         CapabilityDefinition(
             id: .commandCatalog, area: "composer", title: "Browse every command",
             spec:
@@ -352,7 +352,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .modelEffortPicker, area: "composer", title: "Model and effort choice",
             spec:
-                "The next turn's model and reasoning effort are pickable from availableModels; the choice rides send(model:reasoningEffort:). A pick is recorded per session and as the server's last-used default (ModelPreferenceStore/EffortPreferenceStore.recordPick), and a chat opens on initialModel/initialEffort — never a hardcoded default. Claude Code's effort menu includes ultracode, which the server maps to xhigh plus standing workflow orchestration; typing the word in a prompt opts that turn in the same way."),
+                "The next turn's model and reasoning effort are pickable from availableModels, and the choice rides every road a turn starts on — send(model:reasoningEffort:) for a typed prompt, run(_:arguments:model:reasoningEffort:) for a slash command, a compaction and a goal — because a command is a turn and a server asked for nothing answers on its own default, which is how a chat ends up wearing the name of a model that never answered it. A pick is recorded per session and as the server's last-used default (ModelPreferenceStore/EffortPreferenceStore.recordPick), and a chat opens on initialModel/initialEffort — never a hardcoded default. A command that pins its own model still wins on the server: the pick is what the client asks for, not what it orders. Claude Code's effort menu includes ultracode, which the server maps to xhigh plus standing workflow orchestration; typing the word in a prompt opts that turn in the same way."),
         CapabilityDefinition(
             id: .unifiedModelChooser, area: "composer", title: "One selector over every provider",
             spec:
