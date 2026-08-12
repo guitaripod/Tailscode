@@ -7,8 +7,12 @@ import TailscodeCore
 @MainActor
 enum UpdateReadingViews {
     /// Everything under the headline, in the order Core wrote it: what this copy is, what is true
-    /// of it, what it runs and what it could run — each number with the source that said it — and
-    /// the first few things an update would bring in.
+    /// of it, what it runs and what it could run — each number with the source that said it — the
+    /// first few things an update would bring in, and then the obstacle's own list.
+    ///
+    /// "The checkout has uncommitted changes" is a sentence nobody can act on until it says which,
+    /// so the named items follow the summary in the same idiom. They are capped exactly as the
+    /// commits are, and Core has already spent the last line saying how many it left out.
     static func lines(for reading: UpdateReading, now: Date = Date()) -> [NSView] {
         var views: [NSView] = []
         if let subtitle = reading.subtitle {
@@ -33,6 +37,12 @@ enum UpdateReadingViews {
                 RowKit.wrapping(
                     "· \(change)", font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
+        }
+        for detail in (reading.verdict.offer?.detailLines ?? []).prefix(5) {
+            views.append(
+                RowKit.wrapping(
+                    "· \(detail)", font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
         }
         return views
     }
@@ -67,6 +77,9 @@ enum UpdateReadingViews {
         case .installHere:
             Task { await MacUpdateWatch.shared.install(reading.component) }
             return Localized.text("Asking %@ to fetch and build…", reading.title)
+        case .restartHere:
+            Task { await MacUpdateWatch.shared.restart(reading.component) }
+            return Localized.text("Asking %@ to load the build it already has…", reading.title)
         case .openStore(let url), .openPage(let url):
             guard let target = URL(string: url) else { return nil }
             NSWorkspace.shared.open(target)
@@ -182,6 +195,7 @@ final class UpdateCardView: NSView {
     private let newest = UpdateVersionLine(caption: Localized.text("Newest known"))
     private let supervisor = NSTextField(labelWithString: "")
     private let changes = (0..<5).map { _ in NSTextField(wrappingLabelWithString: "") }
+    private let details = (0..<5).map { _ in NSTextField(wrappingLabelWithString: "") }
     private let promise = NSTextField(wrappingLabelWithString: "")
     private let actionButton = NSButton()
     private let asideButton = NSButton()
@@ -206,7 +220,7 @@ final class UpdateCardView: NSView {
             label.lineBreakMode = .byTruncatingTail
             label.translatesAutoresizingMaskIntoConstraints = false
         }
-        for label in [subtitle, detail, asideNote, promise] + changes {
+        for label in [subtitle, detail, asideNote, promise] + changes + details {
             label.isSelectable = true
             label.translatesAutoresizingMaskIntoConstraints = false
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -240,6 +254,7 @@ final class UpdateCardView: NSView {
         column.translatesAutoresizingMaskIntoConstraints = false
         var rows: [NSView] = [header, subtitle, detail, asideNote, running, newest, supervisor]
         rows.append(contentsOf: changes as [NSView])
+        rows.append(contentsOf: details as [NSView])
         rows.append(promise)
         rows.append(buttons)
         for row in rows { column.addArrangedSubview(row) }
@@ -290,6 +305,10 @@ final class UpdateCardView: NSView {
         for (index, label) in changes.enumerated() {
             write(label, index < subjects.count ? "· \(subjects[index])" : nil)
         }
+        let obstacle = acknowledged ? [] : (reading.verdict.offer?.detailLines ?? [])
+        for (index, label) in details.enumerated() {
+            write(label, index < obstacle.count ? "· \(obstacle[index])" : nil)
+        }
 
         write(promise, invitation?.promise)
         actionButton.isHidden = invitation == nil
@@ -315,6 +334,10 @@ final class UpdateCardView: NSView {
         for label in [detail] + changes {
             label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.secondaryLabel
+        }
+        for label in details {
+            label.font = MacTheme.Ramp.font(.panelFootnote)
+            label.textColor = MacTheme.Color.tertiaryLabel
         }
         running.applyTheme()
         newest.applyTheme()
@@ -381,6 +404,97 @@ final class UpdateVersionLine: NSStackView {
         caption.textColor = MacTheme.Color.tertiaryLabel
         value.font = MacTheme.Ramp.font(.panelFootnote)
         value.textColor = isKnown ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel
+    }
+}
+
+/// The one switch on this screen that is not this device's.
+///
+/// Whether a machine keeps itself current is the machine's own policy, so the row renders what that
+/// machine last answered and never what this Mac last asked for — a switch drawn from a request
+/// would sit proudly on for a bridge that never received it, and two Macs would disagree about the
+/// same server. While the machine is being asked the checkbox is simply unavailable rather than
+/// moved: it takes its position from an answer, and a refusal therefore leaves it exactly where the
+/// machine put it.
+///
+/// The sentence under it is Core's whole account — what the machine will do, when it last did it,
+/// and what it is holding off for right now — and a machine too old to have a policy at all gets no
+/// row, because a switch that does nothing is worse than a question left unasked.
+@MainActor
+final class AutoUpdateRow: NSView {
+    var onSet: ((Bool) -> Void)?
+
+    private let toggle = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let footnote = NSTextField(wrappingLabelWithString: "")
+    private var machineSaid = false
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        toggle.title = Localized.text("Keep this server up to date")
+        toggle.target = self
+        toggle.action = #selector(toggled)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        footnote.isSelectable = true
+        footnote.translatesAutoresizingMaskIntoConstraints = false
+        footnote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let column = NSStackView(views: [toggle, footnote])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+        isHidden = true
+        applyTheme()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func write(_ automation: UpdateAutomation?, now: Date = Date()) {
+        guard let automation else {
+            isHidden = true
+            return
+        }
+        isHidden = false
+        machineSaid = automation.enabled
+        toggle.state = automation.enabled ? .on : .off
+        toggle.isEnabled = true
+        footnote.stringValue = automation.sentence(now: now)
+    }
+
+    /// The stretch between the press and the machine's answer. The switch waits where the pointer
+    /// left it and takes no further presses, and every way out of that wait writes it from what the
+    /// machine said — so a refusal puts it back where the machine had it rather than leaving this
+    /// Mac's request standing as though it were an answer.
+    func setAsking(_ asking: Bool) {
+        toggle.isEnabled = !asking
+        guard !asking else { return }
+        toggle.state = machineSaid ? .on : .off
+    }
+
+    func applyTheme() {
+        toggle.font = MacTheme.Ramp.font(.panelLabel)
+        footnote.font = MacTheme.Ramp.font(.panelFootnote)
+        footnote.textColor = MacTheme.Color.secondaryLabel
+    }
+
+    @objc private func repaint() {
+        applyTheme()
+    }
+
+    @objc private func toggled() {
+        let wanted = toggle.state == .on
+        toggle.isEnabled = false
+        onSet?(wanted)
     }
 }
 

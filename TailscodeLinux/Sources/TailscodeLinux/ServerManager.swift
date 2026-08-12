@@ -257,6 +257,13 @@ final class ServerManager: @unchecked Sendable {
             slots.softwareActions = softwareActions
             adw_expander_row_add_row(ptr(row), software)
 
+            let auto = Self.autoUpdateRow(profileID: profile.id) { [weak self] id, enabled in
+                self?.setAutoUpdate(id, enabled)
+            }
+            slots.auto = auto
+            gtk_widget_set_visible(auto, 0)
+            adw_expander_row_add_row(ptr(row), auto)
+
             let (account, accountActions) = Self.factRow(title: Localized.text("Claude account"))
             slots.account = account
             slots.accountActions = accountActions
@@ -445,10 +452,77 @@ final class ServerManager: @unchecked Sendable {
         if !changes.isEmpty {
             lines.append(changes.prefix(5).map { "· \($0)" }.joined(separator: "\n"))
         }
+        let named = reading.verdict.offer?.detailLines ?? []
+        if !named.isEmpty {
+            lines.append(named.prefix(5).map { "· \($0)" }.joined(separator: "\n"))
+        }
+        // The promise reads under the fact rather than beside the button: the suffix box of an
+        // action row is a few characters wide, and a sentence squeezed into it wraps into a column.
+        if let promise = reading.invitation?.promise { lines.append(promise) }
         setFact(
             slots.software, slots.softwareActions, lines.joined(separator: "\n"),
             tone: Self.tone(for: reading),
             actions: softwareActions(for: reading, profileID: profileID))
+        renderAutoUpdate(reading, into: slots)
+    }
+
+    /// The switch that hands a machine the job of staying current. It is built once with the row it
+    /// belongs to and only ever repainted, because a widget that appears the first time a machine
+    /// answers is a widget nobody owns; it stays hidden until that machine says it has a policy at
+    /// all, since a bridge too old for one deserves no switch rather than a dead one.
+    ///
+    /// Offered on the environment's server as much as on a typed-in one: `TAILSCODE_HOST` decides
+    /// which machine this row talks to, and this setting lives on that machine either way.
+    private static func autoUpdateRow(
+        profileID: String, onChange: @escaping @Sendable (String, Bool) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = adw_switch_row_new()!
+        adw_preferences_row_set_use_markup(ptr(row), 0)
+        adw_preferences_row_set_title(ptr(row), Localized.text("Keep this server up to date"))
+        adw_action_row_set_subtitle_lines(ptr(row), 0)
+        let bits = UInt(bitPattern: row)
+        Gtk.onNotify(UnsafeMutableRawPointer(row), property: "active") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+            onChange(profileID, adw_switch_row_get_active(op(raw)) != 0)
+        }
+        return row
+    }
+
+    /// A press on the switch is a request to the machine, and the answer it gives is what the switch
+    /// then shows — never the value the finger left behind. A machine that refuses says so and the
+    /// row goes back to the last thing that machine actually said.
+    private func setAutoUpdate(_ profileID: String, _ enabled: Bool) {
+        guard let slots = rows[profileID], !slots.writingAuto,
+            let profile = profiles.first(where: { $0.id == profileID })
+        else { return }
+        Task { [weak self] in
+            let reading = await UpdateWatch.setAutoUpdate(profile, enabled)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                guard let reading else {
+                    self.toast(Localized.text("%@ did not take that.", profile.name))
+                    UpdateLedger.remembered(.server(profileID: profileID))
+                        .map { self.renderSoftware($0, profileID: profileID) }
+                    return
+                }
+                self.renderSoftware(reading, profileID: profileID)
+            }
+        }
+    }
+
+    /// The machine's own account of its policy, written into the switch from the reading rather than
+    /// from the press — so the flag being set fires no second request of its own.
+    private func renderAutoUpdate(_ reading: UpdateReading, into slots: ServerRow) {
+        guard let row = slots.auto else { return }
+        guard let automation = reading.automation else {
+            gtk_widget_set_visible(row, 0)
+            return
+        }
+        slots.writingAuto = true
+        adw_switch_row_set_active(OpaquePointer(row), automation.enabled ? 1 : 0)
+        slots.writingAuto = false
+        adw_action_row_set_subtitle(ptr(row), automation.sentence())
+        gtk_widget_set_visible(row, 1)
     }
 
     private static func tone(for reading: UpdateReading) -> Tone {
@@ -460,38 +534,44 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
-    /// The one press the reading earned, and nothing else. `installHere` is the only one that ends
-    /// on this machine; everything else says outright that it hands the job somewhere else.
+    /// The one press the reading earned, and nothing else. `installHere` and `restartHere` are the
+    /// two that end on this machine; everything else says outright that it hands the job somewhere
+    /// else, and what a press promises is printed with the fact above it rather than crushed into
+    /// the strip the button sits in.
     private func softwareActions(for reading: UpdateReading, profileID: String)
         -> [UnsafeMutablePointer<GtkWidget>]
     {
         guard let invitation = reading.invitation else { return [] }
+        var made: [UnsafeMutablePointer<GtkWidget>] = []
         switch invitation {
         case .installHere:
-            return [
+            made.append(
                 Self.inlineButton(invitation.label, css: ["suggested-action"]) { [weak self] in
                     self?.runUpdate(profileID: profileID)
-                }
-            ]
+                })
+        case .restartHere:
+            made.append(
+                Self.inlineButton(invitation.label) { [weak self] in
+                    self?.runRestart(profileID: profileID)
+                })
         case .copyCommand(let command):
-            return [
+            made.append(
                 Self.inlineButton(invitation.label) { [weak self] in
                     Gtk.copyToClipboard(command)
                     self?.toast(Localized.text("Install command copied"))
-                }
-            ]
+                })
         case .recheck:
-            return [
+            made.append(
                 Self.inlineButton(invitation.label) { [weak self] in
                     guard let self,
                         let profile = self.profiles.first(where: { $0.id == profileID })
                     else { return }
                     self.checkSoftware(profile)
-                }
-            ]
+                })
         case .openStore(let url), .openPage(let url):
-            return [Self.inlineButton(invitation.label) { SignInDialog.openInBrowser(url) }]
+            made.append(Self.inlineButton(invitation.label) { SignInDialog.openInBrowser(url) })
         }
+        return made
     }
 
     /// The update is followed to the end, not to the first heartbeat: the old process keeps
@@ -507,6 +587,25 @@ final class ServerManager: @unchecked Sendable {
             Localized.text("Updating — asking the server to fetch and build…"), tone: .quiet,
             actions: [])
         UpdateWatch.updateServer(profile) { [weak self] reading in
+            guard let self else { return }
+            self.renderSoftware(reading, profileID: profileID)
+            guard !reading.verdict.isBusy else { return }
+            self.toast(Localized.text("%@ · %@", profile.name, reading.headline))
+            self.checkHealth(profile)
+        }
+    }
+
+    /// A build that machine already has, loaded. The same walk as an update and for the same reason:
+    /// the bridge goes quiet partway through while its supervisor starts it again, which is the
+    /// press working rather than the press failing.
+    private func runRestart(profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }),
+            let slots = rows[profileID]
+        else { return }
+        setFact(
+            slots.software, slots.softwareActions,
+            UpdateProgress(step: .waitingForQuiet).word, tone: .quiet, actions: [])
+        UpdateWatch.restartServer(profile) { [weak self] reading in
             guard let self else { return }
             self.renderSoftware(reading, profileID: profileID)
             guard !reading.verdict.isBusy else { return }
@@ -1181,6 +1280,10 @@ private final class ServerRow {
     var healthActions: UnsafeMutablePointer<GtkWidget>?
     var software: UnsafeMutablePointer<GtkWidget>?
     var softwareActions: UnsafeMutablePointer<GtkWidget>?
+    var auto: UnsafeMutablePointer<GtkWidget>?
+    /// Set while the switch is being written from a reading. A switch changed in code notifies as
+    /// loudly as one changed by a finger, and the machine would be asked to set what it just said.
+    var writingAuto = false
     var account: UnsafeMutablePointer<GtkWidget>?
     var accountActions: UnsafeMutablePointer<GtkWidget>?
     var address: UnsafeMutablePointer<GtkWidget>?

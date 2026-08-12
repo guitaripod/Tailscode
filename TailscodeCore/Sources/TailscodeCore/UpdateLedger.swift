@@ -31,14 +31,13 @@ public enum UpdateLedger {
     /// Every remembered reading, decayed to what it is still allowed to claim.
     public static func remembered(now: Date = Date()) -> [UpdateReading] {
         stored().map { reading in
-            let verdict = UpdateFreshness.decayed(
-                reading.verdict, checkedAt: reading.checkedAt, now: now)
+            let verdict = UpdateFreshness.decayed(reading, now: now)
             guard verdict != reading.verdict else { return reading }
             return UpdateReading(
                 component: reading.component, title: reading.title, subtitle: reading.subtitle,
                 installed: reading.installed, available: reading.available, verdict: verdict,
                 invitation: reading.invitation, manager: reading.manager, log: reading.log,
-                checkedAt: reading.checkedAt, note: reading.note)
+                checkedAt: reading.checkedAt, note: reading.note, automation: reading.automation)
         }
     }
 

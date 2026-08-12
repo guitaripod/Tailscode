@@ -143,20 +143,45 @@ enum UpdateWatch {
     static func updateServer(
         _ profile: ConnectionProfile, onReading: @escaping @Sendable (UpdateReading) -> Void
     ) {
+        drive(profile, press: .update, onReading: onReading)
+    }
+
+    /// The same walk for a machine whose whole remaining job is loading a build it already has. No
+    /// fetch and no rebuild, so the only thing to watch for is the machine going quiet enough to
+    /// stop — which can outlast the build that produced it, and is why this is followed rather than
+    /// fired and forgotten.
+    static func restartServer(
+        _ profile: ConnectionProfile, onReading: @escaping @Sendable (UpdateReading) -> Void
+    ) {
+        drive(profile, press: .restart, onReading: onReading)
+    }
+
+    private static func drive(
+        _ profile: ConnectionProfile, press: Press,
+        onReading: @escaping @Sendable (UpdateReading) -> Void
+    ) {
         let id = profile.id
         watch.following[id]?.cancel()
         watch.following[id] = Task {
-            let settled = await run(profile, onReading: onReading)
+            let settled = await run(profile, press: press, onReading: onReading)
             UpdateLedger.record(settled)
             Gtk.onMain { onReading(settled) }
         }
+    }
+
+    /// What a press asks the machine to begin. Everything after that first call is identical, so
+    /// the two presses differ by one line rather than by a second copy of the walk.
+    private enum Press {
+        case update
+        case restart
     }
 
     /// The walk itself, which answers with the reading that ends it whatever happens — a server that
     /// cannot be reached at all, a phase that settled, or ten minutes of silence. A caller waiting
     /// on one machine before starting the next needs a last word it can rely on arriving.
     private static func run(
-        _ profile: ConnectionProfile, onReading: @escaping @Sendable (UpdateReading) -> Void
+        _ profile: ConnectionProfile, press: Press,
+        onReading: @escaping @Sendable (UpdateReading) -> Void
     ) async -> UpdateReading {
         guard
             let backend = await ServerDirectory.shared.backend(for: profile)
@@ -167,19 +192,34 @@ enum UpdateWatch {
                 Localized.text(
                     "Nothing here could open a connection to %@.", ServerLabel.address(profile)))
         }
-        if let started = try? await backend.startUpdate() {
-            publish(started, for: profile, onReading: onReading)
+        let began: ServerUpdate?
+        switch press {
+        case .update: began = try? await backend.startUpdate()
+        case .restart: began = try? await backend.restartServer()
+        }
+        if let began {
+            publish(began, for: profile, onReading: onReading)
         }
         let deadline = Date().addingTimeInterval(600)
+        var last: ServerUpdate?
         while Date() < deadline {
             try? await Task.sleep(for: .seconds(3))
             guard let status = try? await backend.updateStatus(checkingRemote: false) else {
                 continue
             }
+            last = status
             publish(status, for: profile, onReading: onReading)
-            guard !status.isRunning else { continue }
+            guard !status.isRunning else {
+                // A machine holding a finished build until the turn on it ends can hold for hours,
+                // and it is answering every question while it does. Following it is what stops;
+                // its own account of what it is waiting for is the last word, not a claim that it
+                // went away.
+                guard status.phase == .waiting else { continue }
+                return await ask(profile, checkingRemote: true)
+            }
             return await ask(profile, checkingRemote: true)
         }
+        guard last == nil else { return await ask(profile, checkingRemote: true) }
         return silent(
             profile,
             Localized.text(
@@ -202,6 +242,27 @@ enum UpdateWatch {
             outcome: .answered(status), checkedAt: Date())
         UpdateLedger.record(reading)
         Gtk.onMain { onReading(reading) }
+    }
+
+    /// The policy set on the machine that owns it, and read straight back off the answer it gave.
+    ///
+    /// The status the server replies with goes through exactly the road a check takes, so the
+    /// ledger — and with it every surface — learns the new policy from the machine rather than from
+    /// what this device just sent. Answers nil when the machine did not take it, which leaves the
+    /// last thing it said standing.
+    static func setAutoUpdate(_ profile: ConnectionProfile, _ enabled: Bool) async -> UpdateReading?
+    {
+        guard
+            let backend = await ServerDirectory.shared.backend(for: profile)
+                as? any SelfUpdatingBackend,
+            let status = await within(20, { try? await backend.setAutoUpdate(enabled) })
+        else { return nil }
+        let reading = UpdateReadings.server(
+            profileID: profile.id, title: profile.name, subtitle: Self.subtitle(profile),
+            outcome: .answered(status), checkedAt: Date(),
+            lastKnown: UpdateLedger.remembered(.server(profileID: profile.id)))
+        UpdateLedger.record(reading)
+        return reading
     }
 
     /// One machine asked again, because somebody pressed the button on its row.

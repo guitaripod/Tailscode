@@ -1220,6 +1220,85 @@ enum SelfTest {
         }
         checks += 1
 
+        let owed = UpdateReadings.server(
+            profileID: "probe-owed", title: "owed", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.6.0", running: "1.5.0", restartRequired: true,
+                    remote: ServerUpdate.RemoteCheck(checked: true, ok: true, ref: "origin/master"),
+                    canUpdate: true, manager: "systemd",
+                    busy: ServerUpdate.Busy(
+                        quiet: false, turns: 1, reason: "A turn is running on that machine."),
+                    canRestart: true)),
+            checkedAt: now)
+        try expect(
+            owed.invitation
+                == .restartHere(
+                    supervisor: "systemd", waitingFor: "A turn is running on that machine."),
+            "a build already on a supervised machine is one press, not another build")
+        try expect(
+            owed.invitation?.promise != nil,
+            "and the press says beforehand what a turn running there costs it")
+        let owedFleet = UpdateRollup(readings: [owed])
+        try expect(
+            owedFleet.updateOrder.isEmpty,
+            "update everything never rebuilds a machine that only needed starting")
+        try expect(
+            owedFleet.restartableServers.count == 1, "though it is named as one that needs starting")
+
+        let stranded = UpdateReadings.server(
+            profileID: "probe-stranded", title: "stranded", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.6.0", running: "1.5.0", restartRequired: true,
+                    remote: ServerUpdate.RemoteCheck(checked: true, ok: true, ref: "origin/master"),
+                    canUpdate: true, manager: "manual", canRestart: false)),
+            checkedAt: now)
+        try expect(
+            stranded.invitation == .copyCommand(BridgeInstall.installCommand),
+            "a machine with nothing to start it again is handed the command instead")
+
+        let dirty = UpdateReadings.server(
+            profileID: "probe-dirty", title: "dirty", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.4.0",
+                    remote: ServerUpdate.RemoteCheck(checked: true, ok: true, ref: "origin/master"),
+                    latestVersion: "1.5.0", updateAvailable: true, behind: 1, canUpdate: false,
+                    reason: "the checkout has uncommitted changes", manager: "systemd",
+                    obstacle: ServerUpdate.Obstacle(
+                        kind: "dirty", summary: "the checkout has uncommitted changes",
+                        items: ["Sources/a.swift", "Sources/b.swift"], more: 3))),
+            checkedAt: now)
+        try expect(
+            dirty.verdict.offer?.detailLines.count == 3,
+            "an obstacle names what is in the way and says how much it left out")
+
+        let selfTaking = UpdateReadings.server(
+            profileID: "probe-auto", title: "auto", subtitle: "claude-bridge",
+            outcome: .answered(
+                ServerUpdate(
+                    version: "1.4.0",
+                    remote: ServerUpdate.RemoteCheck(checked: true, ok: true, ref: "origin/master"),
+                    latestVersion: "1.5.0", updateAvailable: true, behind: 2, canUpdate: true,
+                    manager: "systemd",
+                    automation: ServerUpdate.Automation(
+                        enabled: true, nextLookAt: now.addingTimeInterval(600)))),
+            checkedAt: now)
+        try expect(
+            selfTaking.automation?.willTake == true,
+            "a machine whose policy is on and has nothing in the way takes it itself")
+        try expect(selfTaking.verdict.offer != nil, "it is still behind, because it is")
+        try expect(
+            !selfTaking.stands(),
+            "but a machine that will take it itself is not a request that somebody act")
+
+        let switchRow = AutoUpdateRow()
+        switchRow.write(nil)
+        try expect(switchRow.isHidden, "a server too old for a policy is offered no switch at all")
+        switchRow.write(selfTaking.automation, now: now)
+        try expect(!switchRow.isHidden, "and a machine with one is offered it")
+
         let old = UpdateReadings.server(
             profileID: "probe-old", title: "old", subtitle: "claude-bridge",
             outcome: .routeMissing(version: "1.1.0"), checkedAt: now)

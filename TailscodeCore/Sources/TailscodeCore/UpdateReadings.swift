@@ -72,7 +72,7 @@ public enum UpdateReadings {
             verdict: standing ? lastKnown!.verdict : .unverified(.unreachable(why)),
             invitation: standing ? lastKnown?.invitation ?? .recheck : .recheck,
             manager: lastKnown?.manager, checkedAt: lastKnown?.checkedAt,
-            note: standing ? why : nil)
+            note: standing ? why : nil, automation: lastKnown?.automation)
     }
 
     private static func answered(
@@ -90,7 +90,38 @@ public enum UpdateReadings {
             installed: installed, available: available, verdict: verdict,
             invitation: invitation(for: verdict, status: status, installCommand: installCommand),
             manager: status.manager, log: status.log, checkedAt: checkedAt,
-            note: note(for: verdict, status: status))
+            note: note(for: verdict, status: status),
+            automation: automation(status, checkedAt: checkedAt))
+    }
+
+    /// What the machine said about keeping itself current — never what this device last asked for.
+    /// A server too old to have a policy has none, and a client with none draws no switch.
+    private static func automation(_ status: ServerUpdate, checkedAt: Date) -> UpdateAutomation? {
+        guard let automation = status.automation else { return nil }
+        return UpdateAutomation(
+            enabled: automation.enabled, lastTakenAt: automation.lastTakenAt,
+            lastTarget: automation.lastTarget, nextLookAt: automation.nextLookAt,
+            holdingOff: automation.holdingOff, readAt: checkedAt)
+    }
+
+    /// What the machine says it would have to wait for, or nothing when it has said it is idle. A
+    /// machine that has not answered the question at all is not a machine that answered "nothing".
+    private static func waitingFor(_ status: ServerUpdate) -> String? {
+        guard let busy = status.busy else {
+            return Localized.text("That machine has not said whether anything is running on it.")
+        }
+        guard !busy.quiet else { return nil }
+        return busy.reason
+            ?? Localized.text("Something is running on that machine.")
+    }
+
+    /// The supervisor named the way a person would say it, so a promise about who brings the bridge
+    /// back is a sentence rather than a field name.
+    private static func supervisor(_ manager: String) -> String {
+        switch manager {
+        case "systemd", "launchd": return manager
+        default: return Localized.text("its service")
+        }
     }
 
     /// What the server is *running*, preferring the stamp written when its binary was built over
@@ -124,17 +155,20 @@ public enum UpdateReadings {
             return .behind(
                 UpdateOffer(
                     version: status.version, commits: nil, changes: [],
-                    upstream: status.remote?.ref, canInstallHere: false,
-                    blocked: Localized.text(
-                        "A newer build is already on that machine — it just has not been started. "
-                            + "Restart the bridge there to pick it up.")))
+                    upstream: status.remote?.ref, canInstallHere: status.canRestart,
+                    blocked: status.canRestart
+                        ? nil
+                        : Localized.text(
+                            "A newer build is already on that machine and nothing there would "
+                                + "start it again, so it has to be started by hand.")))
         }
         if status.updateAvailable {
             return .behind(
                 UpdateOffer(
                     version: status.latestVersion, commits: status.behind, changes: status.changes,
                     upstream: status.remote?.ref, canInstallHere: status.canUpdate,
-                    blocked: status.canUpdate ? nil : status.reason))
+                    blocked: status.canUpdate ? nil : status.reason,
+                    details: status.obstacle?.items ?? [], moreDetails: status.obstacle?.more ?? 0))
         }
         guard let doubt = remoteDoubt(status) else {
             return .current(checkedAt: checkedAt, against: available)
@@ -167,6 +201,7 @@ public enum UpdateReadings {
     private static func step(for phase: ServerUpdate.Phase) -> UpdateProgress.Step {
         switch phase {
         case .building: return .building
+        case .waiting: return .waitingForQuiet
         case .restarting: return .restarting
         case .running, .idle, .succeeded, .failed: return .starting
         }
@@ -176,6 +211,11 @@ public enum UpdateReadings {
         for verdict: UpdateVerdict, status: ServerUpdate, installCommand: String
     ) -> UpdateInvitation? {
         switch verdict {
+        case .behind where status.restartRequired && status.canRestart:
+            // Nothing to fetch and nothing to build: the software is already there. Offering an
+            // update here would rebuild a machine that only needed starting.
+            return .restartHere(
+                supervisor: supervisor(status.manager), waitingFor: waitingFor(status))
         case .behind(let offer):
             return offer.canInstallHere ? .installHere : .copyCommand(installCommand)
         case .failed:

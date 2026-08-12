@@ -17,6 +17,7 @@ final class ServerDetailViewController: UIViewController {
         case updateState
         case updateVersions
         case updateAction
+        case autoUpdate
         case updateCenter
         case makeDefault
         case isDefault
@@ -42,6 +43,10 @@ final class ServerDetailViewController: UIViewController {
     /// here would watch nothing — the screen would sit on "Update to X" through the whole build
     /// and restart, and keep offering a press that starts the update again.
     private var reading: UpdateReading?
+
+    /// The sentence the Software footer is currently showing, which is the only way to tell that a
+    /// supplementary view needs asking again.
+    private var softwareFooter: String?
 
     private var isDemo: Bool { profile.id.hasPrefix(DemoWorld.profilePrefix) }
 
@@ -75,7 +80,8 @@ final class ServerDetailViewController: UIViewController {
         reading = UpdateLedger.remembered(component)
         if let running = reading?.installed.text { serverVersion = running }
         applySnapshot()
-        reconfigure([.updateState, .updateVersions, .updateAction])
+        reconfigure([.updateState, .updateVersions, .updateAction, .autoUpdate])
+        refreshSoftwareFooter()
     }
 
     private func configure() {
@@ -106,17 +112,19 @@ final class ServerDetailViewController: UIViewController {
             elementKind: UICollectionView.elementKindSectionFooter
         ) { [weak self] view, _, indexPath in
             guard let self,
-                let section = self.dataSource.snapshot().sectionIdentifiers[safe: indexPath.section],
-                section == .defaults
+                let section = self.dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
             else {
                 view.contentConfiguration = nil
                 return
             }
+            let text = self.footerText(section)
+            if section == .software { self.softwareFooter = text }
+            guard let text else {
+                view.contentConfiguration = nil
+                return
+            }
             var content = UIListContentConfiguration.footer()
-            content.text = String(
-                localized:
-                    "The default server is where a new chat starts when you haven't aimed the composer somewhere else."
-            )
+            content.text = text
             view.contentConfiguration = content
         }
 
@@ -129,6 +137,33 @@ final class ServerDetailViewController: UIViewController {
             return collectionView.dequeueConfiguredReusableSupplementary(
                 using: registration, for: indexPath)
         }
+    }
+
+    /// What the switch above it means, in the machine's own words rather than this screen's: what
+    /// it will and will not do unattended, what it last did, and what it is holding off for now.
+    private func footerText(_ section: Section) -> String? {
+        switch section {
+        case .software:
+            return reading?.automation?.sentence()
+        case .defaults:
+            return String(
+                localized:
+                    "The default server is where a new chat starts when you haven't aimed the composer somewhere else."
+            )
+        case .info, .status, .actions:
+            return nil
+        }
+    }
+
+    /// A footer is not an item, so nothing a diff can see changes when the machine changes its mind
+    /// about updating itself. The section is asked for its supplementary again, and only when the
+    /// sentence it would print is not the one already on screen.
+    private func refreshSoftwareFooter() {
+        guard footerText(.software) != softwareFooter else { return }
+        var snapshot = dataSource.snapshot()
+        guard snapshot.sectionIdentifiers.contains(.software) else { return }
+        snapshot.reloadSections([.software])
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     private func sectionTitle(at index: Int) -> String? {
@@ -215,6 +250,12 @@ final class ServerDetailViewController: UIViewController {
             }
             content.image = UIImage(systemName: Self.symbol(for: invitation))
             content.imageProperties.tintColor = Theme.Color.accent
+        case .autoUpdate:
+            guard let automation = reading?.automation else { break }
+            content.text = String(localized: "Keep this server up to date")
+            content.image = UIImage(systemName: "clock.arrow.2.circlepath")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [autoUpdateAccessory(automation)]
         case .updateCenter:
             content.text = String(localized: "Every machine")
             content.secondaryText = String(
@@ -264,6 +305,7 @@ final class ServerDetailViewController: UIViewController {
     private static func symbol(for invitation: UpdateInvitation) -> String {
         switch invitation {
         case .installHere: return "arrow.down.circle"
+        case .restartHere: return "arrow.clockwise.circle"
         case .openStore: return "arrow.up.forward.app"
         case .copyCommand: return "doc.on.doc"
         case .openPage: return "safari"
@@ -271,15 +313,52 @@ final class ServerDetailViewController: UIViewController {
         }
     }
 
-    /// The verdict, the number it rests on, the one press Core says is available, and the way to
-    /// the screen that answers the same question about every other machine.
+    /// The verdict, the number it rests on, the one press Core says is available, what this machine
+    /// does about updates when nobody is asking, and the way to the screen that answers the same
+    /// question about every other machine.
+    ///
+    /// The switch is drawn only for a machine that has a policy to state. A server too old for one
+    /// gets no row rather than a row that would move under the finger and change nothing.
     private func softwareItems() -> [Item] {
         guard let reading else { return [.updateState, .updateCenter] }
         var items: [Item] = [.updateState]
         if reading.installed.isKnown { items.append(.updateVersions) }
         if reading.invitation != nil { items.append(.updateAction) }
+        if reading.automation != nil { items.append(.autoUpdate) }
         items.append(.updateCenter)
         return items
+    }
+
+    /// The switch renders from what the machine last answered, and only ever from that: a device
+    /// that drew it from what it last sent would show a policy on for a request the bridge never
+    /// received. A refusal therefore writes nothing down, and the row snaps back to the server's
+    /// own account of itself.
+    private func autoUpdateAccessory(_ automation: UpdateAutomation) -> UICellAccessory {
+        let toggle = UISwitch()
+        toggle.isOn = automation.enabled
+        toggle.accessibilityLabel = String(localized: "Keep this server up to date")
+        toggle.addAction(
+            UIAction { [weak self] action in
+                guard let sender = action.sender as? UISwitch else { return }
+                Theme.Haptics.tap()
+                self?.setAutoUpdate(sender.isOn)
+            }, for: .valueChanged)
+        return .customView(configuration: .init(customView: toggle, placement: .trailing()))
+    }
+
+    private func setAutoUpdate(_ enabled: Bool) {
+        Task { [weak self] in
+            guard let self else { return }
+            let failure = await UpdateMonitor.setAutoUpdate(component, enabled)
+            guard let failure else { return }
+            self.reconfigure([.autoUpdate])
+            Theme.Haptics.warning()
+            let alert = UIAlertController(
+                title: String(localized: "That server did not change its update policy"),
+                message: failure, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
+            self.present(alert, animated: true)
+        }
     }
 
     private func showUpdateLog(_ reading: UpdateReading) {
@@ -590,6 +669,8 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .updateAction:
             guard let reading else { break }
             UpdatePress.perform(reading, from: self)
+        case .autoUpdate:
+            break
         case .updateCenter:
             Theme.Haptics.tap()
             UpdateCenterViewController.present(from: self)

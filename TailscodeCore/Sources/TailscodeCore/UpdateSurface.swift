@@ -122,10 +122,20 @@ public struct UpdateOffer: Sendable, Equatable, Codable {
     public let canInstallHere: Bool
     /// Why one press cannot finish it, when it cannot.
     public let blocked: String?
+    /// The obstacle itself, named rather than merely summarised — the files that are dirty, the
+    /// commits that are in the way, the places a toolchain was looked for.
+    ///
+    /// Deliberately outside ``UpdateReading/acknowledgeableIdentity``: an agent writing one more
+    /// file on that machine changes this list, and an acknowledgement that expired every time the
+    /// obstacle grew by a path would put the standing mark back for something nobody can act on
+    /// any differently.
+    public let details: [String]
+    /// How many more there are than `details` carries.
+    public let moreDetails: Int
 
     public init(
         version: String?, commits: Int? = nil, changes: [String] = [], upstream: String? = nil,
-        canInstallHere: Bool, blocked: String? = nil
+        canInstallHere: Bool, blocked: String? = nil, details: [String] = [], moreDetails: Int = 0
     ) {
         self.version = version
         self.commits = commits
@@ -133,6 +143,14 @@ public struct UpdateOffer: Sendable, Equatable, Codable {
         self.upstream = upstream
         self.canInstallHere = canInstallHere
         self.blocked = blocked
+        self.details = details
+        self.moreDetails = moreDetails
+    }
+
+    /// The obstacle's own list, with the tail it left out stated rather than dropped.
+    public var detailLines: [String] {
+        guard moreDetails > 0 else { return details }
+        return details + [Localized.text("and %@ more", String(moreDetails))]
     }
 
     /// What it would become, named however the machine can name it.
@@ -152,6 +170,9 @@ public struct UpdateProgress: Sendable, Equatable, Codable {
         case starting
         case building
         case installing
+        /// Built, and holding until nothing is running that the restart would stop. It is a step
+        /// rather than a silence because it can outlast the build that produced it.
+        case waitingForQuiet
         case restarting
         /// Installed and answering again, but its new version has not been read back yet.
         case settling
@@ -173,6 +194,8 @@ public struct UpdateProgress: Sendable, Equatable, Codable {
         case .starting: return Localized.text("Starting")
         case .building: return Localized.text("Building")
         case .installing: return Localized.text("Installing")
+        case .waitingForQuiet:
+            return Localized.text("Built — waiting for that machine to finish what it is doing")
         case .restarting: return Localized.text("Restarting")
         case .settling: return Localized.text("Checking what it landed on")
         }
@@ -298,6 +321,19 @@ public enum UpdateVerdict: Sendable, Equatable, Codable {
         return false
     }
 
+    /// Work that is deliberately holding rather than progressing.
+    ///
+    /// A machine that built a binary and is waiting for the turn on it to end answers every
+    /// question perfectly well and can hold for hours. It must therefore keep being asked — a
+    /// client that stops sweeping a machine because it is "busy" would show a wait that ended
+    /// yesterday — and it must never expire into "an update started and never reported how it
+    /// ended", which is a sentence about a machine that stopped talking rather than one that is
+    /// telling you exactly what it is doing.
+    public var isHolding: Bool {
+        guard case .working(let progress) = self else { return false }
+        return progress.step == .waitingForQuiet
+    }
+
     public var offer: UpdateOffer? {
         if case .behind(let offer) = self { return offer }
         return nil
@@ -313,11 +349,68 @@ public enum UpdateVerdict: Sendable, Equatable, Codable {
     }
 }
 
+/// What a machine does about updates when nobody is asking it to.
+///
+/// The trust is the machine's rather than the device's: a phone that sets this and is never opened
+/// again must not be what decides whether a server stays current, and two clients must never
+/// disagree about it. So it is asked of the server and read back from the server — never drawn from
+/// what this device last sent, which would show a switch on for a request the bridge never received.
+public struct UpdateAutomation: Sendable, Equatable, Codable {
+    public let enabled: Bool
+    /// When it last replaced itself unattended, and with what.
+    public let lastTakenAt: Date?
+    public let lastTarget: String?
+    public let nextLookAt: Date?
+    /// What it is holding off for right now, in the machine's own words. Absent when nothing is in
+    /// the way — which is exactly when the switch being on means the update will simply happen.
+    public let holdingOff: String?
+    /// When the machine said all this. A switch is a reading like any other and shows its age.
+    public let readAt: Date?
+
+    public init(
+        enabled: Bool, lastTakenAt: Date? = nil, lastTarget: String? = nil,
+        nextLookAt: Date? = nil, holdingOff: String? = nil, readAt: Date? = nil
+    ) {
+        self.enabled = enabled
+        self.lastTakenAt = lastTakenAt
+        self.lastTarget = lastTarget
+        self.nextLookAt = nextLookAt
+        self.holdingOff = holdingOff
+        self.readAt = readAt
+    }
+
+    /// Whether the update in front of this machine will be taken without anybody pressing anything.
+    public var willTake: Bool { enabled && holdingOff == nil }
+
+    /// What the switch says under itself: what the machine will do, and what it has already done.
+    public func sentence(now: Date = Date()) -> String {
+        guard enabled else {
+            return Localized.text(
+                "Off. This machine takes an update only when somebody asks it to.")
+        }
+        if let holdingOff { return holdingOff }
+        var line = Localized.text(
+            "On. It takes an update only when it can finish the job and nothing is running on it — "
+                + "a restart stops a turn where it stands.")
+        if let lastTakenAt, lastTakenAt <= now {
+            line += " "
+                + Localized.text(
+                    "Last took one %@%@.", RelativeWhen.ago(lastTakenAt, now: now),
+                    lastTarget.map { Localized.text(" (%@)", $0) } ?? "")
+        }
+        return line
+    }
+}
+
 /// The one press. Named by what it does rather than by a button label, so three clients can draw
 /// the same offer with their own idioms and none of them can quietly promise more than it does.
 public enum UpdateInvitation: Sendable, Equatable, Codable {
     /// This app performs the update end to end.
     case installHere
+    /// A build is already on that machine and only needs loading. Carries what brings the bridge
+    /// back, and — in the machine's own words rather than a count this end interprets — whatever it
+    /// would have to wait for first. Both change what the press means.
+    case restartHere(supervisor: String, waitingFor: String?)
     /// The platform installs it; we can only open the page that starts that.
     case openStore(url: String)
     /// Nobody here can install it; the exact command is handed over instead.
@@ -330,6 +423,7 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
     public var label: String {
         switch self {
         case .installHere: return Localized.text("Update")
+        case .restartHere: return Localized.text("Restart it")
         case .openStore: return Localized.text("Open the App Store")
         case .copyCommand: return Localized.text("Copy the install command")
         case .openPage: return Localized.text("Open")
@@ -343,11 +437,30 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
     public var promise: String? {
         switch self {
         case .installHere: return nil
+        case .restartHere(let supervisor, let waitingFor):
+            guard let waitingFor else {
+                return Localized.text(
+                    "The bridge stops and %@ starts it again on the build it already has. It "
+                        + "answers nothing for a few seconds.", supervisor)
+            }
+            return Localized.text(
+                "%@ It waits for that to finish, then %@ starts it again on the build it already "
+                    + "has.", waitingFor, supervisor)
         case .openStore:
             return Localized.text("The App Store installs it — this app cannot update itself.")
         case .copyCommand:
             return Localized.text("Run this on that machine; nothing here can install it for you.")
         case .openPage, .recheck: return nil
+        }
+    }
+
+    /// Whether pressing it hands this app a job it finishes itself, restart and all. Distinct from
+    /// ``isOneClickInstall``, which means specifically *installing software* — a walk that rebuilds
+    /// every machine must not include one that only needed starting.
+    public var finishesHere: Bool {
+        switch self {
+        case .installHere, .restartHere: return true
+        case .openStore, .copyCommand, .openPage, .recheck: return false
         }
     }
 
@@ -371,13 +484,18 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     /// A true thing worth saying that the verdict has no room for — a machine that is current but
     /// could not update itself if it had to, a checkout nobody should be pulling into.
     public let note: String?
+    /// What this machine does about updates on its own. Absent where the question does not arise —
+    /// this app, or a server too old to have an answer — and a client with no automation draws no
+    /// switch rather than one that does nothing.
+    public let automation: UpdateAutomation?
 
     public init(
         component: UpdateComponent, title: String, subtitle: String? = nil,
         installed: VersionFact, available: VersionFact = .unknown, verdict: UpdateVerdict,
         invitation: UpdateInvitation? = nil, manager: String? = nil, log: String? = nil,
-        checkedAt: Date? = nil, note: String? = nil
+        checkedAt: Date? = nil, note: String? = nil, automation: UpdateAutomation? = nil
     ) {
+        self.automation = automation
         self.component = component
         self.title = title
         self.subtitle = subtitle
@@ -497,10 +615,22 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     ///
     /// `acknowledged` is the whole of the collapse contract: the row keeps its place and its
     /// sentence in the update surface, and stops holding the mark up.
+    ///
+    /// A machine that will take the update itself is the second thing that stops a row standing,
+    /// and for the same reason rather than a different one: the mark is a request that somebody
+    /// act, and nobody has to. The row keeps `.behind` — it *is* behind — with its target, its
+    /// changes and its place in the surface. Without this a fleet that keeps itself current lights
+    /// the mark on every push and clears it ten minutes later, several times a day, which is how a
+    /// mark stops being read at all.
     public func stands(acknowledged: Bool = false) -> Bool {
         guard !acknowledged else { return false }
         switch verdict {
-        case .behind, .failed: return true
+        case .behind(let offer):
+            // Both halves, and the second is what stops the trust becoming a way of never being
+            // told: a machine that says it will take its own updates and cannot install this one is
+            // a machine nobody will ever hear from about it again.
+            return !(offer.canInstallHere && automation?.willTake == true)
+        case .failed: return true
         case .current, .ahead, .working, .blocked, .unverified: return false
         }
     }
@@ -549,8 +679,26 @@ public struct UpdateRollup: Sendable, Equatable {
 
     /// Rows one press finishes, on the machines this app can drive. The app's own update is never
     /// in here: on a desktop it replaces the process that would be watching the others.
+    ///
+    /// A machine that only needs starting is finishable from here and is deliberately not in here:
+    /// "update everything" rebuilds what it touches, and rebuilding a machine whose binary is
+    /// already on its disk is minutes of work for nothing.
     public var installableServers: [UpdateReading] {
-        readings.filter { !$0.component.isApp && $0.verdict.offer?.canInstallHere == true }
+        readings.filter { reading in
+            guard !reading.component.isApp, reading.verdict.offer?.canInstallHere == true else {
+                return false
+            }
+            if case .restartHere = reading.invitation { return false }
+            return true
+        }
+    }
+
+    /// Machines whose whole remaining job is loading a build they already have.
+    public var restartableServers: [UpdateReading] {
+        readings.filter {
+            guard case .restartHere = $0.invitation else { return false }
+            return !$0.component.isApp
+        }
     }
 
     public var busy: [UpdateReading] { readings.filter(\.verdict.isBusy) }
@@ -663,6 +811,24 @@ public enum UpdateFreshness {
     /// Generous, because it covers a cold Swift build on a small machine.
     public static let workExpiresAfter: TimeInterval = 45 * 60
 
+    /// How long past a self-taking machine's own next look an offer is still worth showing.
+    public static let selfTakingSlack: TimeInterval = 30 * 60
+
+    /// What a remembered *reading* is still allowed to claim.
+    ///
+    /// The asymmetry above holds only while a person is the only one who can take an update. A
+    /// machine that takes its own stops being behind while nobody is looking, so an offer it said
+    /// it would take expires the way `current` does — otherwise the app spends the morning offering
+    /// a version that machine installed at two in the morning.
+    public static func decayed(_ reading: UpdateReading, now: Date = Date()) -> UpdateVerdict {
+        let verdict = decayed(reading.verdict, checkedAt: reading.checkedAt, now: now)
+        guard case .behind = verdict, reading.automation?.willTake == true,
+            let next = reading.automation?.nextLookAt ?? reading.checkedAt,
+            now > next.addingTimeInterval(selfTakingSlack)
+        else { return verdict }
+        return .unverified(.stale(reading.checkedAt.map { $0 <= now ? $0 : nil } ?? nil))
+    }
+
     public static func isDue(lastCheck: Date?, now: Date = Date()) -> Bool {
         guard let lastCheck else { return true }
         if lastCheck > now { return true }
@@ -676,6 +842,7 @@ public enum UpdateFreshness {
     {
         switch verdict {
         case .working(let progress):
+            guard progress.step != .waitingForQuiet else { return verdict }
             guard let at = progress.observedAt ?? checkedAt, at <= now else {
                 return .unverified(.interrupted(nil))
             }

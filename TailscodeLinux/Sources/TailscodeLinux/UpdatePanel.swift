@@ -225,6 +225,8 @@ final class UpdatePanel: @unchecked Sendable {
         switch invitation {
         case .installHere:
             install(reading)
+        case .restartHere:
+            restart(reading, promise: invitation.promise)
         case .openStore(let url), .openPage(let url):
             SignInDialog.openInBrowser(url)
             toast(Localized.text("Opened in your browser"))
@@ -257,6 +259,22 @@ final class UpdatePanel: @unchecked Sendable {
             toast(Localized.text("%@ is fetching and building…", profile.name))
             UpdateWatch.updateServer(profile) { _ in }
         }
+    }
+
+    /// A build already on that machine, loaded. It goes down the same walk an update does — the
+    /// bridge stops answering partway through and that is the supervisor doing its job, not a
+    /// failure — and the press repeats the promise it was offered under, because what it costs
+    /// depends on whether a turn is running at the moment it is taken.
+    private func restart(_ reading: UpdateReading, promise: String?) {
+        expandAfterReload = reading.id
+        guard case .server(let profileID) = reading.component,
+            let profile = profiles.first(where: { $0.id == profileID })
+        else {
+            toast(Localized.text("That server is not configured any more."))
+            return
+        }
+        toast(promise ?? reading.headline)
+        UpdateWatch.restartServer(profile) { _ in }
     }
 
     fileprivate func setAside(_ reading: UpdateReading) {
@@ -399,6 +417,7 @@ private final class UpdateRow {
     private let installed: UnsafeMutablePointer<GtkWidget>
     private let available: UnsafeMutablePointer<GtkWidget>
     private let changes: UnsafeMutablePointer<GtkWidget>
+    private let obstacle: UnsafeMutablePointer<GtkWidget>
 
     init(reading: UpdateReading) {
         row = adw_expander_row_new()!
@@ -423,6 +442,9 @@ private final class UpdateRow {
 
         changes = UpdatePanel.factRow(title: Localized.text("What it would bring")).0
         adw_expander_row_add_row(ptr(row), changes)
+
+        obstacle = UpdatePanel.factRow(title: Localized.text("What is in the way")).0
+        adw_expander_row_add_row(ptr(row), obstacle)
     }
 
     /// One reading painted into the row it belongs to. The expander's own subtitle carries the
@@ -457,6 +479,12 @@ private final class UpdateRow {
             changes, nil, subjects.prefix(8).map { "· \($0)" }.joined(separator: "\n"),
             tone: .quiet, actions: [], title: Localized.text("What it would bring"))
         gtk_widget_set_visible(changes, subjects.isEmpty ? 0 : 1)
+
+        let named = reading.verdict.offer?.detailLines ?? []
+        UpdatePanel.setFact(
+            obstacle, nil, named.prefix(8).map { "· \($0)" }.joined(separator: "\n"),
+            tone: .quiet, actions: [], title: Localized.text("What is in the way"))
+        gtk_widget_set_visible(obstacle, named.isEmpty ? 0 : 1)
     }
 
     /// The one press, and what it promises. A promise is printed as its own button-height sentence

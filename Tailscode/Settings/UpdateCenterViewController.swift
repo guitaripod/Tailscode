@@ -12,6 +12,8 @@ enum UpdatePress {
         switch invitation {
         case .installHere:
             confirmInstall(reading, from: presenter)
+        case .restartHere:
+            confirmRestart(reading, invitation: invitation, from: presenter)
         case .openStore(let url):
             Theme.Haptics.tap()
             open(url)
@@ -52,6 +54,25 @@ enum UpdatePress {
             UIAlertAction(title: String(localized: "Update"), style: .default) { _ in
                 Theme.Haptics.tap()
                 Task { await UpdateMonitor.update(reading.component) }
+            })
+        presenter.present(alert, animated: true)
+    }
+
+    /// Nothing is fetched and nothing is built, so what there is to be told beforehand is what the
+    /// press costs: who brings the bridge back, and whether it is about to be taken out from under
+    /// a turn. That is exactly what the promise says and it says it differently when something is
+    /// running, so the promise is the message rather than a sentence written here about it.
+    private static func confirmRestart(
+        _ reading: UpdateReading, invitation: UpdateInvitation, from presenter: UIViewController
+    ) {
+        let alert = UIAlertController(
+            title: String(localized: "Restart \(reading.title)?"),
+            message: invitation.promise, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: invitation.label, style: .default) { _ in
+                Theme.Haptics.tap()
+                Task { await UpdateMonitor.restart(reading.component) }
             })
         presenter.present(alert, animated: true)
     }
@@ -109,14 +130,15 @@ final class UpdateCenterViewController: UIViewController {
         case installed(String)
         case available(String)
         case change(String, Int)
+        case obstacle(String, Int)
         case log(String)
         case invitation(String)
         case notNow(String)
         case updateEverything
     }
 
-    /// Enough of an update's subjects to judge whether to take it; the rest is a changelog, and a
-    /// changelog is not what this screen is for.
+    /// Enough of an update's subjects to judge whether to take it, and enough of an obstacle to
+    /// know what to go and clear; the rest is a changelog, and this screen is not a changelog.
     private static let changeLimit = 6
 
     private var collectionView: UICollectionView!
@@ -257,6 +279,16 @@ final class UpdateCenterViewController: UIViewController {
                 systemName: "circle.fill",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 5, weight: .bold))
             content.imageProperties.tintColor = Theme.Color.tertiaryLabel
+        case .obstacle(let key, let index):
+            guard let line = reading(key)?.verdict.offer?.detailLines[safe: index] else { break }
+            content.text = line
+            content.textProperties.numberOfLines = 2
+            content.textProperties.font = Theme.Ramp.font(.panelDetail)
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(
+                systemName: "circle.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 5, weight: .bold))
+            content.imageProperties.tintColor = Theme.Color.warning
         case .log:
             content.text = String(localized: "Show what it printed")
             content.textProperties.color = Theme.Color.accent
@@ -303,6 +335,7 @@ final class UpdateCenterViewController: UIViewController {
     private static func symbol(for invitation: UpdateInvitation) -> String {
         switch invitation {
         case .installHere: return "arrow.down.circle"
+        case .restartHere: return "arrow.clockwise.circle"
         case .openStore: return "arrow.up.forward.app"
         case .copyCommand: return "doc.on.doc"
         case .openPage: return "safari"
@@ -317,8 +350,9 @@ final class UpdateCenterViewController: UIViewController {
     }
 
     /// What one machine is worth saying about it, in the order a person reads it: the verdict, the
-    /// numbers it rests on, what an update would bring, and only then the press. An acknowledged
-    /// offer keeps its verdict and its numbers and loses the card — the row never disappears.
+    /// numbers it rests on, what an update would bring, what is standing in its way named rather
+    /// than summarised, and only then the press. An acknowledged offer keeps its verdict and its
+    /// numbers and loses the card — the row never disappears.
     private func items(for reading: UpdateReading) -> [Item] {
         let key = reading.id
         var items: [Item] = [.verdict(key)]
@@ -328,6 +362,8 @@ final class UpdateCenterViewController: UIViewController {
         if !collapsed, let offer = reading.verdict.offer {
             let count = min(Self.changeLimit, offer.changes.count)
             items += (0..<count).map { Item.change(key, $0) }
+            let obstacles = min(Self.changeLimit, offer.detailLines.count)
+            items += (0..<obstacles).map { Item.obstacle(key, $0) }
         }
         if reading.log != nil, case .failed = reading.verdict { items.append(.log(key)) }
         if !collapsed, reading.invitation != nil { items.append(.invitation(key)) }
@@ -435,6 +471,8 @@ extension UpdateCenterViewController: UICollectionViewDelegate {
         case .installed(let key): text = reading(key)?.installed.line
         case .available(let key): text = reading(key)?.available.line
         case .verdict(let key): text = reading(key)?.accessibilityLine()
+        case .obstacle(let key, let index):
+            text = reading(key)?.verdict.offer?.detailLines[safe: index]
         default: text = nil
         }
         guard let text else { return nil }

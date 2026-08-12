@@ -150,7 +150,14 @@ final class ServersWindow: NSWindowController {
             software.alignment = .leading
             software.spacing = 3
             lines.addArrangedSubview(software)
-            checkSoftware(profile, into: software)
+
+            let auto = AutoUpdateRow()
+            auto.onSet = { [weak self, weak auto] enabled in
+                guard let auto else { return }
+                self?.setAutoUpdate(profile, enabled, auto: auto, into: software)
+            }
+            lines.addArrangedSubview(auto)
+            checkSoftware(profile, auto: auto, into: software)
 
             let account = NSStackView()
             account.orientation = .vertical
@@ -257,19 +264,28 @@ final class ServersWindow: NSWindowController {
     /// deserves the install command: a bridge old enough to lack the route still answers `/health`,
     /// while a machine that answers neither is unreachable, and telling somebody to reinstall a
     /// server that is merely asleep would be worse than saying nothing.
-    private func checkSoftware(_ profile: ConnectionProfile, into box: NSStackView) {
+    private func checkSoftware(
+        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
+    ) {
         setSoftwareText(box, Localized.text("Checking for updates…"))
         Task { [weak self] in
             let reading = await MacUpdateWatch.shared.check(profile, checkingRemote: true)
-            self?.renderSoftware(reading, profile: profile, into: box)
+            self?.renderSoftware(reading, profile: profile, auto: auto, into: box)
         }
     }
 
     /// One reading, in Core's own words. A second ladder of hand-written cases here is exactly how
     /// this window and the Update Center came to hold two opinions about what a missing field
     /// meant, so there is one renderer and both surfaces call it.
+    ///
+    /// The invitation is switched over rather than sorted by a property, because the two presses
+    /// this window follows through itself — fetch and build, and load a build already there — are
+    /// two different jobs on the machine and only one of them is worth minutes of building. Every
+    /// other invitation ends in the shared one, and a case added to Core stops compiling here until
+    /// somebody says which of the two it is.
     private func renderSoftware(
-        _ reading: UpdateReading, profile: ConnectionProfile, into box: NSStackView
+        _ reading: UpdateReading, profile: ConnectionProfile, auto: AutoUpdateRow,
+        into box: NSStackView
     ) {
         box.arrangedSubviews.forEach { $0.removeFromSuperview() }
         box.addArrangedSubview(
@@ -278,6 +294,7 @@ final class ServersWindow: NSWindowController {
         for line in UpdateReadingViews.lines(for: reading) {
             box.addArrangedSubview(line)
         }
+        auto.write(reading.automation)
         guard let invitation = reading.invitation else { return }
         if let promise = UpdateReadingViews.promise(invitation) {
             box.addArrangedSubview(promise)
@@ -285,29 +302,85 @@ final class ServersWindow: NSWindowController {
         box.addArrangedSubview(
             makeInlineButton(invitation.label) { [weak self] in
                 guard let self else { return }
-                guard invitation.isOneClickInstall else {
-                    if let said = UpdateReadingViews.perform(invitation, on: reading) {
-                        self.setStatus(said)
+                switch invitation {
+                case .installHere:
+                    self.runUpdate(profile, auto: auto, into: box)
+                case .restartHere:
+                    self.runRestart(profile, auto: auto, into: box)
+                case .openStore, .copyCommand, .openPage, .recheck:
+                    guard let said = UpdateReadingViews.perform(invitation, on: reading) else {
+                        return
                     }
-                    return
+                    self.setStatus(said)
                 }
-                self.runUpdate(profile, into: box)
             })
     }
 
     /// The update is followed to the end, not to the first heartbeat — the shared watch owns that
     /// loop, and this window only draws each step it reports.
-    private func runUpdate(_ profile: ConnectionProfile, into box: NSStackView) {
+    private func runUpdate(
+        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
+    ) {
         setSoftwareText(box, Localized.text("Updating — asking the server to fetch and build…"))
+        follow(profile, auto: auto, into: box) { step in
+            await MacUpdateWatch.shared.install(.server(profileID: profile.id), onStep: step)
+        }
+    }
+
+    /// The build is already on that machine, so there is nothing to fetch and nothing to make: the
+    /// press hands the process to whatever starts it again. It is followed exactly the way an
+    /// update is, because the stretch that matters — the machine answering nothing while it comes
+    /// back — is the same stretch.
+    private func runRestart(
+        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView
+    ) {
+        setSoftwareText(
+            box, Localized.text("Asking the server to load the build it already has…"))
+        follow(profile, auto: auto, into: box) { step in
+            await MacUpdateWatch.shared.restart(.server(profileID: profile.id), onStep: step)
+        }
+    }
+
+    private func follow(
+        _ profile: ConnectionProfile, auto: AutoUpdateRow, into box: NSStackView,
+        job: @escaping @MainActor (@escaping @MainActor (UpdateReading) -> Void) async -> Void
+    ) {
         Task { [weak self] in
-            await MacUpdateWatch.shared.install(.server(profileID: profile.id)) { reading in
-                self?.renderSoftware(reading, profile: profile, into: box)
+            await job { reading in
+                self?.renderSoftware(reading, profile: profile, auto: auto, into: box)
             }
             guard let self,
                 let settled = UpdateLedger.remembered(.server(profileID: profile.id))
             else { return }
             self.setStatus(
                 Localized.text("%@ — %@", profile.name, settled.installed.line))
+        }
+    }
+
+    /// The policy is the machine's, so the press is a request and the switch takes its position
+    /// from the answer. What comes back is published through the same path a check is, which is why
+    /// the ledger — and the Update Center reading from it — agree before this row is redrawn; a
+    /// refusal changes nothing except the line at the foot of this window.
+    private func setAutoUpdate(
+        _ profile: ConnectionProfile, _ enabled: Bool, auto: AutoUpdateRow, into box: NSStackView
+    ) {
+        auto.setAsking(true)
+        Task { [weak self] in
+            var refusal: String?
+            do {
+                _ = try await MacUpdateWatch.shared.setAutoUpdate(
+                    .server(profileID: profile.id), enabled)
+            } catch {
+                refusal = (error as? AgentError)?.errorDescription ?? error.localizedDescription
+            }
+            guard let self else { return }
+            auto.setAsking(false)
+            if let settled = UpdateLedger.remembered(.server(profileID: profile.id)) {
+                self.renderSoftware(settled, profile: profile, auto: auto, into: box)
+            }
+            guard let refusal else { return }
+            self.setStatus(
+                Localized.text("%@ would not take that setting — %@", profile.name, refusal))
         }
     }
 

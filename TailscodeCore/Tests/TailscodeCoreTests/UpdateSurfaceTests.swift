@@ -410,5 +410,239 @@ extension DeviceStores {
             UserDefaults.standard.set(mixed, forKey: key)
             #expect(UpdateLedger.remembered(now: Self.now).count == 1)
         }
+        /// A machine that will take the update by itself is still behind — because it is — but it
+        /// is not a request. Without this, a fleet with the policy on lights the chrome mark on
+        /// every push to master and clears it ten minutes later, several times a day, which is how
+        /// a mark stops being read.
+        @Test func aSelfTakingMachineIsBehindWithoutAskingForAnything() {
+            let taking = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.5.0", updateAvailable: true, behind: 3, canUpdate: true,
+                        manager: "systemd",
+                        automation: ServerUpdate.Automation(enabled: true))),
+                checkedAt: Self.now)
+
+            #expect(taking.verdict.offer?.commits == 3)
+            #expect(!taking.stands())
+            #expect(taking.automation?.willTake == true)
+            #expect(taking.invitation == .installHere)
+        }
+
+        /// The policy being on is not the same as the machine being able to act on it. Anything it
+        /// is holding off for puts the row back in front of a person.
+        @Test func aMachineHoldingOffStillAsks() {
+            let held = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.5.0", updateAvailable: true, behind: 3, canUpdate: true,
+                        manager: "systemd",
+                        automation: ServerUpdate.Automation(
+                            enabled: true, holdingOff: "Held off after 2 failed attempts."))),
+                checkedAt: Self.now)
+
+            #expect(held.stands())
+            #expect(held.automation?.willTake == false)
+            #expect(held.automation?.sentence(now: Self.now).contains("failed") == true)
+        }
+
+        /// `behind` never expires while a person is the only one who can take it. A machine that
+        /// takes its own stops being behind while nobody looks, so that offer has to go stale —
+        /// otherwise the app spends the morning offering a version installed at two.
+        @Test func aSelfTakingOfferGoesStaleAndAPersonsDoesNot() {
+            let automation = UpdateAutomation(
+                enabled: true, nextLookAt: Self.now.addingTimeInterval(1800), readAt: Self.now)
+            let taking = UpdateReading(
+                component: .server(profileID: "a"), title: "macbook",
+                installed: VersionFact(text: "1.5.0", provenance: .serverBuild),
+                verdict: .behind(UpdateOffer(version: "1.6.0", canInstallHere: true)),
+                checkedAt: Self.now, automation: automation)
+            let asked = UpdateReading(
+                component: .server(profileID: "b"), title: "arch",
+                installed: VersionFact(text: "1.5.0", provenance: .serverBuild),
+                verdict: .behind(UpdateOffer(version: "1.6.0", canInstallHere: true)),
+                checkedAt: Self.now)
+
+            let later = Self.now.addingTimeInterval(6 * 3600)
+            #expect(UpdateFreshness.decayed(taking, now: Self.now) == taking.verdict)
+            if case .unverified(.stale) = UpdateFreshness.decayed(taking, now: later) {
+            } else {
+                Issue.record("a self-taking offer must expire on that machine's own schedule")
+            }
+            #expect(UpdateFreshness.decayed(asked, now: later) == asked.verdict)
+        }
+
+        /// A build that landed and was never started is one press, not a terminal instruction —
+        /// and only where something would start the bridge again.
+        @Test func aBuiltButUnstartedBridgeOffersItsOwnRestart() {
+            let supervised = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", restartRequired: true,
+                        manager: "launchd", busy: ServerUpdate.Busy(quiet: true),
+                        canRestart: true)),
+                checkedAt: Self.now)
+
+            #expect(supervised.invitation == .restartHere(supervisor: "launchd", waitingFor: nil))
+            #expect(supervised.verdict.offer?.canInstallHere == true)
+            #expect(supervised.invitation?.finishesHere == true)
+            #expect(supervised.invitation?.isOneClickInstall == false)
+        }
+
+        /// A bridge nothing supervises would not come back, so the press is refused before it is
+        /// offered rather than after it is pressed.
+        @Test func anUnsupervisedBridgeIsHandedTheCommandInstead() {
+            let manual = UpdateReadings.server(
+                profileID: "a", title: "old box", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", restartRequired: true,
+                        manager: "manual", canRestart: false)),
+                checkedAt: Self.now)
+
+            #expect(manual.invitation == .copyCommand(BridgeInstall.installCommand))
+            #expect(manual.stands())
+            #expect(manual.detail(now: Self.now).contains("by hand"))
+        }
+
+        /// The promise is what the press costs, and what it costs depends on what the machine is
+        /// doing — so it is said before the press, not discovered after it.
+        @Test func aBusyMachineSaysWhatARestartWouldStop() {
+            let busy = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", restartRequired: true,
+                        manager: "systemd",
+                        busy: ServerUpdate.Busy(
+                            quiet: false, turns: 2, reason: "2 turns are running."),
+                        canRestart: true)),
+                checkedAt: Self.now)
+
+            #expect(
+                busy.invitation
+                    == .restartHere(
+                        supervisor: "systemd", waitingFor: "2 turns are running."))
+            #expect(busy.invitation?.promise?.contains("2 turns are running.") == true)
+        }
+
+        /// A restart is not an install, so a walk that rebuilds every machine must not sweep up one
+        /// that only needed starting.
+        @Test func updateEverythingSkipsAMachineThatOnlyNeedsStarting() {
+            let rebuild = Self.reading(
+                .behind(UpdateOffer(version: "1.6.0", canInstallHere: true)),
+                component: .server(profileID: "a"))
+            let restart = UpdateReading(
+                component: .server(profileID: "b"), title: "macbook",
+                installed: VersionFact(text: "1.5.0", provenance: .serverBuild),
+                verdict: .behind(UpdateOffer(version: "1.6.0", canInstallHere: true)),
+                invitation: .restartHere(supervisor: "systemd", waitingFor: nil), checkedAt: Self.now)
+            let rollup = UpdateRollup(
+                readings: [
+                    UpdateReading(
+                        component: rebuild.component, title: rebuild.title,
+                        installed: rebuild.installed, verdict: rebuild.verdict,
+                        invitation: .installHere, checkedAt: Self.now),
+                    restart,
+                ])
+
+            #expect(rollup.installableServers.map(\.id) == ["server:a"])
+            #expect(rollup.restartableServers.map(\.id) == ["server:b"])
+            #expect(!rollup.canUpdateEverything)
+        }
+
+        /// An obstacle is named rather than summarised — but the naming must not become a second
+        /// acknowledgement key, or the agent writing one more file on that machine relights a mark
+        /// somebody deliberately set aside.
+        @Test func anObstaclesOwnListIsOutsideWhatWasAcknowledged() {
+            let one = UpdateOffer(
+                version: nil, canInstallHere: false, blocked: "The checkout is dirty.",
+                details: ["Sources/A.swift"], moreDetails: 0)
+            let more = UpdateOffer(
+                version: nil, canInstallHere: false, blocked: "The checkout is dirty.",
+                details: ["Sources/A.swift", "Sources/B.swift"], moreDetails: 12)
+            let first = Self.reading(.behind(one), component: .server(profileID: "a"))
+            let second = Self.reading(.behind(more), component: .server(profileID: "a"))
+
+            #expect(first.acknowledgeableIdentity == second.acknowledgeableIdentity)
+            #expect(more.detailLines.last == "and 12 more")
+        }
+
+        /// A machine holding a finished build behind a running turn is working, not silent, and the
+        /// wait has its own word rather than reading as a restart that never happened.
+        @Test func waitingForAQuietMachineIsAStepWithWords() {
+            let waiting = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", manager: "systemd", phase: .waiting,
+                        busy: ServerUpdate.Busy(quiet: false, turns: 1))),
+                checkedAt: Self.now)
+
+            #expect(waiting.verdict.isBusy)
+            #expect(waiting.headline.contains("waiting"))
+            #expect(waiting.invitation == nil)
+        }
+        /// A wait can outlast any deadline worth polling through, and the machine is answering the
+        /// whole time. Expiring it would print "an update started and never reported how it ended"
+        /// about a machine that is saying exactly what it is doing.
+        @Test func aMachineHoldingAFinishedBuildNeverExpiresIntoAbandonment() {
+            let holding = Self.reading(
+                .working(UpdateProgress(step: .waitingForQuiet, observedAt: Self.now)),
+                component: .server(profileID: "a"))
+            let building = Self.reading(
+                .working(UpdateProgress(step: .building, observedAt: Self.now)),
+                component: .server(profileID: "b"))
+            let muchLater = Self.now.addingTimeInterval(8 * 3600)
+
+            #expect(holding.verdict.isHolding)
+            #expect(!building.verdict.isHolding)
+            #expect(UpdateFreshness.decayed(holding, now: muchLater) == holding.verdict)
+            if case .unverified(.interrupted) = UpdateFreshness.decayed(building, now: muchLater) {
+            } else {
+                Issue.record("a build nobody heard from again is abandoned")
+            }
+        }
+        /// The trust must not become a way of never being told. A machine that says it keeps itself
+        /// current and cannot install the thing in front of it is a machine nobody would ever hear
+        /// from about it again.
+        @Test func aSelfTakingMachineThatCannotInstallThisOneStillAsks() {
+            let blocked = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.5.0", updateAvailable: true, behind: 3, canUpdate: false,
+                        reason: "The checkout has 2 uncommitted changes.", manager: "systemd",
+                        obstacle: ServerUpdate.Obstacle(
+                            kind: "dirty", summary: "The checkout has 2 uncommitted changes.",
+                            items: ["Sources/A.swift", "Sources/B.swift"]),
+                        automation: ServerUpdate.Automation(enabled: true))),
+                checkedAt: Self.now)
+
+            #expect(blocked.verdict.offer?.canInstallHere == false)
+            #expect(blocked.stands())
+            #expect(blocked.verdict.offer?.detailLines.count == 2)
+        }
+
+        /// A machine that has not said whether anything is running on it has not said nothing is.
+        @Test func aRestartPressNeverAssertsAnIdlenessNobodyReported() {
+            let silentAboutItself = UpdateReadings.server(
+                profileID: "a", title: "old bridge", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", restartRequired: true,
+                        manager: "systemd", canRestart: true)),
+                checkedAt: Self.now)
+
+            guard case .restartHere(_, let waitingFor) = silentAboutItself.invitation else {
+                Issue.record("a supervised build waiting to be loaded is one press")
+                return
+            }
+            #expect(waitingFor != nil)
+            #expect(silentAboutItself.invitation?.promise?.contains("few seconds") == false)
+        }
     }
 }

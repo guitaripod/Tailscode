@@ -154,8 +154,32 @@ enum UpdateMonitor {
         await updater(for: profile).update()
     }
 
-    /// Every server that one press can finish, one at a time. A bridge serialises its own fetch, so
-    /// two started together queue behind each other anyway while both surfaces claim to be working.
+    /// Takes one machine's restart and follows it through, the same way and by the same watcher an
+    /// update is followed: the software is already on its disk, so the whole job is the machine
+    /// going quiet, going away, and answering again.
+    static func restart(_ component: UpdateComponent) async {
+        guard case .server(let id) = component,
+            let profile = checkableProfiles().first(where: { $0.id == id })
+        else { return }
+        await updater(for: profile).restart()
+    }
+
+    /// Sets one machine's own update policy, and answers with why it could not be set when it could
+    /// not. Nothing is recorded on the strength of the asking — the reading comes back from the
+    /// server through the same ledger a check writes to, so every surface agrees with the machine.
+    static func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
+        guard case .server(let id) = component,
+            let profile = checkableProfiles().first(where: { $0.id == id })
+        else {
+            return String(localized: "This server is no longer configured on this device.")
+        }
+        return await updater(for: profile).setAutoUpdate(enabled)
+    }
+
+    /// Every server this app can rebuild, one at a time. A bridge serialises its own fetch, so two
+    /// started together queue behind each other anyway while both surfaces claim to be working —
+    /// and a machine whose whole remaining job is starting a binary it has is deliberately not
+    /// among them, which is why the order comes from Core rather than from every readable row.
     static func updateEverything() async {
         guard !walking else { return }
         walking = true

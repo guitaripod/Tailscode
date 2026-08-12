@@ -111,17 +111,8 @@ final class MacUpdateWatch {
         return installing.contains(profileID)
     }
 
-    /// An update followed to the end rather than to the first heartbeat.
-    ///
-    /// The old process keeps answering `/health` through the whole fetch and build, and then stops
-    /// answering anything at all while it restarts — so a refused connection here is the restart
-    /// doing its job, not a failure, and the loop simply asks again. Only a settled phase, or ten
-    /// minutes of silence, ends it.
-    ///
-    /// The last word is a fresh comparison against the remote rather than the phase that settled.
-    /// The poll asks with `checkingRemote: false` throughout — a server mid-build must not be made
-    /// to fetch every three seconds — and a machine whose whole update was watched with that off
-    /// would come to rest on "Can't say" about the very build it just installed.
+    /// An update asked for and then followed to the end rather than to the first heartbeat, which
+    /// is the whole of what `follow` is for.
     func install(
         _ component: UpdateComponent, onStep: (@MainActor (UpdateReading) -> Void)? = nil
     ) async {
@@ -133,24 +124,95 @@ final class MacUpdateWatch {
         if let started = try? await backend.startUpdate() {
             record(.answered(started), for: profile, onStep: onStep)
         }
+        await follow(
+            profile, backend: backend,
+            stalled: Localized.text(
+                "The update did not settle within ten minutes — check %@ over ssh.", profile.name),
+            onStep: onStep)
+    }
+
+    /// A build already sitting on that machine, loaded rather than made again.
+    ///
+    /// The half that matters is the same half an update ends with, so it is watched the same way:
+    /// the process stops answering while whatever supervises it brings it back, and a refused
+    /// connection in that stretch is the restart doing its job. Nothing is fetched and nothing is
+    /// built, so the only wait is the machine's own — it holds until nothing is running that
+    /// stopping would destroy, and that wait is a phase it reports rather than a silence.
+    ///
+    /// It takes the same lock an install does: a machine already being worked on must not be handed
+    /// a second job, and the surfaces that grey a button while one runs ask that one question.
+    func restart(
+        _ component: UpdateComponent, onStep: (@MainActor (UpdateReading) -> Void)? = nil
+    ) async {
+        guard case .server(let profileID) = component, let profile = Self.profile(profileID),
+            let backend = ServerDirectory.shared.backend(for: profile) as? any SelfUpdatingBackend,
+            installing.insert(profileID).inserted
+        else { return }
+        defer { installing.remove(profileID) }
+        if let started = try? await backend.restartServer() {
+            record(.answered(started), for: profile, onStep: onStep)
+        }
+        await follow(
+            profile, backend: backend,
+            stalled: Localized.text(
+                "%@ has not come back within ten minutes — check it over ssh.", profile.name),
+            onStep: onStep)
+    }
+
+    /// Turning a machine's own update policy on or off, where the policy lives: on the machine.
+    ///
+    /// The answer it gives back is published exactly the way a check is, so the ledger and every
+    /// surface reading from it agree at once and no client is left rendering a switch from what it
+    /// last sent. A machine that refuses says so through the thrown error and the ledger keeps the
+    /// last thing it actually said, which is what the switch goes on showing.
+    @discardableResult
+    func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async throws -> UpdateReading {
+        guard case .server(let profileID) = component, let profile = Self.profile(profileID),
+            let backend = ServerDirectory.shared.backend(for: profile) as? any SelfUpdatingBackend
+        else {
+            throw AgentError.unsupported("This server has no update policy to set.")
+        }
+        let status = try await backend.setAutoUpdate(enabled)
+        return record(.answered(status), for: profile, onStep: nil)
+    }
+
+    /// The stretch after the press, watched to the end rather than to the first heartbeat.
+    ///
+    /// The old process keeps answering `/health` through a whole fetch and build, and then stops
+    /// answering anything at all while it restarts — so a refused connection here is the restart
+    /// doing its job, not a failure, and the loop simply asks again. Only a settled phase, or ten
+    /// minutes of silence, ends it.
+    ///
+    /// The last word is a fresh comparison against the remote rather than the phase that settled.
+    /// The poll asks with `checkingRemote: false` throughout — a server mid-build must not be made
+    /// to fetch every three seconds — and a machine whose whole update was watched with that off
+    /// would come to rest on "Can't say" about the very build it just installed.
+    private func follow(
+        _ profile: ConnectionProfile, backend: any SelfUpdatingBackend, stalled: String,
+        onStep: (@MainActor (UpdateReading) -> Void)?
+    ) async {
         let deadline = Date().addingTimeInterval(Self.followDeadline)
+        var answered = false
         while Date() < deadline {
             try? await Task.sleep(for: Self.followInterval)
             guard let status = try? await backend.updateStatus(checkingRemote: false) else {
                 continue
             }
+            answered = true
             record(.answered(status), for: profile, onStep: onStep)
-            guard status.isRunning else {
+            // A machine holding a finished build until the turn on it ends can hold for hours, and
+            // it answers everything while it does. The following stops; its own account of what it
+            // is waiting for is the last word, never a claim that it went away.
+            guard status.isRunning, status.phase != .waiting else {
                 onStep?(await check(profile, checkingRemote: true))
                 return
             }
         }
-        record(
-            .silent(
-                Localized.text(
-                    "The update did not settle within ten minutes — check %@ over ssh.",
-                    profile.name)),
-            for: profile, onStep: onStep)
+        guard !answered else {
+            onStep?(await check(profile, checkingRemote: true))
+            return
+        }
+        record(.silent(stalled), for: profile, onStep: onStep)
     }
 
     /// One at a time, in the order Core gives them: a bridge serialises its own fetch, and two

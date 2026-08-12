@@ -37,7 +37,12 @@ final class BridgeUpdater {
 
     var component: UpdateComponent { .server(profileID: profileID) }
 
-    var isWorking: Bool { reading?.verdict.isBusy == true }
+    /// Busy in the sense that asking again would disturb something. A machine holding a finished
+    /// build until the turn on it ends is not that: it answers everything, it can hold for hours,
+    /// and a sweep that skipped it would leave its row describing a wait that ended yesterday.
+    var isWorking: Bool {
+        reading?.verdict.isBusy == true && reading?.verdict.isHolding != true
+    }
 
     func stop() { poll?.cancel() }
 
@@ -119,9 +124,58 @@ final class BridgeUpdater {
         }
     }
 
+    /// Asks the server to load the build already sitting on its disk. Nothing is fetched and
+    /// nothing is built, but the job still ends in the machine going away and coming back — and it
+    /// may hold that back until the turn running on it finishes — so it is followed exactly the way
+    /// an update is, by the one watcher this object has.
+    func restart() async {
+        guard let updatable else { return }
+        AppLogger.connection.info("bridge restart requested for \(profileID.prefix(8))")
+        do {
+            let status = try await updatable.restartServer()
+            publish(.answered(status))
+            guard status.isRunning else { return }
+            watch()
+            if let poll { await poll.value }
+        } catch {
+            AppLogger.connection.error("bridge restart refused: \(error.localizedDescription)")
+            publish(
+                .silent(
+                    String(
+                        localized:
+                            "The server refused the restart: \(error.localizedDescription)")))
+        }
+    }
+
+    /// Turns unattended updating on or off on the machine itself, and publishes what the machine
+    /// answered rather than what was asked of it. A request that never landed must leave every
+    /// surface showing the policy the server last stated, so a failure writes nothing down and is
+    /// handed back to the caller to report.
+    func setAutoUpdate(_ enabled: Bool) async -> String? {
+        guard let updatable else {
+            return String(
+                localized:
+                    "There are no saved credentials for this server, so nothing here could ask it.")
+        }
+        do {
+            let status = try await updatable.setAutoUpdate(enabled)
+            publish(.answered(status))
+            return nil
+        } catch {
+            AppLogger.connection.error(
+                "bridge auto-update refused: \(error.localizedDescription)")
+            return error.localizedDescription
+        }
+    }
+
     /// Polls until the server reports the job finished. A restart in the middle answers nothing;
     /// that reads as "still working", not as a failure, until the job is far past any plausible
     /// build time.
+    ///
+    /// Past that, the watching stops but the asking does not: a machine holding a built binary
+    /// until the turn on it finishes can outlast any deadline worth polling through, and it is
+    /// still answering perfectly well — so the last thing the watcher does is ask once more and
+    /// publish what came back, rather than declare a silence nobody heard.
     private func watch() {
         poll?.cancel()
         poll = Task { [weak self] in
@@ -138,7 +192,11 @@ final class BridgeUpdater {
                     continue
                 }
                 unanswered = 0
-                if status.isRunning {
+                // A machine holding a finished build until the turn on it ends can hold for hours,
+                // and it answers everything while it does. Following it stops here; the ordinary
+                // sweep keeps asking, because holding is not the kind of busy that must be left
+                // alone.
+                if status.isRunning, status.phase != .waiting {
                     self.publish(.answered(status))
                     continue
                 }
@@ -146,7 +204,13 @@ final class BridgeUpdater {
                 return
             }
             guard !Task.isCancelled, let self, let backend = self.backend else { return }
-            await self.publishSilence(backend)
+            guard let updatable = self.updatable,
+                let status = try? await updatable.updateStatus(checkingRemote: false)
+            else {
+                await self.publishSilence(backend)
+                return
+            }
+            self.publish(.answered(status))
         }
     }
 
