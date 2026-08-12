@@ -264,3 +264,66 @@ struct ActivityTests {
             isStreaming: true)
     }
 }
+
+@Suite("What the band says about the connection")
+struct ConnectionPhaseTests {
+    private func state(
+        _ phase: ConnectionPhase, changedAgo: TimeInterval, status: BackendStatus = .idle
+    ) -> ConversationState {
+        ConversationState(
+            messages: [], status: status, connection: phase, hasLoadedTranscript: true,
+            connectionChangedAt: Date().addingTimeInterval(-changedAgo))
+    }
+
+    private func facts(_ state: ConversationState) -> StatusFacts {
+        StatusFacts.from(
+            state: state, turnStartedAt: nil, agents: [], usage: nil, attachments: 0)
+    }
+
+    @Test("A live idle conversation is ready, and says nothing about connecting")
+    func liveReadsReady() {
+        let band = facts(state(.live, changedAgo: 300)).segments.first
+        #expect(band?.text.contains("ready") == true)
+        #expect(band?.css == "seg-idle")
+    }
+
+    @Test("A dial that has only just started shows no clock")
+    func youngDialIsQuiet() {
+        let band = facts(state(.connecting, changedAgo: 0.2)).segments.first
+        #expect(band?.text.contains("connecting") == true)
+        #expect(band?.text.contains("·") == false)
+    }
+
+    @Test("A dial that is taking a while says how long it has been taking")
+    func stuckDialCountsUp() {
+        let band = facts(state(.connecting, changedAgo: 45)).segments.first
+        #expect(band?.text.contains("connecting") == true)
+        #expect(band?.text.contains("45s") == true)
+    }
+
+    @Test("Reconnecting counts up too, and can be kicked by hand")
+    func reconnectingIsActionable() {
+        let band = facts(state(.reconnecting, changedAgo: 90)).segments.first
+        #expect(band?.text.contains("1m 30s") == true)
+        #expect(band?.action == .reconnect)
+    }
+
+    @Test("A server that is not answering holds still and offers the retry")
+    func offlineIsSettled() {
+        let band = facts(state(.offline, changedAgo: 600)).segments.first
+        #expect(band?.icon?.motion == .still)
+        #expect(band?.action == .reconnect)
+        #expect(band?.text.contains("600") == false)
+    }
+
+    @Test("A state from a client that never stamped the change shows no invented clock")
+    func unstampedStateInventsNothing() {
+        let bare = ConversationState(connection: .connecting)
+        #expect(StatusFacts.from(
+            state: bare, turnStartedAt: nil, agents: [], usage: nil, attachments: 0)
+            .connectionFor == nil)
+        #expect(StatusFacts.dialClock(nil) == nil)
+        #expect(StatusFacts.dialClock(0.5) == nil)
+        #expect(StatusFacts.dialClock(9) == 9)
+    }
+}

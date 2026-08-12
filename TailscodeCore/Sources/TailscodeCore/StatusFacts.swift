@@ -17,6 +17,10 @@ public struct StatusFacts: Sendable {
     }
 
     public var phase: Phase = .idle
+    /// How long the connection has been in the phase it is in. A phase with no clock on it cannot
+    /// be told apart from a phase that is stuck, and "connecting" that has been true for a minute
+    /// means something a "connecting" that has been true for 200ms does not.
+    public var connectionFor: TimeInterval?
     /// The same moment stated in the vocabulary every client draws and animates from. The phase
     /// says which of nine situations the turn is in; this says what is *happening* — the tool that
     /// is out on the machine, whether the answer has started arriving — and carries the icon and
@@ -102,6 +106,9 @@ public struct StatusFacts: Sendable {
                     facts.phase = .idle
                 }
             }
+        }
+        if state.connectionChangedAt > .distantPast {
+            facts.connectionFor = Date().timeIntervalSince(state.connectionChangedAt)
         }
         facts.activity = Self.activity(for: facts.phase, in: state, agents: agents)
         if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
@@ -238,9 +245,13 @@ public struct StatusFacts: Sendable {
         case .awaitingAnswer:
             result.append(Self.phase(.needsAnswer, kind: .act(.scrollToPending)))
         case .connecting:
-            result.append(Self.phase(.connecting, kind: .plain))
+            result.append(
+                Self.phase(.connecting, elapsed: Self.dialClock(connectionFor), kind: .plain))
         case .reconnecting:
-            result.append(Self.phase(.reconnecting, kind: .plain))
+            result.append(
+                Self.phase(
+                    .reconnecting, elapsed: Self.dialClock(connectionFor),
+                    kind: .act(.reconnect)))
         case .offline:
             result.append(Self.phase(.offline, kind: .act(.reconnect)))
         case .failed(let message):
@@ -455,6 +466,17 @@ public struct StatusFacts: Sendable {
         if seconds < 86_400 { return "\(seconds / 3600)h" }
         return "\(seconds / 86_400)d"
     }
+
+    /// A clock for a connection phase, shown only once the phase has lasted long enough to be
+    /// worth reading. A healthy dial is over in a fraction of a second and a counter that flashes
+    /// up and vanishes is noise; a dial that is still going after `dialPatience` is the thing the
+    /// reader actually needs to see, and from then on it counts honestly.
+    static func dialClock(_ elapsed: TimeInterval?) -> TimeInterval? {
+        guard let elapsed, elapsed >= dialPatience else { return nil }
+        return elapsed
+    }
+
+    static let dialPatience: TimeInterval = 2
 
     public static func clock(_ interval: TimeInterval) -> String {
         let seconds = Int(interval)
