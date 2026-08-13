@@ -731,7 +731,8 @@ final class ChatPane: @unchecked Sendable {
         commands = []
         chosenModel = ModelPreferenceStore.initialModel(
             sessionKey: Self.preferenceKey(entry), contextID: entry.profileID,
-            sessionModel: entry.session.model)
+            sessionModel: entry.session.model,
+            sessionModelProviderID: entry.session.modelProviderID)
         chosenEffort = EffortPreferenceStore.initialEffort(
             sessionKey: Self.preferenceKey(entry), contextID: entry.profileID,
             sessionEffort: entry.session.reasoningEffort)
@@ -1806,7 +1807,8 @@ final class ChatPane: @unchecked Sendable {
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
         return QuotaSurface.hottestExhausted(
-            in: QuotaSurface.billingQuotas(in: relevant, selection: nil, model: activeModelID),
+            in: QuotaSurface.billingQuotas(
+                in: relevant, selection: chosenModel, model: activeModelID),
             model: activeModelID
         )
         .map(QuotaSurface.short)

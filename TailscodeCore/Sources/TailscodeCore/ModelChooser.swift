@@ -432,7 +432,7 @@ public struct ModelChooser: Sendable, Equatable {
         recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
     ) {
         self.sources = sources
-        let candidates = sources.flatMap { Self.fold(source: $0) }
+        let candidates = sources.flatMap { Self.fold(source: $0, preferred: selected) }
         self.candidates = candidates
         self.selected = selected
         self.allowsServerDefault = sources.first { $0.isCurrent }?.allowsServerDefault ?? false
@@ -848,17 +848,23 @@ public struct ModelChooser: Sendable, Equatable {
     /// Folds a flat catalog into candidates. Identity is the model's own name where it has one and
     /// its id otherwise, normalised so "Claude Sonnet 4.5" and "claude-sonnet-4-5" are one model
     /// reached two ways; a local model never folds into a hosted one.
-    public static func fold(_ models: [ModelInfo]) -> [ModelCandidate] {
+    public static func fold(_ models: [ModelInfo], preferred: ModelSelection? = nil) -> [ModelCandidate] {
         fold(
             source: ModelSource(
                 profileID: "", name: "", backend: .openCode, models: models, isCurrent: true,
-                allowsServerDefault: true, acceptsAnyModelID: false))
+                allowsServerDefault: true, acceptsAnyModelID: false),
+            preferred: preferred)
     }
 
     /// Folds one server's catalog. Identity carries the server, because the same model on two
     /// machines is two answers to "where does this run" and only one of them keeps the chat where
     /// it is.
-    static func fold(source: ModelSource) -> [ModelCandidate] {
+    ///
+    /// Which door a collapsed row picks is decided here: the door the chat is already on wins —
+    /// a re-pick must not silently move the billing — then the model's own house over a reseller
+    /// fronting it, because someone who configured a key for a model and picks that model wants
+    /// their key, not the plan's. Everything else keeps catalog order.
+    static func fold(source: ModelSource, preferred: ModelSelection? = nil) -> [ModelCandidate] {
         var order: [String] = []
         var groups: [String: [ModelInfo]] = [:]
         for model in source.models {
@@ -870,6 +876,13 @@ public struct ModelChooser: Sendable, Equatable {
             guard let entries = groups[key], let first = entries.first else { return nil }
             let offers = entries.map(ModelOffer.init(model:)).sorted { lhs, rhs in
                 if lhs.isLocal != rhs.isLocal { return lhs.isLocal }
+                if let preferred {
+                    let lh = lhs.selection == preferred, rh = rhs.selection == preferred
+                    if lh != rh { return lh }
+                }
+                let lhDirect = ProviderIdentity.slug(lhs.providerID) != "opencode"
+                let rhDirect = ProviderIdentity.slug(rhs.providerID) != "opencode"
+                if lhDirect != rhDirect { return lhDirect }
                 if described(lhs) != described(rhs) { return described(lhs) }
                 return lhs.providerName.localizedCaseInsensitiveCompare(rhs.providerName)
                     == .orderedAscending
@@ -921,7 +934,7 @@ public struct ModelChooser: Sendable, Equatable {
         _ models: [ModelInfo], selected: ModelSelection?, limit: Int = 8,
         recents: [ModelSelection] = RecentModelsStore.all()
     ) -> [ModelCandidate] {
-        let candidates = fold(models)
+        let candidates = fold(models, preferred: selected)
         guard candidates.count > limit else { return candidates }
         var result: [ModelCandidate] = []
         if let selected, let match = candidates.first(where: { $0.carries(selected) }) {

@@ -18,10 +18,11 @@ final class CompactPreflightViewController: UIViewController {
     /// sheet is the ordinary way to leave it and must not cost the sentence someone composed.
     init(
         messageCount: Int, lastCompaction: Compaction?, initialInstruction: String = "",
-        draftScope: DraftScope, onCompact: @escaping (String?) -> Void
+        showsInstruction: Bool, draftScope: DraftScope, onCompact: @escaping (String?) -> Void
     ) {
         self.facts = CompactPreflight.make(
-            messageCount: messageCount, lastCompaction: lastCompaction)
+            messageCount: messageCount, lastCompaction: lastCompaction,
+            showsInstruction: showsInstruction)
         self.draftScope = draftScope
         self.onCompact = onCompact
         super.init(nibName: nil, bundle: nil)
@@ -48,7 +49,7 @@ final class CompactPreflightViewController: UIViewController {
 
         let stack = UIStackView(
             arrangedSubviews: [hero()] + facts.paragraphs.map { body($0) } + [
-                instructionsField(),
+                facts.showsInstruction ? instructionsField() : nil,
                 facts.lastTime.map { body($0, color: Theme.Color.tertiaryLabel) },
                 body(facts.wait, color: Theme.Color.tertiaryLabel),
             ].compactMap { $0 })

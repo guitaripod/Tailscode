@@ -44,10 +44,12 @@ public enum ModelPreferenceStore {
     /// wears — not on this server's global default — and a pick made here still wins until the
     /// record catches up with it.
     public static func initialModel(
-        sessionKey: String?, contextID: String, sessionModel: String? = nil
+        sessionKey: String?, contextID: String, sessionModel: String? = nil,
+        sessionModelProviderID: String? = nil
     ) -> ModelSelection? {
         sessionKey.flatMap { model(forKey: $0) }
-            ?? resolveSessionModel(sessionModel, contextID: contextID)
+            ?? resolveSessionModel(
+                sessionModel, contextID: contextID, providerID: sessionModelProviderID)
             ?? globalModel(forContextID: contextID)
     }
 
@@ -58,10 +60,26 @@ public enum ModelPreferenceStore {
     /// reader already sees them agree. The `provider/model` parse is the last resort, not the
     /// first — an opencode id can itself contain a slash — and a name nothing can place resolves
     /// to nothing rather than to a fabricated provider.
-    public static func resolveSessionModel(_ raw: String?, contextID: String) -> ModelSelection? {
+    ///
+    /// When the record says which door the session runs through, that door settles the match
+    /// rather than the catalog's own order: two gateways offering the same model id bill it
+    /// differently, and the session's own door is the one fact that tells them apart.
+    public static func resolveSessionModel(
+        _ raw: String?, contextID: String, providerID: String? = nil
+    ) -> ModelSelection? {
         guard let raw, !raw.isEmpty else { return nil }
         let catalog = ModelCatalogStore.cached(contextID)
         let family = ModelBadge.shortName(raw)
+        if let providerID, !providerID.isEmpty,
+            let match = catalog.first(where: {
+                $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+                    && ($0.id.caseInsensitiveCompare(raw) == .orderedSame
+                        || $0.name.caseInsensitiveCompare(raw) == .orderedSame
+                        || $0.name.caseInsensitiveCompare(family) == .orderedSame)
+            })
+        {
+            return ModelSelection(providerID: match.providerID, modelID: match.id)
+        }
         if let match = catalog.first(where: { $0.id.caseInsensitiveCompare(raw) == .orderedSame })
             ?? catalog.first(where: { $0.name.caseInsensitiveCompare(raw) == .orderedSame })
             ?? catalog.first(where: { $0.name.caseInsensitiveCompare(family) == .orderedSame })

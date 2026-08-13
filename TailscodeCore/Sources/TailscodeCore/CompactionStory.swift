@@ -152,13 +152,19 @@ public struct CompactPreflight: Sendable, Hashable {
     public let paragraphs: [String]
     public let fieldCaption: String
     public let fieldPlaceholder: String
+    /// Whether to offer the instruction field at all. A server whose summarize takes no
+    /// instruction (opencode's) still compacts; a field whose sentence would be dropped is a
+    /// promise the server cannot keep, so it is not offered.
+    public let showsInstruction: Bool
     /// What the previous compaction traded, when there was one: a conversation compacted once
     /// usually compacts again, and the last result sets the expectation for this wait.
     public let lastTime: String?
     public let wait: String
     public let confirmTitle: String
 
-    public static func make(messageCount: Int, lastCompaction: Compaction?) -> CompactPreflight {
+    public static func make(
+        messageCount: Int, lastCompaction: Compaction?, showsInstruction: Bool = true
+    ) -> CompactPreflight {
         CompactPreflight(
             headline: Localized.text("Free up the context window"),
             subtitle: messageCount > 0
@@ -174,6 +180,7 @@ public struct CompactPreflight: Sendable, Hashable {
             ],
             fieldCaption: Localized.text("What must the summary keep?"),
             fieldPlaceholder: Localized.text("Optional — e.g. the failing test names"),
+            showsInstruction: showsInstruction,
             lastTime: lastTimeLine(lastCompaction),
             wait: Localized.text(
                 "Takes a minute or two, and the conversation is busy until it finishes."),
@@ -182,7 +189,9 @@ public struct CompactPreflight: Sendable, Hashable {
 
     /// Reads the two facts the screen leads with straight off the conversation: how much is here,
     /// and what the previous compaction of it traded.
-    public static func make(state: ConversationState?) -> CompactPreflight {
+    public static func make(
+        state: ConversationState?, showsInstruction: Bool = true
+    ) -> CompactPreflight {
         let messages = state?.messages ?? []
         var last: Compaction?
         for message in messages {
@@ -190,7 +199,9 @@ public struct CompactPreflight: Sendable, Hashable {
                 if case .compaction(let compaction) = part.kind { last = compaction }
             }
         }
-        return make(messageCount: messages.count, lastCompaction: last)
+        return make(
+            messageCount: messages.count, lastCompaction: last,
+            showsInstruction: showsInstruction)
     }
 
     private static func lastTimeLine(_ compaction: Compaction?) -> String? {

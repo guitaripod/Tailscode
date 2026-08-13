@@ -90,6 +90,24 @@ extension DeviceStores {
             #expect(opened == pick)
         }
 
+        @Test func theSessionsOwnDoorSettlesTheCatalogMatch() {
+            ModelCatalogStore.store(
+                [
+                    ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "opencode-go"),
+                    ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "deepseek"),
+                ], for: contextID)
+            let goFirst = ModelPreferenceStore.resolveSessionModel(
+                "deepseek/deepseek-v4-pro", contextID: contextID)
+            #expect(
+                goFirst == ModelSelection(providerID: "opencode-go", modelID: "deepseek/deepseek-v4-pro"),
+                "without a door the catalog's own order answers")
+            let onTheKey = ModelPreferenceStore.resolveSessionModel(
+                "deepseek/deepseek-v4-pro", contextID: contextID, providerID: "deepseek")
+            #expect(
+                onTheKey == ModelSelection(providerID: "deepseek", modelID: "deepseek/deepseek-v4-pro"),
+                "the session's recorded door wins over the catalog's own order")
+        }
+
         @Test func effortReadsInTheRowsOrder() {
             let picked = "session-picked-effort-\(UUID().uuidString)"
             EffortPreferenceStore.setEffort("low", forKey: picked)

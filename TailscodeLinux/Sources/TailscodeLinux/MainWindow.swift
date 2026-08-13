@@ -2335,7 +2335,10 @@ final class MainWindow: @unchecked Sendable {
     func presentCompactPreflight(for pane: ChatPane, initialInstruction: String = "") {
         guard let conversation = pane.conversation else { return }
         Dialogs.compactPreflight(
-            parent: window, facts: CompactPreflight.make(state: pane.lastState),
+            parent: window,
+            facts: CompactPreflight.make(
+                state: pane.lastState,
+                showsInstruction: pane.backend?.capabilities.supportsCompactionInstructions ?? true),
             initialInstruction: initialInstruction,
             draft: pane.compactionScope
         ) { [choice = pane.promptChoice] instruction in

@@ -889,13 +889,15 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
-    /// instruction for what the summary must keep — so it always opens the shared decision
-    /// screen first, whose every word is ``CompactPreflight``'s.
+    /// instruction for what the summary must keep where the server takes one — so it always
+    /// opens the shared decision screen first, whose every word is ``CompactPreflight``'s.
     func presentCompactPreflight(initialInstruction: String = "") {
         guard let conversation, let entry else { return }
         MacDialogs.compactPreflight(
             on: view.window,
-            facts: CompactPreflight.make(state: lastState),
+            facts: CompactPreflight.make(
+                state: lastState,
+                showsInstruction: backend?.capabilities.supportsCompactionInstructions ?? true),
             initialInstruction: initialInstruction,
             draft: .compaction(profileID: entry.profileID, sessionID: entry.session.id)
         ) { [choice = composer.promptChoice] instruction in
@@ -1130,7 +1132,7 @@ final class TranscriptViewController: NSViewController {
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
         return QuotaSurface.hottestExhausted(
             in: QuotaSurface.billingQuotas(
-                in: relevant, selection: nil, model: composer.activeModelID),
+                in: relevant, selection: composer.pickedModel, model: composer.activeModelID),
             model: composer.activeModelID
         )
         .map(QuotaSurface.short)

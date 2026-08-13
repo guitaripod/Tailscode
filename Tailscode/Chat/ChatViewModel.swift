@@ -934,7 +934,7 @@ final class ChatViewModel {
         }
         selectedModel = await ChatModelResolver.model(
             profileID: contextID, backend: backend, sessionKey: persistKey,
-            sessionModel: session.model)
+            sessionModel: session.model, sessionModelProviderID: session.modelProviderID)
         onModelChange?()
     }
 

@@ -168,9 +168,9 @@ enum Dialogs {
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an instruction
-    /// for what the summary must keep — so it opens a decision screen whose every word is the
-    /// shared ``CompactPreflight``'s: what compacting does, what stays, what the previous one
-    /// traded, and a place for the instruction.
+    /// for what the summary must keep where the server takes one — so it opens a decision screen
+    /// whose every word is the shared ``CompactPreflight``'s: what compacting does, what stays,
+    /// what the previous one traded, and a place for the instruction.
     static func compactPreflight(
         parent: UnsafeMutablePointer<GtkWidget>?, facts: CompactPreflight,
         initialInstruction: String = "",
@@ -192,18 +192,25 @@ enum Dialogs {
             gtk_box_append(ptr(content), body)
         }
 
-        let caption = Gtk.label(
-            facts.fieldCaption.uppercased(), css: "section-header", wrap: true, selectable: false)
-        gtk_widget_set_halign(caption, GTK_ALIGN_START)
-        gtk_widget_set_margin_top(caption, 4)
-        gtk_box_append(ptr(content), caption)
+        let entry: UnsafeMutablePointer<GtkWidget>?
+        if facts.showsInstruction {
+            let caption = Gtk.label(
+                facts.fieldCaption.uppercased(), css: "section-header", wrap: true,
+                selectable: false)
+            gtk_widget_set_halign(caption, GTK_ALIGN_START)
+            gtk_widget_set_margin_top(caption, 4)
+            gtk_box_append(ptr(content), caption)
 
-        let entry = gtk_entry_new()!
-        gtk_entry_set_placeholder_text(ptr(entry), facts.fieldPlaceholder)
-        let seeded = initialInstruction.isEmpty
-            ? draft.map { DraftStore.text(for: $0) } ?? "" : initialInstruction
-        gtk_editable_set_text(op(entry), seeded)
-        gtk_box_append(ptr(content), entry)
+            let field = gtk_entry_new()!
+            gtk_entry_set_placeholder_text(ptr(field), facts.fieldPlaceholder)
+            let seeded = initialInstruction.isEmpty
+                ? draft.map { DraftStore.text(for: $0) } ?? "" : initialInstruction
+            gtk_editable_set_text(op(field), seeded)
+            gtk_box_append(ptr(content), field)
+            entry = field
+        } else {
+            entry = nil
+        }
 
         if let lastTime = facts.lastTime {
             let previously = Gtk.label(lastTime, css: "seam-footnote", wrap: true, selectable: false)
@@ -214,24 +221,30 @@ enum Dialogs {
         gtk_widget_set_halign(wait, GTK_ALIGN_START)
         gtk_box_append(ptr(content), wait)
 
-        let entryBits = UInt(bitPattern: entry)
-        if let draft {
+        let entryBits = entry.map { UInt(bitPattern: $0) }
+        if let draft, let entry {
             Gtk.connect(UnsafeMutableRawPointer(entry), "changed") {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
+                guard let entryBits,
+                    let raw = UnsafeMutableRawPointer(bitPattern: entryBits),
                     let text = gtk_editable_get_text(op(raw))
                 else { return }
                 DraftStore.record(String(cString: text), for: draft)
             }
         }
         let compact: @Sendable () -> Void = {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: entryBits) else { return }
-            let entry: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-            let instruction = entryText(entry)
-            if let draft { DraftStore.clear(draft) }
-            close(entry)
-            onCompact(instruction.isEmpty ? nil : instruction)
+            if let entryBits, let raw = UnsafeMutableRawPointer(bitPattern: entryBits) {
+                let field: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+                let instruction = entryText(field)
+                if let draft { DraftStore.clear(draft) }
+                close(field)
+                onCompact(instruction.isEmpty ? nil : instruction)
+            } else {
+                onCompact(nil)
+            }
         }
-        Gtk.connect(UnsafeMutableRawPointer(entry), "activate", compact)
+        if let entry {
+            Gtk.connect(UnsafeMutableRawPointer(entry), "activate", compact)
+        }
         gtk_box_append(
             ptr(content),
             buttonRow(

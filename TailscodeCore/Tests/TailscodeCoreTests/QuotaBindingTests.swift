@@ -282,6 +282,28 @@ struct QuotaBindingTests {
             "a Claude wall is what stands in front of an Anthropic-door model")
     }
 
+    @Test("The composer's own wall is read through the model's door")
+    func bandBilling() {
+        let quotas = [
+            quota("opencode go", [gauge("Weekly", 1.0)]),
+            quota("DeepSeek", [gauge("Balance", 0.9)]),
+        ]
+        let direct = ModelSelection(providerID: "deepseek", modelID: "deepseek/deepseek-v4-pro")
+        #expect(
+            QuotaSurface.hottestExhausted(
+                in: QuotaSurface.billingQuotas(in: quotas, selection: direct, model: direct.modelID),
+                model: direct.modelID
+            ) == nil,
+            "the plan's weekly wall is not news above a chat on the direct key")
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "deepseek/deepseek-v4-pro")
+        #expect(
+            QuotaSurface.hottestExhausted(
+                in: QuotaSurface.billingQuotas(in: quotas, selection: viaGo, model: viaGo.modelID),
+                model: viaGo.modelID
+            )?.provider == "opencode go",
+            "the plan's weekly wall speaks above a chat the plan bills")
+    }
+
     @Test("The chooser's own selftest passes")
     func selftest() {
         #expect(ModelChooserCheck.run().isEmpty)

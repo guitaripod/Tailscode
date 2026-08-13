@@ -110,23 +110,26 @@ enum MacDialogs {
             body.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
         }
 
-        let caption = NSTextField(labelWithString: facts.fieldCaption.uppercased())
-        caption.font = MacTheme.Ramp.font(.metricLabel)
-        caption.textColor = MacTheme.Color.tertiaryLabel
-        column.addArrangedSubview(caption)
-        column.setCustomSpacing(MacTheme.Spacing.xs, after: caption)
+        var field: NSTextField?
+        if facts.showsInstruction {
+            let caption = NSTextField(labelWithString: facts.fieldCaption.uppercased())
+            caption.font = MacTheme.Ramp.font(.metricLabel)
+            caption.textColor = MacTheme.Color.tertiaryLabel
+            column.addArrangedSubview(caption)
+            column.setCustomSpacing(MacTheme.Spacing.xs, after: caption)
 
-        let field: NSTextField
-        if let draft {
-            field = DraftingField(
-                scope: draft,
-                initial: initialInstruction.isEmpty ? DraftStore.text(for: draft) : initialInstruction)
-        } else {
-            field = NSTextField(string: initialInstruction)
+            if let draft {
+                field = DraftingField(
+                    scope: draft,
+                    initial: initialInstruction.isEmpty
+                        ? DraftStore.text(for: draft) : initialInstruction)
+            } else {
+                field = NSTextField(string: initialInstruction)
+            }
+            field?.placeholderString = facts.fieldPlaceholder
+            column.addArrangedSubview(field!)
+            field!.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
         }
-        field.placeholderString = facts.fieldPlaceholder
-        column.addArrangedSubview(field)
-        field.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
 
         for line in [facts.lastTime, facts.wait].compactMap({ $0 }) {
             let note = NSTextField(wrappingLabelWithString: line)

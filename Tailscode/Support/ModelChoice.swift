@@ -91,12 +91,14 @@ enum ChatModelResolver {
 
     static func model(
         profileID: String, backend: any CodingAgentBackend, sessionKey: String? = nil,
-        sessionModel: String? = nil, contextID: String? = nil
+        sessionModel: String? = nil, sessionModelProviderID: String? = nil,
+        contextID: String? = nil
     ) async -> ModelSelection? {
         let context = contextID ?? profileID
         let stored =
             sessionKey.flatMap { ModelPreferenceStore.model(forKey: $0) }
-            ?? ModelPreferenceStore.resolveSessionModel(sessionModel, contextID: context)
+            ?? ModelPreferenceStore.resolveSessionModel(
+                sessionModel, contextID: context, providerID: sessionModelProviderID)
             ?? ModelPreferenceStore.globalModel(forContextID: context)
         if let stored { return stored }
         guard !honoursServerDefault(backend) else { return nil }

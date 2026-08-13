@@ -827,12 +827,13 @@ final class ChatViewController: UIViewController {
     }
 
     /// `/compact` never fires bare: it costs minutes, cannot be undone, and takes an instruction
-    /// most people don't know it accepts. The sheet is where that gets said.
+    /// where the server accepts one. The sheet is where that gets said.
     private func presentCompactPreflight(instruction: String = "") {
         let sheet = CompactPreflightViewController(
             messageCount: viewModel.state.messages.count(where: { $0.role != .system }),
             lastCompaction: viewModel.lastCompaction,
             initialInstruction: instruction,
+            showsInstruction: viewModel.backend.capabilities.supportsCompactionInstructions,
             draftScope: compactionDraftScope
         ) { [weak self] instructions in
             self?.viewModel.compact(instructions: instructions)

@@ -37,6 +37,34 @@ struct ModelChooserTests {
         #expect(offers == 3)
     }
 
+    @Test("A folded row's door prefers the model's own key over the reseller")
+    func foldDoorPreference() {
+        let models = [
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "opencode-go"),
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "deepseek"),
+        ]
+        let folded = ModelChooser.fold(models)
+        #expect(folded.count == 1)
+        guard let candidate = folded.first else { return }
+        #expect(candidate.offers.count == 2)
+        #expect(
+            candidate.selection
+                == ModelSelection(providerID: "deepseek", modelID: "deepseek/deepseek-v4-pro"),
+            "the keyed door is the row's pick, not the plan's copy")
+    }
+
+    @Test("The door a chat is already on wins a re-pick")
+    func foldDoorStickiness() {
+        let models = [
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "opencode-go"),
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "deepseek"),
+        ]
+        let onGo = ModelSelection(providerID: "opencode-go", modelID: "deepseek/deepseek-v4-pro")
+        let folded = ModelChooser.fold(models, preferred: onGo)
+        guard let candidate = folded.first else { return }
+        #expect(candidate.selection == onGo, "re-picking keeps the door the chat is on")
+    }
+
     @Test("Shortlist keeps the selection and recents, never invents missing ids")
     func shortlist() {
         let models = (0..<12).map { i in

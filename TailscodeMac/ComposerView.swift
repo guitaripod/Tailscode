@@ -52,6 +52,7 @@ final class ComposerView: NSView {
     /// What a prompt sent outside the text box should travel with — the same model and effort
     /// the next Enter in this composer would use.
     var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+    var pickedModel: ModelSelection? { chosenModel }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
     var quotasForModels: (() -> [UsageQuota])?
 
@@ -156,7 +157,8 @@ final class ComposerView: NSView {
         syncChips()
         let key = Self.preferenceKey(entry)
         chosenModel = ModelPreferenceStore.initialModel(
-            sessionKey: key, contextID: entry.profileID, sessionModel: entry.session.model)
+            sessionKey: key, contextID: entry.profileID, sessionModel: entry.session.model,
+            sessionModelProviderID: entry.session.modelProviderID)
         chosenEffort = EffortPreferenceStore.initialEffort(
             sessionKey: key, contextID: entry.profileID,
             sessionEffort: entry.session.reasoningEffort)
