@@ -72,9 +72,23 @@ echo "installed $("$BIN_DIR/tailscode" --version 2>/dev/null || echo "$BIN_DIR/t
 # it in — an app resurrected with a bare `nohup` inherits the caller's cgroup instead, is refused an
 # app id, and quietly loses its global chord until the next launcher click.
 if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
+    # The display must be the person's, not the caller's: run from an agent or a cron-less shell
+    # there is no DISPLAY here, and an app restarted without one starts headless — alive, polling,
+    # but with no window. The process being replaced is the authoritative witness of where its
+    # window lived, so its own environment is adopted when this one has nothing to offer.
+    DISPLAY_ENV=""
+    if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+        for pid in $OLD_PIDS; do
+            DISPLAY_ENV=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null |
+                grep -E '^(DISPLAY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR)=' |
+                sed 's/^/--setenv=/' | tr '\n' ' ')
+            [ -n "$DISPLAY_ENV" ] && break
+        done
+    fi
     if command -v systemd-run >/dev/null 2>&1; then
         systemd-run --user --scope --quiet \
             -u "app-com.guitaripod.tailscode-$$" \
+            $DISPLAY_ENV \
             "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
     else
         nohup "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
