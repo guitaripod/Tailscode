@@ -127,6 +127,46 @@ struct QuotaBindingTests {
             "the spent model sits under the two that can still answer")
     }
 
+    @Test("The door that runs a model bills it, never the name on the box")
+    func doorOverFamily() {
+        let catalog = [
+            ModelInfo(id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", providerID: "opencode-go"),
+            ModelInfo(
+                id: "deepseek-v4-flash-direct", name: "DeepSeek V4 Flash Direct",
+                providerID: "deepseek"),
+            ModelInfo(id: "claude-opus-4-5", name: "Claude Opus 4.5", providerID: "anthropic"),
+        ]
+        let byTitle: (ModelChooser) -> [String: ModelChooserRow] = { chooser in
+            Dictionary(
+                uniqueKeysWithValues: chooser.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
+        }
+        let go = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [quota("opencode go", [gauge("5-hour session", 1.0)])])
+        let goRows = byTitle(go)
+        #expect(goRows["DeepSeek V4 Flash"]?.wall != nil, "go bills the model it fronts")
+        #expect(
+            goRows["DeepSeek V4 Flash Direct"]?.wall == nil,
+            "go does not bill a model the deepseek door runs")
+        #expect(
+            goRows["Claude Opus 4.5"]?.wall == nil,
+            "go does not bill a model the anthropic door runs")
+
+        let balance = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [quota("DeepSeek", [gauge("Balance", 1.0)])])
+        let balanceRows = byTitle(balance)
+        #expect(
+            balanceRows["DeepSeek V4 Flash Direct"]?.wall != nil,
+            "the prepaid balance bills the model the deepseek door runs")
+        #expect(
+            balanceRows["DeepSeek V4 Flash"]?.wall == nil,
+            "the prepaid balance does not bill a model go fronts")
+        #expect(
+            balanceRows["Claude Opus 4.5"]?.wall == nil,
+            "the prepaid balance does not bill Claude's")
+    }
+
     @Test("A model on another machine is never marked from this one's account")
     func elsewhereUnmarked() {
         let here = ModelSource(
@@ -152,6 +192,9 @@ struct QuotaBindingTests {
             ModelInfo(id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", providerID: "anthropic"),
             ModelInfo(
                 id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", providerID: "opencode-go"),
+            ModelInfo(
+                id: "deepseek-v4-flash-direct", name: "DeepSeek V4 Flash Direct",
+                providerID: "deepseek"),
             ModelInfo(id: "gpt-5.6-luna", name: "GPT-5.6 Luna", providerID: "opencode-go"),
             ModelInfo(id: "qwen3:latest", name: "Qwen3", providerID: "ollama"),
         ]
@@ -165,6 +208,7 @@ struct QuotaBindingTests {
             uniqueKeysWithValues: claudeWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
         #expect(byTitle["Claude Sonnet 4.5"]?.wall != nil)
         #expect(byTitle["DeepSeek V4 Flash"]?.wall == nil)
+        #expect(byTitle["DeepSeek V4 Flash Direct"]?.wall == nil)
         #expect(byTitle["GPT-5.6 Luna"]?.wall == nil)
         #expect(byTitle["Qwen3"]?.wall == nil)
 
@@ -174,13 +218,15 @@ struct QuotaBindingTests {
             uniqueKeysWithValues: goWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
         #expect(goByTitle["DeepSeek V4 Flash"]?.wall != nil)
         #expect(goByTitle["GPT-5.6 Luna"]?.wall != nil)
+        #expect(goByTitle["DeepSeek V4 Flash Direct"]?.wall == nil, "go does not bill the deepseek door")
         #expect(goByTitle["Qwen3"]?.wall == nil, "the reseller does not bill a local model")
 
         let deepWall = ModelChooser(
             models: catalog, selected: nil, recents: [], quotas: [accountWall("DeepSeek")])
         let deepByTitle = Dictionary(
             uniqueKeysWithValues: deepWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
-        #expect(deepByTitle["DeepSeek V4 Flash"]?.wall != nil)
+        #expect(deepByTitle["DeepSeek V4 Flash Direct"]?.wall != nil)
+        #expect(deepByTitle["DeepSeek V4 Flash"]?.wall == nil, "the balance does not bill a model go fronts")
         #expect(deepByTitle["Claude Sonnet 4.5"]?.wall == nil)
         #expect(deepByTitle["GPT-5.6 Luna"]?.wall == nil)
     }

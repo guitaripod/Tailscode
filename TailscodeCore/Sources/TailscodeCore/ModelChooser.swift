@@ -957,6 +957,8 @@ public enum ModelChooserCheck {
                 providerID: "openrouter"),
             ModelInfo(id: "gpt-5.6-luna", name: "GPT-5.6 Luna", providerID: "opencode-go"),
             ModelInfo(id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", providerID: "opencode-go"),
+            ModelInfo(
+                id: "deepseek-v4-flash-direct", name: "DeepSeek V4 Flash", providerID: "deepseek"),
             ModelInfo(id: "qwen3:latest", name: "Qwen3", providerID: "ollama"),
             ModelInfo(id: "qwen3-coder", name: "Qwen3 Coder", providerID: "opencode-go"),
         ]
@@ -1205,10 +1207,12 @@ public enum ModelChooserCheck {
             models: catalog, selected: nil, recents: [],
             quotas: [quota("opencode go", [window("5-hour session", 1)])])
         expect(
-            goWall.rows.filter { !$0.isAuto }.allSatisfy {
-                ($0.wall != nil) == ($0.title != "Qwen3")
+            goWall.rows.filter { !$0.isAuto }.allSatisfy { row in
+                let hosted = row.title != "Qwen3" && row.title != "Claude Sonnet 4.5"
+                return (row.wall != nil) == hosted
             },
-            "a reseller's account-wide wall holds every hosted model it fronts, and no local one")
+            "a reseller's account-wide wall holds every hosted model it fronts — and never one "
+                + "another house's door runs")
 
         let deepWall = ModelChooser(
             models: catalog, selected: nil, recents: [],

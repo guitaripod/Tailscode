@@ -162,33 +162,41 @@ enum UsagePanel {
 
         let slug = ProviderBrand.slug(quota.providerName)
         for gauge in quota.gauges {
-            gtk_box_append(ptr(card), gaugeRows(gauge, slug: slug))
-        }
-
-        if !quota.details.isEmpty {
-            let rule = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-            Gtk.addClass(rule, "usage-rule")
-            gtk_box_append(ptr(card), rule)
-            for detail in quota.details {
-                let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-                let key = Gtk.label(detail.key, css: "usage-detail-key", selectable: false)
-                gtk_widget_set_hexpand(key, 1)
-                gtk_label_set_xalign(op(key), 0)
-                gtk_box_append(ptr(row), key)
-                gtk_box_append(
-                    ptr(row), Gtk.label(detail.value, css: "usage-detail-value", selectable: false))
-                gtk_box_append(ptr(card), row)
-            }
+            gtk_box_append(ptr(card), gaugeRows(gauge, slug: slug, quota: quota))
         }
 
         gtk_box_append(
             ptr(card),
             Gtk.label(QuotaRollup.provenance(holding), css: "usage-source", selectable: false))
+
+        if !quota.details.isEmpty {
+            let header = Gtk.label(
+                Localized.text("How this is counted"), css: "usage-source", selectable: false)
+            let disclosure = Gtk.disclosure(
+                header: header, expanded: false,
+                onToggle: { _, _ in },
+                makeBody: {
+                    let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+                    for detail in quota.details {
+                        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+                        let key = Gtk.label(detail.key, css: "usage-detail-key", selectable: false)
+                        gtk_widget_set_hexpand(key, 1)
+                        gtk_label_set_xalign(op(key), 0)
+                        gtk_box_append(ptr(row), key)
+                        gtk_box_append(
+                            ptr(row),
+                            Gtk.label(detail.value, css: "usage-detail-value", selectable: false))
+                        gtk_box_append(ptr(body), row)
+                    }
+                    return body
+                })
+            gtk_box_append(ptr(card), disclosure)
+        }
         return card
     }
 
     private static func gaugeRows(
-        _ gauge: UsageQuota.Gauge, slug: String?
+        _ gauge: UsageQuota.Gauge, slug: String?, quota: UsageQuota
     ) -> UnsafeMutablePointer<GtkWidget> {
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         let fraction = min(max(gauge.fraction, 0), 1)
@@ -218,32 +226,43 @@ enum UsagePanel {
             gtk_box_append(ptr(block), track)
         }
 
+        gtk_box_append(
+            ptr(block),
+            Gtk.label(caption(for: gauge, in: quota), css: "gauge-reset", selectable: false))
+        return block
+    }
+
+    /// One line under the bar: the money where the window is money, and the reset where the
+    /// provider said when it comes — never two stacked lines of fine print. A prepaid balance's
+    /// caption is its own split, from the snapshot that wrote the card.
+    private static func caption(for gauge: UsageQuota.Gauge, in quota: UsageQuota) -> String {
+        if gauge.usedUSD != nil, gauge.limitUSD == nil, quota.details.count == 2 {
+            return "\(quota.details[0].key) \(quota.details[0].value) · \(quota.details[1].key) \(quota.details[1].value)"
+        }
+        var parts: [String] = []
+        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+            parts.append(
+                "\(DeepSeekBalance.money(used, gauge.currency)) / \(DeepSeekBalance.money(limit, gauge.currency))")
+        }
         if let resets = gauge.resetsAt {
             let phrasing =
                 gauge.trustedReset
                 ? Localized.text("resets in %@", countdown(to: resets))
                 : Localized.text("resets in about %@", countdown(to: resets))
-            gtk_box_append(ptr(block), Gtk.label(phrasing, css: "gauge-reset", selectable: false))
+            parts.append(phrasing)
         }
-        return block
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
     }
 
-    /// A spend window reads as money, everything else as the percent already used — or "Used up"
-    /// when the window is at the wall. A prepaid balance is money without a ceiling: the total
-    /// itself, or "Empty" when the account is at the wall.
+    /// A gauge reads as the percent already used — or "Used up" when the window is at the wall.
+    /// A prepaid balance is money without a ceiling: the total itself, or "Empty" when the
+    /// account is at the wall.
     private static func amount(for gauge: UsageQuota.Gauge) -> String {
-        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            return "$\(trimmed(used)) of $\(trimmed(limit))"
-        }
-        if gauge.usedUSD != nil {
+        if gauge.usedUSD != nil, gauge.limitUSD == nil {
             return DeepSeekBalance.amount(for: gauge)
         }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
-    }
-
-    private static func trimmed(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(format: "%.2f", value)
     }
 
     private static func countdown(to date: Date) -> String {

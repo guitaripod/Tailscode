@@ -63,13 +63,15 @@ public enum QuotaBinding {
     /// nobody can act on, because no amount of waiting or model-switching on Claude's clock opens
     /// a model billed somewhere else. The exception is the reseller whose caps are account-wide
     /// dollars across every provider it fronts: opencode go bills deepseek, kimi and the rest of
-    /// its catalog out of one balance, so its wall holds every hosted model it offers. A quota
+    /// its catalog out of one balance, so its wall holds every hosted model it offers — but only
+    /// those, never a model another house's door actually runs, and never a local one. A quota
     /// from a provider nobody recognises keeps the old behaviour and governs everything, which is
     /// the safe reading of a wall whose house we cannot place.
     public static func bills(_ quota: UsageQuota, candidate: ModelCandidate) -> Bool {
         guard let slug = ProviderBrand.slug(quota.providerName) else { return true }
         switch slug {
-        case "opencode": return !candidate.isLocal
+        case "opencode":
+            return billed(by: "opencode", candidate: candidate, familyFallback: !candidate.isLocal)
         case "claude": return billed(by: "claude", candidate: candidate)
         case "grok": return billed(by: "grok", candidate: candidate)
         case "deepseek": return billed(by: "deepseek", candidate: candidate)
@@ -109,14 +111,17 @@ public enum QuotaBinding {
         }
     }
 
-    /// A model is billed by a house when its family is that house's, or when the gateway
-    /// actually running it carries that house's own id — the same model name reached through two
-    /// providers may spend from either account.
-    private static func billed(by house: String, candidate: ModelCandidate) -> Bool {
-        if candidate.family.key == house { return true }
-        return candidate.offers.contains { offer in
-            ProviderIdentity.slug(offer.providerID) == house
-        }
+    /// A model is billed by the door that actually runs it: the gateway's own id outranks the
+    /// model's name, because a reseller fronts a family with its own caps and a direct key bills
+    /// a balance of its own — a DeepSeek family reached through opencode go spends from Go's
+    /// caps, one reached through the deepseek door from the prepaid balance. The family is only
+    /// the fallback for a door nobody recognises.
+    private static func billed(
+        by house: String, candidate: ModelCandidate, familyFallback: Bool = true
+    ) -> Bool {
+        let doors = candidate.offers.compactMap { ProviderIdentity.slug($0.providerID) }
+        if !doors.isEmpty { return doors.contains(house) }
+        return familyFallback && candidate.family.key == house
     }
 
     /// A label that carries both reads "window · model", so only the part past the last separator
