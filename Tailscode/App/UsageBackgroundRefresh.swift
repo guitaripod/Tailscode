@@ -42,6 +42,11 @@ enum UsageBackgroundRefresh {
                 UsageWidgetStore.writeLive(quotas, reload: false)
                 UsageWarnings.evaluate(quotas: quotas)
             }
+            if let deepseek = UsageWidgetStore.read()?.providers
+                .first(where: { $0.providerName == DeepSeekBalance.providerName })
+            {
+                UsageWarnings.evaluate(providers: [deepseek])
+            }
             if !Task.isCancelled {
                 let entries = ConnectionController.shared.opencodeBackends()
                 if !entries.isEmpty {

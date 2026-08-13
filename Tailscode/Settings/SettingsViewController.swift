@@ -161,6 +161,7 @@ final class SettingsViewController: UIViewController {
         case usage
         case goMonthlyCap
         case goBillingDay
+        case deepseekKey
         case keyboardShortcuts
         case haptics
         case appearance
@@ -427,11 +428,20 @@ final class SettingsViewController: UIViewController {
                     "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed."
             )
         case .usage:
-            guard showsGoCaps else { return nil }
-            return String(
-                localized:
-                    "Go reports exact usage through its own API, so these caps only shape the fallback estimate used while that API is unreachable. Auto reads the renewal day from your oldest Go request."
-            )
+            var lines: [String] = []
+            if showsGoCaps {
+                lines.append(
+                    String(
+                        localized:
+                            "Go reports exact usage through its own API, so these caps only shape the fallback estimate used while that API is unreachable. Auto reads the renewal day from your oldest Go request."
+                    ))
+            }
+            lines.append(
+                String(
+                    localized:
+                        "The DeepSeek API key is optional — set it only if you bill DeepSeek models straight to your own platform account, and its prepaid balance joins the usage meters."
+                ))
+            return lines.joined(separator: "\n\n")
         case .software:
             return String(
                 localized:
@@ -598,6 +608,16 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "calendar")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.customView(configuration: billingDayAccessory())]
+        case .deepseekKey:
+            content.text = String(localized: "DeepSeek API key")
+            content.secondaryText =
+                DeepSeekCredentials.hasToken
+                ? String(localized: "Saved in Keychain") : String(localized: "Not set")
+            content.prefersSideBySideTextAndSecondaryText = true
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "key")
+            content.imageProperties.tintColor = Theme.Color.info
+            cell.accessories = [.disclosureIndicator()]
         case .keyboardShortcuts:
             content.text = String(localized: "Keyboard shortcuts")
             content.secondaryText = String(
@@ -942,7 +962,7 @@ final class SettingsViewController: UIViewController {
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)
 
-        var usageItems: [Item] = [.usage]
+        var usageItems: [Item] = [.usage, .deepseekKey]
         if showsGoCaps { usageItems += [.goMonthlyCap, .goBillingDay] }
 
         return [
@@ -1082,6 +1102,9 @@ final class SettingsViewController: UIViewController {
         case .goBillingDay:
             return String(
                 localized: "billing day renewal cycle opencode go", comment: "search keywords")
+        case .deepseekKey:
+            return String(
+                localized: "deepseek api key balance prepaid token", comment: "search keywords")
         case .keyboardShortcuts:
             return String(
                 localized: "keyboard shortcuts keys hardware cheatsheet rebind",
@@ -1301,6 +1324,14 @@ extension SettingsViewController: UICollectionViewDelegate {
             UpdateCenterViewController.present(from: self)
         case .usage:
             navigationController?.pushViewController(UsageViewController(), animated: true)
+        case .deepseekKey:
+            Theme.Haptics.tap()
+            let editor = DeepSeekKeyViewController()
+            editor.onChange = { [weak self] in
+                self?.applySnapshot()
+                Task { await DeepSeekBalance.refresh() }
+            }
+            navigationController?.pushViewController(editor, animated: true)
         case .pro:
             Theme.Haptics.tap()
             ProUpgradeViewController.present(from: self)

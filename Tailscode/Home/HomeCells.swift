@@ -841,6 +841,7 @@ final class QuotaPlaceholderCell: ShimmerCardCell {
 
 final class QuotaCardCell: GlassCardCell {
     private let providerLabel = UILabel()
+    private let countdownLabel = UILabel()
     private let gaugeStack = UIStackView()
     private let gaugeRows = (0..<3).map { _ in GaugeRow() }
 
@@ -850,16 +851,27 @@ final class QuotaCardCell: GlassCardCell {
         providerLabel.textColor = Theme.Color.label
         providerLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        countdownLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        countdownLabel.textColor = Theme.Color.secondaryLabel
+        countdownLabel.textAlignment = .right
+        countdownLabel.setContentHuggingPriority(.required, for: .horizontal)
+        countdownLabel.translatesAutoresizingMaskIntoConstraints = false
+
         gaugeStack.axis = .vertical
         gaugeStack.spacing = Theme.Spacing.s
         gaugeStack.translatesAutoresizingMaskIntoConstraints = false
         gaugeRows.forEach(gaugeStack.addArrangedSubview)
 
-        [providerLabel, gaugeStack].forEach(contentView.addSubview)
+        [providerLabel, countdownLabel, gaugeStack].forEach(contentView.addSubview)
         NSLayoutConstraint.activate([
             providerLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
             providerLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
-            providerLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            providerLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: countdownLabel.leadingAnchor, constant: -Theme.Spacing.s),
+
+            countdownLabel.trailingAnchor.constraint(
+                equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            countdownLabel.centerYAnchor.constraint(equalTo: providerLabel.centerYAnchor),
 
             gaugeStack.topAnchor.constraint(equalTo: providerLabel.bottomAnchor, constant: Theme.Spacing.s),
             gaugeStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
@@ -871,11 +883,13 @@ final class QuotaCardCell: GlassCardCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ card: QuotaCard) {
-        var header = card.quota.providerName
+        providerLabel.text = card.quota.providerName
         if let countdown = Self.countdown(card.quota) {
-            header += "  ·  " + String(localized: "resets in \(countdown)")
+            countdownLabel.text = String(localized: "resets in \(countdown)")
+            countdownLabel.isHidden = false
+        } else {
+            countdownLabel.isHidden = true
         }
-        providerLabel.text = header
         let gauges = Array(card.quota.gauges.prefix(3))
         for (index, row) in gaugeRows.enumerated() {
             guard index < gauges.count else {
@@ -911,7 +925,9 @@ final class QuotaCardCell: GlassCardCell {
 
 /// One quota bar, built once and re-pointed at whatever gauge the card now carries. The card is
 /// reconfigured whenever anything on the board moves, and rebuilding six views and a constraint
-/// solve per bar to change two numbers was the most expensive `configure` on Home.
+/// solve per bar to change two numbers was the most expensive `configure` on Home. A gauge that
+/// carries money but no ceiling is a balance rather than a window — the bar goes away and the
+/// value reads as the money itself, because a cap that does not exist must not be drawn as one.
 private final class GaugeRow: UIStackView {
     private let label = UILabel()
     private let percent = UILabel()
@@ -956,6 +972,16 @@ private final class GaugeRow: UIStackView {
 
     func apply(_ gauge: UsageQuota.Gauge) {
         label.text = UsageGaugeFormat.gaugeLabel(gauge.label)
+        if let money = gauge.usedUSD, gauge.limitUSD == nil {
+            let symbol = (gauge.currency ?? "USD").uppercased() == "CNY" ? "¥" : "$"
+            percent.text = String(format: "\(symbol)%.2f", money)
+            percent.textColor =
+                gauge.fraction >= QuotaSurface.exhaustedFloor
+                ? Theme.Color.danger : Theme.Color.label
+            track.isHidden = true
+            return
+        }
+        track.isHidden = false
         let raw = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         percent.text = QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: raw)
         percent.textColor = gauge.fraction > 0.85 ? Theme.Color.danger : Theme.Color.label

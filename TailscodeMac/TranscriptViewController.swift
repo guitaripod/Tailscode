@@ -1128,8 +1128,12 @@ final class TranscriptViewController: NSViewController {
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        return QuotaSurface.hottestExhausted(in: relevant, model: composer.activeModelID)
-            .map(QuotaSurface.short)
+        return QuotaSurface.hottestExhausted(
+            in: QuotaSurface.billingQuotas(
+                in: relevant, selection: nil, model: composer.activeModelID),
+            model: composer.activeModelID
+        )
+        .map(QuotaSurface.short)
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;

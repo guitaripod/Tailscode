@@ -146,6 +146,96 @@ struct QuotaBindingTests {
         #expect(theirs?.wall == nil)
     }
 
+    @Test("A wall holds only the models its provider bills")
+    func billingAwareWalls() {
+        let catalog = [
+            ModelInfo(id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", providerID: "anthropic"),
+            ModelInfo(
+                id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", providerID: "opencode-go"),
+            ModelInfo(id: "gpt-5.6-luna", name: "GPT-5.6 Luna", providerID: "opencode-go"),
+            ModelInfo(id: "qwen3:latest", name: "Qwen3", providerID: "ollama"),
+        ]
+        func accountWall(_ provider: String) -> UsageQuota {
+            quota(provider, [gauge("5-hour session", 1.0)])
+        }
+
+        let claudeWall = ModelChooser(
+            models: catalog, selected: nil, recents: [], quotas: [accountWall("Claude")])
+        let byTitle = Dictionary(
+            uniqueKeysWithValues: claudeWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
+        #expect(byTitle["Claude Sonnet 4.5"]?.wall != nil)
+        #expect(byTitle["DeepSeek V4 Flash"]?.wall == nil)
+        #expect(byTitle["GPT-5.6 Luna"]?.wall == nil)
+        #expect(byTitle["Qwen3"]?.wall == nil)
+
+        let goWall = ModelChooser(
+            models: catalog, selected: nil, recents: [], quotas: [accountWall("opencode go")])
+        let goByTitle = Dictionary(
+            uniqueKeysWithValues: goWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
+        #expect(goByTitle["DeepSeek V4 Flash"]?.wall != nil)
+        #expect(goByTitle["GPT-5.6 Luna"]?.wall != nil)
+        #expect(goByTitle["Qwen3"]?.wall == nil, "the reseller does not bill a local model")
+
+        let deepWall = ModelChooser(
+            models: catalog, selected: nil, recents: [], quotas: [accountWall("DeepSeek")])
+        let deepByTitle = Dictionary(
+            uniqueKeysWithValues: deepWall.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
+        #expect(deepByTitle["DeepSeek V4 Flash"]?.wall != nil)
+        #expect(deepByTitle["Claude Sonnet 4.5"]?.wall == nil)
+        #expect(deepByTitle["GPT-5.6 Luna"]?.wall == nil)
+    }
+
+    @Test("A chat's chooser admits the quotas its backend spends against")
+    func relevantFamilies() {
+        let quotas = [
+            quota("Claude", [gauge("5-hour session", 1.0)]),
+            quota("opencode go", [gauge("5-hour session", 1.0)]),
+            quota("DeepSeek", [gauge("Balance", 1.0)]),
+        ]
+        let claude = QuotaSurface.relevantQuotas(for: .claudeCode, among: quotas)
+        #expect(claude.map(\.providerName) == ["Claude"])
+        let opencode = QuotaSurface.relevantQuotas(for: .openCode, among: quotas)
+        #expect(Set(opencode.map(\.providerName)) == ["opencode go", "DeepSeek"])
+        #expect(QuotaSurface.relevantQuotas(for: nil, among: quotas).count == 3)
+    }
+
+    @Test("A chat's banner reads the door its model runs through")
+    func chatBilling() {
+        let quotas = [
+            quota("Claude", [gauge("5-hour session", 1.0)]),
+            quota("opencode go", [gauge("5-hour session", 1.0)]),
+            quota("DeepSeek", [gauge("Balance", 1.0)]),
+        ]
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "deepseek-v4-flash")
+        let goBilled = QuotaSurface.billingQuotas(in: quotas, selection: viaGo)
+        #expect(goBilled.map(\.providerName) == ["opencode go"])
+
+        let viaDeepseek = ModelSelection(providerID: "deepseek", modelID: "deepseek-v4-flash")
+        let deepBilled = QuotaSurface.billingQuotas(in: quotas, selection: viaDeepseek)
+        #expect(deepBilled.map(\.providerName) == ["DeepSeek"])
+
+        let viaAnthropic = ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-4-5")
+        #expect(QuotaSurface.billingQuotas(in: quotas, selection: viaAnthropic).map(\.providerName) == ["Claude"])
+
+        let onClaude = QuotaSurface.resolve(
+            failureMessage: nil, quotas: quotas,
+            selection: ModelSelection(providerID: "opencode-go", modelID: "kimi-k3"))
+        #expect(onClaude?.provider == "opencode go", "the reseller's wall is in the way, not Claude's")
+
+        #expect(
+            QuotaSurface.resolve(
+                failureMessage: nil, quotas: quotas,
+                selection: ModelSelection(providerID: "deepseek", modelID: "deepseek-v4-flash")
+            )?.provider == "DeepSeek",
+            "an empty prepaid balance stops its own models and no others")
+        #expect(
+            QuotaSurface.resolve(
+                failureMessage: nil, quotas: quotas,
+                selection: ModelSelection(providerID: "anthropic", modelID: "claude-opus-4-5")
+            )?.provider == "Claude",
+            "a Claude wall is what stands in front of an Anthropic-door model")
+    }
+
     @Test("The chooser's own selftest passes")
     func selftest() {
         #expect(ModelChooserCheck.run().isEmpty)

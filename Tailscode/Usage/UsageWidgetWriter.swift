@@ -45,7 +45,9 @@ extension UsageWidgetStore {
                 gauges: provider.gauges.map { gauge in
                     UsageQuota.Gauge(
                         key: gauge.label, label: gauge.label, fraction: gauge.fraction,
-                        resetsAt: gauge.resetsAt, trustedReset: provider.isLive)
+                        resetsAt: gauge.resetsAt, trustedReset: provider.isLive,
+                        usedUSD: gauge.usedUSD, limitUSD: gauge.limitUSD,
+                        currency: gauge.currency)
                 },
                 details: [])
         }

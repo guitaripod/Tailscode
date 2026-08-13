@@ -33,4 +33,17 @@ public enum ProviderIdentity {
     public static func isLocal(_ providerID: String) -> Bool {
         providerID.lowercased() == "ollama"
     }
+
+    /// The brand a provider key bills against, for the quota wall's billing rule — a model
+    /// running through the "opencode-go" door spends from Go's caps, one through "deepseek"
+    /// from the prepaid balance. Keys with no house of their own answer nil.
+    public static func slug(_ providerID: String) -> String? {
+        switch providerID.lowercased() {
+        case "opencode", "opencode-go": return "opencode"
+        case "anthropic", "claude": return "claude"
+        case "xai", "grok": return "grok"
+        case "deepseek": return "deepseek"
+        default: return nil
+        }
+    }
 }

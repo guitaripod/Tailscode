@@ -1805,8 +1805,11 @@ final class ChatPane: @unchecked Sendable {
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
-        return QuotaSurface.hottestExhausted(in: relevant, model: activeModelID)
-            .map(QuotaSurface.short)
+        return QuotaSurface.hottestExhausted(
+            in: QuotaSurface.billingQuotas(in: relevant, selection: nil, model: activeModelID),
+            model: activeModelID
+        )
+        .map(QuotaSurface.short)
     }
 
     /// The used-up windows on this server's account, for marking a model spent where it is picked.

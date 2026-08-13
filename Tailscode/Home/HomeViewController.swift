@@ -625,10 +625,20 @@ final class HomeViewController: UIViewController {
     private func loadQuotas() async {
         let fetched = await LiveQuotaFetcher.fetch(deadline: 10)
         isFetchingLiveQuotas = false
-        guard !fetched.isEmpty else { return }
         quotas = fetched
+        if let deepseek = UsageWidgetStore.cachedQuotas()
+            .first(where: { $0.providerName == DeepSeekBalance.providerName })
+        {
+            quotas = quotas.filter { $0.providerName != DeepSeekBalance.providerName } + [deepseek]
+        }
+        guard !quotas.isEmpty else { return }
         UsageWidgetStore.writeLive(fetched)
         UsageWarnings.evaluate(quotas: fetched)
+        if let deepseek = UsageWidgetStore.read()?.providers
+            .first(where: { $0.providerName == DeepSeekBalance.providerName })
+        {
+            UsageWarnings.evaluate(providers: [deepseek])
+        }
         applySnapshot()
     }
 

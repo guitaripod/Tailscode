@@ -1811,16 +1811,22 @@ final class ChatViewController: UIViewController {
         guard Date() > suppressBannerUntil, state.status != .running else { return false }
         let quotas = QuotaSurface.relevantQuotas(
             for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
-        let model = viewModel.displayedModel?.modelID
+        let selection = viewModel.displayedModel
+        let model = selection?.modelID
         let failure: String? = {
             guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
             return f.message
         }()
         let exhaustion =
             failure.flatMap {
-                QuotaSurface.resolve(failureMessage: $0, quotas: quotas, model: model)
+                QuotaSurface.resolve(
+                    failureMessage: $0, quotas: quotas, model: model, selection: selection)
             } ?? (failure == nil
-                ? QuotaSurface.hottestExhausted(in: quotas, model: model) : nil)
+                ? QuotaSurface.hottestExhausted(
+                    in: QuotaSurface.billingQuotas(
+                        in: quotas, selection: selection, model: model),
+                    model: model)
+                : nil)
         guard let exhaustion else { return false }
         banner.show(
             QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,

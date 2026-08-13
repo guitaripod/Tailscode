@@ -59,11 +59,15 @@ final class UsageViewController: UIViewController {
     private var appliedModels: [CardKind: CardModel] = [:]
     private var analytics: UsageAnalytics?
     private var hasSeeded = false
+    /// Which DeepSeek key state the DeepSeek card last rendered, so returning from the key editor
+    /// knows whether the card needs a reload.
+    private var deepseekHasKey: Bool?
 
     private let heroCard = HeroCard()
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
     private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
     private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
+    private let deepseekCard = DeepSeekCard()
     private let monthCard = MonthCard()
 
     private lazy var emptyStateView = EmptyStateView(
@@ -84,6 +88,10 @@ final class UsageViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refreshUpdatedLabel()
+        if deepseekCard.isVisible, let deepseekHasKey, deepseekHasKey != DeepSeekCredentials.hasToken {
+            startLoad()
+            return
+        }
         guard loadTask == nil else { return }
         if loadedCaps != GoCaps.signature {
             startLoad()
@@ -173,6 +181,7 @@ final class UsageViewController: UIViewController {
 
         heroCard.isHidden = true
         monthCard.addTarget(self, action: #selector(openAnalytics), for: .touchUpInside)
+        deepseekCard.onOpenEditor = { [weak self] in self?.openDeepSeekEditor() }
 
         contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
@@ -180,6 +189,7 @@ final class UsageViewController: UIViewController {
         contentStack.addArrangedSubview(claudeCard)
         contentStack.addArrangedSubview(grokCard)
         contentStack.addArrangedSubview(opencodeCard)
+        contentStack.addArrangedSubview(deepseekCard)
         contentStack.addArrangedSubview(monthCard)
         contentStack.isHidden = true
     }
@@ -192,6 +202,12 @@ final class UsageViewController: UIViewController {
         Theme.Haptics.tap()
         navigationController?.pushViewController(
             AnalyticsViewController(analytics: analytics), animated: true)
+    }
+
+    private func openDeepSeekEditor() {
+        Theme.Haptics.tap()
+        let editor = DeepSeekKeyViewController()
+        navigationController?.pushViewController(editor, animated: true)
     }
 
     private func refreshUpdatedLabel() {
@@ -229,6 +245,7 @@ final class UsageViewController: UIViewController {
         claudeCard.isHidden = claudeProfile == nil
         grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
+        deepseekCard.isVisible = opencodeProfile != nil || DeepSeekCredentials.hasToken
         monthCard.isHidden = claudeProfile == nil
         contentStack.isHidden = false
 
@@ -237,7 +254,8 @@ final class UsageViewController: UIViewController {
         async let grokDone: Void = fillGrok(profiles: claudeProfiles, controller: controller)
         async let opencodeFailure: Error? = fillOpencode(
             profile: opencodeProfile, claudeProfiles: claudeProfiles, controller: controller)
-        let failures = await (claudeFailure, opencodeFailure, grokDone)
+        async let deepseekReading: DeepSeekBalance.Reading? = fillDeepseek()
+        let failures = await (claudeFailure, opencodeFailure, grokDone, deepseekReading)
         guard !Task.isCancelled else { return }
         if let failure = failures.0 ?? failures.1 { showError(failure) }
 
@@ -245,6 +263,24 @@ final class UsageViewController: UIViewController {
         refreshUpdatedLabel()
         refresher.endRefreshing()
         if claudeProfile != nil { loadAnalytics() }
+    }
+
+    /// The prepaid balance is this device's own credential, fetched straight from
+    /// api.deepseek.com rather than through any bridge. A refresh that fails keeps whatever the
+    /// card already shows; only a missing key (or a card that never had numbers) reads as the
+    /// invitation to add one.
+    private func fillDeepseek() async -> DeepSeekBalance.Reading? {
+        guard let reading = await DeepSeekBalance.refresh() else {
+            guard !Task.isCancelled else { return nil }
+            deepseekHasKey = DeepSeekCredentials.hasToken
+            if !DeepSeekCredentials.hasToken || !filledCards.contains(.deepseek) {
+                deepseekCard.renderKeyless()
+            }
+            return nil
+        }
+        deepseekHasKey = true
+        apply(Self.deepseekModel(reading), to: .deepseek)
+        return reading
     }
 
     /// The sparkline is a preview and the analytics screen is the point: one
@@ -261,8 +297,8 @@ final class UsageViewController: UIViewController {
         }
     }
 
-    private enum CardKind {
-        case claude, grok, opencode
+    private enum CardKind: CaseIterable {
+        case claude, grok, opencode, deepseek
     }
 
     private func apply(_ model: CardModel, to kind: CardKind) {
@@ -273,15 +309,25 @@ final class UsageViewController: UIViewController {
     }
 
     /// The one number that matters most: whichever quota window across every
-    /// provider is closest to its wall wears the big ring.
+    /// provider is closest to its wall wears the big ring. A balance at rest
+    /// never leads — a topped-up DeepSeek account is not a fact worth the hero —
+    /// but an empty one is a wall and wins like any other; a fresh account with
+    /// every window at zero still shows its least-empty window rather than none.
     private func refreshHero() {
-        var best: (title: String, accent: UIColor, gauge: GaugeVM)?
-        for kind in [CardKind.claude, .grok, .opencode] {
+        var windows: [(title: String, accent: UIColor, gauge: GaugeVM)] = []
+        var walls: [(title: String, accent: UIColor, gauge: GaugeVM)] = []
+        for kind in CardKind.allCases {
             guard let model = appliedModels[kind] else { continue }
-            for gauge in model.gauges where gauge.fraction > (best?.gauge.fraction ?? -1) {
-                best = (Self.providerTitle(for: kind), model.accent, gauge)
+            for gauge in model.gauges where gauge.fraction > 0 {
+                walls.append((Self.providerTitle(for: kind), model.accent, gauge))
+            }
+            for gauge in model.gauges where kind != .deepseek {
+                windows.append((Self.providerTitle(for: kind), model.accent, gauge))
             }
         }
+        let best =
+            walls.max(by: { $0.gauge.fraction < $1.gauge.fraction })
+            ?? windows.max(by: { $0.gauge.fraction < $1.gauge.fraction })
         guard let best else {
             heroCard.isHidden = true
             return
@@ -295,6 +341,7 @@ final class UsageViewController: UIViewController {
         case .claude: return "Claude Code"
         case .grok: return "Grok"
         case .opencode: return "opencode go"
+        case .deepseek: return "DeepSeek API"
         }
     }
 
@@ -309,7 +356,14 @@ final class UsageViewController: UIViewController {
         guard let entry = UsageWidgetStore.read() else { return }
         for provider in entry.providers where !provider.gauges.isEmpty {
             let kind = Self.kind(for: provider.providerName)
+            guard kind != .deepseek else { continue }
             apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)), to: kind)
+        }
+        if let deepseek = entry.providers
+            .first(where: { $0.providerName == DeepSeekBalance.providerName })
+        {
+            apply(Self.snapshotDeepseekModel(deepseek), to: .deepseek)
+            deepseekHasKey = true
         }
         guard lastRefreshed == nil, !filledCards.isEmpty else { return }
         lastRefreshed = entry.date
@@ -320,6 +374,7 @@ final class UsageViewController: UIViewController {
         switch providerName {
         case "Grok": return .grok
         case UsageWidgetStore.opencodeProviderName: return .opencode
+        case DeepSeekBalance.providerName: return .deepseek
         default: return .claude
         }
     }
@@ -329,6 +384,7 @@ final class UsageViewController: UIViewController {
         case .claude: return Theme.Color.claude
         case .grok: return Theme.Color.grok
         case .opencode: return Theme.Color.opencode
+        case .deepseek: return Theme.Color.modelFamily(.deepseek)
         }
     }
 
@@ -337,6 +393,7 @@ final class UsageViewController: UIViewController {
         case .claude: return claudeCard
         case .grok: return grokCard
         case .opencode: return opencodeCard
+        case .deepseek: return deepseekCard
         }
     }
 
@@ -354,6 +411,25 @@ final class UsageViewController: UIViewController {
             },
             details: [],
             note: String(localized: "Last saved figures — refreshing from the server now."))
+    }
+
+    private static func snapshotDeepseekModel(
+        _ provider: UsageWidgetEntry.ProviderSnapshot
+    ) -> CardModel {
+        let gauge = provider.gauges.first
+        return CardModel(
+            subtitle: provider.subtitle,
+            pill: String(localized: "LIVE"),
+            accent: Theme.Color.modelFamily(.deepseek),
+            gauges: gauge.map {
+                GaugeVM(
+                    name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
+                    percentText: $0.percentText, caption: $0.caption)
+            } ?? [],
+            details: [],
+            note: String(
+                localized: "Prepaid — billed per token from your own DeepSeek account, not a plan.")
+        )
     }
 
     private func preferredProfile(
@@ -483,17 +559,12 @@ final class UsageViewController: UIViewController {
     private static func liveOpencodeModel(_ quota: UsageQuota) -> CardModel {
         let gauges = quota.gauges.map { gauge -> GaugeVM in
             let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
-            var caption = ""
-            if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-                caption = "\(currency(used)) / \(currency(limit))"
-            }
-            if gauge.resetsAt != nil { caption += "\n" + resetCaption(gauge) }
             return GaugeVM(
                 name: UsageGaugeFormat.gaugeLabel(gauge.label),
                 fraction: gauge.fraction,
                 percentText: QuotaSurface.amountLabel(
                     fraction: gauge.fraction, percentText: "\(percent)%"),
-                caption: caption)
+                caption: caption(gauge))
         }
         let estimated = quota.source.lowercased().contains("estimated")
         return CardModel(
@@ -521,7 +592,7 @@ final class UsageViewController: UIViewController {
                 fraction: gauge.fraction,
                 percentText: QuotaSurface.amountLabel(
                     fraction: gauge.fraction, percentText: "\(percent)%"),
-                caption: resetCaption(gauge))
+                caption: caption(gauge))
         }
         return CardModel(
             subtitle: quota.subtitle,
@@ -533,6 +604,50 @@ final class UsageViewController: UIViewController {
                 localized:
                     "Live rolling rate limits straight from \(quota.source). Percentages are your actual plan consumption, not an estimate."
             ))
+    }
+
+    /// One line under the bar: the money where the window is money, and the reset where the
+    /// provider said when it comes — never two stacked lines of fine print.
+    private static func caption(_ gauge: UsageQuota.Gauge) -> String {
+        var parts: [String] = []
+        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+            parts.append("\(currency(used)) / \(currency(limit))")
+        }
+        let reset = resetCaption(gauge)
+        if reset != "—" { parts.append(reset) }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+    }
+
+    private static func deepseekModel(_ reading: DeepSeekBalance.Reading) -> CardModel {
+        let value = reading.isAvailable
+            ? DeepSeekBalance.currency(reading.total, reading.currency)
+            : String(localized: "Empty")
+        let gaugeCaption = reading.isAvailable
+            ? String(
+                localized:
+                    "Topped up \(DeepSeekBalance.currency(reading.toppedUp, reading.currency))"
+                        + (reading.granted > 0
+                            ? " · granted \(DeepSeekBalance.currency(reading.granted, reading.currency))"
+                            : ""))
+            : String(localized: "Top up to keep DeepSeek models running")
+        return CardModel(
+            subtitle: String(localized: "Prepaid balance · direct API"),
+            pill: String(localized: "LIVE"),
+            accent: Theme.Color.modelFamily(.deepseek),
+            gauges: [
+                GaugeVM(
+                    name: String(localized: "Balance"), fraction: reading.isAvailable ? 0 : 1,
+                    percentText: value, caption: gaugeCaption)
+            ],
+            details: [
+                (String(localized: "Topped up"),
+                    DeepSeekBalance.currency(reading.toppedUp, reading.currency)),
+                (String(localized: "Granted"),
+                    DeepSeekBalance.currency(reading.granted, reading.currency)),
+            ],
+            note: String(
+                localized:
+                    "Billed per token from your own DeepSeek account — no plan caps and no reset, so a balance is exactly the number above."))
     }
 
     private static func opencodeModel(_ result: UsageScanResult) -> CardModel {
@@ -617,7 +732,7 @@ final class UsageViewController: UIViewController {
                 spend: currency(stats.spend), cap: currency(window.cap),
                 requests: stats.requests)
             if let resetsAt = stats.resetsAt {
-                caption += "\n" + String(localized: "~resets \(humanize(until: resetsAt))")
+                caption += " · " + String(localized: "~resets \(humanize(until: resetsAt))")
             }
             return GaugeVM(
                 name: UsageGaugeFormat.gaugeLabel(window.name),
@@ -698,8 +813,8 @@ private final class HeroCard: UIView {
 
         ring.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            ring.widthAnchor.constraint(equalToConstant: 140),
-            ring.heightAnchor.constraint(equalToConstant: 140),
+            ring.widthAnchor.constraint(equalToConstant: 132),
+            ring.heightAnchor.constraint(equalToConstant: 132),
         ])
 
         titleLabel.font = Theme.Ramp.font(.cardTitle)
@@ -729,6 +844,9 @@ private final class HeroCard: UIView {
     }
 }
 
+/// One provider's quota card. Every provider wears the same anatomy — name, plan, provenance,
+/// windows as labelled bars, and the fine print folded behind a chevron — so the screen reads as
+/// one repeated shape rather than three cards that each invented their own.
 @MainActor
 private final class ProviderCard: UIView {
     private let cardTitle: String
@@ -736,12 +854,10 @@ private final class ProviderCard: UIView {
     private let subtitleLabel = UILabel()
     private let pillLabel = UILabel()
     private let pillBackground = UIView()
-    private let noteLabel = UILabel()
     private let gaugeStack = UIStackView()
-    private var captionLabels: [UILabel] = []
-    private let disclosure = DisclosureRow()
+    private let disclosure = DisclosureRow(title: String(localized: "How this is counted"))
+    private let noteLabel = UILabel()
     private let detailsStack = UIStackView()
-    private var detailsContainer: UIView?
     private var detailsExpanded = false
     private let spinner = UIActivityIndicatorView(style: .medium)
 
@@ -760,77 +876,85 @@ private final class ProviderCard: UIView {
 
     func renderError() {
         spinner.stopAnimating()
-        for caption in captionLabels { caption.text = "—" }
     }
 
     func apply(_ model: CardModel) {
         spinner.stopAnimating()
         subtitleLabel.text = model.subtitle
         pillLabel.text = model.pill
-        pillBackground.backgroundColor = model.accent
-        pillLabel.textColor = Self.contrastingText(on: model.accent)
+        pillBackground.backgroundColor = model.accent.withAlphaComponent(0.14)
+        pillLabel.textColor = model.accent
 
-        setGauges(model.gauges, accent: model.accent)
+        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for gauge in model.gauges {
+            gaugeStack.addArrangedSubview(gaugeRow(gauge, accent: model.accent))
+        }
 
         noteLabel.text = model.note
         detailsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (key, value) in model.details {
             detailsStack.addArrangedSubview(detailRow(key, value))
         }
-        detailsContainer?.isHidden = model.details.isEmpty
+        disclosure.isHidden = model.note.isEmpty && model.details.isEmpty
     }
 
     private func build() {
-        let stack = UIStackView(arrangedSubviews: [quotaCard(), noteLabelView(), detailsCard()])
-        stack.axis = .vertical
-        stack.spacing = Theme.Spacing.m
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        let container = card(
+            [header(), gaugeStack, fold()], spacing: Theme.Spacing.l)
+        container.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(container)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            container.topAnchor.constraint(equalTo: topAnchor),
+            container.bottomAnchor.constraint(equalTo: bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
         setGauges(
             (0..<3).map { _ in GaugeVM(name: "—", fraction: 0, percentText: "—", caption: "—") },
             accent: accent)
     }
 
-    private func quotaCard() -> UIView {
+    private func header() -> UIView {
         let title = UILabel()
         title.text = cardTitle
-        title.font = Theme.Ramp.font(.panelTitle)
+        title.font = Theme.Ramp.font(.cardTitle)
         title.textColor = Theme.Color.label
         title.setContentHuggingPriority(.required, for: .horizontal)
+
+        subtitleLabel.text = "—"
+        subtitleLabel.font = Theme.Ramp.font(.panelFootnote)
+        subtitleLabel.textColor = Theme.Color.secondaryLabel
+        subtitleLabel.numberOfLines = 1
+
+        let names = UIStackView(arrangedSubviews: [title, subtitleLabel])
+        names.axis = .vertical
+        names.spacing = 2
+        names.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         spinner.hidesWhenStopped = true
-        let header = UIStackView(arrangedSubviews: [title, spacer, spinner, pill()])
+        let header = UIStackView(arrangedSubviews: [names, spacer, spinner, pill()])
         header.axis = .horizontal
         header.alignment = .center
         header.spacing = Theme.Spacing.s
-
-        subtitleLabel.text = "—"
-        subtitleLabel.font = Theme.Ramp.font(.panelFootnote)
-        subtitleLabel.textColor = Theme.Color.secondaryLabel
-        subtitleLabel.numberOfLines = 0
-
-        gaugeStack.axis = .vertical
-        gaugeStack.spacing = Theme.Spacing.m
-
-        return card([header, subtitleLabel, gaugeStack], spacing: Theme.Spacing.l)
+        return header
     }
 
     private func setGauges(_ gauges: [GaugeVM], accent: UIColor) {
         gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        captionLabels = []
         for gauge in gauges {
             gaugeStack.addArrangedSubview(gaugeRow(gauge, accent: accent))
         }
+    }
+
+    /// Replaces the gauge area with one custom row — the escape hatch the balance card uses,
+    /// because money without a cap is not a bar.
+    func setGaugeRow(_ view: UIView) {
+        gaugeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        gaugeStack.addArrangedSubview(view)
     }
 
     private func gaugeRow(_ gauge: GaugeVM, accent: UIColor) -> UIView {
@@ -879,8 +1003,9 @@ private final class ProviderCard: UIView {
         caption.text = gauge.caption
         caption.font = Theme.Ramp.font(.toolOutput)
         caption.textColor = Theme.Color.secondaryLabel
-        caption.numberOfLines = 2
-        captionLabels.append(caption)
+        caption.numberOfLines = 1
+        caption.adjustsFontSizeToFitWidth = true
+        caption.minimumScaleFactor = 0.8
 
         let row = UIStackView(arrangedSubviews: [line, caption])
         row.axis = .vertical
@@ -893,10 +1018,8 @@ private final class ProviderCard: UIView {
     private func pill() -> UIView {
         pillLabel.text = "—"
         pillLabel.font = Theme.Ramp.font(.metricLabel)
-        pillLabel.textColor = .black
         pillLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        pillBackground.backgroundColor = accent
         pillBackground.layer.cornerRadius = 9
         pillBackground.layer.cornerCurve = .continuous
         pillBackground.setContentHuggingPriority(.required, for: .horizontal)
@@ -910,26 +1033,25 @@ private final class ProviderCard: UIView {
         return pillBackground
     }
 
-    private func noteLabelView() -> UILabel {
-        noteLabel.text = " "
+    /// The fine print folds away: the bars answer the daily question, and the
+    /// counting — caps, hosts, the source the numbers came from — is there for
+    /// the visit that asks.
+    private func fold() -> UIView {
+        disclosure.addTarget(self, action: #selector(toggleDetails), for: .touchUpInside)
         noteLabel.font = Theme.Ramp.font(.panelFootnote)
         noteLabel.textColor = Theme.Color.secondaryLabel
         noteLabel.numberOfLines = 0
-        return noteLabel
-    }
+        noteLabel.text = " "
 
-    /// The plan's fine print folds away: the bars answer the daily question, and
-    /// the row of caps and windows is there for the visit that asks it.
-    private func detailsCard() -> UIView {
-        disclosure.addTarget(self, action: #selector(toggleDetails), for: .touchUpInside)
         detailsStack.axis = .vertical
         detailsStack.spacing = Theme.Spacing.s
         detailsStack.isHidden = true
         detailsStack.alpha = 0
-        let container = card([disclosure, detailsStack], spacing: Theme.Spacing.s)
-        container.isHidden = true
-        detailsContainer = container
-        return container
+
+        let stack = UIStackView(arrangedSubviews: [disclosure, noteLabel, detailsStack])
+        stack.axis = .vertical
+        stack.spacing = Theme.Spacing.s
+        return stack
     }
 
     @objc private func toggleDetails() {
@@ -937,6 +1059,8 @@ private final class ProviderCard: UIView {
         disclosure.setExpanded(detailsExpanded)
         Theme.Haptics.selection()
         UIView.animate(withDuration: 0.25) {
+            self.noteLabel.isHidden = !self.detailsExpanded
+            self.noteLabel.alpha = self.detailsExpanded ? 1 : 0
             self.detailsStack.isHidden = !self.detailsExpanded
             self.detailsStack.alpha = self.detailsExpanded ? 1 : 0
         }
@@ -982,17 +1106,76 @@ private final class ProviderCard: UIView {
         ])
         return container
     }
+}
 
-    private static func contrastingText(on accent: UIColor) -> UIColor {
-        UIColor { traits in
-            var red: CGFloat = 0
-            var green: CGFloat = 0
-            var blue: CGFloat = 0
-            var alpha: CGFloat = 0
-            accent.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-            let luminance = 0.299 * red + 0.587 * green + 0.114 * blue
-            return luminance > 0.5 ? .black : .white
-        }
+/// The DeepSeek prepaid balance: a number, not a gauge. With no key it is a quiet invitation to
+/// add one rather than an error — the surface stays whole either way.
+@MainActor
+private final class DeepSeekCard: ProviderCard {
+    var onOpenEditor: (() -> Void)?
+
+    private let balanceStack = UIStackView()
+
+    init() {
+        super.init(title: "DeepSeek API", accent: Theme.Color.modelFamily(.deepseek))
+        balanceStack.axis = .vertical
+        balanceStack.spacing = Theme.Spacing.xs
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    var isVisible: Bool {
+        get { !isHidden }
+        set { isHidden = !newValue }
+    }
+
+    /// The balance is drawn as money and the standard bar anatomy is dropped — one bar shape is
+    /// for windows with caps, and a balance has neither.
+    override func apply(_ model: CardModel) {
+        super.apply(model)
+        balanceStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard let gauge = model.gauges.first else { return renderKeyless() }
+
+        let value = UILabel()
+        value.text = gauge.percentText
+        value.font = Theme.Ramp.font(.metricLarge)
+        value.textColor =
+            gauge.fraction >= QuotaSurface.exhaustedFloor
+            ? Theme.Color.danger : Theme.Color.label
+        value.numberOfLines = 1
+
+        let caption = UILabel()
+        caption.text = gauge.caption
+        caption.font = Theme.Ramp.font(.toolOutput)
+        caption.textColor = Theme.Color.secondaryLabel
+        caption.numberOfLines = 2
+
+        balanceStack.addArrangedSubview(value)
+        balanceStack.addArrangedSubview(caption)
+        setGaugeRow(balanceStack)
+    }
+
+    func renderKeyless() {
+        super.apply(
+            CardModel(
+                subtitle: String(localized: "Billed per token — no plan caps"),
+                pill: String(localized: "OPTIONAL"),
+                accent: Theme.Color.modelFamily(.deepseek),
+                gauges: [],
+                details: [],
+                note: String(
+                    localized: "Add your DeepSeek platform key and the prepaid balance shows here."
+                )))
+        let button = UIButton(type: .system)
+        button.setTitle(String(localized: "Add API key to track the balance"), for: .normal)
+        button.titleLabel?.font = Theme.Ramp.font(.panelLabel)
+        button.setTitleColor(Theme.Color.accent, for: .normal)
+        button.contentHorizontalAlignment = .leading
+        button.addAction(
+            UIAction { [weak self] _ in self?.onOpenEditor?() }, for: .touchUpInside)
+        balanceStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        balanceStack.addArrangedSubview(button)
+        setGaugeRow(balanceStack)
     }
 }
 
@@ -1001,11 +1184,11 @@ private final class DisclosureRow: UIControl {
     private let titleLabel = UILabel()
     private let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        titleLabel.text = String(localized: "Plan details")
+    init(title: String) {
+        super.init(frame: .zero)
+        titleLabel.text = title
         titleLabel.font = Theme.Ramp.font(.panelLabel)
-        titleLabel.textColor = Theme.Color.label
+        titleLabel.textColor = Theme.Color.secondaryLabel
 
         chevron.tintColor = Theme.Color.secondaryLabel
         chevron.preferredSymbolConfiguration = UIImage.SymbolConfiguration(

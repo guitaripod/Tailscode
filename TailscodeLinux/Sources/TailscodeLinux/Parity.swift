@@ -70,6 +70,9 @@ enum ParityManifest {
         case .statusBand: return .implemented("StatusBand")
         case .usagePanel: return .implemented("UsagePanel")
         case .usageAnalytics: return .implemented("AnalyticsCardRenderer")
+        case .deepseekBalance:
+            return .gap(
+                "The Linux usage surfaces read quotas through the bridge, which has no DeepSeek balance route; parity owes a local api.deepseek.com fetch behind a 0600-file key and the balance card in UsagePanel.")
         case .sessionSpend: return .implemented("SpendPanel")
         case .toasts: return .implemented("toastOverlay")
         case .serverManagement: return .implemented("ServerManager")

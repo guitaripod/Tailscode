@@ -7,6 +7,7 @@ public enum ProviderBrand {
         case "claude", "anthropic": return "claude"
         case "grok", "xai": return "grok"
         case "opencode", "opencode go": return "opencode"
+        case "deepseek": return "deepseek"
         default: return nil
         }
     }

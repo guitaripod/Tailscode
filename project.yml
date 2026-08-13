@@ -127,6 +127,7 @@ targets:
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Usage/LiveQuotaFetcher.swift
+      - path: Tailscode/Usage/DeepSeekBalance.swift
       - path: Tailscode/Connection/SharedConnectionStore.swift
       - path: Tailscode/Logging/AppLogger.swift
       - path: Tailscode/Logging/LogFileWriter.swift

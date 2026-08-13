@@ -25,6 +25,13 @@ struct UsageWidgetEntry: Codable, TimelineEntry {
         var percentText: String
         var caption: String
         var resetsAt: Date?
+        /// Money actually spent / the window's ceiling when the provider reports them. `usedUSD`
+        /// without `limitUSD` marks a balance rather than a window — the renderers skip the bar
+        /// and show the money itself.
+        var usedUSD: Double? = nil
+        var limitUSD: Double? = nil
+        /// ISO code of the money when it is not USD (a prepaid balance may report CNY).
+        var currency: String? = nil
     }
 }
 
@@ -86,6 +93,16 @@ enum UsageWidgetStore {
                         previewSpendGauge("5-hour", 0.28, "28%", spend: "$3.42", cap: "$12", resetsIn: 5400, from: now),
                         previewSpendGauge("Weekly", 0.14, "14%", spend: "$4.20", cap: "$30", resetsIn: 14400, from: now),
                         previewSpendGauge("Monthly", 0.08, "8%", spend: "$4.80", cap: "$60", resetsIn: 43200, from: now),
+                    ]),
+                UsageWidgetEntry.ProviderSnapshot(
+                    providerName: "DeepSeek",
+                    subtitle: "Prepaid balance · direct API",
+                    isLive: true,
+                    gauges: [
+                        UsageWidgetEntry.GaugeSnapshot(
+                            label: "Balance", fraction: 0, percentText: "$104.32",
+                            caption: "Topped up $100.00 · granted $4.32", resetsAt: nil,
+                            usedUSD: 104.32, limitUSD: nil)
                     ]),
             ],
             isStale: false)

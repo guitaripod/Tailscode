@@ -18,15 +18,22 @@ enum LiveQuotaFetcher {
     /// partial haul. An unreachable tailnet yields `[]` and the caller keeps
     /// serving its stored snapshot.
     static func fetch(deadline: TimeInterval) async -> [UsageQuota] {
+        async let deepseek: Void = DeepSeekBalance.refresh()
         guard
             let store = try? SharedConnectionStore.make(),
             let profiles = try? store.profiles()
-        else { return [] }
+        else {
+            _ = await deepseek
+            return []
+        }
         let bridges = profiles.filter { $0.backend == .claudeCode }.enumerated()
             .compactMap { index, profile in
                 (try? store.makeBackend(profile, policy: policy)).map { (index, profile.name, $0) }
             }
-        guard !bridges.isEmpty else { return [] }
+        guard !bridges.isEmpty else {
+            _ = await deepseek
+            return []
+        }
         let results = await withTaskGroup(
             of: (index: Int, server: String, quotas: [UsageQuota])?.self
         ) { group in
@@ -47,6 +54,7 @@ enum LiveQuotaFetcher {
         }
         let reports = results.sorted(by: { $0.index < $1.index })
             .flatMap { entry in entry.quotas.map { (entry.server, $0) } }
+        _ = await deepseek
         return QuotaRollup.account(from: reports).map(\.quota)
     }
 

@@ -46,14 +46,20 @@ public enum QuotaSurface {
     public static func relevantQuotas(for backend: AgentType?, among quotas: [UsageQuota])
         -> [UsageQuota]
     {
-        guard let family = quotaFamily(for: backend) else { return quotas }
-        return quotas.filter { ProviderBrand.slug($0.providerName) == family }
+        guard let families = quotaFamilies(for: backend) else { return quotas }
+        return quotas.filter {
+            guard let slug = ProviderBrand.slug($0.providerName) else { return false }
+            return families.contains(slug)
+        }
     }
 
-    private static func quotaFamily(for backend: AgentType?) -> String? {
+    /// Which provider families a chat on this backend spends against. An opencode chat may send
+    /// with a DeepSeek model billed out of a prepaid DeepSeek balance, so both quotas are in
+    /// play there; a Claude Code chat spends only against Claude's.
+    private static func quotaFamilies(for backend: AgentType?) -> Set<String>? {
         switch backend {
-        case .claudeCode: return "claude"
-        case .openCode: return "opencode"
+        case .claudeCode: return ["claude"]
+        case .openCode: return ["opencode", "deepseek"]
         default: return nil
         }
     }
@@ -61,6 +67,17 @@ public enum QuotaSurface {
     /// A window at or past this fraction is treated as used up. Providers occasionally report
     /// slightly over 1.0 after an over-limit request; clamp presentation elsewhere.
     public static let exhaustedFloor: Double = 1.0
+
+    /// The quotas whose provider actually bills the model a chat would send with — read from the
+    /// model's own door (its provider id) with the family as fallback, by the same rule the
+    /// chooser wears walls with. A wall that is not in front of the model this chat is on is a
+    /// fact for the gauges, not a banner over the conversation.
+    public static func billingQuotas(
+        in quotas: [UsageQuota], selection: ModelSelection?, model: String? = nil,
+        named name: String? = nil
+    ) -> [UsageQuota] {
+        quotas.filter { QuotaBinding.bills($0, selection: selection, model: model, named: name) }
+    }
 
     /// Every exhausted window standing in front of `model` — account-wide walls always, and a
     /// model-scoped wall only when it is that model's. A model nobody named is answered by the
@@ -132,7 +149,7 @@ public enum QuotaSurface {
             "too many requests", "429",
             "you've hit", "you have hit", "you've reached", "you have reached",
             "out of credits", "out of capacity", "capacity exceeded",
-            "credit balance is too low",
+            "credit balance is too low", "insufficient",
             "spend limit", "billing limit", "limit reached",
             "throttl",
         ]
@@ -153,15 +170,16 @@ public enum QuotaSurface {
     /// opencode-go reading is not permission to dismiss Claude's wall.
     public static func resolve(
         failureMessage: String?, quotas: [UsageQuota], model: String? = nil,
-        named name: String? = nil, now: Date = Date()
+        named name: String? = nil, selection: ModelSelection? = nil, now: Date = Date()
     ) -> QuotaExhaustion? {
         guard let message = failureMessage, isQuotaFailure(message) else {
-            return hottestExhausted(in: quotas, model: model, named: name, now: now)
+            let billed = billingQuotas(in: quotas, selection: selection, model: model, named: name)
+            return hottestExhausted(in: billed, model: model, named: name, now: now)
         }
         let hint = providerHint(in: message)
         let attributed = hint.map { provider in
             quotas.filter { ProviderBrand.slug($0.providerName) == ProviderBrand.slug(provider) }
-        } ?? quotas
+        } ?? billingQuotas(in: quotas, selection: selection, model: model, named: name)
         if let gauge = hottestExhausted(in: attributed, model: model, named: name, now: now) {
             return gauge
         }
@@ -279,6 +297,7 @@ public enum QuotaSurface {
         if lower.contains("claude") || lower.contains("anthropic") { return "Claude" }
         if lower.contains("grok") || lower.contains("xai") { return "Grok" }
         if lower.contains("opencode") { return "OpenCode Go" }
+        if lower.contains("deepseek") { return "DeepSeek" }
         if lower.contains("openai") || lower.contains("gpt") { return "OpenAI" }
         if lower.contains("gemini") || lower.contains("google") { return "Gemini" }
         return nil

@@ -456,11 +456,15 @@ public struct ModelChooser: Sendable, Equatable {
 
     /// The used-up window in front of one model, for the pill's shortlist — the same reading the
     /// full chooser draws, so a menu and the list behind it never disagree about what is spent.
+    /// Only walls whose provider actually bills the model count: a Claude wall is not a fact
+    /// about a DeepSeek row, whatever their fractions.
     public static func wall(
         for candidate: ModelCandidate, quotas: [UsageQuota]
     ) -> QuotaExhaustion? {
-        QuotaSurface.hottestExhausted(
-            in: quotas, model: candidate.primary.model.id, named: candidate.name)
+        let billers = quotas.filter { QuotaBinding.bills($0, candidate: candidate) }
+        guard !billers.isEmpty else { return nil }
+        return QuotaSurface.hottestExhausted(
+            in: billers, model: candidate.primary.model.id, named: candidate.name)
     }
 
     public var isEmpty: Bool { candidates.isEmpty }
@@ -1181,11 +1185,41 @@ public enum ModelChooserCheck {
             models: catalog, selected: nil, recents: [],
             quotas: [account([window("5-hour session", 1)])])
         expect(
-            stopped.rows.filter { !$0.isAuto }.allSatisfy { $0.wall != nil },
-            "a window metered against the account stops every model on it")
+            stopped.rows.filter { $0.title == "Claude Sonnet 4.5" }.allSatisfy { $0.wall != nil },
+            "a window metered against the account stops the models its provider bills")
         expect(
-            stopped.rows.first { !$0.isAuto }?.wall?.isAccountWide == true,
+            stopped.rows.first { !$0.isAuto && $0.wall != nil }?.wall?.isAccountWide == true,
             "and says it is the account's rather than the model's")
+        expect(
+            stopped.rows.filter { $0.title != "Claude Sonnet 4.5" && !$0.isAuto }
+                .allSatisfy { $0.wall == nil },
+            "a Claude wall is not a fact about models billed somewhere else")
+
+        func quota(_ provider: String, _ gauges: [UsageQuota.Gauge]) -> UsageQuota {
+            UsageQuota(
+                providerName: provider, subtitle: "", source: "selftest", live: true,
+                gauges: gauges, details: [])
+        }
+
+        let goWall = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [quota("opencode go", [window("5-hour session", 1)])])
+        expect(
+            goWall.rows.filter { !$0.isAuto }.allSatisfy {
+                ($0.wall != nil) == ($0.title != "Qwen3")
+            },
+            "a reseller's account-wide wall holds every hosted model it fronts, and no local one")
+
+        let deepWall = ModelChooser(
+            models: catalog, selected: nil, recents: [],
+            quotas: [quota("DeepSeek", [window("Balance", 1)])])
+        expect(
+            deepWall.rows.filter { $0.title == "DeepSeek V4 Flash" }.allSatisfy { $0.wall != nil },
+            "a prepaid balance wall holds the models billed from it")
+        expect(
+            deepWall.rows.filter { $0.title != "DeepSeek V4 Flash" && !$0.isAuto }
+                .allSatisfy { $0.wall == nil },
+            "and leaves every other house alone")
 
         let keys: [(UInt32, UInt32, ModelChooserCommand?)] = [
             (Keymap.down, 0, .down),
