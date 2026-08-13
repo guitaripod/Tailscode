@@ -3111,72 +3111,85 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// Quota as a glance, not a paragraph. The foot of the chat list says only what the account's
-    /// state needs it to say, and each state owns the whole strip:
+    /// state needs it to say, and each state owns the strip:
     ///
     /// - walls exist: one line per exhausted window, the reset beside it, nothing healthy next to
-    ///   it — a wall is the only news that matters, and an empty prepaid balance reads as the
-    ///   wall it is;
+    ///   it — a wall is the only news that matters;
     /// - no wall, something warm (≥60%): one line per warm window, tightest first, at most four;
-    /// - everything quiet: a single quiet line, carrying the prepaid balance's money because that
-    ///   is the one number that still moves while nothing is wrong.
+    /// - everything quiet: a single quiet line.
     ///
-    /// The account, not the machines — every server's report folded into one heading per
-    /// provider, tightest first — and the full picture is one click behind it.
+    /// The prepaid balance is the one number that keeps moving whatever the state, so it always
+    /// has its own line — the money itself, or the wall an empty account is. Each line wears a
+    /// tone dot; the words stay plain, because a dot can light up where a sentence in red
+    /// cannot stop shouting. The account, not the machines — every server's report folded into
+    /// one heading per provider, tightest first — and the full picture is one click behind it.
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
         Gtk.removeChildren(of: usageBox)
         let lines = Self.glanceLines(quotas)
         gtk_widget_set_visible(usageBox, lines.isEmpty ? 0 : 1)
         for line in lines {
-            gtk_box_append(
-                ptr(usageBox),
-                Gtk.label(line.text, css: "gauge-\(line.tone)", wrap: true, selectable: false))
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            let dotClass = line.tone == "balance" ? "brand-deepseek" : "gauge-\(line.tone)"
+            gtk_box_append(ptr(row), Gtk.label("●", css: dotClass, selectable: false))
+            let text = Gtk.label(line.text, wrap: true, selectable: false)
+            gtk_widget_set_hexpand(text, 1)
+            gtk_box_append(ptr(row), text)
+            gtk_box_append(ptr(usageBox), row)
         }
     }
 
-    /// The footer's whole message as data — what each line says and the tone it wears — so the
-    /// selftest can prove every state without a display. Empty when nothing has reported.
+    /// The footer's whole message as data — what each line says and the tone its dot wears — so
+    /// the selftest can prove every state without a display. Empty when nothing has reported.
     static func glanceLines(_ quotas: [(String, UsageQuota)]) -> [(text: String, tone: String)] {
         let holdings = QuotaRollup.account(from: quotas)
         guard !holdings.isEmpty else { return [] }
         let flat = holdings.map(\.quota)
+        var lines: [(text: String, tone: String)] = []
 
         let walls = QuotaSurface.walls(in: flat)
+            .filter { $0.provider != DeepSeekBalance.providerName }
             .sorted {
                 ($0.resetsAt?.timeIntervalSince1970 ?? .infinity)
                     < ($1.resetsAt?.timeIntervalSince1970 ?? .infinity)
             }
         if !walls.isEmpty {
-            return walls.map { (wallLine($0), "danger") }
-        }
-
-        let warm = holdings
-            .flatMap { holding in
-                holding.quota.gauges
-                    .filter { gauge in
-                        gauge.fraction >= 0.6 && gauge.fraction < QuotaSurface.exhaustedFloor
-                            && (gauge.resetsAt.map { $0 > Date() } ?? true)
-                    }
-                    .map { (holding.quota, $0) }
+            lines += walls.map { (wallLine($0), "danger") }
+        } else {
+            let warm = holdings
+                .flatMap { holding in
+                    holding.quota.gauges
+                        .filter { gauge in
+                            gauge.fraction >= 0.6 && gauge.fraction < QuotaSurface.exhaustedFloor
+                                && (gauge.resetsAt.map { $0 > Date() } ?? true)
+                        }
+                        .map { (holding.quota, $0) }
+                }
+                .sorted { $0.1.fraction > $1.1.fraction }
+                .prefix(4)
+            if !warm.isEmpty {
+                lines += warm.map { (warmLine($0.0, $0.1), "warn") }
+            } else {
+                lines.append((Localized.text("Quotas clear"), "ok"))
             }
-            .sorted { $0.1.fraction > $1.1.fraction }
-            .prefix(4)
-        if !warm.isEmpty {
-            return warm.map { (warmLine($0.0, $0.1), "warn") }
         }
 
-        var clear = Localized.text("Quotas clear")
         if let balance = balance(in: flat) {
-            clear += " · \(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))"
+            if balance.gauge.fraction >= QuotaSurface.exhaustedFloor {
+                lines.append((Localized.text("DeepSeek balance empty · top up"), "danger"))
+            } else if lines.first?.tone != "ok" {
+                lines.append(
+                    ("\(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))",
+                        "balance"))
+            } else if lines.count == 1 {
+                lines[0].text +=
+                    " · \(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))"
+            }
         }
-        return [(clear, "ok")]
+        return lines
     }
 
-    /// A wall's one line: what ran out and when it comes back. A prepaid balance at zero is not
-    /// "used up" — nothing was spent through it — it is empty, and the remedy is a top-up.
+    /// A wall's one line: what ran out and when it comes back.
     private static func wallLine(_ wall: QuotaExhaustion) -> String {
-        if wall.provider == DeepSeekBalance.providerName {
-            return Localized.text("DeepSeek balance empty · top up")
-        }
         var line = "\(wall.provider) \(wall.window) \(Localized.text("used up"))"
         if let reset = wall.resetsAt {
             line += " · "

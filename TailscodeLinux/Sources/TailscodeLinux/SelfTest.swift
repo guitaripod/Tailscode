@@ -1023,8 +1023,18 @@ public enum SelfTest {
 
         let emptyBalance = MainWindow.glanceLines([("", balance(0, 1.0))])
         try expect(
-            emptyBalance.count == 1 && emptyBalance[0].text.contains("empty"),
-            "an empty balance reads as the wall it is")
+            emptyBalance.count == 2
+                && emptyBalance.contains { $0.tone == "danger" && $0.text.contains("empty") },
+            "an empty balance reads as the wall it is, beside the quiet line")
+
+        let wallWithBalance = MainWindow.glanceLines([
+            ("", quota("Claude", [("Weekly", 1.0)])),
+            ("", balance(13.42, 0)),
+        ])
+        try expect(
+            wallWithBalance.count == 2 && wallWithBalance[1].tone == "balance"
+                && wallWithBalance[1].text == "DeepSeek $13.42",
+            "the balance keeps its own line whatever the walls are doing")
 
         let topped = MainWindow.glanceLines([
             ("", quota("Claude", [("Weekly", 0.3)])),
