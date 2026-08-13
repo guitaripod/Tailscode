@@ -167,6 +167,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkDeepSeekBalance()
+            report("deepseek balance: \(checks) claims hold — money, never a bar")
+        } catch {
+            report("deepseek balance: \(error)")
+            failures += 1
+        }
+
         let chooserFailures = PaneChooserCheck.run()
         if chooserFailures.isEmpty {
             report("pane chooser: servers, chats and keys behave")
@@ -905,6 +913,52 @@ public enum SelfTest {
         return checks
     }
 
+    /// The prepaid balance's own claims, proved without a network: the snapshot carries money and
+    /// no cap, an empty account reads as the wall it is, and the renderer's recognition — `usedUSD`
+    /// with no `limitUSD` — is what the quota surfaces skip bars for.
+    private static func checkDeepSeekBalance() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("deepseek balance: \(label)") }
+            checks += 1
+        }
+        let topped = DeepSeekBalance.snapshot(
+            for: DeepSeekBalance.Reading(
+                total: 13.42, toppedUp: 11.0, granted: 2.42, currency: "CNY",
+                isAvailable: true))
+        let gauge = try requireOne(topped.gauges)
+        try expect(gauge.usedUSD == 13.42 && gauge.limitUSD == nil, "money without a cap")
+        try expect(gauge.fraction == 0 && gauge.resetsAt == nil, "no invented wall or reset")
+        try expect(
+            DeepSeekBalance.amount(for: gauge) == "¥13.42", "CNY reads with its own symbol")
+        try expect(
+            topped.details.contains { $0.key == "Topped up" && $0.value == "¥11.00" },
+            "the top-up split is a fact")
+        try expect(
+            topped.details.contains { $0.key == "Granted" && $0.value == "¥2.42" },
+            "the granted split is a fact")
+
+        let empty = DeepSeekBalance.snapshot(
+            for: DeepSeekBalance.Reading(
+                total: 0, toppedUp: 0, granted: 0, currency: "CNY", isAvailable: false))
+        let emptyGauge = try requireOne(empty.gauges)
+        try expect(emptyGauge.fraction >= 1, "an empty balance is a wall")
+        try expect(
+            DeepSeekBalance.amount(for: emptyGauge) == "Empty",
+            "the wall reads as empty, not as a number")
+
+        let usd = DeepSeekBalance.money(4.5, nil)
+        try expect(usd == "$4.50", "USD reads with its own symbol")
+        return checks
+    }
+
+    private static func requireOne<T>(_ items: [T]) throws -> T {
+        guard items.count == 1, let only = items.first else {
+            throw SelfTestFailure("deepseek balance: expected exactly one gauge")
+        }
+        return only
+    }
+
     private static func checkVim() throws -> Int {
         let cases: [(text: String, keys: String, expected: String, label: String)] = [
             ("hello world", "dw", "world", "dw"),
@@ -1492,6 +1546,7 @@ public enum SelfTest {
                 palette.danger, palette.info, palette.special, palette.codeBg,
                 palette.subagentBg, palette.findHit, palette.onAccent,
                 palette.brandClaude, palette.brandOpencode, palette.brandGrok,
+                palette.brandDeepseek,
             ]
             for slot in slots {
                 guard slot.hasPrefix("#"), slot.count == 7,

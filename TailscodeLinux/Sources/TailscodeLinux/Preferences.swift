@@ -236,7 +236,8 @@ enum SettingsDialog {
         parent: UnsafeMutablePointer<GtkWidget>?,
         onLayoutChanged: @escaping @Sendable () -> Void,
         onReloadShortcuts: @escaping @Sendable () -> Void,
-        onOrbChanged: @escaping @Sendable () -> Void
+        onOrbChanged: @escaping @Sendable () -> Void,
+        onDeepSeekChanged: @escaping @Sendable () -> Void
     ) {
         let window = adw_preferences_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Settings"))
@@ -438,6 +439,36 @@ enum SettingsDialog {
         let watch = group(WatchAccounts.heading, on: page, description: WatchAccounts.description)
         renderWatchAccounts(into: watch, parent: page)
 
+        let usage = group(
+            Localized.text("Usage"), on: page,
+            description: Localized.text(
+                "The full quota picture lives at the foot of the chat list; the DeepSeek key is the one account fact this machine keeps."))
+        let deepseekRow = DeepSeekRowHeld()
+        let refreshDeepseekRow: @Sendable () -> Void = {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: deepseekRow.bits) else { return }
+            adw_action_row_set_subtitle(
+                ptr(raw),
+                DeepSeekCredentials.hasToken
+                    ? Localized.text("Saved in the app's secret store")
+                    : Localized.text("Not set"))
+        }
+        let pageBits = UInt(bitPattern: page)
+        let deepseek = buttonRow(
+            Localized.text("DeepSeek API key"),
+            subtitle: DeepSeekCredentials.hasToken
+                ? Localized.text("Saved in the app's secret store")
+                : Localized.text("Not set"),
+            label: Localized.text("Edit")
+        ) {
+            guard let pageRaw = UnsafeMutableRawPointer(bitPattern: pageBits) else { return }
+            DeepSeekKeyDialog.present(parent: ptr(pageRaw)) {
+                refreshDeepseekRow()
+                onDeepSeekChanged()
+            }
+        }
+        deepseekRow.bits = UInt(bitPattern: deepseek)
+        adw_preferences_group_add(ptr(usage), deepseek)
+
         SummonRows.install(on: page, window: window)
 
         let keyboard = group(
@@ -620,4 +651,10 @@ enum SettingsDialog {
 /// finds the wrong widgets.
 final class WatchRowsHeld: @unchecked Sendable {
     var rows: [UInt] = []
+}
+
+/// The DeepSeek key row's pointer, so the subtitle can restate the key's presence after the editor
+/// changes it — the settings window is built once and the row must answer honestly in place.
+final class DeepSeekRowHeld: @unchecked Sendable {
+    var bits: UInt = 0
 }

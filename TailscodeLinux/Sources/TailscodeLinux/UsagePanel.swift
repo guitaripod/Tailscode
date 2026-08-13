@@ -111,16 +111,18 @@ enum UsagePanel {
         gtk_label_set_ellipsize(op(percent), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(card), percent)
 
-        let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(track, "gauge-track")
-        gtk_widget_set_size_request(track, Int32(heroTrackWidth), 10)
-        gtk_widget_set_halign(track, GTK_ALIGN_START)
-        let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
-        gtk_widget_set_size_request(fill, Int32((fraction * Double(heroTrackWidth)).rounded()), 10)
-        gtk_widget_set_halign(fill, GTK_ALIGN_START)
-        gtk_box_append(ptr(track), fill)
-        gtk_box_append(ptr(card), track)
+        if gauge.usedUSD == nil || gauge.limitUSD != nil {
+            let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            Gtk.addClass(track, "gauge-track")
+            gtk_widget_set_size_request(track, Int32(heroTrackWidth), 10)
+            gtk_widget_set_halign(track, GTK_ALIGN_START)
+            let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
+            gtk_widget_set_size_request(fill, Int32((fraction * Double(heroTrackWidth)).rounded()), 10)
+            gtk_widget_set_halign(fill, GTK_ALIGN_START)
+            gtk_box_append(ptr(track), fill)
+            gtk_box_append(ptr(card), track)
+        }
 
         if let resets = gauge.resetsAt {
             let phrasing =
@@ -191,6 +193,7 @@ enum UsagePanel {
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
+        let isBalance = gauge.usedUSD != nil && gauge.limitUSD == nil
 
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let title = Gtk.label(gauge.label, css: "usage-gauge-label", selectable: false)
@@ -203,15 +206,17 @@ enum UsagePanel {
         gtk_box_append(ptr(row), amountLabel)
         gtk_box_append(ptr(block), row)
 
-        let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(track, "gauge-track")
-        gtk_widget_set_size_request(track, Int32(trackWidth), 6)
-        gtk_widget_set_halign(track, GTK_ALIGN_START)
-        let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
-        gtk_widget_set_size_request(fill, Int32((fraction * Double(trackWidth)).rounded()), 6)
-        gtk_box_append(ptr(track), fill)
-        gtk_box_append(ptr(block), track)
+        if !isBalance {
+            let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            Gtk.addClass(track, "gauge-track")
+            gtk_widget_set_size_request(track, Int32(trackWidth), 6)
+            gtk_widget_set_halign(track, GTK_ALIGN_START)
+            let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
+            gtk_widget_set_size_request(fill, Int32((fraction * Double(trackWidth)).rounded()), 6)
+            gtk_box_append(ptr(track), fill)
+            gtk_box_append(ptr(block), track)
+        }
 
         if let resets = gauge.resetsAt {
             let phrasing =
@@ -224,10 +229,14 @@ enum UsagePanel {
     }
 
     /// A spend window reads as money, everything else as the percent already used — or "Used up"
-    /// when the window is at the wall.
+    /// when the window is at the wall. A prepaid balance is money without a ceiling: the total
+    /// itself, or "Empty" when the account is at the wall.
     private static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
             return "$\(trimmed(used)) of $\(trimmed(limit))"
+        }
+        if gauge.usedUSD != nil {
+            return DeepSeekBalance.amount(for: gauge)
         }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)

@@ -138,7 +138,9 @@ enum DeepSeekBalance {
         guard let (data, response) = try? await URLSession.shared.data(for: request),
             (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
-        guard let balance = try? JSONDecoder().decode(Balance.self, from: data),
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let balance = try? decoder.decode(Balance.self, from: data),
             let info = balance.balanceInfos.first
         else { return nil }
         return Reading(

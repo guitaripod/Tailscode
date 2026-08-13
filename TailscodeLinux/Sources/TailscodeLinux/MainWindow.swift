@@ -3051,6 +3051,11 @@ final class MainWindow: @unchecked Sendable {
             },
             onOrbChanged: { [weak self] in
                 Gtk.onMain { [weak self] in self?.orb.applyEnabled() }
+            },
+            onDeepSeekChanged: { [weak self] in
+                Task { [weak self] in
+                    _ = await self?.refreshUsage()
+                }
             })
     }
 
@@ -3077,12 +3082,16 @@ final class MainWindow: @unchecked Sendable {
         return true
     }
 
-    /// Every quota every server can speak for, raw and per-machine. Nothing is dropped here —
-    /// ``QuotaRollup`` folds the reports into one holding per provider, so a second machine
-    /// refines the account's numbers instead of being thrown away for arriving late.
+    /// Every quota every server can speak for, raw and per-machine, plus this device's own
+    /// DeepSeek prepaid balance when a key is set. Nothing is dropped here — ``QuotaRollup``
+    /// folds the reports into one holding per provider, so a second machine refines the account's
+    /// numbers instead of being thrown away for arriving late.
     private static func collectQuotas(profiles: [ConnectionProfile]) async -> [(String, UsageQuota)]
     {
         var quotas: [(String, UsageQuota)] = []
+        if let reading = await DeepSeekBalance.refresh() {
+            quotas.append(("", DeepSeekBalance.snapshot(for: reading)))
+        }
         for profile in profiles {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }
             var collected: [UsageQuota] = []
@@ -3123,6 +3132,16 @@ final class MainWindow: @unchecked Sendable {
                 gtk_widget_set_hexpand(title, 1)
                 gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
                 gtk_box_append(ptr(row), title)
+
+                if gauge.usedUSD != nil, gauge.limitUSD == nil {
+                    let amount = Gtk.label(
+                        DeepSeekBalance.amount(for: gauge), css: "gauge-\(severity)",
+                        selectable: false)
+                    gtk_label_set_ellipsize(op(amount), PANGO_ELLIPSIZE_NONE)
+                    gtk_box_append(ptr(row), amount)
+                    gtk_box_append(ptr(usageBox), row)
+                    continue
+                }
 
                 let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
                 Gtk.addClass(track, "gauge-track")

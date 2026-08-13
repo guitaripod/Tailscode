@@ -15,7 +15,7 @@ import Testing
     private static let everySlot: [KeyPath<Palette, String> & Sendable] = [
         \.canvas, \.canvasRaised, \.rule, \.text, \.textDim, \.accent, \.accentDim, \.warn,
         \.danger, \.info, \.special, \.codeBg, \.subagentBg, \.findHit, \.onAccent,
-        \.brandClaude, \.brandOpencode, \.brandGrok, \.terminalFg, \.terminalBg,
+        \.brandClaude, \.brandOpencode, \.brandGrok, \.brandDeepseek, \.terminalFg, \.terminalBg,
     ]
 
     private static var published: [Palette] {
