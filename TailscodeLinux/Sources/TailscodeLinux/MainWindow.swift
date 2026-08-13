@@ -966,8 +966,10 @@ final class MainWindow: @unchecked Sendable {
     func refresh() async {
         await ServerDirectory.shared.reload()
         let profiles = await ServerDirectory.shared.profiles()
-        let known = self.entries.compactMap(\.session.directory)
-        let (entries, unreachable) = await ServerDirectory.shared.entries(knownDirectories: known)
+        var known = Set(self.entries.compactMap(\.session.directory))
+        known.formUnion(SessionListCache.load().compactMap(\.session.directory))
+        let (entries, unreachable) = await ServerDirectory.shared.entries(
+            knownDirectories: Array(known), previous: self.entries)
         if !entries.isEmpty { SessionListCache.save(entries) }
         UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in

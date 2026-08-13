@@ -129,14 +129,20 @@ public actor ServerDirectory {
     /// speaks, so the sidebar and a future shared view model agree on what a row is. `knownDirectories`
     /// seed the per-project walk: a chat the list already knows lives in a place worth asking
     /// about even when the server does not report a project for it.
+    ///
+    /// A server that throws keeps what it last reported rather than blanking: the listing is a
+    /// merge over `previous`, not a wholesale replacement, so one missed fetch (or a project
+    /// dropped from the server's own list between refreshes) cannot erase the sidebar's memory
+    /// of chats it has shown before.
     public func entries(
-        knownDirectories: [String] = []
+        knownDirectories: [String] = [], previous: [SessionEntry] = []
     ) async -> (entries: [SessionEntry], unreachable: [String]) {
         var collected: [SessionEntry] = []
         var down: [String] = []
         for profile in cached {
             guard let backend = backend(for: profile) else {
                 down.append(ServerLabel.display(profile))
+                collected += previous.filter { $0.profileID == profile.id }
                 continue
             }
             do {
@@ -149,6 +155,7 @@ public actor ServerDirectory {
                 }
             } catch {
                 down.append(ServerLabel.display(profile))
+                collected += previous.filter { $0.profileID == profile.id }
             }
         }
         collected.sort { $0.session.updatedAt > $1.session.updatedAt }

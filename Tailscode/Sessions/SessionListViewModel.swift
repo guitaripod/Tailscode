@@ -174,7 +174,9 @@ final class SessionListViewModel {
     /// untouched, which is what lets a doubted server be re-checked on its own.
     private func refresh(_ targets: [Source], deadline: Duration) async {
         var fresh: [String: [SessionEntry]] = [:]
-        let known = Set(entries.compactMap(\.session.directory))
+        var known = Set(entries.compactMap(\.session.directory))
+        known.formUnion(SessionListCache.load().compactMap(\.session.directory))
+        let directories = known
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
             for source in targets {
                 group.addTask {
@@ -183,7 +185,7 @@ final class SessionListViewModel {
                             source,
                             .success(
                                 try await Self.listWithDeadline(
-                                    source, knownDirectories: known, deadline: deadline))
+                                    source, knownDirectories: directories, deadline: deadline))
                         )
                     } catch {
                         return (source, .failure(error))
