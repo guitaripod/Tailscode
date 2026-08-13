@@ -3110,69 +3110,109 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// Quota as a glance, not a paragraph: one thin bar per gauge, the number beside it, and the
-    /// reset countdown tucked under the row that actually resets. The account, not the machines —
-    /// every server's report folded into one heading per provider, tightest first.
+    /// Quota as a glance, not a paragraph. The foot of the chat list says only what the account's
+    /// state needs it to say, and each state owns the whole strip:
+    ///
+    /// - walls exist: one line per exhausted window, the reset beside it, nothing healthy next to
+    ///   it — a wall is the only news that matters, and an empty prepaid balance reads as the
+    ///   wall it is;
+    /// - no wall, something warm (≥60%): one line per warm window, tightest first, at most four;
+    /// - everything quiet: a single quiet line, carrying the prepaid balance's money because that
+    ///   is the one number that still moves while nothing is wrong.
+    ///
+    /// The account, not the machines — every server's report folded into one heading per
+    /// provider, tightest first — and the full picture is one click behind it.
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
         Gtk.removeChildren(of: usageBox)
+        let lines = Self.glanceLines(quotas)
+        gtk_widget_set_visible(usageBox, lines.isEmpty ? 0 : 1)
+        for line in lines {
+            gtk_box_append(
+                ptr(usageBox),
+                Gtk.label(line.text, css: "gauge-\(line.tone)", wrap: true, selectable: false))
+        }
+    }
+
+    /// The footer's whole message as data — what each line says and the tone it wears — so the
+    /// selftest can prove every state without a display. Empty when nothing has reported.
+    static func glanceLines(_ quotas: [(String, UsageQuota)]) -> [(text: String, tone: String)] {
         let holdings = QuotaRollup.account(from: quotas)
-        gtk_widget_set_visible(usageBox, holdings.isEmpty ? 0 : 1)
-        for holding in holdings {
-            let slug = holding.slug
-            let header = Gtk.label(
-                holding.providerName, css: "section-header", selectable: false)
-            if let slug { Gtk.addClass(header, "brand-\(slug)") }
-            gtk_box_append(ptr(usageBox), header)
-            for gauge in holding.gauges {
-                let fraction = min(max(gauge.fraction, 0), 1)
-                let severity = fraction > 0.85 ? "danger" : fraction >= 0.6 ? "warn" : "ok"
+        guard !holdings.isEmpty else { return [] }
+        let flat = holdings.map(\.quota)
 
-                let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-                let title = Gtk.label(gauge.label, css: "gauge-\(severity)", selectable: false)
-                gtk_widget_set_hexpand(title, 1)
-                gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
-                gtk_box_append(ptr(row), title)
+        let walls = QuotaSurface.walls(in: flat)
+            .sorted {
+                ($0.resetsAt?.timeIntervalSince1970 ?? .infinity)
+                    < ($1.resetsAt?.timeIntervalSince1970 ?? .infinity)
+            }
+        if !walls.isEmpty {
+            return walls.map { (wallLine($0), "danger") }
+        }
 
-                if gauge.usedUSD != nil, gauge.limitUSD == nil {
-                    let amount = Gtk.label(
-                        DeepSeekBalance.amount(for: gauge), css: "gauge-\(severity)",
-                        selectable: false)
-                    gtk_label_set_ellipsize(op(amount), PANGO_ELLIPSIZE_NONE)
-                    gtk_box_append(ptr(row), amount)
-                    gtk_box_append(ptr(usageBox), row)
-                    continue
-                }
+        let warm = holdings
+            .flatMap { holding in
+                holding.quota.gauges
+                    .filter { gauge in
+                        gauge.fraction >= 0.6 && gauge.fraction < QuotaSurface.exhaustedFloor
+                            && (gauge.resetsAt.map { $0 > Date() } ?? true)
+                    }
+                    .map { (holding.quota, $0) }
+            }
+            .sorted { $0.1.fraction > $1.1.fraction }
+            .prefix(4)
+        if !warm.isEmpty {
+            return warm.map { (warmLine($0.0, $0.1), "warn") }
+        }
 
-                let track = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-                Gtk.addClass(track, "gauge-track")
-                gtk_widget_set_size_request(track, 72, 5)
-                gtk_widget_set_valign(track, GTK_ALIGN_CENTER)
-                gtk_widget_set_hexpand(track, 0)
-                let fill = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-                Gtk.addClass(fill, ProviderBrand.fillClass(severity: severity, slug: slug))
-                gtk_widget_set_size_request(fill, Int32((fraction * 72).rounded()), 5)
-                gtk_box_append(ptr(track), fill)
-                gtk_box_append(ptr(row), track)
+        var clear = Localized.text("Quotas clear")
+        if let balance = balance(in: flat) {
+            clear += " · \(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))"
+        }
+        return [(clear, "ok")]
+    }
 
-                let percentText = QuotaSurface.amountLabel(
-                    fraction: gauge.fraction,
-                    percentText: "\(Int((fraction * 100).rounded()))%")
-                let percent = Gtk.label(
-                    percentText, css: "gauge-\(severity)",
-                    selectable: false)
-                gtk_widget_set_size_request(percent, 34, -1)
-                gtk_label_set_xalign(op(percent), 1)
-                gtk_box_append(ptr(row), percent)
-                gtk_box_append(ptr(usageBox), row)
+    /// A wall's one line: what ran out and when it comes back. A prepaid balance at zero is not
+    /// "used up" — nothing was spent through it — it is empty, and the remedy is a top-up.
+    private static func wallLine(_ wall: QuotaExhaustion) -> String {
+        if wall.provider == DeepSeekBalance.providerName {
+            return Localized.text("DeepSeek balance empty · top up")
+        }
+        var line = "\(wall.provider) \(wall.window) \(Localized.text("used up"))"
+        if let reset = wall.resetsAt {
+            line += " · "
+                + (wall.trustedReset
+                    ? Localized.text("resets in %@", countdown(to: reset))
+                    : Localized.text("resets in about %@", countdown(to: reset)))
+        }
+        return line
+    }
 
-                if let resets = gauge.resetsAt, gauge.trustedReset, fraction >= 0.6 {
-                    let detail = Gtk.label(
-                        Localized.text("resets in %@", Self.countdown(to: resets)),
-                        css: "gauge-reset", selectable: false)
-                    gtk_box_append(ptr(usageBox), detail)
-                }
+    /// A warm window's one line: how full it is and, when the provider said so, when it opens
+    /// again. No bar — a number is the glance's whole job here.
+    private static func warmLine(_ quota: UsageQuota, _ gauge: UsageQuota.Gauge) -> String {
+        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
+        var line = "\(quota.providerName) \(gauge.label) \(percent)"
+        if let reset = gauge.resetsAt {
+            line += " · "
+                + (gauge.trustedReset
+                    ? Localized.text("resets in %@", countdown(to: reset))
+                    : Localized.text("resets in about %@", countdown(to: reset)))
+        }
+        return line
+    }
+
+    /// The prepaid balance gauge among the folded quotas, if this device has a key and the last
+    /// fetch answered. Recognised the same way every renderer recognises a balance: money with no
+    /// ceiling.
+    private static func balance(in quotas: [UsageQuota])
+        -> (quota: UsageQuota, gauge: UsageQuota.Gauge)?
+    {
+        for quota in quotas where ProviderBrand.slug(quota.providerName) == "deepseek" {
+            if let gauge = quota.gauges.first(where: { $0.usedUSD != nil && $0.limitUSD == nil }) {
+                return (quota, gauge)
             }
         }
+        return nil
     }
 
     private static func countdown(to date: Date) -> String {

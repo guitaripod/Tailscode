@@ -175,6 +175,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkUsageGlance()
+            report("usage glance: \(checks) states say only what each needs to")
+        } catch {
+            report("usage glance: \(error)")
+            failures += 1
+        }
+
         let chooserFailures = PaneChooserCheck.run()
         if chooserFailures.isEmpty {
             report("pane chooser: servers, chats and keys behave")
@@ -957,6 +965,77 @@ public enum SelfTest {
             throw SelfTestFailure("deepseek balance: expected exactly one gauge")
         }
         return only
+    }
+
+    /// The footer glance's states, proved as data: a wall owns the whole strip, warm windows
+    /// read one line each only while nothing is at the wall, and a quiet account is one quiet
+    /// line that still carries the prepaid balance's money.
+    private static func checkUsageGlance() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("usage glance: \(label)") }
+            checks += 1
+        }
+        func quota(_ provider: String, _ windows: [(String, Double)]) -> UsageQuota {
+            UsageQuota(
+                providerName: provider, subtitle: "", source: "test", live: true,
+                gauges: windows.map {
+                    UsageQuota.Gauge(
+                        key: $0.0.lowercased(), label: $0.0, fraction: $0.1, resetsAt: nil,
+                        trustedReset: false)
+                },
+                details: [])
+        }
+        func balance(_ total: Double, _ fraction: Double) -> UsageQuota {
+            UsageQuota(
+                providerName: "DeepSeek", subtitle: "", source: "api.deepseek.com", live: true,
+                gauges: [
+                    UsageQuota.Gauge(
+                        key: "balance", label: "Balance", fraction: fraction, resetsAt: nil,
+                        trustedReset: false, usedUSD: total, limitUSD: nil, currency: "USD")
+                ],
+                details: [])
+        }
+
+        let quiet = MainWindow.glanceLines(
+            [("", quota("Claude", [("Weekly", 0.3), ("5-hour session", 0.1)]))])
+        try expect(quiet.count == 1 && quiet[0].tone == "ok", "a quiet account is one quiet line")
+        try expect(
+            quiet[0].text == Localized.text("Quotas clear"), "the quiet line says what it means")
+
+        let warm = MainWindow.glanceLines([
+            ("", quota("Claude", [("Weekly", 0.85), ("5-hour session", 0.3)])),
+            ("", quota("Grok", [("Weekly credits", 0.7)])),
+        ])
+        try expect(warm.count == 2, "warm windows read one line each, the healthy ones stay home")
+        try expect(warm[0].tone == "warn" && warm[0].text.contains("85%"), "the tightest leads")
+        try expect(!warm[0].text.contains("5-hour"), "a quiet window is not news")
+
+        let wall = MainWindow.glanceLines([
+            ("", quota("Claude", [("Weekly", 1.0), ("5-hour session", 0.2)])),
+            ("", quota("Grok", [("Weekly credits", 0.9)])),
+        ])
+        try expect(wall.count == 1, "a wall owns the whole strip")
+        try expect(
+            wall[0].tone == "danger" && wall[0].text.contains(Localized.text("used up")),
+            "the wall names what ran out")
+        try expect(!wall[0].text.contains("Grok"), "a warm neighbour is not news next to a wall")
+
+        let emptyBalance = MainWindow.glanceLines([("", balance(0, 1.0))])
+        try expect(
+            emptyBalance.count == 1 && emptyBalance[0].text.contains("empty"),
+            "an empty balance reads as the wall it is")
+
+        let topped = MainWindow.glanceLines([
+            ("", quota("Claude", [("Weekly", 0.3)])),
+            ("", balance(13.42, 0)),
+        ])
+        try expect(
+            topped.count == 1 && topped[0].text.contains("$13.42"),
+            "the quiet line carries the balance's money")
+
+        try expect(MainWindow.glanceLines([]).isEmpty, "nothing reported is nothing shown")
+        return checks
     }
 
     private static func checkVim() throws -> Int {
