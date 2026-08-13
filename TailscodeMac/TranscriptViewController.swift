@@ -21,6 +21,10 @@ final class TranscriptViewController: NSViewController {
     var onChooserAction: ((PaneChooserAction) -> Void)?
     /// Live quotas for used-up surfaces — the same numbers the sidebar footer shows.
     var quotasForStatus: (() -> [UsageQuota])?
+    /// A turn still in flight when this pane moves on is handed to the hub's background watcher,
+    /// so the row keeps its LIVE NOW seat until the turn settles.
+    var onBackgroundWatch: ((AgentConversation, SessionEntry) -> Void)?
+    var onStopWatch: ((String) -> Void)?
 
     /// Drag-a-chat-into-this-pane hooks, owned by the tiling host so every pane is a drop target.
     var onDragEntered: ((NSDraggingInfo) -> Bool)?
@@ -85,13 +89,7 @@ final class TranscriptViewController: NSViewController {
     /// Nothing is inferred here that the pane's own state does not already say.
     var presence: SessionPresence {
         guard let state = lastState else { return .unobserved }
-        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
-            return .awaitingApproval
-        }
-        if state.status == .running || state.compaction?.isRunning == true {
-            return .running(lastFacts?.runningTool)
-        }
-        return state.lastFailure == nil ? .unobserved : .failed
+        return SessionPresence.reading(state, step: lastFacts?.runningTool)
     }
 
     let cascade = CascadePainter()
@@ -272,6 +270,13 @@ final class TranscriptViewController: NSViewController {
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
+        onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
+        let previousEntry = self.entry
+        let previousConversation = conversation
+        let previousPresence = presence
+        if let previousEntry, let previousConversation, previousPresence.isInFlight {
+            onBackgroundWatch?(previousConversation, previousEntry)
+        }
         streamTask?.cancel()
         self.entry = entry
         self.backend = backend
@@ -508,6 +513,12 @@ final class TranscriptViewController: NSViewController {
     /// half-typed into it is written first — closing a pane is not a decision to throw a prompt
     /// away, and the chat it belongs to can be opened again anywhere.
     func shutdownPane() {
+        let previousEntry = entry
+        let previousConversation = conversation
+        let previousPresence = presence
+        if let previousEntry, let previousConversation, previousPresence.isInFlight {
+            onBackgroundWatch?(previousConversation, previousEntry)
+        }
         composer.stashDraft()
         cascade.release()
         page?.shutdown()

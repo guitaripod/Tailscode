@@ -74,6 +74,28 @@ public enum SessionPresence: Sendable, Equatable {
     case awaitingApproval
     /// The last turn this device watched ended in a failure.
     case failed
+
+    public var isInFlight: Bool {
+        switch self {
+        case .running, .awaitingApproval: return true
+        case .unobserved, .failed: return false
+        }
+    }
+
+    /// The presence a conversation state reads as, shared by the pane drawing the chat and the
+    /// background watcher that keeps the row alive after the pane moved on — the two must never
+    /// disagree about a turn. The order is the status band's own: a failure outranks everything,
+    /// a question or an approval outranks merely being busy.
+    public static func reading(_ state: ConversationState, step: String?) -> SessionPresence {
+        if state.lastFailure != nil { return .failed }
+        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
+            return .awaitingApproval
+        }
+        if state.status == .running || state.compaction?.isRunning == true {
+            return .running(step)
+        }
+        return .unobserved
+    }
 }
 
 /// Everything one row needs, derived once so the widget builder has no logic in it.

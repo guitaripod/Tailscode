@@ -815,6 +815,52 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
+    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
+    /// seat until it settles. A pane switching chats (or closing) stops streaming, and a listing
+    /// — opencode's especially — cannot say a turn is running; this keeps the one subscription
+    /// alive in the background and feeds the sidebar exactly what the pane saw.
+    private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    private var backgroundPresence: [String: SessionPresence] = [:]
+
+    func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
+        let key = SessionPinStore.key(entry.profileID, entry.session.id)
+        stopWatching(key)
+        let id = UUID()
+        let task = Task { [weak self] in
+            var lastReading: SessionPresence = .running(nil)
+            while !Task.isCancelled {
+                let stream = await conversation.states()
+                for await state in stream {
+                    guard let self else { return }
+                    let reading = SessionPresence.reading(state, step: nil)
+                    let changed = reading != lastReading
+                    lastReading = reading
+                    let settled = reading == .unobserved
+                    Gtk.onMain { [weak self] in
+                        guard let self, self.backgroundWatch[key]?.id == id else { return }
+                        self.backgroundPresence[key] = reading
+                        if changed { self.renderSidebar() }
+                        if settled { self.stopWatching(key) }
+                    }
+                    if settled { return }
+                }
+            }
+            Gtk.onMain { [weak self] in
+                guard let self, self.backgroundWatch[key]?.id == id else { return }
+                self.backgroundWatch[key] = nil
+                self.backgroundPresence[key] = nil
+                self.renderSidebar()
+            }
+        }
+        backgroundWatch[key] = (id, task)
+    }
+
+    func stopWatching(_ key: String) {
+        backgroundWatch[key]?.task.cancel()
+        backgroundWatch[key] = nil
+        backgroundPresence[key] = nil
+    }
+
     /// A pane took a conversation: the window chrome follows it only when that pane is the
     /// focused one — an unfocused pane opening in the background must not steal the title bar.
     func paneOpened(_ pane: ChatPane) {
@@ -1264,9 +1310,10 @@ final class MainWindow: @unchecked Sendable {
     /// What the panes on screen are watching, keyed on `(profileID, sessionID)` like every store
     /// here, so a conversation this window is streaming reaches LIVE NOW without waiting for the
     /// server's next sweep. Two panes on one chat resolve to the louder answer: a pane that knows
-    /// nothing must never overwrite the one that knows a turn is running.
+    /// nothing must never overwrite the one that knows a turn is running. Conversations a pane
+    /// moved on from are still watched in the background, and their reading counts the same way.
     private func observedPresence() -> [String: SessionPresence] {
-        var observed: [String: SessionPresence] = [:]
+        var observed = backgroundPresence
         splitHost.eachPane { pane in
             guard let entry = pane.entry else { return }
             let key = SessionPinStore.key(entry.profileID, entry.session.id)

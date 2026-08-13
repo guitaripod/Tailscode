@@ -753,6 +753,10 @@ final class MainWindowController: NSWindowController {
     private func makePane() -> TranscriptViewController {
         let pane = TranscriptViewController()
         pane.composer.onAuraChanged = { [weak self] in self?.sidebar.refreshOrb() }
+        pane.onBackgroundWatch = { [weak self] conversation, entry in
+            self?.keepWatching(conversation, entry: entry)
+        }
+        pane.onStopWatch = { [weak self] key in self?.stopWatching(key) }
         pane.onState = { [weak self, weak pane] state in
             guard let pane, let entry = pane.currentEntry else { return }
             MacNotifier.shared.observeConversation(
@@ -784,7 +788,7 @@ final class MainWindowController: NSWindowController {
     /// turn that stopped to ask for an approval, so a chat being talked in right now would
     /// otherwise be findable only by recency.
     private func observedPresence() -> [String: SessionPresence] {
-        var observed: [String: SessionPresence] = [:]
+        var observed = backgroundPresence
         splitPanes.eachPane { pane in
             guard let entry = pane.currentEntry else { return }
             let presence = pane.presence
@@ -792,6 +796,50 @@ final class MainWindowController: NSWindowController {
             observed[SessionPinStore.key(entry.profileID, entry.session.id)] = presence
         }
         return observed
+    }
+
+    /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
+    /// seat until it settles — the same retention the phone gives an in-flight chat.
+    private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    private var backgroundPresence: [String: SessionPresence] = [:]
+
+    func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
+        let key = SessionPinStore.key(entry.profileID, entry.session.id)
+        stopWatching(key)
+        let id = UUID()
+        let task = Task { [weak self] in
+            var lastReading: SessionPresence = .running(nil)
+            while !Task.isCancelled {
+                let stream = await conversation.states()
+                for await state in stream {
+                    guard let self else { return }
+                    let reading = SessionPresence.reading(state, step: nil)
+                    let changed = reading != lastReading
+                    lastReading = reading
+                    let settled = reading == .unobserved
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.backgroundWatch[key]?.id == id else { return }
+                        self.backgroundPresence[key] = reading
+                        if changed { self.sidebar.notePresenceChanged() }
+                        if settled { self.stopWatching(key) }
+                    }
+                    if settled { return }
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.backgroundWatch[key]?.id == id else { return }
+                self.backgroundWatch[key] = nil
+                self.backgroundPresence[key] = nil
+                self.sidebar.notePresenceChanged()
+            }
+        }
+        backgroundWatch[key] = (id, task)
+    }
+
+    func stopWatching(_ key: String) {
+        backgroundWatch[key]?.task.cancel()
+        backgroundWatch[key] = nil
+        backgroundPresence[key] = nil
     }
 
     /// Every pane showing a deleted session empties with an explanation; the sidebar's own flow

@@ -172,20 +172,11 @@ final class ChatPane: @unchecked Sendable {
     ///
     /// A listing reports `active` only for the seconds a turn is literally open on the server, so
     /// the pane streaming a conversation is the only witness that can say it is running now, that
-    /// it stopped to ask something, or that its last turn failed. The order is the status band's
-    /// own — a failure outranks everything, a question or an approval outranks merely being busy —
-    /// and the step is the running tool `StatusFacts` already named, so the row and the band never
-    /// speak two vocabularies for one turn.
+    /// it stopped to ask something, or that its last turn failed. The reading is shared with the
+    /// background watcher, so the row and the band never speak two vocabularies for one turn.
     var presence: SessionPresence {
         guard let state = lastState else { return .unobserved }
-        if state.lastFailure != nil { return .failed }
-        if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
-            return .awaitingApproval
-        }
-        if state.status == .running || state.compaction?.isRunning == true {
-            return .running(bandState.facts.runningTool)
-        }
-        return .unobserved
+        return SessionPresence.reading(state, step: bandState.facts.runningTool)
     }
 
     private var lastPresence: SessionPresence = .unobserved
@@ -722,6 +713,13 @@ final class ChatPane: @unchecked Sendable {
         guard sessionID != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
+        host?.stopWatching(SessionPinStore.key(entry.profileID, entry.session.id))
+        let previousEntry = self.entry
+        let previousConversation = self.conversation
+        let previousPresence = presence
+        if let previousEntry, let previousConversation, previousPresence.isInFlight {
+            host?.keepWatching(previousConversation, entry: previousEntry)
+        }
         chooser = nil
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
@@ -919,8 +917,16 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// A closing pane stops talking to the world before its widgets go: a cancelled stream is
-    /// the difference between a closed pane and a leak that keeps rendering into nothing.
+    /// the difference between a closed pane and a leak that keeps rendering into nothing. A turn
+    /// still in flight is handed to the background watcher first, so the row keeps its LIVE NOW
+    /// seat until the turn settles.
     func shutdown() {
+        let previousEntry = entry
+        let previousConversation = conversation
+        let previousPresence = presence
+        if let previousEntry, let previousConversation, previousPresence.isInFlight {
+            host?.keepWatching(previousConversation, entry: previousEntry)
+        }
         cascade.release()
         video?.shutdown()
         video = nil
