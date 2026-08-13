@@ -126,13 +126,12 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.liveActivities") }
     }
 
-    /// opencode go's monthly dollar cap. The first subscription month runs on a
-    /// promotional $40 ceiling while the published figure is $60, so the estimate
-    /// has to be told which one applies.
+    /// opencode go's monthly dollar cap. The plan publishes $60; the setting only
+    /// shapes the fallback estimate used while Go's usage API is unreachable.
     static var goMonthlyCap: Double {
         get {
             let stored = defaults.double(forKey: "pref.go.monthlyCap")
-            return stored > 0 ? stored : 40
+            return stored > 0 ? stored : 60
         }
         set { defaults.set(newValue, forKey: "pref.go.monthlyCap") }
     }

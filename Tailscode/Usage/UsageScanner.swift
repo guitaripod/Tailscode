@@ -21,8 +21,9 @@ struct UsageMultiplier: Sendable {
     let weight: Double
 }
 
-/// The Go plan's account-wide dollar caps. The monthly figure is a promotional
-/// value for the first subscription month, so it is user-configurable.
+/// The Go plan's account-wide dollar caps, used by the fallback estimate only:
+/// the live reading comes from Go's own usage API. The monthly figure is
+/// user-configurable for a promotional first month.
 enum GoCaps {
     static let rollingCap: Double = 12
     static let weeklyCap: Double = 30

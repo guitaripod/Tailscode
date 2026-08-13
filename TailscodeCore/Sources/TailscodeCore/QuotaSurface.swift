@@ -234,6 +234,13 @@ public enum QuotaSurface {
         fraction >= exhaustedFloor ? Localized.text("Used up") : percentText
     }
 
+    /// What a quota card's provenance badge says, one word on every client: an estimate names
+    /// itself, a live reading names its source, and anything else is a cached snapshot.
+    public static func badge(_ quota: UsageQuota) -> String {
+        if quota.source.lowercased().contains("estimated") { return Localized.text("EST") }
+        return quota.live ? Localized.text("LIVE") : Localized.text("CACHED")
+    }
+
     public static func isExhausted(_ fraction: Double) -> Bool {
         fraction >= exhaustedFloor
     }

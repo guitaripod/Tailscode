@@ -6,7 +6,7 @@ public enum ProviderBrand {
         switch providerName.lowercased() {
         case "claude", "anthropic": return "claude"
         case "grok", "xai": return "grok"
-        case "opencode": return "opencode"
+        case "opencode", "opencode go": return "opencode"
         default: return nil
         }
     }

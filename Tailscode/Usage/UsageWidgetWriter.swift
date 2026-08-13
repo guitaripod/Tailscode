@@ -8,12 +8,17 @@ extension UsageWidgetStore {
     static func writeLive(_ quotas: [UsageQuota], reload: Bool = true) {
         for quota in quotas {
             let gauges = quota.gauges.prefix(3).map { gauge in
-                UsageWidgetEntry.GaugeSnapshot(
+                var caption = UsageGaugeFormat.resetCaption(
+                    resetsAt: gauge.resetsAt, trustedReset: gauge.trustedReset)
+                if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+                    let spend = "\(currency(used)) / \(currency(limit))"
+                    caption = caption.isEmpty ? spend : spend + " · " + caption
+                }
+                return UsageWidgetEntry.GaugeSnapshot(
                     label: gauge.label,
                     fraction: gauge.fraction,
                     percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
-                    caption: UsageGaugeFormat.resetCaption(
-                        resetsAt: gauge.resetsAt, trustedReset: gauge.trustedReset),
+                    caption: caption,
                     resetsAt: gauge.resetsAt)
             }
             let provider = UsageWidgetEntry.ProviderSnapshot(
@@ -53,5 +58,9 @@ extension UsageWidgetStore {
             isLive: false,
             gauges: gauges)
         upsertProvider(provider, reload: reload)
+    }
+
+    private static func currency(_ value: Double) -> String {
+        String(format: "$%.2f", value)
     }
 }

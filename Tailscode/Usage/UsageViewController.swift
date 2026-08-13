@@ -235,7 +235,8 @@ final class UsageViewController: UIViewController {
         let claudeProfiles = orderedProfiles(.claudeCode, profiles: profiles, controller: controller)
         async let claudeFailure: Error? = fillClaude(profiles: claudeProfiles, controller: controller)
         async let grokDone: Void = fillGrok(profiles: claudeProfiles, controller: controller)
-        async let opencodeFailure: Error? = fillOpencode(profile: opencodeProfile, controller: controller)
+        async let opencodeFailure: Error? = fillOpencode(
+            profile: opencodeProfile, claudeProfiles: claudeProfiles, controller: controller)
         let failures = await (claudeFailure, opencodeFailure, grokDone)
         guard !Task.isCancelled else { return }
         if let failure = failures.0 ?? failures.1 { showError(failure) }
@@ -428,24 +429,88 @@ final class UsageViewController: UIViewController {
         grokCard.isHidden = !filledCards.contains(.grok)
     }
 
-    private func fillOpencode(profile: ConnectionProfile?, controller: ConnectionController) async -> Error? {
+    /// Go's own usage API answers through the Claude Code bridge, which reads the server
+    /// machine's Go key: account-wide dollars with the exact reset of each window, so the
+    /// phone-side scan — cross-machine session replay against guessed windows — is only the
+    /// fallback. A bridge that answers only its local-db estimate (the API was unreachable)
+    /// loses to the scan, which at least counts every opencode host this phone knows; a bridge
+    /// estimate is the last resort when the scan cannot run at all.
+    private func fillOpencode(
+        profile: ConnectionProfile?, claudeProfiles: [ConnectionProfile],
+        controller: ConnectionController
+    ) async -> Error? {
         guard let profile else { return nil }
-        let entries = controller.opencodeBackends()
-        guard !entries.isEmpty else {
-            renderFailure(.opencode, on: opencodeCard)
-            return CredentialsUnavailableError(profileName: profile.name)
-        }
-        guard
-            let result = await UsageScanner.scanOpencode(
-                backends: entries.map { ($0.profile.name, $0.backend) })
-        else {
+        var estimates: [(String, UsageQuota)] = []
+        for claudeProfile in claudeProfiles {
+            guard let backend = controller.makeBackend(for: claudeProfile),
+                let quota = (try? await backend.additionalUsageQuotas())?
+                    .first(where: { Self.isOpencode($0) })
+            else { continue }
             guard !Task.isCancelled else { return nil }
-            renderFailure(.opencode, on: opencodeCard)
+            if quota.source.lowercased().contains("estimated") {
+                estimates.append((claudeProfile.name, quota))
+                continue
+            }
+            AppLogger.session.info(
+                "usage: opencode Go live quota from \(claudeProfile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
+            apply(Self.liveOpencodeModel(quota), to: .opencode)
+            return nil
+        }
+        let entries = controller.opencodeBackends()
+        if !entries.isEmpty,
+            let result = await UsageScanner.scanOpencode(
+                backends: entries.map { ($0.profile.name, $0.backend) }),
+            !Task.isCancelled
+        {
+            apply(Self.opencodeModel(result), to: .opencode)
             return nil
         }
         guard !Task.isCancelled else { return nil }
-        apply(Self.opencodeModel(result), to: .opencode)
-        return nil
+        if let first = estimates.first {
+            apply(Self.liveOpencodeModel(first.1), to: .opencode)
+            return nil
+        }
+        renderFailure(.opencode, on: opencodeCard)
+        return entries.isEmpty ? CredentialsUnavailableError(profileName: profile.name) : nil
+    }
+
+    private static func isOpencode(_ quota: UsageQuota) -> Bool {
+        ProviderBrand.slug(quota.providerName) == "opencode"
+    }
+
+    /// The live reading with its own voice: dollars against caps, resets stated by opencode
+    /// itself, and the plan's billing anchor behind the monthly window.
+    private static func liveOpencodeModel(_ quota: UsageQuota) -> CardModel {
+        let gauges = quota.gauges.map { gauge -> GaugeVM in
+            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
+            var caption = ""
+            if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+                caption = "\(currency(used)) / \(currency(limit))"
+            }
+            if gauge.resetsAt != nil { caption += "\n" + resetCaption(gauge) }
+            return GaugeVM(
+                name: UsageGaugeFormat.gaugeLabel(gauge.label),
+                fraction: gauge.fraction,
+                percentText: QuotaSurface.amountLabel(
+                    fraction: gauge.fraction, percentText: "\(percent)%"),
+                caption: caption)
+        }
+        let estimated = quota.source.lowercased().contains("estimated")
+        return CardModel(
+            subtitle: quota.subtitle,
+            pill: estimated ? String(localized: "EST") : String(localized: "LIVE"),
+            accent: Theme.Color.opencode,
+            gauges: gauges,
+            details: quota.details.map { ($0.key, $0.value) },
+            note: estimated
+                ? String(
+                    localized:
+                        "The usage API is unreachable — dollars estimated from the server's opencode.db against Go's caps."
+                )
+                : String(
+                    localized:
+                        "Straight from the OpenCode Go usage API — exact account-wide dollars against your caps, not an estimate."
+                ))
     }
 
     private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
@@ -510,7 +575,7 @@ final class UsageViewController: UIViewController {
             : String(localized: "estimated from this server's opencode.db")
         var note = String(
             localized:
-                "No usage API — \(scope) against Go's dollar caps: an anchored 5-hour block, the trailing week, and the billing month. May miss usage on machines without a profile here and server-side accounting."
+                "The usage API was unreachable — \(scope) against Go's dollar caps: an anchored 5-hour block, the trailing week, and the billing month. May miss usage on machines without a profile here and server-side accounting."
         )
         if let multipliers = multiplierNote(result.multipliers) { note += " \(multipliers)" }
         for host in result.failedHosts {

@@ -580,21 +580,37 @@ final class HomeViewController: UIViewController {
 
     /// The cooldown is stamped on success only: a scan that failed has told us
     /// nothing, so blocking the retry for five minutes just leaves the card
-    /// missing for five minutes.
+    /// missing for five minutes. A live answer already on the board skips the
+    /// scan entirely — the bridge's usage-API reading is exact where the scan
+    /// guesses — and a live answer that lands while the scan runs wins the
+    /// widget store back from the estimate it just wrote.
     private func scanOpencodeIfNeeded() async {
         defer { isScanningOpencode = false }
         if scannedCaps != GoCaps.signature { lastOpencodeScan = nil }
         if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
         scannedCaps = GoCaps.signature
+        guard !hasLiveOpencode() else { return }
         let entries = ConnectionController.shared.opencodeBackends()
         guard !entries.isEmpty else { return }
         guard
             let result = await UsageScanner.scanOpencode(
                 backends: entries.map { ($0.profile.name, $0.backend) })
         else { return }
+        guard !hasLiveOpencode() else {
+            if let liveGo = quotas.first(where: { ProviderBrand.slug($0.providerName) == "opencode" })
+            {
+                UsageWidgetStore.writeLive([liveGo])
+            }
+            return
+        }
         lastOpencodeScan = Date()
         opencodeQuota = UsageScanner.quota(from: result)
         applySnapshot()
+    }
+
+    private func hasLiveOpencode() -> Bool {
+        if opencodeQuota?.live == true { return true }
+        return quotas.contains { ProviderBrand.slug($0.providerName) == "opencode" }
     }
 
     /// A bridge answers for every provider its host machine is signed into,
@@ -729,8 +745,9 @@ final class HomeViewController: UIViewController {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
+        let hasLiveOpencode = quotas.contains { ProviderBrand.slug($0.providerName) == "opencode" }
         let usageCards = quotas.map { QuotaCard(quota: $0) }
-            + (opencodeQuota.map { [QuotaCard(quota: $0)] } ?? [])
+            + ((hasLiveOpencode ? nil : opencodeQuota).map { [QuotaCard(quota: $0)] } ?? [])
         let reserved = reservedUsageCards
         if !usageCards.isEmpty || reserved > 0 {
             snapshot.appendSections([.usage])

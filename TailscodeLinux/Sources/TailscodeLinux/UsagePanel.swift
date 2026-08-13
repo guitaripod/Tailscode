@@ -149,9 +149,11 @@ enum UsagePanel {
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_hexpand(spacer, 1)
         gtk_box_append(ptr(header), spacer)
+        let badgeText = QuotaSurface.badge(quota)
         let badge = Gtk.label(
-            quota.live ? Localized.text("LIVE") : Localized.text("CACHED"),
-            css: quota.live ? "usage-live" : "usage-stale", selectable: false)
+            badgeText,
+            css: badgeText == Localized.text("LIVE") ? "usage-live" : "usage-stale",
+            selectable: false)
         gtk_label_set_ellipsize(op(badge), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(header), badge)
         gtk_box_append(ptr(card), header)

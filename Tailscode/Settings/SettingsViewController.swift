@@ -430,7 +430,7 @@ final class SettingsViewController: UIViewController {
             guard showsGoCaps else { return nil }
             return String(
                 localized:
-                    "Go has no usage API, so the Usage screen estimates spend against these caps. The first subscription month runs on a $40 promotional ceiling; the published one is $60. Auto reads the renewal day from your oldest Go request."
+                    "Go reports exact usage through its own API, so these caps only shape the fallback estimate used while that API is unreachable. Auto reads the renewal day from your oldest Go request."
             )
         case .software:
             return String(

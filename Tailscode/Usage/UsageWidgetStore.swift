@@ -80,12 +80,12 @@ enum UsageWidgetStore {
                     ]),
                 UsageWidgetEntry.ProviderSnapshot(
                     providerName: "opencode go",
-                    subtitle: String(localized: "$10/mo · estimated"),
-                    isLive: false,
+                    subtitle: "$10/mo",
+                    isLive: true,
                     gauges: [
-                        previewSpendGauge("5-hour", 0.28, "28%", spend: "$3.42", cap: "$12"),
-                        previewSpendGauge("Weekly", 0.14, "14%", spend: "$4.20", cap: "$30"),
-                        previewSpendGauge("Monthly", 0.08, "8%", spend: "$3.00", cap: "$40"),
+                        previewSpendGauge("5-hour", 0.28, "28%", spend: "$3.42", cap: "$12", resetsIn: 5400, from: now),
+                        previewSpendGauge("Weekly", 0.14, "14%", spend: "$4.20", cap: "$30", resetsIn: 14400, from: now),
+                        previewSpendGauge("Monthly", 0.08, "8%", spend: "$4.80", cap: "$60", resetsIn: 43200, from: now),
                     ]),
             ],
             isStale: false)
@@ -103,12 +103,12 @@ enum UsageWidgetStore {
     }
 
     private static func previewSpendGauge(
-        _ label: String, _ fraction: Double, _ percentText: String, spend: String, cap: String
+        _ label: String, _ fraction: Double, _ percentText: String, spend: String, cap: String,
+        resetsIn: TimeInterval, from: Date
     ) -> UsageWidgetEntry.GaugeSnapshot {
-        UsageWidgetEntry.GaugeSnapshot(
-            label: label, fraction: fraction, percentText: percentText,
-            caption: UsageGaugeFormat.spendCaption(spend: spend, cap: cap, requests: 12),
-            resetsAt: nil)
+        var gauge = previewGauge(label, fraction, percentText, resetsIn: resetsIn, from: from)
+        gauge.caption = String(localized: "\(spend) / \(cap)") + " · " + gauge.caption
+        return gauge
     }
 
     private struct Storage: Codable {

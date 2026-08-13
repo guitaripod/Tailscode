@@ -411,7 +411,7 @@ final class UsagePanelViewController: NSViewController {
                     color: MacTheme.Color.secondaryLabel))
         }
         header.addArrangedSubview(RowKit.spacer())
-        header.addArrangedSubview(Self.badge(live: quota.live))
+        header.addArrangedSubview(Self.badge(for: quota))
         header.orientation = .horizontal
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
@@ -481,17 +481,17 @@ final class UsagePanelViewController: NSViewController {
         return block
     }
 
-    private static func badge(live: Bool) -> NSView {
-        let label = NSTextField(
-            labelWithString: live ? Localized.text("LIVE") : Localized.text("CACHED"))
+    private static func badge(for quota: UsageQuota) -> NSView {
+        let text = QuotaSurface.badge(quota)
+        let label = NSTextField(labelWithString: text)
         label.font = MacTheme.Ramp.font(.metricLabel)
-        label.textColor = live ? MacTheme.Color.success : MacTheme.Color.secondaryLabel
+        label.textColor = quota.live ? MacTheme.Color.success : MacTheme.Color.secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         let wrap = NSView()
         wrap.wantsLayer = true
         wrap.layer?.cornerRadius = 4
         wrap.layer?.backgroundColor =
-            (live
+            (quota.live
                 ? MacTheme.Color.success.withAlphaComponent(0.15)
                 : MacTheme.Color.canvasRaised).cgColor
         wrap.translatesAutoresizingMaskIntoConstraints = false
