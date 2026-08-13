@@ -81,7 +81,7 @@ if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
         for pid in $OLD_PIDS; do
             DISPLAY_ENV=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null |
                 grep -E '^(DISPLAY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR)=' |
-                sed 's/^/--setenv=/' | tr '\n' ' ')
+                sed 's/^/--setenv=/' | tr '\n' ' ' || true)
             [ -n "$DISPLAY_ENV" ] && break
         done
     fi

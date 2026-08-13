@@ -3188,14 +3188,14 @@ final class MainWindow: @unchecked Sendable {
         return lines
     }
 
-    /// A wall's one line: what ran out and when it comes back.
+    /// A wall's one line: what ran out and when it comes back. The countdown needs no verb — it
+    /// can only ever mean the reset.
     private static func wallLine(_ wall: QuotaExhaustion) -> String {
         var line = "\(wall.provider) \(wall.window) \(Localized.text("used up"))"
         if let reset = wall.resetsAt {
             line += " · "
                 + (wall.trustedReset
-                    ? Localized.text("resets in %@", countdown(to: reset))
-                    : Localized.text("resets in about %@", countdown(to: reset)))
+                    ? countdown(to: reset) : Localized.text("about %@", countdown(to: reset)))
         }
         return line
     }
@@ -3208,8 +3208,7 @@ final class MainWindow: @unchecked Sendable {
         if let reset = gauge.resetsAt {
             line += " · "
                 + (gauge.trustedReset
-                    ? Localized.text("resets in %@", countdown(to: reset))
-                    : Localized.text("resets in about %@", countdown(to: reset)))
+                    ? countdown(to: reset) : Localized.text("about %@", countdown(to: reset)))
         }
         return line
     }
