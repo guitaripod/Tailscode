@@ -18,7 +18,7 @@ enum LiveQuotaFetcher {
     /// partial haul. An unreachable tailnet yields `[]` and the caller keeps
     /// serving its stored snapshot.
     static func fetch(deadline: TimeInterval) async -> [UsageQuota] {
-        async let deepseek: Void = DeepSeekBalance.refresh()
+        async let deepseek: DeepSeekBalance.Reading? = DeepSeekBalance.refresh()
         guard
             let store = try? SharedConnectionStore.make(),
             let profiles = try? store.profiles()

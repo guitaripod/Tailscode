@@ -422,9 +422,11 @@ final class UsageViewController: UIViewController {
             pill: String(localized: "LIVE"),
             accent: Theme.Color.modelFamily(.deepseek),
             gauges: gauge.map {
-                GaugeVM(
-                    name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
-                    percentText: $0.percentText, caption: $0.caption)
+                [
+                    GaugeVM(
+                        name: UsageGaugeFormat.gaugeLabel($0.label), fraction: $0.fraction,
+                        percentText: $0.percentText, caption: $0.caption)
+                ]
             } ?? [],
             details: [],
             note: String(
@@ -622,14 +624,21 @@ final class UsageViewController: UIViewController {
         let value = reading.isAvailable
             ? DeepSeekBalance.currency(reading.total, reading.currency)
             : String(localized: "Empty")
-        let gaugeCaption = reading.isAvailable
-            ? String(
+        let gaugeCaption: String
+        if reading.isAvailable {
+            var caption = String(
                 localized:
-                    "Topped up \(DeepSeekBalance.currency(reading.toppedUp, reading.currency))"
-                        + (reading.granted > 0
-                            ? " · granted \(DeepSeekBalance.currency(reading.granted, reading.currency))"
-                            : ""))
-            : String(localized: "Top up to keep DeepSeek models running")
+                    "Topped up \(DeepSeekBalance.currency(reading.toppedUp, reading.currency))")
+            if reading.granted > 0 {
+                caption += " · "
+                    + String(
+                        localized:
+                            "granted \(DeepSeekBalance.currency(reading.granted, reading.currency))")
+            }
+            gaugeCaption = caption
+        } else {
+            gaugeCaption = String(localized: "Top up to keep DeepSeek models running")
+        }
         return CardModel(
             subtitle: String(localized: "Prepaid balance · direct API"),
             pill: String(localized: "LIVE"),
@@ -848,7 +857,7 @@ private final class HeroCard: UIView {
 /// windows as labelled bars, and the fine print folded behind a chevron — so the screen reads as
 /// one repeated shape rather than three cards that each invented their own.
 @MainActor
-private final class ProviderCard: UIView {
+private class ProviderCard: UIView {
     private let cardTitle: String
     private let accent: UIColor
     private let subtitleLabel = UILabel()
