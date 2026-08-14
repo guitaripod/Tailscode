@@ -209,13 +209,19 @@ final class MainWindow: @unchecked Sendable {
         observeUpdates()
         renderUpdates()
         UpdateWatch.start { [weak self] in self?.quitForUpdate() }
-        FirstRunDialog.presentIfNeeded(parent: window) { [weak self] in
-            Task { [weak self] in await self?.refresh() }
-        }
+        presentFirstRun()
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }
         installDriver()
+    }
+
+    /// Setup, from launch or from the road back the empty sidebar offers. It presents itself only
+    /// when there is still no server, so pressing the row twice cannot stack two of them.
+    func presentFirstRun() {
+        FirstRunDialog.presentIfNeeded(parent: window) { [weak self] in
+            Task { [weak self] in await self?.refresh() }
+        }
     }
 
     /// `TAILSCODE_DRIVE="2000:open=1;4000:up=400;6000:jump"` — timed UI actions for headless
@@ -1246,6 +1252,20 @@ final class MainWindow: @unchecked Sendable {
                 })
         }
         guard !visible.isEmpty else {
+            // An empty list with no server behind it is not "no conversations yet" — it is a setup
+            // that never finished, and the only screen that could finish it has been dismissed.
+            // Pressing Later used to leave a window with no visible road anywhere.
+            if !showingArchive, filter.isEmpty, projectScope == nil, knownProfiles.isEmpty {
+                gtk_box_append(
+                    ptr(sidebarList),
+                    SidebarRow.empty(Localized.text("No server yet — nothing can answer.")))
+                gtk_box_append(
+                    ptr(sidebarList),
+                    Gtk.button(Localized.text("Set up a machine"), css: ["flat"]) { [weak self] in
+                        Gtk.onMain { [weak self] in self?.presentFirstRun() }
+                    })
+                return
+            }
             gtk_box_append(
                 ptr(sidebarList),
                 SidebarRow.empty(

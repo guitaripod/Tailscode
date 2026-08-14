@@ -106,6 +106,11 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")
         case .firstRunSetup: return .implemented("FirstRunWindow")
+        case .tailscaleReadiness:
+            return .gap(
+                "the Mac shows the tailnet address or nothing at all, with no reading behind it and "
+                + "no action offered. TailscaleReading is toolkit-free and the CLI answers the same "
+                + "way on macOS, so this is work not yet done rather than a platform that cannot")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("MacNotifier")
         case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")

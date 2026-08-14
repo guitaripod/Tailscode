@@ -103,6 +103,7 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")
         case .firstRunSetup: return .implemented("FirstRunDialog")
+        case .tailscaleReadiness: return .implemented("TailscaleReading")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("Notifier")
         case .hapticFeedback: return .notApplicable("nothing under a desktop vibrates; a keyboard and a monitor have no actuator to drive, and the cues a phone gives a hand are carried here by the status band and the notifier")

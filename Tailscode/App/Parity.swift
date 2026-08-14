@@ -102,6 +102,13 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
         case .firstRunSetup: return .implemented("ServerSetupViewController")
+        case .tailscaleReadiness:
+            return .partial(
+                "TailnetStatus",
+                missing:
+                    "the phone reads only present-or-absent: a tailnet address or a row that opens "
+                    + "the Tailscale app. iOS cannot see whether the daemon is signed out or stopped, "
+                    + "so the four states collapse into two and the remedy is always the same tap")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("NotificationManager")
         case .missedActivity: return .implemented("MissedActivityCell")

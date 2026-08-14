@@ -1,0 +1,80 @@
+name: Linux release
+
+# A binary built on the author's Arch box runs on no Ubuntu release at all — it needs GLIBC_2.44,
+# and 26.04 LTS ships 2.43. glibc is forward-compatible and never backward, so the artifact has to
+# be built against the oldest glibc it must run on. Ubuntu 24.04 (glibc 2.39) covers 24.04, 25.10,
+# 26.04, Debian 13, Mint, Pop!_OS and Arch in one file, and costs nothing: the code's real toolkit
+# floor is GTK 4.12, which 24.04's 4.14 clears.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the artifact to the release for this tag
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libgdk-pixbuf-2.0-dev libepoxy-dev \
+            libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev \
+            desktop-file-utils appstream git curl
+
+      # Every optional pane is decided by probing for its headers at manifest time, so a missing
+      # -dev package does not fail the build — it silently ships an app without the terminal, the
+      # video slot or the browser. A release must never be the one that quietly lost a feature.
+      - name: Every optional pane is present
+        run: |
+          for header in \
+            /usr/include/vte-2.91-gtk4/vte/vte.h \
+            /usr/include/mpv/render_gl.h \
+            /usr/include/webkitgtk-6.0/webkit/webkit.h
+          do
+            test -f "$header" || { echo "missing $header — the build would drop a pane"; exit 1; }
+          done
+
+      - name: Packaging metadata is valid
+        run: |
+          desktop-file-validate packaging/linux/io.github.guitaripod.Tailscode.desktop
+          appstreamcli validate --no-net packaging/linux/io.github.guitaripod.Tailscode.metainfo.xml
+
+      - name: Build
+        run: TAILSCODE_KIT_REMOTE=1 scripts/package-linux.sh tarball
+
+      # The whole point of building here rather than on the author's machine.
+      - name: The glibc floor is what we think it is
+        run: |
+          floor=$(objdump -T TailscodeLinux/.build/release/tailscode |
+            grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1)
+          echo "requires $floor"
+          test "$floor" = "GLIBC_2.39" || {
+            echo "expected GLIBC_2.39 — this artifact would not run on Ubuntu 24.04"; exit 1; }
+
+      - name: It starts
+        run: |
+          xvfb-run -a build/linux-stage/usr/bin/tailscode --version ||
+            build/linux-stage/usr/bin/tailscode --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tailscode-linux-x86_64
+          path: |
+            build/*.tar.gz
+            build/*.sha256
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" build/*.tar.gz build/*.sha256 --clobber

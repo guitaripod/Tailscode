@@ -1,0 +1,55 @@
+id: io.github.guitaripod.Tailscode
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.swift6
+command: tailscode
+
+build-options:
+  append-path: /usr/lib/sdk/swift6/bin
+  prepend-ld-library-path: /usr/lib/sdk/swift6/lib
+  env:
+    # Never resolve the Kit from a sibling working copy that does not exist here, and never let a
+    # build reach the network: every dependency is a declared source with a SwiftPM mirror.
+    TAILSCODE_KIT_REMOTE: '1'
+
+finish-args:
+  # The whole product is HTTP to a machine on your own tailnet. Without this it does nothing at all.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The global summon chord is asked for through the portal rather than grabbed, and notifications
+  # about a turn that needs you go through the portal too.
+  - --talk-name=org.freedesktop.portal.Desktop
+  # Saving a picture the agent produced, and attaching one to a prompt.
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # Tailscale is a system service with a root-owned socket; it cannot be sandboxed and is not
+  # shipped here. Reading `tailscale status` on the host is the only way the first-run check can
+  # tell "this machine is not on your tailnet" from "this app cannot see whether it is", and the
+  # difference is the whole of setup for someone who has never done it.
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - name: tailscode
+    buildsystem: simple
+    build-options:
+      # The Swift toolchain wants a writable home for its caches.
+      env:
+        HOME: /run/build/tailscode
+    sources:
+      - type: dir
+        path: ../..
+      - generated-sources.json
+    build-commands:
+      - ./packaging/flatpak/set-mirrors.sh
+      - PREFIX=/app scripts/package-linux.sh build
+      - PREFIX=/app scripts/package-linux.sh install /
+    post-install:
+      # A Flatpak's own metainfo has to be the one the store reads, and the id it carries is the
+      # Flatpak id rather than the binary's name.
+      - install -Dm0644 packaging/linux/io.github.guitaripod.Tailscode.metainfo.xml
+        /app/share/metainfo/io.github.guitaripod.Tailscode.metainfo.xml

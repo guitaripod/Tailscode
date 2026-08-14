@@ -110,10 +110,30 @@ Shared toolkit-free logic lives in `TailscodeCore/`. Every user-facing capabilit
 
 - **iOS** 18+ (Liquid Glass and prompt enhance on iOS 26+).
 - **macOS** 26+ for TailscodeMac.
-- **Linux** with GTK4/libadwaita (optional VTE, mpv, WebKitGTK for terminal/video/browser panes).
+- **Linux** with **GTK 4.12+ and libadwaita 1.4+** — Ubuntu 24.04, Debian 13, Fedora 40 and Arch all clear it; Ubuntu 22.04 and Debian 12 do not. Optional VTE, mpv and WebKitGTK add the terminal, video and browser panes. The Flatpak carries its own copies of all of it.
 - A machine on your tailnet running one of:
   - `opencode serve` (port 4096)
   - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098)
+
+## Install on Linux
+
+```bash
+# Any distribution — the runtime brings its own GTK, so the host's version does not matter
+flatpak install flathub io.github.guitaripod.Tailscode
+
+# Arch
+paru -S tailscode          # or tailscode-git to build from master
+```
+
+Or take the tarball from [releases](https://github.com/guitaripod/Tailscode/releases) — one static binary plus its desktop entry, icons, man page and completions:
+
+```bash
+tar xf tailscode-*-linux-x86_64.tar.gz -C ~/.local --strip-components=1
+```
+
+**Steam Deck** — Desktop Mode, install the Flatpak from Discover, then add it to Steam so it appears in Game Mode. Tailscale itself is a system service and cannot be a Flatpak; install it with the [deck script](https://github.com/tailscale-dev/deck-tailscale) first. The app is at its best docked to a monitor with a keyboard: Game Mode's on-screen keyboard cannot type into GTK text fields ([Valve bug](https://steamcommunity.com/app/1675200/discussions/1/3370405364916738938/)).
+
+First run checks what it can: whether this machine is on a tailnet, and which machines on it are already answering — pick one from the scan and there is nothing to type.
 
 ## Build
 
@@ -126,7 +146,19 @@ open Tailscode.xcodeproj
 
 Set your own `DEVELOPMENT_TEAM` in `project.yml`. Demo mode ("Try the demo" on first run, or `--demo`) populates scripted servers with no tailnet — same world on iOS, Linux, and Mac. DEBUG builds auto-connect from `TAILSCODE_HOST` / `TAILSCODE_PASSWORD`.
 
-**Linux** — `scripts/dev-linuxapp.sh` keeps one headless harness display; `scripts/install-linuxapp.sh` puts a change in front of the person.
+**Linux** — from a clean clone:
+
+```bash
+# Arch
+sudo pacman -S --needed gtk4 libadwaita gdk-pixbuf2 libepoxy vte4 mpv webkitgtk-6.0
+# Debian, Ubuntu
+sudo apt install libgtk-4-dev libadwaita-1-dev libgdk-pixbuf-2.0-dev libepoxy-dev \
+    libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev
+
+TAILSCODE_KIT_REMOTE=1 scripts/package-linux.sh build   # needs a Swift 6.2 toolchain
+```
+
+The manifests use CodingAgentKit from a sibling checkout when there is one and from its published tag otherwise, so a clone builds without arranging anything. `scripts/package-linux.sh install <destdir>` stages the whole install tree; `scripts/dev-linuxapp.sh` keeps one headless harness display for development; `scripts/install-linuxapp.sh` puts a change in front of the person.
 
 **macOS** — rsync + `xcodegen` + `xcodebuild` on a Mac (see `TailscodeMac/AGENTS.md`).
 

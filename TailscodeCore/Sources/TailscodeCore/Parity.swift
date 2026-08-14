@@ -103,6 +103,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case settingsSurface
     case goalControl
     case firstRunSetup
+    case tailscaleReadiness
     case demoMode
     case activityNotifications
     case missedActivity
@@ -504,6 +505,11 @@ public enum CapabilityRegistry {
             id: .firstRunSetup, area: "app", title: "First run is a verified checklist",
             spec:
                 "Setup states each requirement and proves what it can — this machine's tailnet presence, and which agent answers the typed address via probeCandidates — before asking for anything."),
+        CapabilityDefinition(
+            id: .tailscaleReadiness, area: "app",
+            title: "Not on the tailnet is four states, each with its own fix",
+            spec:
+                "Whether this device is on a tailnet is a TailscaleReading rather than an address or nothing: up, signed out, service not running, not installed, or — inside a sandbox — unable to see. Each carries what is true, why it matters and the one action that fixes it, and the client wires that action to its own door: the download page, a sign-in that surfaces the login URL where the person is already looking, or the platform's own Tailscale. Nobody is told to open a terminal, and 'this app cannot see' is never drawn as 'you are not connected'."),
         CapabilityDefinition(
             id: .demoMode, area: "app", title: "Try it without a server",
             spec:
