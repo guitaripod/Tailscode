@@ -128,23 +128,6 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.liveActivities") }
     }
 
-    /// opencode go's monthly dollar cap. The plan publishes $60; the setting only
-    /// shapes the fallback estimate used while Go's usage API is unreachable.
-    static var goMonthlyCap: Double {
-        get {
-            let stored = defaults.double(forKey: "pref.go.monthlyCap")
-            return stored > 0 ? stored : 60
-        }
-        set { defaults.set(newValue, forKey: "pref.go.monthlyCap") }
-    }
-
-    /// Day of the month the opencode go subscription renews; `0` means infer it
-    /// from the oldest Go request on record.
-    static var goBillingDay: Int {
-        get { defaults.integer(forKey: "pref.go.billingDay") }
-        set { defaults.set(newValue, forKey: "pref.go.billingDay") }
-    }
-
     @MainActor
     static func applyAppearance() {
         Theme.Chrome.apply()

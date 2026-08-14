@@ -159,8 +159,6 @@ final class SettingsViewController: UIViewController {
         case pushState(String)
         case testNotification
         case usage
-        case goMonthlyCap
-        case goBillingDay
         case deepseekKey
         case keyboardShortcuts
         case haptics
@@ -428,20 +426,10 @@ final class SettingsViewController: UIViewController {
                     "Approvals and turn alerts are raised by this device while it is watching a session. Push from servers is what reaches you after the app is closed."
             )
         case .usage:
-            var lines: [String] = []
-            if showsGoCaps {
-                lines.append(
-                    String(
-                        localized:
-                            "Go reports exact usage through its own API, so these caps only shape the fallback estimate used while that API is unreachable. Auto reads the renewal day from your oldest Go request."
-                    ))
-            }
-            lines.append(
-                String(
-                    localized:
-                        "The DeepSeek API key is optional — set it only if you bill DeepSeek models straight to your own platform account, and its prepaid balance joins the usage meters."
-                ))
-            return lines.joined(separator: "\n\n")
+            return String(
+                localized:
+                    "The DeepSeek API key is optional — set it only if you bill DeepSeek models straight to your own platform account, and its prepaid balance joins the usage meters."
+            )
         case .software:
             return String(
                 localized:
@@ -598,16 +586,6 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "gauge.with.dots.needle.67percent")
             content.imageProperties.tintColor = Theme.Color.opencode
             cell.accessories = [.disclosureIndicator()]
-        case .goMonthlyCap:
-            content.text = String(localized: "opencode go monthly cap")
-            content.image = UIImage(systemName: "dollarsign.circle")
-            content.imageProperties.tintColor = Theme.Color.opencode
-            cell.accessories = [.customView(configuration: monthlyCapAccessory())]
-        case .goBillingDay:
-            content.text = String(localized: "Billing day")
-            content.image = UIImage(systemName: "calendar")
-            content.imageProperties.tintColor = Theme.Color.opencode
-            cell.accessories = [.customView(configuration: billingDayAccessory())]
         case .deepseekKey:
             content.text = String(localized: "DeepSeek API key")
             content.secondaryText =
@@ -826,120 +804,6 @@ final class SettingsViewController: UIViewController {
     }
 
     /// The inline trailing menu button shared by every value row.
-    private static func style(_ button: UIButton, title: String) {
-        var config = UIButton.Configuration.plain()
-        config.title = title
-        config.image = UIImage(
-            systemName: "chevron.up.chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        config.imagePlacement = .trailing
-        config.imagePadding = 4
-        config.baseForegroundColor = Theme.Color.secondaryLabel
-        button.configuration = config
-    }
-
-    private static let monthlyCapPresets: [Double] = [40, 60]
-
-    private func monthlyCapAccessory() -> UICellAccessory.CustomViewConfiguration {
-        let button = UIButton(configuration: .plain())
-        button.showsMenuAsPrimaryAction = true
-        Self.style(button, title: Self.capTitle(AppPreferences.goMonthlyCap))
-        button.menu = monthlyCapMenu()
-        return .init(customView: button, placement: .trailing())
-    }
-
-    private func monthlyCapMenu() -> UIMenu {
-        let current = AppPreferences.goMonthlyCap
-        var actions = Self.monthlyCapPresets.map { cap in
-            UIAction(title: Self.capTitle(cap), state: current == cap ? .on : .off) {
-                [weak self] _ in
-                self?.setMonthlyCap(cap)
-            }
-        }
-        actions.append(
-            UIAction(
-                title: String(localized: "Custom…"),
-                state: Self.monthlyCapPresets.contains(current) ? .off : .on
-            ) { [weak self] _ in
-                self?.promptForMonthlyCap()
-            })
-        return UIMenu(children: actions)
-    }
-
-    private func setMonthlyCap(_ cap: Double) {
-        guard cap != AppPreferences.goMonthlyCap else { return }
-        AppPreferences.goMonthlyCap = cap
-        Theme.Haptics.tap()
-        capsChanged()
-        reconfigure([.goMonthlyCap])
-    }
-
-    /// Every stored opencode percentage was computed against the old ceiling, so
-    /// the snapshot the widgets and Home are rendering is now describing a plan
-    /// that doesn't exist. Dropping it is honest; the next scan refills it.
-    private func capsChanged() {
-        UsageWidgetStore.removeProvider(named: UsageWidgetStore.opencodeProviderName)
-        AppLogger.session.info("go caps changed to \(GoCaps.signature); dropped stale estimate")
-    }
-
-    private func promptForMonthlyCap() {
-        let alert = UIAlertController(
-            title: String(localized: "Monthly cap"),
-            message: String(localized: "The dollar ceiling the monthly gauge fills against."),
-            preferredStyle: .alert)
-        alert.addTextField { field in
-            field.keyboardType = .decimalPad
-            field.text = Self.amountText(AppPreferences.goMonthlyCap)
-        }
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Save"), style: .default) {
-                [weak self, weak alert] _ in
-                let typed = alert?.textFields?.first?.text ?? ""
-                guard let cap = Double(typed.replacingOccurrences(of: ",", with: ".")), cap > 0
-                else { return }
-                self?.setMonthlyCap(cap)
-            })
-        present(alert, animated: true)
-    }
-
-    private func billingDayAccessory() -> UICellAccessory.CustomViewConfiguration {
-        let button = UIButton(configuration: .plain())
-        button.showsMenuAsPrimaryAction = true
-        Self.style(button, title: Self.billingDayTitle(AppPreferences.goBillingDay))
-        button.menu = billingDayMenu()
-        return .init(customView: button, placement: .trailing())
-    }
-
-    private func billingDayMenu() -> UIMenu {
-        let current = AppPreferences.goBillingDay
-        return UIMenu(
-            children: ([0] + Array(1...31)).map { day in
-                UIAction(title: Self.billingDayTitle(day), state: current == day ? .on : .off) {
-                    [weak self] _ in
-                    guard day != AppPreferences.goBillingDay else { return }
-                    AppPreferences.goBillingDay = day
-                    Theme.Haptics.tap()
-                    self?.capsChanged()
-                    self?.reconfigure([.goBillingDay])
-                }
-            })
-    }
-
-    private static func capTitle(_ cap: Double) -> String { "$\(amountText(cap))" }
-
-    private static func amountText(_ value: Double) -> String { String(format: "%g", value) }
-
-    private static func billingDayTitle(_ day: Int) -> String {
-        (1...31).contains(day) ? String(localized: "Day \(day)") : String(localized: "Auto")
-    }
-
-    /// The Go caps only mean anything to someone running opencode, so the
-    /// rows stay out of the way until a server is connected.
-    private var showsGoCaps: Bool {
-        ConnectionController.shared.profiles.contains { $0.backend == .openCode }
-    }
-
     private var pushCapableProfiles: [ConnectionProfile] {
         var seen = Set<URL>()
         return ConnectionController.shared.profiles.filter {
@@ -962,8 +826,7 @@ final class SettingsViewController: UIViewController {
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)
 
-        var usageItems: [Item] = [.usage, .deepseekKey]
-        if showsGoCaps { usageItems += [.goMonthlyCap, .goBillingDay] }
+        let usageItems: [Item] = [.usage, .deepseekKey]
 
         return [
             (.connections, connectionItems),
@@ -1096,12 +959,6 @@ final class SettingsViewController: UIViewController {
         case .usage:
             return String(
                 localized: "usage limits quota gauges plan spend", comment: "search keywords")
-        case .goMonthlyCap:
-            return String(
-                localized: "opencode go monthly cap dollars limit spend", comment: "search keywords")
-        case .goBillingDay:
-            return String(
-                localized: "billing day renewal cycle opencode go", comment: "search keywords")
         case .deepseekKey:
             return String(
                 localized: "deepseek api key balance prepaid token", comment: "search keywords")
@@ -1360,7 +1217,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             Theme.Haptics.tap()
             let picker = ThemePickerViewController()
             navigationController?.pushViewController(picker, animated: true)
-        case .toggle, .version, .goMonthlyCap, .goBillingDay, .tailnetScan:
+        case .toggle, .version, .tailnetScan:
             break
         }
     }

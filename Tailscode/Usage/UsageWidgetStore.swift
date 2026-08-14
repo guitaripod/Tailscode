@@ -156,10 +156,31 @@ enum UsageWidgetStore {
         if reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
     }
 
-    /// Drops a provider's stored gauges. Used when the numbers behind them stop
-    /// being true — an estimate whose cap the user just changed describes a plan
-    /// that no longer exists, and showing it on the Home screen until the next
-    /// scan is worse than showing nothing.
+    /// Drops any provider whose numbers this device worked out for itself rather than read from
+    /// the account. The phone used to replay opencode sessions against guessed windows and store
+    /// the result beside the real readings, where it was indistinguishable from one; nothing writes
+    /// an estimate any more, but an install that has one keeps rendering it until it is dropped.
+    static func dropEstimates(reload: Bool = true) {
+        var removed = false
+        withProvidersLock {
+            guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+                let stored = try? JSONDecoder().decode(Storage.self, from: data)
+            else { return }
+            let remaining = stored.providers.filter {
+                !$0.subtitle.lowercased().contains("estimated")
+            }
+            guard remaining.count != stored.providers.count else { return }
+            let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)
+            guard let encoded = try? JSONEncoder().encode(storage) else { return }
+            UserDefaults(suiteName: suiteName)?.set(encoded, forKey: providersKey)
+            removed = true
+        }
+        if removed, reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
+    }
+
+    /// Drops a provider's stored gauges, for when the thing behind them is gone — a DeepSeek key
+    /// the user just deleted has no balance to report, and showing yesterday's is worse than
+    /// showing nothing.
     static func removeProvider(named name: String, reload: Bool = true) {
         var removed = false
         withProvidersLock {

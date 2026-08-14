@@ -58,12 +58,16 @@ enum LiveQuotaFetcher {
         return QuotaRollup.account(from: reports).map(\.quota)
     }
 
+    /// A bridge answers with what its machine can read, and where the provider's own usage API is
+    /// unreachable that includes a reading it worked out from a local database. It is not the
+    /// account's number, and stored beside the account's numbers it is indistinguishable from one —
+    /// so the surfaces take the measurement or nothing.
     private static func fetchQuotas(from backend: any CodingAgentBackend) async -> [UsageQuota] {
         var fetched: [UsageQuota] = []
         if let primary = try? await backend.usageQuota() { fetched.append(primary) }
         if let extra = try? await backend.additionalUsageQuotas() {
             fetched.append(contentsOf: extra)
         }
-        return fetched
+        return fetched.filter { !$0.source.lowercased().contains("estimated") }
     }
 }

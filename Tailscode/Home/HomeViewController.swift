@@ -23,7 +23,6 @@ final class HomeViewController: UIViewController {
     private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
     private var savedChats: [SavedChat] = SavedChatStore.all()
-    private var opencodeQuota: UsageQuota?
     private var hasAppeared = false
     private var hasLoadedOnce = false
     private var wantsComposerFocus = false
@@ -426,11 +425,6 @@ final class HomeViewController: UIViewController {
         navigationItem.rightBarButtonItems = [composeItem, ask]
     }
 
-    private var lastOpencodeScan: Date?
-    /// The caps the last scan was priced against; changing them in Settings
-    /// invalidates the cooldown, or the card would keep the old percentages for
-    /// up to five minutes.
-    private var scannedCaps = GoCaps.signature
     private var lastEnrichment: Date?
     private var isEnriching = false
     private var loadTask: Task<Void, Never>?
@@ -443,8 +437,7 @@ final class HomeViewController: UIViewController {
     private func seedCachedQuotas() {
         let cached = UsageWidgetStore.cachedQuotas()
         guard !cached.isEmpty else { return }
-        quotas = cached.filter { $0.providerName != UsageWidgetStore.opencodeProviderName }
-        opencodeQuota = cached.first { $0.providerName == UsageWidgetStore.opencodeProviderName }
+        quotas = cached
     }
 
     /// Home is a status board, so it keeps itself current while it is on screen:
@@ -485,7 +478,6 @@ final class HomeViewController: UIViewController {
     /// because the opencode scan finishes long after the live fetch, and a card
     /// with no seat reserved is exactly the shove this avoids.
     private var isFetchingLiveQuotas = true
-    private var isScanningOpencode = true
 
     /// Why the list is being refreshed, which decides how eagerly the expensive
     /// parts run: a load the user asked for re-runs the quota and scan work,
@@ -550,18 +542,15 @@ final class HomeViewController: UIViewController {
     /// limited: quotas move on the scale of minutes, and re-running the whole
     /// fan-out every few seconds would burn a request per server per tick for
     /// numbers that cannot have changed.
-    /// Never restarts work that is already running. Cancelling and relaunching
-    /// looked harmless until launch itself did it — the initial load starts the
-    /// scan, `didBecomeActive` lands a moment later and forced a restart, and the
-    /// half-second-old opencode scan died with "failed on every host". It then
-    /// stayed dead, because the scan had already stamped its 5-minute cooldown.
+    /// Never restarts work that is already running: launch starts the fetch and `didBecomeActive`
+    /// lands a moment later, and cancelling a half-second-old fetch to start the same one again
+    /// only makes the board wait longer for the numbers it is already getting.
     private func startEnrichment(force: Bool) {
         guard !isEnriching else { return }
         if !force, let last = lastEnrichment, Date().timeIntervalSince(last) < 90 { return }
         lastEnrichment = Date()
         isEnriching = true
         isFetchingLiveQuotas = true
-        isScanningOpencode = true
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.loadEnrichment()
@@ -570,47 +559,9 @@ final class HomeViewController: UIViewController {
     }
 
     private func loadEnrichment() async {
-        async let quotas: Void = loadQuotas()
-        async let scan: Void = scanOpencodeIfNeeded()
-        _ = await (quotas, scan)
+        await loadQuotas()
         isFetchingLiveQuotas = false
-        isScanningOpencode = false
         applySnapshot()
-    }
-
-    /// The cooldown is stamped on success only: a scan that failed has told us
-    /// nothing, so blocking the retry for five minutes just leaves the card
-    /// missing for five minutes. A live answer already on the board skips the
-    /// scan entirely — the bridge's usage-API reading is exact where the scan
-    /// guesses — and a live answer that lands while the scan runs wins the
-    /// widget store back from the estimate it just wrote.
-    private func scanOpencodeIfNeeded() async {
-        defer { isScanningOpencode = false }
-        if scannedCaps != GoCaps.signature { lastOpencodeScan = nil }
-        if let last = lastOpencodeScan, Date().timeIntervalSince(last) < 300 { return }
-        scannedCaps = GoCaps.signature
-        guard !hasLiveOpencode() else { return }
-        let entries = ConnectionController.shared.opencodeBackends()
-        guard !entries.isEmpty else { return }
-        guard
-            let result = await UsageScanner.scanOpencode(
-                backends: entries.map { ($0.profile.name, $0.backend) })
-        else { return }
-        guard !hasLiveOpencode() else {
-            if let liveGo = quotas.first(where: { ProviderBrand.slug($0.providerName) == "opencode" })
-            {
-                UsageWidgetStore.writeLive([liveGo])
-            }
-            return
-        }
-        lastOpencodeScan = Date()
-        opencodeQuota = UsageScanner.quota(from: result)
-        applySnapshot()
-    }
-
-    private func hasLiveOpencode() -> Bool {
-        if opencodeQuota?.live == true { return true }
-        return quotas.contains { ProviderBrand.slug($0.providerName) == "opencode" }
     }
 
     /// A bridge answers for every provider its host machine is signed into,
@@ -755,9 +706,7 @@ final class HomeViewController: UIViewController {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        let hasLiveOpencode = quotas.contains { ProviderBrand.slug($0.providerName) == "opencode" }
         let usageCards = quotas.map { QuotaCard(quota: $0) }
-            + ((hasLiveOpencode ? nil : opencodeQuota).map { [QuotaCard(quota: $0)] } ?? [])
         let reserved = reservedUsageCards
         if !usageCards.isEmpty || reserved > 0 {
             snapshot.appendSections([.usage])
@@ -829,8 +778,7 @@ final class HomeViewController: UIViewController {
     private var reservedUsageCards: Int {
         let backends = Set(viewModel.servers.map(\.backend))
         let live = isFetchingLiveQuotas && quotas.isEmpty && backends.contains(.claudeCode)
-        let scan = isScanningOpencode && opencodeQuota == nil && backends.contains(.openCode)
-        return (live ? 1 : 0) + (scan ? 1 : 0)
+        return live ? 1 : 0
     }
 
     private func projectCards() -> [ProjectCard] {

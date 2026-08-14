@@ -47,15 +47,6 @@ enum UsageBackgroundRefresh {
             {
                 UsageWarnings.evaluate(providers: [deepseek])
             }
-            if !Task.isCancelled {
-                let entries = ConnectionController.shared.opencodeBackends()
-                if !entries.isEmpty {
-                    await UsageScanner.scanOpencode(
-                        backends: entries.map { ($0.profile.name, $0.backend) },
-                        budget: .background,
-                        reload: false)
-                }
-            }
             UsageWidgetStore.reloadTimelinesThrottled()
             AppLogger.session.info(
                 "usage: background refresh finished — \(quotas.count) live quota(s)"

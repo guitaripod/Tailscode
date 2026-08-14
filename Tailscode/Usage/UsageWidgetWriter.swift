@@ -4,7 +4,6 @@ import TailscodeCore
 import WidgetKit
 
 extension UsageWidgetStore {
-    static let opencodeProviderName = "opencode go"
 
     static func writeLive(_ quotas: [UsageQuota], reload: Bool = true) {
         for quota in quotas {
@@ -36,8 +35,8 @@ extension UsageWidgetStore {
 
     /// The last numbers any surface landed — the background refresh, a silent
     /// push, the widget, or an earlier foreground pass — rebuilt as quotas. Every
-    /// screen seeds from this before fetching, so usage is never blank while a
-    /// scan that takes seconds (or a whole rate-limited minute) runs.
+    /// screen seeds from this before fetching, so usage is never blank while the
+    /// live fetch is still out.
     static func cachedQuotas() -> [UsageQuota] {
         guard let entry = read() else { return [] }
         return entry.providers.map { provider in
@@ -55,15 +54,6 @@ extension UsageWidgetStore {
                 },
                 details: [])
         }
-    }
-
-    static func writeOpencode(gauges: [UsageWidgetEntry.GaugeSnapshot], reload: Bool = true) {
-        let provider = UsageWidgetEntry.ProviderSnapshot(
-            providerName: opencodeProviderName,
-            subtitle: String(localized: "$10/mo · estimated"),
-            isLive: false,
-            gauges: gauges)
-        upsertProvider(provider, reload: reload)
     }
 
     private static func currency(_ value: Double) -> String {

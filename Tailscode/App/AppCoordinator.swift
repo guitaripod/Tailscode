@@ -20,6 +20,7 @@ final class AppCoordinator: NSObject {
         DraftStore.warm()
         UpdateMonitor.start()
         AppPreferences.adoptThemeDefaults()
+        UsageWidgetStore.dropEstimates()
         #if DEBUG
             if let id = ProcessInfo.processInfo.environment["TAILSCODE_THEME"] {
                 ThemeSelection.setThemeID(id)

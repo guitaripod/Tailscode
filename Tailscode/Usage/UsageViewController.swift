@@ -93,19 +93,10 @@ final class UsageViewController: UIViewController {
             return
         }
         guard loadTask == nil else { return }
-        if loadedCaps != GoCaps.signature {
-            startLoad()
-            return
-        }
         if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) > Self.staleInterval {
             startLoad()
         }
     }
-
-    /// The caps the gauges on screen were computed against. Editing them in
-    /// Settings changes what every opencode percentage means, so coming back
-    /// here recomputes instead of waiting out the staleness window.
-    private var loadedCaps = GoCaps.signature
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
@@ -119,7 +110,6 @@ final class UsageViewController: UIViewController {
 
     private func startLoad() {
         loadTask?.cancel()
-        loadedCaps = GoCaps.signature
         loadTask = Task {
             await load()
             if !Task.isCancelled { loadTask = nil }
@@ -370,11 +360,13 @@ final class UsageViewController: UIViewController {
         refreshUpdatedLabel()
     }
 
+    /// A stored snapshot carries whatever name the server that answered used, so the card it
+    /// belongs to is read from the brand rather than matched against one spelling of it.
     private static func kind(for providerName: String) -> CardKind {
-        switch providerName {
-        case "Grok": return .grok
-        case UsageWidgetStore.opencodeProviderName: return .opencode
-        case DeepSeekBalance.providerName: return .deepseek
+        switch ProviderBrand.brand(providerName) {
+        case "grok": return .grok
+        case "opencode": return .opencode
+        case "deepseek": return .deepseek
         default: return .claude
         }
     }
@@ -508,48 +500,30 @@ final class UsageViewController: UIViewController {
     }
 
     /// Go's own usage API answers through the Claude Code bridge, which reads the server
-    /// machine's Go key: account-wide dollars with the exact reset of each window, so the
-    /// phone-side scan — cross-machine session replay against guessed windows — is only the
-    /// fallback. A bridge that answers only its local-db estimate (the API was unreachable)
-    /// loses to the scan, which at least counts every opencode host this phone knows; a bridge
-    /// estimate is the last resort when the scan cannot run at all.
+    /// machine's Go key: account-wide dollars with the exact reset of each window. It is the only
+    /// reading — a number this phone estimated by replaying sessions against guessed windows looked
+    /// exactly like a measurement and was not one, and a card that cannot say what the account has
+    /// spent is worth more than a card that guesses.
     private func fillOpencode(
         profile: ConnectionProfile?, claudeProfiles: [ConnectionProfile],
         controller: ConnectionController
     ) async -> Error? {
         guard let profile else { return nil }
-        var estimates: [(String, UsageQuota)] = []
         for claudeProfile in claudeProfiles {
             guard let backend = controller.makeBackend(for: claudeProfile),
                 let quota = (try? await backend.additionalUsageQuotas())?
-                    .first(where: { Self.isOpencode($0) })
+                    .first(where: { Self.isOpencode($0) && !$0.source.lowercased().contains("estimated") })
             else { continue }
             guard !Task.isCancelled else { return nil }
-            if quota.source.lowercased().contains("estimated") {
-                estimates.append((claudeProfile.name, quota))
-                continue
-            }
             AppLogger.session.info(
                 "usage: opencode Go live quota from \(claudeProfile.name) — \(quota.gauges.count) gauges (\(quota.subtitle))")
             apply(Self.liveOpencodeModel(quota), to: .opencode)
             return nil
         }
-        let entries = controller.opencodeBackends()
-        if !entries.isEmpty,
-            let result = await UsageScanner.scanOpencode(
-                backends: entries.map { ($0.profile.name, $0.backend) }),
-            !Task.isCancelled
-        {
-            apply(Self.opencodeModel(result), to: .opencode)
-            return nil
-        }
         guard !Task.isCancelled else { return nil }
-        if let first = estimates.first {
-            apply(Self.liveOpencodeModel(first.1), to: .opencode)
-            return nil
-        }
+        AppLogger.session.info("usage: no opencode go quota from any Claude Code bridge")
         renderFailure(.opencode, on: opencodeCard)
-        return entries.isEmpty ? CredentialsUnavailableError(profileName: profile.name) : nil
+        return nil
     }
 
     private static func isOpencode(_ quota: UsageQuota) -> Bool {
@@ -568,22 +542,16 @@ final class UsageViewController: UIViewController {
                     fraction: gauge.fraction, percentText: "\(percent)%"),
                 caption: caption(gauge))
         }
-        let estimated = quota.source.lowercased().contains("estimated")
         return CardModel(
             subtitle: quota.subtitle,
-            pill: estimated ? String(localized: "EST") : String(localized: "LIVE"),
+            pill: String(localized: "LIVE"),
             accent: Theme.Color.opencode,
             gauges: gauges,
             details: quota.details.map { ($0.key, $0.value) },
-            note: estimated
-                ? String(
-                    localized:
-                        "The usage API is unreachable — dollars estimated from the server's opencode.db against Go's caps."
-                )
-                : String(
-                    localized:
-                        "Straight from the OpenCode Go usage API — exact account-wide dollars against your caps, not an estimate."
-                ))
+            note: String(
+                localized:
+                    "Straight from the OpenCode Go usage API — exact account-wide dollars against your caps, not an estimate."
+            ))
     }
 
     private static func liveModel(_ quota: UsageQuota, accent: UIColor) -> CardModel {
@@ -659,98 +627,6 @@ final class UsageViewController: UIViewController {
                     "Billed per token from your own DeepSeek account — no plan caps and no reset, so a balance is exactly the number above."))
     }
 
-    private static func opencodeModel(_ result: UsageScanResult) -> CardModel {
-        let samples = result.samples
-        let totalSpend = samples.reduce(0) { $0 + $1.cost }
-        let totalTokens = samples.reduce(0) { $0 + $1.tokens }
-        let hosts = result.scannedHosts.count
-        var details: [(String, String)] = []
-        if hosts > 1 || !result.failedHosts.isEmpty {
-            details.append((String(localized: "Servers"), serverCoverage(result)))
-        }
-        details += [
-            (String(localized: "Spend (31 days)"), currency(totalSpend)),
-            (String(localized: "Requests"), "\(samples.count)"),
-            (String(localized: "Tokens (in + out)"), tokenCount(totalTokens)),
-        ]
-        return CardModel(
-            subtitle: UsageScanner.quota(from: result).subtitle,
-            pill: String(localized: "EST"),
-            accent: Theme.Color.opencode,
-            gauges: gaugeVMs(result: result),
-            details: details,
-            note: unavailableSuffix(opencodeNote(result), result: result))
-    }
-
-    private static func serverCoverage(_ result: UsageScanResult) -> String {
-        var text = result.scannedHosts.joined(separator: " + ")
-        if !result.failedHosts.isEmpty {
-            text += " · " + String(localized: "\(result.failedHosts.joined(separator: ", ")) unreachable")
-        }
-        return text
-    }
-
-    private static func opencodeNote(_ result: UsageScanResult) -> String {
-        let scope = result.scannedHosts.count > 1
-            ? String(
-                localized:
-                    "estimated from the opencode.db on \(result.scannedHosts.joined(separator: " and "))"
-            )
-            : String(localized: "estimated from this server's opencode.db")
-        var note = String(
-            localized:
-                "The usage API was unreachable — \(scope) against Go's dollar caps: an anchored 5-hour block, the trailing week, and the billing month. May miss usage on machines without a profile here and server-side accounting."
-        )
-        if let multipliers = multiplierNote(result.multipliers) { note += " \(multipliers)" }
-        for host in result.failedHosts {
-            note += " " + String(localized: "\(host) unreachable — its spend is not included.")
-        }
-        return note
-    }
-
-    /// Names the models Go bills above face value, so weighted spend reading
-    /// higher than the raw dollar cost is explained rather than mysterious.
-    private static func multiplierNote(_ multipliers: [String: UsageMultiplier]) -> String? {
-        let weighted = multipliers.values.sorted { $0.weight > $1.weight }
-        guard !weighted.isEmpty else { return nil }
-        let list = weighted.map {
-            String(
-                localized:
-                    "\(baseModelName($0.displayName)) counts \(String(format: "%g", $0.weight))x")
-        }
-        return String(localized: "Model multipliers applied (\(list.joined(separator: ", "))).")
-    }
-
-    private static func baseModelName(_ displayName: String) -> String {
-        guard let suffix = displayName.range(of: " (") else { return displayName }
-        return String(displayName[..<suffix.lowerBound])
-    }
-
-    private static func unavailableSuffix(_ note: String, result: UsageScanResult) -> String {
-        guard result.unavailable > 0 else { return note }
-        return note + " "
-            + String(
-                localized: "\(result.unavailable) sessions unavailable — totals are incomplete.")
-    }
-
-    private static func gaugeVMs(result: UsageScanResult) -> [GaugeVM] {
-        let now = Date()
-        return UsageScanner.windows.map { window in
-            let stats = UsageScanner.windowStats(window, samples: result.samples, now: now)
-            var caption = UsageGaugeFormat.spendCaption(
-                spend: currency(stats.spend), cap: currency(window.cap),
-                requests: stats.requests)
-            if let resetsAt = stats.resetsAt {
-                caption += " · " + String(localized: "~resets \(humanize(until: resetsAt))")
-            }
-            return GaugeVM(
-                name: UsageGaugeFormat.gaugeLabel(window.name),
-                fraction: stats.fraction,
-                percentText: "\(Int((stats.fraction * 100).rounded()))%",
-                caption: caption)
-        }
-    }
-
     private static func resetCaption(_ gauge: UsageQuota.Gauge) -> String {
         guard let resetsAt = gauge.resetsAt else { return "—" }
         let elapsed = humanize(until: resetsAt)
@@ -769,12 +645,6 @@ final class UsageViewController: UIViewController {
 
     private static func currency(_ value: Double) -> String {
         String(format: "$%.2f", value)
-    }
-
-    private static func tokenCount(_ value: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
     private func showEmptyState() {

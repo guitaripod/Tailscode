@@ -59,9 +59,6 @@ enum DiagnosticsReport {
 
         lines.append("")
         lines.append("[Usage]")
-        lines.append("opencode go monthly cap: $\(GoCaps.monthlyCap)")
-        lines.append(
-            "Billing day: \(GoCaps.billingDay == 0 ? "auto" : String(GoCaps.billingDay))")
         let cached = UsageWidgetStore.cachedQuotas()
         lines.append(
             "Widget snapshot: "
