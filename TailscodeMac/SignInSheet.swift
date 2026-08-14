@@ -68,9 +68,7 @@ final class SignInSheet {
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
 
-        let column = NSStackView(views: [title, status, linkColumn, codeField, buttons])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [title, status, linkColumn, codeField, buttons])
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -97,7 +95,10 @@ final class SignInSheet {
                 self.codeField.isEnabled = true
                 self.sheet.makeFirstResponder(self.codeField)
             } catch {
-                self?.setStatus(Localized.text("Could not start a sign-in: %@", "\(error)"))
+                self?.setStatus(
+                    Localized.text(
+                        "Could not start a sign-in: %@",
+                        (error as? AgentError)?.errorDescription ?? error.localizedDescription))
             }
         }
     }
@@ -113,6 +114,7 @@ final class SignInSheet {
         address.isSelectable = true
         linkColumn.addArrangedSubview(open)
         linkColumn.addArrangedSubview(address)
+        address.widthAnchor.constraint(equalTo: linkColumn.widthAnchor).isActive = true
         if let column = sheet.contentView { sheet.setContentSize(column.fittingSize) }
     }
 
@@ -138,7 +140,10 @@ final class SignInSheet {
                         Localized.text("The server took the code but still reports signed out."))
                 }
             } catch {
-                self?.setStatus(Localized.text("The code was refused: %@", "\(error)"))
+                self?.setStatus(
+                    Localized.text(
+                        "The code was refused: %@",
+                        (error as? AgentError)?.errorDescription ?? error.localizedDescription))
             }
         }
     }

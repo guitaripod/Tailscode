@@ -21,12 +21,15 @@ enum MacCLI {
           TailscodeMac --connect <address>      save a server (--password, --name, --opencode)
           TailscodeMac --selftest               check the whole chain with no display
           TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size)
+          TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
+          TailscodeMac --open <surface>         open a named window first (servers, preferences, …)
           TailscodeMac --version
         """
 
     static let knownOptions: Set<String> = [
         "--selftest", "--connect", "--password", "--name", "--opencode", "--demo",
-        "--shot", "--shot-delay", "--shot-size", "--version", "--help", "-h",
+        "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
+        "--version", "--help", "-h",
     ]
 }
 

@@ -18,14 +18,20 @@ struct CascadeTail {
     /// rather than cut off: the paragraph is measured once when it arrives and never again, so no
     /// glyph moves after it lands and no line re-wraps under the reader. A frame changes colours,
     /// never layout.
+    ///
+    /// Clear ink is not the whole of invisible. A chip behind an inline code span and a rule through
+    /// a struck-out run are drawn from the glyphs' own boxes rather than from their colour, so left
+    /// alone they march ahead of the sentence as a row of empty boxes — text ahead of the reveal,
+    /// which is the one thing this technique exists to prevent.
     func paint(_ rendered: NSAttributedString, settled: NSColor) -> NSAttributedString {
         let total = rendered.length
         let shown = min(max(revealed, 0), total)
         let slice = NSMutableAttributedString(attributedString: rendered)
         if shown < total {
-            slice.addAttribute(
-                .foregroundColor, value: NSColor.clear,
-                range: NSRange(location: shown, length: total - shown))
+            let unread = NSRange(location: shown, length: total - shown)
+            slice.addAttribute(.foregroundColor, value: NSColor.clear, range: unread)
+            slice.removeAttribute(.backgroundColor, range: unread)
+            slice.removeAttribute(.strikethroughStyle, range: unread)
         }
         tint(slice, upTo: shown, settled: settled)
         return slice
@@ -324,12 +330,20 @@ extension TranscriptRow {
 /// the whole product moves with one hand.
 @MainActor
 enum CascadeEntrance {
-    static func animate(_ view: NSView, index: Int, of count: Int) {
+    /// When the next row may land. The stagger is queued against one clock rather than against a
+    /// row's position in the batch it arrived in: states land many times a second, and a batch that
+    /// restarts its count at zero lets a row from the next one fade in above a gap that is still
+    /// blank — the transcript filling in back-to-front, with holes.
+    private static var nextEntrance: CFTimeInterval = 0
+
+    static func animate(_ view: NSView) {
         guard CascadePainter.motionAllowed else { return }
         view.wantsLayer = true
         view.alphaValue = 0
-        let delay = StreamCascade.entranceDelay(index: index, of: count)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak view] in
+        let now = CACurrentMediaTime()
+        let at = min(max(now, nextEntrance), now + StreamCascade.entranceCeiling)
+        nextEntrance = at + StreamCascade.entranceStep
+        DispatchQueue.main.asyncAfter(deadline: .now() + (at - now)) { [weak view] in
             guard let view, view.superview != nil else { return }
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.19

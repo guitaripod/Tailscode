@@ -232,14 +232,24 @@ final class SplitPaneHost: NSViewController {
         }
     }
 
+    /// Where the pointer is, asked in the space the shared drop model is written in. Its top edge
+    /// is `y: 0`; an unflipped AppKit view's is the bottom, so a drag aimed at the foot of a pane
+    /// would otherwise be answered with the arrangement the head of it means.
+    private func zoneUnderPointer(
+        _ sender: NSDraggingInfo, over pane: TranscriptViewController
+    ) -> PaneDropZone {
+        let local = pane.view.convert(sender.draggingLocation, from: nil)
+        let bounds = pane.view.bounds
+        let y = pane.view.isFlipped ? local.y : bounds.height - local.y
+        return PaneDropTarget.zone(
+            x: Double(local.x), y: Double(y),
+            width: Double(bounds.width), height: Double(bounds.height))
+    }
+
     @discardableResult
     private func dragUpdated(_ sender: NSDraggingInfo, over pane: TranscriptViewController) -> Bool {
         guard let id = panes.first(where: { $0.value === pane })?.key else { return false }
-        let local = pane.view.convert(sender.draggingLocation, from: nil)
-        let bounds = pane.view.bounds
-        let zone = PaneDropTarget.zone(
-            x: Double(local.x), y: Double(local.y),
-            width: Double(bounds.width), height: Double(bounds.height))
+        let zone = zoneUnderPointer(sender, over: pane)
         let payload = payload(from: sender)
         let title = payload.flatMap { chatTitleForDrop?($0) }
         showDropHighlight(zone, on: pane, caption: zone.caption(title))
@@ -253,9 +263,11 @@ final class SplitPaneHost: NSViewController {
         let paneFrame = pane.view.convert(pane.view.bounds, to: view)
         let rect = PaneDropTarget.highlight(
             for: zone, width: Double(paneFrame.width), height: Double(paneFrame.height))
+        let y =
+            view.isFlipped
+            ? paneFrame.minY + rect.y : paneFrame.maxY - rect.y - rect.height
         let frame = NSRect(
-            x: paneFrame.minX + rect.x, y: paneFrame.minY + rect.y,
-            width: rect.width, height: rect.height)
+            x: paneFrame.minX + rect.x, y: y, width: rect.width, height: rect.height)
         dropHighlight.show(frame: frame, caption: caption)
         view.addSubview(dropHighlight, positioned: .above, relativeTo: nil)
     }
@@ -269,12 +281,7 @@ final class SplitPaneHost: NSViewController {
     private func receiveDrop(_ sender: NSDraggingInfo, on pane: TranscriptViewController) -> Bool {
         clearDropHighlight()
         guard let payload = payload(from: sender) else { return false }
-        let local = pane.view.convert(sender.draggingLocation, from: nil)
-        let bounds = pane.view.bounds
-        let zone = PaneDropTarget.zone(
-            x: Double(local.x), y: Double(local.y),
-            width: Double(bounds.width), height: Double(bounds.height))
-        return onChatDropped?(pane, payload, zone) ?? false
+        return onChatDropped?(pane, payload, zoneUnderPointer(sender, over: pane)) ?? false
     }
 
     private func payload(from sender: NSDraggingInfo) -> PaneDragPayload? {
@@ -318,7 +325,10 @@ final class SplitPaneHost: NSViewController {
     }
 
     /// Rebuilds the controller skeleton around the surviving panes. Panes detach first so no
-    /// `NSSplitViewItem` still claims them when they join the new tree.
+    /// `NSSplitViewItem` still claims them when they join the new tree, and the ratios are asserted
+    /// twice on purpose: once here, so a tree that already has an extent is never painted at
+    /// `NSSplitView`'s own even distribution and then jumped to the real arrangement a frame later,
+    /// and once on the next turn for the tree that had no extent yet.
     private func rebuild() {
         for pane in panes.values {
             pane.removeFromParent()
@@ -345,6 +355,7 @@ final class SplitPaneHost: NSViewController {
         applyZoom()
         applyFocusStyling()
         applyIdentity()
+        applyRatios()
         DispatchQueue.main.async { [weak self] in self?.applyRatios() }
     }
 
@@ -365,7 +376,7 @@ final class SplitPaneHost: NSViewController {
             let firstItem = NSSplitViewItem(viewController: build(first))
             let secondItem = NSSplitViewItem(viewController: build(second))
             for item in [firstItem, secondItem] {
-                item.minimumThickness = axis == .horizontal ? 280 : 160
+                item.minimumThickness = paneFloor(axis)
                 item.canCollapse = false
             }
             controller.addSplitViewItem(firstItem)
@@ -378,6 +389,18 @@ final class SplitPaneHost: NSViewController {
                 name: NSSplitView.didResizeSubviewsNotification, object: controller.splitView)
             return controller
         }
+    }
+
+    /// The floor a pane is held to, which is the promised extent only while the tree has room to
+    /// promise it to every pane at once. A required minimum the surface cannot satisfy is not a
+    /// floor: it is a broken constraint, and what comes out of it is an arrangement of uneven panes
+    /// that no drag can even out.
+    private func paneFloor(_ axis: SplitAxis) -> CGFloat {
+        let ideal: CGFloat =
+            axis == .horizontal ? CGFloat(PaneDropTarget.minimumPaneExtent) : 160
+        let extent = axis == .horizontal ? view.bounds.width : view.bounds.height
+        guard extent > 0 else { return ideal }
+        return min(ideal, extent / CGFloat(max(1, layout.paneCount)))
     }
 
     private static func leaves(of node: SplitNode) -> [PaneID] {
@@ -446,8 +469,10 @@ final class SplitPaneHost: NSViewController {
     }
 
     /// A hairline accent on the focused pane, only once a second pane exists to be told apart
-    /// from — a lone pane stays exactly the window it always was.
-    private func applyFocusStyling() {
+    /// from — a lone pane stays exactly the window it always was. The border is a `CGColor` and so
+    /// keeps the accent it was born with, which is why the window asks for this again whenever the
+    /// palette changes, beside the pane colours it repaints in the same moment.
+    func applyFocusStyling() {
         let showAccent = layout.paneCount > 1
         for (id, pane) in panes {
             let layer = pane.view.layer
@@ -482,6 +507,7 @@ final class DividerSplitView: NSSplitView {
     }
 
     private func hitsDivider(_ point: NSPoint) -> Bool {
+        guard !arrangedSubviews.contains(where: { $0.frame.contains(point) }) else { return false }
         let slop = max(dividerThickness, 4)
         for (left, right) in zip(arrangedSubviews, arrangedSubviews.dropFirst()) {
             let ordered =

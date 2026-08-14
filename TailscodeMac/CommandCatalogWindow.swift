@@ -14,6 +14,7 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
     private let onPick: (AgentCommand) -> Void
     private let searchField = NSSearchField()
     private let tableView = NSTableView()
+    private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private var sections: [(id: String, title: String, commands: [AgentCommand])] = []
     private var rows: [CatalogRow] = []
 
@@ -38,8 +39,10 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Commands")
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 420, height: 320)
         super.init(window: window)
         window.contentView = makeContent()
+        window.initialFirstResponder = searchField
         window.center()
         rebuild()
         NotificationCenter.default.addObserver(
@@ -50,19 +53,19 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
     required init?(coder: NSCoder) { fatalError() }
 
     private func makeContent() -> NSView {
-        let column = NSStackView()
-        column.orientation = .vertical
+        let column = FillingStack()
         column.spacing = MacTheme.Spacing.s
-        column.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        column.translatesAutoresizingMaskIntoConstraints = false
+        column.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.l)
 
         searchField.placeholderString = Localized.text(
             "Search %@ commands", "\(commands.count)")
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.setContentHuggingPriority(.required, for: .vertical)
         column.addArrangedSubview(searchField)
-        searchField.widthAnchor.constraint(equalToConstant: 480).isActive = true
 
         tableView.headerView = nil
         tableView.style = .plain
@@ -78,10 +81,30 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
         scroll.documentView = tableView
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
+        scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        column.addArrangedSubview(scroll)
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 420).isActive = true
-        scroll.widthAnchor.constraint(equalToConstant: 480).isActive = true
+
+        emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
+        emptyLabel.textColor = MacTheme.Color.secondaryLabel
+        emptyLabel.alignment = .center
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let field = NSView()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.addSubview(scroll)
+        field.addSubview(emptyLabel)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: field.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: field.bottomAnchor),
+            emptyLabel.centerXAnchor.constraint(equalTo: field.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: field.centerYAnchor),
+            emptyLabel.widthAnchor.constraint(
+                lessThanOrEqualTo: field.widthAnchor, constant: -2 * MacTheme.Spacing.xl),
+            field.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+        ])
+        column.addArrangedSubview(field)
         return column
     }
 
@@ -94,9 +117,63 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
             for command in section.commands { rows.append(.command(command)) }
         }
         tableView.reloadData()
+        renderEmptiness()
+    }
+
+    /// A search that matched nothing and a server that offered nothing are two different silences,
+    /// and neither may be drawn as a blank slab: a word the catalog lacks says so rather than
+    /// vanishing.
+    private func renderEmptiness() {
+        emptyLabel.isHidden = !rows.isEmpty
+        guard rows.isEmpty else { return }
+        let query = searchField.stringValue.trimmingCharacters(in: .whitespaces)
+        emptyLabel.stringValue =
+            query.isEmpty
+            ? Localized.text(
+                "This server didn't offer a command catalog. Typed slashes still go through as messages."
+            )
+            : Localized.text("No command matches “%@”", query)
     }
 
     func controlTextDidChange(_ obj: Notification) { rebuild() }
+
+    /// The catalog is where a keyboard grammar is discovered, so it is answered from the keyboard:
+    /// the caret stays in the field while ↑↓ walk the list under it, and Return takes what the walk
+    /// landed on — or the first command, when the search has just been narrowed to it.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool
+    {
+        switch selector {
+        case #selector(NSResponder.moveDown(_:)):
+            move(by: 1)
+        case #selector(NSResponder.moveUp(_:)):
+            move(by: -1)
+        case #selector(NSResponder.insertNewline(_:)):
+            if tableView.selectedRow < 0 { move(by: 1) }
+            activate()
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// Headers are rows too, so a step is a walk past them to the next command in that direction.
+    private func move(by delta: Int) {
+        var index = tableView.selectedRow
+        if index < 0 { index = delta > 0 ? -1 : rows.count }
+        index += delta
+        while index >= 0, index < rows.count {
+            if case .command = rows[index] {
+                tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+                tableView.scrollRowToVisible(index)
+                return
+            }
+            index += delta
+        }
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        window?.close()
+    }
 
     @objc private func activate() {
         let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
@@ -114,34 +191,74 @@ final class CommandCatalogWindow: NSWindowController, NSSearchFieldDelegate, NST
     {
         switch rows[row] {
         case .header(let title, let count):
-            return RowKit.label(
-                "\(title.uppercased())  ·  \(count)",
-                font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+            let label = RowKit.attributedLabel(
+                NSAttributedString(
+                    string: "\(title.uppercased())  ·  \(count)",
+                    attributes: MacTheme.Ramp.attributes(
+                        .sectionLabel, color: MacTheme.Color.secondaryLabel)))
+            return RowKit.inset(label, leading: MacTheme.Spacing.xs, top: MacTheme.Spacing.s)
         case .command(let command):
-            let name = "/\(command.name)"
             let hint = command.argumentHint.map { " \($0)" } ?? ""
-            let title = RowKit.label(
-                name + hint, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
-            let detailParts = [command.details, command.scope]
+            let detail = [command.details, command.scope]
                 .compactMap { $0?.isEmpty == false ? $0 : nil }
-            let lines = NSStackView(views: [title])
-            lines.orientation = .vertical
-            lines.alignment = .leading
-            lines.spacing = 1
-            if let detail = detailParts.joined(separator: " · ").nilIfEmpty {
-                lines.addArrangedSubview(
-                    RowKit.label(
-                        detail, font: MacTheme.Ramp.font(.panelFootnote),
-                        color: MacTheme.Color.secondaryLabel))
-            }
-            lines.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
-            return lines
+                .joined(separator: " · ").nilIfEmpty
+            return CommandCell(name: "/\(command.name)" + hint, detail: detail)
         }
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         if case .command = rows[row] { return true }
         return false
+    }
+}
+
+/// The catalog's own cell view, because selection is a colour the table hands down rather than one
+/// a row can read: `NSTableRowView` tells an `NSTableCellView` that its ink is now standing on the
+/// emphasized accent, and a bare stack of labels never hears it — it keeps the near-black it was
+/// built with and disappears into the fill under the first click.
+@MainActor
+private final class CommandCell: NSTableCellView {
+    private let name: NSTextField
+    private let detail: NSTextField?
+
+    init(name: String, detail: String?) {
+        self.name = RowKit.label(
+            name, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
+        self.detail = detail.map {
+            RowKit.label(
+                $0, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+        }
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let lines = NSStackView(views: [self.name])
+        lines.orientation = .vertical
+        lines.alignment = .leading
+        lines.spacing = 1
+        if let field = self.detail { lines.addArrangedSubview(field) }
+        lines.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(lines)
+        NSLayoutConstraint.activate([
+            lines.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.xs),
+            lines.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor, constant: -MacTheme.Spacing.xs),
+            lines.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.xs),
+            lines.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -MacTheme.Spacing.xs),
+        ])
+        textField = self.name
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet {
+            let emphasized = backgroundStyle == .emphasized
+            name.textColor = emphasized ? .alternateSelectedControlTextColor : MacTheme.Color.label
+            detail?.textColor =
+                emphasized
+                ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75)
+                : MacTheme.Color.secondaryLabel
+        }
     }
 }
 

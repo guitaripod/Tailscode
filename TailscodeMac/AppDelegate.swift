@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         openRequestedSession()
+        openRequestedSurface()
         MacShot.schedule()
     }
 
@@ -45,6 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [weak main] in
             try? await Task.sleep(for: .seconds(2))
             main?.openSession(withID: id)
+        }
+    }
+
+    /// `--open <surface>` — the same hook one step further in: land on a named window once the
+    /// listing behind it exists, so `--shot` and `--tree` can look at a sheet or a panel rather
+    /// than only at the window a launch already draws.
+    private func openRequestedSurface() {
+        guard let surface = MacShot.surface else { return }
+        Task { [weak main] in
+            try? await Task.sleep(for: .seconds(2))
+            main?.openSurface(named: surface)
         }
     }
 
@@ -73,4 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Closing the window is closing the app — unless a settings, servers or analytics window is
+    /// keeping the process alive, in which case the conversations have just gone somewhere with no
+    /// way back: there is no File ▸ New Window to rebuild the hub from. The Dock icon is that way
+    /// back, and it is the only one.
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication, hasVisibleWindows: Bool
+    ) -> Bool {
+        main?.showWindow(nil)
+        return true
+    }
 }

@@ -11,12 +11,14 @@ import WebKit
 final class WebSlotView: NSView {
     private(set) var slot: WebSlot
     private let webView: WKWebView
-    private let promptStack = NSStackView()
+    private let promptStack = FillingStack()
     private let field = NSTextField()
     private let headingLabel = NSTextField(labelWithString: Localized.text("Browse"))
-    private let reasonLabel = NSTextField(labelWithString: "")
+    private let reasonLabel = NSTextField(wrappingLabelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
     private var observations: [NSKeyValueObservation] = []
+
+    private static let promptWidth: CGFloat = 460
 
     var onChange: (() -> Void)?
 
@@ -40,19 +42,31 @@ final class WebSlotView: NSView {
 
     private func build() {
         wantsLayer = true
-        layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        applyBackground()
 
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
+        webView.navigationDelegate = self
         webView.isHidden = true
         addSubview(webView)
 
         headingLabel.font = MacTheme.Ramp.font(.cardTitle)
+        headingLabel.alignment = .center
+        headingLabel.maximumNumberOfLines = 1
+        headingLabel.lineBreakMode = .byTruncatingTail
         reasonLabel.font = MacTheme.Ramp.font(.panelFootnote)
         reasonLabel.textColor = MacTheme.Color.secondaryLabel
+        reasonLabel.alignment = .center
+        reasonLabel.isSelectable = false
+        reasonLabel.maximumNumberOfLines = 0
+        reasonLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hintLabel.font = MacTheme.Ramp.font(.panelFootnote)
         hintLabel.textColor = MacTheme.Color.secondaryLabel
+        hintLabel.alignment = .center
+        hintLabel.maximumNumberOfLines = 1
+        hintLabel.lineBreakMode = .byTruncatingTail
+        hintLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hintLabel.stringValue = slot.hint
 
         field.placeholderString = slot.prompt
@@ -60,14 +74,15 @@ final class WebSlotView: NSView {
         field.target = self
         field.action = #selector(submit)
         field.translatesAutoresizingMaskIntoConstraints = false
-        field.widthAnchor.constraint(equalToConstant: 380).isActive = true
 
-        promptStack.orientation = .vertical
-        promptStack.alignment = .centerX
         promptStack.spacing = MacTheme.Spacing.m
         promptStack.translatesAutoresizingMaskIntoConstraints = false
         promptStack.setViews([headingLabel, field, reasonLabel, hintLabel], in: .center)
         addSubview(promptStack)
+
+        let preferredWidth = promptStack.widthAnchor.constraint(
+            equalToConstant: Self.promptWidth)
+        preferredWidth.priority = .defaultLow
 
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: topAnchor),
@@ -76,25 +91,39 @@ final class WebSlotView: NSView {
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
             promptStack.centerXAnchor.constraint(equalTo: centerXAnchor),
             promptStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            promptStack.widthAnchor.constraint(lessThanOrEqualToConstant: Self.promptWidth),
+            promptStack.leadingAnchor.constraint(
+                greaterThanOrEqualTo: leadingAnchor, constant: MacTheme.Spacing.l),
+            promptStack.trailingAnchor.constraint(
+                lessThanOrEqualTo: trailingAnchor, constant: -MacTheme.Spacing.l),
+            preferredWidth,
         ])
         observe()
+    }
+
+    /// The ground the question sits on, asked again whenever the window's face changes: a colour
+    /// put in a layer keeps the light it was born under, and this pane is the app's own canvas
+    /// rather than a page's.
+    private func applyBackground() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyBackground()
     }
 
     /// The page tells the slot what it is: its own title, where it ended up, and how far along it
     /// is. Nothing here polls — a page that redirects renames the pane the moment it lands.
     private func observe() {
         observations = [
-            webView.observe(\.title, options: [.new]) { [weak self] view, _ in
-                Task { @MainActor [weak self] in
-                    self?.slot.arrived(url: view.url?.absoluteString, title: view.title)
-                    self?.render()
-                }
+            webView.observe(\.title, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.arrived() }
             },
-            webView.observe(\.url, options: [.new]) { [weak self] view, _ in
-                Task { @MainActor [weak self] in
-                    self?.slot.arrived(url: view.url?.absoluteString, title: view.title)
-                    self?.render()
-                }
+            webView.observe(\.url, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.arrived() }
             },
             webView.observe(\.estimatedProgress, options: [.new]) { [weak self] view, _ in
                 Task { @MainActor [weak self] in
@@ -109,6 +138,20 @@ final class WebSlotView: NSView {
                 Task { @MainActor [weak self] in self?.slot.canGoForward = view.canGoForward }
             },
         ]
+    }
+
+    /// What the page has become, unless the pane has already been told the load failed: WebKit
+    /// hands the previous address back when a navigation dies, and taking that as an arrival would
+    /// put the pane on the blank page the failure is there to explain.
+    private func arrived() {
+        guard !isFailed else { return }
+        slot.arrived(url: webView.url?.absoluteString, title: webView.title)
+        render()
+    }
+
+    private var isFailed: Bool {
+        if case .failed = slot.phase { return true }
+        return false
     }
 
     var target: WebTarget? { slot.target }
@@ -164,7 +207,11 @@ final class WebSlotView: NSView {
         case .forward:
             webView.goForward()
         case .reload:
-            webView.reload()
+            guard isFailed, let target = slot.target else {
+                webView.reload()
+                return
+            }
+            point(at: target)
         case .stop:
             webView.stopLoading()
         case .zoomIn, .zoomOut, .zoomReset:
@@ -177,6 +224,7 @@ final class WebSlotView: NSView {
     func shutdown() {
         observations.forEach { $0.invalidate() }
         observations = []
+        webView.navigationDelegate = nil
         webView.stopLoading()
         webView.loadHTMLString("", baseURL: nil)
     }
@@ -193,5 +241,33 @@ final class WebSlotView: NSView {
         promptStack.isHidden = !(asking || failed)
         hintLabel.stringValue = slot.hint
         onChange?()
+    }
+}
+
+extension WebSlotView: WKNavigationDelegate {
+    func webView(
+        _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+        withError error: any Error
+    ) {
+        pageFailed(error)
+    }
+
+    func webView(
+        _ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error
+    ) {
+        pageFailed(error)
+    }
+
+    /// A page that cannot be reached is a state the pane has to arrive at too. Progress alone never
+    /// says so — a dead host simply stops short of 1 — so the slot would sit at "Loading 30%" over
+    /// WebKit's blank page until somebody retyped the address. A cancelled load is not a failure:
+    /// it is the navigation that replaced it, or this pane shutting down.
+    private func pageFailed(_ error: any Error) {
+        let failure = error as NSError
+        guard failure.domain != NSURLErrorDomain || failure.code != NSURLErrorCancelled else {
+            return
+        }
+        slot.failed(failure.localizedDescription)
+        render()
     }
 }

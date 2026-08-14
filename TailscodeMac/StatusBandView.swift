@@ -40,8 +40,8 @@ final class StatusBandView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
-        noticeLabel.font = MacTheme.Ramp.font(.toolOutput)
-        noticeLabel.textColor = MacTheme.Color.secondaryLabel
+        noticeLabel.font = MacTheme.Ramp.font(.segment)
+        noticeLabel.textColor = MacTheme.Color.onGlassSecondary
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeLabel.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         noticeLabel.isHidden = true
@@ -51,6 +51,15 @@ final class StatusBandView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A pulse refuses to run without a window and will not restart on its own, and the tiling host
+    /// takes every pane's view out of the hierarchy and puts it back whenever the tree is rebuilt —
+    /// so splitting a pane mid-turn would leave the running turn's segment perfectly still, which is
+    /// how a reader is told a turn has stopped.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for pulse in pulses.values { pulse.windowChanged() }
+    }
 
     func render(facts: StatusFacts?, notice: String?) {
         self.facts = facts ?? StatusFacts()
@@ -102,22 +111,26 @@ final class StatusBandView: NSView {
         }
     }
 
+    /// The meanings keep the palette's own colours; the neutral register does not. This whole band
+    /// sits on a pane of glass, which flips light↔dark against what is behind it and lends its
+    /// vibrancy only to the system inks — a palette hex in the dim slot would do neither and read at
+    /// a fraction of the contrast the rest of the capsule has.
     private static func color(for css: String) -> NSColor {
         switch css {
         case "seg-live": return MacTheme.Color.accent
         case "seg-warn": return MacTheme.Color.warning
         case "seg-error": return MacTheme.Color.danger
-        case "seg-offline": return MacTheme.Color.secondaryLabel
+        case "seg-offline": return MacTheme.Color.onGlassSecondary
         case "seg-agents": return MacTheme.Color.info
         case "seg-goal": return MacTheme.Color.mark
-        default: return MacTheme.Color.secondaryLabel
+        default: return MacTheme.Color.onGlassSecondary
         }
     }
 
     private static func title(_ text: String, css: String) -> NSAttributedString {
         NSAttributedString(
             string: text,
-            attributes: [.font: MacTheme.Ramp.font(.toolOutput), .foregroundColor: color(for: css)])
+            attributes: [.font: MacTheme.Ramp.font(.segment), .foregroundColor: color(for: css)])
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
@@ -141,7 +154,7 @@ final class StatusBandView: NSView {
 
     private static func tinted(_ parts: [GitBadgePart]) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        let font = MacTheme.Ramp.font(.toolOutput)
+        let font = MacTheme.Ramp.font(.segment)
         for part in parts {
             if text.length > 0 { text.append(NSAttributedString(string: " ")) }
             text.append(
@@ -150,7 +163,7 @@ final class StatusBandView: NSView {
                     attributes: [
                         .font: font,
                         .foregroundColor: part.tone == .neutral
-                            ? MacTheme.Color.secondaryLabel : part.tone.color,
+                            ? MacTheme.Color.onGlassSecondary : part.tone.color,
                     ]))
         }
         return text
@@ -167,7 +180,8 @@ final class StatusBandView: NSView {
         switch segment.kind {
         case .plain:
             let label = RowKit.label(
-                segment.text, font: MacTheme.Ramp.font(.toolOutput), color: Self.color(for: segment.css))
+                segment.text, font: MacTheme.Ramp.font(.segment),
+                color: Self.color(for: segment.css))
             if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
             return label

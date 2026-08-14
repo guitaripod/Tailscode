@@ -161,17 +161,15 @@ enum ImageRowView {
             let open = context.openImage
             imageView.addGestureRecognizer(
                 ClickRelay { open?(key, name) })
+            imageView.setAccessibilityLabel(Localized.text("Open %@", name))
+            imageView.toolTip = Localized.text("Open %@", name)
             column.addArrangedSubview(imageView)
             column.addArrangedSubview(
                 RowKit.label(
                     "\(name) · \(entry.pixelWidth)×\(entry.pixelHeight)",
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
         } else {
-            let frame = NSView()
-            frame.wantsLayer = true
-            frame.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-            frame.layer?.cornerRadius = 6
-            frame.translatesAutoresizingMaskIntoConstraints = false
+            let frame = GroundView(cornerRadius: 6, fill: MacTheme.Color.canvasRaised)
             let label = RowKit.label(
                 Localized.text("🖼 %@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.tertiaryLabel)
@@ -237,11 +235,14 @@ final class ImageViewer: NSObject {
     private var oneToOne = false
     private static var open: ImageViewer?
 
+    /// One gallery at a time: the viewer is held by this one reference, so opening a second
+    /// picture used to leave the first window on screen with every button and key on it dead.
     static func present(
         items: [Item], startKey: String, host: NSWindow?,
         fetch: @escaping (FileReference, String) -> Void, toast: ((String) -> Void)?
     ) {
         guard !items.isEmpty else { return }
+        open?.window?.close()
         let viewer = ImageViewer(items: items, startKey: startKey, fetch: fetch, toast: toast)
         open = viewer
         viewer.presentWindow(host: host)
@@ -276,10 +277,14 @@ final class ImageViewer: NSObject {
 
         var barViews: [NSView] = []
         if items.count > 1 {
-            barViews.append(
-                RowKit.ActionButton(title: "‹") { [weak self] in self?.step(-1) })
-            barViews.append(
-                RowKit.ActionButton(title: "›") { [weak self] in self?.step(1) })
+            let previous = RowKit.ActionButton(title: "‹") { [weak self] in self?.step(-1) }
+            previous.setAccessibilityLabel(Localized.text("Previous picture"))
+            previous.toolTip = Localized.text("Previous picture (←)")
+            let next = RowKit.ActionButton(title: "›") { [weak self] in self?.step(1) }
+            next.setAccessibilityLabel(Localized.text("Next picture"))
+            next.toolTip = Localized.text("Next picture (→)")
+            barViews.append(previous)
+            barViews.append(next)
         }
         zoomButton.target = self
         zoomButton.action = #selector(toggleZoom)
@@ -301,15 +306,15 @@ final class ImageViewer: NSObject {
             right: MacTheme.Spacing.l)
         bar.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSStackView(views: [scrollView, bar])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [scrollView, bar])
         column.spacing = 0
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let window = GalleryWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        MacTheme.Chrome.adopt(window)
+        window.contentMinSize = NSSize(width: 480, height: 360)
         window.contentView = column
         window.onKey = { [weak self] key in self?.handleKey(key) ?? false }
         window.onDoubleClick = { [weak self] in self?.toggleZoom() }
@@ -375,6 +380,7 @@ final class ImageViewer: NSObject {
             counterLabel.stringValue = [counter, Localized.text("Loading…")]
                 .filter { !$0.isEmpty }.joined(separator: "  ·  ")
             imageView.image = nil
+            applyMagnification()
             fetch(item.reference, item.key)
             return
         }
@@ -389,15 +395,30 @@ final class ImageViewer: NSObject {
 
     /// Fit shows the whole picture; 1:1 shows one image pixel per screen pixel — the document
     /// view is sized in image pixels, so that is a magnification of 1/backingScale.
+    ///
+    /// Fit never enlarges. A picture smaller than the pane — an icon, a small chart the agent drew
+    /// — would otherwise open as an interpolated smear at whatever the cap allows, and offer "1:1"
+    /// as though the view it replaced were not already a zoom.
     private func applyMagnification() {
         zoomButton.title = oneToOne ? Localized.text("Fit") : "1:1"
-        guard imageView.image != nil else { return }
-        if oneToOne {
-            let scale = window?.backingScaleFactor ?? 2
-            scrollView.magnification = 1 / scale
-        } else {
-            scrollView.magnify(toFit: imageView.frame)
+        guard imageView.image != nil, imageView.frame.width > 0, imageView.frame.height > 0 else {
+            return
         }
+        let trueSize = 1 / (window?.backingScaleFactor ?? 2)
+        if oneToOne {
+            scrollView.magnification = trueSize
+            return
+        }
+        let pane = scrollView.contentSize
+        let fit = min(
+            pane.width / imageView.frame.width, pane.height / imageView.frame.height)
+        guard fit < trueSize else {
+            scrollView.setMagnification(
+                trueSize,
+                centeredAt: NSPoint(x: imageView.frame.midX, y: imageView.frame.midY))
+            return
+        }
+        scrollView.magnify(toFit: imageView.frame)
     }
 
     private func save() {

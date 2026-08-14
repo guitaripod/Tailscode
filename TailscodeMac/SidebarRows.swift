@@ -93,7 +93,7 @@ enum SidebarCellFactory {
                 title: running
                     ? Localized.text("SEARCHING “%@” — CLICK TO GO BACK", query)
                     : Localized.text("“%@” — CLICK TO GO BACK", query),
-                count: count)
+                count: running ? nil : count)
             return cell
         case .searchResult(let result):
             let cell = reuse("searchResult", in: tableView) { SidebarSearchResultCell() }
@@ -128,6 +128,9 @@ final class SidebarSessionCell: NSView {
     /// How long ago the conversation moved, in a column of its own down the trailing edge.
     private let age = NSTextField(labelWithString: "")
     private let titleRow = NSStackView()
+    private var glyphWidth: NSLayoutConstraint?
+    private var badgeWidth: NSLayoutConstraint?
+    private var badgeHeight: NSLayoutConstraint?
 
     init() {
         super.init(frame: .zero)
@@ -136,7 +139,7 @@ final class SidebarSessionCell: NSView {
         glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.translatesAutoresizingMaskIntoConstraints = false
 
-        title.font = MacTheme.Ramp.font(.panelLabel)
+        title.font = MacTheme.Ramp.font(.rowTitle)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -164,14 +167,24 @@ final class SidebarSessionCell: NSView {
         addSubview(age)
         addSubview(titleRow)
         addSubview(detail)
+        let column = Self.stateColumn()
+        let glyphWidth = glyph.widthAnchor.constraint(equalToConstant: column)
+        let badgeWidth = badge.widthAnchor.constraint(equalToConstant: column)
+        let badgeHeight = badge.heightAnchor.constraint(equalToConstant: column)
+        self.glyphWidth = glyphWidth
+        self.badgeWidth = badgeWidth
+        self.badgeHeight = badgeHeight
+        let titleFloor = title.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
+        titleFloor.priority = .defaultHigh
         NSLayoutConstraint.activate([
             badge.centerXAnchor.constraint(equalTo: glyph.centerXAnchor),
             badge.centerYAnchor.constraint(equalTo: glyph.centerYAnchor, constant: 1),
-            badge.widthAnchor.constraint(equalToConstant: 16),
-            badge.heightAnchor.constraint(equalToConstant: 16),
+            badgeWidth,
+            badgeHeight,
             glyph.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             glyph.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            glyph.widthAnchor.constraint(equalToConstant: 16),
+            glyphWidth,
+            titleFloor,
             titleRow.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 4),
             titleRow.trailingAnchor.constraint(lessThanOrEqualTo: age.leadingAnchor, constant: -6),
             titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 4),
@@ -187,6 +200,13 @@ final class SidebarSessionCell: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The width of the column the state is read in, held to the type scale: a well nailed to 16pt
+    /// clips the very glyphs it exists to show once the ramp is stepped up, and leaves the symbol
+    /// badge a speck beside a title twice its size.
+    fileprivate static func stateColumn() -> CGFloat {
+        (16 * MacTheme.UIScale.factor).rounded()
+    }
+
     /// - Parameter marked: a marked row wears the accent wash and lends its glyph column to the
     ///   check, because the mark is the only thing about the row that a verb is about to act on;
     ///   the state it was in is still spoken by its pill, so nothing a marked row says is lost.
@@ -198,13 +218,19 @@ final class SidebarSessionCell: NSView {
             ? MacTheme.Color.accent.withAlphaComponent(0.16).cgColor : NSColor.clear.cgColor
         setAccessibilityLabel(model.title)
         setAccessibilityValue(marked ? Localized.text("Marked") : "")
+        let column = Self.stateColumn()
+        glyphWidth?.constant = column
+        badgeWidth?.constant = column
+        badgeHeight?.constant = column
+        badge.pointSize = (10 * MacTheme.UIScale.factor).rounded()
         let activity = marked ? nil : model.state.activity
         badge.activity = activity
         glyph.stringValue = activity == nil ? (marked ? "✓" : model.state.glyph.text) : ""
         glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.textColor = marked ? MacTheme.Color.accent : Self.glyphColor(model.state)
         title.stringValue = model.title
-        title.font = model.unread ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
+        title.font =
+            model.unread ? MacTheme.Ramp.font(.rowTitleStrong) : MacTheme.Ramp.font(.rowTitle)
         let facets = model.facets(vocabulary)
         detail.font = MacTheme.Ramp.font(.panelFootnote)
         let line = NSMutableAttributedString()
@@ -248,8 +274,9 @@ final class SidebarSessionCell: NSView {
         }
         if model.unread, model.state.pill == nil {
             let dot = NSTextField(labelWithString: "●")
-            dot.font = .systemFont(ofSize: 8)
+            dot.font = MacTheme.Ramp.font(.badge)
             dot.textColor = MacTheme.Color.accent
+            dot.setAccessibilityLabel(Localized.text("Unread"))
             titleRow.addArrangedSubview(dot)
         }
     }
@@ -258,7 +285,7 @@ final class SidebarSessionCell: NSView {
     /// line the same way the Linux chips do. Ultracode is not a heat, so its word is set letter
     /// by letter from the shared rainbow, each held to the canvas's own contrast floor.
     static func chipText(_ chip: ModelChip) -> NSAttributedString {
-        let font = MacTheme.Ramp.font(.rowTitleStrong)
+        let font = MacTheme.Ramp.font(.rowMeta)
         let text = NSMutableAttributedString(
             string: chip.name,
             attributes: [.font: font, .foregroundColor: MacTheme.Color.modelIdentity(chip)])
@@ -322,8 +349,10 @@ final class SidebarSessionCell: NSView {
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = MacTheme.Ramp.font(.metricLabel)
+        label.font = MacTheme.Ramp.font(.pill)
         label.textColor = tint
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()
         capsule.wantsLayer = true
@@ -347,12 +376,13 @@ final class SidebarMissedCell: NSView {
     private let glyph = NSTextField(labelWithString: "")
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private var glyphWidth: NSLayoutConstraint?
 
     init() {
         super.init(frame: .zero)
         glyph.font = MacTheme.Ramp.font(.panelLabel)
         glyph.translatesAutoresizingMaskIntoConstraints = false
-        title.font = MacTheme.Ramp.font(.panelLabel)
+        title.font = MacTheme.Ramp.font(.rowTitle)
         title.lineBreakMode = .byTruncatingTail
         title.translatesAutoresizingMaskIntoConstraints = false
         detail.font = MacTheme.Ramp.font(.panelFootnote)
@@ -362,10 +392,13 @@ final class SidebarMissedCell: NSView {
         addSubview(glyph)
         addSubview(title)
         addSubview(detail)
+        let glyphWidth = glyph.widthAnchor.constraint(
+            equalToConstant: SidebarSessionCell.stateColumn())
+        self.glyphWidth = glyphWidth
         NSLayoutConstraint.activate([
             glyph.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             glyph.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            glyph.widthAnchor.constraint(equalToConstant: 16),
+            glyphWidth,
             title.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 4),
             title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 4),
@@ -382,12 +415,17 @@ final class SidebarMissedCell: NSView {
     func configure(with item: MissedActivity) {
         let face = item.reason.face
         glyph.stringValue = face.glyph
+        glyph.font = MacTheme.Ramp.font(.panelLabel)
+        glyphWidth?.constant = SidebarSessionCell.stateColumn()
         glyph.textColor =
             item.isBlocking ? face.tone.color : face.tone.color.withAlphaComponent(0.72)
         title.stringValue = item.title
-        title.font = item.isBlocking ? MacTheme.Ramp.font(.cardTitle) : MacTheme.Ramp.font(.panelLabel)
-        detail.stringValue =
-            "\(item.kindLabel) · \(StatusFacts.age(Date().timeIntervalSince(item.at))) ago"
+        title.font =
+            item.isBlocking ? MacTheme.Ramp.font(.rowTitleStrong) : MacTheme.Ramp.font(.rowTitle)
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
+        detail.stringValue = Localized.text(
+            "%@ · %@ ago", item.kindLabel,
+            StatusFacts.age(Date().timeIntervalSince(item.at)))
         setAccessibilityLabel("\(item.title) — \(item.kindLabel)")
     }
 }
@@ -398,23 +436,16 @@ final class SidebarMissedCell: NSView {
 final class SidebarSearchResultCell: NSView {
     private let title = NSTextField(labelWithString: "")
     private let where_ = NSTextField(labelWithString: "")
-    private let quotes = NSStackView()
+    private let quotes = FillingStack(views: [])
 
     init() {
         super.init(frame: .zero)
-        title.font = MacTheme.Ramp.font(.panelLabel)
         title.lineBreakMode = .byTruncatingTail
-        where_.font = MacTheme.Ramp.font(.panelFootnote)
         where_.textColor = MacTheme.Color.secondaryLabel
         where_.lineBreakMode = .byTruncatingTail
-        quotes.orientation = .vertical
-        quotes.alignment = .leading
         quotes.spacing = 2
-        let column = NSStackView(views: [title, where_, quotes])
-        column.orientation = .vertical
-        column.alignment = .leading
+        let column = FillingStack(views: [title, where_, quotes])
         column.spacing = 2
-        column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)
         NSLayoutConstraint.activate([
             column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
@@ -429,7 +460,10 @@ final class SidebarSearchResultCell: NSView {
 
     func configure(with result: TranscriptSearch.Row) {
         title.stringValue = result.title
-        title.font = result.isTitleOnly ? MacTheme.Ramp.font(.panelLabel) : MacTheme.Ramp.font(.cardTitle)
+        title.font =
+            result.isTitleOnly
+            ? MacTheme.Ramp.font(.rowTitle) : MacTheme.Ramp.font(.rowTitleStrong)
+        where_.font = MacTheme.Ramp.font(.panelFootnote)
         where_.stringValue =
             ([result.project, result.profileName].compactMap { $0 }
             + (result.isTitleOnly ? [Localized.text("title only")] : []))
@@ -461,6 +495,7 @@ final class SidebarSearchResultCell: NSView {
         text.font = MacTheme.Ramp.font(.panelFootnote)
         text.textColor = MacTheme.Color.secondaryLabel
         text.lineBreakMode = .byTruncatingTail
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let row = NSStackView(views: [kind, text])
         row.orientation = .horizontal
         row.spacing = 6
@@ -478,14 +513,11 @@ final class SidebarHeaderCell: NSView {
 
     init() {
         super.init(frame: .zero)
-        title.font = MacTheme.Ramp.font(.metricLabel)
         title.textColor = MacTheme.Color.secondaryLabel
         title.translatesAutoresizingMaskIntoConstraints = false
-        count.font = MacTheme.Ramp.font(.metricLabel)
         count.textColor = MacTheme.Color.tertiaryLabel
         count.translatesAutoresizingMaskIntoConstraints = false
         clear.title = Localized.text("clear")
-        clear.font = MacTheme.Ramp.font(.metricLabel)
         clear.bezelStyle = .inline
         clear.isBordered = false
         clear.contentTintColor = MacTheme.Color.secondaryLabel
@@ -510,12 +542,22 @@ final class SidebarHeaderCell: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A recycled cell is handed back with the size it was built at, so every font is written here
+    /// rather than in `init` — otherwise a step of the type scale grows the conversations and
+    /// leaves the headings between them behind.
+    ///
+    /// - Parameter count: nil for a section that cannot honestly state a number yet. A search still
+    ///   being answered has not found nothing, and a hard zero beside it says that it has.
     /// - Parameter onClear: the verb the heading carries, for a section that can be dismissed
     ///   whole. Absent for the ordinary chat-list headings, which name a grouping rather than a
     ///   pile of things to be got through.
-    func configure(title: String, count: Int, onClear: (() -> Void)? = nil) {
+    func configure(title: String, count: Int?, onClear: (() -> Void)? = nil) {
+        self.title.font = MacTheme.Ramp.font(.sectionLabel)
         self.title.stringValue = title
-        self.count.stringValue = "\(count)"
+        self.count.font = MacTheme.Ramp.font(.metricLabel)
+        self.count.stringValue = count.map { "\($0)" } ?? ""
+        self.count.isHidden = count == nil
+        clear.font = MacTheme.Ramp.font(.metricLabel)
         self.onClear = onClear
         clear.isHidden = onClear == nil
     }
@@ -545,9 +587,8 @@ final class SidebarBulkBar: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
-        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.12).cgColor
+        applyWash()
 
-        badge.font = MacTheme.Ramp.font(.toolOutput)
         badge.textColor = MacTheme.Color.accent
         badge.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -567,7 +608,6 @@ final class SidebarBulkBar: NSView {
         secondary.spacing = MacTheme.Spacing.xs
         secondary.alignment = .centerY
         secondary.distribution = .fillProportionally
-        splitHeader.font = MacTheme.Ramp.font(.panelFootnote)
         splitHeader.textColor = MacTheme.Color.secondaryLabel
         splitRow.orientation = .horizontal
         splitRow.spacing = MacTheme.Spacing.xs
@@ -581,29 +621,39 @@ final class SidebarBulkBar: NSView {
         top.spacing = MacTheme.Spacing.xs
         top.alignment = .centerY
 
-        let column = NSStackView(views: [top, secondary, splitHeader, splitRow])
-        column.orientation = .vertical
-        column.alignment = .leading
+        let column = FillingStack(views: [top, secondary, splitHeader, splitRow])
         column.spacing = MacTheme.Spacing.xs
-        column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)
         NSLayoutConstraint.activate([
             column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.s),
             column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
             column.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.xs),
             column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -MacTheme.Spacing.xs),
-            top.widthAnchor.constraint(equalTo: column.widthAnchor),
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The wash is a `CGColor`, which keeps the appearance it was resolved in — so it is written
+    /// again wherever the light behind it could have changed, rather than once at construction.
+    private func applyWash() {
+        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.12).cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyWash()
+    }
+
     /// - Parameter actions: the destructive verb first, then the three that flip with what is
     ///   held, so a button never offers the opposite of what its own word says.
     func render(count: Int, actions: [BulkChatAction]) {
+        applyWash()
+        badge.font = MacTheme.Ramp.font(.badge)
         badge.stringValue = "\(count)"
         badge.setAccessibilityLabel("\(count)")
+        splitHeader.font = MacTheme.Ramp.font(.panelFootnote)
         for stack in [verbs, secondary, splitRow] {
             for view in stack.arrangedSubviews {
                 stack.removeArrangedSubview(view)
@@ -639,6 +689,7 @@ final class SidebarBulkBar: NSView {
             accessibilityDescription: arrangement.title)
         button.imagePosition = .imageLeading
         button.lineBreakMode = .byTruncatingTail
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.toolTip = arrangement.caption(count: count)
         button.setAccessibilityLabel(arrangement.accessibleLabel(count: count))
         button.identifier = NSUserInterfaceItemIdentifier("split." + arrangement.rawValue)
@@ -661,6 +712,7 @@ final class SidebarBulkBar: NSView {
         button.contentTintColor =
             action.isDestructive ? MacTheme.Color.danger : MacTheme.Color.accent
         button.lineBreakMode = .byTruncatingTail
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.toolTip = title
         button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
         return button

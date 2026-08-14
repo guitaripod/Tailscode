@@ -11,14 +11,12 @@ import TailscodeCore
 @MainActor
 final class WatchBoardView: NSView {
     private let scrollView = NSScrollView()
-    private let groups = NSStackView()
+    private let groups = FillingStack()
     private var rowViews: [String: WatchRowView] = [:]
     private var onActivate: ((String, Int) -> Void)?
 
     init() {
         super.init(frame: .zero)
-        groups.orientation = .vertical
-        groups.alignment = .width
         groups.spacing = MacTheme.Spacing.m
         groups.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.xs, left: 0, bottom: MacTheme.Spacing.s, right: 0)
@@ -61,9 +59,7 @@ final class WatchBoardView: NSView {
         }
         let focused = board.focused?.id
         for section in board.sections {
-            let stack = NSStackView()
-            stack.orientation = .vertical
-            stack.alignment = .width
+            let stack = FillingStack()
             stack.spacing = 2
             stack.addArrangedSubview(Self.header(section))
             for (offset, row) in section.rows.enumerated() {
@@ -83,8 +79,13 @@ final class WatchBoardView: NSView {
 
     /// Brings the cursor back into view after a key moved it — a board taller than its pane is the
     /// ordinary case, and a cursor that walks off the bottom is a cursor nobody can follow.
+    ///
+    /// The board is rebuilt before the reveal is asked for, so the row still has a zero frame at
+    /// this point: scrolling to it without settling the layout first aims at the origin and lands
+    /// the board at its own end instead.
     func reveal(_ rowID: String) {
         guard let view = rowViews[rowID] else { return }
+        layoutSubtreeIfNeeded()
         view.scrollToVisible(view.bounds)
     }
 
@@ -128,7 +129,7 @@ final class WatchRowView: NSView {
     private let note = NSTextField(labelWithString: "")
     private let star = NSImageView()
     private let titleRow = NSStackView()
-    private let lines = NSStackView()
+    private let lines = FillingStack()
     private var thumbnailURL: String?
     var onClick: (() -> Void)?
 
@@ -169,8 +170,6 @@ final class WatchRowView: NSView {
         note.textColor = MacTheme.Color.tertiaryLabel
         note.lineBreakMode = .byTruncatingTail
 
-        lines.orientation = .vertical
-        lines.alignment = .width
         lines.spacing = 1
         lines.setViews([titleRow, detail, note], in: .top)
         lines.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -204,6 +203,11 @@ final class WatchRowView: NSView {
         detail.isHidden = row.detail.isEmpty
         note.stringValue = row.note ?? ""
         note.isHidden = row.note == nil
+        setAccessibilityElement(true)
+        setAccessibilityRole(row.isActivatable ? .button : .staticText)
+        setAccessibilityLabel(
+            [row.title, row.badge?.text, row.detail, row.note]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
         layer?.backgroundColor =
             focused
             ? MacTheme.Color.accent.withAlphaComponent(0.18).cgColor : NSColor.clear.cgColor
@@ -228,8 +232,19 @@ final class WatchRowView: NSView {
         thumb.image = image
     }
 
-    override func mouseDown(with event: NSEvent) {
+    /// A press is claimed here and answered on the release, inside the row: pressing a row and
+    /// dragging away — or pressing it on the way to a scroll — must not put a stream in the pane
+    /// and a channel in the recents with no way left to change your mind.
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         onClick?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
     }
 
     /// A row that stands for a list rather than a stream carries no picture: an expander and a note

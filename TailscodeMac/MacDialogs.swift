@@ -163,6 +163,7 @@ enum MacDialogs {
         buttons.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
 
         let content = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(column)
         NSLayoutConstraint.activate([
             column.topAnchor.constraint(equalTo: content.topAnchor),
@@ -172,6 +173,7 @@ enum MacDialogs {
             content.widthAnchor.constraint(equalToConstant: 480),
         ])
         panel.contentView = content
+        panel.setContentSize(content.fittingSize)
         panel.initialFirstResponder = field
         guard let window else {
             panel.center()

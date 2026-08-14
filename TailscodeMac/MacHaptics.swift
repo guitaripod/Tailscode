@@ -41,18 +41,25 @@ final class MacHaptics {
         play(cue, strength: Self.strength)
     }
 
+    /// Two performs inside one runloop turn are a single bump to the hand, so beats that share a
+    /// start time are separated by the shortest interval a hand still resolves as two. Beat count
+    /// is the only thing this backend has to carry a recipe's weight with.
+    private static let beatSeparation: Double = 0.045
+
     /// Plays a cue at a strength the caller names, which the settings slider uses to let someone
     /// feel the stop under the pointer rather than read a number about it.
     func play(_ cue: HapticCue, strength: Double) {
+        guard Self.isEnabled else { return }
         let beats = HapticRecipe.scaled(cue, strength: strength)
         guard !beats.isEmpty else { return }
         let pattern = Self.pattern(for: cue)
-        for beat in beats {
-            guard beat.start > 0 else {
+        for (index, beat) in beats.enumerated() {
+            let when = max(beat.start, Double(index) * Self.beatSeparation)
+            guard when > 0 else {
                 NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
                 continue
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + beat.start) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + when) {
                 NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
             }
         }

@@ -46,15 +46,16 @@ final class GitPanelViewController: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A popover takes its size from the content controller's fitting height, and a scroll view
+    /// has no fitting height of its own — pinning it to the container's four edges asks for zero.
+    /// So the column's height is tied to the scroll below the cap, which is what makes the panel
+    /// as tall as what is in it and no taller than the cap allows.
     override func loadView() {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .leading
+        let column = FillingStack()
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
             right: MacTheme.Spacing.m)
-        column.translatesAutoresizingMaskIntoConstraints = false
 
         column.addArrangedSubview(header())
         for section in state.sections { column.addArrangedSubview(files(section)) }
@@ -88,6 +89,9 @@ final class GitPanelViewController: NSViewController {
             container.widthAnchor.constraint(equalToConstant: 460),
             scroll.heightAnchor.constraint(lessThanOrEqualToConstant: 580),
         ])
+        let fit = scroll.heightAnchor.constraint(equalTo: column.heightAnchor)
+        fit.priority = .defaultHigh
+        fit.isActive = true
         view = container
     }
 
@@ -183,7 +187,7 @@ final class GitPanelViewController: NSViewController {
             line.orientation = .horizontal
             line.spacing = MacTheme.Spacing.s
             line.toolTip = row.spoken
-            views.append(ClickRow(line) { [weak self] in self?.open(row) })
+            views.append(ClickRow(line, label: row.spoken) { [weak self] in self?.open(row) })
         }
         return card(views)
     }
@@ -209,7 +213,10 @@ final class GitPanelViewController: NSViewController {
             var tip = [entry.short, entry.author, entry.age]
             if !entry.refs.isEmpty { tip.append(entry.refs.joined(separator: ", ")) }
             line.toolTip = tip.joined(separator: " · ")
-            views.append(ClickRow(line) { [weak self] in self?.open(entry) })
+            views.append(
+                ClickRow(line, label: ([entry.subject] + tip).joined(separator: " · ")) {
+                    [weak self] in self?.open(entry)
+                })
         }
         return card(views)
     }
@@ -238,8 +245,7 @@ final class GitPanelViewController: NSViewController {
                 ])
         }
         let text = NSMutableAttributedString()
-        let font = NSFont.monospacedDigitSystemFont(
-            ofSize: 11 * MacTheme.UIScale.factor, weight: .medium)
+        let font = MacTheme.Ramp.font(.rowStamp)
         if row.insertions > 0 {
             text.append(
                 NSAttributedString(
@@ -294,10 +300,11 @@ final class GitPanelViewController: NSViewController {
         return row
     }
 
+    /// Every child spans the card, not only the rows: a tinted banner or a summary line sized to
+    /// its own text is a stub floating inside a full-width box, and the reader reads the ragged
+    /// right edge as a mistake rather than as a short sentence.
     private func card(_ views: [NSView]) -> NSView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .vertical
-        stack.alignment = .leading
+        let stack = FillingStack(views: views)
         stack.spacing = MacTheme.Spacing.xs
         stack.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.s,
@@ -306,25 +313,27 @@ final class GitPanelViewController: NSViewController {
         stack.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         stack.layer?.cornerRadius = MacTheme.Radius.card
         stack.layer?.cornerCurve = .continuous
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        for view in views where view is NSStackView || view is ClickRow {
-            view.widthAnchor.constraint(
-                equalTo: stack.widthAnchor, constant: -2 * MacTheme.Spacing.s).isActive = true
-        }
         return stack
     }
 }
 
 /// A row that answers a click without becoming a button: a push button would draw a bezel over the
 /// card and take the row's own layout, and every row here is a path, not a control.
+///
+/// - Parameter label: the sentence Core already wrote for this row. Declining to be a control is a
+///   drawing decision, not a reason for a screen reader to meet a nameless view that does nothing —
+///   so the row wears the button's identity even though it wears none of its chrome.
 @MainActor
 final class ClickRow: NSView {
     private let action: () -> Void
 
-    init(_ content: NSView, action: @escaping () -> Void) {
+    init(_ content: NSView, label: String, action: @escaping () -> Void) {
         self.action = action
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
         layer?.cornerCurve = .continuous
@@ -357,6 +366,11 @@ final class ClickRow: NSView {
         guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         action()
     }
+
+    override func accessibilityPerformPress() -> Bool {
+        action()
+        return true
+    }
 }
 
 /// One file's change, or one commit's, in a window of its own: a diff is read rather than glanced
@@ -364,6 +378,10 @@ final class ClickRow: NSView {
 @MainActor
 final class GitDiffWindowController: NSWindowController {
     private let load: @Sendable () async -> String?
+    /// The patch, set without wrapping, because a diff line folded at the window's edge stops
+    /// being a diff line. Reaching the rest of a long one is `maxSize` as much as
+    /// `isHorizontallyResizable`: the flag alone lets the view grow only up to a bound AppKit
+    /// takes from the clip, which is exactly the width the line already overflowed.
     private let text = NSTextView()
 
     init(title: String, subtitle: String, load: @escaping @Sendable () async -> String?) {
@@ -375,6 +393,7 @@ final class GitDiffWindowController: NSWindowController {
         window.title = title
         window.subtitle = subtitle
         window.isReleasedWhenClosed = false
+        MacTheme.Chrome.adopt(window)
         super.init(window: window)
 
         text.isEditable = false
@@ -383,6 +402,8 @@ final class GitDiffWindowController: NSWindowController {
         text.backgroundColor = MacTheme.Color.codeBackground
         text.textContainerInset = NSSize(width: 10, height: 10)
         text.isHorizontallyResizable = true
+        text.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         text.textContainer?.widthTracksTextView = false
         text.textContainer?.containerSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)

@@ -39,7 +39,9 @@ final class ServersWindow: NSWindowController {
     static let installCommand = BridgeInstall.installCommand
 
     private let onChanged: @MainActor () -> Void
-    private let listColumn = NSStackView()
+    private let listColumn = FillingStack()
+    private let listHeader = MacDialogs.sectionHeader(Localized.text("CONFIGURED"))
+    private let addHeader = MacDialogs.sectionHeader(Localized.text("ADD A SERVER"))
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private let addressField = NSTextField()
     private let nameField = NSTextField()
@@ -57,6 +59,26 @@ final class ServersWindow: NSWindowController {
         super.init(window: window)
         window.contentView = makeContent()
         window.center()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    /// Nothing outside the main window is reached by its restyle pass, and every colour and size
+    /// here was resolved once at construction — so without this the servers list would sit beside
+    /// the window that opened it wearing the palette and the type scale of a minute ago.
+    @objc private func repaint() {
+        applyTheme()
+        renderList()
+    }
+
+    private func applyTheme() {
+        addressField.font = MacTheme.Ramp.font(.code)
+        for header in [listHeader, addHeader] {
+            header.font = MacTheme.Ramp.font(.sectionLabel)
+            header.textColor = MacTheme.Color.secondaryLabel
+        }
+        statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        statusLabel.textColor = MacTheme.Color.secondaryLabel
     }
 
     @available(*, unavailable)
@@ -68,13 +90,10 @@ final class ServersWindow: NSWindowController {
     }
 
     private func makeContent() -> NSView {
-        listColumn.orientation = .vertical
-        listColumn.alignment = .width
         listColumn.spacing = MacTheme.Spacing.m
 
         addressField.placeholderString = Localized.text(
             "Tailnet address — 100.x.y.z, name.tailnet.ts.net, host:port")
-        addressField.font = MacTheme.Ramp.font(.code)
         nameField.placeholderString = Localized.text("Label (optional)")
         passwordField.placeholderString = Localized.text("Password")
         claudeRadio.target = self
@@ -86,8 +105,7 @@ final class ServersWindow: NSWindowController {
         kindRow.orientation = .horizontal
         kindRow.spacing = MacTheme.Spacing.s
 
-        statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        statusLabel.textColor = MacTheme.Color.secondaryLabel
+        applyTheme()
 
         let close = NSButton(title: Localized.text("Close"), target: self, action: #selector(closeWindow))
         let probe = NSButton(
@@ -97,14 +115,10 @@ final class ServersWindow: NSWindowController {
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
 
-        let column = NSStackView(views: [
-            MacDialogs.sectionHeader(Localized.text("CONFIGURED")),
-            listColumn,
-            MacDialogs.sectionHeader(Localized.text("ADD A SERVER")),
+        let column = FillingStack(views: [
+            listHeader, listColumn, addHeader,
             addressField, nameField, passwordField, kindRow, statusLabel, actions,
         ])
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.setCustomSpacing(MacTheme.Spacing.xl, after: listColumn)
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
@@ -136,6 +150,8 @@ final class ServersWindow: NSWindowController {
     private func makeRow(_ profile: ConnectionProfile) -> NSView {
         let title = NSTextField(labelWithString: profile.name)
         title.font = MacTheme.Ramp.font(.cardTitle)
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let detail = MacDialogs.detailLabel(
             "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))")
 
@@ -204,13 +220,14 @@ final class ServersWindow: NSWindowController {
             body: ServerRestart.confirmBody(workingTurns: 0),
             confirmLabel: ServerRestart.action
         ) {
-            Task {
+            Task { [weak self] in
                 guard
                     let backend = ServerDirectory.shared.backend(for: profile),
                     let restartable = backend as? any RestartableBackend
                 else { return }
                 do {
                     try await restartable.restart()
+                    self.setStatus(ServerRestart.underway)
                 } catch {
                     self.offerSetup(name: profile.name, backend: backend)
                 }
@@ -317,12 +334,18 @@ final class ServersWindow: NSWindowController {
                         profile, password: password.isEmpty ? nil : password)
                     self.onChanged()
                     self.setStatus(
-                        Localized.text("Saved %@ — %@", profile.name, version ?? "connected"))
+                        Localized.text(
+                            "Saved %@ — %@", profile.name, version ?? Localized.text("connected")))
                     self.renderList()
                     self.addressField.stringValue = ""
+                    self.nameField.stringValue = ""
+                    self.passwordField.stringValue = ""
                 } catch {
                     self.setStatus(
-                        Localized.text("Could not save: %@", String(describing: error)))
+                        Localized.text(
+                            "Could not save: %@",
+                            (error as? AgentError)?.errorDescription
+                                ?? error.localizedDescription))
                 }
             case .authFailed:
                 self.setStatus(
@@ -471,9 +494,16 @@ final class ServersWindow: NSWindowController {
             let backend = ServerDirectory.shared.backend(for: profile)
                 as? any AuthenticatingBackend
         else { return }
+        setSoftwareText(box, Localized.text("Checking the Claude account…"))
         Task { [weak self] in
-            guard let auth = try? await backend.authStatus() else { return }
-            self?.renderAccount(auth, profile: profile, backend: backend, into: box)
+            do {
+                let auth = try await backend.authStatus()
+                self?.renderAccount(auth, profile: profile, backend: backend, into: box)
+            } catch {
+                self?.setSoftwareText(
+                    box,
+                    Localized.text("Could not read the Claude account on %@.", profile.name))
+            }
         }
     }
 
@@ -483,7 +513,8 @@ final class ServersWindow: NSWindowController {
     ) {
         box.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !auth.loggedIn else {
-            var line = Localized.text("Claude account: %@", auth.accountLabel ?? "signed in")
+            var line = Localized.text(
+                "Claude account: %@", auth.accountLabel ?? Localized.text("signed in"))
             if let subscription = auth.subscription, !subscription.isEmpty {
                 line += " · \(subscription)"
             }

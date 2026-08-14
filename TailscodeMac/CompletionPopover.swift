@@ -11,7 +11,7 @@ final class CompletionPopover: NSView {
     var onPick: ((AgentCommand) -> Void)?
     var onBrowse: (() -> Void)?
 
-    private let column = NSStackView()
+    private let column = FillingStack()
     private var presentation: SlashPresentation = .hidden
     private var namingMatches: [SlashMatch] = []
     private var cursor = 0
@@ -21,8 +21,6 @@ final class CompletionPopover: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         isHidden = true
 
-        column.orientation = .vertical
-        column.alignment = .leading
         column.spacing = 2
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.s,
@@ -83,19 +81,28 @@ final class CompletionPopover: NSView {
         return namingMatches[cursor].command
     }
 
+    /// The rows are dropped through the stack rather than straight off the view, so the fills a
+    /// ``FillingStack`` holds for each one go with them instead of outliving a list that is rebuilt
+    /// on every keystroke.
+    private func clearRows() {
+        for view in column.arrangedSubviews {
+            column.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+    }
+
     private func paintNaming() {
-        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        clearRows()
         let start = max(0, min(cursor - 3, namingMatches.count - 8))
         let end = min(namingMatches.count, start + 8)
         for index in start..<end {
-            let match = namingMatches[index]
             column.addArrangedSubview(
-                commandRow(match.command, selected: index == cursor, pick: match.command))
+                commandRow(namingMatches[index], selected: index == cursor))
         }
         if start > 0 || end < namingMatches.count {
             let hidden = namingMatches.count - (end - start)
             let more = RowKit.label(
-                "… \(hidden) more", font: MacTheme.Ramp.font(.panelFootnote),
+                Localized.text("… %d more", hidden), font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.onGlassSecondary)
             column.addArrangedSubview(RowKit.inset(more, leading: MacTheme.Spacing.s))
         }
@@ -103,7 +110,7 @@ final class CompletionPopover: NSView {
     }
 
     private func paintArguments(_ command: AgentCommand, typed: String) {
-        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        clearRows()
         let title = RowKit.label(
             "/\(command.name)", font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.onGlass)
         let lines = NSStackView(views: [title])
@@ -134,7 +141,7 @@ final class CompletionPopover: NSView {
     }
 
     private func paintNoMatch(_ query: String) {
-        column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        clearRows()
         let message = RowKit.label(
             Localized.text("No command named “%@”", query),
             font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.onGlassSecondary)
@@ -147,6 +154,7 @@ final class CompletionPopover: NSView {
                 Localized.text("Browse every command"),
                 font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.accent)
             let row = CompletionRowView(index: -1) { [weak self] _ in self?.onBrowse?() }
+            row.setAccessibilityLabel(Localized.text("Browse every command"))
             row.translatesAutoresizingMaskIntoConstraints = false
             browse.translatesAutoresizingMaskIntoConstraints = false
             row.addSubview(browse)
@@ -163,11 +171,30 @@ final class CompletionPopover: NSView {
         isHidden = false
     }
 
-    private func commandRow(
-        _ command: AgentCommand, selected: Bool, pick: AgentCommand
-    ) -> NSView {
+    /// The letters that put the row in the list are the ones coloured: a scattered match — `/gr`
+    /// finding `git:review` — is otherwise a row with nothing on it saying why it is there, or why
+    /// it outranks the row under it.
+    private func matchedName(_ match: SlashMatch) -> NSAttributedString {
+        let name = match.command.name
+        let text = NSMutableAttributedString(
+            string: "/\(name)",
+            attributes: MacTheme.Ramp.attributes(.cardTitle, color: MacTheme.Color.onGlass))
+        let letters = Array(name)
+        for offset in match.highlight where letters.indices.contains(offset) {
+            let location = String(letters[..<offset]).utf16.count + 1
+            let length = String(letters[offset]).utf16.count
+            text.addAttribute(
+                .foregroundColor, value: MacTheme.Color.accent,
+                range: NSRange(location: location, length: length))
+        }
+        return text
+    }
+
+    private func commandRow(_ match: SlashMatch, selected: Bool) -> NSView {
+        let command = match.command
         let name = RowKit.label(
             "/\(command.name)", font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.onGlass)
+        name.attributedStringValue = matchedName(match)
         let lines = NSStackView(views: [name])
         lines.orientation = .vertical
         lines.alignment = .leading
@@ -191,8 +218,9 @@ final class CompletionPopover: NSView {
         lines.translatesAutoresizingMaskIntoConstraints = false
 
         let rowView = CompletionRowView(index: 0) { [weak self] _ in
-            self?.onPick?(pick)
+            self?.onPick?(command)
         }
+        rowView.setAccessibilityLabel("/\(command.name)")
         rowView.translatesAutoresizingMaskIntoConstraints = false
         rowView.wantsLayer = true
         if selected {
@@ -221,6 +249,8 @@ private final class CompletionRowView: NSView {
         self.index = index
         self.pick = pick
         super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
     }
 
     @available(*, unavailable)

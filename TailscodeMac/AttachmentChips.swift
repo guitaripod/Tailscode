@@ -36,14 +36,20 @@ final class AttachmentChips: NSView {
         for attachment in attachments {
             let id = attachment.id
             let title =
-                "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))  ✕"
+                "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))"
             let chip = RowKit.ActionButton(title: title) { [weak self] in
                 self?.onRemove?(id)
             }
             chip.bezelStyle = .rounded
             chip.controlSize = .small
-            chip.font = MacTheme.Ramp.font(.panelFootnote)
-            chip.toolTip = attachment.name
+            chip.font = MacTheme.Ramp.font(.attachment)
+            chip.image = NSImage(
+                systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)
+            chip.imagePosition = .imageTrailing
+            chip.imageHugsTitle = true
+            chip.cell?.lineBreakMode = .byTruncatingMiddle
+            chip.toolTip = Localized.text("Remove %@", attachment.name)
+            chip.setAccessibilityLabel(Localized.text("Remove %@", attachment.name))
             chip.translatesAutoresizingMaskIntoConstraints = false
             row.addArrangedSubview(chip)
         }

@@ -280,7 +280,10 @@ extension MainMenu: NSMenuItemValidation {
             menuItem.title = BulkChatCopy.button(.delete, count: marked) + "…"
             return true
         }
-        guard let entry = hub.currentEntry else { return false }
+        guard let entry = hub.currentEntry else {
+            restTitle(menuItem)
+            return false
+        }
         switch Tag(rawValue: menuItem.tag) {
         case .save:
             menuItem.title =
@@ -308,5 +311,18 @@ extension MainMenu: NSMenuItemValidation {
             break
         }
         return true
+    }
+
+    /// The words the flipping verbs wear when there is nothing for them to describe. A dimmed item
+    /// still reads, and "Unsave · Unarchive · Mark as Read" over a closed conversation describes a
+    /// chat that is no longer anywhere.
+    private func restTitle(_ menuItem: NSMenuItem) {
+        switch Tag(rawValue: menuItem.tag) {
+        case .save: menuItem.title = Localized.text("Save")
+        case .archive: menuItem.title = Localized.text("Archive")
+        case .unread: menuItem.title = Localized.text("Mark as Unread")
+        case .delete: menuItem.title = Localized.text("Delete…")
+        default: break
+        }
     }
 }

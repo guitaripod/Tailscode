@@ -45,7 +45,8 @@ extension TranscriptViewController {
     static func renderedLength(of row: TranscriptRow) -> Int {
         switch row.kind {
         case .agentProse(_, let rendered): return rendered.length
-        case .codeBlock(_, let body): return codeRendering(body).length
+        case .codeBlock(let language, let body):
+            return codeRendering(body, language: language).length
         default: return 0
         }
     }
@@ -161,9 +162,9 @@ extension TranscriptViewController {
         switch renderedRows[index].kind {
         case .agentProse(_, let rendered):
             label.attributedStringValue = tail.paint(rendered, settled: MacTheme.Color.label)
-        case .codeBlock(_, let body):
+        case .codeBlock(let language, let body):
             label.attributedStringValue = tail.paint(
-                Self.codeRendering(body), settled: MacTheme.Color.label)
+                Self.codeRendering(body, language: language), settled: MacTheme.Color.label)
         default:
             return false
         }

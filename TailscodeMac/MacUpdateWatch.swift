@@ -113,6 +113,10 @@ final class MacUpdateWatch {
 
     /// An update asked for and then followed to the end rather than to the first heartbeat, which
     /// is the whole of what `follow` is for.
+    ///
+    /// A machine that refuses to start one — a dirty tree, a route that errors, no right to ask —
+    /// is recorded as the answer it gave and nothing is followed: a discarded refusal leaves the
+    /// card exactly as it was under a surface still claiming the machine was asked.
     func install(
         _ component: UpdateComponent, onStep: (@MainActor (UpdateReading) -> Void)? = nil
     ) async {
@@ -121,8 +125,11 @@ final class MacUpdateWatch {
             installing.insert(profileID).inserted
         else { return }
         defer { installing.remove(profileID) }
-        if let started = try? await backend.startUpdate() {
-            record(.answered(started), for: profile, onStep: onStep)
+        do {
+            record(.answered(try await backend.startUpdate()), for: profile, onStep: onStep)
+        } catch {
+            record(.silent(Self.why(error, on: profile)), for: profile, onStep: onStep)
+            return
         }
         await follow(
             profile, backend: backend,
@@ -149,8 +156,11 @@ final class MacUpdateWatch {
             installing.insert(profileID).inserted
         else { return }
         defer { installing.remove(profileID) }
-        if let started = try? await backend.restartServer() {
-            record(.answered(started), for: profile, onStep: onStep)
+        do {
+            record(.answered(try await backend.restartServer()), for: profile, onStep: onStep)
+        } catch {
+            record(.silent(Self.why(error, on: profile)), for: profile, onStep: onStep)
+            return
         }
         await follow(
             profile, backend: backend,

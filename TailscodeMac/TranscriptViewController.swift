@@ -33,9 +33,9 @@ final class TranscriptViewController: NSViewController {
     var onDragPerform: ((NSDraggingInfo) -> Bool)?
 
     private let scrollView = NSScrollView()
-    private let canvas = NSStackView()
-    private let rowsStack = NSStackView()
-    private let pendingStack = NSStackView()
+    private let canvas = FillingStack()
+    private let rowsStack = FillingStack()
+    private let pendingStack = FillingStack()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
     /// What a popover opened from a band fact points at.
@@ -46,7 +46,7 @@ final class TranscriptViewController: NSViewController {
     let composer = ComposerView()
     private let findBar = FindBar()
     private let jumpButton = RowKit.ActionButton(title: "") {}
-    private let emptyLabel = NSTextField(labelWithString: "")
+    private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let chooserView = ChooserView()
     private var chooser: PaneChooser?
     private var composerGlass: NSView?
@@ -55,6 +55,11 @@ final class TranscriptViewController: NSViewController {
     private let context = TranscriptContext()
     private let rowBuilder = TranscriptRowBuilder()
     private let identityLabel = NSTextField(labelWithString: "")
+    private var identityGlass: NSView?
+    /// What a slot took off the screen when it claimed the pane, so putting a conversation back
+    /// shows exactly what was showing. Half this chrome owns its own visibility — an empty
+    /// completion popover, a find bar nobody opened — and unhiding it wholesale reveals it.
+    private var furnitureHidden: [NSView] = []
 
     private var conversation: AgentConversation?
     private var streamTask: Task<Void, Never>?
@@ -140,6 +145,11 @@ final class TranscriptViewController: NSViewController {
     private var findMatches: [Int] = []
     private var findCursor = 0
     private var highlightedView: NSView?
+    /// What the highlighted row's own layer said before the mark was written over it. A row view is
+    /// often the card itself — a code block's ground and its corner, a seam's border — so clearing
+    /// the mark by writing nil and zero strips the card rather than the mark.
+    private var highlightRestore:
+        (background: CGColor?, border: CGColor?, width: CGFloat, radius: CGFloat)?
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
     /// What the whole conversation has cost, asked of the server on the same slow poll as the
@@ -172,7 +182,8 @@ final class TranscriptViewController: NSViewController {
 
         emptyLabel.stringValue = Localized.text("Pick a conversation")
         emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
-        emptyLabel.textColor = MacTheme.Color.tertiaryLabel
+        emptyLabel.textColor = MacTheme.Color.secondaryLabel
+        emptyLabel.alignment = .center
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(emptyLabel)
 
@@ -180,12 +191,9 @@ final class TranscriptViewController: NSViewController {
         chooserView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(chooserView)
 
-        identityLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        identityLabel.textColor = MacTheme.Color.secondaryLabel
-        identityLabel.lineBreakMode = .byTruncatingMiddle
-        identityLabel.isHidden = true
-        identityLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(identityLabel)
+        let identity = configureIdentityStrip()
+        container.addSubview(identity)
+        identityGlass = identity
 
         let glass = configureComposerLayer()
         container.addSubview(glass)
@@ -229,15 +237,17 @@ final class TranscriptViewController: NSViewController {
             findBar.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
 
-            identityLabel.topAnchor.constraint(
+            identity.topAnchor.constraint(
                 equalTo: container.safeAreaLayoutGuide.topAnchor, constant: MacTheme.Spacing.s),
-            identityLabel.leadingAnchor.constraint(
+            identity.leadingAnchor.constraint(
                 equalTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
-            identityLabel.trailingAnchor.constraint(
+            identity.trailingAnchor.constraint(
                 lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m),
 
             emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            emptyLabel.widthAnchor.constraint(
+                lessThanOrEqualTo: container.widthAnchor, constant: -MacTheme.Spacing.xl * 2),
 
             chooserView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             chooserView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
@@ -252,12 +262,31 @@ final class TranscriptViewController: NSViewController {
         observeScrolling()
     }
 
+    /// The pane's own name, on the same material as the rest of the floating layer. It is a control
+    /// above the transcript rather than a caption inside it, and on bare canvas the prose that
+    /// scrolls under it overprints it glyph for glyph.
+    private func configureIdentityStrip() -> NSView {
+        identityLabel.font = MacTheme.Ramp.font(.paneIdentity)
+        identityLabel.textColor = MacTheme.Color.onGlassSecondary
+        identityLabel.lineBreakMode = .byTruncatingMiddle
+        let strip = NSStackView(views: [identityLabel])
+        strip.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.xs, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.xs,
+            right: MacTheme.Spacing.s)
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        let glass = MacTheme.glass(around: strip, cornerRadius: MacTheme.Radius.control)
+        glass.isHidden = true
+        return glass
+    }
+
     /// The scroll view owns its insets so content can run underneath the floating glass: the top
-    /// inset tracks the toolbar, the bottom one tracks the composer capsule.
+    /// inset tracks the toolbar and the identity strip, the bottom one tracks the composer capsule.
     override func viewDidLayout() {
         super.viewDidLayout()
         let bottom = (composerGlass?.frame.height ?? 0) + MacTheme.Spacing.m + MacTheme.Spacing.l
-        let top = view.safeAreaInsets.top + MacTheme.Spacing.s
+        let strip: CGFloat =
+            identityGlass.map { $0.isHidden ? 0 : $0.frame.height + MacTheme.Spacing.s } ?? 0
+        let top = view.safeAreaInsets.top + MacTheme.Spacing.s + strip
         let insets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
         if scrollView.contentInsets.bottom != insets.bottom
             || scrollView.contentInsets.top != insets.top
@@ -268,6 +297,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
+        clearSlot()
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         onStopWatch?(SessionPinStore.key(entry.profileID, entry.session.id))
@@ -385,8 +415,24 @@ final class TranscriptViewController: NSViewController {
     /// The strip that says whose conversation this pane is — only worth its line once a second
     /// pane exists, so a lone pane stays exactly the window it always was.
     func setIdentityVisible(_ visible: Bool) {
-        identityLabel.isHidden = !visible
+        identityGlass?.isHidden = !visible
         refreshIdentity()
+    }
+
+    /// A pane holds one thing at a time. A chat opened into a slot binds, streams, retitles the
+    /// window and starts notifying behind a player that still covers the pane edge to edge — live
+    /// and invisible, with no way back short of closing the pane — so the slot goes first.
+    private func clearSlot() {
+        guard video != nil || page != nil else { return }
+        video?.shutdown()
+        video?.removeFromSuperview()
+        video = nil
+        page?.shutdown()
+        page?.removeFromSuperview()
+        page = nil
+        setChatFurnitureVisible(true)
+        refreshIdentity()
+        onVideoChanged?()
     }
 
     /// Turns this pane into a video slot, or points the one it already is at something else. The
@@ -398,7 +444,7 @@ final class TranscriptViewController: NSViewController {
         if video == nil {
             let slot = VideoSlotView(target: target)
             slot.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(slot, positioned: .below, relativeTo: identityLabel)
+            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
             NSLayoutConstraint.activate([
                 slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -425,7 +471,7 @@ final class TranscriptViewController: NSViewController {
         if page == nil {
             let slot = WebSlotView(target: target)
             slot.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(slot, positioned: .below, relativeTo: identityLabel)
+            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
             NSLayoutConstraint.activate([
                 slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -480,12 +526,21 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// Everything the pane draws for a conversation, out of the way while it holds a stream —
-    /// walked rather than named so a new piece of chat chrome cannot forget to hide itself.
+    /// walked rather than named so a new piece of chat chrome cannot forget to hide itself, and
+    /// remembered rather than re-derived on the way back, because what was hidden is not what is
+    /// wanted: unhiding the whole list shows an empty completion popover and a find bar nobody
+    /// opened.
     private func setChatFurnitureVisible(_ visible: Bool) {
-        for subview in view.subviews
-        where subview !== identityLabel && subview !== video && subview !== page {
-            subview.isHidden = !visible
+        guard !visible else {
+            furnitureHidden.forEach { $0.isHidden = false }
+            furnitureHidden = []
+            return
         }
+        guard furnitureHidden.isEmpty else { return }
+        furnitureHidden = view.subviews.filter {
+            $0 !== identityGlass && $0 !== video && $0 !== page && !$0.isHidden
+        }
+        furnitureHidden.forEach { $0.isHidden = true }
     }
 
     private func refreshIdentity() {
@@ -521,6 +576,7 @@ final class TranscriptViewController: NSViewController {
         }
         composer.stashDraft()
         cascade.release()
+        stopTailRepair()
         page?.shutdown()
         video?.shutdown()
         streamTask?.cancel()
@@ -644,13 +700,9 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func configureCanvas() {
-        rowsStack.orientation = .vertical
-        rowsStack.alignment = .width
         rowsStack.spacing = MacTheme.Spacing.m
         rowsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        pendingStack.orientation = .vertical
-        pendingStack.alignment = .width
         pendingStack.spacing = MacTheme.Spacing.s
         pendingStack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -659,8 +711,6 @@ final class TranscriptViewController: NSViewController {
         earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
         earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
 
-        canvas.orientation = .vertical
-        canvas.alignment = .width
         canvas.spacing = MacTheme.Spacing.m
         canvas.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.xl, bottom: MacTheme.Spacing.l,
@@ -720,9 +770,7 @@ final class TranscriptViewController: NSViewController {
                 for: self.backend?.agentType, among: self.quotasForStatus?() ?? [])
         }
 
-        let column = NSStackView(views: [composer])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [composer])
         column.spacing = MacTheme.Spacing.xs
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
@@ -736,6 +784,7 @@ final class TranscriptViewController: NSViewController {
 
         authBanner.orientation = .horizontal
         authBanner.spacing = MacTheme.Spacing.s
+        authBanner.translatesAutoresizingMaskIntoConstraints = false
         authBanner.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
             right: MacTheme.Spacing.m)
@@ -745,10 +794,8 @@ final class TranscriptViewController: NSViewController {
         auth.isHidden = true
         authGlass = auth
 
-        let host = NSStackView(views: [auth, band, card])
-        host.orientation = .vertical
-        host.alignment = .width
-        host.spacing = MacTheme.Spacing.s
+        let host = FillingStack(views: [auth, band, card])
+        host.spacing = MacTheme.Spacing.m
         host.translatesAutoresizingMaskIntoConstraints = false
         let group = MacTheme.glassGroup()
         group.contentView = host
@@ -757,14 +804,18 @@ final class TranscriptViewController: NSViewController {
 
     private func configureJumpPill() -> NSView {
         jumpButton.isBordered = false
-        jumpButton.font = MacTheme.Ramp.font(.cardTitle)
+        jumpButton.font = MacTheme.Ramp.font(.pill)
         jumpButton.contentTintColor = MacTheme.Color.onGlass
         jumpButton.target = self
         jumpButton.action = #selector(jumpToBottom)
+        jumpButton.toolTip = Localized.text("Jump to the newest")
+        jumpButton.setAccessibilityLabel(Localized.text("Jump to the newest"))
         let padded = NSStackView(views: [jumpButton])
-        padded.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        padded.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
+            right: MacTheme.Spacing.m)
         padded.translatesAutoresizingMaskIntoConstraints = false
-        let glass = MacTheme.glass(around: padded, cornerRadius: 16)
+        let glass = MacTheme.glass(around: padded, cornerRadius: MacTheme.Radius.card)
         glass.isHidden = true
         return glass
     }
@@ -877,15 +928,27 @@ final class TranscriptViewController: NSViewController {
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
         scrollToBottom()
-        Task {
+        Task { [weak self] in
             do {
                 try await conversation.send(
                     text, model: model, reasoningEffort: effort, attachments: attachments)
             } catch {
                 MacHaptics.shared.play(.error)
                 NSSound.beep()
+                self?.undoEchoedPrompt(text)
             }
         }
+    }
+
+    /// A send that never reached the server is not a turn. The echo is the only thing on screen
+    /// saying the words were delivered, so it comes off, the sentence goes back where it was
+    /// written, and the failure is said in words — a beep under a prompt that still looks sent is
+    /// the one outcome this path must not leave behind.
+    private func undoEchoedPrompt(_ text: String) {
+        echoedPrompt = nil
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+        composer.insertText(text)
+        onToast?(Localized.text("That prompt did not reach the server."))
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
@@ -1239,7 +1302,7 @@ final class TranscriptViewController: NSViewController {
             context.workflowRuns = byCall
             refreshWorkflowCards(stale)
         }
-        updateTicker(running: state.status == .running)
+        updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
     }
 
     /// A changed run is written into the card it already has; only a card whose structure no
@@ -1384,11 +1447,39 @@ final class TranscriptViewController: NSViewController {
         view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
     }
 
+    /// The pane restyled for a light/dark flip nobody chose inside the app. `applyPaneColours` is
+    /// reached from the theme notification, which a change of *system* appearance never posts — and
+    /// a `CGColor` in a layer, a rendering in a memo and a row built under the old face all keep the
+    /// colours they were born with, which is white prose on a white pane behind dark chrome. So the
+    /// flip takes the road a theme change takes: drop what was baked, rebuild what was drawn.
+    func adoptEffectiveAppearance() {
+        guard isViewLoaded else { return }
+        MacMarkdown.invalidate()
+        applyPaneColours()
+        applyUIScale()
+    }
+
+    /// The labels the pane owns itself, restated. Every row is rebuilt from the ramp on this road,
+    /// but a font and an `NSColor` already handed to a label are baked — so without this a pane
+    /// showing a placeholder is the one surface a scale step and a theme change both miss entirely.
+    private func restyleOwnChrome() {
+        emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
+        emptyLabel.textColor = MacTheme.Color.secondaryLabel
+        identityLabel.font = MacTheme.Ramp.font(.paneIdentity)
+        identityLabel.textColor = MacTheme.Color.onGlassSecondary
+        earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
+        earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
+        jumpButton.font = MacTheme.Ramp.font(.pill)
+        jumpButton.contentTintColor = MacTheme.Color.onGlass
+    }
+
     func applyUIScale() {
         rowBuilder.invalidate()
+        Self.codeMemo = nil
         sessionRows = [:]
         sessionRowOrder = []
         pendingSignature = "\u{0}"
+        restyleOwnChrome()
         guard let state = lastState else { return }
         tearDownAllRows()
         placeholderShown = true
@@ -1500,6 +1591,11 @@ final class TranscriptViewController: NSViewController {
     /// out again. When the only difference is more words in a row that can take them where it
     /// stands — the answer the painter is holding, or a thought counting itself up — the change is
     /// written into the view and the bookkeeping moves with it.
+    ///
+    /// A painter with no hands on the row is served here too, and settles it whole. Reduce Motion
+    /// releases the wave on every arrival, so demanding the painter hold the row would send the one
+    /// row a person is reading down the rebuild path dozens of times a second — the very flicker
+    /// this exists to prevent, on the machine that asked for less movement.
     private func updatedLastRowInPlace(_ rows: [TranscriptRow]) -> Bool {
         guard !placeholderShown, fillComplete,
             renderedRows.count == rows.count, let last = rows.indices.last, last > 0,
@@ -1509,13 +1605,15 @@ final class TranscriptViewController: NSViewController {
         else { return false }
         switch (renderedRows[last].kind, rows[last].kind) {
         case (.agentProse, .agentProse), (.codeBlock, .codeBlock):
-            guard rows[last].key == cascade.key else { return false }
+            let painting = cascade.isActive
+            guard rows[last].key == cascade.key || !painting else { return false }
             let previous = renderedRows[last]
             renderedRows[last] = rows[last]
-            guard paintCascade() else {
+            guard painting ? paintCascade() : settleCascade(on: rows[last].key, in: rows) else {
                 renderedRows[last] = previous
                 return false
             }
+            if !painting, followsBottom { scrollToBottom() }
             return true
         case (.reasoning, .reasoning(let text)):
             guard let disclosure = rowViews[last] as? DisclosureRow else { return false }
@@ -1533,6 +1631,11 @@ final class TranscriptViewController: NSViewController {
     /// Forgets everything the transcript believes about the row the wave was painting and the rows
     /// after it, so the next fill cannot compare them equal and skip them. The words are the
     /// transcript's own, so nothing is refetched — only redrawn.
+    ///
+    /// Redrawn means the whole list `apply` draws, docked turn included. This clock is the path a
+    /// failed settle takes, which is the path a turn cut off mid-stream takes — so rebuilding from
+    /// the echo alone would delete the account of the interruption, with its resume and its dismiss,
+    /// at exactly the moment it was written, and a turn that ended sends no state to put it back.
     func rebuildStreamedTail(from key: String) {
         guard !placeholderShown, let index = renderedRows.lastIndex(where: { $0.key == key }),
             index < rowViews.count
@@ -1545,7 +1648,7 @@ final class TranscriptViewController: NSViewController {
         rowViews.removeSubrange(index...)
         renderedRows.removeSubrange(index...)
         let limit = max(windowLimit, Self.transcriptWindowPreference)
-        let rows = echoed(lastFullRows)
+        let rows = lastState.map { docked(echoed(lastFullRows), state: $0) } ?? echoed(lastFullRows)
         applyRows(rows.count > limit ? Array(rows.suffix(limit)) : rows)
     }
 
@@ -1659,7 +1762,7 @@ final class TranscriptViewController: NSViewController {
             renderedRows.remove(at: index)
         }
         let entering = rowsAnnounceArrival
-        for (offset, index) in plan.insertions.enumerated() {
+        for index in plan.insertions {
             let row = rows[index]
             let rowView = row.makeView(context: context)
             let at = min(index, rowViews.count)
@@ -1668,7 +1771,7 @@ final class TranscriptViewController: NSViewController {
             renderedRows.insert(row, at: at)
             let firstSight = enteredRows.insert(row.key).inserted
             if entering, firstSight, row.key != cascade.key, row.announcesArrival {
-                CascadeEntrance.animate(rowView, index: offset, of: plan.insertions.count)
+                CascadeEntrance.animate(rowView)
             }
         }
     }
@@ -1775,12 +1878,12 @@ final class TranscriptViewController: NSViewController {
 
     private func appendRowViews(_ rows: ArraySlice<TranscriptRow>) {
         let entering = rowsAnnounceArrival
-        for (offset, row) in rows.enumerated() {
+        for row in rows {
             let rowView = row.makeView(context: context)
             rowsStack.addArrangedSubview(rowView)
             let firstSight = enteredRows.insert(row.key).inserted
             if entering, firstSight, row.key != cascade.key, row.announcesArrival {
-                CascadeEntrance.animate(rowView, index: offset, of: rows.count)
+                CascadeEntrance.animate(rowView)
             }
             rowViews.append(rowView)
             renderedRows.append(row)
@@ -1811,21 +1914,49 @@ final class TranscriptViewController: NSViewController {
         switch row.kind {
         case .agentProse(_, let rendered):
             label.attributedStringValue = rendered
-        case .codeBlock(_, let body):
-            label.attributedStringValue = Self.codeRendering(body)
+        case .codeBlock(let language, let body):
+            label.attributedStringValue = Self.codeRendering(body, language: language)
         default:
             return false
         }
         return true
     }
 
-    /// A code block's body as the row already draws it, so the wave tints the same glyphs the
-    /// settled row shows rather than restyling them on its way past.
-    static func codeRendering(_ body: String) -> NSAttributedString {
-        NSAttributedString(
-            string: body,
-            attributes: [.font: MacTheme.Ramp.font(.code), .foregroundColor: MacTheme.Color.label])
+    /// A code block's body as the row already draws it — lexed by the shared highlighter in this
+    /// theme's colours — so the wave tints the same glyphs the settled row shows rather than
+    /// flattening them on its way past. A flat rendering here is not a frame's worth of drift: the
+    /// settled row then equals what was painted, the diff finds nothing to repaint, and every block
+    /// written under the reader's eyes stays monochrome beside coloured blocks loaded from history.
+    ///
+    /// The last rendering is kept because the wave asks for one every frame, and lexing a block that
+    /// is still growing at the display's rate is the one cost this path cannot carry. Exactly one
+    /// row is ever live, so one entry answers every ask.
+    static func codeRendering(_ body: String, language: String?) -> NSAttributedString {
+        if let memo = codeMemo, memo.body == body, memo.language == language {
+            return memo.rendering
+        }
+        let font = MacTheme.Ramp.font(.code)
+        let rendering: NSAttributedString
+        if SyntaxHighlighter.isDiff(language) {
+            rendering = RowKit.diffAttributed(body, font: font)
+        } else {
+            let lexed = NSMutableAttributedString(
+                string: body,
+                attributes: [.font: font, .foregroundColor: MacTheme.Color.label])
+            for token in SyntaxHighlighter.tokens(body, language: language) {
+                let range = NSRange(location: token.offset, length: token.length)
+                guard NSMaxRange(range) <= lexed.length else { continue }
+                lexed.addAttribute(
+                    .foregroundColor, value: MacTheme.Color.syntax(token.role), range: range)
+            }
+            rendering = lexed
+        }
+        codeMemo = (body, language, rendering)
+        return rendering
     }
+
+    private static var codeMemo:
+        (body: String, language: String?, rendering: NSAttributedString)?
 
     /// Where a live row keeps the words: prose is the label itself, a code block keeps its body
     /// under the header and behind a scroller once it is tall enough to need one.
@@ -2222,7 +2353,7 @@ final class TranscriptViewController: NSViewController {
     private func noteAppendedWhileScrolledUp(_ count: Int) {
         guard count > 0 else { return }
         unseenRows += count
-        jumpButton.title = "↓ \(unseenRows)"
+        jumpButton.title = Localized.text("↓ %@", "\(unseenRows)")
         jumpGlass?.isHidden = false
     }
 
@@ -2252,10 +2383,26 @@ final class TranscriptViewController: NSViewController {
         applyFindHighlight(scroll: true)
     }
 
+    /// "No matches" is a claim about the conversation, and the search only ever ran over the tail
+    /// window — so a word waiting behind the "… N earlier rows" button is counted and named. An
+    /// absence of results reads as an answer, and that one would be a lie about the transcript.
     private func updateFindCount() {
+        guard findMatches.isEmpty else {
+            findBar.setCount("\(findCursor + 1)/\(findMatches.count)")
+            return
+        }
+        let needle = findBar.query.lowercased()
+        let shown = Set(renderedRows.map(\.key))
+        let earlier =
+            needle.isEmpty
+            ? 0
+            : lastFullRows.filter {
+                !shown.contains($0.key) && $0.searchText.lowercased().contains(needle)
+            }.count
         findBar.setCount(
-            findMatches.isEmpty
-                ? Localized.text("No matches") : "\(findCursor + 1)/\(findMatches.count)")
+            earlier > 0
+                ? Localized.text("%@ in earlier rows", "\(earlier)")
+                : Localized.text("No matches"))
     }
 
     /// Marks the current match with a subtle accent ring, and on an explicit jump scrolls it to
@@ -2267,6 +2414,9 @@ final class TranscriptViewController: NSViewController {
         clearFindHighlight()
         let rowView = rowViews[index]
         rowView.wantsLayer = true
+        highlightRestore = (
+            rowView.layer?.backgroundColor, rowView.layer?.borderColor,
+            rowView.layer?.borderWidth ?? 0, rowView.layer?.cornerRadius ?? 0)
         rowView.layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.6).cgColor
         rowView.layer?.borderWidth = 2
         rowView.layer?.cornerRadius = 6
@@ -2280,8 +2430,13 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func clearFindHighlight() {
-        highlightedView?.layer?.borderWidth = 0
-        highlightedView?.layer?.backgroundColor = nil
+        if let layer = highlightedView?.layer, let restore = highlightRestore {
+            layer.backgroundColor = restore.background
+            layer.borderColor = restore.border
+            layer.borderWidth = restore.width
+            layer.cornerRadius = restore.radius
+        }
+        highlightRestore = nil
         highlightedView = nil
     }
 
@@ -2289,10 +2444,10 @@ final class TranscriptViewController: NSViewController {
     /// reader window rather than cramped into the flow: title, the facts under it, the body at
     /// reading width, and a copy that hands over every byte.
     private func presentReader(title: String, subtitle: String?, body: String, mono: Bool) {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = 0
+        column.wantsLayer = true
+        column.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
         column.translatesAutoresizingMaskIntoConstraints = false
 
         if let subtitle {
@@ -2309,6 +2464,8 @@ final class TranscriptViewController: NSViewController {
             text?.isEditable = false
             text?.string = body
             text?.font = MacTheme.Ramp.font(.code)
+            text?.textColor = MacTheme.Color.label
+            text?.drawsBackground = false
             text?.textContainerInset = NSSize(
                 width: MacTheme.Spacing.l, height: MacTheme.Spacing.m)
             scrollable.drawsBackground = false
@@ -2316,9 +2473,7 @@ final class TranscriptViewController: NSViewController {
             column.addArrangedSubview(scrollable)
         } else {
             let content = TranscriptRow.richBody(body, context: context)
-            let padded = NSStackView(views: [content])
-            padded.orientation = .vertical
-            padded.alignment = .width
+            let padded = FillingStack(views: [content])
             padded.edgeInsets = NSEdgeInsets(
                 top: MacTheme.Spacing.m, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
                 right: MacTheme.Spacing.l)
@@ -2382,6 +2537,11 @@ private final class FlippedClipView: NSClipView {
 /// a place a chat can land.
 private final class DropForwardingView: NSView {
     weak var owner: TranscriptViewController?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        owner?.adoptEffectiveAppearance()
+    }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         owner?.onDragEntered?(sender) == true ? .copy : []

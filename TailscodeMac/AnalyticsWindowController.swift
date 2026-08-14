@@ -10,10 +10,16 @@ import TailscodeCore
 @MainActor
 final class AnalyticsWindowController: NSWindowController {
     private let fetch: () async -> UsageAnalytics?
-    private let column = NSStackView()
+    private let column = FillingStack()
     private let scroll = NSScrollView()
     private var analytics: UsageAnalytics?
     private var loading = false
+    private var paintedDark = false
+    /// The sharing picker points at the control that was pressed, not at the window it lives in —
+    /// a menu that opens from the far edge of a resizable window reads as one that came from
+    /// nowhere. The footer is rebuilt with every render, so the button is remembered rather than
+    /// looked up.
+    private weak var shareAnchor: NSView?
 
     private static let chartHeight: CGFloat = 100
     private static let weekdayHeight: CGFloat = 56
@@ -29,7 +35,10 @@ final class AnalyticsWindowController: NSWindowController {
         window.contentMinSize = NSSize(width: 560, height: 320)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
-        window.contentView = makeContent()
+        let host = NSViewController(nibName: nil, bundle: nil)
+        host.view = makeContent()
+        window.contentViewController = host
+        paintedDark = window.effectiveAppearance.isDark
         window.center()
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
@@ -48,8 +57,6 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func makeContent() -> NSView {
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
@@ -65,7 +72,8 @@ final class AnalyticsWindowController: NSWindowController {
         scroll.backgroundColor = MacTheme.Color.canvas
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
+        let container = AnalyticsContentView(frame: .zero)
+        container.onAppearanceChange = { [weak self] in self?.appearanceChanged() }
         container.addSubview(scroll)
         NSLayoutConstraint.activate([
             column.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
@@ -83,7 +91,7 @@ final class AnalyticsWindowController: NSWindowController {
     private func reload() {
         guard !loading else { return }
         loading = true
-        renderMessage(Localized.text("Reading the ledger…"))
+        if analytics == nil { render() }
         Task { [weak self] in
             guard let self else { return }
             self.analytics = await self.fetch()
@@ -101,11 +109,18 @@ final class AnalyticsWindowController: NSWindowController {
 
     @objc private func repaint() {
         scroll.backgroundColor = MacTheme.Color.canvas
-        if loading {
-            renderMessage(Localized.text("Reading the ledger…"))
-        } else {
-            render()
-        }
+        render()
+    }
+
+    /// AppKit re-resolves an `NSColor` when the light changes and can do nothing for a `CGColor`
+    /// already sitting in a layer — which is every card, bar and track here. A flip therefore draws
+    /// the report again, on the next turn of the loop so the colours are asked under the appearance
+    /// that has actually taken hold, and only when the face genuinely changed: a theme change
+    /// arrives on its own notification and must not be answered twice.
+    private func appearanceChanged() {
+        guard let window, window.effectiveAppearance.isDark != paintedDark else { return }
+        paintedDark = window.effectiveAppearance.isDark
+        Task { @MainActor [weak self] in self?.repaint() }
     }
 
     private func renderMessage(_ text: String) {
@@ -118,7 +133,10 @@ final class AnalyticsWindowController: NSWindowController {
     private func render() {
         clearColumn()
         guard let analytics else {
-            renderMessage(Localized.text("Nothing on the ledger yet."))
+            renderMessage(
+                loading
+                    ? Localized.text("Reading the ledger…")
+                    : Localized.text("Nothing on the ledger yet."))
             return
         }
         column.addArrangedSubview(heroSection(analytics))
@@ -183,7 +201,7 @@ final class AnalyticsWindowController: NSWindowController {
         let bars = NSStackView()
         bars.orientation = .horizontal
         bars.alignment = .bottom
-        bars.distribution = .equalSpacing
+        bars.distribution = .fill
         bars.spacing = 2
         bars.translatesAutoresizingMaskIntoConstraints = false
         for day in analytics.days {
@@ -193,6 +211,7 @@ final class AnalyticsWindowController: NSWindowController {
                 ? MacTheme.Color.accent : zero ? MacTheme.Color.separator : MacTheme.Color.info
             let bar = AnalyticsBar(fill: fill)
             bar.toolTip = "\(day.weekdayLabel) \(day.label) · \(day.money)"
+            bar.speak(bar.toolTip)
             NSLayoutConstraint.activate([
                 bar.widthAnchor.constraint(equalToConstant: 10),
                 bar.heightAnchor.constraint(
@@ -200,6 +219,7 @@ final class AnalyticsWindowController: NSWindowController {
             ])
             bars.addArrangedSubview(bar)
         }
+        bars.addArrangedSubview(RowKit.spacer())
         bars.heightAnchor.constraint(equalToConstant: Self.chartHeight).isActive = true
 
         var annotations: [NSView] = []
@@ -233,6 +253,7 @@ final class AnalyticsWindowController: NSWindowController {
             week.spacing = MacTheme.Spacing.s
             for day in analytics.weekdays {
                 let bar = AnalyticsBar(fill: MacTheme.Color.info)
+                bar.speak("\(day.label) · \(day.money)")
                 NSLayoutConstraint.activate([
                     bar.widthAnchor.constraint(equalToConstant: 26),
                     bar.heightAnchor.constraint(
@@ -253,12 +274,13 @@ final class AnalyticsWindowController: NSWindowController {
             let hours = NSStackView()
             hours.orientation = .horizontal
             hours.alignment = .bottom
-            hours.distribution = .equalSpacing
+            hours.distribution = .fill
             hours.spacing = 2
             for hour in analytics.hours {
                 let zero = hour.turns <= 0
                 let bar = AnalyticsBar(fill: zero ? MacTheme.Color.separator : MacTheme.Color.info)
                 bar.toolTip = "\(hour.label):00 · " + Localized.text("%d turns", hour.turns)
+                bar.speak(bar.toolTip)
                 NSLayoutConstraint.activate([
                     bar.widthAnchor.constraint(equalToConstant: 14),
                     bar.heightAnchor.constraint(
@@ -266,6 +288,7 @@ final class AnalyticsWindowController: NSWindowController {
                 ])
                 hours.addArrangedSubview(bar)
             }
+            hours.addArrangedSubview(RowKit.spacer())
             hours.heightAnchor.constraint(equalToConstant: Self.hourHeight).isActive = true
             views.append(hours)
         }
@@ -347,13 +370,14 @@ final class AnalyticsWindowController: NSWindowController {
         let value = RowKit.label(
             record.value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         var views: [NSView] = [symbol, title, value]
+        var caption: NSTextField?
         if let detail = record.detail {
-            let caption = RowKit.wrapping(
+            let text = RowKit.wrapping(
                 detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
-            caption.maximumNumberOfLines = 2
-            caption.cell?.truncatesLastVisibleLine = true
-            caption.preferredMaxLayoutWidth = 210
-            views.append(caption)
+            text.maximumNumberOfLines = 2
+            text.cell?.truncatesLastVisibleLine = true
+            caption = text
+            views.append(text)
         }
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
@@ -366,6 +390,10 @@ final class AnalyticsWindowController: NSWindowController {
         stack.layer?.cornerRadius = MacTheme.Radius.control
         stack.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
         stack.translatesAutoresizingMaskIntoConstraints = false
+        if let caption {
+            caption.widthAnchor.constraint(
+                equalTo: stack.widthAnchor, constant: -2 * MacTheme.Spacing.s).isActive = true
+        }
         return stack
     }
 
@@ -468,7 +496,8 @@ final class AnalyticsWindowController: NSWindowController {
         count.setContentHuggingPriority(.required, for: .horizontal)
         var topViews: [NSView] = [name, RowKit.spacer(), count]
         if let money {
-            let amount = RowKit.label(money, font: Self.moneyFont(), color: MacTheme.Color.label)
+            let amount = RowKit.label(
+                money, font: MacTheme.Ramp.font(.metricValue), color: MacTheme.Color.label)
             amount.setContentHuggingPriority(.required, for: .horizontal)
             topViews.append(amount)
         }
@@ -492,9 +521,7 @@ final class AnalyticsWindowController: NSWindowController {
             fill.widthAnchor.constraint(greaterThanOrEqualToConstant: 2),
         ])
 
-        let block = NSStackView(views: [top, track])
-        block.orientation = .vertical
-        block.alignment = .width
+        let block = FillingStack(views: [top, track])
         block.spacing = 3
         return block
     }
@@ -514,9 +541,7 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func card(views: [NSView]) -> NSView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .vertical
-        stack.alignment = .width
+        let stack = FillingStack(views: views)
         stack.spacing = MacTheme.Spacing.s
         stack.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -532,8 +557,9 @@ final class AnalyticsWindowController: NSWindowController {
         var views: [NSView] = [RowKit.spacer()]
         if analytics != nil {
             let share = RowKit.ActionButton(title: Localized.text("Share")) { [weak self] in
-                self?.share(from: self?.window?.contentView)
+                self?.share(from: self?.shareAnchor)
             }
+            shareAnchor = share
             share.bezelStyle = .rounded
             share.controlSize = .small
             views.append(share)
@@ -555,7 +581,6 @@ final class AnalyticsWindowController: NSWindowController {
         let package = AnalyticsShare(analytics)
         var items: [Any] = [package.plainText]
         if let rendered = AnalyticsCardRenderer.png(package) {
-            items.insert(rendered.image, at: 0)
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("shared-analytics", isDirectory: true)
             try? FileManager.default.createDirectory(
@@ -563,6 +588,8 @@ final class AnalyticsWindowController: NSWindowController {
             let url = directory.appendingPathComponent(rendered.filename)
             if (try? rendered.data.write(to: url, options: .atomic)) != nil {
                 items.insert(url, at: 0)
+            } else {
+                items.insert(rendered.image, at: 0)
             }
         }
         let picker = NSSharingServicePicker(items: items)
@@ -578,16 +605,14 @@ final class AnalyticsWindowController: NSWindowController {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
     }
 
+    /// The month's one big number, in the ramp's own hero size — rounded is a design, not a size,
+    /// so the descriptor is redrawn at the size the ramp already scaled for the type preference.
     private static func heroFont() -> NSFont {
         let base = MacTheme.Ramp.font(.metricHero)
         guard let descriptor = base.fontDescriptor.withDesign(.rounded),
-            let rounded = NSFont(descriptor: descriptor, size: 34)
+            let rounded = NSFont(descriptor: descriptor, size: base.pointSize)
         else { return base }
         return rounded
-    }
-
-    private static func moneyFont() -> NSFont {
-        .monospacedDigitSystemFont(ofSize: 12 * MacTheme.UIScale.factor, weight: .semibold)
     }
 }
 
@@ -605,4 +630,32 @@ private final class AnalyticsBar: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A chart says everything in its heights, and a height says nothing to a screen reader — so
+    /// the bar carries the sentence its tooltip carries, which is a pointer's affordance alone.
+    func speak(_ sentence: String?) {
+        guard let sentence, !sentence.isEmpty else { return }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(sentence)
+    }
+}
+
+/// The window's own content, which is where a change of light is heard: AppKit tells a view its
+/// effective appearance changed and tells a window controller nothing at all.
+@MainActor
+private final class AnalyticsContentView: NSView {
+    var onAppearanceChange: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
 }

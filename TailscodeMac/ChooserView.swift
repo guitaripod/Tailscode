@@ -8,18 +8,14 @@ import TailscodeCore
 final class ChooserView: NSView {
     private let heading = NSTextField(labelWithString: "")
     private let hint = NSTextField(labelWithString: "")
-    private let rows = NSStackView()
+    private let rows = FillingStack()
+    private var model: PaneChooser?
     private var onActivate: ((Int) -> Void)?
 
     init() {
         super.init(frame: .zero)
-        heading.font = MacTheme.Ramp.font(.sectionLabel)
-        heading.textColor = MacTheme.Color.secondaryLabel
-        hint.font = MacTheme.Ramp.font(.panelFootnote)
-        hint.textColor = MacTheme.Color.tertiaryLabel
+        applyTheme()
 
-        rows.orientation = .vertical
-        rows.alignment = .width
         rows.spacing = 2
 
         let column = NSStackView(views: [heading, hint, rows])
@@ -35,12 +31,31 @@ final class ChooserView: NSView {
             column.topAnchor.constraint(equalTo: topAnchor),
             column.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A pane asking the question holds no conversation, so the restyle pass that rebuilds a
+    /// transcript from its last state reaches nothing here — and every row bakes its fonts and its
+    /// focus tint as it is built. The question is cheap to ask again, so a repaint asks it again.
+    @objc private func repaint() {
+        applyTheme()
+        guard let model, let onActivate else { return }
+        render(model, onActivate: onActivate)
+    }
+
+    private func applyTheme() {
+        heading.font = MacTheme.Ramp.font(.sectionLabel)
+        heading.textColor = MacTheme.Color.secondaryLabel
+        hint.font = MacTheme.Ramp.font(.panelFootnote)
+        hint.textColor = MacTheme.Color.tertiaryLabel
+    }
+
     func render(_ model: PaneChooser, onActivate: @escaping (Int) -> Void) {
+        self.model = model
         self.onActivate = onActivate
         heading.stringValue = model.heading
         hint.stringValue = model.hint
@@ -71,6 +86,8 @@ final class ChooserRowView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = MacTheme.Radius.control
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
 
         number.font = MacTheme.Ramp.font(.rowNote)
         number.textColor = MacTheme.Color.tertiaryLabel
@@ -121,6 +138,9 @@ final class ChooserRowView: NSView {
         detail.stringValue = row.detail
         note.stringValue = row.note ?? ""
         note.isHidden = row.note == nil
+        setAccessibilityLabel(
+            [row.title, row.detail, row.note ?? ""].filter { !$0.isEmpty }
+                .joined(separator: ". "))
         layer?.backgroundColor =
             focused
             ? MacTheme.Color.accent.withAlphaComponent(0.18).cgColor : NSColor.clear.cgColor
@@ -140,6 +160,11 @@ final class ChooserRowView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onClick?()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?()
+        return true
     }
 
     private static func pill(_ text: String, tint: NSColor) -> NSView {

@@ -50,18 +50,20 @@ enum MacMarkdown {
         var italic = false
         var strike = false
         var mono = false
-        var color: NSColor = .labelColor
+        var tabular = false
+        var color: NSColor = MacTheme.Color.label
         var background: NSColor?
         var link: URL?
     }
 
     private static func block(_ raw: String) -> NSAttributedString {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let unit = MacTheme.UIScale.factor
         let indent = raw.prefix { $0 == " " || $0 == "\t" }.count
 
         if trimmed == "---" || trimmed == "***" || trimmed == "___" {
             var style = Style()
-            style.color = .secondaryLabelColor
+            style.color = MacTheme.Color.secondaryLabel
             return NSAttributedString(string: "──────────", attributes: attributes(style))
         }
         if trimmed.hasPrefix("#") {
@@ -69,51 +71,73 @@ enum MacMarkdown {
             if hashes <= 6, trimmed.dropFirst(hashes).first == " " {
                 let body = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
                 var style = Style()
-                style.size = hashes <= 2 ? size(.headline) : size(.cardTitle)
+                style.size = hashes <= 2 ? size(.headline) : size(.panelTitle)
                 style.bold = true
-                return inline(body, base: style)
+                return heading(inline(body, base: style))
             }
         }
         if trimmed.hasPrefix("> ") {
             let body = String(trimmed.dropFirst(2))
             var style = Style()
             style.italic = true
-            style.color = .secondaryLabelColor
+            style.color = MacTheme.Color.secondaryLabel
             let quoted = NSMutableAttributedString(string: "│ ", attributes: attributes(style))
             quoted.append(inline(body, base: style))
-            return indented(quoted, first: 12, rest: 12)
+            return indented(quoted, first: 12 * unit, rest: 12 * unit)
         }
         if let marker = bulletMarker(trimmed) {
             let body = String(trimmed.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
-            let depth = CGFloat(min(8, indent)) * 6
+            let depth = CGFloat(min(8, indent)) * 6 * unit
             if let box = taskBox(body) {
                 var tint = Style()
-                tint.color = box.done ? .controlAccentColor : .secondaryLabelColor
+                tint.color = box.done ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
                 let line = NSMutableAttributedString(
                     string: box.done ? "☑  " : "☐  ", attributes: attributes(tint))
                 line.append(inline(box.body, base: Style()))
-                return indented(line, first: depth, rest: depth + 14)
+                return indented(line, first: depth, rest: depth + 14 * unit)
             }
             let glyph = indent >= 2 ? "◦" : "•"
             var accent = Style()
-            accent.color = .controlAccentColor
+            accent.color = MacTheme.Color.accent
             let line = NSMutableAttributedString(
                 string: "\(glyph)  ", attributes: attributes(accent))
             line.append(inline(body, base: Style()))
-            return indented(line, first: depth, rest: depth + 14)
+            return indented(line, first: depth, rest: depth + 14 * unit)
         }
         if let number = numberedMarker(trimmed) {
             let body = String(trimmed.dropFirst(number.count)).trimmingCharacters(in: .whitespaces)
             let label = number.trimmingCharacters(in: .whitespaces)
             var accent = Style()
-            accent.color = .controlAccentColor
+            accent.color = MacTheme.Color.accent
             let line = NSMutableAttributedString(
                 string: "\(label) ", attributes: attributes(accent))
             line.append(inline(body, base: Style()))
-            let depth = CGFloat(min(8, indent)) * 6
-            return indented(line, first: depth, rest: depth + CGFloat(label.count + 1) * 8)
+            let depth = CGFloat(min(8, indent)) * 6 * unit
+            return indented(
+                line, first: depth, rest: depth + CGFloat(label.count + 1) * 8 * unit)
         }
         return inline(raw, base: Style())
+    }
+
+    /// A heading is a heading by the air above it as much as by the weight in it, and every other
+    /// block here is one line of an unbroken paragraph stream — so the space has to be asked for
+    /// rather than inherited from a margin nothing sets.
+    private static func heading(_ line: NSAttributedString) -> NSAttributedString {
+        let spaced = paragraph()
+        spaced.paragraphSpacingBefore = 6 * MacTheme.UIScale.factor
+        let made = NSMutableAttributedString(attributedString: line)
+        made.addAttribute(
+            .paragraphStyle, value: spaced, range: NSRange(location: 0, length: made.length))
+        return made
+    }
+
+    /// The leading the ramp writes the answer in. Prose left at the face's own leading is the one
+    /// thing a reader notices without being able to name it, and this is the most-read text in the
+    /// app.
+    private static func paragraph() -> NSMutableParagraphStyle {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineHeightMultiple = CGFloat(Typography.spec(.answer).lineHeight)
+        return paragraph
     }
 
     /// A list item is one paragraph with two left edges: the glyph sits at `first`, everything the
@@ -123,12 +147,12 @@ enum MacMarkdown {
     private static func indented(
         _ line: NSMutableAttributedString, first: CGFloat, rest: CGFloat
     ) -> NSAttributedString {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.firstLineHeadIndent = first
-        paragraph.headIndent = rest
-        paragraph.paragraphSpacing = 3
+        let hanging = paragraph()
+        hanging.firstLineHeadIndent = first
+        hanging.headIndent = rest
+        hanging.paragraphSpacing = 3
         line.addAttribute(
-            .paragraphStyle, value: paragraph, range: NSRange(location: 0, length: line.length))
+            .paragraphStyle, value: hanging, range: NSRange(location: 0, length: line.length))
         return line
     }
 
@@ -160,7 +184,8 @@ enum MacMarkdown {
         var style = Style()
         style.size = size(.tableCell)
         style.bold = header
-        if header { style.color = .secondaryLabelColor }
+        style.tabular = true
+        if header { style.color = MacTheme.Color.secondaryLabel }
         return inline(text, base: style)
     }
 
@@ -361,12 +386,12 @@ enum MacMarkdown {
                     var code = style
                     code.mono = true
                     code.size = size(.code)
-                    code.background = .quaternarySystemFill
+                    code.background = MacTheme.Color.codeBackground
                     assembled.append(
                         NSAttributedString(string: codeSpans[span], attributes: attributes(code)))
                 } else if !isCode, let span = Int(digits), links.indices.contains(span) {
                     var linked = style
-                    linked.color = .controlAccentColor
+                    linked.color = MacTheme.Color.accent
                     linked.link = URL(string: links[span].url)
                     assembled.append(
                         assemble(links[span].label, base: linked, codeSpans: codeSpans, links: []))
@@ -396,9 +421,21 @@ enum MacMarkdown {
         if style.italic {
             font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
         }
+        if style.tabular {
+            font =
+                NSFont(
+                    descriptor: font.fontDescriptor.addingAttributes([
+                        .featureSettings: [[
+                            NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+                            NSFontDescriptor.FeatureKey.selectorIdentifier:
+                                kMonospacedNumbersSelector,
+                        ]]
+                    ]), size: size) ?? font
+        }
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: style.color,
+            .paragraphStyle: paragraph(),
         ]
         if style.strike {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue

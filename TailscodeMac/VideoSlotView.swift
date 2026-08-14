@@ -17,12 +17,13 @@ import TailscodeCore
 final class VideoSlotView: NSView, NSTextFieldDelegate {
     private(set) var slot: VideoSlot
     private let playerView = AVPlayerView()
-    private let promptStack = NSStackView()
+    private let promptStack = FillingStack()
     private let field = NSTextField()
     private let headingLabel = NSTextField(labelWithString: Localized.text("Watch"))
-    private let reasonLabel = NSTextField(labelWithString: "")
+    private let reasonLabel = NSTextField(wrappingLabelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
     private let noticeLabel = NSTextField(wrappingLabelWithString: "")
+    private lazy var noticeCardView: NSView = Self.noticeCard(around: noticeLabel)
     private let boardView = WatchBoardView()
     private var board = WatchChooser()
     private var accountChannels: [MediaChannel] = []
@@ -73,16 +74,22 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         wantsLayer = true
 
         playerView.translatesAutoresizingMaskIntoConstraints = false
-        playerView.controlsStyle = .floating
+        playerView.controlsStyle = .inline
         playerView.videoGravity = .resizeAspect
         playerView.isHidden = true
         addSubview(playerView)
 
         headingLabel.font = MacTheme.Ramp.font(.cardTitle)
         headingLabel.alignment = .center
+        headingLabel.maximumNumberOfLines = 1
+        headingLabel.lineBreakMode = .byTruncatingTail
+        headingLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         reasonLabel.font = MacTheme.Ramp.font(.panelFootnote)
         reasonLabel.textColor = MacTheme.Color.secondaryLabel
         reasonLabel.alignment = .center
+        reasonLabel.isSelectable = false
+        reasonLabel.maximumNumberOfLines = 0
+        reasonLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         hintLabel.font = MacTheme.Ramp.font(.panelFootnote)
         hintLabel.textColor = MacTheme.Color.secondaryLabel
@@ -109,15 +116,10 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         noticeLabel.translatesAutoresizingMaskIntoConstraints = false
         renderNotice()
 
-        promptStack.orientation = .vertical
-        promptStack.alignment = .width
         promptStack.spacing = MacTheme.Spacing.m
         promptStack.translatesAutoresizingMaskIntoConstraints = false
         promptStack.setViews(
-            [
-                headingLabel, field, reasonLabel, boardView, hintLabel,
-                Self.noticeCard(around: noticeLabel),
-            ],
+            [headingLabel, field, reasonLabel, boardView, hintLabel, noticeCardView],
             in: .center)
         addSubview(promptStack)
 
@@ -153,14 +155,14 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
     }
 
     /// The tinted card the split-cost notice sits in. Content rather than chrome, so it is a plain
-    /// rounded fill on the opaque canvas and never glass — prose does not sit on glass.
+    /// rounded fill on the opaque canvas and never glass — prose does not sit on glass. The accent
+    /// itself is applied by ``applyNoticeTint()``, because a colour put in a layer keeps the light
+    /// it was born under.
     private static func noticeCard(around content: NSView) -> NSView {
         let card = NSView()
         card.wantsLayer = true
         card.layer?.cornerRadius = MacTheme.Radius.card
-        card.layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.10).cgColor
         card.layer?.borderWidth = 1
-        card.layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.30).cgColor
         card.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(content)
         NSLayoutConstraint.activate([
@@ -233,7 +235,8 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         case .success(let url):
             play(url)
         case .failure(let error):
-            slot.failed("\(error)")
+            slot.failed(
+                (error as? VideoResolver.Failure)?.description ?? error.localizedDescription)
             render()
         }
     }
@@ -275,9 +278,18 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         focusPrompt()
     }
 
+    /// What the keys mean once the pane is holding a stream. Reload is answered before the player
+    /// is asked for, because a resolve that failed left no player at all and reload is the one
+    /// command that can bring the stream back — a network that blinked would otherwise leave the
+    /// pane a dead end that states a reason and offers nothing.
     func handle(_ command: VideoCommand) {
         guard command != .change else {
             ask()
+            return
+        }
+        guard command != .reload else {
+            guard !slot.isAsking, let target = slot.target else { return }
+            point(at: target)
             return
         }
         guard let player, !slot.isAsking else { return }
@@ -296,9 +308,7 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
             let delta = command == .seekBack ? -10.0 : 10.0
             let time = player.currentTime() + CMTime(seconds: delta, preferredTimescale: 600)
             player.seek(to: time)
-        case .reload:
-            if let target = slot.target { point(at: target) }
-        case .change:
+        case .reload, .change:
             return
         }
         render()
@@ -378,6 +388,19 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor =
                 playing ? NSColor.black.cgColor : MacTheme.Color.canvas.cgColor
+        }
+        applyNoticeTint()
+    }
+
+    /// The card's accent, asked again with the ground: it is drawn from a layer's own colours, so
+    /// without this it would keep the other face's accent after a light↔dark switch while every
+    /// label around it had already repainted.
+    private func applyNoticeTint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            noticeCardView.layer?.backgroundColor =
+                MacTheme.Color.accent.withAlphaComponent(0.10).cgColor
+            noticeCardView.layer?.borderColor =
+                MacTheme.Color.accent.withAlphaComponent(0.30).cgColor
         }
     }
 

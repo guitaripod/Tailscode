@@ -27,7 +27,7 @@ enum UsageFormat {
         case .warn: return MacTheme.Color.warning
         case .ok: return MacTheme.Color.accent
         case .balance: return MacTheme.Color.label
-        case .quiet: return MacTheme.Color.tertiaryLabel
+        case .quiet: return MacTheme.Color.secondaryLabel
         }
     }
 
@@ -36,12 +36,14 @@ enum UsageFormat {
         case "claude": return MacTheme.Color.claude
         case "opencode": return MacTheme.Color.opencode
         case "grok":
-            return NSColor(
-                name: nil,
-                dynamicProvider: { appearance in
-                    appearance.isDark
-                        ? NSColor(white: 0.91, alpha: 1) : NSColor(white: 0.12, alpha: 1)
-                })
+            return ThemePalette.color(
+                \.brandGrok,
+                system: NSColor(
+                    name: nil,
+                    dynamicProvider: { appearance in
+                        appearance.isDark
+                            ? NSColor(white: 0.91, alpha: 1) : NSColor(white: 0.12, alpha: 1)
+                    }))
         default: return nil
         }
     }
@@ -113,14 +115,12 @@ enum UsageFormat {
     /// when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            return "$\(trimmed(used)) of $\(trimmed(limit))"
+            return Localized.text(
+                "%@ of %@", QuotaGlance.money(used, gauge.currency),
+                QuotaGlance.money(limit, gauge.currency))
         }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
-    }
-
-    static func trimmed(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(format: "%.2f", value)
     }
 
     static func countdown(to date: Date) -> String {
@@ -139,13 +139,12 @@ enum UsageFormat {
 /// resetting. Transparent over the sidebar material — the glass is the only background.
 @MainActor
 final class UsageFooterView: NSView {
-    private let column = NSStackView()
+    private let column = FillingStack()
+    private var last: ([(String, UsageQuota)], Date?) = ([], nil)
 
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = 4
         column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)
@@ -156,12 +155,23 @@ final class UsageFooterView: NSView {
             column.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         isHidden = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A theme reaches an `NSColor` on its own, but never a `CGColor` already in a bar's layer —
+    /// and the window's restyle rebuilds the rows above this strip without coming through here. So
+    /// the strip draws itself again from the reading it already had, rather than wearing the last
+    /// theme's ink until the next usage tick.
+    @objc private func repaint() {
+        render(last.0, answeredAt: last.1)
+    }
+
     func render(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
+        last = (quotas, answeredAt)
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let glance = QuotaGlance.make(from: quotas, answeredAt: answeredAt)
         isHidden = glance.isEmpty
@@ -183,7 +193,7 @@ final class UsageFooterView: NSView {
             row.orientation = .horizontal
             row.alignment = .centerY
             row.spacing = MacTheme.Spacing.s
-            row.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 0)
+            row.edgeInsets = NSEdgeInsets(top: 0, left: Self.textIndent, bottom: 0, right: 0)
             return row
         }
 
@@ -208,7 +218,9 @@ final class UsageFooterView: NSView {
             let value = RowKit.label(
                 line.trailing, font: MacTheme.Ramp.font(.gauge), color: color)
             value.alignment = .right
-            value.widthAnchor.constraint(equalToConstant: 62).isActive = true
+            value.setContentCompressionResistancePriority(.required, for: .horizontal)
+            value.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: 62 * MacTheme.UIScale.factor).isActive = true
             views.append(value)
         }
         let row = NSStackView(views: views)
@@ -216,6 +228,15 @@ final class UsageFooterView: NSView {
         row.alignment = .centerY
         row.spacing = MacTheme.Spacing.xs
         return row
+    }
+
+    /// Where the words start on a line that carries no dot. The column it has to meet is one glyph
+    /// of a font that grows with the type scale, so the indent is measured off that glyph rather
+    /// than kept as a constant that only lines up at one size.
+    private static var textIndent: CGFloat {
+        let dot = RowKit.label(
+            "●", font: MacTheme.Ramp.font(.gaugeCaption), color: MacTheme.Color.label)
+        return dot.intrinsicContentSize.width + MacTheme.Spacing.xs
     }
 }
 
@@ -225,7 +246,7 @@ final class UsageFooterView: NSView {
 /// button asks again. Popover chrome is the system material — content, not floating glass.
 @MainActor
 final class UsagePanelViewController: NSViewController {
-    private let column = NSStackView()
+    private let column = FillingStack()
     private var quotas: [(String, UsageQuota)]
     private let refresh: () async -> [(String, UsageQuota)]
     private let onAnalytics: () -> Void
@@ -246,8 +267,6 @@ final class UsagePanelViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
@@ -288,9 +307,7 @@ final class UsagePanelViewController: NSViewController {
             right: MacTheme.Spacing.m)
         footer.translatesAutoresizingMaskIntoConstraints = false
 
-        let content = NSStackView(views: [scroll, footer])
-        content.orientation = .vertical
-        content.alignment = .width
+        let content = FillingStack(views: [scroll, footer])
         content.spacing = MacTheme.Spacing.s
         content.translatesAutoresizingMaskIntoConstraints = false
 
@@ -367,7 +384,7 @@ final class UsagePanelViewController: NSViewController {
         name.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let amount = RowKit.label(
             UsageFormat.amount(for: gauge),
-            font: .monospacedDigitSystemFont(ofSize: 22, weight: .semibold),
+            font: MacTheme.Ramp.font(.metricLarge),
             color: severity == "ok"
                 ? MacTheme.Color.label : UsageFormat.severityColor(severity))
         amount.setContentHuggingPriority(.required, for: .horizontal)
@@ -391,9 +408,7 @@ final class UsagePanelViewController: NSViewController {
                     phrasing, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
-        let hero = NSStackView(views: views)
-        hero.orientation = .vertical
-        hero.alignment = .width
+        let hero = FillingStack(views: views)
         hero.spacing = MacTheme.Spacing.s
         hero.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -408,9 +423,7 @@ final class UsagePanelViewController: NSViewController {
     private func card(_ holding: QuotaHolding) -> NSView {
         let quota = holding.quota
         let slug = holding.slug
-        let card = NSStackView()
-        card.orientation = .vertical
-        card.alignment = .width
+        let card = FillingStack()
         card.spacing = MacTheme.Spacing.s
         card.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -433,7 +446,7 @@ final class UsagePanelViewController: NSViewController {
         header.addArrangedSubview(RowKit.spacer())
         header.addArrangedSubview(Self.badge(for: quota))
         header.orientation = .horizontal
-        header.alignment = .firstBaseline
+        header.alignment = .centerY
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
 
@@ -466,9 +479,7 @@ final class UsagePanelViewController: NSViewController {
     private static func gaugeBlock(_ gauge: UsageQuota.Gauge, slug: String?) -> NSView {
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = UsageFormat.severity(fraction)
-        let block = NSStackView()
-        block.orientation = .vertical
-        block.alignment = .width
+        let block = FillingStack()
         block.spacing = 3
 
         let title = RowKit.label(
@@ -482,12 +493,10 @@ final class UsagePanelViewController: NSViewController {
         row.spacing = MacTheme.Spacing.s
         block.addArrangedSubview(row)
 
-        let bar = UsageFormat.gaugeBar(
-            fraction: fraction, width: 300, height: 6,
-            fill: UsageFormat.fillColor(severity: severity, slug: slug))
-        let barRow = NSStackView(views: [bar, RowKit.spacer()])
-        barRow.orientation = .horizontal
-        block.addArrangedSubview(barRow)
+        block.addArrangedSubview(
+            UsageFormat.fullWidthBar(
+                fraction: fraction, height: 6,
+                fill: UsageFormat.fillColor(severity: severity, slug: slug)))
 
         if let resets = gauge.resetsAt {
             let phrasing =
@@ -513,7 +522,7 @@ final class UsagePanelViewController: NSViewController {
         wrap.layer?.backgroundColor =
             (quota.live
                 ? MacTheme.Color.success.withAlphaComponent(0.15)
-                : MacTheme.Color.canvasRaised).cgColor
+                : MacTheme.Color.secondaryLabel.withAlphaComponent(0.15)).cgColor
         wrap.translatesAutoresizingMaskIntoConstraints = false
         wrap.addSubview(label)
         NSLayoutConstraint.activate([

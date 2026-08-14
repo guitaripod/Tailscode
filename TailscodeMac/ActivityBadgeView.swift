@@ -38,6 +38,19 @@ final class ActivityPulse {
     init(view: NSView, onFrame: ((String) -> Void)? = nil) {
         self.view = view
         self.onFrame = onFrame
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+    }
+
+    /// A mark already breathing has no reason to re-apply the state it is already wearing, so a
+    /// desk that asks for less motion mid-turn would otherwise be honoured only by marks built
+    /// after the switch. The icon is dropped and handed straight back, which is the one way past
+    /// that guard and retakes the still-or-animated decision with the new answer.
+    @objc private func motionPreferenceChanged() {
+        let held = icon
+        icon = nil
+        apply(held)
     }
 
     /// Whether the desk wants motion. Read per state rather than per frame; a Mac that has asked
@@ -150,7 +163,15 @@ final class ActivityBadgeView: NSView {
     private let holder = NSView()
     private let imageView = NSImageView()
     private lazy var pulse = ActivityPulse(view: holder)
-    private let pointSize: CGFloat
+    /// The symbol's size, settable because a badge lives in a recycled cell: the only chance it
+    /// gets to follow a step of the type scale is the row configuring it again.
+    var pointSize: CGFloat {
+        didSet {
+            guard pointSize != oldValue else { return }
+            invalidateIntrinsicContentSize()
+            apply()
+        }
+    }
 
     var activity: ActivityKind? {
         didSet {

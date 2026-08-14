@@ -47,8 +47,7 @@ final class PillsRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        vimBadge.font = MacTheme.Ramp.font(.badge)
-        vimBadge.textColor = MacTheme.Color.label
+        vimBadge.textColor = MacTheme.Color.onGlass
         vimBadge.translatesAutoresizingMaskIntoConstraints = false
         vimBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
         vimBadgeWrap.wantsLayer = true
@@ -64,8 +63,7 @@ final class PillsRow: NSView {
         ])
         vimBadgeWrap.isHidden = true
 
-        destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        destinationLabel.textColor = MacTheme.Color.tertiaryLabel
+        destinationLabel.textColor = MacTheme.Color.onGlassSecondary
         destinationLabel.lineBreakMode = .byTruncatingMiddle
         destinationLabel.translatesAutoresizingMaskIntoConstraints = false
         destinationLabel.setContentCompressionResistancePriority(
@@ -89,12 +87,18 @@ final class PillsRow: NSView {
         stopButton.image = NSImage(
             systemSymbolName: "stop.fill",
             accessibilityDescription: Localized.text("Stop the running turn"))
-        stopButton.contentTintColor = MacTheme.Color.danger
         stopButton.toolTip = Localized.text("Stop the running turn")
         stopButton.isHidden = true
         stopButton.target = self
         stopButton.action = #selector(stopTapped)
         stopButton.translatesAutoresizingMaskIntoConstraints = false
+
+        for pill in [modelPill, effortPill, commandPill] {
+            pill.setContentCompressionResistancePriority(.init(251), for: .horizontal)
+            pill.cell?.lineBreakMode = .byTruncatingTail
+        }
+        attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        stopButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let row = NSStackView(views: [
             vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill, RowKit.spacer(),
@@ -111,10 +115,29 @@ final class PillsRow: NSView {
             row.topAnchor.constraint(equalTo: topAnchor),
             row.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+        restyle()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Every font and every palette colour in this row is asked for again rather than remembered:
+    /// a type-scale step changes what a role is worth, and a colour built under one theme answers
+    /// that theme forever — a Stop button made before a theme change would keep the old red.
+    func restyle() {
+        vimBadge.font = MacTheme.Ramp.font(.badge)
+        destinationLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        for pill in [modelPill, effortPill, commandPill, attachButton] {
+            pill.font = MacTheme.Ramp.font(.panelFootnote)
+        }
+        stopButton.contentTintColor = MacTheme.Color.danger
+    }
+
+    @objc private func themeChanged() {
+        restyle()
+    }
 
     /// Alongside the badge the caret itself says which mode this is, so the badge carries the
     /// mode's color too: quiet in normal, accent in insert, warning in the visual modes.
@@ -128,7 +151,7 @@ final class PillsRow: NSView {
         let background: NSColor =
             switch mode {
             case .insert: MacTheme.Color.accent.withAlphaComponent(0.25)
-            case .normal: MacTheme.Color.tertiaryLabel
+            case .normal: MacTheme.Color.tertiaryLabel.withAlphaComponent(0.25)
             case .visual, .visualLine: MacTheme.Color.warning.withAlphaComponent(0.3)
             }
         vimBadgeWrap.layer?.backgroundColor = background.cgColor
