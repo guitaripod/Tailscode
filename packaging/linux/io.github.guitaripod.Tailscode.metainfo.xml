@@ -69,6 +69,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.21" date="2026-08-14">
+      <description>
+        <p>New models turn up on their own. A server that had been running for days was still offering the model list it resolved the day it started, so a model your plan gained this week was out of reach until somebody restarted it by hand. The opencode setup command now leaves a check on that machine which notices and restarts it — never in the middle of a turn — and the picker takes the newer list without waiting for a relaunch.</p>
+        <p>A server can be started over from here. Where a server is explained there is now one press for it, which is the only way back, from the device in your hand, to anything a long-running process reads once at startup: its models, its config, its plugins. It says what it would stop before it does it.</p>
+        <p>A turn whose machine went says so. A server that stops mid-answer leaves a conversation that reads as a question nobody answered — the prompt is there, no answer follows, and nothing says one was ever coming. It now says what happened, what the work had got through, and offers to pick it back up. And a machine holding a build it has never started is marked in the list rather than hidden behind the trust that keeps it current, because that is work no update will do for you.</p>
+      </description>
+    </release>
     <release version="1.20" date="2026-08-13">
     </release>
     <release version="1.19" date="2026-08-13">
