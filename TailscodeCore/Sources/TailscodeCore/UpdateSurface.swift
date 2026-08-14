@@ -515,7 +515,10 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     public var headline: String {
         switch verdict {
         case .current: return Localized.text("Up to date")
-        case .behind(let offer): return Localized.text("Update to %@", offer.target)
+        case .behind(let offer):
+            return needsOnlyRestart
+                ? Localized.text("Restart to finish the update")
+                : Localized.text("Update to %@", offer.target)
         case .ahead: return Localized.text("Newer than anything published")
         case .working(let progress): return progress.word
         case .failed: return Localized.text("The last update failed")
@@ -544,6 +547,12 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
                 : Localized.text("Nothing newer was published.")
             return Localized.text("Running %@.", installed.line) + " " + compared + " "
                 + Localized.text("Checked %@.", RelativeWhen.ago(checkedAt, now: now))
+        case .behind(let offer) where needsOnlyRestart:
+            var line = Localized.text(
+                "%@ is already on the machine; %@ is what is running.", offer.target,
+                installed.line)
+            if let blocked = offer.blocked { line += " " + blocked }
+            return line
         case .behind(let offer):
             var line = Localized.text("Running %@.", installed.line)
             if let commits = offer.commits, commits > 0 {
@@ -588,6 +597,13 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
         case .current:
             return ActivityIcon(symbol: "checkmark.circle", glyph: "=", tone: .quiet, motion: .still)
         case .behind(let offer):
+            // A machine that only needs starting is not downloading anything, and a download arrow
+            // over it is the app describing work that will not happen.
+            if needsOnlyRestart {
+                return ActivityIcon(
+                    symbol: "arrow.clockwise.circle.fill", glyph: "⟳", tone: .attention,
+                    motion: .still)
+            }
             return ActivityIcon(
                 symbol: "arrow.down.circle.fill", glyph: "↓",
                 tone: offer.canInstallHere ? .attention : .quiet, motion: .still)
@@ -622,8 +638,22 @@ public struct UpdateReading: Sendable, Equatable, Codable, Identifiable {
     /// changes and its place in the surface. Without this a fleet that keeps itself current lights
     /// the mark on every push and clears it ten minutes later, several times a day, which is how a
     /// mark stops being read at all.
+    /// Whether the whole remaining job is loading a build the machine already has.
+    ///
+    /// Not a shade of "behind": nothing is fetched and nothing is built, and — the reason no
+    /// surface may read it as an ordinary update — a machine that keeps itself current will never
+    /// do it on its own, because from its side there is nothing left to take.
+    public var needsOnlyRestart: Bool {
+        guard case .behind = verdict, case .restartHere = invitation else { return false }
+        return true
+    }
+
     public func stands(acknowledged: Bool = false) -> Bool {
         guard !acknowledged else { return false }
+        // A build sitting unstarted is nobody's job but the reader's: trusting the machine to keep
+        // itself current is what suppresses the mark for an ordinary update, and that trust cannot
+        // cover work the machine has already decided it is finished with.
+        if needsOnlyRestart { return true }
         switch verdict {
         case .behind(let offer):
             // Both halves, and the second is what stops the trust becoming a way of never being

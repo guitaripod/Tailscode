@@ -329,7 +329,9 @@ final class ServerDetailViewController: UIViewController {
     private func softwareItems() -> [Item] {
         guard let reading else { return [.updateState, .updateCenter] }
         var items: [Item] = [.updateState]
-        if reading.installed.isKnown { items.append(.updateVersions) }
+        // A machine that only needs starting already says both numbers in one sentence — the row
+        // under it would be the same fact a second time.
+        if reading.installed.isKnown, !reading.needsOnlyRestart { items.append(.updateVersions) }
         if reading.invitation != nil { items.append(.updateAction) }
         if reading.automation != nil { items.append(.autoUpdate) }
         items.append(.updateCenter)

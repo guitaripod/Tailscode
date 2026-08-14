@@ -490,6 +490,33 @@ extension DeviceStores {
             #expect(supervised.verdict.offer?.canInstallHere == true)
             #expect(supervised.invitation?.finishesHere == true)
             #expect(supervised.invitation?.isOneClickInstall == false)
+            #expect(supervised.needsOnlyRestart)
+            #expect(supervised.headline == Localized.text("Restart to finish the update"))
+            #expect(supervised.icon.symbol == "arrow.clockwise.circle.fill")
+            #expect(supervised.detail(now: Self.now).contains("1.6.0"))
+            #expect(supervised.detail(now: Self.now).contains("1.5.0"))
+        }
+
+        /// Trusting a machine to keep itself current is what takes the mark down for an ordinary
+        /// update — and it cannot cover a build the machine has already finished with. A server
+        /// waiting to be started will wait forever if the only surface that says so is the one
+        /// nobody opened, which is exactly how a list came to disagree with the screen behind it.
+        @Test func aBuildWaitingToStartStandsEvenOnAMachineThatUpdatesItself() {
+            let trusted = UpdateReadings.server(
+                profileID: "a", title: "macbook", subtitle: nil,
+                outcome: .answered(
+                    ServerUpdate(
+                        version: "1.6.0", running: "1.5.0", restartRequired: true,
+                        manager: "launchd", busy: ServerUpdate.Busy(quiet: true),
+                        canRestart: true,
+                        automation: ServerUpdate.Automation(enabled: true))),
+                checkedAt: Self.now)
+
+            #expect(trusted.automation?.willTake == true)
+            #expect(trusted.stands())
+            #expect(UpdateRollup(readings: [trusted]).showsMark)
+            #expect(UpdateRollup(readings: [trusted]).restartableServers.count == 1)
+            #expect(UpdateRollup(readings: [trusted]).installableServers.isEmpty)
         }
 
         /// A bridge nothing supervises would not come back, so the press is refused before it is
