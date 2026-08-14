@@ -16,6 +16,9 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     private var chooser: ModelChooser
     private let onPick: @Sendable (ModelPick) -> Void
+    private let selected: ModelSelection?
+    private let quotas: [UsageQuota]
+    private let recents: [ModelSelection]
     private let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
     private let list: UnsafeMutablePointer<GtkWidget>
@@ -49,6 +52,9 @@ final class ModelChooserWindow: @unchecked Sendable {
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onPick = onPick
+        self.selected = selected
+        self.quotas = quotas
+        self.recents = recents
 
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Model"))
@@ -175,6 +181,26 @@ final class ModelChooserWindow: @unchecked Sendable {
         syncScopes()
         syncFold()
         render()
+    }
+
+    /// A catalog that arrived while the window is open — a server that came back from a restart —
+    /// re-answers the list in place. What the reader was doing survives: the query, the filter and
+    /// the fold are re-applied rather than reset.
+    static func updateOpen(sources: [ModelSource]) {
+        Gtk.onMain { open?.refreshSources(sources) }
+    }
+
+    private func refreshSources(_ sources: [ModelSource]) {
+        let query = chooser.query
+        let scope = chooser.scope
+        chooser = ModelChooser(
+            sources: sources, selected: selected, recents: recents, quotas: quotas)
+        chooser.search(query)
+        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
+        scopeButtons = []
+        Gtk.removeChildren(of: band)
+        buildScopes()
+        refresh()
     }
 
     private func close() {

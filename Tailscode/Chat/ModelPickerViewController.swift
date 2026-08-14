@@ -13,6 +13,11 @@ import UIKit
 final class ModelPickerViewController: UIViewController {
     private let onSelect: (ModelPick) -> Void
     private var chooser: ModelChooser
+    private let quotas: [UsageQuota]
+    private let recents: [ModelSelection]
+    /// Runs when the picker leaves the screen by any road — a pick, the close button, a swipe-down —
+    /// so the caller stops watching a catalog nobody is looking at.
+    var onClose: (() -> Void)?
 
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, String>!
@@ -29,6 +34,8 @@ final class ModelPickerViewController: UIViewController {
         self.chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onSelect = onSelect
+        self.quotas = quotas
+        self.recents = recents
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -181,12 +188,13 @@ final class ModelPickerViewController: UIViewController {
         ) { [weak self] view, _, _ in
             var content = UIListContentConfiguration.footer()
             content.text =
-                self?.chooser.isNarrowed == true
-                ? self?.chooser.summary
-                : String(
-                    localized:
-                        "One row per model, grouped by family. The chevron opens the other providers that run it."
-                )
+                self?.chooser.serverReading
+                ?? (self?.chooser.isNarrowed == true
+                    ? self?.chooser.summary
+                    : String(
+                        localized:
+                            "One row per model, grouped by family. The chevron opens the other providers that run it."
+                    ))
             view.contentConfiguration = content
         }
 
@@ -307,6 +315,33 @@ final class ModelPickerViewController: UIViewController {
     }
 
     @objc private func close() { dismiss(animated: true) }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        onClose?()
+    }
+
+    /// A catalog that arrived while the picker is up — a server that came back from a restart —
+    /// re-answers the list in place. The query and the filter survive the answer, and a server that
+    /// is still down reads as down rather than as a machine with no models.
+    func update(sources: [ModelSource]) {
+        let query = chooser.query
+        let scope = chooser.scope
+        chooser = ModelChooser(
+            sources: sources, selected: chooser.selected, recents: recents, quotas: quotas)
+        chooser.search(query)
+        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
+        if chooser.scopes.count > 1 {
+            search.searchBar.scopeButtonTitles = chooser.scopes.map(\.title)
+            search.searchBar.showsScopeBar = true
+            search.scopeBarActivation = .manual
+        } else {
+            search.searchBar.showsScopeBar = false
+        }
+        search.searchBar.selectedScopeButtonIndex =
+            chooser.scopes.firstIndex(of: chooser.scope) ?? 0
+        applySnapshot()
+    }
 
     #if DEBUG
         func tourSearch(_ text: String) {

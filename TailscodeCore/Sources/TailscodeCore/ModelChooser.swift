@@ -109,10 +109,15 @@ public struct ModelSource: Sendable, Equatable {
     /// it is handed — an alias it gained yesterday, a dated release, a context variant — so its
     /// catalog is a shortlist rather than the set of legal answers.
     public let acceptsAnyModelID: Bool
+    /// Whether the server answered the ask that produced this list. `nil` while the ask is out or
+    /// nobody asked; `false` means the server refused and `models` is the last one known. A server
+    /// that is down is a state, not an empty catalog, and the two must never read as one another.
+    public let isReachable: Bool?
 
     public init(
         profileID: String, name: String, backend: AgentType, models: [ModelInfo],
-        isCurrent: Bool, allowsServerDefault: Bool, acceptsAnyModelID: Bool
+        isCurrent: Bool, allowsServerDefault: Bool, acceptsAnyModelID: Bool,
+        isReachable: Bool? = nil
     ) {
         self.profileID = profileID
         self.name = name
@@ -121,6 +126,7 @@ public struct ModelSource: Sendable, Equatable {
         self.isCurrent = isCurrent
         self.allowsServerDefault = allowsServerDefault
         self.acceptsAnyModelID = acceptsAnyModelID
+        self.isReachable = isReachable
     }
 
     public var title: String { ServerLabel.display(name: name, backend: backend) }
@@ -570,13 +576,15 @@ public struct ModelChooser: Sendable, Equatable {
     /// One server's list — the shape every screen that only ever meant this machine still asks for.
     public init(
         models: [ModelInfo], selected: ModelSelection?, allowsServerDefault: Bool = true,
-        recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
+        recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = [],
+        isReachable: Bool? = nil
     ) {
         self.init(
             sources: [
                 ModelSource(
                     profileID: "", name: "", backend: .openCode, models: models, isCurrent: true,
-                    allowsServerDefault: allowsServerDefault, acceptsAnyModelID: false)
+                    allowsServerDefault: allowsServerDefault, acceptsAnyModelID: false,
+                    isReachable: isReachable)
             ], selected: selected, recents: recents, quotas: quotas)
     }
 
@@ -667,6 +675,24 @@ public struct ModelChooser: Sendable, Equatable {
 
     private var current: ModelSource? { sources.first { $0.isCurrent } }
 
+    /// What a server that is not answering amounts to, said in place of a claim about its catalog.
+    /// A restart is a state, not an empty list: the words the header and the empty body show must
+    /// name the state, or a reader who restarted the server is told it has no models while the
+    /// answer is on the way back up.
+    public var serverReading: String? {
+        guard let current else { return nil }
+        switch current.isReachable {
+        case nil where current.models.isEmpty:
+            return Localized.text("Asking the server for its models…")
+        case false where current.models.isEmpty:
+            return Localized.text("Server is not answering — models will appear when it comes back")
+        case false:
+            return Localized.text("Server is not answering — showing the last known list")
+        default:
+            return nil
+        }
+    }
+
     /// Whether anything is standing between the reader and the whole catalog.
     public var isNarrowed: Bool { !query.isEmpty || scope != .all }
 
@@ -674,7 +700,9 @@ public struct ModelChooser: Sendable, Equatable {
     /// otherwise how much of it survived — a count that moves as you type is the only honest way
     /// for a header to answer "is it still looking".
     public var summary: String {
-        guard !candidates.isEmpty else { return Localized.text("This server lists no models") }
+        guard !candidates.isEmpty else {
+            return serverReading ?? Localized.text("This server lists no models")
+        }
         guard !isNarrowed else {
             var parts = [Localized.text("%@ of %@ models", "\(matched)", "\(candidates.count)")]
             if scope != .all { parts.append(scope.title.lowercased()) }
@@ -685,8 +713,11 @@ public struct ModelChooser: Sendable, Equatable {
 
     /// What the whole catalog amounts to, said once at the top instead of implied by scrolling.
     public var catalogSummary: String {
-        guard !candidates.isEmpty else { return Localized.text("This server lists no models") }
+        guard !candidates.isEmpty else {
+            return serverReading ?? Localized.text("This server lists no models")
+        }
         var parts = [Self.modelCount(candidates.count)]
+        if let reading = serverReading { parts.append(reading.lowercased()) }
         let servers = Set(candidates.map(\.profileID))
         if servers.count > 1 {
             parts.append(Self.serverCount(servers.count))
@@ -728,7 +759,7 @@ public struct ModelChooser: Sendable, Equatable {
     public var emptyResult: String? {
         guard rows.isEmpty else { return nil }
         switch (query.isEmpty, scope) {
-        case (true, .all): return nil
+        case (true, .all): return serverReading
         case (true, let scope): return Localized.text("No model here is %@", scope.title.lowercased())
         case (false, .all): return Localized.text("No model matches “%@”", query)
         case (false, let scope):
@@ -1427,9 +1458,15 @@ public enum ModelChooserCheck {
             models: catalog, selected: nil, allowsServerDefault: false, recents: [])
         expect(auto.rows.first?.isAuto == false, "a backend with no server default offers none")
 
-        let empty = ModelChooser(models: [], selected: nil, recents: [])
+        let empty = ModelChooser(models: [], selected: nil, recents: [], isReachable: true)
         expect(empty.isEmpty, "an empty catalog is empty")
-        expect(empty.summary == Localized.text("This server lists no models"), "and says so")
+        expect(empty.summary == Localized.text("This server lists no models"), "and says so, once the server has said it")
+
+        let asking = ModelChooser(models: [], selected: nil, recents: [])
+        expect(asking.summary.contains("Asking"), "before an answer arrives the list says it is asking")
+
+        let refused = ModelChooser(models: [], selected: nil, recents: [], isReachable: false)
+        expect(refused.summary.contains("not answering"), "a refused ask is a state, never an empty claim")
 
         let selection = ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-4-5")
         let opened = ModelChooser(models: catalog, selected: selection, recents: [])

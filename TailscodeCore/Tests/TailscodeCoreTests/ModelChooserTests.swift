@@ -86,4 +86,32 @@ struct ModelChooserTests {
         let issues = ModelChooserCheck.run()
         #expect(issues.isEmpty, "ModelChooserCheck: \(issues)")
     }
+
+    @Test("A server that refused with nothing known is a state, not an empty catalog")
+    func downServerReading() {
+        let chooser = ModelChooser(models: [], selected: nil, isReachable: false)
+        #expect(chooser.summary.contains("not answering"))
+        #expect(!chooser.summary.contains("no models"))
+    }
+
+    @Test("An ask that has not answered yet says so rather than claiming none")
+    func askingServerReading() {
+        let chooser = ModelChooser(models: [], selected: nil, isReachable: nil)
+        #expect(chooser.summary.contains("Asking"))
+        #expect(!chooser.summary.contains("no models"))
+    }
+
+    @Test("A server that answered an empty catalog genuinely has no models")
+    func genuinelyEmpty() {
+        let chooser = ModelChooser(models: [], selected: nil, isReachable: true)
+        #expect(chooser.summary == Localized.text("This server lists no models"))
+    }
+
+    @Test("A refusal with a remembered list names the list as the last one known")
+    func staleListReading() {
+        let models = [ModelInfo(id: "qwen3.8-27b", name: "Qwen3.8-27B", providerID: "ollama")]
+        let chooser = ModelChooser(models: models, selected: nil, isReachable: false)
+        #expect(chooser.catalogSummary.contains("last known"))
+        #expect(chooser.catalogSummary.contains("1 model"))
+    }
 }

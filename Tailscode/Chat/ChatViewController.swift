@@ -51,6 +51,9 @@ final class ChatViewController: UIViewController {
     private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
     private var availableModels: [ModelInfo] = []
+    private var modelsReachable: Bool?
+    private var modelPicker: ModelPickerViewController?
+    private var pickerWatch: Task<Void, Never>?
     private var expandedReasoning: Set<String> = []
     private var seenReasoning: Set<String> = []
     private var wasRunning = false
@@ -3484,20 +3487,43 @@ final class ChatViewController: UIViewController {
     }
 
     @objc private func presentModelPicker() {
-        guard !availableModels.isEmpty else { return }
         Theme.Haptics.tap()
         let picker = Self.demoPicker { [weak self] pick in self?.apply(pick) }
             ?? ModelPickerViewController(
                 sources: ModelFleet.sources(
                     profiles: ConnectionController.shared.profiles,
                     current: viewModel.contextID, currentModels: availableModels,
-                    allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
+                    allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
+                    reachability: pickerReachability),
                 selected: viewModel.selectedModel,
                 quotas: QuotaSurface.relevantQuotas(
                     for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
             ) { [weak self] pick in
                 self?.apply(pick)
             }
+        modelPicker = picker
+        picker.onClose = { [weak self] in
+            self?.pickerWatch?.cancel()
+            self?.pickerWatch = nil
+            self?.modelPicker = nil
+        }
+        let contextID = viewModel.contextID
+        let backend = viewModel.backend
+        pickerWatch?.cancel()
+        pickerWatch = Task { [weak self, weak picker] in
+            for await reading in ModelCatalogWatch.readings(profileID: contextID, backend: backend)
+            {
+                guard let self, let picker else { return }
+                self.modelsReachable = reading.reachable
+                self.availableModels = reading.models
+                picker.update(
+                    sources: ModelFleet.sources(
+                        profiles: ConnectionController.shared.profiles,
+                        current: contextID, currentModels: reading.models,
+                        allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                        reachability: self.pickerReachability))
+            }
+        }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
@@ -3505,6 +3531,12 @@ final class ChatViewController: UIViewController {
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+    }
+
+    /// What the picker names the current server's ask as: `nil` while it is still out.
+    private var pickerReachability: [String: Bool] {
+        guard let reachable = modelsReachable else { return [:] }
+        return [viewModel.contextID: reachable]
     }
 
     /// The shared fixture, when a run asks for it: a fleet's worth of catalog with no fleet

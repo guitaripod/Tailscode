@@ -40,9 +40,12 @@ final class ComposerView: NSView {
     private var models: [ModelInfo] = []
     private var commands: [AgentCommand] = []
     private var modelsByProfile: [String: [ModelInfo]] = [:]
+    private var reachableByProfile: [String: Bool] = [:]
     private var commandsBySession: [String: [AgentCommand]] = [:]
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
+    private var modelSheet: ModelChooserSheet?
+    private var catalogWatch: Task<Void, Never>?
 
     /// What a prompt sent outside the text box should travel with — the same model and effort
     /// the next Enter in this composer would use.
@@ -360,20 +363,32 @@ final class ComposerView: NSView {
     }
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open
-    /// and remembered: the models the server offers and the commands it resolves. A stale answer
-    /// for a chat that was left is dropped on landing.
+    /// and remembered: the models the server offers and the commands it resolves. The catalog is
+    /// watched rather than asked once — a server asked while it restarts must not be remembered as
+    /// having no models, so the ask retries and every answer re-paints the pills and an open sheet.
     private func loadSessionExtras(entry: SessionEntry, backend: any CodingAgentBackend) {
         let sessionID = entry.session.id
         let profileID = entry.profileID
         let directory = entry.session.directory
+        catalogWatch?.cancel()
+        catalogWatch = Task { [weak self] in
+            guard let self else { return }
+            for await reading in ModelCatalogWatch.readings(
+                profileID: profileID, backend: backend)
+            {
+                guard self.entry?.session.id == sessionID else { return }
+                self.modelsByProfile[profileID] = reading.models
+                self.reachableByProfile[profileID] = reading.reachable
+                self.models = reading.models
+                self.modelSheet?.update(models: reading.models, isReachable: reading.reachable)
+                self.refreshPills()
+            }
+        }
         Task { [weak self] in
-            let models = (try? await backend.availableModels()) ?? []
             let commands = (try? await backend.availableCommands(directory: directory)) ?? []
             guard let self else { return }
-            self.modelsByProfile[profileID] = models
             self.commandsBySession[sessionID] = commands
             guard self.entry?.session.id == sessionID else { return }
-            self.models = models
             self.commands = commands
             self.refreshPills()
         }
@@ -470,7 +485,12 @@ final class ComposerView: NSView {
     /// read. The two are the same list at two lengths.
     private func modelMenuRows() -> [PillsRow.MenuRow] {
         guard !models.isEmpty else {
-            return [PillsRow.MenuRow(Localized.text("This server lists no models"))]
+            let reading =
+                ModelChooser(
+                    models: [], selected: nil,
+                    isReachable: entry.map { reachableByProfile[$0.profileID] ?? nil } ?? nil)
+                .serverReading ?? Localized.text("This server lists no models")
+            return [PillsRow.MenuRow(reading)]
         }
         var rows = [
             PillsRow.MenuRow(
@@ -507,10 +527,12 @@ final class ComposerView: NSView {
 
     private func openModelChooser() {
         guard let host = window else { return }
-        ModelChooserSheet.present(
+        let reachable = entry.map { reachableByProfile[$0.profileID] ?? nil } ?? nil
+        modelSheet = ModelChooserSheet.present(
             on: host, models: models, selected: chosenModel, allowsServerDefault: true,
-            quotas: quotasForModels?() ?? []
+            isReachable: reachable, quotas: quotasForModels?() ?? []
         ) { [weak self] selection in
+            self?.modelSheet = nil
             self?.setModel(selection)
         }
     }

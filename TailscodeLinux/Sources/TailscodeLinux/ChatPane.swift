@@ -138,6 +138,8 @@ final class ChatPane: @unchecked Sendable {
     private var turnStartedAt: Date?
 
     private var models: [ModelInfo] = []
+    private var modelsReachable: Bool?
+    private var catalogWatchTask: Task<Void, Never>?
     private var commands: [AgentCommand] = []
     private var completionPopover: UnsafeMutablePointer<GtkWidget>?
     private(set) var completionMatches: [AgentCommand] = []
@@ -925,18 +927,35 @@ final class ChatPane: @unchecked Sendable {
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
     /// the models the server offers, the commands it resolves, and whether its Claude is signed in.
+    /// The catalog is watched rather than asked once — a server asked while it restarts must not be
+    /// remembered as having no models, so the ask retries and every answer re-paints the pills and
+    /// an open chooser window.
     private func loadSessionExtras(
         backend: any CodingAgentBackend, directory: String?, sessionID: String
     ) {
+        catalogWatchTask?.cancel()
+        if let profileID = entry?.profileID {
+            catalogWatchTask = Task { [weak self] in
+                guard let self else { return }
+                for await reading in ModelCatalogWatch.readings(
+                    profileID: profileID, backend: backend)
+                {
+                    guard self.sessionID == sessionID else { return }
+                    Gtk.onMain { [weak self] in
+                        guard let self, self.sessionID == sessionID else { return }
+                        self.models = reading.models
+                        self.modelsReachable = reading.reachable
+                        ModelChooserWindow.updateOpen(sources: self.modelSources())
+                        self.refreshPills()
+                        self.refreshTurnFacts()
+                    }
+                }
+            }
+        }
         Task { [weak self] in
-            let models = (try? await backend.availableModels()) ?? []
             let commands = (try? await backend.availableCommands(directory: directory)) ?? []
             Gtk.onMain { [weak self] in
                 guard let self, self.sessionID == sessionID else { return }
-                self.models = models
-                if let profileID = self.entry?.profileID {
-                    ModelCatalogStore.store(models, for: profileID)
-                }
                 self.commands = commands
                 self.refreshPills()
                 self.refreshTurnFacts()
@@ -2148,17 +2167,24 @@ final class ChatPane: @unchecked Sendable {
 
     /// Every server this app is connected to, with this pane's own at the front. A catalog is a
     /// fact about a machine, so the list can name what the other machine runs without this pane
-    /// ever having talked to it.
+    /// ever having talked to it — and whether this one answered its last ask, so a restart reads
+    /// as a state rather than a machine with no models.
     private func modelSources() -> [ModelSource] {
         let profiles = host?.fleetProfiles() ?? []
+        var reachability: [String: Bool] = [:]
+        if let profileID = entry?.profileID, let reachable = modelsReachable {
+            reachability[profileID] = reachable
+        }
         let sources = ModelFleet.sources(
-            profiles: profiles, current: entry?.profileID, currentModels: models)
+            profiles: profiles, current: entry?.profileID, currentModels: models,
+            reachability: reachability)
         guard sources.isEmpty else { return sources }
         return [
             ModelSource(
                 profileID: entry?.profileID ?? "", name: "", backend: backend?.agentType ?? .openCode,
                 models: models, isCurrent: true, allowsServerDefault: true,
-                acceptsAnyModelID: backend?.agentType == .claudeCode)
+                acceptsAnyModelID: backend?.agentType == .claudeCode,
+                isReachable: modelsReachable)
         ]
     }
 

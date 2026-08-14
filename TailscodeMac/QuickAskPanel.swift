@@ -37,6 +37,8 @@ final class QuickAskPanel: NSPanel {
     private var asking = false
     private var draftProfileID: String?
     private var keyMonitor: Any?
+    private var modelSheet: ModelChooserSheet?
+    private var catalogWatch: Task<Void, Never>?
     private let onAsk:
         (String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void) ->
             Void
@@ -302,15 +304,29 @@ final class QuickAskPanel: NSPanel {
 
     /// The whole catalog, from the fleet's own cache — a machine's models are a fact about that
     /// machine, so the chooser can name what another server runs without this ask ever having
-    /// talked to it, and a pick landing there re-aims the question rather than moving a chat.
+    /// talked to it, and a pick landing there re-aims the question rather than moving a chat. The
+    /// sheet is watched, not snapshot: a server that is restarting reads as restarting rather than
+    /// as a machine with no models, and the list lands on the open sheet when it is back.
     @objc private func chooseModel() {
         let server = targetServer
-        ModelChooserSheet.present(
+        catalogWatch?.cancel()
+        catalogWatch = Task { [weak self] in
+            guard let self else { return }
+            guard let backend = ServerDirectory.shared.backend(for: server) else { return }
+            for await reading in ModelCatalogWatch.readings(profileID: server.id, backend: backend)
+            {
+                guard self.targetServer.id == server.id else { return }
+                self.modelSheet?.update(models: reading.models, isReachable: reading.reachable)
+                self.refreshAim()
+            }
+        }
+        modelSheet = ModelChooserSheet.present(
             on: self, models: ModelCatalogStore.cached(server.id),
             selected: QuickAskDefaults.model(forProfileID: server.id),
             allowsServerDefault: server.backend == .claudeCode
         ) { [weak self] selection in
             QuickAskDefaults.recordModel(selection, forProfileID: server.id)
+            self?.modelSheet = nil
             self?.refreshAim()
         }
     }

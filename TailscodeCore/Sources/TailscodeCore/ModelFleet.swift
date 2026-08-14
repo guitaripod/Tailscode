@@ -42,7 +42,7 @@ public enum ModelCatalogStore {
 public enum ModelFleet {
     public static func sources(
         profiles: [ConnectionProfile], current: String?, currentModels: [ModelInfo] = [],
-        allowsServerDefault: Bool = true
+        allowsServerDefault: Bool = true, reachability: [String: Bool] = [:]
     ) -> [ModelSource] {
         let ordered = profiles.sorted { lhs, _ in lhs.id == current }
         return ordered.compactMap { profile in
@@ -55,7 +55,8 @@ public enum ModelFleet {
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 models: models, isCurrent: isCurrent,
                 allowsServerDefault: isCurrent ? allowsServerDefault : true,
-                acceptsAnyModelID: profile.backend == .claudeCode)
+                acceptsAnyModelID: profile.backend == .claudeCode,
+                isReachable: reachability[profile.id])
         }
     }
 
