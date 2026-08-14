@@ -135,8 +135,7 @@ enum DeepSeekBalance {
     }
 
     static func money(_ value: Double, _ currency: String?) -> String {
-        let symbol = (currency ?? "USD").uppercased() == "CNY" ? "¥" : "$"
-        return String(format: "%@%.2f", symbol, value)
+        QuotaGlance.money(value, currency)
     }
 
     private static func fetch(key: String) async -> Reading? {

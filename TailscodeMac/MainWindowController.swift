@@ -43,6 +43,10 @@ final class MainWindowController: NSWindowController {
     /// controller nobody retains closes itself the moment the stack unwinds.
     private var gitDiffWindows: [GitDiffWindowController] = []
     private var lastQuotas: [(String, UsageQuota)] = []
+    /// When the last poll actually answered — nil while the first one is still out, which is a
+    /// state the strip says out loud rather than an empty footer.
+    private var quotasAnsweredAt: Date?
+    private var usageTick: Timer?
     private var serversWindow: ServersWindow?
     private var preferencesWindow: PreferencesWindow?
     private var analyticsWindow: AnalyticsWindowController?
@@ -864,15 +868,34 @@ final class MainWindowController: NSWindowController {
                 try? await Task.sleep(for: .seconds(settled ? 120 : 15))
             }
         }
+        startUsageTick()
     }
 
     private func refreshUsage() async -> Bool {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else { return false }
         let snapshot = await Self.collectQuotas(profiles: profiles)
-        lastQuotas = snapshot
-        sidebar.renderUsage(snapshot)
+        if snapshot.isEmpty {
+            if lastQuotas.isEmpty { quotasAnsweredAt = Date() }
+        } else {
+            lastQuotas = snapshot
+            quotasAnsweredAt = Date()
+        }
+        sidebar.renderUsage(lastQuotas, answeredAt: quotasAnsweredAt)
         return true
+    }
+
+    /// The numbers move on the poll's cadence; the words about them move on their own, so a reset
+    /// counted down two minutes at a time does not read as a clock that has stopped and an age
+    /// only grows when there is something to grow from.
+    private func startUsageTick() {
+        usageTick?.invalidate()
+        usageTick = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.sidebar.renderUsage(self.lastQuotas, answeredAt: self.quotasAnsweredAt)
+            }
+        }
     }
 
     /// Every quota every server can speak for: the agent's own, plus whatever other providers

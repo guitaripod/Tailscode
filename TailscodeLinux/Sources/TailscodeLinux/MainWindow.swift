@@ -85,6 +85,14 @@ final class MainWindow: @unchecked Sendable {
     private var watchCheckedAt: Date?
     private var watchCheck: Task<Void, Never>?
     private var lastQuotas: [(String, UsageQuota)] = []
+    /// When the last poll actually answered. Nil is a state rather than a missing value: nobody
+    /// has come back yet, and the strip says so instead of showing a quiet account.
+    private var quotasAnsweredAt: Date?
+    /// Whether the sidebar is currently wide enough for the strip's bars.
+    private var usageBarsFit = true
+    /// The state the driver pinned the strip to, so every state can be looked at headlessly
+    /// without an account that happens to be in it.
+    private var usageDemo: QuotaGlance?
 
     /// Quotas the panes read for used-up surfaces — same numbers the sidebar footer shows.
     func quotasForStatus() -> [UsageQuota] { lastQuotas.map(\.1) }
@@ -316,6 +324,8 @@ final class MainWindow: @unchecked Sendable {
                     self.presentSettings()
                 case "usage":
                     self.presentUsage()
+                case "usagestate":
+                    self.driverUsageState(argument)
                 case "analytics":
                     AnalyticsPanel.present(parent: self.sidebarPane)
                 case "type":
@@ -2988,6 +2998,7 @@ final class MainWindow: @unchecked Sendable {
 
     private func holdSidebarFloor() {
         fitSidebarTitle()
+        fitUsageStrip()
         Gtk.after(60) { [weak self] in self?.fitSidebarTitle() }
         guard let splitWidget else { return }
         let position = gtk_paned_get_position(op(splitWidget))
@@ -3028,6 +3039,7 @@ final class MainWindow: @unchecked Sendable {
     private func rememberDividers() {
         clampDividers()
         fitSidebarTitle()
+        fitUsageStrip()
         rememberWindow()
         Preferences.setLastSession(activePane.sessionID)
         if let splitWidget, gtk_widget_get_visible(sidebarPane ?? splitWidget) != 0 {
@@ -3071,6 +3083,21 @@ final class MainWindow: @unchecked Sendable {
                 try? await Task.sleep(for: .seconds(settled ? 120 : 15))
             }
         }
+        startUsageTick()
+    }
+
+    /// The numbers move on the poll's cadence; the words about them move on their own. A reset
+    /// counted down two minutes at a time reads as a clock that has stopped, and an age that only
+    /// grows when a fetch succeeds is exactly the age that cannot be trusted — so the strip is
+    /// redrawn from what it already knows every minute, which costs one relayout of five rows.
+    private func startUsageTick() {
+        Gtk.after(60_000) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.renderUsage(self.lastQuotas)
+                self.startUsageTick()
+            }
+        }
     }
 
     /// False while the profile list has not been seeded yet — the poll retries quickly then.
@@ -3078,9 +3105,16 @@ final class MainWindow: @unchecked Sendable {
         let profiles = await ServerDirectory.shared.profiles()
         guard !profiles.isEmpty else { return false }
         let snapshot = await Self.collectQuotas(profiles: profiles)
+        let answeredAt = Date()
         Gtk.onMain { [weak self] in
-            self?.lastQuotas = snapshot
-            self?.renderUsage(snapshot)
+            guard let self else { return }
+            if snapshot.isEmpty {
+                if self.lastQuotas.isEmpty { self.quotasAnsweredAt = answeredAt }
+            } else {
+                self.lastQuotas = snapshot
+                self.quotasAnsweredAt = answeredAt
+            }
+            self.renderUsage(self.lastQuotas)
         }
         return true
     }
@@ -3113,131 +3147,36 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// Quota as a glance, not a paragraph. The foot of the chat list says only what the account's
-    /// state needs it to say, and each state owns the strip:
-    ///
-    /// - walls exist: one line per exhausted window, the reset beside it, nothing healthy next to
-    ///   it — a wall is the only news that matters;
-    /// - no wall, something warm (≥60%): one line per warm window, tightest first, at most four;
-    /// - everything quiet: a single quiet line.
-    ///
-    /// The prepaid balance is the one number that keeps moving whatever the state, so it always
-    /// has its own line — the money itself, or the wall an empty account is. Each line wears a
-    /// tone dot; the words stay plain, because a dot can light up where a sentence in red
-    /// cannot stop shouting. The account, not the machines — every server's report folded into
-    /// one heading per provider, tightest first — and the full picture is one click behind it.
+    /// Quota as a glance, not a paragraph. ``QuotaGlance`` decides what the foot of the chat list
+    /// says in every state and this draws it: the account rather than the machines, the full
+    /// picture one click behind it, and the whole of it on hover for the facts no strip this size
+    /// can carry.
     private func renderUsage(_ quotas: [(String, UsageQuota)]) {
-        Gtk.removeChildren(of: usageBox)
-        let lines = Self.glanceLines(quotas)
-        gtk_widget_set_visible(usageBox, lines.isEmpty ? 0 : 1)
-        for line in lines {
-            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-            let dotClass = line.tone == "balance" ? "brand-deepseek" : "gauge-\(line.tone)"
-            gtk_box_append(ptr(row), Gtk.label("●", css: dotClass, selectable: false))
-            let text = Gtk.label(line.text, wrap: true, selectable: false)
-            gtk_widget_set_hexpand(text, 1)
-            gtk_box_append(ptr(row), text)
-            gtk_box_append(ptr(usageBox), row)
-        }
+        let glance =
+            usageDemo
+            ?? QuotaGlance.make(from: quotas, answeredAt: quotasAnsweredAt)
+        UsageStrip.render(glance, into: usageBox, bars: usageBarsFit)
     }
 
-    /// The footer's whole message as data — what each line says and the tone its dot wears — so
-    /// the selftest can prove every state without a display. Empty when nothing has reported.
-    static func glanceLines(_ quotas: [(String, UsageQuota)]) -> [(text: String, tone: String)] {
-        let holdings = QuotaRollup.account(from: quotas)
-        guard !holdings.isEmpty else { return [] }
-        let flat = holdings.map(\.quota)
-        var lines: [(text: String, tone: String)] = []
-
-        let walls = QuotaSurface.walls(in: flat)
-            .filter { $0.provider != DeepSeekBalance.providerName }
-            .sorted {
-                ($0.resetsAt?.timeIntervalSince1970 ?? .infinity)
-                    < ($1.resetsAt?.timeIntervalSince1970 ?? .infinity)
-            }
-        if !walls.isEmpty {
-            lines += walls.map { (wallLine($0), "danger") }
-        } else {
-            let warm = holdings
-                .flatMap { holding in
-                    holding.quota.gauges
-                        .filter { gauge in
-                            gauge.fraction >= 0.6 && gauge.fraction < QuotaSurface.exhaustedFloor
-                                && (gauge.resetsAt.map { $0 > Date() } ?? true)
-                        }
-                        .map { (holding.quota, $0) }
-                }
-                .sorted { $0.1.fraction > $1.1.fraction }
-                .prefix(4)
-            if !warm.isEmpty {
-                lines += warm.map { (warmLine($0.0, $0.1), "warn") }
-            } else {
-                lines.append((Localized.text("Quotas clear"), "ok"))
-            }
-        }
-
-        if let balance = balance(in: flat) {
-            if balance.gauge.fraction >= QuotaSurface.exhaustedFloor {
-                lines.append((Localized.text("DeepSeek balance empty · top up"), "danger"))
-            } else if lines.first?.tone != "ok" {
-                lines.append(
-                    ("\(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))",
-                        "balance"))
-            } else if lines.count == 1 {
-                lines[0].text +=
-                    " · \(balance.quota.providerName) \(DeepSeekBalance.amount(for: balance.gauge))"
-            }
-        }
-        return lines
+    /// The strip's bars are the first thing a narrow sidebar gives up, and the decision is the
+    /// divider's position rather than the pane's allocation for the same reason the title's is:
+    /// this runs from `notify::position`, before GTK has laid the pane out again.
+    private func fitUsageStrip() {
+        let width =
+            splitWidget.map { gtk_paned_get_position(op($0)) }
+            ?? sidebarPane.map { gtk_widget_get_width($0) } ?? 0
+        guard width > 0 else { return }
+        let fits = width >= UsageStrip.barsNeed
+        guard fits != usageBarsFit else { return }
+        usageBarsFit = fits
+        renderUsage(lastQuotas)
     }
 
-    /// A wall's one line: what ran out and when it comes back. The countdown needs no verb — it
-    /// can only ever mean the reset.
-    private static func wallLine(_ wall: QuotaExhaustion) -> String {
-        var line = "\(wall.provider) \(wall.window) \(Localized.text("used up"))"
-        if let reset = wall.resetsAt {
-            line += " · "
-                + (wall.trustedReset
-                    ? countdown(to: reset) : Localized.text("about %@", countdown(to: reset)))
-        }
-        return line
-    }
-
-    /// A warm window's one line: how full it is and, when the provider said so, when it opens
-    /// again. No bar — a number is the glance's whole job here.
-    private static func warmLine(_ quota: UsageQuota, _ gauge: UsageQuota.Gauge) -> String {
-        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
-        var line = "\(quota.providerName) \(gauge.label) \(percent)"
-        if let reset = gauge.resetsAt {
-            line += " · "
-                + (gauge.trustedReset
-                    ? countdown(to: reset) : Localized.text("about %@", countdown(to: reset)))
-        }
-        return line
-    }
-
-    /// The prepaid balance gauge among the folded quotas, if this device has a key and the last
-    /// fetch answered. Recognised the same way every renderer recognises a balance: money with no
-    /// ceiling.
-    private static func balance(in quotas: [UsageQuota])
-        -> (quota: UsageQuota, gauge: UsageQuota.Gauge)?
-    {
-        for quota in quotas where ProviderBrand.slug(quota.providerName) == "deepseek" {
-            if let gauge = quota.gauges.first(where: { $0.usedUSD != nil && $0.limitUSD == nil }) {
-                return (quota, gauge)
-            }
-        }
-        return nil
-    }
-
-    private static func countdown(to date: Date) -> String {
-        let interval = date.timeIntervalSinceNow
-        guard interval > 0 else { return Localized.text("moments") }
-        let days = Int(interval) / 86400
-        let hours = (Int(interval) % 86400) / 3600
-        let minutes = (Int(interval) % 3600) / 60
-        if days > 0 { return "\(days)d \(hours)h" }
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    /// Pins the strip to one state so every one of them can be looked at headlessly — the states
+    /// a real account only reaches by running out of quota at the right moment.
+    func driverUsageState(_ name: String) {
+        usageDemo = UsageDemo.glance(named: name)
+        renderUsage(lastQuotas)
     }
 }
 

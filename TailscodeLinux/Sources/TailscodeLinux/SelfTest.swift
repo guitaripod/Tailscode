@@ -967,22 +967,26 @@ public enum SelfTest {
         return only
     }
 
-    /// The footer glance's states, proved as data: a wall owns the whole strip, warm windows
-    /// read one line each only while nothing is at the wall, and a quiet account is one quiet
-    /// line that still carries the prepaid balance's money.
+    /// The footer strip's states, proved as data: a wall owns the strip and is answered by what is
+    /// still open, warm windows read one line each only while nothing is at the wall, a quiet
+    /// account still says which window is closest to mattering, and every line the client draws
+    /// with a bar carries the fraction to draw it from.
     private static func checkUsageGlance() throws -> Int {
         var checks = 0
+        let now = Date()
         func expect(_ condition: Bool, _ label: String) throws {
             guard condition else { throw SelfTestFailure("usage glance: \(label)") }
             checks += 1
         }
-        func quota(_ provider: String, _ windows: [(String, Double)]) -> UsageQuota {
+        func quota(_ provider: String, _ windows: [(String, Double)], live: Bool = true)
+            -> UsageQuota
+        {
             UsageQuota(
-                providerName: provider, subtitle: "", source: "test", live: true,
+                providerName: provider, subtitle: "", source: "test", live: live,
                 gauges: windows.map {
                     UsageQuota.Gauge(
-                        key: $0.0.lowercased(), label: $0.0, fraction: $0.1, resetsAt: nil,
-                        trustedReset: false)
+                        key: $0.0.lowercased(), label: $0.0, fraction: $0.1,
+                        resetsAt: now.addingTimeInterval(7_200), trustedReset: true)
                 },
                 details: [])
         }
@@ -996,55 +1000,94 @@ public enum SelfTest {
                 ],
                 details: [])
         }
+        func glance(_ reports: [(String, UsageQuota)], answeredAt: Date? = nil) -> QuotaGlance {
+            QuotaGlance.make(from: reports, answeredAt: answeredAt ?? now, now: now)
+        }
 
-        let quiet = MainWindow.glanceLines(
-            [("", quota("Claude", [("Weekly", 0.3), ("5-hour session", 0.1)]))])
-        try expect(quiet.count == 1 && quiet[0].tone == "ok", "a quiet account is one quiet line")
+        let quiet = glance([("", quota("Claude", [("Weekly", 0.3), ("5-hour session", 0.1)]))])
+        try expect(quiet.lines.count == 1, "a quiet account is one line")
         try expect(
-            quiet[0].text == Localized.text("Quotas clear"), "the quiet line says what it means")
+            quiet.lines[0].tone == .ok && quiet.lines[0].text.contains(Localized.text("Quotas clear")),
+            "the quiet line says what it means")
+        try expect(
+            quiet.lines[0].text.contains("Weekly") && quiet.lines[0].trailing == "30%"
+                && quiet.lines[0].fraction == 0.3,
+            "and names the window closest to mattering, with the bar to draw it")
 
-        let warm = MainWindow.glanceLines([
+        let warm = glance([
             ("", quota("Claude", [("Weekly", 0.85), ("5-hour session", 0.3)])),
             ("", quota("Grok", [("Weekly credits", 0.7)])),
         ])
-        try expect(warm.count == 2, "warm windows read one line each, the healthy ones stay home")
-        try expect(warm[0].tone == "warn" && warm[0].text.contains("85%"), "the tightest leads")
-        try expect(!warm[0].text.contains("5-hour"), "a quiet window is not news")
+        try expect(warm.lines.count == 2, "warm windows read one line each, the healthy stay home")
+        try expect(
+            warm.lines[0].tone == .warn && warm.lines[0].trailing == "85%", "the tightest leads")
+        try expect(!warm.lines[0].text.contains("5-hour"), "a quiet window is not news")
 
-        let wall = MainWindow.glanceLines([
+        let wall = glance([
             ("", quota("Claude", [("Weekly", 1.0), ("5-hour session", 0.2)])),
             ("", quota("Grok", [("Weekly credits", 0.9)])),
         ])
-        try expect(wall.count == 1, "a wall owns the whole strip")
+        try expect(wall.lines.count == 2, "a wall, and the one line that makes it actionable")
         try expect(
-            wall[0].tone == "danger" && wall[0].text.contains(Localized.text("used up")),
+            wall.lines[0].tone == .danger && wall.lines[0].trailing == Localized.text("Used up")
+                && wall.lines[0].text.contains("Weekly"),
             "the wall names what ran out")
-        try expect(!wall[0].text.contains("Grok"), "a warm neighbour is not news next to a wall")
-
-        let emptyBalance = MainWindow.glanceLines([("", balance(0, 1.0))])
         try expect(
-            emptyBalance.count == 2
-                && emptyBalance.contains { $0.tone == "danger" && $0.text.contains("empty") },
-            "an empty balance reads as the wall it is, beside the quiet line")
+            wall.lines[1].tone == .ok && wall.lines[1].text.contains("Grok"),
+            "and the strip says where there is still room")
 
-        let wallWithBalance = MainWindow.glanceLines([
+        let shut = glance([
+            ("", quota("Claude", [("Weekly", 1.0)])),
+            ("", quota("Grok", [("Weekly credits", 1.0)])),
+        ])
+        try expect(
+            shut.lines.last?.tone == .danger
+                && shut.lines.last?.text == Localized.text("Nothing left to send with"),
+            "nowhere to go is a state, not a missing line")
+
+        let manyWalls = glance([
+            ("", quota("Claude", [("Weekly", 1.0), ("5-hour session", 1.0), ("Opus weekly", 1.0)])),
+            ("", quota("Grok", [("Weekly credits", 1.0)])),
+        ])
+        try expect(
+            manyWalls.lines.contains {
+                $0.kind == .notice && $0.text.contains("1")
+            },
+            "a wall past the strip's room is counted, never dropped")
+
+        let emptyBalance = glance([("", balance(0, 1.0))])
+        try expect(
+            emptyBalance.lines.count == 1 && emptyBalance.lines[0].tone == .danger
+                && emptyBalance.lines[0].trailing == Localized.text("Empty"),
+            "an empty balance reads as the wall it is")
+
+        let wallWithBalance = glance([
             ("", quota("Claude", [("Weekly", 1.0)])),
             ("", balance(13.42, 0)),
         ])
         try expect(
-            wallWithBalance.count == 2 && wallWithBalance[1].tone == "balance"
-                && wallWithBalance[1].text == "DeepSeek $13.42",
+            wallWithBalance.lines.last?.kind == .balance
+                && wallWithBalance.lines.last?.trailing == "$13.42",
             "the balance keeps its own line whatever the walls are doing")
-
-        let topped = MainWindow.glanceLines([
-            ("", quota("Claude", [("Weekly", 0.3)])),
-            ("", balance(13.42, 0)),
-        ])
         try expect(
-            topped.count == 1 && topped[0].text.contains("$13.42"),
-            "the quiet line carries the balance's money")
+            wallWithBalance.lines.allSatisfy { $0.kind != .balance || $0.fraction == nil },
+            "money has no ceiling, so it draws no bar")
 
-        try expect(MainWindow.glanceLines([]).isEmpty, "nothing reported is nothing shown")
+        let cached = glance(
+            [("", quota("opencode go", [("Weekly", 0.4)], live: false))],
+            answeredAt: now.addingTimeInterval(-900))
+        try expect(
+            cached.lines.first?.kind == .notice && cached.lines.first?.tone == .warn,
+            "a reading nobody could refresh says so before it says anything else")
+
+        let checking = QuotaGlance.make(from: [], answeredAt: nil, now: now)
+        try expect(
+            checking.lines.count == 1 && checking.lines[0].tone == .quiet,
+            "a first poll still out is a state, not an empty strip")
+        try expect(
+            QuotaGlance.make(from: [], answeredAt: now, now: now).isEmpty,
+            "nothing reported is nothing shown")
+        try expect(!quiet.tooltip.isEmpty, "the whole picture is one hover away")
         return checks
     }
 

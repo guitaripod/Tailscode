@@ -180,9 +180,10 @@ final class SidebarViewController: NSViewController {
     }
 
     /// The quota picture at a glance, fed by the hub's slow poll — account state under the chat
-    /// list, the way the phone keeps it on the Home board.
-    func renderUsage(_ quotas: [(String, UsageQuota)]) {
-        usageFooter.render(quotas)
+    /// list, the way the phone keeps it on the Home board. `answeredAt` is when the numbers last
+    /// arrived: a reading nobody could refresh has to say so before it says anything else.
+    func renderUsage(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
+        usageFooter.render(quotas, answeredAt: answeredAt)
     }
 
     /// Rows pick their fonts up at configure time, so a reload is the whole zoom.

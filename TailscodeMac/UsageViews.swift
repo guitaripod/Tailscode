@@ -19,6 +19,18 @@ enum UsageFormat {
         }
     }
 
+    /// The strip's tones, which are meanings rather than severities: relief is the accent, money
+    /// is ordinary ink, and a sentence about the reading is quieter than the numbers it qualifies.
+    static func glanceColor(_ tone: QuotaGlance.Tone) -> NSColor {
+        switch tone {
+        case .danger: return MacTheme.Color.danger
+        case .warn: return MacTheme.Color.warning
+        case .ok: return MacTheme.Color.accent
+        case .balance: return MacTheme.Color.label
+        case .quiet: return MacTheme.Color.tertiaryLabel
+        }
+    }
+
     static func brandColor(_ slug: String?) -> NSColor? {
         switch slug {
         case "claude": return MacTheme.Color.claude
@@ -149,53 +161,61 @@ final class UsageFooterView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func render(_ quotas: [(String, UsageQuota)]) {
+    func render(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let holdings = QuotaRollup.account(from: quotas)
-        isHidden = holdings.isEmpty
-        for holding in holdings {
-            let slug = holding.slug
-            let header = RowKit.label(
-                holding.providerName,
-                font: MacTheme.Ramp.font(.metricLabel),
-                color: UsageFormat.brandColor(slug) ?? MacTheme.Color.secondaryLabel)
-            column.addArrangedSubview(header)
-            column.setCustomSpacing(5, after: header)
-            for gauge in holding.gauges {
-                let fraction = min(max(gauge.fraction, 0), 1)
-                let severity = UsageFormat.severity(fraction)
-                let color = UsageFormat.severityColor(severity)
-
-                let title = RowKit.label(gauge.label, font: MacTheme.Ramp.font(.panelFootnote), color: color)
-                title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-                let percent = RowKit.label(
-                    UsageFormat.amount(for: gauge), font: MacTheme.Ramp.font(.panelFootnote),
-                    color: color)
-                percent.alignment = .right
-                percent.widthAnchor.constraint(equalToConstant: 34).isActive = true
-                let row = NSStackView(views: [
-                    title, RowKit.spacer(),
-                    UsageFormat.gaugeBar(
-                        fraction: fraction, width: 72, height: 5,
-                        fill: UsageFormat.fillColor(severity: severity, slug: slug)),
-                    percent,
-                ])
-                row.orientation = .horizontal
-                row.alignment = .centerY
-                row.spacing = MacTheme.Spacing.s
-                column.addArrangedSubview(row)
-
-                if let resets = gauge.resetsAt, gauge.trustedReset, fraction >= 0.6 {
-                    column.addArrangedSubview(
-                        RowKit.label(
-                            Localized.text("resets in %@", UsageFormat.countdown(to: resets)),
-                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
-                }
-            }
-            if let last = column.arrangedSubviews.last {
-                column.setCustomSpacing(MacTheme.Spacing.s, after: last)
-            }
+        let glance = QuotaGlance.make(from: quotas, answeredAt: answeredAt)
+        isHidden = glance.isEmpty
+        toolTip = glance.tooltip.isEmpty ? nil : glance.tooltip
+        for line in glance.lines {
+            column.addArrangedSubview(row(line))
         }
+    }
+
+    /// One line, three columns: the tone dot, the words, and the number the words are about —
+    /// right-aligned in a column of its own width so the strip reads down rather than across. A
+    /// sentence about the reading itself wears no dot and starts where the words start.
+    private func row(_ line: QuotaGlance.Line) -> NSView {
+        let color = UsageFormat.glanceColor(line.tone)
+        if line.kind == .notice {
+            let text = RowKit.label(
+                line.text, font: MacTheme.Ramp.font(.panelFootnote), color: color)
+            let row = NSStackView(views: [text, RowKit.spacer()])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = MacTheme.Spacing.s
+            row.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 0)
+            return row
+        }
+
+        let dot = RowKit.label(
+            "●", font: MacTheme.Ramp.font(.gaugeCaption),
+            color: line.tone == .balance
+                ? (UsageFormat.brandColor(line.slug) ?? color) : color)
+        dot.setContentHuggingPriority(.required, for: .horizontal)
+        let text = RowKit.label(
+            line.text, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
+        text.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+
+        var views: [NSView] = [dot, text, RowKit.spacer()]
+        if let fraction = line.fraction {
+            views.append(
+                UsageFormat.gaugeBar(
+                    fraction: fraction, width: 44, height: 4,
+                    fill: UsageFormat.fillColor(
+                        severity: UsageFormat.severity(fraction), slug: line.slug)))
+        }
+        if !line.trailing.isEmpty {
+            let value = RowKit.label(
+                line.trailing, font: MacTheme.Ramp.font(.gauge), color: color)
+            value.alignment = .right
+            value.widthAnchor.constraint(equalToConstant: 62).isActive = true
+            views.append(value)
+        }
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = MacTheme.Spacing.xs
+        return row
     }
 }
 

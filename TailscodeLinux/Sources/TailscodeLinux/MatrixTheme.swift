@@ -640,6 +640,17 @@ enum MatrixTheme {
             box-shadow: inset 2px 0 0 \(warn);
         }
         .usage-footer { border-top: 1px solid alpha(currentColor, 0.15); }
+        .glance-row { min-height: \(c(1.15)); }
+        .glance-dot { font-size: \(c(0.5)); }
+        .glance-label { color: \(text); \(t(.rowDetail)) }
+        .glance-value { \(t(.gauge)) }
+        .glance-notice { \(t(.gaugeCaption)) }
+        .glance-ok { color: \(accent); }
+        .glance-warn { color: \(warn); }
+        .glance-danger { color: \(danger); }
+        .glance-balance { color: \(text); }
+        .glance-quiet { color: \(textDim); }
+        .glance-row .glance-notice.glance-quiet { opacity: 0.85; }
         .update-footer { border-top: 1px solid alpha(currentColor, 0.15); }
         .update-footer:hover { background-color: alpha(currentColor, 0.04); }
         .gauge-ok, .gauge-warn, .gauge-danger { \(t(.gauge)) }
