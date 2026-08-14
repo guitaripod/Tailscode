@@ -393,7 +393,9 @@ enum UsageScanner {
                 fraction: stats.fraction,
                 percentText: UsageGaugeFormat.percentText(fraction: stats.fraction),
                 caption: caption,
-                resetsAt: stats.resetsAt)
+                resetsAt: stats.resetsAt,
+                usedUSD: stats.spend,
+                limitUSD: window.cap)
         }
         if partial { gauges = ratchetedAgainstStored(gauges) }
         UsageWidgetStore.writeOpencode(gauges: gauges, reload: reload)

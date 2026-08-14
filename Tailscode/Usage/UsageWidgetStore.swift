@@ -41,6 +41,11 @@ enum UsageWidgetStore {
     private static let pendingRouteKey = "pending_control_route"
     static let kind = "UsageWidget"
 
+    /// How many windows one provider keeps in the snapshot. The large family draws every one it is
+    /// given, and a provider that meters four windows (a session, a week, a week per model) used to
+    /// lose its fourth on the way in — before any widget got to decide whether it had room.
+    static let storedGaugeLimit = 5
+
     /// Written by the Top Usage control's App Intent; read+cleared by the app on foreground.
     static func setPendingControlRoute(_ route: String) {
         UserDefaults(suiteName: suiteName)?.set(route, forKey: pendingRouteKey)

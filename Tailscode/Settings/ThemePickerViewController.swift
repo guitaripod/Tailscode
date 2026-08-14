@@ -1,5 +1,6 @@
 import TailscodeCore
 import UIKit
+import WidgetKit
 
 /// A theme is picked by looking at it, not by reading its name.
 ///
@@ -171,6 +172,7 @@ extension ThemePickerViewController: UICollectionViewDelegate {
         Theme.Chrome.apply()
         refreshRows()
         Theme.Haptics.selection()
+        WidgetCenter.shared.reloadTimelines(ofKind: UsageWidgetStore.kind)
     }
 }
 

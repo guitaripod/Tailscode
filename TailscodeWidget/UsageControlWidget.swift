@@ -1,47 +1,62 @@
 import AppIntents
 import SwiftUI
+import TailscodeCore
 import WidgetKit
 
+/// Which quota the Control Center button watches. A control is one line on a screen somebody swipes
+/// to in a hurry, so the choice of *what* it watches belongs to them: the account's tightest window
+/// by default, or one provider they are actually waiting on.
+struct TopUsageConfiguration: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Agent usage"
+    static let description = IntentDescription("Pick the quota this control watches.")
+
+    @Parameter(
+        title: "Provider",
+        description: "Leave empty for whichever quota is tightest right now.")
+    var provider: QuotaProviderEntity?
+
+    init() {}
+}
+
 struct TopUsageValue {
-    var percentText: String
+    var label: String
     var symbol: String
-    var providerName: String
     var isEmpty: Bool
 }
 
-struct TopUsageValueProvider: ControlValueProvider {
-    var previewValue: TopUsageValue {
-        TopUsageValue(percentText: "47%", symbol: "gauge.with.needle", providerName: "Claude Code", isEmpty: false)
+struct TopUsageValueProvider: AppIntentControlValueProvider {
+    func previewValue(configuration: TopUsageConfiguration) -> TopUsageValue {
+        TopUsageValue(label: "Claude 47%", symbol: "gauge.with.needle", isEmpty: false)
     }
 
-    func currentValue() async throws -> TopUsageValue {
-        guard let entry = UsageWidgetStore.read(),
-            let top = entry.providers
-                .flatMap({ provider in provider.gauges.map { (provider, $0) } })
-                .max(by: { $0.1.fraction < $1.1.fraction })
-        else {
-            return TopUsageValue(
-                percentText: "—", symbol: "gauge.with.dots.needle",
-                providerName: String(localized: "Usage"), isEmpty: true)
-        }
-        let gauge = top.1
+    func currentValue(configuration: TopUsageConfiguration) async throws -> TopUsageValue {
+        let filter = configuration.provider.map { Set([$0.id]) }
+        guard let stored = UsageWidgetStore.read() else { return empty }
+        let glance = stored.glance(providerFilter: filter)
+        guard let hero = glance.hero else { return empty }
         return TopUsageValue(
-            percentText: gauge.percentText,
-            symbol: gauge.fraction > 0.85 ? "exclamationmark.triangle.fill" : "gauge.with.needle",
-            providerName: top.0.providerName,
+            label: "\(hero.providerShort) \(hero.value)",
+            symbol: hero.tone == .danger
+                ? "exclamationmark.triangle.fill"
+                : (hero.kind == .balance ? "creditcard" : "gauge.with.needle"),
             isEmpty: false)
+    }
+
+    private var empty: TopUsageValue {
+        TopUsageValue(
+            label: String(localized: "Usage"), symbol: "gauge.with.dots.needle", isEmpty: true)
     }
 }
 
 struct TopUsageControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.guitaripod.tailscode.TopUsageControl", provider: TopUsageValueProvider()) { value in
+        AppIntentControlConfiguration(
+            kind: "com.guitaripod.tailscode.TopUsageControl",
+            provider: TopUsageValueProvider()
+        ) { value in
             ControlWidgetButton(action: OpenUsageIntent()) {
                 Label {
-                    Text(
-                        value.isEmpty
-                            ? String(localized: "Usage")
-                            : "\(value.providerName) \(value.percentText)")
+                    Text(value.label)
                 } icon: {
                     Image(systemName: value.symbol)
                 }

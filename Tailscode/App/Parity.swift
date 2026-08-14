@@ -115,6 +115,7 @@ enum ParityManifest {
         case .missedActivity: return .implemented("MissedActivityCell")
         case .hapticFeedback: return .implemented("HapticEngine")
         case .homeQuickActions: return .implemented("HomeQuickActions")
+        case .usageWidgets: return .implemented("WidgetGlance")
         case .presenceOrb: return .implemented("PresenceOrbView")
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")

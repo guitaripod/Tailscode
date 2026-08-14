@@ -109,6 +109,7 @@ enum ParityManifest {
         case .activityNotifications: return .implemented("Notifier")
         case .hapticFeedback: return .notApplicable("nothing under a desktop vibrates; a keyboard and a monitor have no actuator to drive, and the cues a phone gives a hand are carried here by the status band and the notifier")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
+        case .usageWidgets: return .notApplicable("a Linux desktop has no widget surface an app publishes into — no Home screen, no lock screen accessory, no Control Center — and the quota strip at the foot of the chat list is the same reading in the window that is already open")
         case .homeQuickActions: return .notApplicable("there is no springboard on a desktop to long-press; the app launches into its window, where every destination the phone's quick actions reach is already one click away")
         case .presenceOrb: return .implemented("OrbPainter")
         case .gameCenter: return .notApplicable("Game Center is Apple's account system, and this client cannot sign into it — there is no dashboard to open and nowhere to report a percentage; the trophies' arithmetic lives in Core, but a case with no account behind it would be a scoreboard nobody else can see, and the month's numbers are already usageAnalytics's parity")

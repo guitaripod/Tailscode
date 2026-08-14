@@ -90,11 +90,44 @@ public enum ThemeSelection {
         AppTheme.named(themeID).palette(dark: dark).corrected()
     }
 
+    /// Where the choice is repeated for processes that are not the app.
+    ///
+    /// A widget draws in an extension with its own defaults domain, so it cannot see a theme picked
+    /// in the app it belongs to — and a Home Screen that stays Rosé Pine while the app it opens is
+    /// Gruvbox reads as two apps. The app names a shared suite once and every later write lands in
+    /// both, which is the whole mechanism: the extension reads a copy, never the app's own domain.
+    public nonisolated(unsafe) static var mirrorSuiteName: String?
+
+    /// Repeats the current choice into the mirror. Called once at launch, because a choice made
+    /// before there was a mirror is still the choice.
+    public static func mirror() {
+        guard let suite = mirrorSuiteName, let shared = UserDefaults(suiteName: suite) else {
+            return
+        }
+        shared.set(defaults.string(forKey: themeKey), forKey: themeKey)
+        shared.set(defaults.string(forKey: appearanceKey), forKey: appearanceKey)
+    }
+
+    /// The theme another process picked, read from the mirror. `fallbackID` is not consulted: an
+    /// extension that has never been told anything wears what the app last wrote, and the absence
+    /// of a write is itself the answer — the platform's own colours.
+    public static func mirrored(suiteName: String) -> (themeID: String, appearance: ThemeAppearance)
+    {
+        let shared = UserDefaults(suiteName: suiteName)
+        let id = shared?.string(forKey: themeKey) ?? systemID
+        let appearance =
+            ThemeAppearance(rawValue: shared?.string(forKey: appearanceKey) ?? "") ?? .system
+        return (id, appearance)
+    }
+
     private static func write(_ value: String?, forKey key: String) {
         if let value {
             defaults.set(value, forKey: key)
         } else {
             defaults.removeObject(forKey: key)
+        }
+        if let suite = mirrorSuiteName, let shared = UserDefaults(suiteName: suite) {
+            shared.set(value, forKey: key)
         }
         NotificationCenter.default.post(name: didChange, object: nil)
     }

@@ -17,6 +17,8 @@ targets:
     sources:
       - path: Tailscode
       - path: TailscodeWidget/UsageWidget.swift
+      - path: TailscodeWidget/UsageWidgetViews.swift
+      - path: TailscodeWidget/UsageWidgetConfiguration.swift
       - path: Resources/Localizable.xcstrings
         buildPhase: resources
       - path: Resources/InfoPlist.xcstrings

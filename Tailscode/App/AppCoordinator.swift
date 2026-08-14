@@ -36,7 +36,7 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains(where: { $0.hasPrefix("--widget-preview") }) {
                 window.rootViewController = UINavigationController(
                     rootViewController: WidgetPreviewViewController(
-                        alt: CommandLine.arguments.contains("--widget-preview-alt")))
+                        mode: .from(arguments: CommandLine.arguments)))
                 window.makeKeyAndVisible()
                 return
             }

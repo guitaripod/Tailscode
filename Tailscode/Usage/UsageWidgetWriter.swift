@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 import WidgetKit
 
 extension UsageWidgetStore {
@@ -7,7 +8,7 @@ extension UsageWidgetStore {
 
     static func writeLive(_ quotas: [UsageQuota], reload: Bool = true) {
         for quota in quotas {
-            let gauges = quota.gauges.prefix(3).map { gauge in
+            let gauges = quota.gauges.prefix(storedGaugeLimit).map { gauge in
                 var caption = UsageGaugeFormat.resetCaption(
                     resetsAt: gauge.resetsAt, trustedReset: gauge.trustedReset)
                 if let used = gauge.usedUSD, let limit = gauge.limitUSD {
@@ -19,7 +20,10 @@ extension UsageWidgetStore {
                     fraction: gauge.fraction,
                     percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
                     caption: caption,
-                    resetsAt: gauge.resetsAt)
+                    resetsAt: gauge.resetsAt,
+                    usedUSD: gauge.usedUSD,
+                    limitUSD: gauge.limitUSD,
+                    currency: gauge.currency)
             }
             let provider = UsageWidgetEntry.ProviderSnapshot(
                 providerName: quota.providerName,
@@ -64,5 +68,38 @@ extension UsageWidgetStore {
 
     private static func currency(_ value: Double) -> String {
         String(format: "$%.2f", value)
+    }
+}
+
+extension UsageWidgetEntry {
+    /// The stored snapshot as the shared reading takes it. The widget process has no backend to
+    /// ask, so every family renders from this and from nothing else.
+    var widgetQuotas: [WidgetQuota] {
+        providers.map { provider in
+            WidgetQuota(
+                providerName: provider.providerName,
+                subtitle: provider.subtitle,
+                isLive: provider.isLive,
+                gauges: provider.gauges.map { gauge in
+                    WidgetQuota.Gauge(
+                        label: gauge.label,
+                        fraction: gauge.fraction,
+                        resetsAt: gauge.resetsAt,
+                        trustedReset: provider.isLive,
+                        usedUSD: gauge.usedUSD,
+                        limitUSD: gauge.limitUSD,
+                        currency: gauge.currency,
+                        note: gauge.caption)
+                })
+        }
+    }
+
+    func glance(
+        grouping: WidgetGrouping = .automatic, detail: WidgetDetail = .automatic,
+        providerFilter: Set<String>? = nil, now: Date = Date()
+    ) -> WidgetGlance {
+        WidgetGlance.make(
+            quotas: widgetQuotas, updatedAt: date, now: now, grouping: grouping, detail: detail,
+            providerFilter: providerFilter)
     }
 }

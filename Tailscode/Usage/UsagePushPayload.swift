@@ -53,6 +53,12 @@ enum UsagePushPayload {
             var fraction: Double
             var resetsAt: Date?
             var trustedReset: Bool
+            /// A window metered in dollars states them, and a provider that meters a prepaid
+            /// balance sends money with no ceiling at all. Dropping these here is how a balance
+            /// reached the widget as a bar at zero percent.
+            var usedUSD: Double?
+            var limitUSD: Double?
+            var currency: String?
         }
         struct Detail: Codable {
             var key: String
@@ -87,14 +93,17 @@ enum UsagePushPayload {
                     providerName: snapshot.providerName,
                     subtitle: snapshot.subtitle,
                     isLive: snapshot.live,
-                    gauges: snapshot.gauges.prefix(3).map { gauge in
+                    gauges: snapshot.gauges.prefix(UsageWidgetStore.storedGaugeLimit).map { gauge in
                         UsageWidgetEntry.GaugeSnapshot(
                             label: gauge.label,
                             fraction: gauge.fraction,
                             percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
                             caption: UsageGaugeFormat.resetCaption(
                                 resetsAt: gauge.resetsAt, trustedReset: gauge.trustedReset),
-                            resetsAt: gauge.resetsAt)
+                            resetsAt: gauge.resetsAt,
+                            usedUSD: gauge.usedUSD,
+                            limitUSD: gauge.limitUSD,
+                            currency: gauge.currency)
                     })
             }
     }

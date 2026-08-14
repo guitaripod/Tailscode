@@ -1,102 +1,69 @@
 import AppIntents
 import SwiftUI
+import TailscodeCore
 import WidgetKit
 
-enum ProviderPalette {
-    static func accent(for name: String, dark: Bool) -> Color {
-        let lower = name.lowercased()
-        if lower.contains("claude") {
-            return dark ? Color(red: 0.90, green: 0.55, blue: 0.42) : Color(red: 0.80, green: 0.42, blue: 0.29)
-        }
-        if lower.contains("grok") {
-            return dark ? Color(red: 0.91, green: 0.91, blue: 0.92) : Color(red: 0.12, green: 0.12, blue: 0.12)
-        }
-        return .teal
-    }
-
-    static func ramp(_ fraction: Double, accent: Color) -> Color {
-        if fraction > 0.85 { return .red }
-        if fraction > 0.6 { return .orange }
-        return accent
-    }
-
-    static func short(_ name: String) -> String {
-        let lower = name.lowercased()
-        if lower.contains("claude") { return "Claude" }
-        if lower.contains("grok") { return "Grok" }
-        if lower.contains("opencode") { return "opencode" }
-        return name
-    }
-}
-
-/// A single rendering-mode-aware source of truth. Every widget view branches here and nowhere
-/// else, so tinted/clear Home Screen (`.accented`) and Lock Screen/StandBy (`.vibrant`) stay
-/// legible: color ramps flatten to `.primary`, and cards fall back to a solid fill + hairline
-/// stroke instead of a material that would vanish under accenting.
-struct WidgetStyle {
-    let mode: WidgetRenderingMode
-    let dark: Bool
-
-    var isFullColor: Bool { mode == .fullColor }
-    var drawSheen: Bool { mode == .fullColor }
-    var cardFill: Double { mode == .accented ? 0.16 : 0.06 }
-    var cardStroke: Double { mode == .accented ? 0.35 : 0.10 }
-
-    func accent(_ name: String) -> Color {
-        isFullColor ? ProviderPalette.accent(for: name, dark: dark) : .primary
-    }
-
-    func ramp(_ fraction: Double, accent: Color) -> Color {
-        isFullColor ? ProviderPalette.ramp(fraction, accent: accent) : .primary
-    }
-}
-
-struct UsageWidgetIntent: WidgetConfigurationIntent {
-    static let title: LocalizedStringResource = "Usage"
-    static let description = IntentDescription("Select which providers to show.")
-
-    @Parameter(title: "Show", default: .all)
-    var providerFilter: ProviderFilter
-
-    enum ProviderFilter: String, AppEnum {
-        case all
-        case claude
-        case grok
-        case opencode
-
-        static let typeDisplayRepresentation: TypeDisplayRepresentation = "Provider"
-        static let caseDisplayRepresentations: [ProviderFilter: DisplayRepresentation] = [
-            .all: "All Providers",
-            .claude: "Claude Code",
-            .grok: "Grok",
-            .opencode: "opencode",
-        ]
-    }
+/// What one render of the Usage widget draws: the reading, already made, and the choices the person
+/// made in the widget's own editor. Nothing here asks a question — a widget is rendered at a moment
+/// nobody chose, in a process with no connection, so every decision is taken before it arrives.
+struct UsageEntry: TimelineEntry {
+    let date: Date
+    let glance: WidgetGlance
+    let accent: WidgetAccentChoice
+    let showsReset: Bool
 }
 
 struct UsageTimelineProvider: AppIntentTimelineProvider {
-    func placeholder(in context: Context) -> UsageWidgetEntry {
-        UsageWidgetStore.previewEntry()
+    /// Entries the widget can move through on its own — the countdown ticks and the reading ages
+    /// without spending one of the day's few timeline reloads.
+    private static let steps: [TimeInterval] = [0, 600, 1_200, 1_800]
+    private static let refreshAfter: TimeInterval = 1_800
+
+    func placeholder(in context: Context) -> UsageEntry {
+        entry(from: UsageWidgetStore.previewEntry(), configuration: nil, at: Date())
     }
 
-    func snapshot(for configuration: UsageWidgetIntent, in context: Context) async -> UsageWidgetEntry {
-        UsageWidgetStore.read() ?? UsageWidgetStore.previewEntry()
+    func snapshot(for configuration: UsageWidgetIntent, in context: Context) async -> UsageEntry {
+        let stored = UsageWidgetStore.read() ?? UsageWidgetStore.previewEntry()
+        return entry(from: stored, configuration: configuration, at: Date())
     }
 
-    func timeline(for configuration: UsageWidgetIntent, in context: Context) async -> Timeline<UsageWidgetEntry> {
+    func timeline(for configuration: UsageWidgetIntent, in context: Context) async -> Timeline<
+        UsageEntry
+    > {
         if !context.isPreview { await Self.refreshLiveQuotas() }
+        let now = Date()
         guard let stored = UsageWidgetStore.read() else {
-            return Timeline(entries: [emptyEntry()], policy: .after(Date().addingTimeInterval(900)))
+            let empty = UsageWidgetEntry(date: now, providers: [], isStale: false)
+            return Timeline(
+                entries: [entry(from: empty, configuration: configuration, at: now)],
+                policy: .after(now.addingTimeInterval(900)))
         }
-        let entry = filtered(stored, for: configuration.providerFilter)
-        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(900)))
+        let entries = Self.steps.map { step in
+            entry(from: stored, configuration: configuration, at: now.addingTimeInterval(step))
+        }
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(Self.refreshAfter)))
+    }
+
+    private func entry(
+        from stored: UsageWidgetEntry, configuration: UsageWidgetIntent?, at moment: Date
+    ) -> UsageEntry {
+        UsageEntry(
+            date: moment,
+            glance: stored.glance(
+                grouping: configuration?.grouping.grouping ?? .automatic,
+                detail: configuration?.detail.detail ?? .automatic,
+                providerFilter: configuration?.providerFilter,
+                now: moment),
+            accent: configuration?.accent ?? .theme,
+            showsReset: configuration?.showsReset ?? true)
     }
 
     /// Widget-side self-refresh: pulls live quotas straight from the bridges inside the
     /// extension's own budget, so the widget keeps moving without the app foregrounding.
     /// The heavy opencode scan stays on the app/background-refresh side; its last stored
     /// gauges keep rendering. A fetch failure (tailnet down, phone offline) just serves
-    /// the stored snapshot, which flips to STALE on its own. The throttle collapses the
+    /// the stored snapshot, which flips to CACHED on its own. The throttle collapses the
     /// burst of per-family timeline calls a single reload fans out into one fetch.
     private static func refreshLiveQuotas() async {
         if let stored = UsageWidgetStore.read(), Date().timeIntervalSince(stored.date) < 120 {
@@ -110,655 +77,482 @@ struct UsageTimelineProvider: AppIntentTimelineProvider {
         UsageWidgetStore.writeLive(quotas, reload: false)
         AppLogger.session.info("widget: timeline reload refreshed \(quotas.count) live quota(s)")
     }
-
-    private func emptyEntry() -> UsageWidgetEntry {
-        UsageWidgetEntry(date: Date(), providers: [], isStale: false)
-    }
-
-    private func filtered(_ entry: UsageWidgetEntry, for filter: UsageWidgetIntent.ProviderFilter) -> UsageWidgetEntry {
-        guard filter != .all else { return entry }
-        var copy = entry
-        copy.providers = entry.providers.filter { provider in
-            switch filter {
-            case .all: return true
-            case .claude: return provider.providerName.lowercased().contains("claude")
-            case .grok: return provider.providerName.lowercased().contains("grok")
-            case .opencode: return provider.providerName.lowercased().contains("opencode")
-            }
-        }
-        return copy
-    }
 }
 
 struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: UsageWidgetStore.kind, intent: UsageWidgetIntent.self, provider: UsageTimelineProvider()) { entry in
+        AppIntentConfiguration(
+            kind: UsageWidgetStore.kind, intent: UsageWidgetIntent.self,
+            provider: UsageTimelineProvider()
+        ) { entry in
             UsageWidgetEntryView(entry: entry)
-                .containerBackground(for: .widget) { ContainerBackdrop(entry: entry) }
+                .containerBackground(for: .widget) { BackdropForEntry(entry: entry) }
         }
         .configurationDisplayName(String(localized: "Usage"))
         .description(
             String(localized: "Live agent spend and rate-limit quotas across your coding servers."))
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryCircular, .accessoryInline])
+        .supportedFamilies([
+            .systemSmall, .systemMedium, .systemLarge,
+            .accessoryRectangular, .accessoryCircular, .accessoryInline,
+        ])
     }
 }
 
+private struct BackdropForEntry: View {
+    let entry: UsageEntry
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    var body: some View {
+        ContainerBackdrop(
+            glance: entry.glance,
+            palette: WidgetPalette.resolve(
+                choice: entry.accent, dark: colorScheme == .dark, mode: renderingMode))
+    }
+}
+
+func usageURL() -> URL { URL(string: "tailscode://usage")! }
+
 struct UsageWidgetEntryView: View {
-    let entry: UsageWidgetEntry
+    let entry: UsageEntry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    private var palette: WidgetPalette {
+        WidgetPalette.resolve(
+            choice: entry.accent, dark: colorScheme == .dark, mode: renderingMode)
+    }
 
     var body: some View {
         switch family {
-        case .systemSmall: SmallUsageView(entry: entry)
-        case .systemMedium: MediumUsageView(entry: entry)
-        case .systemLarge: LargeUsageView(entry: entry)
+        case .systemSmall: SmallUsageView(entry: entry, palette: palette)
+        case .systemMedium: MediumUsageView(entry: entry, palette: palette)
+        case .systemLarge: LargeUsageView(entry: entry, palette: palette)
         case .accessoryRectangular: AccessoryRectangularView(entry: entry)
         case .accessoryCircular: AccessoryCircularView(entry: entry)
         case .accessoryInline: AccessoryInlineView(entry: entry)
-        default: SmallUsageView(entry: entry)
+        default: SmallUsageView(entry: entry, palette: palette)
         }
     }
 }
 
-private struct RankedGauge: Identifiable {
-    let id: String
-    let providerName: String
-    let subtitle: String
-    let label: String
-    let fraction: Double
-    let percentText: String
-    let caption: String
-    let resetsAt: Date?
-    let isLive: Bool
-}
-
-private func rank(_ provider: UsageWidgetEntry.ProviderSnapshot, _ gauge: UsageWidgetEntry.GaugeSnapshot) -> RankedGauge {
-    RankedGauge(
-        id: provider.providerName + ":" + gauge.label,
-        providerName: provider.providerName,
-        subtitle: provider.subtitle,
-        label: gauge.label,
-        fraction: gauge.fraction,
-        percentText: gauge.percentText,
-        caption: gauge.caption,
-        resetsAt: gauge.resetsAt,
-        isLive: provider.isLive)
-}
-
-private func peakFraction(_ provider: UsageWidgetEntry.ProviderSnapshot) -> Double {
-    provider.gauges.map(\.fraction).max() ?? 0
-}
-
-/// Providers, hottest first, so a maxed-out quota always floats to the top of every family.
-private func orderedProviders(_ entry: UsageWidgetEntry) -> [UsageWidgetEntry.ProviderSnapshot] {
-    entry.providers.sorted { peakFraction($0) > peakFraction($1) }
-}
-
-private func peakGauge(_ provider: UsageWidgetEntry.ProviderSnapshot) -> RankedGauge? {
-    guard let gauge = provider.gauges.max(by: { $0.fraction < $1.fraction }) else { return nil }
-    return rank(provider, gauge)
-}
-
-/// A provider's gauges hottest-first, so truncating to N never drops the most urgent one.
-private func gauges(of provider: UsageWidgetEntry.ProviderSnapshot) -> [RankedGauge] {
-    provider.gauges.map { rank(provider, $0) }.sorted { $0.fraction > $1.fraction }
-}
-
-private func globalHottest(_ entry: UsageWidgetEntry) -> RankedGauge? {
-    orderedProviders(entry).first.flatMap(peakGauge)
-}
-
-private func usageURL() -> URL { URL(string: "tailscode://usage")! }
-
-private func shortGaugeLabel(_ label: String) -> String {
-    let lower = label.lowercased()
-    if lower.contains("cache") { return String(localized: "Cache") }
-    if lower.contains("input") { return String(localized: "Input") }
-    if lower.contains("output") { return String(localized: "Output") }
-    if lower.contains("reason") { return String(localized: "Reason") }
-    if lower.contains("chat") { return String(localized: "Chat") }
-    if lower.contains("build") { return String(localized: "Build") }
-    if lower.contains("credit") { return String(localized: "Credits") }
-    if lower.contains("5-hour") || lower.contains("5 hour") { return String(localized: "5-hour") }
-    if lower.contains("fable") { return "Fable" }
-    if lower.contains("all models") { return String(localized: "All models") }
-    if lower.contains("month") { return String(localized: "Monthly") }
-    if lower.contains("week") { return String(localized: "Weekly") }
-    return label
-}
-
-private func compactRemaining(_ resetsAt: Date, from: Date) -> String {
-    let seconds = max(0, resetsAt.timeIntervalSince(from))
-    let minutes = Int(seconds / 60)
-    if minutes < 60 { return "\(minutes)m" }
-    let hours = minutes / 60
-    if hours < 24 {
-        return minutes % 60 == 0 ? "\(hours)h" : "\(hours)h \(minutes % 60)m"
-    }
-    let days = hours / 24
-    return hours % 24 == 0 ? "\(days)d" : "\(days)d \(hours % 24)h"
-}
-
-struct ContainerBackdrop: View {
-    let entry: UsageWidgetEntry
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        let name = orderedProviders(entry).first?.providerName ?? "Claude Code"
-        let accent = ProviderPalette.accent(for: name, dark: colorScheme == .dark)
-        ZStack {
-            Color(.systemBackground)
-            LinearGradient(
-                colors: [accent.opacity(0.22), accent.opacity(0.04)],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
-    }
-}
-
+/// The small family: one number worth crossing a room for, and the windows behind it while they
+/// still fit. Everything past what fits is counted rather than dropped.
 struct SmallUsageView: View {
-    let entry: UsageWidgetEntry
-    @Environment(\.widgetRenderingMode) private var renderingMode
-    @Environment(\.colorScheme) private var colorScheme
-    private var style: WidgetStyle { WidgetStyle(mode: renderingMode, dark: colorScheme == .dark) }
+    let entry: UsageEntry
+    let palette: WidgetPalette
+
+    private var glance: WidgetGlance { entry.glance }
 
     var body: some View {
-        let providers = orderedProviders(entry)
         Group {
-            if providers.isEmpty {
+            if glance.isEmpty {
                 EmptyUsageView()
             } else {
-                stacked(providers)
+                ViewThatFits(in: .vertical) {
+                    stack(extraRows: 2)
+                    stack(extraRows: 1)
+                    stack(extraRows: 0)
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .widgetURL(usageURL())
     }
 
-    /// One provider → its gauges; several → each provider's hottest gauge. Every row is a
-    /// label+percent line over a full-width bar, so bars stay visible at small's width.
-    private func stacked(_ providers: [UsageWidgetEntry.ProviderSnapshot]) -> some View {
-        let single = providers.count == 1
-        let rows = single
-            ? Array(gauges(of: providers[0]).prefix(3))
-            : Array(providers.prefix(3).compactMap(peakGauge))
-        return VStack(spacing: 7) {
-            HStack(spacing: 4) {
-                Text(
-                    single
-                        ? ProviderPalette.short(providers[0].providerName)
-                        : String(localized: "Usage"))
-                    .font(.caption.weight(.bold)).lineLimit(1)
-                if single {
-                    StatusDot(isLive: providers[0].isLive, isStale: entry.isStale)
-                }
-                Spacer(minLength: 2)
-                if let hottest = rows.first {
-                    ResetLabel(entryDate: entry.date, resetsAt: hottest.resetsAt, caption: "", font: .system(size: 9, design: .monospaced))
-                }
+    private func stack(extraRows: Int) -> some View {
+        let hero = glance.hero
+        let rest = Array(glance.rows.dropFirst(hero == nil ? 0 : 1))
+        let extras = Array(rest.prefix(extraRows))
+        return VStack(alignment: .leading, spacing: 5) {
+            header(hidden: rest.count - extras.count)
+            /// An account with one thing to say leaves slack; splitting it above and below keeps the
+            /// hero in the tile rather than hanging it from the header.
+            if extras.isEmpty { Spacer(minLength: 0) }
+            if let hero {
+                heroBlock(hero)
             }
-            ForEach(rows) { row in
-                smallRow(row, label: single ? shortGaugeLabel(row.label) : ProviderPalette.short(row.providerName))
+            ForEach(extras) { row in
+                QuotaRowView(
+                    row: row, palette: palette, showsProvider: glance.providers.count > 1,
+                    barHeight: 4, spacing: 2)
             }
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func smallRow(_ gauge: RankedGauge, label: String) -> some View {
-        let color = style.ramp(gauge.fraction, accent: style.accent(gauge.providerName))
-        return VStack(spacing: 2.5) {
-            HStack(spacing: 4) {
-                Circle().fill(style.accent(gauge.providerName)).frame(width: 5, height: 5)
-                Text(label)
-                    .font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
-                Spacer(minLength: 2)
-                if gauge.fraction > 0.85 { SeverityGlyph(size: 8) }
-                Text(gauge.percentText)
-                    .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(color)
+    /// The count of what did not fit rides in the header rather than taking a line of its own — on
+    /// this size a line spent saying "+2 more" is a window that could have been shown instead.
+    private func header(hidden: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(glance.title)
+                .font(.caption.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if hidden > 0 {
+                Text(verbatim: "+\(hidden)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel(Text(String(localized: "\(hidden) more windows")))
             }
-            GaugeBar(fraction: gauge.fraction, color: color).frame(height: 5)
+            Spacer(minLength: 2)
+            FreshnessPill(
+                freshness: glance.freshness, palette: palette,
+                slug: glance.providers.first?.slug)
         }
+    }
+
+    private func heroBlock(_ hero: WidgetGlance.Row) -> some View {
+        HStack(spacing: 8) {
+            HeroValue(row: hero, palette: palette, size: 44, lineWidth: 6)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(hero.shortLabel)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if glance.providers.count > 1 {
+                    Text(hero.providerShort)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if entry.showsReset {
+                    ResetClock(row: hero, asOf: entry.date, font: .system(size: 10))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(hero.spoken)
     }
 }
 
+/// The medium family: the hero beside the rest of the account, which is the shape this size is
+/// actually good at — one number to act on, and the context that says whether to act now.
 struct MediumUsageView: View {
-    let entry: UsageWidgetEntry
-    @Environment(\.widgetRenderingMode) private var renderingMode
-    @Environment(\.colorScheme) private var colorScheme
-    private var style: WidgetStyle { WidgetStyle(mode: renderingMode, dark: colorScheme == .dark) }
+    let entry: UsageEntry
+    let palette: WidgetPalette
+
+    private var glance: WidgetGlance { entry.glance }
 
     var body: some View {
-        let providers = Array(orderedProviders(entry).prefix(3))
-        if providers.isEmpty {
-            EmptyUsageView().widgetURL(usageURL())
-        } else {
-            ViewThatFits(in: .vertical) {
-                stack(providers, maxGauges: 3, captions: true)
-                stack(providers, maxGauges: 3, captions: false)
-                stack(providers, maxGauges: 2, captions: false)
-                stack(providers, maxGauges: 1, captions: false)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .widgetURL(usageURL())
-        }
-    }
-
-    private func stack(_ providers: [UsageWidgetEntry.ProviderSnapshot], maxGauges: Int, captions: Bool) -> some View {
-        VStack(spacing: 5) {
-            ForEach(Array(providers.enumerated()), id: \.element.providerName) { index, provider in
-                ProviderRow(
-                    provider: provider, style: style, entryDate: entry.date, isStale: entry.isStale,
-                    maxGauges: maxGauges, showCaptions: captions)
-                if index < providers.count - 1 {
-                    Divider()
-                }
-            }
-        }
-    }
-}
-
-private struct ProviderRow: View {
-    let provider: UsageWidgetEntry.ProviderSnapshot
-    let style: WidgetStyle
-    let entryDate: Date
-    let isStale: Bool
-    let maxGauges: Int
-    let showCaptions: Bool
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Circle().fill(style.accent(provider.providerName)).frame(width: 6, height: 6)
-                    Text(ProviderPalette.short(provider.providerName))
-                        .font(.footnote.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-                }
-                StatusPill(isLive: provider.isLive, isStale: isStale, accent: style.accent(provider.providerName))
-            }
-            .frame(width: 88, alignment: .leading)
-            GaugeTable(
-                gauges: Array(gauges(of: provider).prefix(maxGauges)), style: style,
-                entryDate: entryDate, abbreviate: true, showCaptions: showCaptions)
-                .frame(maxWidth: .infinity)
-        }
-    }
-}
-
-struct LargeUsageView: View {
-    let entry: UsageWidgetEntry
-    @Environment(\.widgetRenderingMode) private var renderingMode
-    @Environment(\.colorScheme) private var colorScheme
-    private var style: WidgetStyle { WidgetStyle(mode: renderingMode, dark: colorScheme == .dark) }
-
-    var body: some View {
-        let providers = Array(orderedProviders(entry).prefix(3))
-        if providers.isEmpty {
-            EmptyUsageView().widgetURL(usageURL())
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                header
+        Group {
+            if glance.isEmpty {
+                EmptyUsageView()
+            } else {
                 ViewThatFits(in: .vertical) {
-                    cards(providers, maxGauges: 3, captions: true)
-                    cards(providers, maxGauges: 3, captions: false)
-                    cards(providers, maxGauges: 2, captions: false)
+                    layout(rows: 4, captions: showsCaptions)
+                    layout(rows: 3, captions: false)
+                    layout(rows: 2, captions: false)
                 }
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .widgetURL(usageURL())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .widgetURL(usageURL())
+    }
+
+    private var showsCaptions: Bool { glance.rows.contains { !$0.caption.isEmpty } }
+
+    private func layout(rows maxRows: Int, captions: Bool) -> some View {
+        let rows = Array(glance.rows.dropFirst(glance.hero == nil ? 0 : 1).prefix(maxRows))
+        return VStack(alignment: .leading, spacing: 7) {
+            header
+            HStack(alignment: .top, spacing: 12) {
+                if let hero = glance.hero {
+                    heroColumn(hero)
+                }
+                if rows.isEmpty {
+                    verdict
+                } else {
+                    QuotaRowGrid(
+                        rows: rows, palette: palette, showsProvider: glance.providers.count > 1,
+                        showsCaptions: captions)
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+            }
+            Spacer(minLength: 0)
         }
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(String(localized: "Usage")).font(.headline.weight(.bold))
-            Spacer()
-            if entry.isStale {
-                Text(String(localized: "STALE"))
-                    .font(.system(size: 9, weight: .heavy))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5).padding(.vertical, 1.5)
-                    .background(Capsule().fill(Color.secondary.opacity(0.18)))
-            } else {
-                HStack(spacing: 3) {
-                    Text(String(localized: "Updated"))
-                    Text(entry.date, style: .relative)
-                }
-                .font(.caption2).foregroundStyle(.tertiary)
-            }
+        HStack(spacing: 6) {
+            Text(glance.title)
+                .font(.subheadline.weight(.bold))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(glance.verdict)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            FreshnessPill(
+                freshness: glance.freshness, palette: palette, slug: glance.providers.first?.slug)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(glance.title). \(glance.verdict)")
     }
 
-    private func cards(_ providers: [UsageWidgetEntry.ProviderSnapshot], maxGauges: Int, captions: Bool) -> some View {
-        VStack(spacing: 8) {
-            ForEach(providers, id: \.providerName) { provider in
-                LargeProviderCard(
-                    provider: provider, style: style, entryDate: entry.date, isStale: entry.isStale,
-                    maxGauges: maxGauges, showCaptions: captions)
+    private func heroColumn(_ hero: WidgetGlance.Row) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HeroRing(row: hero, palette: palette, size: 62, lineWidth: 8)
+            Text(
+                glance.providers.count > 1
+                    ? "\(hero.providerShort) · \(hero.shortLabel)" : hero.shortLabel
+            )
+            .font(.system(size: 10, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            if entry.showsReset {
+                ResetClock(row: hero, asOf: entry.date, font: .system(size: 10))
             }
         }
+        .frame(width: 74, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(hero.spoken)
+    }
+
+    private var verdict: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(glance.verdict)
+                .font(.caption.weight(.medium))
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            if let hero = glance.hero, !hero.money.isEmpty {
+                Text(hero.money)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct LargeProviderCard: View {
-    let provider: UsageWidgetEntry.ProviderSnapshot
-    let style: WidgetStyle
-    let entryDate: Date
-    let isStale: Bool
-    let maxGauges: Int
-    let showCaptions: Bool
+/// The large family: every provider gets its own card, its own windows and the second line that says
+/// what the money and the clock are doing.
+struct LargeUsageView: View {
+    let entry: UsageEntry
+    let palette: WidgetPalette
+
+    private var glance: WidgetGlance { entry.glance }
 
     var body: some View {
+        Group {
+            if glance.isEmpty {
+                EmptyUsageView()
+            } else {
+                ViewThatFits(in: .vertical) {
+                    stack(maxRows: 5, captions: true, hero: true)
+                    stack(maxRows: 5, captions: true, hero: false)
+                    stack(maxRows: 4, captions: true, hero: false)
+                    stack(maxRows: 3, captions: true, hero: false)
+                    stack(maxRows: 3, captions: false, hero: false)
+                    stack(maxRows: 2, captions: false, hero: false)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .widgetURL(usageURL())
+    }
+
+    private func stack(maxRows: Int, captions: Bool, hero: Bool) -> some View {
+        let shown = glance.providers.reduce(0) { $0 + min($1.rows.count, maxRows) }
+        let hidden = glance.rows.count - shown
+        return VStack(alignment: .leading, spacing: 9) {
+            header
+            /// An account with one provider leaves slack, and slack under the content reads as a
+            /// widget that stopped early. Split it above and below instead, so what is there sits
+            /// in the tile rather than hanging from its top edge.
+            if glance.providers.count < 3 { Spacer(minLength: 0) }
+            if hero, let row = glance.hero {
+                heroBand(row)
+            }
+            ForEach(glance.providers) { provider in
+                card(provider, maxRows: maxRows, captions: captions)
+            }
+            if hidden > 0 {
+                Text(String(localized: "+\(hidden) more"))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// What the account amounts to, above the cards that spell it out. It appears only where the
+    /// cards leave room — an account with one provider has a hole this fills, and one with four has
+    /// no room to spare.
+    private func heroBand(_ row: WidgetGlance.Row) -> some View {
+        HStack(spacing: 12) {
+            HeroValue(row: row, palette: palette, size: 66, lineWidth: 8)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(glance.verdict)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                if !row.money.isEmpty {
+                    Text(row.money)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if entry.showsReset {
+                    ResetClock(row: row, asOf: entry.date)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(glance.verdict). \(row.spoken)")
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(String(localized: "Usage")).font(.headline.weight(.bold))
+            Spacer(minLength: 4)
+            Text(glance.freshness.note)
+                .font(.caption2)
+                .foregroundStyle(glance.freshness.isStale ? .secondary : .tertiary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(glance.verdict)
+    }
+
+    private func card(_ provider: WidgetGlance.Provider, maxRows: Int, captions: Bool) -> some View
+    {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                Circle().fill(style.accent(provider.providerName)).frame(width: 7, height: 7)
-                Text(provider.providerName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Circle().fill(palette.identity(provider.slug)).frame(width: 7, height: 7)
+                Text(provider.short).font(.subheadline.weight(.semibold)).lineLimit(1)
                 if !provider.subtitle.isEmpty {
-                    Text(provider.subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(provider.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 4)
-                if !showCaptions, let peak = peakGauge(provider) {
-                    ResetLabel(entryDate: entryDate, resetsAt: peak.resetsAt, caption: "", font: .caption2)
+                if entry.showsReset, let top = provider.rows.first {
+                    ResetClock(row: top, asOf: entry.date)
                 }
-                StatusPill(isLive: provider.isLive, isStale: isStale, accent: style.accent(provider.providerName))
             }
-            GaugeTable(
-                gauges: Array(gauges(of: provider).prefix(maxGauges)), style: style,
-                entryDate: entryDate, abbreviate: false, showCaptions: showCaptions)
+            QuotaRowGrid(
+                rows: Array(provider.rows.prefix(maxRows)), palette: palette,
+                showsCaptions: captions, abbreviated: false, barHeight: 7)
         }
-        .padding(9)
+        .padding(10)
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.primary.opacity(style.cardFill))
+                .fill(Color.primary.opacity(palette.cardFill))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(style.cardStroke), lineWidth: 0.5))
+                        .strokeBorder(Color.primary.opacity(palette.cardStroke), lineWidth: 0.5))
         }
     }
 }
 
+/// The Lock Screen accessories, which are drawn in one ink: every colour here is the platform's, and
+/// the meaning has to survive in words, order and shape alone.
 struct AccessoryRectangularView: View {
-    let entry: UsageWidgetEntry
+    let entry: UsageEntry
 
     var body: some View {
-        if entry.providers.isEmpty {
-            Text(String(localized: "No usage data")).font(.caption2).foregroundStyle(.secondary)
+        let glance = entry.glance
+        if glance.isEmpty {
+            Text(WidgetGlance.emptyTitle).font(.caption2).foregroundStyle(.secondary)
         } else {
-            let rows = accessoryRows(entry)
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 5) {
-                        Text(row.label)
-                            .font(.caption2.weight(.medium))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        if row.fraction > 0.85 {
-                            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8))
-                        }
-                        Text(row.percentText)
-                            .font(.caption2.weight(.bold))
-                            .monospacedDigit()
-                        Spacer(minLength: 2)
-                        GaugeBar(fraction: row.fraction, color: .primary)
-                            .frame(width: 42, height: 4)
+            ViewThatFits(in: .vertical) {
+                rows(glance.rows(for: .rectangular))
+                rows(Array(glance.rows.prefix(2)))
+                rows(Array(glance.rows.prefix(1)))
+            }
+            .widgetURL(usageURL())
+        }
+    }
+
+    private func rows(_ rows: [WidgetGlance.Row]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(rows) { row in
+                HStack(spacing: 5) {
+                    Text(label(row))
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    if row.isCritical {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8))
+                    }
+                    Text(row.value)
+                        .font(.caption2.weight(.bold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                    if let fraction = row.fraction {
+                        GaugeBar(
+                            fraction: fraction, color: .primary,
+                            track: Color.primary.opacity(0.25)
+                        )
+                        .frame(width: 40, height: 4)
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(row.spoken)
             }
         }
+    }
+
+    private func label(_ row: WidgetGlance.Row) -> String {
+        entry.glance.providers.count > 1 ? row.providerShort : row.shortLabel
     }
 }
 
 struct AccessoryCircularView: View {
-    let entry: UsageWidgetEntry
+    let entry: UsageEntry
 
     var body: some View {
-        if let hero = globalHottest(entry) {
-            Gauge(value: min(1, max(0, hero.fraction))) {
-                Text(ProviderPalette.short(hero.providerName).prefix(1))
+        if let hero = entry.glance.hero {
+            Gauge(value: hero.fraction ?? 1) {
+                Text(hero.providerShort.prefix(1))
             } currentValueLabel: {
-                if hero.fraction > 0.85 {
+                if hero.kind == .balance {
+                    Text(hero.value)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.4)
+                        .lineLimit(1)
+                } else if hero.tone == .danger {
                     Image(systemName: "exclamationmark.triangle.fill")
                 } else {
-                    Text("\(Int((hero.fraction * 100).rounded()))")
+                    Text("\(Int(((hero.fraction ?? 0) * 100).rounded()))")
                         .font(.system(.body, design: .rounded).weight(.semibold))
                         .minimumScaleFactor(0.5)
                 }
             }
             .gaugeStyle(.accessoryCircularCapacity)
             .widgetAccentable()
+            .widgetURL(usageURL())
+            .accessibilityLabel(hero.spoken)
         } else {
             Image(systemName: "gauge.with.dots.needle.33percent")
                 .font(.title2)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel(WidgetGlance.emptyTitle)
         }
     }
 }
 
 struct AccessoryInlineView: View {
-    let entry: UsageWidgetEntry
+    let entry: UsageEntry
 
     var body: some View {
-        if let hero = globalHottest(entry) {
-            Label(inlineText(hero), systemImage: hero.fraction > 0.85 ? "exclamationmark.triangle.fill" : "gauge.with.needle")
-        } else {
-            Label(String(localized: "No usage data"), systemImage: "gauge.with.dots.needle")
-        }
-    }
-
-    private func inlineText(_ hero: RankedGauge) -> String {
-        var text = "\(ProviderPalette.short(hero.providerName)) \(hero.percentText)"
-        if let resetsAt = hero.resetsAt, resetsAt > entry.date {
-            text += " · \(compactRemaining(resetsAt, from: entry.date))"
-        }
-        return text
-    }
-}
-
-private func accessoryRows(_ entry: UsageWidgetEntry) -> [(label: String, fraction: Double, percentText: String)] {
-    let providers = orderedProviders(entry)
-    if providers.count == 1, let provider = providers.first {
-        return provider.gauges.prefix(3).map { (shortGaugeLabel($0.label), $0.fraction, $0.percentText) }
-    }
-    return providers.prefix(3).compactMap { provider in
-        guard let top = provider.gauges.max(by: { $0.fraction < $1.fraction }) else { return nil }
-        return (ProviderPalette.short(provider.providerName), top.fraction, top.percentText)
-    }
-}
-
-struct HeroRing: View {
-    fileprivate let gauge: RankedGauge
-    let style: WidgetStyle
-    let size: CGFloat
-    let lineWidth: CGFloat
-
-    private var fill: Color { style.ramp(gauge.fraction, accent: style.accent(gauge.providerName)) }
-    private var trimmed: CGFloat { CGFloat(max(0.001, min(1, gauge.fraction))) }
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.primary.opacity(0.12), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: trimmed)
-                .stroke(strokeStyle, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .shadow(color: style.drawSheen ? fill.opacity(0.30) : .clear, radius: 3)
-            Text(gauge.percentText)
-                .font(.system(size: size * 0.27, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .minimumScaleFactor(0.6)
-                .lineLimit(1)
-                .foregroundStyle(.primary)
-        }
-        .frame(width: size, height: size)
-    }
-
-    private var strokeStyle: AnyShapeStyle {
-        if style.drawSheen {
-            return AnyShapeStyle(AngularGradient(
-                gradient: Gradient(colors: [fill.opacity(0.75), fill]),
-                center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)))
-        }
-        return AnyShapeStyle(fill)
-    }
-}
-
-struct GaugeBar: View {
-    let fraction: Double
-    let color: Color
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.12))
-                Capsule()
-                    .fill(color)
-                    .frame(width: geometry.size.width * CGFloat(max(0.03, min(1, fraction))))
-            }
-        }
-    }
-}
-
-private struct GaugeTable: View {
-    let gauges: [RankedGauge]
-    let style: WidgetStyle
-    let entryDate: Date
-    var abbreviate: Bool
-    var showCaptions = false
-
-    var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 7, verticalSpacing: 5) {
-            ForEach(gauges) { gauge in
-                let color = style.ramp(gauge.fraction, accent: style.accent(gauge.providerName))
-                GridRow {
-                    Text(abbreviate ? shortGaugeLabel(gauge.label) : gauge.label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .gridColumnAlignment(.leading)
-                    GaugeBar(fraction: gauge.fraction, color: color)
-                        .frame(height: 6)
-                    HStack(spacing: 2) {
-                        if gauge.fraction > 0.85 { SeverityGlyph(size: 8) }
-                        Text(gauge.percentText)
-                            .font(.caption.weight(.bold))
-                            .monospacedDigit()
-                            .foregroundStyle(color)
-                    }
-                    .gridColumnAlignment(.trailing)
-                }
-                if showCaptions, let caption = captionText(gauge) {
-                    GridRow {
-                        Text(caption)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .gridCellColumns(3)
-                    }
-                }
-            }
-        }
-    }
-
-    private func captionText(_ gauge: RankedGauge) -> String? {
-        if let resetsAt = gauge.resetsAt, resetsAt > entryDate {
-            return String(localized: "resets \(compactRemaining(resetsAt, from: entryDate))")
-        }
-        return gauge.caption.isEmpty ? nil : gauge.caption
-    }
-}
-
-private struct ResetLabel: View {
-    let entryDate: Date
-    let resetsAt: Date?
-    let caption: String
-    var font: Font = .caption2
-
-    var body: some View {
-        if let resetsAt, resetsAt > entryDate {
-            HStack(spacing: 3) {
-                Image(systemName: "arrow.clockwise")
-                if resetsAt.timeIntervalSince(entryDate) < 3600 {
-                    Text(timerInterval: entryDate...resetsAt, pauseTime: nil, countsDown: true, showsHours: false)
-                        .monospacedDigit()
-                } else {
-                    Text(compactRemaining(resetsAt, from: entryDate)).monospacedDigit()
-                }
-            }
-            .font(font)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        } else if !caption.isEmpty {
-            Text(caption)
-                .font(font)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-    }
-}
-
-struct StatusDot: View {
-    let isLive: Bool
-    let isStale: Bool
-
-    var body: some View {
-        if isLive {
-            Circle()
-                .fill(isStale ? Color.secondary : Color.green)
-                .frame(width: 6, height: 6)
-        }
-    }
-}
-
-private struct StatusPill: View {
-    let isLive: Bool
-    let isStale: Bool
-    let accent: Color
-
-    private var tint: Color { isStale ? .secondary : accent }
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(isLive ? String(localized: "LIVE") : String(localized: "EST"))
-                .font(.system(size: 8.5, weight: .heavy))
-            if isLive {
-                Circle()
-                    .fill(isStale ? Color.secondary : Color.green)
-                    .frame(width: 5, height: 5)
-            }
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 1.5)
-        .background(Capsule().fill(tint.opacity(isLive ? 0.15 : 0.10)))
-    }
-}
-
-private struct SeverityGlyph: View {
-    var size: CGFloat = 9
-    var body: some View {
-        Image(systemName: "exclamationmark.triangle.fill")
-            .font(.system(size: size))
-            .foregroundStyle(.red)
-    }
-}
-
-struct EmptyUsageView: View {
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "gauge.with.dots.needle.33percent")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-            Text(String(localized: "No usage data"))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text(String(localized: "Connect a server to see quotas"))
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        let glance = entry.glance
+        Label(
+            glance.inlineText,
+            systemImage: glance.hero?.tone == .danger
+                ? "exclamationmark.triangle.fill"
+                : (glance.isEmpty ? "gauge.with.dots.needle" : "gauge.with.needle")
+        )
+        .widgetURL(usageURL())
     }
 }

@@ -114,6 +114,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case browserSlot
     case hapticFeedback
     case homeQuickActions
+    case usageWidgets
     case presenceOrb
     case gameCenter
     case projectBoard
@@ -535,6 +536,10 @@ public enum CapabilityRegistry {
             id: .homeQuickActions, area: "app", title: "Home screen quick actions",
             spec:
                 "Long-pressing the app icon offers a jump list: New Chat focuses the composer, Saved chats opens the device-local bookmarks, Usage opens the quota panel, Quick Ask summons the question composer, and a dynamic Resume item tracks the most recent session and opens it. The jump list is for what someone reaches for daily rather than what they did once — adding a server is setup, and setup belongs inside the app. Every action lands on the same destination as its in-app tap, and one that arrives before the main UI exists (a cold launch, or before any server is set up) is parked and delivered the moment Home appears."),
+        CapabilityDefinition(
+            id: .usageWidgets, area: "app", title: "The quotas without opening the app",
+            spec:
+                "Where the platform lets an app put a reading outside itself, the account's quotas are readable without launching anything: every widget family, the Lock Screen accessories, and a Control Center button, all rendered from the shared snapshot by one reading (WidgetGlance) so a phone, a lock screen and a control can never disagree. The reading is the whole contract and no client invents a word of it: windows ranked with the walls first and the tightest next, a full window drawn as the state it is rather than as 100%, money with no ceiling drawn as a balance rather than as a bar at zero, an empty balance ranked as the wall it is, and a snapshot nobody could refresh saying so before it says anything else — a percentage presented as current is the one lie this surface can tell. Each size is given only the rows it can hold and states what it left out rather than truncating silently, and every row carries its own sentence for a reader who gets no columns. It is configurable in the platform's own editor rather than by a rebuild: which providers (read from the snapshot, so a provider the account actually has is offered and one that stopped answering is not silently unpicked), how the rows are chosen, how much each row says, where the colour comes from, and whether the reset clock is shown. The colour follows the app's own theme through a mirror in the shared container — an extension cannot see the app's defaults, and a Home Screen wearing a different palette than the app it opens reads as two apps — while meaning always outranks branding: a wall is the failure colour whatever else was picked, and a tinted or Lock Screen rendering flattens to one ink without losing a fact. The extension refreshes itself inside its own budget rather than waiting for the app to be opened, and a fetch that fails serves the stored snapshot rather than an error."),
         CapabilityDefinition(
             id: .presenceOrb, area: "app", title: "A presence with a body (alpha)",
             spec:

@@ -116,6 +116,7 @@ enum ParityManifest {
         case .activityNotifications: return .implemented("MacNotifier")
         case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
+        case .usageWidgets: return .gap("macOS publishes the same surfaces the phone does — Notification Centre widgets and a Control Centre control, from the same WidgetKit extension — and this app ships none, so the quotas are readable only while its window is open. The reading is already toolkit-free (WidgetGlance) and the snapshot already lives in a shared container; what is missing is the extension target and the SwiftUI views that draw it")
         case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         case .presenceOrb: return .implemented("PresenceOrbView")
         case .gameCenter:

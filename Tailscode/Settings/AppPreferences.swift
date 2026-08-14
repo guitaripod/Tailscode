@@ -29,6 +29,8 @@ enum AppPreferences {
     /// and a pin written under the old key is carried across.
     static func adoptThemeDefaults() {
         ThemeSelection.fallbackID = ThemeSelection.systemID
+        ThemeSelection.mirrorSuiteName = UsageWidgetStore.suiteName
+        ThemeSelection.mirror()
         guard let legacy = defaults.string(forKey: "pref.appearance") else { return }
         defaults.removeObject(forKey: "pref.appearance")
         guard defaults.string(forKey: ThemeSelection.appearanceKey) == nil,
