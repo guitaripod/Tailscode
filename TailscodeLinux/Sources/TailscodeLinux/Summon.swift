@@ -96,8 +96,7 @@ final class Summon: @unchecked Sendable {
     /// another thread wrote without a handoff can read the one before it — which showed as a
     /// bound chord reporting itself as off.
     private func publish(_ next: SummonState) {
-        FileHandle.standardOutput.write(
-            Data("SUMMON \(next.line(on: .linux))\n".utf8))
+        AppLog.write(.ui, "summon \(next.line(on: .linux))")
         Gtk.onMain { [weak self] in
             self?.state = next
             NotificationCenter.default.post(name: Self.didChange, object: nil)

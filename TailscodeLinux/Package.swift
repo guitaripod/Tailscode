@@ -113,7 +113,8 @@ enum Kit {
     static let version = Version(0, 15, 1)
 
     static var dependency: Package.Dependency {
-        guard ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] == nil else {
+        let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
+        guard forced.isEmpty || forced == "0" else {
             return .package(url: remote, from: version)
         }
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

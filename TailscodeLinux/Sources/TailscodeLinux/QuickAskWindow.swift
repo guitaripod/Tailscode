@@ -197,7 +197,7 @@ final class QuickAskWindow: @unchecked Sendable {
         refreshTarget()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
-        FileHandle.standardOutput.write(Data("ASK shown target=\(servers[targetIndex].name)\n".utf8))
+        AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
     }
 
     private var targetServer: ConnectionProfile { servers[targetIndex] }
@@ -206,7 +206,7 @@ final class QuickAskWindow: @unchecked Sendable {
         guard servers.count > 1, !asking else { return }
         targetIndex = (targetIndex + 1) % servers.count
         refreshTarget()
-        FileHandle.standardOutput.write(Data("ASK target=\(targetServer.name)\n".utf8))
+        AppLog.write(.ui, "ASK target=\(targetServer.name)")
     }
 
     /// The whole catalog, from the fleet's own cache — a machine's models are a fact about that
@@ -414,7 +414,7 @@ final class QuickAskWindow: @unchecked Sendable {
         case .files, .photos: pickAttachments()
         case .camera, .none: break
         }
-        FileHandle.standardOutput.write(Data("ASK starter=\(starter.id)\n".utf8))
+        AppLog.write(.ui, "ASK starter=\(starter.id)")
     }
 
     private func resume(_ entry: SessionEntry) {
@@ -513,7 +513,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 guard let self else { return }
                 guard let failure else {
                     QuickAskDefaults.record(profileID: server.id)
-                    FileHandle.standardOutput.write(Data("ASK sent server=\(server.name)\n".utf8))
+                    AppLog.write(.ui, "ASK sent server=\(server.name)")
                     self.close()
                     return
                 }
@@ -524,7 +524,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 gtk_widget_grab_focus(self.entry)
                 self.setHint("\(failure.title) — \(failure.detail)")
                 self.refreshStarterVisibility()
-                FileHandle.standardOutput.write(Data("ASK failed \(failure.title)\n".utf8))
+                AppLog.write(.ui, "ASK failed \(failure.title)")
             }
         }
     }

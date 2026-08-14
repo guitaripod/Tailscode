@@ -626,6 +626,9 @@ final class MainWindow: @unchecked Sendable {
                 let software: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.presentUpdates() }
                 }
+                let about: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in AboutWindow.present(parent: self?.window) }
+                }
                 return [
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
@@ -633,6 +636,8 @@ final class MainWindow: @unchecked Sendable {
                      Localized.text("Add, probe, update or remove a server"), servers),
                     (Localized.text("Software…"),
                      Localized.text("What this app and every server is running"), software),
+                    (Localized.text("About Tailscode"),
+                     Localized.text("Version, what it was built with, diagnostics to paste"), about),
                 ]
             })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
@@ -1952,16 +1957,22 @@ final class MainWindow: @unchecked Sendable {
     /// does not keep the directory itself.
     func fleetProfiles() -> [ConnectionProfile] { knownProfiles }
 
-    /// Asks every server what it runs, once, when the listing lands. The chooser has to be able to
-    /// name a machine's models before anyone has opened a chat on it, and a catalog nobody asked
-    /// for is the difference between a fleet-wide list and a list of wherever you happen to be.
+    /// Asks every server what it runs when the listing lands. The chooser has to be able to name a
+    /// machine's models before anyone has opened a chat on it, and a catalog nobody asked for is
+    /// the difference between a fleet-wide list and a list of wherever you happen to be. Every
+    /// server is asked again rather than only the ones nothing is remembered for: a server gains
+    /// models while nobody is looking, and a remembered catalog that is never re-asked is a list
+    /// that can only ever go out of date.
     private func warmCatalogs(_ profiles: [ConnectionProfile]) {
-        for profile in profiles where ModelCatalogStore.cached(profile.id).isEmpty {
-            Task {
+        for profile in profiles {
+            Task { [weak self] in
                 guard let backend = await ServerDirectory.shared.backend(for: profile) else {
                     return
                 }
-                await ModelCatalogStore.refresh(profileID: profile.id, backend: backend)
+                let known = ModelCatalogStore.cached(profile.id).map(\.id)
+                let fresh = await ModelCatalogStore.refresh(profileID: profile.id, backend: backend)
+                guard fresh.map(\.id) != known else { return }
+                Gtk.onMain { [weak self] in self?.restateChoosers() }
             }
         }
     }

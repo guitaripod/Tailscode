@@ -80,6 +80,14 @@ if Arguments.contains("--demo") {
 ToolkitFloor.enforce()
 DesktopGuard.enforce()
 
+/// The first line of every session's log, and the one a bug report is read against: what was
+/// running, how it got here, and what it was linked to.
+AppLog.write(
+    .lifecycle,
+    "launch \(TailscodeVersion.current) · \(LinuxAppInstall.read().kind.rawValue) · gtk "
+        + "\(gtk_get_major_version()).\(gtk_get_minor_version()) · adw "
+        + "\(adw_get_major_version()).\(adw_get_minor_version())")
+
 /// The window is built inside `activate`, never before it: GTK widgets cannot be constructed
 /// until the toolkit has initialised, and one made at top level segfaults inside `gtk_box_new`
 /// before the app has run a line of its own.

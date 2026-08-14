@@ -556,6 +556,10 @@ final class FirstRunDialog: @unchecked Sendable {
             backend: verified.agent,
             baseURL: verified.url,
             username: verified.agent == .claudeCode ? "claude" : "opencode")
+        AppLog.write(
+            .connection,
+            "first run saving \(verified.agent.rawValue) at \(verified.url.absoluteString) "
+                + "password \(AppLog.redacted(password.isEmpty ? nil : password))")
         Task { [self] in
             do {
                 try await ServerDirectory.shared.save(
