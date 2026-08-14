@@ -33,6 +33,7 @@ final class QuickAskPanel: NSPanel {
     private var offered: [QuickAskStarter] = []
     private var pastedImageCount = 0
     private var asking = false
+    private var draftProfileID: String?
     private let onAsk:
         (String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void) ->
             Void
@@ -56,8 +57,11 @@ final class QuickAskPanel: NSPanel {
             panel.setFrameOrigin(
                 NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2))
         }
+        panel.restoreDraft()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(panel.field)
+        panel.field.currentEditor()?.selectedRange = NSRange(
+            location: panel.field.stringValue.count, length: 0)
         frontmost = panel
     }
 
@@ -142,6 +146,14 @@ final class QuickAskPanel: NSPanel {
         close()
     }
 
+    /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
+    /// with escape is exactly that moment.
+    override func close() {
+        stashDraft()
+        DraftStore.flush()
+        super.close()
+    }
+
     /// The panel's own chords: a number picks the errand under it, ⌘⇧V takes the pasteboard's
     /// picture. Everything else belongs to the field, which is where the question is.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -164,7 +176,40 @@ final class QuickAskPanel: NSPanel {
     }
 
     @objc private func serverChanged() {
+        retargetDraft()
         refreshAim()
+    }
+
+    private var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
+
+    /// A question survives the surface it was being written in: the panel is opened by a chord
+    /// pressed in the middle of something else and closed by the same reflex, so what is in the
+    /// field is filed as it is typed and handed back the next time this machine is aimed at.
+    private func stashDraft() {
+        guard !asking else { return }
+        DraftStore.record(field.stringValue, for: draftScope)
+    }
+
+    private func restoreDraft() {
+        draftProfileID = targetServer.id
+        let draft = DraftStore.text(for: draftScope)
+        guard !draft.isEmpty else { return }
+        field.stringValue = draft
+        refreshStarterVisibility()
+    }
+
+    /// Moving the question to another machine leaves the words filed under the one being left and
+    /// hands back whatever was last written for the one arrived at — a draft belongs to the
+    /// machine it was written for, the way a chat's belongs to the chat.
+    private func retargetDraft() {
+        guard let previous = draftProfileID, previous != targetServer.id else {
+            draftProfileID = targetServer.id
+            return
+        }
+        DraftStore.record(field.stringValue, for: .quickAsk(profileID: previous))
+        draftProfileID = targetServer.id
+        field.stringValue = DraftStore.text(for: draftScope)
+        refreshStarterVisibility()
     }
 
     /// The whole catalog, from the fleet's own cache — a machine's models are a fact about that
@@ -397,6 +442,7 @@ final class QuickAskPanel: NSPanel {
             guard let self else { return }
             guard let failure else {
                 QuickAskDefaults.record(profileID: server.id)
+                DraftStore.clear(.quickAsk(profileID: server.id))
                 self.close()
                 return
             }
@@ -414,6 +460,7 @@ final class QuickAskPanel: NSPanel {
 
 extension QuickAskPanel: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
+        stashDraft()
         refreshStarterVisibility()
     }
 }

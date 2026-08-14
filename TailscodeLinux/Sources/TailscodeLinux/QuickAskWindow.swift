@@ -143,6 +143,7 @@ final class QuickAskWindow: @unchecked Sendable {
         }
         Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
             Gtk.onMain { [weak self] in
+                self?.stashDraft()
                 self?.refreshStarterVisibility()
                 self?.refreshSend()
             }
@@ -195,17 +196,47 @@ final class QuickAskWindow: @unchecked Sendable {
         }
 
         refreshTarget()
+        restoreDraft()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
+        gtk_editable_set_position(op(entry), -1)
         AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
     }
 
     private var targetServer: ConnectionProfile { servers[targetIndex] }
 
+    private var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
+
+    /// A question survives the surface it was being written in: the window is opened by a chord
+    /// pressed in the middle of something else and closed by the same reflex, so what is in the
+    /// entry is filed as it is typed and handed back the next time this machine is aimed at.
+    private func stashDraft() {
+        guard !asking else { return }
+        DraftStore.record(Dialogs.entryText(entry), for: draftScope)
+    }
+
+    private func restoreDraft() {
+        let draft = DraftStore.text(for: draftScope)
+        guard !draft.isEmpty else { return }
+        gtk_editable_set_text(op(entry), draft)
+        gtk_editable_set_position(op(entry), -1)
+    }
+
+    /// Moving the question to another machine leaves the words filed under the one being left and
+    /// hands back whatever was last written for the one arrived at, the way re-aiming Home's
+    /// composer does — a draft belongs to the machine it was written for.
+    private func retarget(to index: Int) {
+        guard index != targetIndex else { return }
+        stashDraft()
+        targetIndex = index
+        refreshTarget()
+        gtk_editable_set_text(op(entry), DraftStore.text(for: draftScope))
+        gtk_editable_set_position(op(entry), -1)
+    }
+
     private func cycleTarget() {
         guard servers.count > 1, !asking else { return }
-        targetIndex = (targetIndex + 1) % servers.count
-        refreshTarget()
+        retarget(to: (targetIndex + 1) % servers.count)
         AppLog.write(.ui, "ASK target=\(targetServer.name)")
     }
 
@@ -223,7 +254,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 guard let self else { return }
                 QuickAskDefaults.adopt(pick)
                 if let index = self.servers.firstIndex(where: { $0.id == pick.profileID }) {
-                    self.targetIndex = index
+                    self.retarget(to: index)
                 }
                 self.refreshTarget()
                 FileHandle.standardOutput.write(
@@ -513,6 +544,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 guard let self else { return }
                 guard let failure else {
                     QuickAskDefaults.record(profileID: server.id)
+                    DraftStore.clear(.quickAsk(profileID: server.id))
                     AppLog.write(.ui, "ASK sent server=\(server.name)")
                     self.close()
                     return
@@ -542,6 +574,8 @@ final class QuickAskWindow: @unchecked Sendable {
     }
 
     private func close() {
+        stashDraft()
+        DraftStore.flush()
         if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
         summonWatch = nil
         gtk_window_destroy(ptr(window))
