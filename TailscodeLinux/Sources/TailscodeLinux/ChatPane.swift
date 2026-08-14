@@ -50,7 +50,9 @@ final class ChatPane: @unchecked Sendable {
     private var pendingFirstMessage:
         (sessionID: String, text: String, attachments: [PendingAttachment])?
     private var notice: String?
-    let entryView = gtk_text_view_new()!
+    let editor = PromptEditor(
+        css: "composer", placeholder: Localized.text("Message… (/ for commands)"))
+    var entryView: UnsafeMutablePointer<GtkWidget> { editor.textView }
     private let sendButton = gtk_button_new_with_label("Send")!
     private let stopButton = gtk_button_new_with_label("⏹")!
     private var modelButton: UnsafeMutablePointer<GtkWidget>?
@@ -89,10 +91,8 @@ final class ChatPane: @unchecked Sendable {
     private var compactingStartedAt: Date?
 
     private var attachButton: UnsafeMutablePointer<GtkWidget>?
-    private(set) var composerScroller: UnsafeMutablePointer<GtkWidget>?
-    private var composerHeight: Int32 = 0
-    private var isMeasuringComposer = false
-    let vim = VimEngine()
+    var composerScroller: UnsafeMutablePointer<GtkWidget> { editor.scroller }
+    var vim: VimEngine { editor.vim }
     private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private let earlierButton = gtk_button_new()!
     private var windowLimit = 400
@@ -144,7 +144,6 @@ final class ChatPane: @unchecked Sendable {
     private var completionCursor = 0
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
-    private let aura = AuraPainter()
     var ultracodeInFlight = false
 
     /// What the next turn out of this pane runs on, however it is started — a typed prompt, a
@@ -152,7 +151,7 @@ final class ChatPane: @unchecked Sendable {
     var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
 
     var sessionID: String? { entry?.session.id }
-    var auraActive: Bool { aura.isActive }
+    var auraActive: Bool { editor.auraActive }
 
     /// Which prompt box this pane's composer is: the conversation, never the pane, so what was
     /// half-typed here is waiting in whichever pane opens that chat next.
@@ -284,31 +283,12 @@ final class ChatPane: @unchecked Sendable {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(row, top: 6, bottom: 2, leading: 26, trailing: 26)
 
-        let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        gtk_widget_set_hexpand(scroller, 1)
-        composerScroller = scroller
-        gtk_text_view_set_wrap_mode(ptr(entryView), GTK_WRAP_WORD_CHAR)
-        gtk_text_view_set_monospace(ptr(entryView), 1)
-        gtk_text_view_set_top_margin(ptr(entryView), 8)
-        gtk_text_view_set_left_margin(ptr(entryView), 10)
-        gtk_text_view_set_right_margin(ptr(entryView), 10)
-        gtk_scrolled_window_set_child(op(scroller), entryView)
-        Gtk.addClass(scroller, "composer")
-        Gtk.connect(
-            UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(entryView))), "changed"
-        ) { [weak self] in
-            self?.growComposer()
+        editor.onChanged = { [weak self] in
             self?.updateSlashCompletion()
             self?.refreshUltracodeAura()
             self?.recordDraft()
         }
-
-        let auraHost = gtk_overlay_new()!
-        gtk_overlay_set_child(op(auraHost), scroller)
-        gtk_overlay_add_overlay(op(auraHost), aura.widget)
-        gtk_widget_set_hexpand(auraHost, 1)
-        gtk_box_append(ptr(row), auraHost)
+        gtk_box_append(ptr(row), editor.widget)
 
         Gtk.acceptFileDrops(on: row) { [weak self] paths in
             self?.attach(paths: paths)
@@ -937,7 +917,7 @@ final class ChatPane: @unchecked Sendable {
         streamTask?.cancel()
         agentStreamTask?.cancel()
         tickerTask?.cancel()
-        aura.setActive(false)
+        editor.stopAura()
         streamTask = nil
         agentStreamTask = nil
         tickerTask = nil
@@ -2246,11 +2226,9 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func refreshUltracodeAura() {
-        let was = aura.isActive
-        aura.setActive(
-            Ultracode.auraActive(
-                effort: chosenEffort, draft: composerText(), inFlightInvoked: ultracodeInFlight))
-        if aura.isActive != was { host?.refreshOrb() }
+        let was = editor.auraActive
+        editor.setAura(effort: chosenEffort, inFlight: ultracodeInFlight)
+        if editor.auraActive != was { host?.refreshOrb() }
     }
 
     /// On the server first — what this machine will actually resolve — then what the app itself
@@ -2335,16 +2313,11 @@ final class ChatPane: @unchecked Sendable {
 
     /// Alongside the badge, the caret itself says which mode this is: it blinks only in insert.
     func updateVimBadge() {
+        editor.refreshMode()
         guard Preferences.vimComposer else {
-            gtk_text_view_set_cursor_visible(ptr(entryView), 1)
             gtk_widget_set_visible(vimBadge, 0)
-            if let composerScroller {
-                gtk_widget_remove_css_class(composerScroller, "composer-normal")
-                gtk_widget_remove_css_class(composerScroller, "composer-visual")
-            }
             return
         }
-        gtk_text_view_set_cursor_visible(ptr(entryView), vim.mode == .insert ? 1 : 0)
         gtk_widget_set_visible(vimBadge, 1)
         gtk_label_set_text(op(vimBadge), vim.mode.label)
         gtk_widget_remove_css_class(vimBadge, "vim-badge-visual")
@@ -2353,14 +2326,6 @@ final class ChatPane: @unchecked Sendable {
         case .insert: Gtk.addClass(vimBadge, "vim-badge-insert")
         case .visual, .visualLine: Gtk.addClass(vimBadge, "vim-badge-visual")
         case .normal: break
-        }
-        guard let composerScroller else { return }
-        gtk_widget_remove_css_class(composerScroller, "composer-normal")
-        gtk_widget_remove_css_class(composerScroller, "composer-visual")
-        switch vim.mode {
-        case .normal: Gtk.addClass(composerScroller, "composer-normal")
-        case .visual, .visualLine: Gtk.addClass(composerScroller, "composer-visual")
-        case .insert: break
         }
     }
 
@@ -2480,69 +2445,14 @@ final class ChatPane: @unchecked Sendable {
     private func applyVim(_ outcome: VimOutcome) {
         switch outcome {
         case .passThrough, .handled:
-            if case .handled = outcome { writeComposer(vim.document, selection: vim.selection) }
+            if case .handled = outcome { editor.write(vim.document, selection: vim.selection) }
         case .send:
             sendFromComposer()
         }
         updateVimBadge()
     }
 
-    /// The prompt box is as tall as what is in it, and it stops growing at the height the
-    /// settings window sets. Measured on the next idle, never inline.
-    private func growComposer() {
-        guard !isMeasuringComposer else { return }
-        isMeasuringComposer = true
-        Gtk.onMain { [weak self] in
-            guard let self else { return }
-            self.isMeasuringComposer = false
-            self.measureComposer()
-        }
-    }
-
-    private func measureComposer() {
-        guard let composerScroller else { return }
-        let line = 20.0 * Preferences.scale(.mono)
-        let ceiling = Int32(line * Double(Preferences.composerLines) + 18)
-        let floor = Int32(line + 18)
-
-        var minimum: Int32 = 0
-        var natural: Int32 = 0
-        let width = gtk_widget_get_width(entryView)
-        gtk_widget_measure(
-            entryView, GTK_ORIENTATION_VERTICAL, width > 0 ? width : -1, &minimum, &natural,
-            nil, nil)
-        let wanted = composerText().isEmpty ? floor : max(floor, min(ceiling, natural + 18))
-        guard wanted != composerHeight else { return }
-        composerHeight = wanted
-        gtk_widget_set_size_request(composerScroller, -1, wanted)
-    }
-
-    private func composerCursor() -> Int {
-        let buffer = gtk_text_view_get_buffer(ptr(entryView))
-        var iter = GtkTextIter()
-        gtk_text_buffer_get_iter_at_mark(buffer, &iter, gtk_text_buffer_get_insert(buffer))
-        return Int(gtk_text_iter_get_offset(&iter))
-    }
-
-    private func writeComposer(_ document: VimDocument, selection: Range<Int>?) {
-        let buffer = gtk_text_view_get_buffer(ptr(entryView))
-        if composerText() != document.text {
-            gtk_text_buffer_set_text(buffer, document.text, -1)
-        }
-        var caret = GtkTextIter()
-        gtk_text_buffer_get_iter_at_offset(buffer, &caret, Int32(document.cursor))
-        if let selection {
-            var start = GtkTextIter()
-            var end = GtkTextIter()
-            gtk_text_buffer_get_iter_at_offset(buffer, &start, Int32(selection.lowerBound))
-            gtk_text_buffer_get_iter_at_offset(buffer, &end, Int32(selection.upperBound))
-            gtk_text_buffer_select_range(buffer, &end, &start)
-        } else {
-            gtk_text_buffer_place_cursor(buffer, &caret)
-        }
-        gtk_text_view_scroll_to_mark(
-            ptr(entryView), gtk_text_buffer_get_insert(buffer), 0, 0, 0, 0)
-    }
+    private func composerCursor() -> Int { editor.cursor }
 
     func stopTurn() {
         guard let conversation else { return }
@@ -2741,7 +2651,7 @@ final class ChatPane: @unchecked Sendable {
     /// Argument stage, hints, and no-match live here with the naming list — the greppable anchor
     /// for slashCompletion on Linux.
     private func renderCompletion(_ presentation: SlashPresentation? = nil) {
-        guard let anchor = composerScroller else { return }
+        let anchor = composerScroller
         let surface =
             presentation
             ?? SlashPresentation.of(
@@ -2887,36 +2797,20 @@ final class ChatPane: @unchecked Sendable {
     /// document a person moves around in, and vim's shadow of it has to be told what was written
     /// or the next normal-mode key would edit a string that no longer exists.
     private func insertAtCaret(_ text: String) {
-        let buffer = gtk_text_view_get_buffer(ptr(entryView))
-        gtk_text_buffer_insert_at_cursor(buffer, text, -1)
-        gtk_widget_grab_focus(entryView)
-        vim.reset(to: composerText(), cursor: composerCursor(), mode: vim.mode)
+        editor.insertAtCaret(text)
     }
 
     func insertIntoComposer(_ text: String) {
-        let buffer = gtk_text_view_get_buffer(ptr(entryView))
-        var end = GtkTextIter()
-        gtk_text_buffer_get_end_iter(buffer, &end)
-        gtk_text_buffer_insert(buffer, &end, text, -1)
-        gtk_widget_grab_focus(entryView)
+        editor.insertAtEnd(text)
     }
 
-    func composerText() -> String {
-        let buffer = gtk_text_view_get_buffer(ptr(entryView))
-        var start = GtkTextIter()
-        var end = GtkTextIter()
-        gtk_text_buffer_get_bounds(buffer, &start, &end)
-        guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return "" }
-        defer { g_free(raw) }
-        return String(cString: raw)
-    }
+    func composerText() -> String { editor.text }
 
     /// Empties the prompt box and the vim document that shadows it, without touching any stored
     /// draft: called where the pane has already let go of the conversation the text belonged to.
     private func clearComposer() {
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), "", 0)
+        editor.clear()
         lastRecordedDraft = ""
-        vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
     }
 
@@ -3410,8 +3304,7 @@ final class ChatPane: @unchecked Sendable {
     /// Compact and dense change what a row *is*, so the transcript is rebuilt rather than
     /// restyled.
     func applyLayoutPreferences() {
-        composerHeight = 0
-        growComposer()
+        editor.applyPreferences()
         gtk_box_set_spacing(ptr(transcriptBox), Preferences.denseRows ? 3 : 10)
         windowLimit = max(windowLimit, Preferences.transcriptWindow)
         updateVimBadge()

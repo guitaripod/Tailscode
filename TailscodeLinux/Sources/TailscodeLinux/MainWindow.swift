@@ -426,8 +426,7 @@ final class MainWindow: @unchecked Sendable {
                         index, pane -> String in
                         let bounds = Gtk.bounds(of: pane.root, in: window) ?? (0, 0, 0, 0)
                         let composer =
-                            pane.composerScroller.flatMap { Gtk.bounds(of: $0, in: window) }
-                            ?? (0, 0, 0, 0)
+                            Gtk.bounds(of: pane.composerScroller, in: window) ?? (0, 0, 0, 0)
                         return String(
                             format: "%d(%.0f,%.0f %.0fx%.0f composer=%.0f,%.0f)", index,
                             bounds.x + shadowX, bounds.y + shadowY, bounds.width, bounds.height,

@@ -1293,19 +1293,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func vimKey(for event: NSEvent) -> VimKey {
-        var character: Character?
-        if let raw = event.charactersIgnoringModifiers?.first,
-            let scalar = raw.unicodeScalars.first?.value, scalar >= 0x20,
-            !(0xF700...0xF8FF).contains(scalar)
-        {
-            character = raw
-        }
-        return VimKey(
-            character: character,
-            isEscape: event.keyCode == 53,
-            isEnter: event.keyCode == 36 || event.keyCode == 76,
-            isBackspace: event.keyCode == 51,
-            control: event.modifierFlags.contains(.control))
+        PromptEditor.vimKey(for: event)
     }
 
     /// Anything that takes text — the composer, the filter field's editor, a rename sheet — is

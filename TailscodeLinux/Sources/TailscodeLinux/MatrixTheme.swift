@@ -202,6 +202,7 @@ enum MatrixTheme {
             color: \(text);
             \(t(.composer))
         }
+        .composer-placeholder { color: \(textDim); \(t(.composer)) opacity: 0.55; }
         .composer-normal { border-color: \(accent); }
         .composer-visual { border-color: \(info); }
         .vim-badge {
@@ -386,6 +387,16 @@ enum MatrixTheme {
         }
         .ask-entry text { background: none; color: \(text); }
         .ask-entry text selection { background-color: alpha(\(accent), 0.30); color: \(text); }
+        .ask-entry, .ask-entry textview, .ask-entry textview text {
+            background-color: transparent;
+            background-image: none;
+            color: \(text);
+            \(t(.composer))
+        }
+        .ask-entry textview text selection {
+            background-color: alpha(\(accent), 0.30);
+            color: \(text);
+        }
         .ask-send {
             color: \(textDim);
             \(t(.composer))

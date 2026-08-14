@@ -30,7 +30,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private let onResume: @Sendable (SessionEntry) -> Void
 
     private let window: UnsafeMutablePointer<GtkWidget>
-    private let entry: UnsafeMutablePointer<GtkWidget>
+    private let editor: PromptEditor
     private let title: UnsafeMutablePointer<GtkWidget>
     private let target: UnsafeMutablePointer<GtkWidget>
     private let model: UnsafeMutablePointer<GtkWidget>
@@ -39,6 +39,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private let chips: UnsafeMutablePointer<GtkWidget>
     private let starters: UnsafeMutablePointer<GtkWidget>
     private let hint: UnsafeMutablePointer<GtkWidget>
+    private let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     private var attachments: [PendingAttachment] = []
     private var offered: [QuickAskStarter] = []
     private var pastedImageCount = 0
@@ -89,12 +90,8 @@ final class QuickAskWindow: @unchecked Sendable {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
 
-        entry = gtk_entry_new()!
-        gtk_entry_set_placeholder_text(
-            ptr(entry), Localized.text("Ask anything — no project, no setup"))
-        gtk_entry_set_has_frame(ptr(entry), 0)
-        Gtk.addClass(entry, "ask-entry")
-        gtk_widget_set_hexpand(entry, 1)
+        editor = PromptEditor(
+            css: "ask-entry", placeholder: Localized.text("Ask anything — no project, no setup"))
         hint = Gtk.label("", css: "ask-hint", selectable: false)
         target = Gtk.button("", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.cycleTarget() }
@@ -108,7 +105,7 @@ final class QuickAskWindow: @unchecked Sendable {
         send = Gtk.button("↵", css: ["flat", "ask-send"]) {
             Gtk.onMain { QuickAskWindow.open?.submit() }
         }
-        gtk_widget_set_valign(send, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(send, GTK_ALIGN_END)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
 
@@ -128,28 +125,43 @@ final class QuickAskWindow: @unchecked Sendable {
         Gtk.margins(column, top: 16, bottom: 14, leading: 16, trailing: 16)
         gtk_window_set_child(ptr(window), column)
 
+        let caret = Gtk.label("›", css: "ask-caret", selectable: false)
+        gtk_widget_set_valign(caret, GTK_ALIGN_START)
+        Gtk.margins(caret, top: 8)
+        gtk_widget_set_valign(vimBadge, GTK_ALIGN_END)
+        gtk_widget_set_visible(vimBadge, 0)
+        gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
         let field = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.addClass(field, "ask-field")
-        gtk_box_append(ptr(field), Gtk.label("›", css: "ask-caret", selectable: false))
-        gtk_box_append(ptr(field), entry)
+        gtk_box_append(ptr(field), caret)
+        gtk_box_append(ptr(field), editor.widget)
+        gtk_box_append(ptr(field), vimBadge)
         gtk_box_append(ptr(field), send)
         gtk_box_append(ptr(column), field)
         gtk_box_append(ptr(column), chips)
         gtk_box_append(ptr(column), hint)
         gtk_box_append(ptr(column), starters)
+        editor.carryModeOn(field)
 
-        Gtk.connect(UnsafeMutableRawPointer(entry), "activate") { [weak self] in
-            Gtk.onMain { [weak self] in self?.submit() }
+        /// The whole surface takes a drop, not a button on it: something dragged out of a file
+        /// manager is a question about that thing, and aiming it at a paperclip is not a gesture
+        /// anybody should have to make.
+        Gtk.acceptFileDrops(on: column) { [weak self] paths in
+            Gtk.onMain { [weak self] in self?.take(paths: paths) }
         }
-        Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
-            Gtk.onMain { [weak self] in
-                self?.stashDraft()
-                self?.refreshStarterVisibility()
-                self?.refreshSend()
-            }
+
+        editor.onHeightChanged = { [weak self] in self?.fitToContents() }
+        editor.onChanged = { [weak self] in
+            self?.stashDraft()
+            self?.refreshStarterVisibility()
+            self?.refreshSend()
+            self?.refreshAura()
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
+            let control = state & KeyChord.controlMask != 0
+            let shift = state & Keymap.shift != 0
+            if let claimed = self.vimKey(keyval: keyval, state: state) { return claimed }
             if keyval == Keymap.escape {
                 Gtk.onMain { [weak self] in self?.close() }
                 return true
@@ -158,10 +170,19 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.cycleTarget() }
                 return true
             }
-            if state & KeyChord.controlMask != 0, keyval == UInt32(UnicodeScalar("v").value) {
+            if control, keyval == UInt32(UnicodeScalar("v").value) {
                 Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
                 return true
             }
+            /// Return is the send unless the settings say otherwise, and shift always writes the
+            /// line break — the same bargain the chat's own box makes, so a question with a
+            /// paragraph in it is typed the way a prompt is.
+            let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
+            if isReturn, !shift, Preferences.sendOnReturn || control {
+                Gtk.onMain { [weak self] in self?.submit() }
+                return true
+            }
+            if isReturn { return false }
             guard state & KeyChord.altMask != 0 else { return false }
             if keyval == UInt32(UnicodeScalar("m").value) {
                 Gtk.onMain { [weak self] in self?.chooseModel() }
@@ -197,9 +218,9 @@ final class QuickAskWindow: @unchecked Sendable {
 
         refreshTarget()
         restoreDraft()
+        updateVimBadge()
         gtk_window_present(ptr(window))
-        gtk_widget_grab_focus(entry)
-        gtk_editable_set_position(op(entry), -1)
+        editor.focus()
         AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
     }
 
@@ -212,14 +233,21 @@ final class QuickAskWindow: @unchecked Sendable {
     /// entry is filed as it is typed and handed back the next time this machine is aimed at.
     private func stashDraft() {
         guard !asking else { return }
-        DraftStore.record(Dialogs.entryText(entry), for: draftScope)
+        DraftStore.record(editor.text, for: draftScope)
     }
 
     private func restoreDraft() {
         let draft = DraftStore.text(for: draftScope)
         guard !draft.isEmpty else { return }
-        gtk_editable_set_text(op(entry), draft)
-        gtk_editable_set_position(op(entry), -1)
+        write(draft)
+    }
+
+    /// Every path that puts words in the box lands here, so the vim document that shadows it is
+    /// never left describing a draft that has been replaced underneath it.
+    private func write(_ text: String) {
+        editor.setText(text)
+        editor.vim.reset(to: text, cursor: text.count, mode: .insert)
+        updateVimBadge()
     }
 
     /// Moving the question to another machine leaves the words filed under the one being left and
@@ -230,8 +258,8 @@ final class QuickAskWindow: @unchecked Sendable {
         stashDraft()
         targetIndex = index
         refreshTarget()
-        gtk_editable_set_text(op(entry), DraftStore.text(for: draftScope))
-        gtk_editable_set_position(op(entry), -1)
+        write(DraftStore.text(for: draftScope))
+        refreshAura()
     }
 
     private func cycleTarget() {
@@ -288,6 +316,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 model: QuickAskDefaults.model(forProfileID: server.id),
                 effort: QuickAskDefaults.effort(forProfileID: server.id)))
         gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
+        refreshAura()
         let able = abilities
         gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
         let kept = attachments.filter { able.accepts(mime: $0.mime) }
@@ -297,12 +326,23 @@ final class QuickAskWindow: @unchecked Sendable {
         renderStarters()
         refreshSend()
         guard !asking else { return }
-        setHint(
-            dropped > 0
-                ? QuickAskComposition.droppedNotice(count: dropped)
-                : (servers.count < 2
-                    ? Localized.text("Enter sends · esc closes")
-                    : Localized.text("Enter sends · tab moves the machine · esc closes")))
+        setHint(dropped > 0 ? QuickAskComposition.droppedNotice(count: dropped) : Self.keysHint(
+            machines: servers.count))
+    }
+
+    /// What the keys do, said once under the box. Which key sends is the person's own setting, so
+    /// the line reads it rather than asserting Enter — and it always names the one that writes a
+    /// line break, because a box that grows is worth nothing to somebody who does not know how to
+    /// put a paragraph in it.
+    private static func keysHint(machines: Int) -> String {
+        let sending =
+            Preferences.sendOnReturn
+            ? Localized.text("Enter sends · shift+enter for a new line")
+            : Localized.text("Ctrl+enter sends · enter for a new line")
+        guard machines > 1 else {
+            return sending + Localized.text(" · esc closes")
+        }
+        return sending + Localized.text(" · tab moves the machine · esc closes")
     }
 
     /// The bar's second line teaches the thing a person cannot discover from inside this window:
@@ -318,12 +358,69 @@ final class QuickAskWindow: @unchecked Sendable {
     /// one key can never disagree about whether there is a question yet.
     private func refreshSend() {
         let ready = QuickAskComposition.canSend(
-            text: Dialogs.entryText(entry).trimmingCharacters(in: .whitespacesAndNewlines),
+            text: editor.text.trimmingCharacters(in: .whitespacesAndNewlines),
             attachments: attachments.count)
         gtk_widget_set_sensitive(send, ready && !asking ? 1 : 0)
         if ready { Gtk.addClass(send, "ask-send-ready") } else {
             gtk_widget_remove_css_class(send, "ask-send-ready")
         }
+    }
+
+    /// Vim is the composer's, so it is the quick ask's: the same engine, the same badge, the same
+    /// rule that a mode is worn rather than remembered. Escape leaves insert before it closes the
+    /// window, because a hand that pressed it meant the mode it was in.
+    private func vimKey(keyval: UInt32, state: UInt32) -> Bool? {
+        guard Preferences.vimComposer, !asking, editor.hasFocus(in: window) else { return nil }
+        let control = state & KeyChord.controlMask != 0
+        let key = VimKey(
+            character: Keymap.scalar(keyval),
+            isEscape: keyval == Keymap.escape,
+            isEnter: keyval == Keymap.enter || keyval == Keymap.keypadEnter,
+            isBackspace: keyval == Keymap.backspace,
+            control: control)
+        if editor.vim.mode == .insert {
+            guard key.isEscape || (control && Keymap.scalar(keyval) == "[") else { return nil }
+            applyVim(VimKey(isEscape: true))
+            return true
+        }
+        if key.isEscape { return nil }
+        guard !control, state & KeyChord.altMask == 0 else { return nil }
+        applyVim(key)
+        return true
+    }
+
+    private func applyVim(_ key: VimKey) {
+        let outcome = editor.vim.handle(key, text: editor.text, cursor: editor.cursor)
+        switch outcome {
+        case .handled: editor.write(editor.vim.document, selection: editor.vim.selection)
+        case .passThrough: break
+        case .send: submit()
+        }
+        updateVimBadge()
+    }
+
+    private func updateVimBadge() {
+        editor.refreshMode()
+        guard Preferences.vimComposer else {
+            gtk_widget_set_visible(vimBadge, 0)
+            return
+        }
+        gtk_widget_set_visible(vimBadge, 1)
+        gtk_label_set_text(op(vimBadge), editor.vim.mode.label)
+        gtk_widget_remove_css_class(vimBadge, "vim-badge-visual")
+        gtk_widget_remove_css_class(vimBadge, "vim-badge-insert")
+        switch editor.vim.mode {
+        case .insert: Gtk.addClass(vimBadge, "vim-badge-insert")
+        case .visual, .visualLine: Gtk.addClass(vimBadge, "vim-badge-visual")
+        case .normal: break
+        }
+    }
+
+    /// The powers are visibly on before the question is sent: the aim's own effort, or the word
+    /// typed into the draft, lights the same rainbow the chat's box wears.
+    private func refreshAura() {
+        editor.setAura(
+            effort: QuickAskDefaults.effort(forProfileID: targetServer.id), inFlight: false)
     }
 
     private func setHint(_ text: String) {
@@ -421,10 +518,17 @@ final class QuickAskWindow: @unchecked Sendable {
     /// they left would be a pane of dead space under the question: the toplevel is asked for its
     /// natural height again every time they come or go.
     private func refreshStarterVisibility() {
-        let empty = Dialogs.entryText(entry).isEmpty && attachments.isEmpty
+        let empty = editor.text.isEmpty && attachments.isEmpty
         let visible: Int32 = empty && !asking ? 1 : 0
         guard gtk_widget_get_visible(starters) != visible else { return }
         gtk_widget_set_visible(starters, visible)
+        fitToContents()
+    }
+
+    /// The window is exactly as tall as what is in it, which means it has to be asked again every
+    /// time that changes: a box that grew inside a window that did not would write the question
+    /// off the bottom edge of its own surface.
+    private func fitToContents() {
         gtk_window_set_default_size(ptr(window), 560, -1)
     }
 
@@ -435,11 +539,8 @@ final class QuickAskWindow: @unchecked Sendable {
         guard !asking, offered.indices.contains(index) else { return }
         let starter = offered[index]
         QuickAskStarterRecents.record(starter.id)
-        if Dialogs.entryText(entry).isEmpty {
-            gtk_editable_set_text(op(entry), starter.prompt)
-            gtk_editable_set_position(op(entry), -1)
-        }
-        gtk_widget_grab_focus(entry)
+        if editor.text.isEmpty { write(starter.prompt) }
+        editor.focus()
         refreshStarterVisibility()
         switch starter.opens {
         case .files, .photos: pickAttachments()
@@ -459,22 +560,27 @@ final class QuickAskWindow: @unchecked Sendable {
     private func pickAttachments() {
         guard !asking, abilities.attachments else { return }
         Gtk.openFiles(parent: window) { [weak self] paths in
-            guard let self else { return }
-            for path in paths {
-                switch AttachmentIntake.read(path: path) {
-                case .success(let attachment):
-                    guard self.abilities.accepts(mime: attachment.mime) else {
-                        self.setHint(
-                            Localized.text("This model can't read %@", attachment.name))
-                        continue
-                    }
-                    self.attachments.append(attachment)
-                case .failure(let refusal):
-                    self.setHint(refusal.message)
-                }
-            }
-            self.renderAttachments()
+            self?.take(paths: paths)
         }
+    }
+
+    /// Read fully at pick time, so a file edited or deleted between picking and sending still
+    /// sends the bytes that were chosen; a refusal names its reason instead of shrinking a file.
+    private func take(paths: [String]) {
+        guard !asking, abilities.attachments else { return }
+        for path in paths {
+            switch AttachmentIntake.read(path: path) {
+            case .success(let attachment):
+                guard abilities.accepts(mime: attachment.mime) else {
+                    setHint(Localized.text("This model can't read %@", attachment.name))
+                    continue
+                }
+                attachments.append(attachment)
+            case .failure(let refusal):
+                setHint(refusal.message)
+            }
+        }
+        renderAttachments()
     }
 
     /// The clipboard, whatever it is holding. A screenshot and a file copied in a file manager
@@ -489,11 +595,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 guard let self else { return }
                 let plan = PasteIntake.plan(for: offer, abilities: able, alreadyNamed: named)
                 self.pastedImageCount = plan.named
-                if let text = plan.text, !text.isEmpty {
-                    var position = gtk_editable_get_position(op(self.entry))
-                    gtk_editable_insert_text(op(self.entry), text, -1, &position)
-                    gtk_editable_set_position(op(self.entry), position)
-                }
+                if let text = plan.text, !text.isEmpty { self.editor.insertAtCaret(text) }
                 if !plan.attachments.isEmpty {
                     self.attachments.append(contentsOf: plan.attachments)
                     self.renderAttachments()
@@ -530,10 +632,10 @@ final class QuickAskWindow: @unchecked Sendable {
     /// pictures — back.
     private func submit() {
         guard !asking else { return }
-        let text = Dialogs.entryText(entry).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         asking = true
-        gtk_widget_set_sensitive(entry, 0)
+        editor.setSensitive(false)
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
         refreshStarterVisibility()
@@ -550,10 +652,10 @@ final class QuickAskWindow: @unchecked Sendable {
                     return
                 }
                 self.asking = false
-                gtk_widget_set_sensitive(self.entry, 1)
+                self.editor.setSensitive(true)
                 gtk_widget_set_sensitive(self.attach, 1)
                 self.refreshSend()
-                gtk_widget_grab_focus(self.entry)
+                self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")
                 self.refreshStarterVisibility()
                 AppLog.write(.ui, "ASK failed \(failure.title)")
@@ -562,7 +664,7 @@ final class QuickAskWindow: @unchecked Sendable {
     }
 
     func driveType(_ text: String) {
-        gtk_editable_set_text(op(entry), text)
+        write(text)
     }
 
     func driveGo() {

@@ -20,7 +20,8 @@ import TailscodeCore
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
 
-    private let field = NSTextField()
+    private let editor = PromptEditor(
+        placeholder: Localized.text("Ask anything — no project, no setup"))
     private let serverPopup = NSPopUpButton()
     private let modelButton = NSButton()
     private let attachButton = NSButton()
@@ -34,6 +35,7 @@ final class QuickAskPanel: NSPanel {
     private var pastedImageCount = 0
     private var asking = false
     private var draftProfileID: String?
+    private var keyMonitor: Any?
     private let onAsk:
         (String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void) ->
             Void
@@ -59,9 +61,7 @@ final class QuickAskPanel: NSPanel {
         }
         panel.restoreDraft()
         panel.makeKeyAndOrderFront(nil)
-        panel.makeFirstResponder(panel.field)
-        panel.field.currentEditor()?.selectedRange = NSRange(
-            location: panel.field.stringValue.count, length: 0)
+        panel.editor.focus()
         frontmost = panel
     }
 
@@ -82,12 +82,14 @@ final class QuickAskPanel: NSPanel {
         isFloatingPanel = true
         isReleasedWhenClosed = false
 
-        field.placeholderString = Localized.text("Ask anything — no project, no setup")
-        field.font = MacTheme.Ramp.font(.composer)
-        field.target = self
-        field.action = #selector(submit)
-        field.delegate = self
-        field.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
+        editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
+        editor.onChanged = { [weak self] in
+            self?.stashDraft()
+            self?.refreshStarterVisibility()
+            self?.refreshAura()
+            self?.resize()
+        }
+        editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
 
         let aimed = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
@@ -127,7 +129,7 @@ final class QuickAskPanel: NSPanel {
         let aim = NSStackView(views: [serverPopup, modelButton, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
-        let column = QuickAskDropView(views: [field, chips, aim, status, starters])
+        let column = QuickAskDropView(views: [editor, chips, aim, status, starters])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 8
@@ -137,6 +139,7 @@ final class QuickAskPanel: NSPanel {
         column.registerForDraggedTypes([.fileURL, .png, .tiff])
         contentView = column
         refreshAim()
+        installMonitor()
         resize()
     }
 
@@ -151,7 +154,87 @@ final class QuickAskPanel: NSPanel {
     override func close() {
         stashDraft()
         DraftStore.flush()
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         super.close()
+    }
+
+    /// The keys the box itself owes an answer to. Return is the send unless the settings say
+    /// otherwise and shift always writes the line break — the same bargain the chat's own box
+    /// makes — and vim, when it is on, is the same engine wearing the same modes, so escape
+    /// leaves insert before it closes the panel.
+    private func installMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self, !self.asking else { return event }
+            let flags = event.modifierFlags
+            let control = flags.contains(.control)
+            let shift = flags.contains(.shift)
+            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            if PromptEditor.vimPreferred, self.editor.hasFocus {
+                let key = PromptEditor.vimKey(for: event)
+                let letter = event.charactersIgnoringModifiers?.lowercased()
+                if self.editor.vim.mode == .insert {
+                    if key.isEscape || (control && letter == "[") {
+                        self.applyVim(VimKey(isEscape: true))
+                        return nil
+                    }
+                } else if !key.isEscape, !control, !flags.contains(.command),
+                    !flags.contains(.option)
+                {
+                    self.applyVim(key)
+                    return nil
+                }
+            }
+            if isReturn, !shift, PromptEditor.sendOnReturn || control {
+                self.submit()
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func applyVim(_ key: VimKey) {
+        let outcome = editor.vim.handle(key, text: editor.text, cursor: editor.cursor)
+        switch outcome {
+        case .handled: editor.write(editor.vim.document, selection: editor.vim.selection)
+        case .passThrough: break
+        case .send: submit()
+        }
+        editor.refreshMode()
+    }
+
+    /// The powers are visibly on before the question is sent: the aim's own effort, or the word
+    /// typed into the draft, lights the same rainbow the chat's box wears.
+    private func refreshAura() {
+        editor.setAura(
+            editor.auraActive(
+                effort: QuickAskDefaults.effort(forProfileID: targetServer.id), inFlight: false))
+    }
+
+    /// The clipboard, whatever it is holding: a screenshot or a file copied in the Finder becomes
+    /// a chip, and words are handed back to AppKit so undo and selection stay the system's.
+    private func takeClipboard() -> Bool {
+        let pasteboard = NSPasteboard.general
+        var offer = ClipboardOffer()
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            offer.paths = urls.filter(\.isFileURL).map(\.path)
+        }
+        if offer.paths.isEmpty, let data = pasteboard.data(forType: .png) ?? pngFromTIFF(pasteboard)
+        {
+            offer.image = data
+        }
+        if offer.paths.isEmpty, offer.image == nil {
+            offer.text = pasteboard.string(forType: .string)
+        }
+        let plan = PasteIntake.plan(
+            for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
+        pastedImageCount = plan.named
+        if let notice = plan.notices.first { status.stringValue = notice }
+        guard plan.text == nil else { return false }
+        guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
+        attachments.append(contentsOf: plan.attachments)
+        syncAttachments()
+        return true
     }
 
     /// The panel's own chords: a number picks the errand under it, ⌘⇧V takes the pasteboard's
@@ -187,14 +270,14 @@ final class QuickAskPanel: NSPanel {
     /// field is filed as it is typed and handed back the next time this machine is aimed at.
     private func stashDraft() {
         guard !asking else { return }
-        DraftStore.record(field.stringValue, for: draftScope)
+        DraftStore.record(editor.text, for: draftScope)
     }
 
     private func restoreDraft() {
         draftProfileID = targetServer.id
         let draft = DraftStore.text(for: draftScope)
         guard !draft.isEmpty else { return }
-        field.stringValue = draft
+        editor.setText(draft, caretAtEnd: true)
         refreshStarterVisibility()
     }
 
@@ -206,9 +289,9 @@ final class QuickAskPanel: NSPanel {
             draftProfileID = targetServer.id
             return
         }
-        DraftStore.record(field.stringValue, for: .quickAsk(profileID: previous))
+        DraftStore.record(editor.text, for: .quickAsk(profileID: previous))
         draftProfileID = targetServer.id
-        field.stringValue = DraftStore.text(for: draftScope)
+        editor.setText(DraftStore.text(for: draftScope), caretAtEnd: true)
         refreshStarterVisibility()
     }
 
@@ -252,6 +335,7 @@ final class QuickAskPanel: NSPanel {
         modelButton.isHidden = ModelCatalogStore.cached(server.id).isEmpty
         let able = abilities
         attachButton.isHidden = !able.attachments
+        refreshAura()
         let kept = attachments.filter { able.accepts(mime: $0.mime) }
         let dropped = attachments.count - kept.count
         attachments = kept
@@ -310,7 +394,7 @@ final class QuickAskPanel: NSPanel {
 
     private func refreshStarterVisibility() {
         let empty =
-            field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && attachments.isEmpty
         let hidden = !(empty && !asking)
         guard starters.isHidden != hidden else { return }
@@ -330,12 +414,8 @@ final class QuickAskPanel: NSPanel {
         guard !asking, offered.indices.contains(index) else { return }
         let starter = offered[index]
         QuickAskStarterRecents.record(starter.id)
-        if field.stringValue.isEmpty {
-            field.stringValue = starter.prompt
-            field.currentEditor()?.selectedRange = NSRange(
-                location: starter.prompt.count, length: 0)
-        }
-        makeFirstResponder(field)
+        if editor.text.isEmpty { editor.setText(starter.prompt, caretAtEnd: true) }
+        editor.focus()
         refreshStarterVisibility()
         switch starter.opens {
         case .files, .photos: pickAttachments()
@@ -428,11 +508,11 @@ final class QuickAskPanel: NSPanel {
     /// pictures — back.
     @objc private func submit() {
         guard !asking else { return }
-        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         let server = targetServer
         asking = true
-        field.isEnabled = false
+        editor.isEditable = false
         serverPopup.isEnabled = false
         modelButton.isEnabled = false
         attachButton.isEnabled = false
@@ -447,23 +527,17 @@ final class QuickAskPanel: NSPanel {
                 return
             }
             self.asking = false
-            self.field.isEnabled = true
+            self.editor.isEditable = true
             self.serverPopup.isEnabled = true
             self.modelButton.isEnabled = true
             self.attachButton.isEnabled = true
             self.status.stringValue = "\(failure.title) — \(failure.detail)"
             self.refreshStarterVisibility()
-            self.makeFirstResponder(self.field)
+            self.editor.focus()
         }
     }
 }
 
-extension QuickAskPanel: NSTextFieldDelegate {
-    func controlTextDidChange(_ obj: Notification) {
-        stashDraft()
-        refreshStarterVisibility()
-    }
-}
 
 /// The panel's body, which is also where a picture lands. A drop is taken anywhere on the surface
 /// rather than on a button: something dragged from a browser or the Finder is a question about

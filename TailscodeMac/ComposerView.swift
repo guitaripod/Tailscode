@@ -21,16 +21,11 @@ final class ComposerView: NSView {
     var attachmentCount: Int { attachments.count }
     var availableCommands: [AgentCommand] { commands }
 
-    private let textView = PastingTextView()
-    private let scrollView = NSScrollView()
-    private let fieldContainer = NSView()
-    private let placeholderLabel = NSTextField(labelWithString: "")
+    private let editor = PromptEditor(placeholder: Localized.text("Message… (/ for commands)"))
     private let sendButton = NSButton()
     private let chips = AttachmentChips()
     private let pills = PillsRow()
-    private let vim = VimEngine()
-    private var fieldHeight: NSLayoutConstraint?
-    private var isMeasuring = false
+    private var vim: VimEngine { editor.vim }
 
     private var entry: SessionEntry?
     private var backend: (any CodingAgentBackend)?
@@ -61,15 +56,12 @@ final class ComposerView: NSView {
     /// Opens the browsable catalog — the chat owner owns the window chrome.
     var onBrowseCommands: (() -> Void)?
     private var ultracodeInFlight = false
-    private lazy var aura = UltracodeAura(
-        around: fieldContainer, cornerRadius: MacTheme.Radius.control)
 
     /// Whether the powers are visibly on. The transcript reads it too: while the aura burns around
     /// the prompt box, the stream cascade leads with the same rainbow rather than the accent, so
     /// ultracode is legible in the writing and not only in the chrome.
     var auraActive: Bool {
-        Ultracode.auraActive(
-            effort: chosenEffort, draft: textView.string, inFlightInvoked: ultracodeInFlight)
+        editor.auraActive(effort: chosenEffort, inFlight: ultracodeInFlight)
     }
 
     /// The hub hears the flip so the presence orb wears the same rainbow the moment the word is
@@ -79,25 +71,16 @@ final class ComposerView: NSView {
 
     private func refreshAura() {
         let active = auraActive
-        aura.setActive(active)
+        editor.setAura(active)
         if active != auraWasActive {
             auraWasActive = active
             onAuraChanged?()
         }
     }
 
-    static var sendOnReturn: Bool {
-        UserDefaults.standard.object(forKey: "tailscode.sendOnReturn") as? Bool ?? true
-    }
+    static var sendOnReturn: Bool { PromptEditor.sendOnReturn }
 
-    static var vimPreferred: Bool {
-        UserDefaults.standard.bool(forKey: "tailscode.vimComposer")
-    }
-
-    private static var composerLines: Int {
-        let stored = UserDefaults.standard.integer(forKey: "tailscode.composerLines")
-        return stored == 0 ? 12 : min(20, max(1, stored))
-    }
+    static var vimPreferred: Bool { PromptEditor.vimPreferred }
 
     init() {
         super.init(frame: .zero)
@@ -107,15 +90,12 @@ final class ComposerView: NSView {
         wirePills()
         registerForDraggedTypes([.fileURL, .png, .tiff])
         updateVimUI()
-        scheduleMeasure()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    var editorHasFocus: Bool {
-        window?.firstResponder === textView
-    }
+    var editorHasFocus: Bool { editor.hasFocus }
 
     var vimEnabled: Bool { Self.vimPreferred }
     var vimMode: VimMode { vim.mode }
@@ -128,7 +108,7 @@ final class ComposerView: NSView {
     var completionVisible: Bool { completion.isShowing }
 
     func takeFocus() {
-        window?.makeFirstResponder(textView)
+        editor.focus()
     }
 
     /// Settings changed underneath a live composer: a vim toggle must move the caret, the badge
@@ -136,11 +116,8 @@ final class ComposerView: NSView {
     /// off, so no draft ends up trapped behind a hidden caret — and a new height ceiling
     /// re-measures the field.
     func applyPreferences() {
-        if !vimEnabled, vim.mode != .insert {
-            vim.reset(to: textView.string, cursor: characterCursor(), mode: .insert)
-        }
-        updateVimUI()
-        scheduleMeasure()
+        editor.applyPreferences()
+        pills.setVim(vimEnabled ? vim.mode : nil)
     }
 
     /// Half-typed prompts follow their conversation, not the window: switching chats stashes
@@ -197,7 +174,7 @@ final class ComposerView: NSView {
     /// command go where the palette would send it, and only then hand the prompt out. The
     /// attachments ride only with a real prompt — a slash command consumes none of them.
     func sendNow() {
-        let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoing = attachments
         guard !text.isEmpty || !outgoing.isEmpty else { return }
         setEditorText("", caretAtEnd: true)
@@ -219,7 +196,7 @@ final class ComposerView: NSView {
     /// nothing offers — sent the ordinary way. Anything half-typed keeps the box: a retry may
     /// not throw away a sentence somebody is in the middle of.
     func sendAgain(_ words: String) -> Bool {
-        guard textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
         setEditorText(words, caretAtEnd: true)
@@ -228,7 +205,7 @@ final class ComposerView: NSView {
     }
 
     func insertText(_ text: String) {
-        setEditorText(textView.string + text, caretAtEnd: true)
+        setEditorText(editor.text + text, caretAtEnd: true)
         takeFocus()
     }
 
@@ -250,7 +227,7 @@ final class ComposerView: NSView {
     /// sitting on text another pane has since edited leaves the newer draft alone and merely
     /// puts it on disk.
     func stashDraft() {
-        let text = textView.string
+        let text = editor.text
         if let draftScope, text != lastRecordedDraft {
             DraftStore.record(text, for: draftScope)
             lastRecordedDraft = text
@@ -259,7 +236,7 @@ final class ComposerView: NSView {
     }
 
     func applyVim(_ key: VimKey) {
-        let outcome = vim.handle(key, text: textView.string, cursor: characterCursor())
+        let outcome = vim.handle(key, text: editor.text, cursor: editor.cursor)
         switch outcome {
         case .handled:
             writeEditor(vim.document, selection: vim.selection)
@@ -272,9 +249,8 @@ final class ComposerView: NSView {
     }
 
     func copySelectionToPasteboard() -> Bool {
-        let range = textView.selectedRange()
-        guard range.length > 0 else { return false }
-        RowKit.copyToClipboard((textView.string as NSString).substring(with: range))
+        guard let selection = editor.selectedText() else { return false }
+        RowKit.copyToClipboard(selection)
         return true
     }
 
@@ -300,17 +276,6 @@ final class ComposerView: NSView {
         completionMatches = []
         completionCursor = 0
         completion.hide()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateVimUI()
-    }
-
-    override func layout() {
-        super.layout()
-        scheduleMeasure()
-        aura.layout()
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -342,42 +307,8 @@ final class ComposerView: NSView {
     }
 
     private func configureEditor() {
-        textView.isRichText = false
-        textView.font = MacTheme.Ramp.font(.toolDetail)
-        textView.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.s)
-        textView.drawsBackground = false
-        textView.allowsUndo = true
-        textView.delegate = self
-        textView.onPaste = { [weak self] in self?.takeClipboard() ?? false }
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-
-        scrollView.documentView = textView
-        scrollView.hasVerticalScroller = true
-        scrollView.drawsBackground = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-
-        placeholderLabel.stringValue = Localized.text("Message… (/ for commands)")
-        placeholderLabel.font = MacTheme.Ramp.font(.toolDetail)
-        placeholderLabel.textColor = MacTheme.Color.tertiaryLabel
-        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        fieldContainer.wantsLayer = true
-        fieldContainer.layer?.cornerRadius = MacTheme.Radius.control
-        fieldContainer.layer?.borderWidth = 1
-        fieldContainer.layer?.borderColor = MacTheme.Color.separator.cgColor
-        fieldContainer.translatesAutoresizingMaskIntoConstraints = false
-        fieldContainer.addSubview(scrollView)
-        fieldContainer.addSubview(placeholderLabel)
+        editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
+        editor.onChanged = { [weak self] in self?.editorContentChanged() }
 
         sendButton.title = Localized.text("Send")
         sendButton.bezelStyle = .rounded
@@ -389,10 +320,7 @@ final class ComposerView: NSView {
     }
 
     private func configureLayout() {
-        let height = fieldContainer.heightAnchor.constraint(equalToConstant: 34)
-        fieldHeight = height
-
-        let editorRow = NSStackView(views: [fieldContainer, sendButton])
+        let editorRow = NSStackView(views: [editor, sendButton])
         editorRow.orientation = .horizontal
         editorRow.alignment = .bottom
         editorRow.spacing = MacTheme.Spacing.s
@@ -406,15 +334,6 @@ final class ComposerView: NSView {
         addSubview(column)
 
         NSLayoutConstraint.activate([
-            height,
-            scrollView.leadingAnchor.constraint(equalTo: fieldContainer.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: fieldContainer.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: fieldContainer.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
-            placeholderLabel.leadingAnchor.constraint(
-                equalTo: fieldContainer.leadingAnchor, constant: MacTheme.Spacing.s + 5),
-            placeholderLabel.topAnchor.constraint(
-                equalTo: fieldContainer.topAnchor, constant: MacTheme.Spacing.s),
             column.leadingAnchor.constraint(equalTo: leadingAnchor),
             column.trailingAnchor.constraint(equalTo: trailingAnchor),
             column.topAnchor.constraint(equalTo: topAnchor),
@@ -817,120 +736,29 @@ final class ComposerView: NSView {
     /// In normal and visual it is hidden — the letters belong to commands, and a blinking beam
     /// would promise typing the composer will not do. The field's border carries the mode too.
     private func updateVimUI() {
-        guard vimEnabled else {
-            textView.insertionPointColor = .textInsertionPointColor
-            pills.setVim(nil)
-            fieldContainer.layer?.borderColor = MacTheme.Color.separator.cgColor
-            return
-        }
-        textView.insertionPointColor = vim.mode == .insert ? .textInsertionPointColor : .clear
-        pills.setVim(vim.mode)
-        let border: NSColor =
-            switch vim.mode {
-            case .insert: MacTheme.Color.separator
-            case .normal: MacTheme.Color.accent
-            case .visual, .visualLine: MacTheme.Color.warning
-            }
-        fieldContainer.layer?.borderColor = border.cgColor
-    }
-
-    /// The engine's own cursor is the truth while a visual selection is painted — the text
-    /// view's insertion point sits at the selection's edge, which is not where vim is standing.
-    private func characterCursor() -> Int {
-        if vimEnabled, vim.mode == .visual || vim.mode == .visualLine {
-            return vim.document.cursor
-        }
-        let text = textView.string
-        return Self.characterOffset(fromUTF16: textView.selectedRange().location, in: text)
+        editor.refreshMode()
+        pills.setVim(vimEnabled ? vim.mode : nil)
     }
 
     private func writeEditor(_ document: VimDocument, selection: Range<Int>?) {
-        let text = document.text
-        if textView.string != text {
-            textView.string = text
-        }
-        if let selection {
-            let lower = Self.utf16Offset(fromCharacter: selection.lowerBound, in: text)
-            let upper = Self.utf16Offset(fromCharacter: selection.upperBound, in: text)
-            textView.setSelectedRange(NSRange(location: lower, length: upper - lower))
-        } else {
-            let caret = Self.utf16Offset(fromCharacter: document.cursor, in: text)
-            textView.setSelectedRange(NSRange(location: caret, length: 0))
-        }
-        textView.scrollRangeToVisible(textView.selectedRange())
-        editorContentChanged()
-    }
-
-    private static func characterOffset(fromUTF16 location: Int, in text: String) -> Int {
-        guard
-            let range = Range(NSRange(location: location, length: 0), in: text)
-        else { return text.count }
-        return text.distance(from: text.startIndex, to: range.lowerBound)
-    }
-
-    private static func utf16Offset(fromCharacter offset: Int, in text: String) -> Int {
-        let index = text.index(text.startIndex, offsetBy: min(max(0, offset), text.count))
-        return NSRange(index..<index, in: text).location
+        editor.write(document, selection: selection)
     }
 
     private func setEditorText(_ text: String, caretAtEnd: Bool) {
-        textView.string = text
-        if caretAtEnd {
-            textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
-        }
-        editorContentChanged()
+        editor.setText(text, caretAtEnd: caretAtEnd)
     }
 
     /// Every path that changes what is in the box lands here — a keystroke, a vim edit, a
     /// completion accepted — so it is also where the draft is recorded. Recording is a dictionary
     /// write and the store coalesces the file write itself, so nothing here is throttled.
     private func editorContentChanged() {
-        placeholderLabel.isHidden = !textView.string.isEmpty
         if let draftScope {
-            let text = textView.string
+            let text = editor.text
             DraftStore.record(text, for: draftScope)
             lastRecordedDraft = text
         }
-        scheduleMeasure()
         updateSlashCompletion()
         refreshAura()
-    }
-
-    /// The prompt box is as tall as what is in it: one line when empty, taller as the text wraps
-    /// or a paragraph is pasted, and it stops growing at `tailscode.composerLines` — after which
-    /// it scrolls, so the transcript is never squeezed off the screen. Measured on the next
-    /// runloop pass, never inline: a text view that was just emptied still reports the height it
-    /// had until the next layout.
-    private func scheduleMeasure() {
-        guard !isMeasuring else { return }
-        isMeasuring = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.isMeasuring = false
-            self.measureField()
-        }
-    }
-
-    private func measureField() {
-        guard let font = textView.font else { return }
-        let line = ceil(font.ascender - font.descender + font.leading)
-        let inset = textView.textContainerInset.height * 2 + 2
-        let floor = line + inset
-        let ceiling = line * CGFloat(Self.composerLines) + inset
-        var wanted = floor
-        if !textView.string.isEmpty {
-            var used = floor
-            if let layout = textView.textLayoutManager {
-                layout.ensureLayout(for: layout.documentRange)
-                used = layout.usageBoundsForTextContainer.height + inset
-            } else if let manager = textView.layoutManager, let container = textView.textContainer {
-                manager.ensureLayout(for: container)
-                used = manager.usedRect(for: container).height + inset
-            }
-            wanted = max(floor, min(ceiling, ceil(used)))
-        }
-        guard let fieldHeight, abs(fieldHeight.constant - wanted) > 0.5 else { return }
-        fieldHeight.constant = wanted
     }
 
     private func updateSlashCompletion() {
@@ -942,7 +770,7 @@ final class ComposerView: NSView {
         completion.onPick = { [weak self] command in self?.accept(command) }
         completion.onBrowse = { [weak self] in self?.onBrowseCommands?() }
         let presentation = SlashPresentation.of(
-            text: textView.string, commands: commands,
+            text: editor.text, commands: commands,
             recents: SlashRecents.surviving(in: commands))
         switch presentation {
         case .hidden:
@@ -991,29 +819,5 @@ final class ComposerView: NSView {
 
     @objc private func sendTapped() {
         sendNow()
-    }
-}
-
-extension ComposerView: NSTextViewDelegate {
-    func textDidChange(_ notification: Notification) {
-        editorContentChanged()
-    }
-}
-
-/// A text view whose paste is asked about first. AppKit routes ⌘V and the Edit menu's Paste to
-/// `paste(_:)`, so one override covers both, and the composer answers whether it took the
-/// clipboard for itself — a paste that was words is handed straight back to AppKit rather than
-/// re-implemented, which is what keeps undo, selection and the system's own behaviour intact.
-final class PastingTextView: NSTextView {
-    var onPaste: (() -> Bool)?
-
-    override func paste(_ sender: Any?) {
-        guard onPaste?() != true else { return }
-        super.paste(sender)
-    }
-
-    override func pasteAsPlainText(_ sender: Any?) {
-        guard onPaste?() != true else { return }
-        super.pasteAsPlainText(sender)
     }
 }
