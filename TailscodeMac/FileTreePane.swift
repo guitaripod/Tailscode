@@ -42,8 +42,6 @@ final class FileTreePane: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        pathLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        pathLabel.textColor = MacTheme.Color.tertiaryLabel
         pathLabel.lineBreakMode = .byTruncatingHead
         pathLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -54,8 +52,6 @@ final class FileTreePane: NSViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         messageLabel.stringValue = Localized.text("Open a conversation to see its project files.")
-        messageLabel.font = MacTheme.Ramp.font(.panelFootnote)
-        messageLabel.textColor = MacTheme.Color.tertiaryLabel
         messageLabel.alignment = .center
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -82,11 +78,46 @@ final class FileTreePane: NSViewController {
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.l),
         ])
         view = container
+        restyle()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    @objc private func themeChanged() {
+        restyle()
+    }
+
+    /// A palette hands out its ink under the theme that was in force when it was asked, so a token
+    /// taken once at load keeps answering for a theme nobody is looking at any more — and the rows
+    /// are measured against a type scale that moves under them. Both are read again here.
+    private func restyle() {
+        pathLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        pathLabel.textColor = MacTheme.Color.tertiaryLabel
+        messageLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        messageLabel.textColor = MacTheme.Color.tertiaryLabel
+        outline.rowHeight = Self.rowHeight
+        outline.indentationPerLevel = 12 * MacTheme.UIScale.factor
+        outline.reloadData()
+    }
+
+    /// A row is as tall as the face it sets, not a constant: the label grows with the type scale
+    /// and a fixed row cuts its descenders off long before the scale runs out.
+    private static var rowHeight: CGFloat {
+        ceil(MacTheme.Ramp.font(.panelLabel).boundingRectForFont.height) + 6
     }
 
     /// A fresh listing on every conversation change, rooted at that conversation's project
     /// directory — a nil directory lists the server's own default, the same answer the agent
-    /// would get. A server that cannot browse says so instead of showing nothing.
+    /// would get. A server that cannot browse says so instead of showing nothing, and a refused
+    /// listing says so rather than borrowing the wording for an empty one.
+    ///
+    /// The old tree goes before the new path arrives: a pane showing one project's files under
+    /// another project's heading is asserting something false, and a click during that window
+    /// drops the wrong `@path` into the composer.
     func show(directory: String?, on backend: any CodingAgentBackend) {
         generation += 1
         guard let browsing = backend as? any FileBrowsingBackend else {
@@ -99,13 +130,19 @@ final class FileTreePane: NSViewController {
         self.backend = browsing
         root = directory
         pathLabel.stringValue = directory ?? "~"
+        render(nodes: [], message: Localized.text("Listing…"))
         let current = generation
         Task { [weak self] in
-            let listing = (try? await browsing.listFiles(path: directory)) ?? []
-            guard let self, self.generation == current else { return }
-            self.render(
-                nodes: Self.sorted(listing).map(Node.init),
-                message: listing.isEmpty ? Localized.text("Empty folder.") : nil)
+            do {
+                let listing = try await browsing.listFiles(path: directory)
+                guard let self, self.generation == current else { return }
+                self.render(
+                    nodes: Self.sorted(listing).map(Node.init),
+                    message: listing.isEmpty ? Localized.text("Empty folder.") : nil)
+            } catch {
+                guard let self, self.generation == current else { return }
+                self.render(nodes: [], message: Localized.text("Could not list this folder."))
+            }
         }
     }
 
@@ -125,9 +162,6 @@ final class FileTreePane: NSViewController {
         outline.headerView = nil
         outline.backgroundColor = .clear
         outline.autoresizesOutlineColumn = true
-        outline.indentationPerLevel = 12
-        outline.rowHeight = 20
-        outline.focusRingType = .none
         outline.allowsMultipleSelection = false
         outline.dataSource = self
         outline.delegate = self
@@ -157,17 +191,26 @@ final class FileTreePane: NSViewController {
     /// A directory's listing arrives once and the triangle opens itself when it does; a stale
     /// answer — the conversation changed underneath the fetch — is dropped, because it describes
     /// a tree no longer on screen.
+    ///
+    /// A refusal leaves the children unasked rather than recording an empty answer: an empty node
+    /// is a folder that is genuinely empty, and one written from a failure is a triangle that
+    /// swallows every later click without ever trying again.
     private func loadChildren(of node: Node) {
         guard let backend, !pendingLoads.contains(node.file.path) else { return }
         pendingLoads.insert(node.file.path)
         let current = generation
         Task { [weak self] in
-            let listing = (try? await backend.listFiles(path: node.file.path)) ?? []
-            guard let self, self.generation == current else { return }
-            self.pendingLoads.remove(node.file.path)
-            node.children = Self.sorted(listing).map(Node.init)
-            self.outline.reloadItem(node, reloadChildren: true)
-            self.outline.expandItem(node)
+            do {
+                let listing = try await backend.listFiles(path: node.file.path)
+                guard let self, self.generation == current else { return }
+                self.pendingLoads.remove(node.file.path)
+                node.children = Self.sorted(listing).map(Node.init)
+                self.outline.reloadItem(node, reloadChildren: true)
+                self.outline.expandItem(node)
+            } catch {
+                guard let self, self.generation == current else { return }
+                self.pendingLoads.remove(node.file.path)
+            }
         }
     }
 
@@ -236,7 +279,8 @@ extension FileTreePane: NSOutlineViewDelegate {
         let cell = NSTableCellView()
         cell.identifier = identifier
         let image = NSImageView()
-        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        image.symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: 11 * MacTheme.UIScale.factor, weight: .regular)
         image.translatesAutoresizingMaskIntoConstraints = false
         let text = NSTextField(labelWithString: "")
         text.lineBreakMode = .byTruncatingMiddle
@@ -248,7 +292,7 @@ extension FileTreePane: NSOutlineViewDelegate {
         NSLayoutConstraint.activate([
             image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
             image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: 16),
+            image.widthAnchor.constraint(equalToConstant: 16 * MacTheme.UIScale.factor),
             text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 4),
             text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
             text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),

@@ -11,14 +11,20 @@ enum ToolRowView {
         let summary = call.summary
         let header = headerLine(call, summary)
         guard hasBody(call, summary) else {
-            return RowKit.inset(header, leading: 6)
+            let blank = disclosureMark(false)
+            blank.alphaValue = 0
+            header.insertArrangedSubview(blank, at: 0)
+            return header
         }
         let expanded = call.status == .error || context.isExpanded(key)
+        let mark = disclosureMark(expanded)
+        header.insertArrangedSubview(mark, at: 0)
         let toggle = context.onToggle
         let reveal = context.revealRow
         return DisclosureRow(
             header: header, expanded: expanded,
             onToggle: { open, row in
+                mark.stringValue = ToolRowView.disclosureGlyph(open)
                 toggle?(key, open)
                 if open { reveal?(row) }
             }
@@ -42,11 +48,14 @@ enum ToolRowView {
         let worst: ToolStatus =
             calls.contains { $0.status == .error }
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
+        let mark = disclosureMark(context.isExpanded(key))
+        header.addArrangedSubview(mark)
         header.addArrangedSubview(glyphLabel(worst))
         header.addArrangedSubview(
             RowKit.label(
-                Localized.text("%@ tools", "\(calls.count)"), font: MacTheme.Ramp.font(.code),
-                color: MacTheme.Color.label))
+                calls.count == 1
+                    ? Localized.text("1 tool") : Localized.text("%@ tools", "\(calls.count)"),
+                font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label))
 
         var tally: [(String, Int)] = []
         for call in calls {
@@ -65,12 +74,12 @@ enum ToolRowView {
         if added > 0 {
             header.addArrangedSubview(
                 RowKit.label(
-                    "+\(added)", font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.success))
+                    "+\(added)", font: MacTheme.Ramp.font(.diff), color: MacTheme.Color.success))
         }
         if removed > 0 {
             header.addArrangedSubview(
                 RowKit.label(
-                    "−\(removed)", font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.danger))
+                    "−\(removed)", font: MacTheme.Ramp.font(.diff), color: MacTheme.Color.danger))
         }
 
         let toggle = context.onToggle
@@ -78,6 +87,7 @@ enum ToolRowView {
         return DisclosureRow(
             header: header, expanded: context.isExpanded(key),
             onToggle: { open, row in
+                mark.stringValue = ToolRowView.disclosureGlyph(open)
                 toggle?(key, open)
                 if open { reveal?(row) }
             }
@@ -103,7 +113,7 @@ enum ToolRowView {
     static func reasoning(_ text: String, key: String, context: TranscriptContext) -> NSView {
         context.liveReasoning[key] = text
         let header = RowKit.label(
-            Self.thoughtHeader(text), font: MacTheme.Ramp.font(.panelFootnote),
+            Self.thoughtHeader(text), font: MacTheme.Ramp.font(.thoughtLabel),
             color: MacTheme.Color.secondaryLabel)
         let toggle = context.onToggle
         let reveal = context.revealRow
@@ -116,14 +126,30 @@ enum ToolRowView {
         ) { [weak context] in
             RowKit.inset(
                 RowKit.wrapping(
-                    context?.liveReasoning[key] ?? text, font: MacTheme.Ramp.font(.panelFootnote),
+                    context?.liveReasoning[key] ?? text, font: MacTheme.Ramp.font(.thought),
                     color: MacTheme.Color.secondaryLabel),
                 leading: 14)
         }
     }
 
+    /// The thought's line is restated from its words alone while the thinking streams, so the mark
+    /// it carries has to be the one that survives being written again: the shut chevron the agent
+    /// and workflow rows wear, saying the line opens rather than claiming which way it is.
     static func thoughtHeader(_ text: String) -> String {
-        Localized.text("⌄ Thought · %@ words", "\(text.split(separator: " ").count)")
+        Localized.text(
+            "▸ Thought · %@ words", "\(text.split(whereSeparator: \.isWhitespace).count)")
+    }
+
+    /// The mark that says a line opens, which is otherwise the one thing a clickable header on this
+    /// desk never said — the peers have drawn an expander since the beginning.
+    static func disclosureMark(_ expanded: Bool) -> NSTextField {
+        RowKit.label(
+            disclosureGlyph(expanded), font: MacTheme.Ramp.font(.toolOutput),
+            color: MacTheme.Color.tertiaryLabel)
+    }
+
+    static func disclosureGlyph(_ expanded: Bool) -> String {
+        expanded ? "▾" : "▸"
     }
 
     /// Whether the disclosure would open onto anything — decided without building a single body
@@ -138,14 +164,15 @@ enum ToolRowView {
         return false
     }
 
-    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary) -> NSView {
+    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary) -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
         row.addArrangedSubview(glyphLabel(call.status))
         row.addArrangedSubview(
-            RowKit.label(call.name, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
+            RowKit.label(
+                call.name, font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label))
 
         var detail = summary.title ?? call.title ?? ""
         if detail == call.name { detail = "" }
@@ -159,13 +186,13 @@ enum ToolRowView {
             if stats.added > 0 {
                 row.addArrangedSubview(
                     RowKit.label(
-                        "+\(stats.added)", font: MacTheme.Ramp.font(.toolOutput),
+                        "+\(stats.added)", font: MacTheme.Ramp.font(.diff),
                         color: MacTheme.Color.success))
             }
             if stats.removed > 0 {
                 row.addArrangedSubview(
                     RowKit.label(
-                        "−\(stats.removed)", font: MacTheme.Ramp.font(.toolOutput),
+                        "−\(stats.removed)", font: MacTheme.Ramp.font(.diff),
                         color: MacTheme.Color.danger))
             }
         } else if let metric = summary.metric {
@@ -236,7 +263,15 @@ enum ToolRowView {
             let label = RowKit.wrapping(
                 output, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
             column.addArrangedSubview(RowKit.heightCappedScroll(around: label, max: 300))
-            if let full = fullOutput(call, summary), full.count > 1500 {
+            let full = fullOutput(call, summary)
+            if let full, full.count > output.count {
+                column.addArrangedSubview(
+                    RowKit.label(
+                        Localized.text("… %@ more characters", "\(full.count - output.count)"),
+                        font: MacTheme.Ramp.font(.panelFootnote),
+                        color: MacTheme.Color.tertiaryLabel))
+            }
+            if let full, full.count > 1500 {
                 let present = context.presentText
                 let name = call.name
                 let detail = summary.title ?? call.title
@@ -267,15 +302,19 @@ enum ToolRowView {
     /// An Edit rendered the way a reviewer reads it: washed added/removed lines carrying the
     /// file's own syntax — the same treatment a fenced patch gets — cut at eighty lines with the
     /// remainder counted rather than drawn.
+    ///
+    /// The budget is spent per side rather than off the top, because a diff arrives as every
+    /// removed line and then every added one: a cut taken off the front of that spends the whole
+    /// allowance on what the file used to say and shows not one line of what the agent wrote.
     static func diffBlock(_ lines: [(prefix: String, text: String)], language: String?) -> NSView {
         let block = FillingStack()
         block.spacing = 0
         block.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         block.translatesAutoresizingMaskIntoConstraints = false
-        block.wantsLayer = true
-        block.layer?.backgroundColor = MacTheme.Color.codeBackground.cgColor
-        block.layer?.cornerRadius = 8
-        for line in lines.prefix(80) {
+        let removed = lines.filter { $0.prefix == "-" }
+        let added = lines.filter { $0.prefix != "-" }
+        let shown = Array(removed.prefix(40)) + Array(added.prefix(40))
+        for line in shown {
             let text = RowKit.diffAttributed(
                 "\(line.prefix) \(line.text)", language: language, font: MacTheme.Ramp.font(.toolOutput))
             let label = NSTextField(wrappingLabelWithString: "")
@@ -288,13 +327,14 @@ enum ToolRowView {
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             block.addArrangedSubview(label)
         }
-        if lines.count > 80 {
+        if lines.count > shown.count {
             block.addArrangedSubview(
                 RowKit.label(
-                    Localized.text("… %@ more lines", "\(lines.count - 80)"),
+                    Localized.text("… %@ more lines", "\(lines.count - shown.count)"),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
-        return block
+        return GroundView(
+            around: block, cornerRadius: 8, fill: MacTheme.Color.codeBackground)
     }
 
     /// The row's mark: still for work that is over, turning for work still out on the machine —
@@ -330,7 +370,7 @@ enum ToolRowView {
     /// glyph and the stats do not need.
     static func detailLabel(_ text: String) -> NSTextField {
         let label = RowKit.label(
-            text, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
+            text, font: MacTheme.Ramp.font(.toolDetail), color: MacTheme.Color.secondaryLabel)
         label.lineBreakMode = .byTruncatingMiddle
         label.setContentHuggingPriority(.init(1), for: .horizontal)
         label.setContentCompressionResistancePriority(.init(249), for: .horizontal)
@@ -379,6 +419,59 @@ final class ClickToCopyLabel: NSTextField {
     }
 }
 
+/// The ground under a card, asked for again whenever the desk changes colour.
+///
+/// A `CGColor` handed to a layer is not a token, it is the answer the token gave under whichever
+/// face was in force when the row was built — and nothing rebuilds a settled transcript when macOS
+/// flips at sunset, so a code block born in daylight kept its near-white ground under white-on-dark
+/// code. The token is held here instead and resolved again on every appearance change, which is the
+/// one moment AppKit offers to ask.
+@MainActor
+final class GroundView: NSView {
+    private let fill: NSColor
+    private let edge: NSColor?
+
+    init(cornerRadius: CGFloat, fill: NSColor, edge: NSColor? = nil) {
+        self.fill = fill
+        self.edge = edge
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = cornerRadius
+        layer?.borderWidth = edge == nil ? 0 : 1
+        paint()
+    }
+
+    convenience init(
+        around content: NSView, cornerRadius: CGFloat, fill: NSColor, edge: NSColor? = nil
+    ) {
+        self.init(cornerRadius: cornerRadius, fill: fill, edge: edge)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    private func paint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = fill.cgColor
+            if let edge { layer?.borderColor = edge.cgColor }
+        }
+    }
+}
+
 /// A subagent is never its own chat: it renders inline at the tool call that spawned it, and
 /// expanding it fetches the sidecar transcript into the same card.
 @MainActor
@@ -422,16 +515,24 @@ enum SubagentRowView {
             body.spacing = 6
             body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             body.translatesAutoresizingMaskIntoConstraints = false
-            body.wantsLayer = true
-            body.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
-            body.layer?.cornerRadius = MacTheme.Radius.control
-            guard let context else { return RowKit.inset(body, leading: 26) }
+            let card = GroundView(
+                around: body, cornerRadius: MacTheme.Radius.control,
+                fill: MacTheme.Color.subagentBackground)
+            guard let context else { return RowKit.inset(card, leading: 26) }
             if let rows = context.subagentRows[call.id] {
                 if rows.isEmpty {
                     body.addArrangedSubview(
                         RowKit.label(
                             Localized.text("No transcript for this agent."),
-                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                            font: MacTheme.Ramp.font(.panelFootnote),
+                            color: MacTheme.Color.secondaryLabel))
+                }
+                if rows.count > 160 {
+                    body.addArrangedSubview(
+                        RowKit.label(
+                            Localized.text("… %@ earlier rows", "\(rows.count - 160)"),
+                            font: MacTheme.Ramp.font(.panelFootnote),
+                            color: MacTheme.Color.secondaryLabel))
                 }
                 for row in rows.suffix(160) {
                     body.addArrangedSubview(row.makeView(context: context))
@@ -440,10 +541,10 @@ enum SubagentRowView {
                 body.addArrangedSubview(
                     RowKit.label(
                         Localized.text("Loading transcript…"), font: MacTheme.Ramp.font(.panelFootnote),
-                        color: MacTheme.Color.tertiaryLabel))
+                        color: MacTheme.Color.secondaryLabel))
                 if context.isExpanded(key) { context.requestSubagent?(call) }
             }
-            return RowKit.inset(body, leading: 26)
+            return RowKit.inset(card, leading: 26)
         }
     }
 }

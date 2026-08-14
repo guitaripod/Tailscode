@@ -39,6 +39,9 @@ final class ComposerView: NSView {
     private var pastedImageCount = 0
     private var models: [ModelInfo] = []
     private var commands: [AgentCommand] = []
+    /// Whether the last ask for this server's models failed rather than came back empty. Saying a
+    /// server lists no models is a claim about that server, and a timeout is not that claim.
+    private var modelsFailed = false
     private var modelsByProfile: [String: [ModelInfo]] = [:]
     private var commandsBySession: [String: [AgentCommand]] = [:]
     private var chosenModel: ModelSelection?
@@ -51,7 +54,7 @@ final class ComposerView: NSView {
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
     var quotasForModels: (() -> [UsageQuota])?
 
-    private var completionMatches: [AgentCommand] = []
+    private var completionMatches: [SlashMatch] = []
     private var completionCursor = 0
     /// Opens the browsable catalog — the chat owner owns the window chrome.
     var onBrowseCommands: (() -> Void)?
@@ -117,6 +120,7 @@ final class ComposerView: NSView {
     /// re-measures the field.
     func applyPreferences() {
         editor.applyPreferences()
+        pills.restyle()
         pills.setVim(vimEnabled ? vim.mode : nil)
     }
 
@@ -141,6 +145,7 @@ final class ComposerView: NSView {
             sessionEffort: entry.session.reasoningEffort)
         ultracodeInFlight = false
         refreshAura()
+        modelsFailed = false
         models = modelsByProfile[entry.profileID] ?? []
         commands = commandsBySession[entry.session.id] ?? []
         dismissCompletion()
@@ -205,8 +210,16 @@ final class ComposerView: NSView {
     }
 
     func insertText(_ text: String) {
-        setEditorText(editor.text + text, caretAtEnd: true)
+        editor.insertAtCaret(text)
         takeFocus()
+    }
+
+    /// The completion panel is a sibling of the composer rather than a child — it hangs above the
+    /// prompt box in the transcript's own container — so hiding the composer would otherwise leave
+    /// a list of slash commands floating over a pane with nothing to type into.
+    override func viewDidHide() {
+        super.viewDidHide()
+        dismissCompletion()
     }
 
     func openCommandPalette() {
@@ -258,10 +271,8 @@ final class ComposerView: NSView {
         let count = completionMatches.count
         guard count > 0 else { return }
         completionCursor = ((completionCursor + delta) % count + count) % count
-        let ranked = completionMatches.map {
-            SlashMatch(command: $0, kind: .prefix, highlight: [])
-        }
-        completion.renderCompletion(.naming(matches: ranked), cursor: completionCursor)
+        completion.renderCompletion(
+            .naming(matches: completionMatches), cursor: completionCursor)
     }
 
     func acceptCompletion() {
@@ -365,14 +376,17 @@ final class ComposerView: NSView {
         let profileID = entry.profileID
         let directory = entry.session.directory
         Task { [weak self] in
-            let models = (try? await backend.availableModels()) ?? []
+            var models: [ModelInfo] = []
+            var failed = false
+            do { models = try await backend.availableModels() } catch { failed = true }
             let commands = (try? await backend.availableCommands(directory: directory)) ?? []
             guard let self else { return }
-            self.modelsByProfile[profileID] = models
+            if !failed { self.modelsByProfile[profileID] = models }
             self.commandsBySession[sessionID] = commands
             guard self.entry?.session.id == sessionID else { return }
-            self.models = models
+            if !failed { self.models = models }
             self.commands = commands
+            self.modelsFailed = failed
             self.refreshPills()
         }
     }
@@ -468,7 +482,12 @@ final class ComposerView: NSView {
     /// read. The two are the same list at two lengths.
     private func modelMenuRows() -> [PillsRow.MenuRow] {
         guard !models.isEmpty else {
-            return [PillsRow.MenuRow(Localized.text("This server lists no models"))]
+            return [
+                PillsRow.MenuRow(
+                    modelsFailed
+                        ? Localized.text("Could not ask this server for its models")
+                        : Localized.text("This server lists no models"))
+            ]
         }
         var rows = [
             PillsRow.MenuRow(
@@ -513,11 +532,18 @@ final class ComposerView: NSView {
         }
     }
 
+    /// Effort is the model's on servers whose catalog says so, so a pick can strand a level the
+    /// new model does not offer — named in the pill, checked nowhere in its own menu, and shipped
+    /// with the next prompt. A stranded level falls back to the server's default.
     private func setModel(_ selection: ModelSelection?) {
         chosenModel = selection
         if let entry {
             ModelPreferenceStore.recordPick(
                 selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
+        }
+        if let chosenEffort, !effortOptions().contains(chosenEffort) {
+            setEffort(nil)
+            return
         }
         refreshPills()
     }
@@ -759,6 +785,9 @@ final class ComposerView: NSView {
         refreshAura()
     }
 
+    /// Which row is highlighted is kept by which command it is, never by where it sat: a narrowing
+    /// keystroke re-ranks and shortens the list, and an index would quietly move the highlight onto
+    /// a different command — which is then the one Tab takes.
     private func updateSlashCompletion() {
         let typing = !vimEnabled || vim.mode == .insert
         guard typing else {
@@ -774,8 +803,12 @@ final class ComposerView: NSView {
         case .hidden:
             dismissCompletion()
         case .naming(let matches):
-            completionMatches = matches.map(\.command)
-            completionCursor = min(completionCursor, max(0, matches.count - 1))
+            let previous =
+                completionMatches.indices.contains(completionCursor)
+                ? completionMatches[completionCursor].command.id : nil
+            completionMatches = matches
+            completionCursor =
+                previous.flatMap { id in matches.firstIndex { $0.command.id == id } } ?? 0
             completion.renderCompletion(presentation, cursor: completionCursor)
         case .arguments, .noMatch:
             completionMatches = []
@@ -786,7 +819,7 @@ final class ComposerView: NSView {
 
     private func acceptCompletion(at index: Int) {
         guard index < completionMatches.count else { return }
-        accept(completionMatches[index])
+        accept(completionMatches[index].command)
     }
 
     private func accept(_ command: AgentCommand) {

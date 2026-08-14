@@ -15,14 +15,12 @@ final class PaneDropHighlightView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.22).cgColor
-        layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.7).cgColor
         layer?.borderWidth = 1.5
         layer?.cornerRadius = 8
         isHidden = true
-        label.font = MacTheme.Ramp.font(.cardTitle)
-        label.textColor = MacTheme.Color.label
         label.alignment = .center
+        label.lineBreakMode = .byTruncatingTail
+        label.maximumNumberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -36,8 +34,16 @@ final class PaneDropHighlightView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The wash, the rule and the caption's face are resolved at the moment of the drag rather than
+    /// at construction: this view is built once, with the window, and a `CGColor` and a font taken
+    /// then would still be the launch theme's accent at the launch type size long after the app had
+    /// changed both.
     func show(frame: NSRect, caption: String) {
         self.frame = frame
+        layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.22).cgColor
+        layer?.borderColor = MacTheme.Color.accent.withAlphaComponent(0.7).cgColor
+        label.font = MacTheme.Ramp.font(.cardTitle)
+        label.textColor = MacTheme.Color.label
         label.stringValue = caption
         isHidden = false
     }

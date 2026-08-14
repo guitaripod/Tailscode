@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import TailscodeCore
 
 /// The NSEvent half of the shared shortcut system: one canonical key-code space (GDK's, because
@@ -36,6 +37,38 @@ enum MacKeys {
         guard let characters = event.charactersIgnoringModifiers,
             let scalar = characters.unicodeScalars.first, scalar.value >= 0x20
         else { return nil }
-        return UInt32(scalar.value)
+        guard scalar.value > 0x7E else { return UInt32(scalar.value) }
+        return latinKeyval(for: event) ?? UInt32(scalar.value)
+    }
+
+    /// What the key under the finger would type on a Latin keyboard.
+    ///
+    /// The registry is written in one key space, and a Cyrillic, Greek or Hebrew layout answers
+    /// `charactersIgnoringModifiers` with its own alphabet — so `ctrl+w`, `j`, `g g`, `?` and every
+    /// other chord would resolve to a keyval nothing is bound to, and the whole non-⌘ layer would
+    /// go dead with nothing said about it. macOS solves exactly this for menu equivalents by
+    /// consulting the ASCII-capable layout; this asks that layout the same question, and keeps
+    /// shift in the question so `shift+/` is still `?` rather than `/`.
+    private static func latinKeyval(for event: NSEvent) -> UInt32? {
+        guard
+            let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?
+                .takeRetainedValue(),
+            let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        let layoutData = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue()
+        guard let bytes = CFDataGetBytePtr(layoutData) else { return nil }
+        var deadKeys: UInt32 = 0
+        var produced = 0
+        var translated = [UniChar](repeating: 0, count: 4)
+        let shift: UInt32 = event.modifierFlags.contains(.shift) ? UInt32(shiftKey >> 8) : 0
+        let status = bytes.withMemoryRebound(to: UCKeyboardLayout.self, capacity: 1) { layout in
+            UCKeyTranslate(
+                layout, event.keyCode, UInt16(kUCKeyActionDown), shift,
+                UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysMask), &deadKeys,
+                translated.count, &produced, &translated)
+        }
+        guard status == noErr, produced > 0, translated[0] >= 0x20, translated[0] <= 0x7E
+        else { return nil }
+        return UInt32(translated[0])
     }
 }

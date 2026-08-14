@@ -326,7 +326,7 @@ final class NewChatSheet: NSObject {
             return
         case .failed(let failure):
             heading.stringValue = Localized.text("Could not start the chat")
-            hint.stringValue = failure.spoken
+            hint.stringValue = ""
             status.show(failure)
             setChrome(asking: false)
             cancel.title = Localized.text("Back")
@@ -391,8 +391,11 @@ final class NewChatSheet: NSObject {
 
     /// Once the sheet is waiting or explaining, the chooser's grammar is not the sheet's: return
     /// takes the fix, escape steps back one state, and nothing else reaches a list that is not
-    /// on screen.
+    /// on screen. ⌘ is the exception, because this monitor runs before the menu bar ever sees a
+    /// key equivalent — swallowing it would leave the whole app without ⌘Q for as long as a server
+    /// takes to answer.
     private func statusKey(_ event: NSEvent) -> NSEvent? {
+        guard !event.modifierFlags.contains(.command) else { return event }
         switch event.keyCode {
         case 53:
             if phase.failure != nil { show(.asking) } else { close() }
@@ -650,7 +653,7 @@ private final class NewChatRowView: NSTableCellView {
         addSubview(lines)
         NSLayoutConstraint.activate([
             number.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.s),
-            number.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            number.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
             number.widthAnchor.constraint(equalToConstant: 14),
             lines.leadingAnchor.constraint(equalTo: number.trailingAnchor, constant: 6),
             lines.trailingAnchor.constraint(

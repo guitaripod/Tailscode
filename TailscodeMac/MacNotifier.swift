@@ -171,8 +171,25 @@ final class MacNotifier: NSObject {
     /// Proves the whole delivery path from Preferences — authorization, banner, sound — which is
     /// otherwise only observable by backgrounding the app and waiting for a real turn. The short
     /// delay is what lets it banner over the foreground app.
+    ///
+    /// The one control whose job is to report whether the path works has to report a refusal too:
+    /// a request added while macOS is denying this app is dropped in silence, which is the one
+    /// answer this button must never give. So it asks first, and says where the switch is.
     func sendTest() {
-        requestAuthorizationIfNeeded()
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .notDetermined else {
+                let allowed = settings.authorizationStatus != .denied
+                Task { @MainActor in allowed ? Self.scheduleTest() : Self.reportRefusal() }
+                return
+            }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
+                granted, _ in
+                Task { @MainActor in granted ? Self.scheduleTest() : Self.reportRefusal() }
+            }
+        }
+    }
+
+    private static func scheduleTest() {
         let content = UNMutableNotificationContent()
         content.title = "Tailscode"
         content.body = Localized.text(
@@ -182,6 +199,23 @@ final class MacNotifier: NSObject {
             UNNotificationRequest(
                 identifier: "test:\(UUID().uuidString)", content: content,
                 trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)))
+    }
+
+    private static func reportRefusal() {
+        MacDialogs.confirm(
+            on: NSApp.keyWindow,
+            title: Localized.text("macOS is not delivering notifications for Tailscode"),
+            body: Localized.text(
+                "Nothing this app raises will reach you until notifications are turned on for it "
+                    + "in System Settings."),
+            confirmLabel: Localized.text("Open Settings"), destructive: false
+        ) {
+            guard
+                let url = URL(
+                    string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+            else { return }
+            NSWorkspace.shared.open(url)
+        }
     }
 }
 

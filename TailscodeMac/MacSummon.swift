@@ -21,6 +21,11 @@ final class MacSummon {
 
     private(set) var state: SummonState = .off
 
+    /// What the judge said about a chord it did not refuse. A bare function key and a lone Super
+    /// chord both bind and both reach less far than "anywhere" promises, so the note travels with
+    /// the bound state rather than being thrown away with the verdict that carried it.
+    private(set) var caution: String?
+
     private init() {}
 
     func start(onSummon: @escaping @MainActor () -> Void) {
@@ -34,12 +39,14 @@ final class MacSummon {
             UnregisterEventHotKey(hotKey)
             self.hotKey = nil
         }
+        caution = nil
         guard SummonSettings.isEnabled else {
             publish(.off)
             return
         }
         let chord = SummonSettings.chord
-        if case .refused(let reason) = SummonJudge.judge(chord, on: .apple) {
+        let verdict = SummonJudge.judge(chord, on: .apple)
+        if case .refused(let reason) = verdict {
             publish(.unavailable(reason))
             return
         }
@@ -56,6 +63,7 @@ final class MacSummon {
             return
         }
         hotKey = reference
+        caution = verdict.note
         publish(.bound(chord, reach: .whileRunning))
     }
 

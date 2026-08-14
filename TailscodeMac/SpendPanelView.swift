@@ -27,9 +27,7 @@ final class SpendPanelViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .leading
+        let column = FillingStack()
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -85,11 +83,15 @@ final class SpendPanelViewController: NSViewController {
         facts.spacing = MacTheme.Spacing.l
         facts.alignment = .top
         for (label, value) in spend.headline {
+            let caption = NSTextField(
+                labelWithAttributedString: NSAttributedString(
+                    string: label.uppercased(),
+                    attributes: MacTheme.Ramp.attributes(
+                        .metricLabel, color: MacTheme.Color.tertiaryLabel)))
+            caption.translatesAutoresizingMaskIntoConstraints = false
             let cell = NSStackView(views: [
                 RowKit.label(value, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
-                RowKit.label(
-                    label.uppercased(), font: MacTheme.Ramp.font(.metricLabel),
-                    color: MacTheme.Color.tertiaryLabel),
+                caption,
             ])
             cell.orientation = .vertical
             cell.alignment = .leading
@@ -117,14 +119,20 @@ final class SpendPanelViewController: NSViewController {
             ])
             bars.addArrangedSubview(bar)
         }
+        bars.translatesAutoresizingMaskIntoConstraints = false
         let scroll = NSScrollView()
         scroll.documentView = bars
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        let clip = scroll.contentView
         NSLayoutConstraint.activate([
             scroll.heightAnchor.constraint(equalToConstant: Self.chartHeight + 8),
             scroll.widthAnchor.constraint(equalToConstant: Self.trackWidth + 40),
+            bars.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            bars.topAnchor.constraint(equalTo: clip.topAnchor),
+            bars.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+            bars.trailingAnchor.constraint(greaterThanOrEqualTo: clip.trailingAnchor),
         ])
 
         var views: [NSView] = [
@@ -268,7 +276,7 @@ final class SpendPanelViewController: NSViewController {
             right: MacTheme.Spacing.s)
         stack.wantsLayer = true
         stack.layer?.cornerRadius = MacTheme.Radius.control
-        stack.layer?.backgroundColor = MacTheme.Color.secondaryLabel.withAlphaComponent(0.06).cgColor
+        stack.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
         return stack
     }
 

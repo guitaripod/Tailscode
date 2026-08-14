@@ -48,6 +48,8 @@ final class PromptEditor: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         placeholderLabel.stringValue = placeholder
         build()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
         refreshMode()
         scheduleMeasure()
     }
@@ -55,9 +57,12 @@ final class PromptEditor: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    @objc private func themeChanged() {
+        refreshMode()
+    }
+
     private func build() {
         textView.isRichText = false
-        textView.font = MacTheme.Ramp.font(.toolDetail)
         textView.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.s)
         textView.drawsBackground = false
         textView.allowsUndo = true
@@ -74,20 +79,23 @@ final class PromptEditor: NSView {
         textView.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
+        textView.unregisterDraggedTypes()
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        placeholderLabel.font = MacTheme.Ramp.font(.toolDetail)
-        placeholderLabel.textColor = MacTheme.Color.tertiaryLabel
+        placeholderLabel.textColor = MacTheme.Color.onGlassSecondary
+        placeholderLabel.lineBreakMode = .byTruncatingTail
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        applyRamp()
 
         fieldContainer.wantsLayer = true
         fieldContainer.layer?.cornerRadius = MacTheme.Radius.control
         fieldContainer.layer?.borderWidth = 1
-        fieldContainer.layer?.borderColor = MacTheme.Color.separator.cgColor
+        fieldContainer.layer?.borderColor = Self.restingBorder.cgColor
         fieldContainer.translatesAutoresizingMaskIntoConstraints = false
         fieldContainer.addSubview(scrollView)
         fieldContainer.addSubview(placeholderLabel)
@@ -107,9 +115,26 @@ final class PromptEditor: NSView {
             scrollView.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
             placeholderLabel.leadingAnchor.constraint(
                 equalTo: fieldContainer.leadingAnchor, constant: MacTheme.Spacing.s + 5),
+            placeholderLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: fieldContainer.trailingAnchor,
+                constant: -(MacTheme.Spacing.s + 5)),
             placeholderLabel.topAnchor.constraint(
                 equalTo: fieldContainer.topAnchor, constant: MacTheme.Spacing.s),
         ])
+    }
+
+    /// The ramp is read rather than remembered: the box is set in the role that exists for what a
+    /// person types, and what that role is worth changes with the window's type scale.
+    private func applyRamp() {
+        textView.font = MacTheme.Ramp.font(.composer)
+        placeholderLabel.font = MacTheme.Ramp.font(.composer)
+    }
+
+    /// The edge of the field at rest. The box floats inside the composer's glass, and glass
+    /// resolves its own light or dark register from whatever is behind it — only a system colour
+    /// follows it there, so a palette hex would sit on the material without flipping with it.
+    private static var restingBorder: NSColor {
+        MacTheme.Color.onGlassSecondary.withAlphaComponent(0.35)
     }
 
     override func layout() {
@@ -153,8 +178,12 @@ final class PromptEditor: NSView {
         contentChanged()
     }
 
-    func insertAtEnd(_ text: String) {
-        setText(textView.string + text, caretAtEnd: true)
+    /// A path clicked in the file tree, or a command picked from a menu, lands where the caret is
+    /// standing rather than at the end of whatever sentence is half-written — and it goes through
+    /// the text view, so it replaces the selection and joins AppKit's own undo.
+    func insertAtCaret(_ text: String) {
+        textView.insertText(text, replacementRange: textView.selectedRange())
+        contentChanged()
         focus()
     }
 
@@ -196,13 +225,13 @@ final class PromptEditor: NSView {
     func refreshMode() {
         guard Self.vimPreferred else {
             textView.insertionPointColor = .textInsertionPointColor
-            fieldContainer.layer?.borderColor = MacTheme.Color.separator.cgColor
+            fieldContainer.layer?.borderColor = Self.restingBorder.cgColor
             return
         }
         textView.insertionPointColor = vim.mode == .insert ? .textInsertionPointColor : .clear
         let border: NSColor =
             switch vim.mode {
-            case .insert: MacTheme.Color.separator
+            case .insert: Self.restingBorder
             case .normal: MacTheme.Color.accent
             case .visual, .visualLine: MacTheme.Color.warning
             }
@@ -216,6 +245,7 @@ final class PromptEditor: NSView {
         if !Self.vimPreferred, vim.mode != .insert {
             vim.reset(to: textView.string, cursor: cursor, mode: .insert)
         }
+        applyRamp()
         refreshMode()
         scheduleMeasure()
     }
@@ -318,6 +348,14 @@ final class PastingTextView: NSTextView {
     override func paste(_ sender: Any?) {
         guard onPaste?() != true else { return }
         super.paste(sender)
+    }
+
+    /// A file dragged onto the prompt box is an attachment, not a path pasted into the draft, so
+    /// the box takes no drag at all and the drop falls through to the surface that registered for
+    /// it. AppKit re-registers a text view's drag types whenever its editability changes, which is
+    /// why the refusal has to be an override rather than one call at build time.
+    override func updateDragTypeRegistration() {
+        unregisterDraggedTypes()
     }
 
     override func pasteAsPlainText(_ sender: Any?) {

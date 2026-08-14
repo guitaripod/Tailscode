@@ -27,7 +27,7 @@ final class QuickAskPanel: NSPanel {
     private let effortButton = NSPopUpButton()
     private let attachButton = NSButton()
     private let chips = AttachmentChips()
-    private let status = NSTextField(labelWithString: "")
+    private let status = NSTextField(wrappingLabelWithString: "")
     private let starters = NSStackView()
     private let servers: [ConnectionProfile]
     private let recents: [SessionEntry]
@@ -37,6 +37,7 @@ final class QuickAskPanel: NSPanel {
     private var asking = false
     private var draftProfileID: String?
     private var keyMonitor: Any?
+    private var resizeScheduled = false
     private let onAsk:
         (String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void) ->
             Void
@@ -119,7 +120,8 @@ final class QuickAskPanel: NSPanel {
 
         status.font = MacTheme.Ramp.font(.panelFootnote)
         status.textColor = MacTheme.Color.secondaryLabel
-        status.lineBreakMode = .byTruncatingTail
+        status.isSelectable = false
+        status.maximumNumberOfLines = 0
 
         starters.orientation = .vertical
         starters.alignment = .leading
@@ -143,6 +145,7 @@ final class QuickAskPanel: NSPanel {
         column.onDropImage = { [weak self] data in self?.addPastedImage(data) }
         column.registerForDraggedTypes([.fileURL, .png, .tiff])
         contentView = column
+        status.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
         refreshAim()
         installMonitor()
         resize()
@@ -234,7 +237,7 @@ final class QuickAskPanel: NSPanel {
         let plan = PasteIntake.plan(
             for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
         pastedImageCount = plan.named
-        if let notice = plan.notices.first { status.stringValue = notice }
+        if let notice = plan.notices.first { setStatus(notice) }
         guard plan.text == nil else { return false }
         guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
         attachments.append(contentsOf: plan.attachments)
@@ -243,7 +246,10 @@ final class QuickAskPanel: NSPanel {
     }
 
     /// The panel's own chords: a number picks the errand under it, ⌘⇧V takes the pasteboard's
-    /// picture. Everything else belongs to the field, which is where the question is.
+    /// picture. Everything else belongs to the field, which is where the question is. A number is
+    /// claimed exactly while its list is on screen — with a question already typed there is no row
+    /// under ⌘4 to pick, and taking the chord anyway would open a file chooser over a panel with
+    /// nothing on it to say what asked.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard !asking, event.modifierFlags.contains(.command) else {
             return super.performKeyEquivalent(with: event)
@@ -252,7 +258,7 @@ final class QuickAskPanel: NSPanel {
             pasteImageAttachment()
             return true
         }
-        guard let characters = event.charactersIgnoringModifiers,
+        guard !starters.isHidden, let characters = event.charactersIgnoringModifiers,
             let digit = Int(characters), digit > 0
         else { return super.performKeyEquivalent(with: event) }
         pickStarter(at: digit - 1)
@@ -335,8 +341,9 @@ final class QuickAskPanel: NSPanel {
         effortButton.removeAllItems()
         effortButton.addItem(withTitle: Localized.text("Server default"))
         for option in options {
-            effortButton.addItem(
-                withTitle: option == Ultracode.effortLevel ? "\(option) ✦" : option)
+            let isPower = option == Ultracode.effortLevel
+            effortButton.addItem(withTitle: isPower ? "\(option) ✦" : option)
+            if isPower { effortButton.lastItem?.toolTip = Ultracode.menuSubtitle }
         }
         let chosen = QuickAskDefaults.effort(forProfileID: server.id)
         let index = chosen.flatMap { options.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
@@ -394,12 +401,12 @@ final class QuickAskPanel: NSPanel {
         syncAttachments()
         renderStarters()
         guard !asking else { return }
-        status.stringValue =
+        setStatus(
             dropped > 0
-            ? QuickAskComposition.droppedNotice(count: dropped)
-            : (servers.count < 2
-                ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
-                : Localized.text("Enter sends, esc closes"))
+                ? QuickAskComposition.droppedNotice(count: dropped)
+                : (servers.count < 2
+                    ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
+                    : Localized.text("Enter sends, esc closes")))
     }
 
     /// The empty panel's argument for itself: what this thing can be asked to do, offered against
@@ -437,11 +444,15 @@ final class QuickAskPanel: NSPanel {
         }
     }
 
+    /// The name of a group, set in the ramp's own answer for one — bold and tracked, against the
+    /// plain footnote its rows are set in, so the panel reads as two named groups rather than one
+    /// column of small grey text.
     private func sectionLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = MacTheme.Ramp.font(.panelFootnote)
-        label.textColor = MacTheme.Color.secondaryLabel
-        return label
+        NSTextField(
+            labelWithAttributedString: NSAttributedString(
+                string: text,
+                attributes: MacTheme.Ramp.attributes(
+                    .sectionLabel, color: MacTheme.Color.secondaryLabel)))
     }
 
     private func refreshStarterVisibility() {
@@ -454,9 +465,30 @@ final class QuickAskPanel: NSPanel {
         resize()
     }
 
+    /// The box measures its own height one runloop pass after the keystroke that changed it, so
+    /// the size read here is still the previous line count. The panel takes that size now — the
+    /// first one is what places the window as it opens — and takes it again once the editor has
+    /// answered, so a question that wraps onto a second line is not one keystroke behind the
+    /// window holding it.
     private func resize() {
         guard let content = contentView else { return }
         setContentSize(content.fittingSize)
+        guard !resizeScheduled else { return }
+        resizeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.resizeScheduled = false
+            guard let content = self.contentView else { return }
+            self.setContentSize(content.fittingSize)
+        }
+    }
+
+    /// Everything the panel says about itself goes through here, because the sentence is sometimes
+    /// a whole failure — what the other machine refused and why — and the panel has to grow to
+    /// hold it rather than cut it off at the tail.
+    private func setStatus(_ text: String) {
+        status.stringValue = text
+        resize()
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
@@ -501,13 +533,12 @@ final class QuickAskPanel: NSPanel {
             switch AttachmentIntake.read(path: path) {
             case .success(let attachment):
                 guard able.accepts(mime: attachment.mime) else {
-                    status.stringValue = Localized.text(
-                        "This model can't read %@", attachment.name)
+                    setStatus(Localized.text("This model can't read %@", attachment.name))
                     continue
                 }
                 attachments.append(attachment)
             case .failure(let refusal):
-                status.stringValue = refusal.message
+                setStatus(refusal.message)
             }
         }
         syncAttachments()
@@ -517,7 +548,7 @@ final class QuickAskPanel: NSPanel {
         guard abilities.vision else { return }
         let pasteboard = NSPasteboard.general
         guard let data = pasteboard.data(forType: .png) ?? pngFromTIFF(pasteboard) else {
-            status.stringValue = Localized.text("The clipboard holds no picture.")
+            setStatus(Localized.text("The clipboard holds no picture."))
             return
         }
         addPastedImage(data)
@@ -526,8 +557,9 @@ final class QuickAskPanel: NSPanel {
     private func addPastedImage(_ data: Data) {
         guard abilities.vision else { return }
         guard data.count <= AttachmentIntake.byteCap else {
-            status.stringValue = Localized.text(
-                "That picture is %@ — the cap is 8 MB", AttachmentIntake.sizeText(data.count))
+            setStatus(
+                Localized.text(
+                    "That picture is %@ — the cap is 8 MB", AttachmentIntake.sizeText(data.count)))
             return
         }
         pastedImageCount += 1
@@ -570,7 +602,7 @@ final class QuickAskPanel: NSPanel {
         effortButton.isEnabled = false
         attachButton.isEnabled = false
         refreshStarterVisibility()
-        status.stringValue = QuickAskComposition.waitingTitle(server: server.name)
+        setStatus(QuickAskComposition.waitingTitle(server: server.name))
         onAsk(server.id, text, attachments) { [weak self] failure in
             guard let self else { return }
             guard let failure else {
@@ -585,7 +617,7 @@ final class QuickAskPanel: NSPanel {
             self.modelButton.isEnabled = true
             self.effortButton.isEnabled = true
             self.attachButton.isEnabled = true
-            self.status.stringValue = "\(failure.title) — \(failure.detail)"
+            self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()
             self.editor.focus()
         }

@@ -62,6 +62,9 @@ final class SidebarViewController: NSViewController {
     /// Whether any listing on screen has come from a server rather than from the disk cache. The
     /// cache is what was last seen, which is no evidence that a chat missing from it was deleted.
     private var listedFromNetwork = false
+    /// The rows the keyboard cursor acts on, which is exactly the conversations on screen. While
+    /// search results have replaced the list it holds nothing: j/k opening a chat that is nowhere
+    /// in the window, and Space marking one, are worse than a cursor that does nothing at all.
     private var visible: [SessionRowModel] = []
     /// Every row the list knows about, before the filter and the archive view narrow it — what a
     /// bulk verb acts on, so a mark survives a keystroke in the filter field.
@@ -263,15 +266,19 @@ final class SidebarViewController: NSViewController {
         }
     }
 
+    /// A row clicked while its chat is already on screen is still somebody saying they have seen
+    /// it, so what this list holds about the conversation is written whether or not a pane has to
+    /// change — an unread mark that clears only by opening something else and coming back reads
+    /// as broken. `alreadyShowing` spares the pane's half of the work, and nothing else.
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false) {
         let alreadyShowing =
             focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
-        guard !alreadyShowing else { return }
-        self.freshlyCreated = freshlyCreated ? entry : nil
         selectedID = entry.session.id
         SessionSeenStore.markSeen(entry.session.id)
         render()
         scrollSelectionIntoView()
+        guard !alreadyShowing else { return }
+        self.freshlyCreated = freshlyCreated ? entry : nil
         guard
             let profile = ServerDirectory.shared.profiles.first(where: {
                 $0.id == entry.profileID
@@ -603,7 +610,7 @@ final class SidebarViewController: NSViewController {
             showingArchive
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
-        visible = sections.flatMap(\.1)
+        visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
         syncCursorToSelection()
 
         let missed = ActivityInbox.ordered(limit: 5)
@@ -622,6 +629,7 @@ final class SidebarViewController: NSViewController {
         if searchRunning || searchBoard != nil {
             rows = searchRows()
             tableView.reloadData()
+            tableView.deselectAll(nil)
             return
         }
         if let scope = projectScope {
@@ -647,14 +655,7 @@ final class SidebarViewController: NSViewController {
         }
         if showingArchive { next.append(.backLink) }
         if visible.isEmpty {
-            next.append(
-                .empty(
-                    showingArchive
-                        ? Localized.text("Nothing archived")
-                        : !filter.isEmpty
-                            ? Localized.text("Nothing matches “%@”", filter)
-                            : projectScope.map { Localized.text("Nothing in %@ yet", $0.name) }
-                                ?? Localized.text("No conversations yet")))
+            next.append(.empty(emptyReading()))
         } else {
             var built = 0
             let vocabulary = ChatListVocabulary(rows: models)
@@ -677,6 +678,19 @@ final class SidebarViewController: NSViewController {
         rows = next
         tableView.reloadData()
         reselect()
+    }
+
+    /// Which absence the list is actually looking at. A machine with no servers configured has no
+    /// chats *because* it has no servers, and "No conversations yet" blames the wrong thing on the
+    /// one morning the sentence is the only thing in the window.
+    private func emptyReading() -> String {
+        if ServerDirectory.shared.profiles.isEmpty {
+            return Localized.text("No servers yet — add the machine your agent runs on")
+        }
+        if showingArchive { return Localized.text("Nothing archived") }
+        if !filter.isEmpty { return Localized.text("Nothing matches “%@”", filter) }
+        if let scope = projectScope { return Localized.text("Nothing in %@ yet", scope.name) }
+        return Localized.text("No conversations yet")
     }
 
     /// The highlight follows the conversation that is open, never a position: the list re-sorts

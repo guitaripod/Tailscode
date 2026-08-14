@@ -25,7 +25,7 @@ final class ModelChooserSheet: NSObject {
     private let field = NSSearchField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
-    private let empty = NSTextField(labelWithString: "")
+    private let empty = NSTextField(wrappingLabelWithString: "")
     private let clear = NSButton()
     private let fold = NSButton()
     private let filters = NSSegmentedControl()
@@ -111,6 +111,7 @@ final class ModelChooserSheet: NSObject {
         table.backgroundColor = .clear
         table.selectionHighlightStyle = .regular
         table.allowsEmptySelection = true
+        table.refusesFirstResponder = true
         table.intercellSpacing = NSSize(width: 0, height: 1)
         table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("model")))
         table.dataSource = self
@@ -126,6 +127,8 @@ final class ModelChooserSheet: NSObject {
         empty.font = MacTheme.Ramp.font(.panelLabel)
         empty.textColor = MacTheme.Color.secondaryLabel
         empty.alignment = .center
+        empty.isSelectable = false
+        empty.maximumNumberOfLines = 0
         empty.isHidden = true
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
@@ -155,7 +158,10 @@ final class ModelChooserSheet: NSObject {
             scroll.topAnchor.constraint(equalTo: band.bottomAnchor, constant: MacTheme.Spacing.s),
             scroll.leadingAnchor.constraint(equalTo: field.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: field.trailingAnchor),
-            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            empty.leadingAnchor.constraint(
+                equalTo: scroll.leadingAnchor, constant: MacTheme.Spacing.l),
+            empty.trailingAnchor.constraint(
+                equalTo: scroll.trailingAnchor, constant: -MacTheme.Spacing.l),
             empty.topAnchor.constraint(equalTo: scroll.topAnchor, constant: MacTheme.Spacing.xl),
             clear.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             clear.topAnchor.constraint(equalTo: empty.bottomAnchor, constant: MacTheme.Spacing.s),
@@ -385,9 +391,11 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
 private final class ModelChooserHeaderView: NSTableCellView {
     init(section: ModelChooserSection) {
         super.init(frame: .zero)
-        let title = NSTextField(labelWithString: section.title.uppercased())
-        title.font = MacTheme.Ramp.font(.metricLabel)
-        title.textColor = MacTheme.Color.secondaryLabel
+        let title = NSTextField(
+            labelWithAttributedString: NSAttributedString(
+                string: section.title.uppercased(),
+                attributes: MacTheme.Ramp.attributes(
+                    .metricLabel, color: MacTheme.Color.secondaryLabel)))
         let detail = NSTextField(labelWithString: section.detail)
         detail.font = MacTheme.Ramp.font(.gaugeCaption)
         detail.textColor = MacTheme.Color.tertiaryLabel
@@ -499,19 +507,23 @@ private final class ModelChooserRowView: NSTableCellView {
             line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
             line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
             line.centerYAnchor.constraint(equalTo: centerYAnchor),
-            check.widthAnchor.constraint(equalToConstant: 14),
+            check.widthAnchor.constraint(equalToConstant: 14 * MacTheme.UIScale.factor),
             marks.widthAnchor.constraint(equalToConstant: width),
-            chevron.widthAnchor.constraint(equalToConstant: 18),
+            chevron.widthAnchor.constraint(equalToConstant: 18 * MacTheme.UIScale.factor),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// The name, with the letters the query matched picked out. A match changes weight and colour
+    /// and never size: a taller glyph inside a word lifts the line's ascent, so the row would jump
+    /// as the query changed and the name would read as misspelt rather than as found.
     private static func title(_ row: ModelChooserRow) -> NSAttributedString {
+        let face = MacTheme.Ramp.font(.panelLabel)
         let text = NSMutableAttributedString(
             string: row.title,
             attributes: [
-                .font: MacTheme.Ramp.font(.panelLabel),
+                .font: face,
                 .foregroundColor: row.wall == nil
                     ? MacTheme.Color.label : MacTheme.Color.tertiaryLabel,
             ])
@@ -522,7 +534,7 @@ private final class ModelChooserRowView: NSTableCellView {
             text.addAttributes(
                 [
                     .foregroundColor: MacTheme.Color.accent,
-                    .font: MacTheme.Ramp.font(.cardTitle),
+                    .font: face.bold,
                 ], range: NSRange(location: start, length: length))
         }
         return text
@@ -547,14 +559,13 @@ private final class ModelChooserRowView: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         let wrap = NSView()
         wrap.wantsLayer = true
-        wrap.layer?.cornerRadius = 3
-        wrap.layer?.borderWidth = 1
-        wrap.layer?.borderColor = tint.withAlphaComponent(0.4).cgColor
+        wrap.layer?.cornerRadius = 7
+        wrap.layer?.backgroundColor = tint.withAlphaComponent(0.16).cgColor
         wrap.translatesAutoresizingMaskIntoConstraints = false
         wrap.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 4),
-            label.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: wrap.leadingAnchor, constant: 5),
+            label.trailingAnchor.constraint(equalTo: wrap.trailingAnchor, constant: -5),
             label.topAnchor.constraint(equalTo: wrap.topAnchor, constant: 1),
             label.bottomAnchor.constraint(equalTo: wrap.bottomAnchor, constant: -1),
         ])

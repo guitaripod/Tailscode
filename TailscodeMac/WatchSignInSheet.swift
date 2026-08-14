@@ -36,7 +36,7 @@ final class WatchSignInSheet {
         on parent: NSWindow, source: MediaSource, onFinished: @escaping @MainActor () -> Void
     ) {
         if let running = active.first(where: { $0.source == source }) {
-            running.sheet.makeKeyAndOrderFront(nil)
+            (running.sheet.sheetParent ?? running.sheet).makeKeyAndOrderFront(nil)
             return
         }
         let sheet = WatchSignInSheet(source: source, onFinished: onFinished)

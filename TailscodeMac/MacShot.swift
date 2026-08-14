@@ -67,6 +67,17 @@ enum MacShot {
     /// ambiguous view, which is what tells a missing constraint apart from a losing one.
     static var wantsConstraints: Bool { CommandLine.arguments.contains("--tree-constraints") }
 
+    /// `--open <surface>` — which window to put in front of the picture. The main window is what a
+    /// launch already draws; everything else in this app is a sheet, a panel or a popover somebody
+    /// has to reach, and a screen nobody can reach is a screen nobody checks.
+    static var surface: String? {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: "--open"), index + 1 < arguments.count else {
+            return nil
+        }
+        return arguments[index + 1]
+    }
+
     static func schedule() {
         guard path != nil || treePath != nil else { return }
         Task { @MainActor in
@@ -147,7 +158,12 @@ enum MacShot {
     }
 
     private static func capture(to path: String) {
-        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+        let ordered = NSApp.orderedWindows.filter { $0.isVisible && $0.contentView != nil }
+        let front =
+            surface == nil
+            ? NSApp.keyWindow ?? NSApp.mainWindow ?? ordered.first
+            : ordered.first(where: { $0 !== NSApp.mainWindow }) ?? ordered.first
+        guard let window = front,
             let view = window.contentView,
             let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         else {

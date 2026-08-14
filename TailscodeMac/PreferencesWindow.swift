@@ -41,8 +41,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
-        window.contentView = makeContent()
         window.center()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         accountsWatch = NotificationCenter.default.addObserver(
             forName: MediaAccounts.didChange, object: nil, queue: .main
         ) { [weak self] _ in
@@ -63,13 +64,38 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Every row reads its value from a store as it is built, and this window is kept for the life
+    /// of the app — so the content is made at each presentation rather than once. A demo world
+    /// left, a type scale stepped, a default written from somewhere else: all of it is true again
+    /// the next time the window is opened.
     func present() {
+        window?.contentView = makeContent()
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// The theme is the second axis, and it is the one AppKit has no trait for: a colour already
+    /// handed out keeps answering for the theme it was made under, so the window the theme is
+    /// picked in has to redraw itself along with the rest of the app. The rebuild waits a turn
+    /// because the control that asked for it is inside what is being replaced.
+    @objc private func repaint() {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let window = self.window, window.isVisible else { return }
+                window.contentView = self.makeContent()
+            }
+        }
     }
 
     /// A recorder left running would keep swallowing every keystroke in the app after the window
     /// that started it is gone.
     func windowWillClose(_ notification: Notification) {
+        stopRecordingSummon()
+    }
+
+    /// The monitor is application-wide and answers every press with nothing, so a recorder still
+    /// armed when the keyboard moves on would eat what is typed into the composer next door.
+    /// Recording is a state of this window, and it ends with the window's turn at the keyboard.
+    func windowDidResignKey(_ notification: Notification) {
         stopRecordingSummon()
     }
 
@@ -339,8 +365,8 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     }
 
     /// The two video accounts, drawn and redrawn in place. Signing in or out rewrites everything a
-    /// row says, and this window is built once and kept for the life of the app — so the section
-    /// empties and refills itself rather than the window being rebuilt around it. The width
+    /// row says while the window stands open, and the content is only made again at the next
+    /// presentation — so the section empties and refills itself in place instead. The width
     /// constraint `makeContent` applies runs exactly once, over the column's own children, and
     /// never sees a row made later: each one is given the same constraint as it is made.
     private func renderWatchAccounts() {
@@ -407,6 +433,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         identity.widthAnchor.constraint(equalToConstant: 320).isActive = true
         secret.widthAnchor.constraint(equalToConstant: 320).isActive = true
         alert.accessoryView = fields
+        alert.window.initialFirstResponder = identity
 
         alert.addButton(withTitle: Localized.text("Save"))
         alert.addButton(withTitle: Localized.text("Open the console"))
@@ -504,6 +531,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     ) -> NSView {
         let toggle = NSButton(checkboxWithTitle: title, target: self, action: action)
         toggle.state = value ? .on : .off
+        toggle.font = MacTheme.Ramp.font(.panelLabel)
         let detail = MacDialogs.detailLabel(subtitle, wraps: true)
         let column = NSStackView(views: [toggle, indented(detail)])
         column.orientation = .vertical
@@ -519,9 +547,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let label = NSTextField(labelWithString: title)
         label.font = MacTheme.Ramp.font(.panelLabel)
         valueLabel.stringValue = "\(value)"
-        valueLabel.font = MacTheme.Ramp.font(.toolOutput)
+        valueLabel.font = MacTheme.Ramp.font(.metricValue)
         valueLabel.alignment = .right
-        valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        floorWidth(valueLabel, 44)
         let stepper = NSStepper()
         stepper.minValue = Double(lower)
         stepper.maxValue = Double(upper)
@@ -531,6 +559,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         stepper.valueWraps = false
         stepper.target = self
         stepper.action = action
+        stepper.setAccessibilityLabel(title)
         let filler = NSView()
         filler.setContentHuggingPriority(.init(1), for: .horizontal)
         let row = NSStackView(views: [label, filler, valueLabel, stepper])
@@ -551,13 +580,14 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let label = NSTextField(labelWithString: title)
         label.font = MacTheme.Ramp.font(.panelLabel)
         valueLabel.stringValue = HapticStrength.label(value)
-        valueLabel.font = MacTheme.Ramp.font(.toolOutput)
+        valueLabel.font = MacTheme.Ramp.font(.metricValue)
         valueLabel.alignment = .right
-        valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        floorWidth(valueLabel, 60)
         let slider = NSSlider(
             value: value, minValue: HapticStrength.range.lowerBound,
             maxValue: HapticStrength.range.upperBound, target: self, action: action)
         slider.isContinuous = true
+        slider.setAccessibilityLabel(title)
         slider.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
         let filler = NSView()
         filler.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -587,7 +617,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
         detail.font = MacTheme.Ramp.font(.rowDetail)
-        detail.textColor = .secondaryLabelColor
+        detail.textColor = MacTheme.Color.secondaryLabel
         detail.lineBreakMode = .byWordWrapping
         detail.maximumNumberOfLines = 0
         let column = NSStackView(views: [row, detail])
@@ -605,7 +635,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             summonRecorder == nil
             ? SummonSettings.chord.display(on: .apple) : Localized.text("Press a chord…")
         summonState.stringValue =
-            [state.line(on: .apple), state.detail(on: .apple)]
+            [state.line(on: .apple), state.detail(on: .apple), MacSummon.shared.caution]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -636,6 +666,8 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             return
         }
         guard let key = SummonKeys.name(appleKeyCode: UInt32(event.keyCode)) else {
+            summonState.stringValue =
+                SummonJudge.judge(SummonChord(key: ""), on: .apple).note ?? ""
             NSSound.beep()
             return
         }
@@ -669,13 +701,23 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let row = NSStackView(views: [label, filler, button])
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
-        let detail = MacDialogs.detailLabel(subtitle)
+        let detail = MacDialogs.detailLabel(subtitle, wraps: true)
         let column = NSStackView(views: [row, detail])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 2
         row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        detail.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         return column
+    }
+
+    /// The gutter that keeps a changing number from shifting the row it sits in. The value labels
+    /// outlive the column they are put in — they are the ones the change handlers write to — so a
+    /// floor added on one build has to be taken back before the next one, or every presentation
+    /// leaves another copy of it behind on the same label.
+    private func floorWidth(_ label: NSTextField, _ width: CGFloat) {
+        NSLayoutConstraint.deactivate(label.constraints.filter { $0.firstAttribute == .width })
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: width).isActive = true
     }
 
     private func indented(_ view: NSView, by inset: CGFloat = 20) -> NSView {

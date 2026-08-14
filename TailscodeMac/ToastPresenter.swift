@@ -22,18 +22,22 @@ final class ToastPresenter {
         drain()
     }
 
+    /// A pane whose view has not loaded yet has no anchor to hang a capsule on, and what is queued
+    /// waits for the next one rather than being thrown away — the confirmations this presenter
+    /// carries are sentences, so the capsule wraps rather than cutting one off mid-word.
     private func drain() {
         guard !draining, !queue.isEmpty else { return }
-        guard let (host, above) = anchor() else {
-            queue = []
-            return
-        }
+        guard let (host, above) = anchor() else { return }
         let text = queue.removeFirst()
         draining = true
 
-        let label = NSTextField(labelWithString: text)
+        let label = NSTextField(wrappingLabelWithString: text)
         label.font = MacTheme.Ramp.font(.panelLabel)
+        label.alignment = .center
+        label.isSelectable = false
+        label.maximumNumberOfLines = 3
         label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         let padded = NSView()
         padded.translatesAutoresizingMaskIntoConstraints = false

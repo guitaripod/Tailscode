@@ -40,12 +40,13 @@ enum PendingCards {
         let deny = RowKit.ActionButton(title: Localized.text("Deny · n")) { respond(.reject) }
         deny.bezelStyle = .rounded
         deny.hasDestructiveAction = true
+        for button in [once, always, deny] { button.font = MacTheme.Ramp.font(.option) }
 
         let buttons = NSStackView(views: [once, always, deny, RowKit.spacer()])
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(buttons)
-        return card
+        return grounded(card)
     }
 
     /// One question item at a time, which keeps the single-select fast path a single click. The
@@ -89,7 +90,10 @@ enum PendingCards {
                     }
                 }
                 row.bezelStyle = .rounded
-                if !option.description.isEmpty { row.toolTip = option.description }
+                row.font = MacTheme.Ramp.font(.option)
+                row.toolTip =
+                    option.description.isEmpty
+                    ? option.label : "\(option.label)\n\(option.description)"
                 section.addArrangedSubview(row)
                 collector.register(question: index, option: option.label, button: row)
             }
@@ -113,13 +117,14 @@ enum PendingCards {
                 collector?.submitAll()
             }
             answer.bezelStyle = .rounded
+            answer.font = MacTheme.Ramp.font(.option)
             answer.bezelColor = MacTheme.Color.accent
             let row = NSStackView(views: [answer, RowKit.spacer()])
             row.orientation = .horizontal
             card.addArrangedSubview(row)
         }
         card.retainedCollector = collector
-        return card
+        return grounded(card)
     }
 
     /// The minutes-long summarize as a card docked where the turn would be: the symbol says work,
@@ -142,7 +147,7 @@ enum PendingCards {
         ).isActive = true
         if let footnote = story.footnote {
             let elapsed = RowKit.label(
-                footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+                footnote, font: MacTheme.Ramp.font(.rowStamp), color: MacTheme.Color.tertiaryLabel)
             card.addArrangedSubview(elapsed)
             elapsedLabel(elapsed)
         }
@@ -171,12 +176,16 @@ enum PendingCards {
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
             right: MacTheme.Spacing.m)
         card.translatesAutoresizingMaskIntoConstraints = false
-        card.wantsLayer = true
-        card.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
-        card.layer?.cornerRadius = MacTheme.Radius.card
-        card.layer?.borderWidth = 1
-        card.layer?.borderColor = MacTheme.Color.separator.cgColor
         return card
+    }
+
+    /// The card's ground and its rule, in a view that resolves both again when the desk changes
+    /// colour — a card docked at the end of a transcript nobody has touched since sunset would
+    /// otherwise keep the face it was built under.
+    private static func grounded(_ card: CardView) -> NSView {
+        GroundView(
+            around: card, cornerRadius: MacTheme.Radius.card,
+            fill: MacTheme.Color.subagentBackground, edge: MacTheme.Color.separator)
     }
 
     /// The card keeps its collector alive: buttons hold it weakly so the card's subtree owns
@@ -259,8 +268,10 @@ enum PendingCards {
             for option in request.questions[question].options {
                 guard let button = buttons["\(question):\(option.label)"] else { continue }
                 let isOn = selected.contains(option.label)
+                button.title = isOn ? "✓ \(option.label)" : option.label
                 button.bezelColor = isOn ? MacTheme.Color.accent : nil
                 button.contentTintColor = isOn ? MacTheme.Color.onAccent : nil
+                button.setAccessibilityValue(isOn ? Localized.text("selected") : "")
             }
         }
     }

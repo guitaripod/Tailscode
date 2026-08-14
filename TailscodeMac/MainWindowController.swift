@@ -65,6 +65,7 @@ final class MainWindowController: NSWindowController {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.title = "Tailscode"
+        window.isReleasedWhenClosed = false
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
         wireChildren()
@@ -123,12 +124,17 @@ final class MainWindowController: NSWindowController {
     }
 
     /// A restored pane opens its session the moment the cached listing carries it; a session no
-    /// listing carries leaves an explanation, and the binding is kept for the next refresh.
+    /// listing carries leaves an explanation, and the binding is kept for the next refresh. A pane
+    /// somebody filled by hand in the meantime keeps what it holds, and anything that did bind
+    /// moves the window's own chrome after it — the title, the files tree, the terminal's
+    /// directory all sit at their launch defaults until something tells them a chat is open, which
+    /// is why the first `git status` after a restore used to run in the wrong repository.
     private func resolvePendingBindings() {
         guard !pendingBindings.isEmpty else { return }
         let listed = SessionListCache.load()
+        var opened = false
         for (paneID, binding) in pendingBindings {
-            guard let pane = splitPanes.panes[paneID] else {
+            guard let pane = splitPanes.panes[paneID], pane.currentEntry == nil else {
                 pendingBindings[paneID] = nil
                 continue
             }
@@ -140,10 +146,17 @@ final class MainWindowController: NSWindowController {
                     $0.id == binding.profileID
                 }),
                 let backend = ServerDirectory.shared.backend(for: profile)
-            else { continue }
+            else {
+                pane.resetPane(
+                    placeholder: Localized.text(
+                        "Waiting for this conversation's server to answer."))
+                continue
+            }
             pendingBindings[paneID] = nil
             pane.open(entry, backend: backend)
+            opened = true
         }
+        if opened { focusedPaneChanged() }
     }
 
     private func restoreSplitLayout() {
@@ -450,6 +463,7 @@ final class MainWindowController: NSWindowController {
     private func applyUIScale() {
         splitPanes.eachPane { $0.applyUIScale() }
         sidebar.applyUIScale()
+        applyPaneThickness()
     }
 
     /// A theme change is a restyle of everything, and AppKit has no trait to invalidate for it: a
@@ -462,7 +476,33 @@ final class MainWindowController: NSWindowController {
         applyUIScale()
         transcript.applyPaneColours()
         splitPanes.eachPane { $0.applyPaneColours() }
+        splitPanes.applyFocusStyling()
         updateMark?.render()
+    }
+
+    /// One named surface, opened from the command line, so a window nobody is sitting in front of
+    /// can be drawn and measured the way the main one already can. Every name here is a surface a
+    /// person reaches with a menu item or a keystroke; nothing is reachable this way that is not
+    /// reachable that way.
+    func openSurface(named name: String) {
+        switch name {
+        case "servers": presentServers()
+        case "updates": presentUpdates()
+        case "preferences", "prefs": presentPreferences()
+        case "analytics": presentAnalytics()
+        case "newchat": presentNewChat()
+        case "quickask": presentQuickAsk()
+        case "cheatsheet", "shortcuts": presentCheatsheet()
+        case "commands": transcript.presentCommandCatalog()
+        case "chooser": presentChooser(in: transcript)
+        case "spend": presentSpend(for: transcript)
+        case "git": presentGit(for: transcript)
+        default:
+            FileHandle.standardError.write(
+                Data(
+                    ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
+                        + "quickask, cheatsheet, commands, chooser, spend, git\n").utf8))
+        }
     }
 
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
@@ -1033,8 +1073,6 @@ final class MainWindowController: NSWindowController {
     /// the way it does on Linux rather than running under the whole window.
     private func configureSplit() {
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 240
-        sidebarItem.maximumThickness = 400
         sidebarItem.canCollapse = true
         sidebarItem.isCollapsed = !paneShown(.sidebar)
         split.addSplitViewItem(sidebarItem)
@@ -1052,17 +1090,30 @@ final class MainWindowController: NSWindowController {
         terminal.isCollapsed = !paneShown(.terminal)
         contentSplit.addSplitViewItem(terminal)
         terminalItem = terminal
-        split.addSplitViewItem(NSSplitViewItem(viewController: contentSplit))
+        let content = NSSplitViewItem(viewController: contentSplit)
+        content.minimumThickness = CGFloat(PaneDropTarget.minimumPaneExtent)
+        split.addSplitViewItem(content)
 
         let files = NSSplitViewItem(inspectorWithViewController: filesPane)
-        files.minimumThickness = 220
-        files.maximumThickness = 400
         files.canCollapse = true
         files.isCollapsed = !paneShown(.files)
         split.addSplitViewItem(files)
         filesItem = files
 
+        applyPaneThickness()
         window?.contentViewController = split
+    }
+
+    /// The chat list and the inspector are measured in points but filled with type, so their limits
+    /// travel with the type scale. A doubled ramp under a fixed 400pt ceiling truncates every row
+    /// it just grew and leaves no way to widen the pane, which is the one thing a reader would
+    /// reach for.
+    private func applyPaneThickness() {
+        let scale = MacTheme.UIScale.factor
+        sidebarItem?.minimumThickness = 240 * scale
+        sidebarItem?.maximumThickness = 400 * scale
+        filesItem?.minimumThickness = 220 * scale
+        filesItem?.maximumThickness = 400 * scale
     }
 
     private func configureToolbar() {
@@ -1486,11 +1537,6 @@ final class MainWindowController: NSWindowController {
         cheatsheet.close()
     }
 
-    /// The cheatsheet is generated from the registry, so it always tells the truth — overrides
-    /// included. Two columns, because forty rows in one column is a scroll, not a glance.
-    /// The chord summons one field and nothing else; the words land in the focused pane as a new
-    /// conversation with no project directory. With no servers the chord goes to setup instead
-    /// of presenting a dead field.
     /// A question that arrived from another app. The window comes forward first because the field
     /// is inside it: a panel that opened behind whatever was frontmost would take the keystrokes
     /// meant for the question with it.
@@ -1499,6 +1545,9 @@ final class MainWindowController: NSWindowController {
         presentQuickAsk()
     }
 
+    /// The chord summons one field and nothing else; the words land in the focused pane as a new
+    /// conversation with no project directory. With no servers the chord goes to setup instead
+    /// of presenting a dead field.
     private func presentQuickAsk() {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
@@ -1567,15 +1616,36 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// The panel is as tall as its rows want and never taller than the screen it opens on: the ramp
+    /// grows with the type scale and the sections do not, so the sheet that fits a laptop at 1.0
+    /// runs off the bottom at 2.0 — and a shortcut sheet whose last section cannot be reached is
+    /// worse than no sheet at all. Past that height it scrolls, and it resizes.
     private func presentCheatsheet() {
         let panel = CheatsheetPanel(
-            contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            contentRect: .zero, styleMask: [.titled, .closable, .resizable], backing: .buffered,
+            defer: false)
         panel.title = Localized.text("Keyboard shortcuts")
         panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.isReleasedWhenClosed = false
-        panel.contentView = makeCheatsheetContent()
-        panel.setContentSize(panel.contentView?.fittingSize ?? NSSize(width: 640, height: 480))
+        let content = makeCheatsheetContent()
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.documentView = content
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+        ])
+        panel.contentView = scroll
+        let fitting = content.fittingSize
+        panel.setContentSize(fitting)
+        let chrome = panel.frame.height - fitting.height
+        let room = ((window?.screen ?? NSScreen.main)?.visibleFrame.height ?? panel.frame.height)
+            - chrome
+        panel.setContentSize(NSSize(width: fitting.width, height: min(fitting.height, room)))
         if let frame = window?.frame {
             let size = panel.frame.size
             panel.setFrameOrigin(
@@ -1585,7 +1655,14 @@ final class MainWindowController: NSWindowController {
         cheatsheet = panel
     }
 
+    /// Generated from the registry, so it always tells the truth — overrides included — in two
+    /// columns, because forty rows in one column is a scroll rather than a glance.
+    ///
+    /// Every gap is a token taken through the same scale the type is, because the sheet is nothing
+    /// but type: at ⌘+ a fixed rhythm puts a section header on top of its first row, and a fixed
+    /// key column cuts the one column the panel exists to show.
     private func makeCheatsheetContent() -> NSView {
+        let scale = MacTheme.UIScale.factor
         let sections = shortcuts.helpSections()
         let left = cheatsheetColumn()
         let right = cheatsheetColumn()
@@ -1598,29 +1675,29 @@ final class MainWindowController: NSWindowController {
             header.font = MacTheme.Ramp.font(.sectionLabel)
             header.textColor = MacTheme.Color.secondaryLabel
             target.addArrangedSubview(header)
-            target.setCustomSpacing(6, after: header)
+            target.setCustomSpacing(MacTheme.Spacing.s * scale, after: header)
             for row in section.rows {
                 let keys = NSTextField(labelWithString: row.keys)
                 keys.font = MacTheme.Ramp.font(.toolOutput)
                 keys.lineBreakMode = .byTruncatingTail
-                keys.widthAnchor.constraint(equalToConstant: 160).isActive = true
+                keys.widthAnchor.constraint(equalToConstant: 160 * scale).isActive = true
                 let what = NSTextField(labelWithString: row.what)
                 what.font = MacTheme.Ramp.font(.panelFootnote)
                 what.textColor = MacTheme.Color.secondaryLabel
                 let line = NSStackView(views: [keys, what])
                 line.orientation = .horizontal
-                line.spacing = 12
+                line.spacing = MacTheme.Spacing.m * scale
                 line.alignment = .firstBaseline
                 target.addArrangedSubview(line)
             }
             if let last = target.arrangedSubviews.last {
-                target.setCustomSpacing(14, after: last)
+                target.setCustomSpacing(MacTheme.Spacing.l * scale, after: last)
             }
         }
         let columns = NSStackView(views: [left, right])
         columns.orientation = .horizontal
         columns.alignment = .top
-        columns.spacing = 44
+        columns.spacing = MacTheme.Spacing.xl * scale
         let footer = NSTextField(
             labelWithString: Localized.text(
                 "Rebind any of these: %@", ShortcutSet.configURL.path))
@@ -1629,8 +1706,11 @@ final class MainWindowController: NSWindowController {
         let content = NSStackView(views: [columns, footer])
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 14
-        content.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 20, right: 24)
+        content.spacing = MacTheme.Spacing.l * scale
+        content.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.l * scale, left: MacTheme.Spacing.xl * scale,
+            bottom: MacTheme.Spacing.l * scale, right: MacTheme.Spacing.xl * scale)
+        content.translatesAutoresizingMaskIntoConstraints = false
         return content
     }
 
@@ -1638,7 +1718,7 @@ final class MainWindowController: NSWindowController {
         let column = NSStackView()
         column.orientation = .vertical
         column.alignment = .leading
-        column.spacing = 3
+        column.spacing = MacTheme.Spacing.xs * MacTheme.UIScale.factor
         return column
     }
 
@@ -1717,7 +1797,13 @@ extension MainWindowController: NSToolbarDelegate {
                     accessibilityDescription: Localized.text("Usage"))!,
                 target: self, action: #selector(toolbarUsage(_:)))
             button.bezelStyle = .toolbar
+            button.toolTip = Localized.text("Every provider's quota picture")
             item.view = button
+            item.menuFormRepresentation = ClosureMenuItem(title: Localized.text("Usage")) {
+                [weak self, weak button] in
+                guard let self, let anchor = self.popoverAnchor(preferring: button) else { return }
+                self.presentUsagePopover(from: anchor)
+            }
             return item
         case ToolbarID.newChat:
             return makeToolbarItem(
@@ -1739,11 +1825,24 @@ extension MainWindowController: NSToolbarDelegate {
                 target: self, action: #selector(toolbarSettings))
             button.render()
             item.view = button
+            item.menuFormRepresentation = ClosureMenuItem(title: Localized.text("Settings")) {
+                [weak self] in self?.presentPreferences()
+            }
             updateMark = button
             return item
         default:
             return nil
         }
+    }
+
+    /// An item that carries its own view has no target and no action, so AppKit's default overflow
+    /// row is built dimmed and does nothing — these two therefore say what they do themselves. A
+    /// view that overflowed has been taken out of the window on the way into the ⋯ menu, and a
+    /// popover shown from a view with no window is an exception rather than a popover, so the
+    /// window's own content stands in as the thing the answer points at.
+    private func popoverAnchor(preferring view: NSView?) -> NSView? {
+        if let view, view.window != nil { return view }
+        return window?.contentView
     }
 
     private func makeToolbarItem(

@@ -52,7 +52,8 @@ final class TranscriptContext {
 /// actually changed are re-folded.
 @MainActor
 final class TranscriptRowBuilder {
-    private var cache: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+    private var cache: [String: (message: ChatMessage, promptID: String?, rows: [TranscriptRow])] =
+        [:]
 
     /// Forgets every memoised row — the rendering baked into them (fonts, markdown) is stale
     /// after a type-scale change.
@@ -60,18 +61,24 @@ final class TranscriptRowBuilder {
         cache = [:]
     }
 
+    /// A turn that said nothing is read against the question it answers, so the prompt walks along
+    /// with the fold and is part of what a memoised row was folded from: the same assistant message
+    /// under a different question is a different card, and reusing the earlier one would offer the
+    /// wrong words to send again.
     func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
-        var next: [String: (message: ChatMessage, rows: [TranscriptRow])] = [:]
+        var next: [String: (message: ChatMessage, promptID: String?, rows: [TranscriptRow])] = [:]
         next.reserveCapacity(messages.count)
+        var prompt: ChatMessage?
         for message in messages {
             let rows: [TranscriptRow]
-            if let hit = cache[message.id], hit.message == message {
+            if let hit = cache[message.id], hit.message == message, hit.promptID == prompt?.id {
                 rows = hit.rows
             } else {
-                rows = TranscriptRow.rows(for: message)
+                rows = TranscriptRow.rows(for: message, prompt: prompt)
             }
-            next[message.id] = (message, rows)
+            next[message.id] = (message, prompt?.id, rows)
+            if message.role == .user { prompt = message }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
@@ -364,7 +371,7 @@ struct TranscriptRow: Hashable {
             return Self.prompt(text)
         case .interruption:
             return RowKit.label(
-                "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.panelFootnote),
+                "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.interruption),
                 color: MacTheme.Color.tertiaryLabel)
         case .agentProse(_, let rendered):
             return RowKit.attributedLabel(rendered)
@@ -393,16 +400,14 @@ struct TranscriptRow: Hashable {
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
-            return RowKit.hairline(verticalPadding: 10)
+            return RowKit.hairline(verticalPadding: MacTheme.Spacing.m)
         }
     }
 
     @MainActor
     private static func prompt(_ text: String) -> NSView {
-        let rule = NSView()
-        rule.wantsLayer = true
-        rule.layer?.backgroundColor = MacTheme.Color.accent.cgColor
-        rule.translatesAutoresizingMaskIntoConstraints = false
+        let rule = RowKit.Ground(frame: .zero)
+        rule.fill = MacTheme.Color.accent
 
         let label = RowKit.wrapping(
             text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label)
@@ -430,7 +435,7 @@ struct TranscriptRow: Hashable {
     @MainActor
     static func richBody(_ text: String, context: TranscriptContext?) -> NSView {
         let column = FillingStack()
-        column.spacing = 10
+        column.spacing = MacTheme.Spacing.m
         column.translatesAutoresizingMaskIntoConstraints = false
         for segment in MessageSegment.split(text) {
             switch segment {
@@ -460,7 +465,7 @@ struct TranscriptRow: Hashable {
 
         func cell(_ text: String, header: Bool) -> NSTextField {
             let label = RowKit.attributedLabel(MacMarkdown.tableCell(text, header: header))
-            label.preferredMaxLayoutWidth = 340
+            label.preferredMaxLayoutWidth = 340 * MacTheme.UIScale.factor
             label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
             return label
         }
@@ -519,26 +524,29 @@ struct TranscriptRow: Hashable {
     ) -> NSView {
         let column = FillingStack()
         column.spacing = 2
-        column.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        column.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.s, left: MacTheme.Spacing.s, bottom: MacTheme.Spacing.s,
+            right: MacTheme.Spacing.s)
         column.translatesAutoresizingMaskIntoConstraints = false
-        column.wantsLayer = true
-        column.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
-        column.layer?.cornerRadius = 8
+        RowKit.ground(
+            behind: column, fill: MacTheme.Color.canvasRaised, radius: MacTheme.Radius.control)
 
         let header = NSStackView()
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         let tag = RowKit.label(
-            SyntaxHighlighter.displayName(for: language, source: body), font: MacTheme.Ramp.font(.panelFootnote),
+            SyntaxHighlighter.displayName(for: language, source: body),
+            font: MacTheme.Ramp.font(.codeLabel),
             color: MacTheme.Color.tertiaryLabel)
         header.addArrangedSubview(tag)
         header.addArrangedSubview(RowKit.spacer())
         let toast = context?.toast
-        header.addArrangedSubview(
-            RowKit.linkButton(Localized.text("copy")) {
-                RowKit.copyToClipboard(body)
-                toast?(Localized.text("Code copied"))
-            })
+        let copy = RowKit.linkButton(Localized.text("copy")) {
+            RowKit.copyToClipboard(body)
+            toast?(Localized.text("Code copied"))
+        }
+        copy.font = MacTheme.Ramp.font(.codeAction)
+        header.addArrangedSubview(copy)
         column.addArrangedSubview(header)
 
         let text = RowKit.code(body, language: language)
@@ -566,16 +574,12 @@ struct TranscriptRow: Hashable {
         let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
 
         if let kept = story.keptFraction {
-            let track = NSView()
-            track.wantsLayer = true
-            track.layer?.backgroundColor = MacTheme.Color.separator.cgColor
-            track.layer?.cornerRadius = 2
-            track.translatesAutoresizingMaskIntoConstraints = false
-            let fill = NSView()
-            fill.wantsLayer = true
-            fill.layer?.backgroundColor = MacTheme.Color.accent.cgColor
-            fill.layer?.cornerRadius = 2
-            fill.translatesAutoresizingMaskIntoConstraints = false
+            let track = RowKit.Ground(frame: .zero)
+            track.fill = MacTheme.Color.separator
+            track.radius = 2
+            let fill = RowKit.Ground(frame: .zero)
+            fill.fill = MacTheme.Color.accent
+            fill.radius = 2
             track.addSubview(fill)
             NSLayoutConstraint.activate([
                 track.heightAnchor.constraint(equalToConstant: 4),
@@ -593,7 +597,8 @@ struct TranscriptRow: Hashable {
         if let footnote = story.footnote {
             card.addArrangedSubview(
                 RowKit.wrapping(
-                    footnote, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    footnote, font: MacTheme.Ramp.font(.seamFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
         }
 
         if let summary = story.summary, story.isReadable {
@@ -618,6 +623,9 @@ struct TranscriptRow: Hashable {
         let card = RowKit.card(
             symbol: AnswerlessTurn.symbol, title: turn.title, detail: turn.detail,
             tint: AnswerlessTurn.tone.color)
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel(turn.spoken)
         guard turn.offersRemedy else { return card }
         let askAgain = context.askAgain
         let words = turn.prompt
@@ -635,6 +643,9 @@ struct TranscriptRow: Hashable {
         let card = RowKit.card(
             symbol: InterruptedTurn.symbol, title: turn.title, detail: turn.detail,
             tint: InterruptedTurn.tone.color)
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel(turn.spoken)
         if !turn.prompt.isEmpty {
             card.insertArrangedSubview(
                 RowKit.wrapping(
@@ -693,26 +704,27 @@ enum RowKit {
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
             right: MacTheme.Spacing.m)
         card.translatesAutoresizingMaskIntoConstraints = false
-        card.wantsLayer = true
-        card.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
-        card.layer?.cornerRadius = MacTheme.Radius.card
-        card.layer?.borderWidth = 1
-        card.layer?.borderColor = MacTheme.Color.separator.cgColor
+        ground(
+            behind: card, fill: MacTheme.Color.subagentBackground,
+            stroke: MacTheme.Color.separator, radius: MacTheme.Radius.card)
 
         let icon = NSImageView()
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(
+                    pointSize: 13 * MacTheme.UIScale.factor, weight: .semibold))
         icon.contentTintColor = tint
         icon.setContentHuggingPriority(.required, for: .horizontal)
-        let header = NSStackView(views: [
-            icon, label(title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label),
-        ])
+        icon.setAccessibilityElement(false)
+        let heading = label(title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
+        heading.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [icon, heading])
         header.orientation = .horizontal
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
         card.addArrangedSubview(
             wrapping(
-                detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel))
+                detail, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.secondaryLabel))
         return card
     }
 
@@ -743,6 +755,63 @@ enum RowKit {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
+    }
+
+    /// A ground that answers the appearance it is being drawn under. A layer takes a `CGColor`,
+    /// which is a colour with light and dark already resolved out of it, so a block painted after
+    /// dark kept that dark through sunrise while the ink above it — dynamic to the last — flipped
+    /// without it. Drawing the ground asks the token again every time, which is the only moment
+    /// the answer is actually known.
+    final class Ground: NSView {
+        var fill: NSColor?
+        var stroke: NSColor?
+        var radius: CGFloat = 0
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            needsDisplay = true
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            let inset: CGFloat = stroke == nil ? 0 : 0.5
+            let path = NSBezierPath(
+                roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: radius, yRadius: radius)
+            if let fill {
+                fill.setFill()
+                path.fill()
+            }
+            if let stroke {
+                path.lineWidth = 1
+                stroke.setStroke()
+                path.stroke()
+            }
+        }
+    }
+
+    /// The same ground under a view that arranges its own rows — a card, a code block — laid in
+    /// behind everything it holds rather than painted into its layer.
+    static func ground(
+        behind view: NSView, fill: NSColor?, stroke: NSColor? = nil, radius: CGFloat = 0
+    ) {
+        let ground = Ground(frame: .zero)
+        ground.fill = fill
+        ground.stroke = stroke
+        ground.radius = radius
+        view.addSubview(ground, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            ground.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            ground.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ground.topAnchor.constraint(equalTo: view.topAnchor),
+            ground.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     static func hairline(verticalPadding: CGFloat = 0) -> NSView {
@@ -807,6 +876,7 @@ enum RowKit {
                 guard line.kind == .added || line.kind == .removed else { return nil }
                 return (line.row, MacTheme.Color.diffBackground(line.kind))
             }
+            washed.lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
             label = washed
         } else {
             let plain = NSMutableAttributedString(
@@ -836,10 +906,14 @@ enum RowKit {
         var washes: [(row: Int, color: NSColor)] = [] {
             didSet { needsDisplay = true }
         }
+        /// How many rows the field draws, which is what makes one of them measurable: the metric of
+        /// a font the field was never told it is set in put every wash a little further down the
+        /// block than the line it belongs to, and by the tenth line it was under the wrong code.
+        var lines = 0
 
         override func draw(_ dirtyRect: NSRect) {
-            if !washes.isEmpty, let font {
-                let height = NSLayoutManager().defaultLineHeight(for: font)
+            if !washes.isEmpty, lines > 0 {
+                let height = bounds.height / CGFloat(lines)
                 for wash in washes {
                     let top = CGFloat(wash.row) * height
                     let y = isFlipped ? top : bounds.height - top - height
@@ -884,6 +958,7 @@ enum RowKit {
         scroll.hasHorizontalScroller = true
         scroll.hasVerticalScroller = cap != nil
         scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
         scroll.translatesAutoresizingMaskIntoConstraints = false
         let clip = FlippedClip()
         clip.drawsBackground = false
@@ -907,6 +982,7 @@ enum RowKit {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .overlay
         scroll.translatesAutoresizingMaskIntoConstraints = false
         let clip = FlippedClip()
         clip.drawsBackground = false
@@ -990,6 +1066,12 @@ final class DisclosureRow: NSView {
         ])
         stack.addArrangedSubview(header)
         header.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(toggle)))
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        if let title = (header as? NSTextField)?.stringValue, !title.isEmpty {
+            setAccessibilityLabel(title)
+        }
+        setAccessibilityExpanded(false)
         if expanded { reveal() }
     }
 
@@ -999,6 +1081,7 @@ final class DisclosureRow: NSView {
     @objc private func toggle() {
         if let body {
             body.isHidden = !body.isHidden
+            setAccessibilityExpanded(!body.isHidden)
             onToggle(!body.isHidden, self)
             return
         }
@@ -1010,6 +1093,7 @@ final class DisclosureRow: NSView {
         let built = makeBody()
         stack.addArrangedSubview(built)
         body = built
+        setAccessibilityExpanded(true)
     }
 
     /// The header restated without rebuilding the row — what a thought counting its own words

@@ -30,14 +30,13 @@ final class TerminalPane: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let container = NSView()
+        let container = AppearanceView()
         container.wantsLayer = true
-        container.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        container.onAppearanceChange = { [weak self] in self?.applyPaneColours() }
 
         notice.stringValue = Localized.text(
-            "Running one command at a time in a login shell — not a full terminal")
+            "Running one command at a time in a login shell on this Mac — not a full terminal")
         notice.font = MacTheme.Ramp.font(.panelFootnote)
-        notice.textColor = MacTheme.Color.tertiaryLabel
         notice.lineBreakMode = .byTruncatingTail
         notice.translatesAutoresizingMaskIntoConstraints = false
 
@@ -68,6 +67,25 @@ final class TerminalPane: NSViewController {
                 equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.s),
         ])
         view = container
+        applyPaneColours()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    @objc private func themeChanged() {
+        applyPaneColours()
+    }
+
+    /// The pane's ground is a `CGColor`, which is the light it was resolved under rather than a
+    /// colour that answers again — so a system that crossed into dark, or a palette that moved,
+    /// would otherwise leave a pale slab under a dark transcript until the app was relaunched.
+    private func applyPaneColours() {
+        view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        notice.textColor = MacTheme.Color.tertiaryLabel
     }
 
     func takeFocus() {
@@ -86,10 +104,23 @@ final class TerminalPane: NSViewController {
 
     /// The runner cannot tell a shell to change directory — there is no shell alive between
     /// commands — so the follow is a fact echoed dim into the log: the next command runs there.
+    ///
+    /// The path belongs to whichever machine runs the bridge, and this shell belongs to this Mac.
+    /// When the two are not the same box the directory does not exist here, and echoing `cd` for
+    /// it would promise a place every command then failed to start in — so the pane says whose
+    /// disk it is standing on instead.
     func setDirectory(_ path: String?) {
         guard directory != path else { return }
         directory = path
-        appendLine("cd \(path ?? "~")", color: MacTheme.Color.tertiaryLabel)
+        guard let path, !FileManager.default.fileExists(atPath: path) else {
+            appendLine("cd \(path ?? "~")", color: MacTheme.Color.tertiaryLabel)
+            return
+        }
+        appendLine(
+            Localized.text(
+                "%@ is the agent's folder, not one on this Mac — commands run from your home folder.",
+                path),
+            color: MacTheme.Color.tertiaryLabel)
     }
 
     private func configureOutput() {
@@ -130,8 +161,11 @@ final class TerminalPane: NSViewController {
     /// One command, one login shell, off the main actor. A new command cancels the previous run
     /// outright — its process is terminated and whatever it would still have printed is dropped —
     /// because two commands interleaving into one log reads as neither.
+    ///
+    /// A run that printed nothing still closes its own line, because a command that finished
+    /// silently and one that is still going are otherwise the same picture.
     private func run(_ command: String) {
-        let cwd = directory
+        let cwd = Self.localDirectory(directory)
         runTask?.cancel()
         runningProcess.withLockUnchecked { process in
             process?.terminate()
@@ -142,9 +176,24 @@ final class TerminalPane: NSViewController {
             let result = await Task.detached { Self.shell(command, in: cwd, holding: holder) }
                 .value
             guard !Task.isCancelled else { return }
-            guard let self, !result.isEmpty else { return }
+            guard let self else { return }
+            guard !result.isEmpty else {
+                self.appendLine(
+                    Localized.text("(no output)"), color: MacTheme.Color.tertiaryLabel)
+                return
+            }
             self.appendLine(result, color: MacTheme.Color.label)
         }
+    }
+
+    /// The agent's directory when this Mac actually has it, and the home folder when it does not:
+    /// a shell told to start in a path that is not here fails before it has read the command, and
+    /// answers every one of them with the same four words.
+    private static func localDirectory(_ path: String?) -> String {
+        guard let path, FileManager.default.fileExists(atPath: path) else {
+            return NSHomeDirectory()
+        }
+        return path
     }
 
     /// `-lc` rather than `-c`: a login shell reads the same rc files the user's own terminal
@@ -172,13 +221,15 @@ final class TerminalPane: NSViewController {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
+    /// The echoed command is the same size as the output under it and heavier, not a second size:
+    /// two mono sizes alternating down a log break the one column the eye is following.
     private func appendLine(_ text: String, color: NSColor, emphasized: Bool = false) {
         guard let storage = output.textStorage else { return }
+        let body = MacTheme.Ramp.font(.code)
         let font =
             emphasized
-            ? NSFont.monospacedSystemFont(
-                ofSize: 12 * MacTheme.UIScale.factor, weight: .semibold)
-            : MacTheme.Ramp.font(.code)
+            ? NSFont.monospacedSystemFont(ofSize: body.pointSize, weight: .semibold)
+            : body
         storage.append(
             NSAttributedString(
                 string: text.hasSuffix("\n") ? text : text + "\n",

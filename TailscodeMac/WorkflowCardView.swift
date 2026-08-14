@@ -36,8 +36,8 @@ enum WorkflowCardView {
             RowKit.label("▸ workflow", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
         header.addArrangedSubview(
             RowKit.label(
-                run?.name ?? call.summary.title ?? Localized.text("Workflow"),
-                font: MacTheme.Ramp.font(.code).bold, color: MacTheme.Color.accent))
+                name(run, call), font: MacTheme.Ramp.font(.workflowName),
+                color: MacTheme.Color.accent))
         let headline = RowKit.label(
             run.map { $0.headline(at: now) } ?? "", font: MacTheme.Ramp.font(.panelFootnote),
             color: run.map(headlineColor) ?? MacTheme.Color.tertiaryLabel)
@@ -45,7 +45,7 @@ enum WorkflowCardView {
         header.addArrangedSubview(headline)
         let elapsed = RowKit.label(
             (run?.elapsed(at: now)).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.tertiaryLabel)
         elapsed.isHidden = run?.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 
@@ -76,6 +76,7 @@ enum WorkflowCardView {
         let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
         guard head.count == 5 else { return false }
         setLabel(head[0], text: glyph(run, now), color: glyphColor(run))
+        setLabel(head[2], text: name(run, call))
         setLabel(
             head[3], text: run.map { $0.headline(at: now) } ?? "",
             color: run.map(headlineColor) ?? MacTheme.Color.tertiaryLabel)
@@ -145,33 +146,30 @@ enum WorkflowCardView {
     }
 
     private static func body(_ run: WorkflowRun?, context: TranscriptContext, now: Date) -> NSView {
-        let body = NSStackView()
-        body.orientation = .vertical
-        body.alignment = .leading
+        let body = FillingStack()
         body.spacing = 6
         body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
-        body.wantsLayer = true
-        body.layer?.backgroundColor = MacTheme.Color.subagentBackground.cgColor
-        body.layer?.cornerRadius = MacTheme.Radius.control
+        let card = GroundView(
+            around: body, cornerRadius: MacTheme.Radius.control,
+            fill: MacTheme.Color.subagentBackground)
         guard let run else {
             body.addArrangedSubview(
                 RowKit.label(
                     Localized.text("Starting…"), font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel))
-            return RowKit.inset(body, leading: 26)
+                    color: MacTheme.Color.secondaryLabel))
+            return RowKit.inset(card, leading: 26)
         }
 
         if let summary = run.summary {
             let label = RowKit.wrapping(
-                summary, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+                summary, font: MacTheme.Ramp.font(.workflowSummary),
+                color: MacTheme.Color.secondaryLabel)
             label.identifier = summaryID
             body.addArrangedSubview(label)
         }
         body.addArrangedSubview(meter(run))
         if !run.phases.isEmpty {
-            let rail = NSStackView()
-            rail.orientation = .vertical
-            rail.alignment = .leading
+            let rail = FillingStack()
             rail.spacing = 1
             rail.identifier = phasesID
             for phase in run.phases { rail.addArrangedSubview(phaseRow(phase, run: run)) }
@@ -190,7 +188,7 @@ enum WorkflowCardView {
             body.addArrangedSubview(RowKit.hairline(verticalPadding: 4))
             body.addArrangedSubview(answer(result, name: run.name, context: context))
         }
-        return RowKit.inset(body, leading: 26)
+        return RowKit.inset(card, leading: 26)
     }
 
     /// Progress over the agents in hand. A run never promises how many it will spawn, so the meter
@@ -203,12 +201,12 @@ enum WorkflowCardView {
         row.identifier = meterID
         row.addArrangedSubview(
             RowKit.label(
-                meterBar(run), font: MacTheme.Ramp.font(.toolOutput),
+                meterBar(run), font: MacTheme.Ramp.font(.workflowMeter),
                 color: run.isLive ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel))
         row.addArrangedSubview(
             RowKit.label(
-                meterCaption(run), font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.tertiaryLabel))
+                meterCaption(run), font: MacTheme.Ramp.font(.workflowMeter),
+                color: MacTheme.Color.secondaryLabel))
         return row
     }
 
@@ -242,12 +240,14 @@ enum WorkflowCardView {
         if let detail = phase.detail {
             row.addArrangedSubview(
                 RowKit.label(
-                    detail, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                    detail, font: MacTheme.Ramp.font(.workflowStep),
+                    color: MacTheme.Color.tertiaryLabel))
         }
         if let model = phase.model {
             row.addArrangedSubview(
                 RowKit.label(
-                    shortModel(model), font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.mark))
+                    shortModel(model), font: MacTheme.Ramp.font(.workflowModel),
+                    color: MacTheme.Color.mark))
         }
         return row
     }
@@ -279,7 +279,7 @@ enum WorkflowCardView {
         header.addArrangedSubview(tool)
         let elapsed = RowKit.label(
             agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.tertiaryLabel)
         elapsed.isHidden = agent.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 
@@ -306,7 +306,15 @@ enum WorkflowCardView {
                     body.addArrangedSubview(
                         RowKit.label(
                             Localized.text("No transcript for this agent."),
-                            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+                            font: MacTheme.Ramp.font(.panelFootnote),
+                            color: MacTheme.Color.secondaryLabel))
+                }
+                if rows.count > 160 {
+                    body.addArrangedSubview(
+                        RowKit.label(
+                            Localized.text("… %@ earlier rows", "\(rows.count - 160)"),
+                            font: MacTheme.Ramp.font(.panelFootnote),
+                            color: MacTheme.Color.secondaryLabel))
                 }
                 for row in rows.suffix(160) {
                     body.addArrangedSubview(row.makeView(context: context))
@@ -315,7 +323,7 @@ enum WorkflowCardView {
                 body.addArrangedSubview(
                     RowKit.label(
                         Localized.text("Loading transcript…"), font: MacTheme.Ramp.font(.panelFootnote),
-                        color: MacTheme.Color.tertiaryLabel))
+                        color: MacTheme.Color.secondaryLabel))
                 if context.isExpanded(key) { context.requestWorkflowAgent?(agentID) }
             }
             return RowKit.inset(body, leading: 20)
@@ -353,10 +361,21 @@ enum WorkflowCardView {
         return keep.isEmpty ? name : keep.joined(separator: "-")
     }
 
+    /// What the run is called, restated as well as built. The Workflow tool answers before its run
+    /// exists, so a card is routinely made with the placeholder — and a collapsed card is never
+    /// rebuilt, which left "Workflow" standing over a live headline for the length of the run.
+    private static func name(_ run: WorkflowRun?, _ call: ToolCall) -> String {
+        run?.name ?? call.summary.title ?? Localized.text("Workflow")
+    }
+
     private static let spinner = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
 
+    /// A desk that asked for less motion keeps the glyph and loses the turning, the way every other
+    /// mark in the app does — this one is written by the card's own tick rather than by a pulse, so
+    /// it has to ask.
     private static func frame(_ now: Date) -> String {
-        spinner[Int(now.timeIntervalSince1970) % spinner.count]
+        guard ActivityPulse.motionAllowed else { return spinner[0] }
+        return spinner[Int(now.timeIntervalSince1970) % spinner.count]
     }
 
     private static func glyph(_ run: WorkflowRun?, _ now: Date) -> String {

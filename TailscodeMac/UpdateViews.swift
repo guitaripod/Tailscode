@@ -38,13 +38,21 @@ enum UpdateReadingViews {
                     "· \(change)", font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.secondaryLabel))
         }
-        for detail in (reading.verdict.offer?.detailLines ?? []).prefix(5) {
+        for detail in clamped(reading.verdict.offer?.detailLines ?? [], to: 5) {
             views.append(
                 RowKit.wrapping(
                     "· \(detail)", font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
         return views
+    }
+
+    /// A list cut to what a surface holds, never at the cost of its last line: Core spends that line
+    /// saying how many it left out, so dropping it is the one cut that makes the list lie about
+    /// itself — five dirty files and no hint there are twelve.
+    static func clamped(_ lines: [String], to limit: Int) -> [String] {
+        guard lines.count > limit else { return lines }
+        return Array(lines.prefix(limit - 1)) + [lines[lines.count - 1]]
     }
 
     /// What the press will actually accomplish, printed before it is pressed. An offer that ends
@@ -65,6 +73,7 @@ enum UpdateReadingViews {
         let button = RowKit.ActionButton(title: title, action: action)
         button.bezelStyle = .rounded
         button.controlSize = .small
+        button.font = MacTheme.Ramp.font(.control)
         button.isEnabled = enabled
         return button
     }
@@ -213,9 +222,9 @@ final class UpdateCardView: NSView {
         layer?.borderWidth = 1
 
         title.lineBreakMode = .byTruncatingTail
-        title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         headline.lineBreakMode = .byTruncatingTail
         headline.setContentHuggingPriority(.required, for: .horizontal)
+        headline.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         for label in [title, headline, supervisor] {
             label.lineBreakMode = .byTruncatingTail
             label.translatesAutoresizingMaskIntoConstraints = false
@@ -238,6 +247,7 @@ final class UpdateCardView: NSView {
             button.setButtonType(.momentaryPushIn)
             button.bezelStyle = .rounded
             button.controlSize = .small
+            button.font = MacTheme.Ramp.font(.control)
             button.target = self
             button.action = action
         }
@@ -283,7 +293,7 @@ final class UpdateCardView: NSView {
         mark.apply(reading.icon)
         title.stringValue = reading.title
         headline.stringValue = reading.headline
-        headline.textColor = reading.tone.color
+        headline.textColor = Self.headlineInk(reading.tone)
 
         write(subtitle, acknowledged ? nil : reading.subtitle)
         detail.stringValue = reading.detail()
@@ -303,7 +313,10 @@ final class UpdateCardView: NSView {
         for (index, label) in changes.enumerated() {
             write(label, index < subjects.count ? "· \(subjects[index])" : nil)
         }
-        let obstacle = acknowledged ? [] : (reading.verdict.offer?.detailLines ?? [])
+        let obstacle = acknowledged
+            ? []
+            : UpdateReadingViews.clamped(
+                reading.verdict.offer?.detailLines ?? [], to: details.count)
         for (index, label) in details.enumerated() {
             write(label, index < obstacle.count ? "· \(obstacle[index])" : nil)
         }
@@ -324,7 +337,10 @@ final class UpdateCardView: NSView {
         title.font = MacTheme.Ramp.font(.cardTitle)
         title.textColor = MacTheme.Color.label
         headline.font = MacTheme.Ramp.font(.panelFootnote)
-        headline.textColor = reading?.tone.color ?? MacTheme.Color.secondaryLabel
+        headline.textColor = Self.headlineInk(reading?.tone)
+        for button in [actionButton, asideButton] {
+            button.font = MacTheme.Ramp.font(.control)
+        }
         for label in [subtitle, asideNote, supervisor, promise] {
             label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.tertiaryLabel
@@ -339,6 +355,22 @@ final class UpdateCardView: NSView {
         }
         running.applyTheme()
         newest.applyTheme()
+    }
+
+    /// AppKit resolves a `CGColor` once, against the appearance in force when it was asked for, so
+    /// the ground and the hairline are the two things on this card that a light↔dark flip cannot
+    /// reach on its own — and a card that never rebuilds would keep them for the rest of the session.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyTheme()
+    }
+
+    /// The verdict's own ink, floored where the tone is quiet. `tertiaryLabel` is the ornament
+    /// register by construction — it sits below the contrast floor — and the headline is the one
+    /// fact the card is about, which most verdicts state quietly.
+    private static func headlineInk(_ tone: ActivityTone?) -> NSColor {
+        guard let tone, tone != .quiet else { return MacTheme.Color.secondaryLabel }
+        return tone.color
     }
 
     private func supervisedBy(_ reading: UpdateReading) -> String? {
@@ -514,12 +546,9 @@ final class UpdateFooterView: NSView {
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        headline.font = MacTheme.Ramp.font(.panelFootnote)
         headline.lineBreakMode = .byTruncatingTail
         headline.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         headline.translatesAutoresizingMaskIntoConstraints = false
-        detail.font = MacTheme.Ramp.font(.panelFootnote)
-        detail.textColor = MacTheme.Color.tertiaryLabel
         detail.lineBreakMode = .byTruncatingTail
         detail.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         detail.translatesAutoresizingMaskIntoConstraints = false
@@ -556,7 +585,11 @@ final class UpdateFooterView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The type is read here rather than kept from `init`: the ramp is a live preference, and a row
+    /// that took its size once would sit at 10 points between neighbours that had doubled.
     func render() {
+        headline.font = MacTheme.Ramp.font(.panelFootnote)
+        detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.textColor = MacTheme.Color.tertiaryLabel
         let rollup = UpdateLedger.rollup()
         isHidden = !rollup.showsMark
@@ -571,6 +604,13 @@ final class UpdateFooterView: NSView {
         detail.stringValue = rollup.detail()
         toolTip = rollup.accessibilityLine()
         setAccessibilityLabel(rollup.accessibilityLine())
+    }
+
+    /// A row that calls itself a button has to answer a press that did not come from a mouse: the
+    /// click gesture is the pointer's road in, and this is VoiceOver's.
+    override func accessibilityPerformPress() -> Bool {
+        onOpen?()
+        return true
     }
 
     @objc private func ledgerChanged() {
@@ -621,14 +661,25 @@ final class UpdateMarkButton: NSButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The dot is the whole of what this button says about the mark, and a tooltip is not read
+    /// aloud — so what it says goes into the label too, or a VoiceOver user is never told at all.
     func render() {
         let rollup = UpdateLedger.rollup()
         dot.isHidden = !rollup.showsMark
         guard rollup.showsMark else {
             toolTip = tip
+            setAccessibilityLabel(tip)
             return
         }
         dot.layer?.backgroundColor = rollup.icon.tone.color.cgColor
         toolTip = Localized.text("%@ — %@", tip, rollup.headline)
+        setAccessibilityLabel(toolTip)
+    }
+
+    /// Six points of `CGColor` resolved under the previous appearance is the one thing a flip to
+    /// dark leaves behind here.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        render()
     }
 }

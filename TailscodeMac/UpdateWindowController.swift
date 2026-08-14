@@ -95,22 +95,39 @@ final class UpdateBoardViewController: NSViewController {
         scroll.drawsBackground = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
-        container.addSubview(scroll)
+        buildHero()
+        buildFooter()
+
+        let container = AppearanceReportingView(frame: .zero)
+        container.onAppearanceChange = { [weak self] in self?.applyTheme() }
+        let body = NSView()
+        body.translatesAutoresizingMaskIntoConstraints = false
+        body.addSubview(scroll)
+        body.addSubview(footerRow)
+        container.addSubview(body)
         NSLayoutConstraint.activate([
             column.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
             column.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
             column.topAnchor.constraint(equalTo: clip.topAnchor),
             column.widthAnchor.constraint(equalTo: clip.widthAnchor),
-            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: container.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: body.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: body.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: body.topAnchor),
+            scroll.bottomAnchor.constraint(
+                equalTo: footerRow.topAnchor, constant: -MacTheme.Spacing.s),
+            footerRow.leadingAnchor.constraint(
+                equalTo: body.leadingAnchor, constant: MacTheme.Spacing.l),
+            footerRow.trailingAnchor.constraint(
+                equalTo: body.trailingAnchor, constant: -MacTheme.Spacing.l),
+            footerRow.bottomAnchor.constraint(
+                equalTo: body.bottomAnchor, constant: -MacTheme.Spacing.m),
+            body.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            body.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            body.topAnchor.constraint(equalTo: container.topAnchor),
+            body.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
         view = container
 
-        buildHero()
-        buildFooter()
         emptyLabel.stringValue = Localized.text(
             "Nothing has been asked yet. This app and every server you add answer for their own "
                 + "software.")
@@ -126,7 +143,13 @@ final class UpdateBoardViewController: NSViewController {
 
     /// Opening is asking. The cards are already up from memory, so the check behind them costs
     /// nothing to watch and every answer lands in place as it arrives.
+    ///
+    /// This controller outlives every open — `loadView` runs once for the life of the app — so the
+    /// ramp is re-read here rather than there, or a board first opened at one type scale would keep
+    /// it through every later one. The status line is taken back when the wait it describes ends: a
+    /// surface still saying it is asking is worse than one saying nothing.
     func reload() {
+        applyTheme()
         guard !refreshing else {
             render()
             return
@@ -138,6 +161,7 @@ final class UpdateBoardViewController: NSViewController {
             await MacUpdateWatch.shared.sweep(checkingRemote: true)
             guard let self else { return }
             self.refreshing = false
+            self.setStatus(nil)
             self.render()
         }
     }
@@ -179,7 +203,6 @@ final class UpdateBoardViewController: NSViewController {
         }
         emptyLabel.isHidden = !rollup.readings.isEmpty
         column.addArrangedSubview(emptyLabel)
-        column.addArrangedSubview(footerRow)
         order = ids
     }
 
@@ -214,6 +237,7 @@ final class UpdateBoardViewController: NSViewController {
     private func writeHero(_ rollup: UpdateRollup) {
         heroHeadline.stringValue = rollup.headline
         heroDetail.stringValue = rollup.detail()
+        heroDetail.isHidden = heroDetail.stringValue.isEmpty
         guard let last = UpdateLedger.lastCheck() else {
             heroChecked.isHidden = true
             return
@@ -224,6 +248,10 @@ final class UpdateBoardViewController: NSViewController {
 
     /// One press for every server that can take one — never this app, whose own update would
     /// replace the process doing the watching — and the refresh that asks everybody again.
+    ///
+    /// It is chrome pinned to the window rather than the last row of the column: a card runs to a
+    /// dozen lines, so three machines put the controls that drive this surface — and the line that
+    /// reports what they did — below the fold of a window opened at its own default size.
     private func buildFooter() {
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -270,5 +298,27 @@ final class UpdateBoardViewController: NSViewController {
 
     private func setStatus(_ text: String?) {
         statusLabel.stringValue = text ?? ""
+    }
+}
+
+/// The board's own view, and the only thing on this screen that can hear a light↔dark switch.
+///
+/// `NSViewController` has no appearance hook, and the hero card's ground and hairline are baked
+/// `CGColor`s: nothing else would ask for them again, so the leading card would keep the light
+/// ground it was born with under white ink until the theme happened to change.
+@MainActor
+private final class AppearanceReportingView: NSView {
+    var onAppearanceChange: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
     }
 }

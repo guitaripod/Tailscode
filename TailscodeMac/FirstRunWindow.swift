@@ -48,11 +48,12 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         column.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
         column.translatesAutoresizingMaskIntoConstraints = false
 
-        column.addArrangedSubview(
-            MacDialogs.detailLabel(
-                Localized.text(
-                    "Tailscode drives coding agents on your other machines. Two things have to be true first — both are checked for you."),
-                wraps: true))
+        let intro = MacDialogs.detailLabel(
+            Localized.text(
+                "Tailscode drives coding agents on your other machines. Two things have to be true first — both are checked for you."),
+            wraps: true)
+        column.addArrangedSubview(intro)
+        intro.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
 
         column.addArrangedSubview(
             stepRow(number: "1", title: Localized.text("Tailscale on this Mac"), pill: tailnetPill))
@@ -72,6 +73,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             stepRow(number: "3", title: Localized.text("Connect this Mac"), pill: nil))
         addressField.placeholderString = Localized.text(
             "Tailnet address — 100.x.y.z, name.tailnet.ts.net, host:port")
+        addressField.font = MacTheme.Ramp.font(.code)
         addressField.delegate = self
         addressField.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(addressField)
@@ -90,12 +92,15 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
 
         column.addArrangedSubview(readingLabel)
         passwordField.placeholderString = Localized.text("Password")
+        passwordField.font = MacTheme.Ramp.font(.code)
         passwordField.isHidden = true
         passwordField.delegate = self
         passwordField.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(passwordField)
         passwordField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         column.addArrangedSubview(diagnosisLabel)
+        diagnosisLabel.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40)
+            .isActive = true
 
         connectButton.title = Localized.text("Connect")
         connectButton.keyEquivalent = "\r"
@@ -115,9 +120,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
 
         let window = FloatingWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = Localized.text("Welcome")
-        window.contentView = column
+        window.minSize = NSSize(width: 620, height: 320)
+        window.contentView = MacDialogs.scrollColumn(holding: column)
         window.center()
         self.window = window
         NotificationCenter.default.addObserver(
@@ -141,9 +147,18 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     }
 
     @objc private func kindChanged() {
-        verified = nil
+        clearVerification()
         updateReading()
         scheduleProbe(afterMilliseconds: 100)
+    }
+
+    /// Step 2's pill and the button both name a machine that answered, so neither may outlive the
+    /// question they answered: changing the address or the agent unsays them until the next probe
+    /// speaks, rather than leaving a green tick over a host nobody has reached.
+    private func clearVerification() {
+        verified = nil
+        setPill(agentPill, text: "", color: MacTheme.Color.secondaryLabel)
+        connectButton.title = Localized.text("Connect")
     }
 
     @objc private func windowClosed() {
@@ -158,7 +173,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     }
 
     func controlTextDidChange(_ notification: Notification) {
-        verified = nil
+        clearVerification()
         updateReading()
         scheduleProbe(afterMilliseconds: 900)
     }
@@ -213,12 +228,12 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             while let self, !self.closed {
                 let address = TailnetStatusMac.localAddress()
                 if let address {
-                    self.setPill(self.tailnetPill, text: address, color: .systemGreen)
+                    self.setPill(self.tailnetPill, text: address, color: MacTheme.Color.success)
                 } else {
                     self.setPill(
                         self.tailnetPill,
                         text: Localized.text("Not connected — open Tailscale"),
-                        color: .systemOrange)
+                        color: MacTheme.Color.warning)
                 }
                 try? await Task.sleep(for: .seconds(3))
             }
@@ -302,13 +317,14 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         case .ok(let agent, let version):
             verified = (verdict.url, agent, version)
             let name = agent == .openCode ? "opencode" : "claude-bridge"
-            setPill(agentPill, text: Localized.text("Answering"), color: .systemGreen)
+            setPill(agentPill, text: Localized.text("Answering"), color: MacTheme.Color.success)
             diagnosisLabel.stringValue = Localized.text(
                 "%@ %@ answered at %@.", name, version ?? "", verdict.url.absoluteString)
             connectButton.title = Localized.text("Connect to %@", address.displayHost)
             if userInitiated { save(password: password) }
         case .authFailed:
-            verified = nil
+            clearVerification()
+            setPill(agentPill, text: Localized.text("Answering"), color: MacTheme.Color.success)
             if passwordField.isHidden {
                 passwordField.isHidden = false
                 window?.makeFirstResponder(passwordField)
@@ -320,12 +336,14 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
                     "%@ refused that password. Check it on the server.",
                     verdict.url.absoluteString)
         case .notAnAgentServer:
-            verified = nil
+            clearVerification()
+            setPill(agentPill, text: Localized.text("Not an agent"), color: MacTheme.Color.warning)
             diagnosisLabel.stringValue = Localized.text(
                 "%@ answers, but not like an agent server — is something else on this port?",
                 verdict.url.absoluteString)
         case .unreachable:
-            verified = nil
+            clearVerification()
+            setPill(agentPill, text: Localized.text("No answer"), color: MacTheme.Color.warning)
             guard tailnetUp else {
                 diagnosisLabel.stringValue = Localized.text(
                     "This Mac is not on the tailnet — step 1 has to be true first.")
@@ -365,7 +383,8 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             window?.close()
         } catch {
             diagnosisLabel.stringValue = Localized.text(
-                "Could not save: %@", String(describing: error))
+                "Could not save: %@",
+                (error as? AgentError)?.errorDescription ?? error.localizedDescription)
         }
     }
 }

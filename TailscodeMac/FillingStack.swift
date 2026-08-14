@@ -1,5 +1,20 @@
 import AppKit
 
+/// A container that says when the light changed.
+///
+/// A `CGColor` in a layer is the light it was resolved under rather than a colour that answers
+/// again, and `NSViewController` has no appearance hook at all — so a pane that paints its own
+/// ground needs the view to tell it, or a Mac that crossed into dark keeps a pale slab under a
+/// dark transcript until the app is relaunched.
+final class AppearanceView: NSView {
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+}
+
 /// A vertical stack whose arranged subviews are as wide as the stack itself.
 ///
 /// AppKit coerces `NSStackView.alignment = .width` to `.notAnAttribute` — the setter accepts the
