@@ -464,11 +464,35 @@ public struct ModelChooserRow: Sendable, Hashable, Identifiable {
     }
 }
 
+/// A heading and what it holds — which, past a certain size, is a thing you open rather than a
+/// thing you scroll. A hundred models is twenty screens of names nobody reads on the way to the one
+/// they came for; the same hundred under headings that answer to a press is one screen you look at
+/// and then aim into.
 public struct ModelChooserSection: Sendable, Hashable, Identifiable {
     public let id: String
     public let title: String
     public let detail: String
     public let rows: [ModelChooserRow]
+    /// Whether this heading is a control. Current, Recent and the typed-id offer are never closed:
+    /// they are short by construction and they are what the list is for.
+    public let canCollapse: Bool
+    /// True when the rows are held back. `rows` is then empty, so nothing downstream has to know.
+    public let isCollapsed: Bool
+    /// How many models are under the heading whether or not they are showing.
+    public let count: Int
+
+    public init(
+        id: String, title: String, detail: String, rows: [ModelChooserRow],
+        canCollapse: Bool = false, isCollapsed: Bool = false, count: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.rows = rows
+        self.canCollapse = canCollapse
+        self.isCollapsed = isCollapsed
+        self.count = count ?? rows.count
+    }
 }
 
 public enum ModelChooserCommand: Sendable, Equatable {
@@ -481,6 +505,9 @@ public enum ModelChooserCommand: Sendable, Equatable {
     case collapse
     /// The nth standing filter, counted from zero — ⌃1 is the whole catalog wherever it is offered.
     case scope(Int)
+    /// Open every heading, or shut every one that answers to a press.
+    case expandAll
+    case collapseAll
     case dismiss
 }
 
@@ -514,14 +541,22 @@ public struct ModelChooser: Sendable, Equatable {
     /// re-read every gauge to draw them.
     private let walls: [String: QuotaExhaustion]
 
+    /// Past this many models a family heading opens rather than scrolls, and the list arrives shut
+    /// except for what you are on and what you reach for. Under it, a closed heading would be a
+    /// press standing between a person and a list they could already see whole.
+    public static let foldFrom = 24
+
     public private(set) var query = ""
     public private(set) var scope: ModelChooserScope = .all
     public private(set) var cursor = 0
     public private(set) var expanded: Set<String> = []
+    public private(set) var collapsed: Set<String> = []
     public private(set) var sections: [ModelChooserSection] = []
     public private(set) var rows: [ModelChooserRow] = []
     /// How many models answered the query and the filter, for the header's count.
     private var matched = 0
+    /// How many are held behind shut headings, so the header band can offer to open them.
+    public private(set) var hidden = 0
 
     /// Whether a model survives the standing filter.
     private func inScope(_ candidate: ModelCandidate) -> Bool {
@@ -549,11 +584,15 @@ public struct ModelChooser: Sendable, Equatable {
     /// than a list you have to leave and re-enter, and the pick that comes back says which machine
     /// it meant.
     ///
-    /// `quotas` are the walls in front of *this* server, already narrowed to its provider family by
-    /// the caller that knows which backend it opened — the chooser marks a model spent, it does not
-    /// decide whose account a machine spends from. A model on another machine is never marked: the
-    /// same name reached through another gateway is metered by that gateway, and a mark this list
-    /// cannot stand behind is worse than none.
+    /// `quotas` are the walls the account is up against, already narrowed to the backend's provider
+    /// family by the caller that knows which one it opened — the chooser marks a model spent, it
+    /// does not decide whose account a machine spends from.
+    ///
+    /// A wall is a fact about the *account*, not about the machine that would send the request, so
+    /// it marks every row the same provider bills wherever that row is listed. Two machines signed
+    /// into one Claude plan share one weekly window; leaving the copy on the other machine unmarked
+    /// said the opposite, and a list that contradicts itself between two rows of the same model is
+    /// worse than one that overstates a wall by a machine.
     public init(
         sources: [ModelSource], selected: ModelSelection?,
         recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
@@ -568,8 +607,21 @@ public struct ModelChooser: Sendable, Equatable {
         self.policy = .over(candidates)
         self.showsProviders = Set(candidates.flatMap { $0.offers.map(\.providerID) }).count > 1
         self.scopes = Self.scopes(for: candidates, sources: sources)
+        self.collapsed = Self.shutOnArrival(candidates: candidates, selected: selected)
         rebuild()
         cursor = rows.firstIndex { $0.isSelected } ?? 0
+    }
+
+    /// Which headings a big catalog opens on. Everything folds except the family the chat is
+    /// already running from — you arrive next to what you have, not at the top of an alphabet.
+    private static func shutOnArrival(
+        candidates: [ModelCandidate], selected: ModelSelection?
+    ) -> Set<String> {
+        guard candidates.count > foldFrom else { return [] }
+        let mine = selected.flatMap { pick in
+            candidates.first { $0.carries(pick) }?.family.key
+        }
+        return Set(candidates.map(\.family.key)).subtracting(mine.map { [$0] } ?? [])
     }
 
     /// The filters this catalog can honestly offer. A filter that would change nothing — "this
@@ -591,7 +643,7 @@ public struct ModelChooser: Sendable, Equatable {
     ) -> [String: QuotaExhaustion] {
         guard !quotas.isEmpty else { return [:] }
         var found: [String: QuotaExhaustion] = [:]
-        for candidate in candidates where !candidate.isElsewhere {
+        for candidate in candidates {
             guard let hit = wall(for: candidate, quotas: quotas) else { continue }
             found[candidate.id] = hit
         }
@@ -661,12 +713,13 @@ public struct ModelChooser: Sendable, Equatable {
     }
 
     public var hint: String {
-        guard scopes.count > 1 else {
-            return Localized.text("↑↓ chooses · ⌃→ other providers · enter picks · esc closes")
+        var parts = [Localized.text("↑↓ chooses")]
+        parts.append(Localized.text("⌃→ opens · ⌃← folds"))
+        if scopes.count > 1 {
+            parts.append(Localized.text("⌃1–%@ filters", "\(scopes.count)"))
         }
-        return Localized.text(
-            "↑↓ chooses · ⌃→ other providers · ⌃1–%@ filters · enter picks · esc closes",
-            "\(scopes.count)")
+        parts.append(Localized.text("enter picks · esc closes"))
+        return parts.joined(separator: " · ")
     }
 
     /// Said when nothing survived, naming what did the narrowing rather than shrugging — a query,
@@ -771,9 +824,17 @@ public struct ModelChooser: Sendable, Equatable {
             cursor = max(0, rows.count - 1)
             return (true, nil, false)
         case .expand:
-            return (setExpanded(true), nil, false)
+            if setExpanded(true) { return (true, nil, false) }
+            guard let section = focused?.sectionID else { return (false, nil, false) }
+            return (setCollapsed(false, section: section), nil, false)
         case .collapse:
-            return (setExpanded(false), nil, false)
+            if setExpanded(false) { return (true, nil, false) }
+            guard let section = focused?.sectionID else { return (false, nil, false) }
+            return (setCollapsed(true, section: section), nil, false)
+        case .expandAll:
+            return (setAllCollapsed(false), nil, false)
+        case .collapseAll:
+            return (setAllCollapsed(true), nil, false)
         case .scope(let index):
             guard scopes.indices.contains(index) else { return (false, nil, false) }
             return (setScope(scopes[index]), nil, false)
@@ -797,8 +858,8 @@ public struct ModelChooser: Sendable, Equatable {
     public static func command(for chord: KeyChord) -> ModelChooserCommand? {
         if chord.control {
             switch chord.keyval {
-            case right: return .expand
-            case left: return .collapse
+            case right: return chord.shift ? .expandAll : .expand
+            case left: return chord.shift ? .collapseAll : .collapse
             default: break
             }
             if let digit = Keymap.digit(chord.keyval), digit > 0 { return .scope(digit - 1) }
@@ -822,6 +883,7 @@ public struct ModelChooser: Sendable, Equatable {
 
     private mutating func rebuild() {
         var sections: [ModelChooserSection] = []
+        var hiding = 0
         let matches = self.matches()
         matched = matches.count
 
@@ -863,19 +925,78 @@ public struct ModelChooser: Sendable, Equatable {
                 if providers.count > 1 { detail += " · " + Self.providerCount(providers.count) }
             }
             let oneHouse = Set(entries.map { $0.0.primary.providerID }).count < 2
+            let shut = query.isEmpty && collapsed.contains(family.key)
+            if shut { hiding += entries.count }
             sections.append(
                 ModelChooserSection(
                     id: family.key, title: family.title, detail: detail,
-                    rows: entries.flatMap {
-                        rows(
-                            for: $0.0, section: family.key, highlight: $0.1,
-                            namesProvider: !oneHouse)
-                    }))
+                    rows: shut
+                        ? []
+                        : entries.flatMap {
+                            rows(
+                                for: $0.0, section: family.key, highlight: $0.1,
+                                namesProvider: !oneHouse)
+                        },
+                    canCollapse: query.isEmpty, isCollapsed: shut, count: entries.count))
         }
 
         sections += literalSections()
         self.sections = sections
+        self.hidden = hiding
         rows = sections.flatMap(\.rows)
+    }
+
+    /// Opens or shuts one heading. Answers whether anything happened, so a key that finds nothing
+    /// to fold can go on meaning what it usually means.
+    @discardableResult
+    public mutating func setCollapsed(_ shut: Bool, section id: String) -> Bool {
+        guard query.isEmpty, sections.first(where: { $0.id == id })?.canCollapse == true else {
+            return false
+        }
+        guard collapsed.contains(id) != shut else { return false }
+        let anchor = focused?.anchor
+        if shut { collapsed.insert(id) } else { collapsed.remove(id) }
+        rebuild()
+        cursor =
+            rows.firstIndex { $0.sectionID == id && (!shut || $0.anchor == anchor) }
+            ?? rows.firstIndex { $0.anchor == anchor }
+            ?? min(cursor, max(0, rows.count - 1))
+        return true
+    }
+
+    @discardableResult
+    public mutating func toggleSection(_ id: String) -> Bool {
+        setCollapsed(!collapsed.contains(id), section: id)
+    }
+
+    /// Every heading at once — the two presses a long list is worth having.
+    @discardableResult
+    public mutating func setAllCollapsed(_ shut: Bool) -> Bool {
+        guard query.isEmpty else { return false }
+        let foldable = Set(sections.filter(\.canCollapse).map(\.id))
+        let next = shut ? collapsed.union(foldable) : collapsed.subtracting(foldable)
+        guard next != collapsed else { return false }
+        let anchor = focused?.anchor
+        collapsed = next
+        rebuild()
+        cursor = rows.firstIndex { $0.anchor == anchor } ?? 0
+        return true
+    }
+
+    /// Whether anything is folded right now, so a client can name the press it is offering.
+    public var hasCollapsedSections: Bool {
+        sections.contains { $0.isCollapsed }
+    }
+
+    /// What the one press at the top of the list would do, and to how much. `nil` when there is
+    /// nothing to fold either way — a control that cannot change anything is not offered.
+    public var foldAction: (title: String, collapses: Bool)? {
+        guard sections.contains(where: \.canCollapse) else { return nil }
+        if hidden > 0 {
+            return (Localized.text("Show %@ more", "\(hidden)"), false)
+        }
+        guard sections.filter({ $0.canCollapse }).count > 1 else { return nil }
+        return (Localized.text("Fold all"), true)
     }
 
     /// What this chat is running, and the one alternative that is not a model at all. Both used to
@@ -1468,6 +1589,48 @@ public enum ModelChooserCheck {
         expect(
             uniform.rows.contains { $0.facts.contains(.pdf) },
             "the one that tells two models apart is still worn")
+
+        var big: [ModelInfo] = []
+        for index in 0..<40 {
+            big.append(
+                ModelInfo(
+                    id: "gpt-\(index)", name: "GPT \(index)", providerID: "openai",
+                    capabilities: ModelCapabilities(
+                        attachment: true, imageInput: true, pdfInput: index.isMultiple(of: 2))))
+        }
+        big.append(ModelInfo(id: "claude-x", name: "Claude X", providerID: "anthropic"))
+        let picked = ModelSelection(providerID: "anthropic", modelID: "claude-x")
+        var shelf = ModelChooser(models: big, selected: picked, recents: [])
+        expect(
+            shelf.sections.first { $0.id == "gpt" }?.isCollapsed == true,
+            "a catalog too long to read arrives shelf")
+        expect(
+            shelf.sections.first { $0.id == "claude" }?.isCollapsed == false,
+            "except where the model in use lives")
+        expect(shelf.hidden == 40, "and says how much it is holding back")
+        expect(
+            shelf.sections.first { $0.id == "gpt" }?.count == 40,
+            "a shut heading still counts what is under it")
+        expect(shelf.rows.count < 10, "so the list is a screen rather than a scroll")
+        expect(shelf.foldAction?.collapses == false, "the one press on offer is the opening one")
+        expect(shelf.toggleSection("gpt"), "a heading opens")
+        expect(shelf.rows.count > 40, "onto everything it held")
+        expect(shelf.focused?.sectionID == "gpt", "with the cursor inside what just opened")
+        expect(shelf.setAllCollapsed(true), "and every heading shuts at once")
+        expect(shelf.rows.allSatisfy { $0.sectionID.hasPrefix("·") }, "leaving only the headings")
+        shelf.search("gpt 3")
+        expect(
+            shelf.sections.allSatisfy { !$0.isCollapsed },
+            "a query is never answered from behind a shut heading")
+        expect(!shelf.rows.isEmpty, "and finds what folding was hiding")
+        shelf.search("")
+        expect(shelf.hidden > 0, "clearing the query gives the folding back")
+
+        let tiny = ModelChooser(models: studio.models, selected: nil, recents: [])
+        expect(
+            tiny.sections.allSatisfy { !$0.isCollapsed },
+            "a catalog you can read whole is never shelf")
+        expect(tiny.foldAction == nil, "and offers no press for it")
 
         let ownModel = ModelSelection(providerID: "ollama", modelID: "qwen3:latest")
         let inUse = ModelChooser(

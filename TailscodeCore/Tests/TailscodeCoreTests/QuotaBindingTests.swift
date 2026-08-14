@@ -167,23 +167,28 @@ struct QuotaBindingTests {
             "the prepaid balance does not bill Claude's")
     }
 
-    @Test("A model on another machine is never marked from this one's account")
-    func elsewhereUnmarked() {
+    @Test("A window belongs to the account, so both machines' copies wear it")
+    func elsewhereMarkedTheSame() {
         let here = ModelSource(
             profileID: "studio", name: "studio", backend: .claudeCode,
             models: [ModelInfo(id: "opus", name: "Opus", providerID: "anthropic")],
             isCurrent: true, allowsServerDefault: true, acceptsAnyModelID: false)
         let there = ModelSource(
             profileID: "homelab", name: "homelab", backend: .openCode,
-            models: [ModelInfo(id: "claude-opus-4-5", name: "Opus 4.5", providerID: "anthropic")],
+            models: [
+                ModelInfo(id: "claude-opus-4-5", name: "Opus 4.5", providerID: "anthropic"),
+                ModelInfo(id: "qwen3:latest", name: "Qwen3", providerID: "ollama"),
+            ],
             isCurrent: false, allowsServerDefault: true, acceptsAnyModelID: false)
         let chooser = ModelChooser(
             sources: [here, there], selected: nil, recents: [],
             quotas: [quota("Claude", [gauge("Weekly · Opus 4.1", 1.0)])])
         let mine = chooser.rows.first { !$0.isAuto && !$0.isElsewhere }
-        let theirs = chooser.rows.first { $0.isElsewhere }
+        let theirs = chooser.rows.first { $0.isElsewhere && $0.title.hasPrefix("Opus") }
+        let local = chooser.rows.first { $0.title == "Qwen3" }
         #expect(mine?.wall != nil)
-        #expect(theirs?.wall == nil)
+        #expect(theirs?.wall != nil, "one plan, two machines, one weekly window")
+        #expect(local?.wall == nil, "and a model that plan never bills is left alone")
     }
 
     @Test("A wall holds only the models its provider bills")

@@ -22,6 +22,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     private let scroller: UnsafeMutablePointer<GtkWidget>
     private let count: UnsafeMutablePointer<GtkWidget>
     private let band: UnsafeMutablePointer<GtkWidget>
+    private let fold: UnsafeMutablePointer<GtkWidget>
     /// One width for every row's capability marks, so what a model reads forms a column rather than
     /// a ragged edge that moves with the length of the name beside it.
     private var markColumn: UnsafeMutableRawPointer?
@@ -69,6 +70,9 @@ final class ModelChooserWindow: @unchecked Sendable {
 
         count = Gtk.label(chooser.summary, css: "model-summary", selectable: false)
         gtk_label_set_xalign(op(count), 1)
+        fold = gtk_button_new_with_label("")!
+        Gtk.addClass(fold, "flat")
+        Gtk.addClass(fold, "model-scope")
         band = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         Gtk.margins(band, top: 2, bottom: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(column), band)
@@ -101,6 +105,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         }
 
         buildScopes()
+        syncFold()
         render()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
@@ -132,7 +137,26 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_widget_set_hexpand(count, 1)
         gtk_widget_set_valign(count, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(band), count)
+        gtk_box_append(ptr(band), fold)
+        Gtk.connect(UnsafeMutableRawPointer(fold), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, let action = self.chooser.foldAction,
+                    self.chooser.setAllCollapsed(action.collapses)
+                else { return }
+                self.refresh()
+            }
+        }
         syncScopes()
+    }
+
+    /// The one press over the whole list: open everything a fold is holding, or shut it all again.
+    private func syncFold() {
+        guard let action = chooser.foldAction else {
+            gtk_widget_set_visible(fold, 0)
+            return
+        }
+        gtk_widget_set_visible(fold, 1)
+        gtk_button_set_label(ptr(fold), action.title)
     }
 
     private func syncScopes() {
@@ -149,6 +173,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     private func refresh() {
         gtk_label_set_text(op(count), chooser.summary)
         syncScopes()
+        syncFold()
         render()
     }
 
@@ -231,19 +256,43 @@ final class ModelChooserWindow: @unchecked Sendable {
                 index += 1
             }
         }
+        gtk_widget_queue_draw(list)
+        gtk_widget_queue_draw(scroller)
         revealCursor()
     }
 
+    /// A heading a long catalog can be aimed with: the family, what is under it, and — where it
+    /// folds — the whole line as one press, because a disclosure triangle you have to hit is a
+    /// smaller target than the heading nobody was using for anything else.
     private func header(_ section: ModelChooserSection) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(row, top: 12, bottom: 2, leading: 6, trailing: 6)
+        if section.canCollapse {
+            let glyph = Gtk.label(
+                section.isCollapsed ? "›" : "⌄", css: "model-section-fold", selectable: false)
+            gtk_widget_set_size_request(glyph, 12, -1)
+            gtk_box_append(ptr(row), glyph)
+        }
         let title = Gtk.label(
             section.title.uppercased(), css: "section-header", selectable: false)
         gtk_widget_set_hexpand(title, 1)
         gtk_box_append(ptr(row), title)
         gtk_box_append(
             ptr(row), Gtk.label(section.detail, css: "model-section-count", selectable: false))
-        return row
+        guard section.canCollapse else { return row }
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "model-section-button")
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_hexpand(button, 1)
+        let id = section.id
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.chooser.toggleSection(id) else { return }
+                self.refresh()
+            }
+        }
+        return button
     }
 
     /// One row in three columns that hold their places down the whole list: the tick, the name over

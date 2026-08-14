@@ -27,6 +27,7 @@ final class ModelChooserSheet: NSObject {
     private let scroll = NSScrollView()
     private let empty = NSTextField(labelWithString: "")
     private let clear = NSButton()
+    private let fold = NSButton()
     private let filters = NSSegmentedControl()
     private var entries: [Entry] = []
     private var monitor: Any?
@@ -91,7 +92,13 @@ final class ModelChooserSheet: NSObject {
         filters.isHidden = chooser.scopes.isEmpty
         filters.setContentHuggingPriority(.required, for: .horizontal)
 
-        let band = NSStackView(views: [filters, summary])
+        fold.bezelStyle = .accessoryBarAction
+        fold.controlSize = .small
+        fold.target = self
+        fold.action = #selector(foldAll)
+        fold.setContentHuggingPriority(.required, for: .horizontal)
+
+        let band = NSStackView(views: [filters, summary, fold])
         band.orientation = .horizontal
         band.alignment = .centerY
         band.spacing = MacTheme.Spacing.s
@@ -175,9 +182,12 @@ final class ModelChooserSheet: NSObject {
             guard let self, event.window === self.sheet,
                 event.modifierFlags.contains(.control)
             else { return event }
-            switch event.keyCode {
-            case 124: return self.chooser.setExpanded(true) ? self.refreshed() : event
-            case 123: return self.chooser.setExpanded(false) ? self.refreshed() : event
+            let all = event.modifierFlags.contains(.shift)
+            switch (event.keyCode, all) {
+            case (124, true): return self.chooser.setAllCollapsed(false) ? self.refreshed() : event
+            case (123, true): return self.chooser.setAllCollapsed(true) ? self.refreshed() : event
+            case (124, false): return self.handled(.expand) ? self.refreshed() : event
+            case (123, false): return self.handled(.collapse) ? self.refreshed() : event
             default: break
             }
             guard let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }), digit > 0,
@@ -186,6 +196,10 @@ final class ModelChooserSheet: NSObject {
             else { return event }
             return self.refreshed()
         }
+    }
+
+    private func handled(_ command: ModelChooserCommand) -> Bool {
+        chooser.handle(command).handled
     }
 
     private func refreshed() -> NSEvent? {
@@ -212,6 +226,12 @@ final class ModelChooserSheet: NSObject {
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
         clear.isHidden = chooser.emptyEscape == nil
+        if let action = chooser.foldAction {
+            fold.title = action.title
+            fold.isHidden = false
+        } else {
+            fold.isHidden = true
+        }
         if let index = chooser.scopes.firstIndex(of: chooser.scope) {
             filters.selectedSegment = index
         }
@@ -259,10 +279,24 @@ final class ModelChooserSheet: NSObject {
 
     @objc private func clicked() {
         let clicked = table.clickedRow
-        guard entries.indices.contains(clicked), case .row(let row, let index) = entries[clicked]
-        else { return }
-        chooser.focus(index)
-        pick(row.selection)
+        guard entries.indices.contains(clicked) else { return }
+        switch entries[clicked] {
+        case .header(let section):
+            guard chooser.toggleSection(section.id) else { return }
+            rebuild()
+            revealCursor()
+        case .row(let row, let index):
+            chooser.focus(index)
+            pick(row.selection)
+        }
+    }
+
+    @objc private func foldAll() {
+        guard let action = chooser.foldAction, chooser.setAllCollapsed(action.collapses) else {
+            return
+        }
+        rebuild()
+        revealCursor()
     }
 
     private func pick(_ selection: ModelSelection?) {
@@ -361,11 +395,26 @@ private final class ModelChooserHeaderView: NSTableCellView {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        let leading: CGFloat = section.canCollapse ? MacTheme.Spacing.l : MacTheme.Spacing.s
         NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.s),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
             title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
             detail.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
             detail.lastBaselineAnchor.constraint(equalTo: title.lastBaselineAnchor),
+        ])
+        guard section.canCollapse else { return }
+        let fold = NSImageView(
+            image: NSImage(
+                systemSymbolName: section.isCollapsed ? "chevron.right" : "chevron.down",
+                accessibilityDescription: section.title) ?? NSImage())
+        fold.contentTintColor = MacTheme.Color.tertiaryLabel
+        fold.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+        fold.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(fold)
+        toolTip = Localized.text("Open or fold this family")
+        NSLayoutConstraint.activate([
+            fold.trailingAnchor.constraint(equalTo: title.leadingAnchor, constant: -4),
+            fold.centerYAnchor.constraint(equalTo: title.centerYAnchor),
         ])
     }
 

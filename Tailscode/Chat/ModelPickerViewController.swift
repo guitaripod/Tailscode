@@ -138,20 +138,9 @@ final class ModelPickerViewController: UIViewController {
             cell.accessibilityLabel = Self.spoken(row)
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
-            var accessories: [UICellAccessory] = []
-            if let wall = row.wall { accessories.append(Self.wallPill(wall)) }
-            accessories += row.facts.filter { !$0.isCapability }.map(Self.pill)
-            let room = cell.traitCollection.horizontalSizeClass == .compact ? 2 : 4
-            accessories = Array(accessories.prefix(room))
-            if accessories.count < room,
-                let marks = Self.capabilityAccessory(
-                    row, slots: self.chooser.policy.capabilitySlots)
-            {
-                accessories.append(marks)
-            }
-            if row.canExpand { accessories.append(self.expandAccessory(row)) }
-            if row.isSelected { accessories.append(.checkmark()) }
-            cell.accessories = accessories
+            cell.accessories = [
+                self.marks(row, room: self.view.bounds.width * 0.42)
+            ]
         }
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -166,7 +155,25 @@ final class ModelPickerViewController: UIViewController {
             content.secondaryText = section.title.isEmpty ? nil : section.detail
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
+            if section.canCollapse {
+                content.image = UIImage(
+                    systemName: section.isCollapsed ? "chevron.right" : "chevron.down",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
+                content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            }
             view.contentConfiguration = content
+            view.accessibilityTraits = section.canCollapse ? .button : []
+            view.accessibilityHint =
+                section.canCollapse
+                ? String(localized: "Opens or folds this family") : nil
+            view.gestureRecognizers?.forEach(view.removeGestureRecognizer)
+            guard section.canCollapse else { return }
+            view.addGestureRecognizer(
+                SectionTapRecognizer(section: section.id) { [weak self] id in
+                    guard let self, self.chooser.toggleSection(id) else { return }
+                    Theme.Haptics.selection()
+                    self.applySnapshot()
+                })
         }
 
         let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -226,108 +233,29 @@ final class ModelPickerViewController: UIViewController {
         return parts.joined(separator: ". ")
     }
 
-    /// What a model reads, as one fixed set of slots rather than a per-row huddle of symbols: a
-    /// slot the model lacks is left empty, so the marks line up down the list and a row that reads
-    /// less than its neighbours is visible as a gap instead of found by reading.
-    private static func capabilityAccessory(
-        _ row: ModelChooserRow, slots: [ModelFact]
-    ) -> UICellAccessory? {
-        guard !slots.isEmpty else { return nil }
-        let worn = Set(row.facts.filter(\.isCapability))
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.spacing = 5
-        stack.alignment = .center
-        var said: [String] = []
-        for slot in slots {
-            let box = UIImageView()
-            box.contentMode = .center
-            box.widthAnchor.constraint(equalToConstant: 15).isActive = true
-            guard worn.contains(slot) else {
-                stack.addArrangedSubview(box)
-                continue
-            }
-            box.image = UIImage(
-                systemName: slot.symbol,
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .regular))
-            box.tintColor = Theme.Color.tertiaryLabel
-            said.append(slot.label)
-            stack.addArrangedSubview(box)
+    /// Everything the row wears, in one accessory.
+    ///
+    /// Two custom accessories on one row are two views UIKit sizes from their own frames and never
+    /// compresses, so a row with a wall, a machine, its levels, its doors, a chevron and a tick put
+    /// six of them into space for two and drew them on top of each other. One view is one frame:
+    /// the tick and the chevron take their places first because they are what a press is aimed at,
+    /// and the marks fill what is left, dropped from the least decisive end — what ran out, then
+    /// where it runs, then what it can do.
+    private func marks(_ row: ModelChooserRow, room: CGFloat) -> UICellAccessory {
+        let strip = RowMarksView(
+            row: row, slots: chooser.policy.capabilitySlots, room: max(60, room)
+        ) { [weak self] in
+            guard let self, let index = self.chooser.rows.firstIndex(where: { $0.id == row.id })
+            else { return }
+            self.chooser.focus(index)
+            _ = self.chooser.setExpanded(!row.isExpanded, at: index)
+            Theme.Haptics.selection()
+            self.applySnapshot()
         }
-        stack.isAccessibilityElement = !said.isEmpty
-        stack.accessibilityLabel = said.joined(separator: ", ")
-        let width = CGFloat(slots.count) * 15 + CGFloat(slots.count - 1) * stack.spacing
-        stack.frame = CGRect(x: 0, y: 0, width: width, height: 18)
-        NSLayoutConstraint.activate([
-            stack.widthAnchor.constraint(equalToConstant: width),
-            stack.heightAnchor.constraint(equalToConstant: 18),
-        ])
         return .customView(
             configuration: .init(
-                customView: stack, placement: .trailing(), maintainsFixedSize: true))
-    }
-
-    private static func pill(_ fact: ModelFact) -> UICellAccessory {
-        let tint: UIColor = {
-            if case .local = fact { return Theme.Color.accent }
-            if case .server = fact { return Theme.Color.warning }
-            return Theme.Color.secondaryLabel
-        }()
-        return pill(text: fact.tag.uppercased(), tint: tint, label: fact.label, minimum: 46)
-    }
-
-    /// What ran out and when it comes back, in the danger register. The row is still there to be
-    /// picked — a window resets — so this is a mark rather than a barrier.
-    private static func wallPill(_ wall: QuotaExhaustion) -> UICellAccessory {
-        pill(
-            text: QuotaSurface.rowMark(wall).uppercased(), tint: Theme.Color.danger,
-            label: QuotaSurface.bannerBody(wall), minimum: 0)
-    }
-
-    private static func pill(
-        text: String, tint: UIColor, label accessibility: String, minimum: CGFloat
-    ) -> UICellAccessory {
-        let pill = PillLabel()
-        pill.text = text
-        pill.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
-        pill.textColor = tint
-        pill.textAlignment = .center
-        pill.accessibilityLabel = accessibility
-        pill.minimumWidth = minimum
-        pill.backgroundColor = tint.withAlphaComponent(0.12)
-        pill.layer.cornerRadius = 5
-        pill.layer.cornerCurve = .continuous
-        pill.setContentCompressionResistancePriority(.required, for: .horizontal)
-        pill.setContentHuggingPriority(.required, for: .horizontal)
-        pill.fixSize()
-        return .customView(
-            configuration: .init(customView: pill, placement: .trailing(), maintainsFixedSize: true))
-    }
-
-    /// The chevron opens the row onto the other providers that run the same model, in place —
-    /// picking the row itself still picks the model, through whichever provider leads.
-    private func expandAccessory(_ row: ModelChooserRow) -> UICellAccessory {
-        let button = UIButton(type: .system)
-        let symbol = row.isExpanded ? "chevron.down" : "chevron.right"
-        button.setImage(
-            UIImage(
-                systemName: symbol,
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)),
-            for: .normal)
-        button.tintColor = Theme.Color.secondaryLabel
-        button.accessibilityLabel = String(localized: "The other providers that run it")
-        let id = row.id
-        let expanded = row.isExpanded
-        button.addAction(
-            UIAction { [weak self] _ in
-                guard let self, let index = self.chooser.rows.firstIndex(where: { $0.id == id })
-                else { return }
-                self.chooser.focus(index)
-                _ = self.chooser.setExpanded(!expanded, at: index)
-                Theme.Haptics.selection()
-                self.applySnapshot()
-            }, for: .touchUpInside)
-        return .customView(configuration: .init(customView: button, placement: .trailing()))
+                customView: strip, placement: .trailing(), isHidden: false,
+                reservedLayoutWidth: .actual, maintainsFixedSize: true))
     }
 
     private func applySnapshot() {
@@ -340,6 +268,7 @@ final class ModelPickerViewController: UIViewController {
         }
         sectionIDs = chooser.sections.map(\.id)
         dataSource.apply(snapshot, animatingDifferences: false)
+        syncFoldItem()
         guard let empty = chooser.emptyResult else {
             contentUnavailableConfiguration = nil
             return
@@ -358,6 +287,23 @@ final class ModelPickerViewController: UIViewController {
             }
         }
         contentUnavailableConfiguration = config
+    }
+
+    /// The one press over the whole list: open everything the folding is holding back, or shut it
+    /// all again. It names the number, because "show more" over a catalog is a promise of unknown
+    /// size and a person deciding whether to scroll is deciding on that number.
+    private func syncFoldItem() {
+        guard let action = chooser.foldAction else {
+            navigationItem.leftBarButtonItem = nil
+            return
+        }
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: action.title, image: nil,
+            primaryAction: UIAction { [weak self] _ in
+                guard let self, self.chooser.setAllCollapsed(action.collapses) else { return }
+                Theme.Haptics.selection()
+                self.applySnapshot()
+            })
     }
 
     @objc private func close() { dismiss(animated: true) }
@@ -382,6 +328,25 @@ final class ModelPickerViewController: UIViewController {
             dismiss(animated: true)
         }
     #endif
+}
+
+/// A press on a family heading, carrying which heading it was. A supplementary view is recycled, so
+/// the gesture has to know its own section rather than the one the view held last time.
+private final class SectionTapRecognizer: UITapGestureRecognizer {
+    private let section: String
+    private let handler: (String) -> Void
+
+    init(section: String, handler: @escaping (String) -> Void) {
+        self.section = section
+        self.handler = handler
+        super.init(target: nil, action: nil)
+        addTarget(self, action: #selector(fire))
+    }
+
+    @objc private func fire() {
+        guard state == .ended else { return }
+        handler(section)
+    }
 }
 
 /// A pill that measures itself. An accessory laid out from a hand-set frame has no size for the
@@ -413,6 +378,158 @@ private final class PillLabel: UILabel {
             heightAnchor.constraint(equalToConstant: size.height),
         ])
     }
+
+    static func make(text: String, tint: UIColor, spoken: String, minimum: CGFloat) -> PillLabel {
+        let pill = PillLabel()
+        pill.text = text
+        pill.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        pill.textColor = tint
+        pill.textAlignment = .center
+        pill.accessibilityLabel = spoken
+        pill.minimumWidth = minimum
+        pill.backgroundColor = tint.withAlphaComponent(0.12)
+        pill.layer.cornerRadius = 5
+        pill.layer.cornerCurve = .continuous
+        return pill
+    }
+}
+
+/// The right-hand end of a row: what ran out, where it runs, what it takes, and what it reads —
+/// laid out once, inside a width it was told about, so nothing is ever drawn on top of anything.
+/// Marks are dropped from the least decisive end rather than shrunk, and the row's own name keeps
+/// whatever is left; a screen reader still hears all of them from the cell's label.
+private final class RowMarksView: UIView {
+    private static let gap: CGFloat = 5
+    private static let slotWidth: CGFloat = 15
+
+    init(
+        row: ModelChooserRow, slots: [ModelFact], room: CGFloat,
+        onExpand: @escaping () -> Void
+    ) {
+        super.init(frame: .zero)
+        var tail: [UIView] = []
+        if row.canExpand {
+            let chevron = UIButton(type: .system)
+            chevron.setImage(
+                UIImage(
+                    systemName: row.isExpanded ? "chevron.down" : "chevron.right",
+                    withConfiguration: UIImage.SymbolConfiguration(
+                        pointSize: 11, weight: .semibold)), for: .normal)
+            chevron.tintColor = Theme.Color.secondaryLabel
+            chevron.accessibilityLabel = String(localized: "The other providers that run it")
+            chevron.frame = CGRect(x: 0, y: 0, width: 28, height: 28)
+            chevron.addAction(UIAction { _ in onExpand() }, for: .touchUpInside)
+            tail.append(chevron)
+        }
+        if row.isSelected {
+            let tick = UIImageView(
+                image: UIImage(
+                    systemName: "checkmark",
+                    withConfiguration: UIImage.SymbolConfiguration(
+                        pointSize: 13, weight: .semibold)))
+            tick.tintColor = Theme.Color.accent
+            tick.contentMode = .center
+            tick.frame = CGRect(x: 0, y: 0, width: 22, height: 22)
+            tail.append(tick)
+        }
+        let spoken = max(0, room - tail.reduce(0) { $0 + $1.frame.width + Self.gap })
+
+        var pieces: [UIView] = []
+        if let wall = row.wall {
+            pieces.append(
+                PillLabel.make(
+                    text: QuotaSurface.rowMark(wall).uppercased(), tint: Theme.Color.danger,
+                    spoken: QuotaSurface.bannerBody(wall), minimum: 0))
+        }
+        for fact in row.facts where !fact.isCapability {
+            pieces.append(
+                PillLabel.make(
+                    text: fact.tag.uppercased(), tint: Self.tint(fact), spoken: fact.label,
+                    minimum: 0))
+        }
+        if let capabilities = Self.capabilities(row: row, slots: slots) {
+            pieces.append(capabilities)
+        }
+
+        var width: CGFloat = 0
+        var kept: [UIView] = []
+        for piece in pieces {
+            let size = piece.intrinsicContentSize.width
+            let next = width + size + (kept.isEmpty ? 0 : Self.gap)
+            guard next <= spoken else { break }
+            width = next
+            kept.append(piece)
+        }
+
+        let height: CGFloat = 28
+        var x: CGFloat = 0
+        for piece in kept + tail {
+            let size =
+                piece.frame.width > 0
+                ? piece.frame.size
+                : piece.intrinsicContentSize
+            piece.frame = CGRect(
+                x: x, y: (height - size.height) / 2, width: size.width, height: size.height)
+            addSubview(piece)
+            x += size.width + Self.gap
+        }
+        let total = max(0, x - Self.gap)
+        isAccessibilityElement = false
+        frame = CGRect(x: 0, y: 0, width: total, height: height)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: total),
+            heightAnchor.constraint(equalToConstant: height),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private static func tint(_ fact: ModelFact) -> UIColor {
+        switch fact {
+        case .local: return Theme.Color.accent
+        case .server: return Theme.Color.warning
+        default: return Theme.Color.secondaryLabel
+        }
+    }
+
+    /// One slot per capability the catalog can tell models apart by, empty where a model lacks it,
+    /// so the symbols read down the list as a column rather than a huddle that shifts per row.
+    private static func capabilities(row: ModelChooserRow, slots: [ModelFact]) -> UIView? {
+        guard !slots.isEmpty else { return nil }
+        let worn = Set(row.facts.filter(\.isCapability))
+        guard !worn.isEmpty else { return nil }
+        let strip = FixedWidthView(
+            width: CGFloat(slots.count) * slotWidth + CGFloat(slots.count - 1) * gap, height: 18)
+        var x: CGFloat = 0
+        for slot in slots {
+            defer { x += slotWidth + gap }
+            guard worn.contains(slot) else { continue }
+            let icon = UIImageView(
+                image: UIImage(
+                    systemName: slot.symbol,
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .regular)))
+            icon.tintColor = Theme.Color.tertiaryLabel
+            icon.contentMode = .center
+            icon.frame = CGRect(x: x, y: 0, width: slotWidth, height: 18)
+            strip.addSubview(icon)
+        }
+        return strip
+    }
+}
+
+/// A view that answers with the size it was built for, so a hand-laid strip can be measured like
+/// anything else in the row.
+private final class FixedWidthView: UIView {
+    private let size: CGSize
+
+    init(width: CGFloat, height: CGFloat) {
+        size = CGSize(width: width, height: height)
+        super.init(frame: CGRect(origin: .zero, size: size))
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: CGSize { size }
 }
 
 extension ModelPickerViewController: UICollectionViewDelegate {

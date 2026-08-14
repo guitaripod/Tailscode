@@ -357,6 +357,18 @@ enum MatrixTheme {
         }
         .model-chevron:hover { background-color: alpha(\(accent), 0.16); }
         .model-chevron-glyph { color: \(textDim); font-size: \(c(0.8)); }
+        .model-section-button {
+            padding: 0;
+            border: none;
+            border-radius: 5px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .model-section-button:hover { background-color: alpha(\(accent), 0.07); }
+        .model-section-button:hover .section-header { opacity: 0.85; }
+        .model-section-fold { color: \(textDim); \(t(.hint)) opacity: 0.6; }
         .model-section-count {
             color: \(textDim);
             \(t(.hint))
