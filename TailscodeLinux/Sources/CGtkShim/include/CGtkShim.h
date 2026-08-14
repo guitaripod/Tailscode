@@ -325,3 +325,9 @@ void tailscode_web_load(TailscodeWeb *web, const char *uri);
 void tailscode_web_verb(TailscodeWeb *web, const char *verb);
 void tailscode_web_zoom(TailscodeWeb *web, double level);
 void tailscode_web_free(TailscodeWeb *web);
+
+/// The usable height of the monitor a widget is on, in logical pixels, or 0 when it cannot be read
+/// — a window that has not been mapped yet has no surface, and therefore no monitor. Passing NULL
+/// asks the default display's first monitor, which is the right answer for a dialog with no parent.
+/// Callers use it to bound how tall they may grow; nothing here decides that for them.
+int tailscode_monitor_workarea_height(GtkWidget *near);

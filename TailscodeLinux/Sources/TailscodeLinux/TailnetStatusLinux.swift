@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import TailscodeCore
 
 /// This machine's tailnet address, and the peers it can see.
 ///
@@ -30,14 +31,43 @@ public struct TailnetStatusLinux: Sendable {
 
     public let address: String?
     public let peers: [Peer]
+    /// Which of the four ways this machine can be off a tailnet it is, when it is off one. Carried
+    /// beside the address rather than derived from its absence, because a nil address is the one
+    /// thing every failure has in common and the differences are what a person can act on.
+    public let reading: TailscaleReading
+
+    public init(address: String?, peers: [Peer], reading: TailscaleReading? = nil) {
+        self.address = address
+        self.peers = peers
+        if let reading {
+            self.reading = reading
+        } else if let address {
+            self.reading = .up(address: address)
+        } else {
+            self.reading = Packaging.isFlatpak ? .sandboxed : .daemonDown
+        }
+    }
 
     public static func read() -> TailnetStatusLinux {
-        guard let data = runTailscale() else { return TailnetStatusLinux(address: nil, peers: []) }
+        let answer = runTailscale()
+        guard let data = answer.output else {
+            return TailnetStatusLinux(
+                address: nil, peers: [],
+                reading: TailscaleReading.read(
+                    found: answer.ran, sandboxed: Packaging.isFlatpak, backendState: nil,
+                    address: nil))
+        }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return TailnetStatusLinux(address: nil, peers: [])
+            return TailnetStatusLinux(
+                address: nil, peers: [],
+                reading: TailscaleReading.read(
+                    found: true, sandboxed: Packaging.isFlatpak, backendState: nil, address: nil))
         }
         let selfNode = root["Self"] as? [String: Any]
         let address = (selfNode?["TailscaleIPs"] as? [String])?.first { !$0.contains(":") }
+        let reading = TailscaleReading.read(
+            found: true, sandboxed: Packaging.isFlatpak,
+            backendState: root["BackendState"] as? String, address: address)
         let rawPeers: [Any] = Array((root["Peer"] as? [String: Any])?.values ?? [:].values)
         let peers: [Peer] = rawPeers.compactMap { value in
             guard let peer = value as? [String: Any],
@@ -51,7 +81,7 @@ public struct TailnetStatusLinux: Sendable {
                 os: (peer["OS"] as? String) ?? "", dnsName: dns)
         }
         return TailnetStatusLinux(
-            address: address, peers: peers.sorted { $0.hostname < $1.hostname })
+            address: address, peers: peers.sorted { $0.hostname < $1.hostname }, reading: reading)
     }
 
     /// The peers worth asking, in the scanner's own shape. Only what is online — a machine that
@@ -62,19 +92,35 @@ public struct TailnetStatusLinux: Sendable {
     }
 
     /// The daemon is asked over its own CLI rather than its socket: `tailscaled.sock` is root-owned
-    /// on most distributions and outside the sandbox under Flatpak, while the CLI is on PATH and
-    /// already has the permission it needs.
-    private static func runTailscale() -> Data? {
+    /// on most distributions, and under Flatpak it is outside the sandbox entirely — as is the CLI,
+    /// since `/usr` inside a sandbox is the runtime's rather than the machine's. So a sandboxed
+    /// build asks the host through `flatpak-spawn`, which needs the Flatpak D-Bus name the manifest
+    /// requests; where that permission has not been granted the call fails and the reading says it
+    /// cannot see, which is a different sentence from "this machine is not connected".
+    ///
+    /// - Returns: whether the CLI ran at all, and what it printed. The two are separate facts: a
+    ///   `tailscale` that is not installed and one that answered "signed out" both produce no
+    ///   usable JSON and mean entirely different things.
+    private static func runTailscale() -> (ran: Bool, output: Data?) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["tailscale", "status", "--json"]
+        if Packaging.isFlatpak {
+            process.arguments = ["flatpak-spawn", "--host", "tailscale", "status", "--json"]
+        } else {
+            process.arguments = ["tailscale", "status", "--json"]
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
+        guard (try? process.run()) != nil else { return (false, nil) }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        return data
+        // 127 is the shell's word for "no such command", which is how a machine without Tailscale
+        // — or a sandbox without the permission to ask the host — answers.
+        let ran = process.terminationStatus != 127
+        // A signed-out daemon answers with JSON *and* a non-zero status, and that JSON is the only
+        // place `BackendState` says so — dropping it would collapse "signed out" into "not here".
+        guard process.terminationStatus == 0 else { return (ran, data.isEmpty ? nil : data) }
+        return (true, data)
     }
 }

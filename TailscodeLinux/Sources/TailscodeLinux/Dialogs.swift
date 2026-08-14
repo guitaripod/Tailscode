@@ -10,6 +10,15 @@ import TailscodeCore
 /// app owns can hold live state — a probe in flight, a failure named in place — which is exactly
 /// what the server form needs.
 enum Dialogs {
+    /// A dialog is as tall as it needs to be, and never taller than the screen it opens on.
+    ///
+    /// `-1` asks GTK for the natural height, which is the right answer until the content grows past
+    /// the display — and then it is the worst one: the window is laid out at its full natural size,
+    /// the bottom of it falls off the monitor, and because a plain box does not scroll there is
+    /// nothing to reach it with. That is how a 780px form becomes unusable on an 800px laptop and
+    /// how first run lost its Connect button the day a radar was added above it. So the content
+    /// lives in a scroller that reports its natural height — the window still sizes itself to fit
+    /// small content exactly — bounded by what the monitor actually has.
     static func window(
         title: String, parent: UnsafeMutablePointer<GtkWidget>?, width: Int32 = 460
     ) -> (window: UnsafeMutablePointer<GtkWidget>, content: UnsafeMutablePointer<GtkWidget>) {
@@ -22,8 +31,54 @@ enum Dialogs {
         }
         let content = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
         Gtk.margins(content, 18)
-        gtk_window_set_child(ptr(window), content)
+
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_propagate_natural_width(op(scroller), 1)
+        gtk_scrolled_window_set_max_content_height(op(scroller), Self.tallestDialog(near: parent))
+        gtk_scrolled_window_set_child(op(scroller), content)
+        gtk_window_set_child(ptr(window), scroller)
         return (window, content)
+    }
+
+    /// The same window with its buttons pinned below the scroller rather than at the end of it.
+    ///
+    /// A dialog that can scroll can scroll its own primary action off the screen, which is worse
+    /// than being too tall: the window looks complete and the way forward is somewhere below the
+    /// fold. Anything a person must be able to press — Connect, Later, the demo — goes in the
+    /// returned footer, which never moves.
+    static func windowWithActions(
+        title: String, parent: UnsafeMutablePointer<GtkWidget>?, width: Int32 = 460
+    ) -> (
+        window: UnsafeMutablePointer<GtkWidget>, content: UnsafeMutablePointer<GtkWidget>,
+        actions: UnsafeMutablePointer<GtkWidget>
+    ) {
+        let (window, content) = Self.window(title: title, parent: parent, width: width)
+        guard let scroller = gtk_window_get_child(ptr(window)) else {
+            return (window, content, content)
+        }
+        let stack = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        let actions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(actions, GTK_ALIGN_END)
+        Gtk.margins(actions, top: 6, bottom: 14, leading: 18, trailing: 18)
+        gtk_widget_set_vexpand(scroller, 1)
+        g_object_ref(scroller)
+        gtk_window_set_child(ptr(window), nil)
+        gtk_box_append(ptr(stack), scroller)
+        g_object_unref(scroller)
+        gtk_box_append(ptr(stack), actions)
+        gtk_window_set_child(ptr(window), stack)
+        return (window, content, actions)
+    }
+
+    /// How tall a dialog may get on the display it is opening on, with room left for the shell's own
+    /// furniture. Falls back to a laptop-sized guess where the monitor cannot be read, which is
+    /// smaller than every desktop and larger than nothing.
+    private static func tallestDialog(near widget: UnsafeMutablePointer<GtkWidget>?) -> Int32 {
+        let height = Int32(tailscode_monitor_workarea_height(widget))
+        guard height > 0 else { return 620 }
+        return max(360, Int32(Double(height) * 0.82))
     }
 
     static func close(_ widget: UnsafeMutablePointer<GtkWidget>) {

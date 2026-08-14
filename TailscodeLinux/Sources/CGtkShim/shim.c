@@ -2446,3 +2446,35 @@ unsigned char *tailscode_analytics_card_png(
     if (out_len) *out_len = array->len;
     return g_byte_array_free(array, FALSE);
 }
+
+int tailscode_monitor_workarea_height(GtkWidget *near) {
+    GdkDisplay *display = NULL;
+    GdkMonitor *monitor = NULL;
+
+    if (near != NULL) {
+        GtkRoot *root = gtk_widget_get_root(near);
+        if (root != NULL) {
+            GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(root));
+            if (surface != NULL) {
+                display = gdk_surface_get_display(surface);
+                monitor = gdk_display_get_monitor_at_surface(display, surface);
+            }
+        }
+    }
+    if (monitor == NULL) {
+        display = display != NULL ? display : gdk_display_get_default();
+        if (display == NULL) return 0;
+        GListModel *monitors = gdk_display_get_monitors(display);
+        if (monitors == NULL || g_list_model_get_n_items(monitors) == 0) return 0;
+        monitor = GDK_MONITOR(g_list_model_get_item(monitors, 0));
+        if (monitor == NULL) return 0;
+        GdkRectangle area;
+        gdk_monitor_get_geometry(monitor, &area);
+        g_object_unref(monitor);
+        return area.height;
+    }
+
+    GdkRectangle area;
+    gdk_monitor_get_geometry(monitor, &area);
+    return area.height;
+}

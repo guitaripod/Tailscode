@@ -38,10 +38,20 @@ enum Preferences {
 
     /// Window geometry, so the app opens the size and place it was left — including maximized,
     /// which is not a size and has to be remembered separately.
+    /// The size to open at, never larger than the screen it opens on. 1400x900 is a good desktop
+    /// default and a bad one on a 1280x800 handheld or a small laptop, where it asks for a window
+    /// wider and taller than the whole display; the same clamp catches a size remembered from a
+    /// monitor that is no longer plugged in.
     static var windowSize: (width: Int32, height: Int32) {
         let width = defaults.integer(forKey: "tailscode.window.width")
         let height = defaults.integer(forKey: "tailscode.window.height")
-        return width > 200 && height > 200 ? (Int32(width), Int32(height)) : (1400, 900)
+        let wanted: (Int32, Int32) =
+            width > 200 && height > 200 ? (Int32(width), Int32(height)) : (1400, 900)
+        let screen = Int32(tailscode_monitor_workarea_height(nil))
+        guard screen > 400 else { return wanted }
+        // Only the height is knowable from this call, and it is the one that actually traps people:
+        // a window taller than the display puts its own composer under the panel.
+        return (wanted.0, min(wanted.1, Int32(Double(screen) * 0.94)))
     }
 
     static func setWindowSize(width: Int32, height: Int32) {
