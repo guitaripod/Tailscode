@@ -172,6 +172,8 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(catalogDidChange), name: ModelCatalog.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.willResignActiveNotification,
             UIApplication.didEnterBackgroundNotification,
@@ -2353,6 +2355,17 @@ final class ChatViewController: UIViewController {
 
     private func loadModels() async {
         availableModels = await viewModel.availableModels()
+        updateNavControls()
+    }
+
+    /// A warm catalog is answered from the cache and refreshed behind it, so the models this chat
+    /// can offer are settled a round trip after the read. Taking the landing is what puts a model
+    /// the server gained since the last launch into the picker in this run rather than the next.
+    @objc private func catalogDidChange(_ note: Notification) {
+        guard note.userInfo?["profileID"] as? String == viewModel.contextID,
+            viewModel.supportsModelSelection || viewModel.supportsReasoningEffort
+        else { return }
+        availableModels = ModelCatalog.cached(for: viewModel.contextID)
         updateNavControls()
     }
 

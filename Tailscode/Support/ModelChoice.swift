@@ -9,6 +9,13 @@ struct ModelChoice: Equatable {
     var effort: String?
 }
 
+extension ModelCatalog {
+    /// A server's catalog changed under a surface that already read it. The refresh behind a
+    /// warm cache is what makes a model the server gained today reachable without relaunching,
+    /// so it has to be able to say so rather than land silently into the store.
+    static let didChange = Notification.Name("tailscode.modelCatalog.didChange")
+}
+
 /// Per-server model catalogs, kept in memory and on disk so a chip can name the
 /// model on the first frame instead of after a round trip to the server.
 @MainActor
@@ -52,9 +59,14 @@ enum ModelCatalog {
         guard let models = try? await backend.availableModels(), !models.isEmpty else {
             return cached(for: profileID)
         }
+        let changed = cached(for: profileID).map(\.id) != models.map(\.id)
         memory[profileID] = models
         if let data = try? JSONEncoder().encode(models) {
             UserDefaults.standard.set(data, forKey: prefix + profileID)
+        }
+        if changed {
+            NotificationCenter.default.post(
+                name: ModelCatalog.didChange, object: nil, userInfo: ["profileID": profileID])
         }
         return models
     }
