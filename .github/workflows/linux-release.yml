@@ -53,13 +53,19 @@ jobs:
         run: TAILSCODE_KIT_REMOTE=1 scripts/package-linux.sh tarball
 
       # The whole point of building here rather than on the author's machine.
-      - name: The glibc floor is what we think it is
+      # A ceiling, not an equality: what matters is that nothing in the artifact needs a glibc
+      # newer than 24.04's, and an artifact that happens to need an older one runs on strictly more
+      # machines. Pinning the exact number made a release fail for getting better — the floor moves
+      # on its own whenever the code stops reaching for the one symbol that was holding it up.
+      - name: The glibc floor is no higher than Ubuntu 24.04's
         run: |
           floor=$(objdump -T TailscodeLinux/.build/release/tailscode |
             grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1)
           echo "requires $floor"
-          test "$floor" = "GLIBC_2.39" || {
-            echo "expected GLIBC_2.39 — this artifact would not run on Ubuntu 24.04"; exit 1; }
+          highest=$(printf '%s\nGLIBC_2.39\n' "$floor" | sort -uV | tail -1)
+          test "$highest" = "GLIBC_2.39" || {
+            echo "$floor is newer than GLIBC_2.39 — this artifact would not run on Ubuntu 24.04"
+            exit 1; }
 
       - name: It starts
         run: |
