@@ -17,6 +17,7 @@ BIN_DIR="$HOME/.local/bin"
 ENV_FILE="$HOME/.config/opencode-serve.env"
 RUNNER="$BIN_DIR/opencode-serve-run"
 REFRESHER="$BIN_DIR/opencode-catalog-refresh"
+RESTARTER="$BIN_DIR/opencode-serve-restart"
 UNIT_DIR="$HOME/.config/systemd/user"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 LABEL=io.github.guitaripod.opencode-serve
@@ -92,6 +93,28 @@ EOF
     chmod +x "$RUNNER"
 }
 
+## The restart, as one command on the machine, so that everything which needs one — the check
+## below, and a client that cannot open a terminal here — asks for it the same way and gets the
+## same thing. A machine set up by hand has no such command, which is how a client can tell.
+write_restarter() {
+    write_managed "$RESTARTER" <<EOF || true
+#!/usr/bin/env bash
+$MARKER
+set -euo pipefail
+UNIT=opencode-serve.service
+LABEL=$LABEL
+if command -v systemctl >/dev/null 2>&1 && systemctl --user is-enabled --quiet "\$UNIT" 2>/dev/null; then
+    exec systemctl --user restart "\$UNIT"
+fi
+if command -v launchctl >/dev/null 2>&1; then
+    exec launchctl kickstart -k "gui/\$(id -u)/\$LABEL"
+fi
+echo "no supervisor here to restart opencode serve" >&2
+exit 1
+EOF
+    chmod +x "$RESTARTER"
+}
+
 ## The check that makes a new model appear without anyone being told to restart anything.
 ## `opencode models` resolves the catalog the same way the server does, in a fresh process, so
 ## it answers what the server would offer if it were started now — and a restart is worth it
@@ -138,15 +161,7 @@ is_idle() {
     done
 }
 
-restart() {
-    if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet "\$UNIT"; then
-        systemctl --user restart "\$UNIT"
-    elif command -v launchctl >/dev/null 2>&1; then
-        launchctl kickstart -k "gui/\$(id -u)/\$LABEL"
-    else
-        return 1
-    fi
-}
+restart() { opencode-serve-restart; }
 
 sig=\$(opencode models 2>/dev/null | digest)
 [ -n "\$sig" ] || exit 0
@@ -251,6 +266,7 @@ mkdir -p "$BIN_DIR"
 ensure_opencode
 write_env
 write_runner
+write_restarter
 write_refresher
 
 case "$(uname -s)" in

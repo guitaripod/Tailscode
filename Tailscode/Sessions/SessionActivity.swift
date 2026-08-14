@@ -52,6 +52,12 @@ final class SessionActivity {
         return ChatViewModel.liveStatus(for: viewModel.state).text
     }
 
+    /// How many turns this device is driving on one server right now — which is exactly what a
+    /// restart of that server would stop, and so what a person is owed before pressing it.
+    func workingCount(onProfile profileID: String) -> Int {
+        retained.values.filter { $0.contextID == profileID }.count
+    }
+
     func update(
         sessionID: String, profileID: String, title: String, status: Status,
         keepAlive: ChatViewModel

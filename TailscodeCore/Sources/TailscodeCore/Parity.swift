@@ -84,6 +84,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverSignIn
     case serverSelfUpdate
     case serverAutoUpdate
+    case serverRestart
     case newChat
     case newChatDefaults
     case newChatFailure
@@ -415,6 +416,10 @@ public enum CapabilityRegistry {
             id: .serverSelfUpdate, area: "servers", title: "The app updates the server",
             spec:
                 "The server screen reads /update through BridgeUpdater, offers the commits it would bring, and follows the restart; a refused connection mid-update is the restart, not a failure. A restart is never taken out from under a running turn: the machine reports what it is doing, the press says beforehand what stopping it would cost, and the bridge holds the restart behind its own quiet barrier rather than exiting on a check it made minutes earlier. A build that landed and was never started is one press rather than a terminal instruction (UpdateInvitation.restartHere), and only where something would start the bridge again — a machine with no supervisor is handed the command instead, because a bridge that exits with nothing to bring it back is a machine no client can reach. The obstacle in the way of an update is named rather than summarised: the files that are dirty, the commits that cannot be fast-forwarded, the toolchain that would do the building."),
+        CapabilityDefinition(
+            id: .serverRestart, area: "servers", title: "The app can start a server over",
+            spec:
+                "Where a server is explained, it can be asked to start over (ServerRestart, RestartableBackend). It is the only way back to anything a long-lived process reads once and never again — the model list opencode resolved at startup, a config edited since, a plugin installed after it began — from the device that is present, on a machine whose terminal is not. The press states what it costs before it is taken, counting the turns this device knows are running there, because a restart stops them where they stand; the restart itself is one command on the machine, left there by the setup script, so a server set up by hand is told it cannot rather than being spawned into a failure. Nothing waits on a reply: the connection dies with the process it was asked over, and the ordinary reconnect is what says the machine is back."),
         CapabilityDefinition(
             id: .serverAutoUpdate, area: "servers", title: "A machine can keep itself current",
             spec:

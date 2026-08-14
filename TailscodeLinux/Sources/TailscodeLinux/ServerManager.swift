@@ -318,6 +318,22 @@ final class ServerManager: @unchecked Sendable {
             adw_expander_row_add_row(ptr(row), password)
         }
 
+        if ServerRestart.isOffered(profile.backend) && !isDemo {
+            let restart = adw_action_row_new()!
+            adw_preferences_row_set_use_markup(ptr(restart), 0)
+            adw_preferences_row_set_title(ptr(restart), ServerRestart.title)
+            adw_action_row_set_subtitle(ptr(restart), ServerRestart.detail)
+            adw_action_row_set_subtitle_lines(ptr(restart), 0)
+            let id = profile.id
+            let name = profile.name
+            adw_action_row_add_suffix(
+                ptr(restart),
+                Self.inlineButton(ServerRestart.action, css: []) { [weak self] in
+                    self?.confirmRestart(id: id, name: name)
+                })
+            adw_expander_row_add_row(ptr(row), restart)
+        }
+
         if !isEnvironment {
             let remove = adw_action_row_new()!
             adw_preferences_row_set_use_markup(ptr(remove), 0)
@@ -750,6 +766,32 @@ final class ServerManager: @unchecked Sendable {
             } catch {
                 let text = Localized.text("Could not save: %@", String(describing: error))
                 Gtk.onMain { [weak self] in self?.toast(text) }
+            }
+        }
+    }
+
+    /// The press states its cost first, then hands the ask over and stops: the connection it went
+    /// over dies with the process it restarted, so the reconnect every pane already watches is what
+    /// says the machine is back.
+    private func confirmRestart(id: String, name: String) {
+        guard let window else { return }
+        Dialogs.confirm(
+            title: ServerRestart.confirmTitle(name),
+            body: ServerRestart.confirmBody(workingTurns: 0),
+            confirmLabel: ServerRestart.action, parent: window
+        ) { [weak self] in
+            Task { [weak self] in
+                guard let profile = await ServerDirectory.shared.profiles().first(where: { $0.id == id }),
+                    let restartable = await ServerDirectory.shared.backend(for: profile)
+                        as? any RestartableBackend
+                else { return }
+                let failed = (try? await restartable.restart()) == nil
+                Gtk.onMain { [weak self] in
+                    self?.toast(
+                        failed
+                            ? Localized.text("%@ cannot restart itself.", name)
+                            : Localized.text("%@ is restarting.", name))
+                }
             }
         }
     }

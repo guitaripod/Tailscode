@@ -172,11 +172,45 @@ final class ServersWindow: NSWindowController {
         remove.identifier = NSUserInterfaceItemIdentifier(profile.id)
         remove.setContentHuggingPriority(.required, for: .horizontal)
 
-        let row = NSStackView(views: [lines, Self.spacer(), remove])
+        var trailing: [NSView] = [lines, Self.spacer()]
+        if ServerRestart.isOffered(profile.backend) {
+            let restart = NSButton(
+                title: ServerRestart.title, target: self, action: #selector(restartTapped))
+            restart.bezelStyle = .inline
+            restart.identifier = NSUserInterfaceItemIdentifier(profile.id)
+            restart.setContentHuggingPriority(.required, for: .horizontal)
+            trailing.append(restart)
+        }
+        trailing.append(remove)
+
+        let row = NSStackView(views: trailing)
         row.orientation = .horizontal
         row.alignment = .top
         row.spacing = MacTheme.Spacing.s
         return row
+    }
+
+    /// The press states its cost first, then hands the ask over and stops: the connection it went
+    /// over dies with the process it restarted, so the reconnect every screen already watches is
+    /// what says the machine is back.
+    @objc private func restartTapped(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue,
+            let profile = ServerDirectory.shared.profiles.first(where: { $0.id == id })
+        else { return }
+        MacDialogs.confirm(
+            on: window,
+            title: ServerRestart.confirmTitle(profile.name),
+            body: ServerRestart.confirmBody(workingTurns: 0),
+            confirmLabel: ServerRestart.action
+        ) {
+            Task {
+                guard
+                    let restartable = ServerDirectory.shared.backend(for: profile)
+                        as? any RestartableBackend
+                else { return }
+                try? await restartable.restart()
+            }
+        }
     }
 
     @objc private func removeTapped(_ sender: NSButton) {

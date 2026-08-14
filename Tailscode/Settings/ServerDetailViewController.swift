@@ -22,6 +22,7 @@ final class ServerDetailViewController: UIViewController {
         case makeDefault
         case isDefault
         case defaultModel
+        case restart
         case edit
         case remove
     }
@@ -209,6 +210,12 @@ final class ServerDetailViewController: UIViewController {
                 content.imageProperties.tintColor = Theme.Color.warning
                 cell.accessories = [.disclosureIndicator()]
             }
+        case .restart:
+            content.text = ServerRestart.title
+            content.secondaryText = ServerRestart.detail
+            content.textProperties.color = Theme.Color.accent
+            content.image = UIImage(systemName: ServerRestart.symbol)
+            content.imageProperties.tintColor = Theme.Color.accent
         case .test:
             content.text = String(localized: "Test connection")
             content.textProperties.color = Theme.Color.accent
@@ -524,7 +531,10 @@ final class ServerDetailViewController: UIViewController {
         if supportsModelDefaults { defaults.append(.defaultModel) }
         snapshot.appendItems(defaults, toSection: .defaults)
 
-        snapshot.appendItems(isDemo ? [.remove] : [.edit, .remove], toSection: .actions)
+        var actions: [Item] = isDemo ? [] : [.edit]
+        if !isDemo, ServerRestart.isOffered(profile.backend) { actions.insert(.restart, at: 0) }
+        actions.append(.remove)
+        snapshot.appendItems(actions, toSection: .actions)
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
@@ -617,6 +627,42 @@ final class ServerDetailViewController: UIViewController {
         applySnapshot()
     }
 
+    /// The press states its cost first, then hands the ask over and stops. Nothing waits on a
+    /// reply: the connection the ask went over dies with the process it restarted, so the ordinary
+    /// reconnect — which every screen already watches — is what says the machine is back.
+    private func confirmRestart() {
+        let alert = UIAlertController(
+            title: ServerRestart.confirmTitle(profile.name),
+            message: ServerRestart.confirmBody(
+                workingTurns: SessionActivity.shared.workingCount(onProfile: profile.id)),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: ServerRestart.action, style: .destructive) { [weak self] _ in
+                self?.restartServer()
+            })
+        present(alert, animated: true)
+    }
+
+    private func restartServer() {
+        Theme.Haptics.tap()
+        Task { [weak self] in
+            guard let self else { return }
+            guard
+                let restartable = (self.backend
+                    ?? ConnectionController.shared.makeBackend(for: self.profile))
+                    as? any RestartableBackend
+            else { return }
+            do {
+                try await restartable.restart()
+                self.statusText = ServerRestart.underway
+            } catch {
+                self.statusText = error.localizedDescription
+            }
+            self.applySnapshot()
+        }
+    }
+
     private func confirmRemove() {
         let alert = UIAlertController(
             title: isDemo
@@ -648,6 +694,8 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .test:
             Theme.Haptics.tap()
             Task { await refresh() }
+        case .restart:
+            confirmRestart()
         case .makeDefault:
             makeDefault()
         case .edit:
