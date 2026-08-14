@@ -16,7 +16,7 @@ import TailscodeCore
 /// layout and the palette, not a substitute for a real screen.
 @MainActor
 enum MacShot {
-    static var isRequested: Bool { path != nil }
+    static var isRequested: Bool { path != nil || treePath != nil }
 
     static var path: String? {
         let arguments = CommandLine.arguments
@@ -48,16 +48,102 @@ enum MacShot {
         return NSSize(width: width, height: height)
     }
 
+    /// `--tree <path>` — the same window as a text file: every view's real frame, whether it is
+    /// hidden, and whether Auto Layout thinks its position is ambiguous.
+    ///
+    /// A picture answers "does this look right"; it cannot answer "is this label 4pt off its
+    /// neighbour" or "which of these two constraints is the one that is not holding". A geometry
+    /// dump answers both without a screen, and `hasAmbiguousLayout` is the only way to find an
+    /// underconstrained view before a person notices it moving on its own.
+    static var treePath: String? {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: "--tree"), index + 1 < arguments.count else {
+            return nil
+        }
+        return arguments[index + 1]
+    }
+
+    /// `--tree-constraints` adds the horizontal constraints acting on every stack and every
+    /// ambiguous view, which is what tells a missing constraint apart from a losing one.
+    static var wantsConstraints: Bool { CommandLine.arguments.contains("--tree-constraints") }
+
     static func schedule() {
-        guard let path else { return }
+        guard path != nil || treePath != nil else { return }
         Task { @MainActor in
             if let size, let window = NSApp.windows.first(where: { $0.contentView != nil }) {
                 window.setContentSize(size)
             }
             try? await Task.sleep(for: delay)
-            capture(to: path)
+            if let treePath { dumpTree(to: treePath) }
+            if let path { capture(to: path) }
             exit(0)
         }
+    }
+
+    private static func dumpTree(to path: String) {
+        var lines: [String] = []
+        for window in NSApp.windows where window.contentView != nil {
+            let frame = window.frame
+            lines.append(
+                "WINDOW \(type(of: window)) \"\(window.title)\" "
+                    + "\(box(frame)) visible=\(window.isVisible)")
+            if let root = window.contentView { describe(root, into: &lines, depth: 1, root: root) }
+            lines.append("")
+        }
+        let text = lines.joined(separator: "\n")
+        do {
+            try text.write(to: URL(fileURLWithPath: path), atomically: true, encoding: .utf8)
+            print("TREE \(path) \(lines.count) lines")
+        } catch {
+            FileHandle.standardError.write(Data("TREE \(error)\n".utf8))
+        }
+    }
+
+    private static func describe(_ view: NSView, into lines: inout [String], depth: Int, root: NSView) {
+        let indent = String(repeating: "  ", count: depth)
+        let inRoot = view.convert(view.bounds, to: root)
+        var facts = ["\(type(of: view))", box(inRoot)]
+        if view.isHidden { facts.append("hidden") }
+        if view.alphaValue != 1 { facts.append(String(format: "alpha=%.2f", view.alphaValue)) }
+        if view.hasAmbiguousLayout { facts.append("AMBIGUOUS") }
+        if view.translatesAutoresizingMaskIntoConstraints, !(view is NSWindow) {
+            facts.append("autoresizing")
+        }
+        if let stack = view as? NSStackView {
+            facts.append(
+                "stack[axis=\(stack.orientation.rawValue) align=\(stack.alignment.rawValue) "
+                    + "dist=\(stack.distribution.rawValue) "
+                    + "insets=\(stack.edgeInsets.left)/\(stack.edgeInsets.right) "
+                    + "hugH=\(stack.contentHuggingPriority(for: .horizontal).rawValue)]")
+        }
+        if let text = caption(view) { facts.append("\"\(text)\"") }
+        lines.append(indent + facts.joined(separator: " "))
+        if wantsConstraints, view is NSStackView || view.hasAmbiguousLayout {
+            for constraint in view.constraintsAffectingLayout(for: .horizontal) {
+                lines.append(indent + "  ↔ \(constraint)")
+            }
+        }
+        for child in view.subviews {
+            describe(child, into: &lines, depth: depth + 1, root: root)
+        }
+    }
+
+    private static func caption(_ view: NSView) -> String? {
+        let raw: String? =
+            switch view {
+            case let field as NSTextField: field.stringValue
+            case let button as NSButton: button.title
+            case let text as NSTextView: text.string
+            default: nil
+            }
+        guard let raw, !raw.isEmpty else { return nil }
+        let flat = raw.replacingOccurrences(of: "\n", with: "⏎")
+        return flat.count > 60 ? String(flat.prefix(60)) + "…" : flat
+    }
+
+    private static func box(_ rect: NSRect) -> String {
+        String(
+            format: "(%.1f,%.1f %.1f×%.1f)", rect.origin.x, rect.origin.y, rect.width, rect.height)
     }
 
     private static func capture(to path: String) {
