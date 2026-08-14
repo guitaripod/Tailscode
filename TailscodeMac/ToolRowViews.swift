@@ -310,6 +310,8 @@ enum ToolRowView {
     /// The budget is spent per side rather than off the top, because a diff arrives as every
     /// removed line and then every added one: a cut taken off the front of that spends the whole
     /// allowance on what the file used to say and shows not one line of what the agent wrote.
+    /// Neither side is held to half of it, though — a Write is nothing but additions, and a rigid
+    /// half left forty lines of the allowance unspent while the file it wrote ran off the bottom.
     static func diffBlock(_ lines: [(prefix: String, text: String)], language: String?) -> NSView {
         let block = FillingStack()
         block.spacing = 0
@@ -317,7 +319,10 @@ enum ToolRowView {
         block.translatesAutoresizingMaskIntoConstraints = false
         let removed = lines.filter { $0.prefix == "-" }
         let added = lines.filter { $0.prefix != "-" }
-        let shown = Array(removed.prefix(40)) + Array(added.prefix(40))
+        let budget = 80
+        let removals = min(removed.count, max(budget / 2, budget - added.count))
+        let additions = min(added.count, budget - removals)
+        let shown = Array(removed.prefix(removals)) + Array(added.prefix(additions))
         for line in shown {
             let text = RowKit.diffAttributed(
                 "\(line.prefix) \(line.text)", language: language, font: MacTheme.Ramp.font(.toolOutput))
