@@ -45,7 +45,7 @@ enum WorkflowCardView {
         header.addArrangedSubview(headline)
         let elapsed = RowKit.label(
             (run?.elapsed(at: now)).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.secondaryLabel)
         elapsed.isHidden = run?.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 
@@ -241,7 +241,7 @@ enum WorkflowCardView {
             row.addArrangedSubview(
                 RowKit.label(
                     detail, font: MacTheme.Ramp.font(.workflowStep),
-                    color: MacTheme.Color.tertiaryLabel))
+                    color: MacTheme.Color.secondaryLabel))
         }
         if let model = phase.model {
             row.addArrangedSubview(

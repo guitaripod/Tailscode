@@ -147,7 +147,7 @@ enum PendingCards {
         ).isActive = true
         if let footnote = story.footnote {
             let elapsed = RowKit.label(
-                footnote, font: MacTheme.Ramp.font(.rowStamp), color: MacTheme.Color.tertiaryLabel)
+                footnote, font: MacTheme.Ramp.font(.rowStamp), color: MacTheme.Color.secondaryLabel)
             card.addArrangedSubview(elapsed)
             elapsedLabel(elapsed)
         }

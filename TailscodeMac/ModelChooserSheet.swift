@@ -21,6 +21,9 @@ final class ModelChooserSheet: NSObject {
     private let sheet: NSWindow
     private var chooser: ModelChooser
     private let onPick: @MainActor (ModelSelection?) -> Void
+    private var allowsServerDefault: Bool
+    private var quotas: [UsageQuota]
+    private var isReachable: Bool?
     private let summary = NSTextField(labelWithString: "")
     private let field = NSSearchField()
     private let table = NSTableView()
@@ -35,14 +38,15 @@ final class ModelChooserSheet: NSObject {
     /// of an edge that moves with the name beside it.
     private var markWidth: CGFloat = 0
 
+    @discardableResult
     static func present(
         on host: NSWindow, models: [ModelInfo], selected: ModelSelection?,
-        allowsServerDefault: Bool, quotas: [UsageQuota] = [],
+        allowsServerDefault: Bool, isReachable: Bool? = nil, quotas: [UsageQuota] = [],
         onPick: @escaping @MainActor (ModelSelection?) -> Void
-    ) {
+    ) -> ModelChooserSheet {
         let controller = ModelChooserSheet(
             models: models, selected: selected, allowsServerDefault: allowsServerDefault,
-            quotas: quotas, onPick: onPick)
+            isReachable: isReachable, quotas: quotas, onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
@@ -50,15 +54,20 @@ final class ModelChooserSheet: NSObject {
         }
         controller.sheet.makeFirstResponder(controller.field)
         controller.revealCursor()
+        return controller
     }
 
     private init(
         models: [ModelInfo], selected: ModelSelection?, allowsServerDefault: Bool,
-        quotas: [UsageQuota], onPick: @escaping @MainActor (ModelSelection?) -> Void
+        isReachable: Bool?, quotas: [UsageQuota],
+        onPick: @escaping @MainActor (ModelSelection?) -> Void
     ) {
+        self.allowsServerDefault = allowsServerDefault
+        self.quotas = quotas
+        self.isReachable = isReachable
         chooser = ModelChooser(
             models: models, selected: selected, allowsServerDefault: allowsServerDefault,
-            quotas: quotas)
+            quotas: quotas, isReachable: isReachable)
         self.onPick = onPick
         sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
@@ -178,6 +187,28 @@ final class ModelChooserSheet: NSObject {
     private func teardown() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+    }
+
+    /// A catalog that arrived while the sheet is open: the list, the summary and the filters are
+    /// re-answered from it, and what the reader was doing — the query, the filter — survives the
+    /// answer. A server that comes back from a restart reaches the open sheet this way.
+    func update(models: [ModelInfo], isReachable: Bool?) {
+        self.isReachable = isReachable
+        let query = chooser.query
+        let scope = chooser.scope
+        chooser = ModelChooser(
+            models: models, selected: chooser.selected,
+            allowsServerDefault: allowsServerDefault, quotas: quotas, isReachable: isReachable)
+        chooser.search(query)
+        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
+        filters.segmentCount = chooser.scopes.count
+        for (index, offered) in chooser.scopes.enumerated() {
+            filters.setLabel(offered.title, forSegment: index)
+            filters.setToolTip(offered.detail, forSegment: index)
+        }
+        filters.isHidden = chooser.scopes.isEmpty
+        rebuild()
+        revealCursor()
     }
 
     /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a filter. AppKit hands ⌃N/⌃P to the field

@@ -133,15 +133,18 @@ enum ToolRowView {
     }
 
     /// The thought's line is restated from its words alone while the thinking streams, so the mark
-    /// it carries has to be the one that survives being written again: the shut chevron the agent
-    /// and workflow rows wear, saying the line opens rather than claiming which way it is.
+    /// it carries has to be one that survives being written again: the shut chevron, which says the
+    /// line opens rather than claiming which way it currently is. The count is taken over every
+    /// whitespace, because reasoning arrives in paragraphs and splitting on spaces alone counted a
+    /// six-hundred-word thought as a couple of hundred.
     static func thoughtHeader(_ text: String) -> String {
         Localized.text(
             "▸ Thought · %@ words", "\(text.split(whereSeparator: \.isWhitespace).count)")
     }
 
     /// The mark that says a line opens, which is otherwise the one thing a clickable header on this
-    /// desk never said — the peers have drawn an expander since the beginning.
+    /// desk never said — both peers have drawn an expander since the beginning. Both glyphs are one
+    /// advance wide, so flipping one re-measures nothing.
     static func disclosureMark(_ expanded: Bool) -> NSTextField {
         RowKit.label(
             disclosureGlyph(expanded), font: MacTheme.Ramp.font(.toolOutput),
@@ -333,8 +336,7 @@ enum ToolRowView {
                     Localized.text("… %@ more lines", "\(lines.count - shown.count)"),
                     font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
-        return GroundView(
-            around: block, cornerRadius: 8, fill: MacTheme.Color.codeBackground)
+        return GroundView(around: block, cornerRadius: 8, fill: MacTheme.Color.codeBackground)
     }
 
     /// The row's mark: still for work that is over, turning for work still out on the machine —
@@ -481,9 +483,12 @@ enum SubagentRowView {
         header.orientation = .horizontal
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
+        let expanded = context.isExpanded(key)
         header.addArrangedSubview(ToolRowView.glyphLabel(call.status))
-        header.addArrangedSubview(
-            RowKit.label("▸ agent", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
+        let word = RowKit.label(
+            "\(ToolRowView.disclosureGlyph(expanded)) agent", font: MacTheme.Ramp.font(.toolName),
+            color: MacTheme.Color.label)
+        header.addArrangedSubview(word)
         let title = call.summary.title ?? call.title ?? call.name
         header.addArrangedSubview(
             ToolRowView.detailLabel(
@@ -504,8 +509,9 @@ enum SubagentRowView {
         let reveal = context.revealRow
         let request = context.requestSubagent
         return DisclosureRow(
-            header: header, expanded: context.isExpanded(key),
+            header: header, expanded: expanded,
             onToggle: { [weak context] open, row in
+                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) agent"
                 toggle?(key, open)
                 if open { reveal?(row) }
                 if open, context?.subagentRows[call.id] == nil { request?(call) }
