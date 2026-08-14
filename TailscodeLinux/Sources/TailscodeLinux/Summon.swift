@@ -33,6 +33,8 @@ final class Summon: @unchecked Sendable {
     private var changeSubscription: UInt32?
     private var tokenCounter = 0
     private var attempt = 0
+    private var releasedFormerGrants = false
+    private var filledEmptyGrant = false
 
     private(set) var state: SummonState = .off
 
@@ -60,6 +62,7 @@ final class Summon: @unchecked Sendable {
     /// new one, because a portal session left open keeps the key it was granted.
     func refresh() {
         SettingsFile.capture()
+        filledEmptyGrant = false
         closeSession()
         guard SummonSettings.isEnabled else {
             publish(.off)
@@ -119,6 +122,7 @@ final class Summon: @unchecked Sendable {
             publish(.unavailable(SummonObstacle.noPortal(desktop: desktop.name).line))
             return
         }
+        releaseGrantsHeldByFormerIdentities(bus)
         let token = nextToken()
         awaitResponse(on: bus, token: token) { [weak self] results in
             self?.sessionCreated(results, chord: chord)
@@ -134,6 +138,130 @@ final class Summon: @unchecked Sendable {
             publish(.unavailable(diagnose(refusal)))
             return
         }
+    }
+
+    /// The names this app has answered to before the one it wears now.
+    private static let formerIdentities = ["com.guitaripod.tailscode"]
+
+    /// Lets go of the key a former name of this app is still holding.
+    ///
+    /// A desktop that records a grant against an app id keeps the record long after the app that
+    /// earned it stopped existing, and a rename therefore arrives as a chord that is already taken
+    /// — by nothing. KDE answers that conflict by registering the shortcut with no key at all, so
+    /// the app reports the key as asked for and never granted, forever, and the only cure is the
+    /// desktop's own settings. What the old name held is dropped before the new one asks.
+    private func releaseGrantsHeldByFormerIdentities(_ bus: OpaquePointer) {
+        guard !releasedFormerGrants else { return }
+        releasedFormerGrants = true
+        for identity in Self.formerIdentities where releaseGrant(heldBy: identity) {
+            AppLog.write(.ui, "summon released the key held by \(identity)")
+        }
+    }
+
+    /// Drops a desktop's record of what it granted an app id, and says whether there was one.
+    /// Only KDE keeps such a record; every other desktop answers nothing here, which is the same
+    /// answer as having nothing to drop.
+    private func releaseGrant(heldBy identity: String) -> Bool {
+        guard let bus else { return false }
+        let component = String(identity.map { $0.isLetter || $0.isNumber ? $0 : "_" })
+        var error: UnsafeMutablePointer<GError>?
+        let reply = g_dbus_connection_call_sync(
+            bus, "org.kde.kglobalaccel", "/component/\(component)",
+            "org.kde.kglobalaccel.Component", "cleanUp", g_variant_new_tuple(nil, 0), nil,
+            GDBusCallFlags(rawValue: 1), 2000, nil, &error)
+        if let error {
+            g_error_free(error)
+            return false
+        }
+        guard let reply else { return false }
+        defer { g_variant_unref(reply) }
+        guard let removed = g_variant_get_child_value(reply, 0) else { return false }
+        defer { g_variant_unref(removed) }
+        return g_variant_get_boolean(removed) != 0
+    }
+
+    /// A shortcut the desktop wrote down under this app's own name and never gave a key to.
+    ///
+    /// KDE takes a preferred trigger only the first time it sees a shortcut's name, so a record
+    /// written while the chord was held by something else outlives the conflict that caused it:
+    /// the name is known, the key is empty, and asking again politely changes nothing for as long
+    /// as the app is installed. What its own settings do — assign the key to the record that is
+    /// already there — is therefore done directly, once, and only when nothing else answers that
+    /// key. Something that does own it is named rather than waited on forever, and a chord
+    /// somebody reassigned by hand carries a trigger and never reaches here.
+    private func fillEmptyGrant(_ chord: SummonChord) -> Bool {
+        guard !filledEmptyGrant, let code = KDEKey.code(for: chord) else { return false }
+        filledEmptyGrant = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            if let holder = self.holder(ofKey: code) {
+                guard holder.identity != DesktopIntegration.appID else {
+                    self.publish(.bound(chord, reach: .whileRunning))
+                    return
+                }
+                self.publish(.taken(chord, by: holder.name))
+                return
+            }
+            self.assign(code, to: chord)
+            guard self.holder(ofKey: code)?.identity == DesktopIntegration.appID else {
+                self.publish(.awaiting(chord, where: self.desktop.name))
+                return
+            }
+            AppLog.write(.ui, "summon filled an empty grant with \(chord.spec)")
+            self.publish(.bound(chord, reach: .whileRunning))
+        }
+        return true
+    }
+
+    /// Whichever component answers a key, by the desktop's own reckoning.
+    private func holder(ofKey code: Int32) -> (identity: String, name: String)? {
+        guard let bus else { return nil }
+        var error: UnsafeMutablePointer<GError>?
+        let reply = g_dbus_connection_call_sync(
+            bus, "org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel",
+            "getGlobalShortcutsByKey", variantTuple([g_variant_new_int32(code)]), nil,
+            GDBusCallFlags(rawValue: 1), 2000, nil, &error)
+        if let error {
+            g_error_free(error)
+            return nil
+        }
+        guard let reply else { return nil }
+        defer { g_variant_unref(reply) }
+        guard let rows = g_variant_get_child_value(reply, 0), g_variant_n_children(rows) > 0 else {
+            return nil
+        }
+        defer { g_variant_unref(rows) }
+        guard let row = g_variant_get_child_value(rows, 0) else { return nil }
+        defer { g_variant_unref(row) }
+        guard let identity = text(row, at: 2), let name = text(row, at: 3) else { return nil }
+        return (identity, name)
+    }
+
+    private func assign(_ code: Int32, to chord: SummonChord) {
+        guard let bus else { return }
+        let action = variantArray(
+            type: "as",
+            children: [
+                g_variant_new_string(DesktopIntegration.appID),
+                g_variant_new_string(shortcutID(for: chord)),
+                g_variant_new_string("Tailscode"),
+                g_variant_new_string(Localized.text("Ask Tailscode a question")),
+            ])
+        let keys = variantArray(type: "ai", children: [g_variant_new_int32(code)])
+        var error: UnsafeMutablePointer<GError>?
+        let reply = g_dbus_connection_call_sync(
+            bus, "org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel",
+            "setForeignShortcut", variantTuple([action, keys]), nil, GDBusCallFlags(rawValue: 1),
+            2000, nil, &error)
+        if let error { g_error_free(error) }
+        if let reply { g_variant_unref(reply) }
+    }
+
+    private func text(_ variant: OpaquePointer, at index: gsize) -> String? {
+        guard let child = g_variant_get_child_value(variant, index) else { return nil }
+        defer { g_variant_unref(child) }
+        guard let raw = g_variant_get_string(child, nil) else { return nil }
+        return String(cString: raw)
     }
 
     private func sessionCreated(_ results: OpaquePointer?, chord: SummonChord) {
@@ -198,6 +326,7 @@ final class Summon: @unchecked Sendable {
             }
         }
         guard let trigger else {
+            if fillEmptyGrant(chord) { return }
             publish(.awaiting(chord, where: desktop.name))
             return
         }
@@ -435,4 +564,45 @@ private func variantArray(type: String, children: [OpaquePointer?]) -> OpaquePoi
     let result = g_variant_builder_end(builder)
     g_variant_builder_unref(builder)
     return result
+}
+
+/// A chord as Qt spells one, which is the only spelling KDE's shortcut registry accepts.
+///
+/// The portal's own trigger grammar is words; the registry underneath it is a single integer whose
+/// high bits are the modifiers. The two are not interchangeable, and a chord this cannot spell is
+/// left to the portal rather than guessed at.
+private enum KDEKey {
+    private static let shift: Int32 = 0x0200_0000
+    private static let control: Int32 = 0x0400_0000
+    private static let alt: Int32 = 0x0800_0000
+    private static let meta: Int32 = 0x1000_0000
+
+    private static let named: [String: Int32] = [
+        "space": 0x20, "return": 0x0100_0004, "tab": 0x0100_0001, "escape": 0x0100_0000,
+        "left": 0x0100_0012, "up": 0x0100_0013, "right": 0x0100_0014, "down": 0x0100_0015,
+        "period": 0x2E, "comma": 0x2C, "slash": 0x2F, "grave": 0x60, "minus": 0x2D,
+        "equal": 0x3D,
+    ]
+
+    static func code(for chord: SummonChord) -> Int32? {
+        guard var code = key(chord.key) else { return nil }
+        if chord.control { code |= control }
+        if chord.alt { code |= alt }
+        if chord.shift { code |= shift }
+        if chord.meta { code |= meta }
+        return code
+    }
+
+    private static func key(_ name: String) -> Int32? {
+        if let named = named[name] { return named }
+        if name.count == 1, let scalar = name.uppercased().unicodeScalars.first,
+            scalar.isASCII, scalar.properties.isAlphabetic || ("0"..."9").contains(name)
+        {
+            return Int32(scalar.value)
+        }
+        if name.first == "f", let number = Int32(name.dropFirst()), (1...35).contains(number) {
+            return 0x0100_0030 + number - 1
+        }
+        return nil
+    }
 }
