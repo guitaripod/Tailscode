@@ -82,7 +82,7 @@ write_runner() {
 #!/usr/bin/env bash
 $MARKER
 set -uo pipefail
-export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:\$PATH"
+export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH"
 [ -r "\$HOME/.config/opencode-serve.env" ] && set -a && . "\$HOME/.config/opencode-serve.env" && set +a
 STATE="\${XDG_STATE_HOME:-\$HOME/.local/state}/opencode-serve/catalog.sig"
 mkdir -p "\$(dirname "\$STATE")"
@@ -124,7 +124,7 @@ write_refresher() {
 #!/usr/bin/env bash
 $MARKER
 set -euo pipefail
-export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:\$PATH"
+export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH"
 ENV_FILE="\$HOME/.config/opencode-serve.env"
 STATE="\${XDG_STATE_HOME:-\$HOME/.local/state}/opencode-serve/catalog.sig"
 LABEL=$LABEL
