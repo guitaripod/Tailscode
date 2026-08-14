@@ -19,6 +19,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     container: swift:6.2-noble
     steps:
       - uses: actions/checkout@v4
@@ -82,21 +84,30 @@ jobs:
             build/*.tar.gz
             build/*.sha256
 
+      # The Swift image has curl and nothing else, so the release is made and filled over the API
+      # rather than with a CLI this container would have to install first. A tag pushed from a
+      # working copy has no release object behind it, and uploading to one that does not exist
+      # fails the job after the artifact is already built.
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A tag pushed from a working copy has no release object behind it, and uploading to one
-          # that does not exist fails the job after the artifact is already built. The release is
-          # made if it is missing; the prose is the same text every other store front gets, and the
-          # generated commit list stands in only when that file has nothing for this version yet.
-          version=${GITHUB_REF_NAME#v}
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            if notes=$(python3 -c "import json;print(json.load(open('docs/release-notes.json'))['$version']['en-US'])" 2>/dev/null); then
-              gh release create "$GITHUB_REF_NAME" --title "$version" --notes "$notes"
-            else
-              gh release create "$GITHUB_REF_NAME" --title "$version" --generate-notes
-            fi
+          api=https://api.github.com/repos/$GITHUB_REPOSITORY
+          auth="Authorization: Bearer $GH_TOKEN"
+          id=$(curl -fsS -H "$auth" "$api/releases/tags/$GITHUB_REF_NAME" |
+            grep -m1 -o '"id": *[0-9]*' | grep -o '[0-9]*' || true)
+          if [ -z "$id" ]; then
+            id=$(curl -fsS -X POST -H "$auth" -H 'content-type: application/json' \
+              -d "{\"tag_name\":\"$GITHUB_REF_NAME\",\"name\":\"${GITHUB_REF_NAME#v}\",\"generate_release_notes\":true}" \
+              "$api/releases" | grep -m1 -o '"id": *[0-9]*' | grep -o '[0-9]*')
+            echo "created release $GITHUB_REF_NAME"
           fi
-          gh release upload "$GITHUB_REF_NAME" build/*.tar.gz build/*.sha256 --clobber
+          for file in build/*.tar.gz build/*.sha256; do
+            name=$(basename "$file")
+            curl -fsS -X POST -H "$auth" -H 'Content-Type: application/octet-stream' \
+              --data-binary @"$file" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$name" \
+              >/dev/null
+            echo "uploaded $name"
+          done
