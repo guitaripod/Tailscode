@@ -94,8 +94,35 @@ let package = Package(
         .executable(name: "tailscode", targets: ["TailscodeLinux"])
     ],
     dependencies: [
-        .package(path: "../../../swift/CodingAgentKit"),
+        Kit.dependency,
         .package(path: "../TailscodeCore"),
     ],
     targets: targets
 )
+
+/// Where CodingAgentKit is read from, which is a different answer for the two kinds of tree this
+/// package lives in. The one on the author's machine has the Kit as a sibling working copy, so a
+/// change that spans both lands in one edit; a staged copy for the build VM has it vendored beside
+/// the manifest; and every other tree — a packager's clone, a CI runner's, a Flatpak build's — has
+/// neither and resolves the published tag over the network. Trying them in that order is what lets
+/// a stranger run `swift build` in a fresh clone without changing anything the release path does.
+/// `TAILSCODE_KIT_REMOTE=1` skips straight to the tag, which packaging scripts set so a release can
+/// never be built from an unpublished working copy.
+enum Kit {
+    static let remote = "https://github.com/guitaripod/CodingAgentKit.git"
+    static let version = Version(0, 15, 1)
+
+    static var dependency: Package.Dependency {
+        guard ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] == nil else {
+            return .package(url: remote, from: version)
+        }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for candidate in ["../../../swift/CodingAgentKit", "../vendor/CodingAgentKit"] {
+            let path = root.appendingPathComponent(candidate).standardizedFileURL.path
+            if FileManager.default.fileExists(atPath: path + "/Package.swift") {
+                return .package(path: candidate)
+            }
+        }
+        return .package(url: remote, from: version)
+    }
+}

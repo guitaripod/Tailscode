@@ -1,0 +1,66 @@
+.TH TAILSCODE 1 "2026-08-14" "tailscode 1.20" "User Commands"
+.SH NAME
+tailscode \- drive your coding agents over Tailscale
+.SH SYNOPSIS
+.B tailscode
+.RI [ options ]
+.SH DESCRIPTION
+Tailscode is a GTK4 client for the coding agents running on your other machines: Claude
+Code through claude\-bridge, and opencode. The agent stays where your code is; this is the
+window onto it, over your own tailnet.
+.PP
+Running it with no arguments opens the window. A second launch raises the window that
+already exists rather than starting a second app.
+.SH OPTIONS
+.TP
+\fB--ask\fR
+Open the question box, raising the running window first. Bind this to a key.
+.TP
+\fB--connect\fR
+Save a server by address and open it, without touching the setup screen.
+.TP
+\fB--demo\fR
+Open the scripted demo world: two sample servers, no tailnet, nothing real.
+.TP
+\fB--force-desktop\fR
+Render a build from .build/ on the real session anyway.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print the usage summary and exit.
+.TP
+\fB--name\fR
+The name to file the server under, with --connect.
+.TP
+\fB--opencode\fR
+Treat the address given to --connect as an opencode server.
+.TP
+\fB--password\fR
+The server's password, with --connect. Prefer TAILSCODE_PASSWORD: an argument is readable by every process on the machine.
+.TP
+\fB--probe-newchat\fR
+Time the new-chat path end to end and print where it went.
+.TP
+\fB--selftest\fR
+Check the whole chain with no display, and exit non-zero on the first failure.
+.TP
+\fB--themes\fR
+Print every theme's palette, as corrected, with each slot's measured contrast.
+.TP
+\fB--version\fR
+Print the version and exit.
+.SH ENVIRONMENT
+.TP
+\fBTAILSCODE_PASSWORD\fR
+The password for \fB\-\-connect\fR, kept out of the process list.
+.TP
+\fBTAILSCODE_TRACE\fR
+Print timing for the paths that have been slow before: startup, new chat, streaming.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/tailscode/settings.json
+Every preference, the servers, and the layout the window was left in.
+.TP
+.I $XDG_STATE_HOME/tailscode/tailscode.log
+The diagnostics log, rotated at a size cap and kept one generation deep.
+.SH SEE ALSO
+The project page: https://github.com/guitaripod/Tailscode

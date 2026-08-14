@@ -287,12 +287,14 @@ enum UpdateWatch {
     /// when that stops being worth believing.
     static func appReading(fetching: Bool) -> UpdateReading {
         let install = LinuxAppInstall.read()
+        let packaging = Packaging.current()
         let running = LinuxAppInstall.updateState()
         let checkout = LinuxAppInstall.checkout(of: install, fetching: fetching)
         let obstacle = LinuxAppInstall.obstacle(for: install)
         return UpdateReadings.app(
             install: install, release: nil, checkout: checkout, running: running,
-            obstacle: obstacle, command: handCommand(obstacle: obstacle, checkout: checkout),
+            obstacle: obstacle,
+            command: handCommand(obstacle: obstacle, checkout: checkout, packaging: packaging),
             projectURL: projectURL,
             checkedAt: fetching ? Date() : UpdateLedger.remembered(.app)?.checkedAt,
             title: Localized.text("Tailscode on this machine"))
@@ -301,7 +303,14 @@ enum UpdateWatch {
     /// The line to hand over, and only for the rows where no press here can finish the job — a
     /// command offered beside a button that works is Core's cue to stop offering the button, and
     /// this desk really can update itself.
-    private static func handCommand(obstacle: String?, checkout: CheckoutState?) -> String? {
+    ///
+    /// A copy a package manager owns is the other case: no press here can ever finish that job, so
+    /// the manager's own line is the only thing to offer, and it is offered whatever the checkout
+    /// evidence says.
+    private static func handCommand(
+        obstacle: String?, checkout: CheckoutState?, packaging: Packaging.Reading?
+    ) -> String? {
+        if let packaging { return packaging.command }
         guard let checkout, obstacle != nil || checkout.blocker != nil else { return nil }
         return LinuxAppInstall.handCommand(of: checkout)
     }

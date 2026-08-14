@@ -87,7 +87,7 @@ if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
     fi
     if command -v systemd-run >/dev/null 2>&1; then
         systemd-run --user --scope --quiet \
-            -u "app-com.guitaripod.tailscode-$$" \
+            -u "app-io.github.guitaripod.Tailscode-$$" \
             $DISPLAY_ENV \
             "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
     else

@@ -1,0 +1,16 @@
+#compdef tailscode
+
+_arguments -s \
+    '--ask[Open the question box, raising the running window first. Bind this to a key.]'
+    '--connect[Save a server by address and open it, without touching the setup screen.]'
+    '--demo[Open the scripted demo world: two sample servers, no tailnet, nothing real.]'
+    '--force-desktop[Render a build from .build/ on the real session anyway.]'
+    '--help[Print the usage summary and exit.]'
+    '--name[The name to file the server under, with --connect.]'
+    '--opencode[Treat the address given to --connect as an opencode server.]'
+    '--password[The servers password, with --connect. Prefer TAILSCODE_PASSWORD: an argument is readable by every process on the machine.]'
+    '--probe-newchat[Time the new-chat path end to end and print where it went.]'
+    '--selftest[Check the whole chain with no display, and exit non-zero on the first failure.]'
+    '--themes[Print every themes palette, as corrected, with each slots measured contrast.]'
+    '--version[Print the version and exit.]'
+    '-h[]'

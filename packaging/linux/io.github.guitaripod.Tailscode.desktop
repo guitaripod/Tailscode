@@ -1,0 +1,37 @@
+[Desktop Entry]
+Type=Application
+Name=Tailscode
+Comment=Coding agents over Tailscale
+Comment[de]=Coding-Agenten über Tailscale
+Comment[es]=Agentes de programación a través de Tailscale
+Comment[fr]=Des agents de code via Tailscale
+Comment[it]=Agenti di programmazione via Tailscale
+Comment[ja]=Tailscale 経由のコーディングエージェント
+Comment[ko]=Tailscale로 연결하는 코딩 에이전트
+Comment[pt_BR]=Agentes de programação via Tailscale
+Comment[zh_CN]=通过 Tailscale 使用编程智能体
+Comment[zh_TW]=透過 Tailscale 使用程式設計代理
+Exec=tailscode
+Icon=io.github.guitaripod.Tailscode
+Terminal=false
+Categories=Development;
+Keywords=agent;agents;claude;opencode;coding;tailscale;remote;ssh;terminal;ai;
+StartupNotify=true
+StartupWMClass=io.github.guitaripod.Tailscode
+DBusActivatable=true
+SingleMainWindow=true
+X-GNOME-UsesNotifications=true
+Actions=ask;
+
+[Desktop Action ask]
+Name=Quick ask
+Name[de]=Kurze Frage
+Name[es]=Pregunta rápida
+Name[fr]=Question rapide
+Name[it]=Domanda rapida
+Name[ja]=クイック質問
+Name[ko]=빠른 질문
+Name[pt_BR]=Pergunta rápida
+Name[zh_CN]=快速提问
+Name[zh_TW]=快速提問
+Exec=tailscode --ask

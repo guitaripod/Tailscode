@@ -235,8 +235,8 @@ cmd_status() {
 window_count() {
     harness_env >/dev/null
     "${HARNESS_ENV[@]}" gdbus introspect --session \
-        --dest com.guitaripod.tailscode \
-        --object-path /com/guitaripod/tailscode/window 2>/dev/null |
+        --dest io.github.guitaripod.Tailscode \
+        --object-path /io/github/guitaripod/Tailscode/window 2>/dev/null |
         grep -cE '^\s+node [0-9]+' || echo 0
 }
 

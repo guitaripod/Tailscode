@@ -52,9 +52,14 @@ if Arguments.contains("--themes") {
     exit(0)
 }
 
+/// `--gapplication-service` is GApplication's own flag, and it arrives from the D-Bus service file
+/// a packaged install ships rather than from a person: the desktop activates the app by name and
+/// the process is expected to register, serve the request and exit on idle. Rejecting it as a stray
+/// would make every launcher click on a packaged build print a usage block and exit 2.
 let knownOptions: Set<String> = [
     "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode",
     "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
+    "--gapplication-service",
 ]
 if let stray = Arguments.flags.first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)
@@ -72,13 +77,14 @@ if Arguments.contains("--demo") {
     DemoMode.enter()
 }
 
+ToolkitFloor.enforce()
 DesktopGuard.enforce()
 
 /// The window is built inside `activate`, never before it: GTK widgets cannot be constructed
 /// until the toolkit has initialised, and one made at top level segfaults inside `gtk_box_new`
 /// before the app has run a line of its own.
 nonisolated(unsafe) var mainWindow: MainWindow?
-nonisolated(unsafe) let app = adw_application_new("com.guitaripod.tailscode", GApplicationFlags(rawValue: 0))!
+nonisolated(unsafe) let app = adw_application_new(DesktopIntegration.appID, GApplicationFlags(rawValue: 0))!
 
 /// A second launch is a request to see the window that already exists, not to build another one.
 /// This app is single-instance on the session bus, so every later launch — a `.desktop` click, a

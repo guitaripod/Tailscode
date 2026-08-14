@@ -19,6 +19,10 @@ public struct AppInstall: Sendable, Equatable, Codable {
         case sourceBuild
         /// Running straight out of a build directory — somebody's working copy, mid-development.
         case developerBuild
+        /// Installed by a package manager — a distribution's, or Flathub's — which is also the only
+        /// thing that can replace it. The binary is read-only, there is no checkout behind it and
+        /// no toolchain to rebuild with, so the one honest offer is the manager's own command.
+        case packaged
         /// A binary somebody installed, with no checkout behind it that we can find.
         case standalone
         case unknown
@@ -30,8 +34,18 @@ public struct AppInstall: Sendable, Equatable, Codable {
             case .simulator: return Localized.text("running in a simulator")
             case .sourceBuild: return Localized.text("built from a checkout on this machine")
             case .developerBuild: return Localized.text("running out of a build directory")
+            case .packaged: return Localized.text("installed by a package manager")
             case .standalone: return Localized.text("installed as a binary")
             case .unknown: return Localized.text("of unknown origin")
+            }
+        }
+
+        /// Whether this copy can be replaced from inside the app. Everything else is handed to
+        /// whatever owns it, and says so before the press rather than after.
+        public var installsItself: Bool {
+            switch self {
+            case .sourceBuild, .standalone, .unknown: return true
+            case .appStore, .testFlight, .simulator, .developerBuild, .packaged: return false
             }
         }
     }
@@ -47,10 +61,15 @@ public struct AppInstall: Sendable, Equatable, Codable {
     /// Where the running program lives, for an update that has to replace it.
     public let binary: String?
     public let installedAt: Date?
+    /// What owns this copy, when something does — "Flathub", "pacman", "apt". Named rather than
+    /// implied, because "your package manager updates this" is a different sentence on every desk
+    /// and the one a person can act on is the one that names theirs.
+    public let packager: String?
 
     public init(
         kind: Kind, version: String?, build: String? = nil, provenance: VersionProvenance,
-        source: String? = nil, binary: String? = nil, installedAt: Date? = nil
+        source: String? = nil, binary: String? = nil, installedAt: Date? = nil,
+        packager: String? = nil
     ) {
         self.kind = kind
         self.version = version
@@ -59,6 +78,7 @@ public struct AppInstall: Sendable, Equatable, Codable {
         self.source = source
         self.binary = binary
         self.installedAt = installedAt
+        self.packager = packager
     }
 
     /// Version and build together, the way a bug report needs them. Never the thing that gets

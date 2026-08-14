@@ -3,14 +3,43 @@ import Foundation
 
 /// The shell shows an app's icon only when it can match the window to a desktop entry — and on
 /// Wayland the match key is the GApplication id, so the entry must be named after it exactly.
-/// A `tailscode.desktop` next to a window whose app id is `com.guitaripod.tailscode` matches
+/// A `tailscode.desktop` next to a window whose app id is `io.github.guitaripod.Tailscode` matches
 /// nothing, and the taskbar draws the blank-page fallback. This installs the icon and the
 /// correctly-named entry into the user's XDG data dirs on any launch that finds them missing or
 /// stale, and removes the misnamed entry an earlier build left behind.
+///
+/// It is for a binary the person built themselves and nothing else. A packaged install already has
+/// the entry, the metainfo and the whole icon ramp in its prefix — written by the package, owned by
+/// the package, and removed when it is — so writing a second copy into `~/.local/share` would leave
+/// a duplicate in the launcher that no uninstall ever takes away, pointing at whatever path the
+/// binary happened to have. Inside a Flatpak it is worse than useless: the write lands in the
+/// sandbox's private data directory, where the host session never looks, with an `Exec` naming a
+/// path that does not exist outside.
 enum DesktopIntegration {
-    static let appID = "com.guitaripod.tailscode"
+    static let appID = "io.github.guitaripod.Tailscode"
+
+    /// Whether this process should write its own desktop entry: only when the binary is one the
+    /// person built and put in their own home, and only when no package has already claimed the
+    /// id in a system data directory.
+    static var shouldInstallEntry: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["FLATPAK_ID"] == nil,
+            !FileManager.default.fileExists(atPath: "/.flatpak-info")
+        else { return false }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let executable = DesktopGuard.executablePath
+        guard executable.hasPrefix(home + "/") else { return false }
+
+        let dirs = (environment["XDG_DATA_DIRS"] ?? "/usr/local/share:/usr/share")
+            .split(separator: ":").map(String.init)
+        return !dirs.contains {
+            FileManager.default.fileExists(atPath: "\($0)/applications/\(appID).desktop")
+        }
+    }
 
     static func ensureInstalled() {
+        guard shouldInstallEntry else { return }
         let data = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/share", isDirectory: true)
         let icon = data.appendingPathComponent("icons/hicolor/scalable/apps/\(appID).svg")
@@ -29,7 +58,10 @@ enum DesktopIntegration {
 
         for legacy in [
             data.appendingPathComponent("applications/tailscode.desktop"),
+            data.appendingPathComponent("applications/com.guitaripod.tailscode.desktop"),
             data.appendingPathComponent("icons/hicolor/scalable/apps/tailscode.svg"),
+            data.appendingPathComponent("icons/hicolor/scalable/apps/com.guitaripod.tailscode.svg"),
+            data.appendingPathComponent("icons/hicolor/256x256/apps/com.guitaripod.tailscode.png"),
         ] where FileManager.default.fileExists(atPath: legacy.path) {
             try? FileManager.default.removeItem(at: legacy)
         }

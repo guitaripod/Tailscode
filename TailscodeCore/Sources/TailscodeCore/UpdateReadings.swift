@@ -308,7 +308,7 @@ public enum UpdateReadings {
                 Localized.text(
                     "This is running straight out of a build directory — install it before asking "
                         + "it to update itself."))
-        case .appStore, .testFlight, .sourceBuild, .standalone, .unknown:
+        case .appStore, .testFlight, .sourceBuild, .standalone, .packaged, .unknown:
             break
         }
         if let checkout {
@@ -329,6 +329,14 @@ public enum UpdateReadings {
         }
         guard let release else {
             if let failure { return .unverified(.unreachable(failure)) }
+            if install.kind == .packaged {
+                return .unverified(
+                    .notReported(
+                        install.packager.map {
+                            Localized.text("%@ is what says when a newer one exists.", $0)
+                        } ?? Localized.text("The package manager that installed this says when a "
+                            + "newer one exists.")))
+            }
             if install.kind == .sourceBuild || install.kind == .standalone {
                 return .unverified(
                     .notReported(
@@ -365,7 +373,7 @@ public enum UpdateReadings {
     private static func ahead(for install: AppInstall, release: AppRelease) -> AheadReason {
         switch install.kind {
         case .testFlight: return .testFlight(published: release.version)
-        case .appStore: return .storeLagging(published: release.version)
+        case .appStore, .packaged: return .storeLagging(published: release.version)
         case .sourceBuild, .developerBuild, .standalone, .simulator, .unknown:
             return .ownBuild(published: release.version)
         }
@@ -382,11 +390,14 @@ public enum UpdateReadings {
         command: String?, storeURL: String?, projectURL: String?
     ) -> UpdateInvitation? {
         switch verdict {
-        case .behind(let offer) where offer.canInstallHere && command == nil:
+        case .behind(let offer) where offer.canInstallHere && command == nil
+            && install.kind.installsItself:
             return .installHere
         case .behind, .failed:
             if let command { return .copyCommand(command) }
-            if let checkout, checkout.blocker == nil { return .installHere }
+            if let checkout, checkout.blocker == nil, install.kind.installsItself {
+                return .installHere
+            }
             if let checkout { return .copyCommand("cd \(checkout.path) && git pull") }
             if install.kind == .testFlight { return projectURL.map(UpdateInvitation.openPage) }
             if let storeURL { return .openStore(url: storeURL) }

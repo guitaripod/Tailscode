@@ -40,6 +40,11 @@ enum LinuxAppInstall {
     /// with nothing behind it that we can find.
     static func read() -> AppInstall {
         let executable = DesktopGuard.executablePath
+        if let packaging = Packaging.current(executable: executable) {
+            return AppInstall(
+                kind: .packaged, version: TailscodeVersion.current, provenance: .appBundle,
+                binary: executable, packager: packaging.name)
+        }
         if let stamp = stamp(), stamp.describes(evidence(for: stamp, executable: executable)) {
             return AppInstall(
                 kind: .sourceBuild,
