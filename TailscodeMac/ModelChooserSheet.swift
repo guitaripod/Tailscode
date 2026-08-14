@@ -26,8 +26,13 @@ final class ModelChooserSheet: NSObject {
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let empty = NSTextField(labelWithString: "")
+    private let clear = NSButton()
+    private let filters = NSSegmentedControl()
     private var entries: [Entry] = []
     private var monitor: Any?
+    /// One width for the capability marks on every row, so what a model reads is a column instead
+    /// of an edge that moves with the name beside it.
+    private var markWidth: CGFloat = 0
 
     static func present(
         on host: NSWindow, models: [ModelInfo], selected: ModelSelection?,
@@ -65,13 +70,33 @@ final class ModelChooserSheet: NSObject {
         summary.stringValue = chooser.summary
         summary.font = MacTheme.Ramp.font(.toolOutput)
         summary.textColor = MacTheme.Color.secondaryLabel
-        summary.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(summary)
+        summary.alignment = .right
+        summary.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         field.placeholderString = Localized.text("Search models, providers, ids")
         field.delegate = self
         field.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(field)
+
+        filters.segmentStyle = .rounded
+        filters.trackingMode = .selectOne
+        filters.segmentCount = chooser.scopes.count
+        for (index, scope) in chooser.scopes.enumerated() {
+            filters.setLabel(scope.title, forSegment: index)
+            filters.setToolTip(scope.detail, forSegment: index)
+        }
+        filters.selectedSegment = chooser.scopes.isEmpty ? -1 : 0
+        filters.target = self
+        filters.action = #selector(filterChanged)
+        filters.isHidden = chooser.scopes.isEmpty
+        filters.setContentHuggingPriority(.required, for: .horizontal)
+
+        let band = NSStackView(views: [filters, summary])
+        band.orientation = .horizontal
+        band.alignment = .centerY
+        band.spacing = MacTheme.Spacing.s
+        band.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(band)
 
         table.headerView = nil
         table.rowSizeStyle = .custom
@@ -98,6 +123,14 @@ final class ModelChooserSheet: NSObject {
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
 
+        clear.title = Localized.text("Clear the filter")
+        clear.bezelStyle = .rounded
+        clear.target = self
+        clear.action = #selector(clearFilter)
+        clear.isHidden = true
+        clear.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(clear)
+
         let hint = NSTextField(labelWithString: chooser.hint)
         hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
@@ -106,21 +139,22 @@ final class ModelChooserSheet: NSObject {
 
         let inset = MacTheme.Spacing.l
         NSLayoutConstraint.activate([
-            summary.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
-            summary.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
-            summary.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            field.topAnchor.constraint(
-                equalTo: summary.bottomAnchor, constant: MacTheme.Spacing.s),
-            field.leadingAnchor.constraint(equalTo: summary.leadingAnchor),
-            field.trailingAnchor.constraint(equalTo: summary.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: MacTheme.Spacing.m),
-            scroll.leadingAnchor.constraint(equalTo: summary.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: summary.trailingAnchor),
+            field.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
+            field.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            field.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
+            band.topAnchor.constraint(equalTo: field.bottomAnchor, constant: MacTheme.Spacing.s),
+            band.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            band.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: band.bottomAnchor, constant: MacTheme.Spacing.s),
+            scroll.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: field.trailingAnchor),
             empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             empty.topAnchor.constraint(equalTo: scroll.topAnchor, constant: MacTheme.Spacing.xl),
+            clear.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            clear.topAnchor.constraint(equalTo: empty.bottomAnchor, constant: MacTheme.Spacing.s),
             hint.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: MacTheme.Spacing.s),
-            hint.leadingAnchor.constraint(equalTo: summary.leadingAnchor),
-            hint.trailingAnchor.constraint(equalTo: summary.trailingAnchor),
+            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: field.trailingAnchor),
             hint.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -inset),
         ])
 
@@ -133,8 +167,9 @@ final class ModelChooserSheet: NSObject {
         monitor = nil
     }
 
-    /// ⌃→ / ⌃← open and close a folded row. AppKit hands ⌃N/⌃P to the field as `moveDown:`/
-    /// `moveUp:` already, but the arrows with a modifier never reach `doCommandBy`.
+    /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a filter. AppKit hands ⌃N/⌃P to the field
+    /// as `moveDown:`/`moveUp:` already, but the arrows and the digits with a modifier never reach
+    /// `doCommandBy`.
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.sheet,
@@ -143,8 +178,13 @@ final class ModelChooserSheet: NSObject {
             switch event.keyCode {
             case 124: return self.chooser.setExpanded(true) ? self.refreshed() : event
             case 123: return self.chooser.setExpanded(false) ? self.refreshed() : event
-            default: return event
+            default: break
             }
+            guard let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }), digit > 0,
+                self.chooser.scopes.indices.contains(digit - 1),
+                self.chooser.setScope(self.chooser.scopes[digit - 1])
+            else { return event }
+            return self.refreshed()
         }
     }
 
@@ -157,18 +197,40 @@ final class ModelChooserSheet: NSObject {
     private func rebuild() {
         entries = []
         var index = 0
+        var marks: CGFloat = 0
+        let font = MacTheme.Ramp.font(.gaugeCaption)
         for section in chooser.sections {
             if !section.title.isEmpty { entries.append(.header(section)) }
             for row in section.rows {
                 entries.append(.row(row, index: index))
+                marks = max(marks, ModelChooserRowView.marksText(row).size(withAttributes: [.font: font]).width)
                 index += 1
             }
         }
+        markWidth = ceil(marks)
         summary.stringValue = chooser.summary
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
+        clear.isHidden = chooser.emptyEscape == nil
+        if let index = chooser.scopes.firstIndex(of: chooser.scope) {
+            filters.selectedSegment = index
+        }
         table.reloadData()
         syncSelection()
+    }
+
+    @objc private func filterChanged() {
+        let index = filters.selectedSegment
+        guard chooser.scopes.indices.contains(index) else { return }
+        guard chooser.setScope(chooser.scopes[index]) else { return }
+        rebuild()
+        revealCursor()
+    }
+
+    @objc private func clearFilter() {
+        guard let escape = chooser.emptyEscape, chooser.setScope(escape) else { return }
+        rebuild()
+        revealCursor()
     }
 
     private func syncSelection() {
@@ -248,7 +310,8 @@ extension ModelChooserSheet: NSTableViewDataSource, NSTableViewDelegate {
         case .header(let section):
             return ModelChooserHeaderView(section: section)
         case .row(let value, let index):
-            return ModelChooserRowView(row: value, onExpand: expandAction(index))
+            return ModelChooserRowView(
+                row: value, marks: markWidth, onExpand: expandAction(index))
         }
     }
 }
@@ -309,44 +372,25 @@ private final class ModelChooserHeaderView: NSTableCellView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
-/// One model: the name with the letters the query landed on weighted inside it, who runs it and
-/// under what id, and the facts that would change the pick.
+/// One model in three columns that hold their places down the whole list: the tick, the name over
+/// what it is, and — flush to the right edge — everything the row wears. The facts used to follow
+/// the name, so their left edge moved with every name's length and the eye had to find them again
+/// on each line; against the right edge they read as a column.
 @MainActor
 private final class ModelChooserRowView: NSTableCellView {
-    init(row: ModelChooserRow, onExpand: @escaping () -> Void) {
+    /// The capabilities a row wears, as the one string that goes in the marks column.
+    static func marksText(_ row: ModelChooserRow) -> String {
+        row.facts.filter(\.isCapability).map(\.tag).joined(separator: " ")
+    }
+
+    init(row: ModelChooserRow, marks width: CGFloat, onExpand: @escaping () -> Void) {
         super.init(frame: .zero)
 
         let title = NSTextField(labelWithAttributedString: Self.title(row))
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let check = NSTextField(labelWithString: row.isSelected ? "✓" : "")
-        check.font = MacTheme.Ramp.font(.panelLabel)
-        check.textColor = MacTheme.Color.accent
-
-        let line = NSStackView(views: [check, title])
-        line.spacing = MacTheme.Spacing.xs
-        line.alignment = .firstBaseline
-        if let wall = row.wall {
-            line.addArrangedSubview(
-                Self.pill(
-                    text: QuotaSurface.rowNote(wall), tint: MacTheme.Color.danger,
-                    tooltip: QuotaSurface.bannerBody(wall)))
-        }
-        for fact in row.facts { line.addArrangedSubview(Self.pill(fact)) }
-        if row.canExpand {
-            let chevron = RowKit.ActionButton(title: "", action: onExpand)
-            chevron.image = NSImage(
-                systemSymbolName: row.isExpanded ? "chevron.down" : "chevron.right",
-                accessibilityDescription: Localized.text("The other providers that run it"))
-            chevron.isBordered = false
-            chevron.bezelStyle = .accessoryBar
-            chevron.contentTintColor = MacTheme.Color.secondaryLabel
-            chevron.toolTip = Localized.text("The other providers that run it")
-            line.addArrangedSubview(chevron)
-        }
-
-        let column = NSStackView(views: [line])
+        let column = NSStackView(views: [title])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 1
@@ -358,14 +402,57 @@ private final class ModelChooserRowView: NSTableCellView {
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             column.addArrangedSubview(detail)
         }
-        column.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(column)
+        column.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        column.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let check = NSTextField(labelWithString: row.isSelected ? "✓" : "")
+        check.font = MacTheme.Ramp.font(.panelLabel)
+        check.textColor = MacTheme.Color.accent
+        check.alignment = .center
+
+        let line = NSStackView(views: [check, column])
+        line.spacing = MacTheme.Spacing.xs
+        line.alignment = .centerY
+        line.orientation = .horizontal
+        if let wall = row.wall {
+            line.addArrangedSubview(
+                Self.pill(
+                    text: QuotaSurface.rowMark(wall), tint: MacTheme.Color.danger,
+                    tooltip: QuotaSurface.bannerBody(wall)))
+        }
+        for fact in row.facts where !fact.isCapability { line.addArrangedSubview(Self.pill(fact)) }
+
+        let capabilities = row.facts.filter(\.isCapability)
+        let marks = NSTextField(labelWithString: Self.marksText(row))
+        marks.font = MacTheme.Ramp.font(.gaugeCaption)
+        marks.textColor = MacTheme.Color.tertiaryLabel
+        marks.toolTip = capabilities.map(\.label).joined(separator: " · ")
+        marks.setContentCompressionResistancePriority(.required, for: .horizontal)
+        line.addArrangedSubview(marks)
+
+        let chevron = RowKit.ActionButton(title: "", action: onExpand)
+        chevron.isBordered = false
+        chevron.bezelStyle = .accessoryBar
+        chevron.contentTintColor = MacTheme.Color.secondaryLabel
+        chevron.isEnabled = row.canExpand
+        if row.canExpand {
+            chevron.image = NSImage(
+                systemSymbolName: row.isExpanded ? "chevron.down" : "chevron.right",
+                accessibilityDescription: Localized.text("The other providers that run it"))
+            chevron.toolTip = Localized.text("The other providers that run it")
+        }
+        line.addArrangedSubview(chevron)
+
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
         let leading = MacTheme.Spacing.s + (row.isNested ? MacTheme.Spacing.xl : 0)
         NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
-            column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
-            column.centerYAnchor.constraint(equalTo: centerYAnchor),
-            line.widthAnchor.constraint(equalTo: column.widthAnchor),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
+            line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
+            line.centerYAnchor.constraint(equalTo: centerYAnchor),
+            check.widthAnchor.constraint(equalToConstant: 14),
+            marks.widthAnchor.constraint(equalToConstant: width),
+            chevron.widthAnchor.constraint(equalToConstant: 18),
         ])
     }
 

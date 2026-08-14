@@ -311,6 +311,24 @@ enum MatrixTheme {
         }
         .model-search:focus-within { border-color: \(accent); }
         .model-search text { color: \(text); \(t(.composer)) }
+        .model-scope {
+            \(t(.chip))
+            color: \(textDim);
+            min-height: 0;
+            padding: 2px 12px;
+            border: 1px solid alpha(\(textDim), 0.28);
+            border-radius: 999px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+        }
+        .model-scope:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
+        .model-scope-on, .model-scope-on:hover {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            border-color: \(accent);
+        }
+        .model-scope-key { opacity: 0.55; }
         .model-row {
             padding: 0;
             border: none;
@@ -322,8 +340,12 @@ enum MatrixTheme {
         }
         .model-row:hover { background-color: alpha(\(accent), 0.08); }
         .model-row:active { background-color: alpha(\(accent), 0.16); }
-        .model-row-nested { margin-left: 26px; }
+        .model-row-nested {
+            margin-left: 22px;
+            border-left: 2px solid alpha(\(accent), 0.22);
+        }
         .model-check { color: \(accent); \(t(.note)) }
+        .model-mark { color: \(textDim); \(t(.hint)) opacity: 0.5; }
         .model-chevron {
             padding: 0 6px;
             min-height: 0;
@@ -344,9 +366,13 @@ enum MatrixTheme {
         .model-fact {
             \(t(.pill))
             color: \(textDim);
-            border: 1px solid alpha(\(textDim), 0.35);
-            border-radius: 2px;
-            padding: 0px 4px;
+            border: 1px solid alpha(\(textDim), 0.30);
+            border-radius: 3px;
+            padding: 0px 5px;
+        }
+        .model-row-current, .model-row-current:hover {
+            background-color: alpha(\(accent), 0.10);
+            border-radius: 5px;
         }
         .model-fact-local { color: \(accent); border-color: alpha(\(accent), 0.6); }
         .model-fact-providers { color: \(info); border-color: alpha(\(info), 0.6); }

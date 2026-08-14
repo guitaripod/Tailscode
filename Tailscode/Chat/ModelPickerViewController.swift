@@ -23,9 +23,11 @@ final class ModelPickerViewController: UIViewController {
 
     init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota] = [],
+        recents: [ModelSelection] = RecentModelsStore.all(),
         onSelect: @escaping (ModelPick) -> Void
     ) {
-        self.chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
+        self.chooser = ModelChooser(
+            sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onSelect = onSelect
         super.init(nibName: nil, bundle: nil)
     }
@@ -57,12 +59,24 @@ final class ModelPickerViewController: UIViewController {
         collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
     }
 
+    /// The search field, and beside it the standing filters. Typing answers "which model"; it is a
+    /// poor way to ask for "only what this chat can switch to without moving" or "only what runs on
+    /// my own machine", which a fleet makes people ask constantly — so those are a tap that is
+    /// always on screen rather than a word somebody has to know to type.
     private func configureSearch() {
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = String(localized: "Search models, providers, ids")
+        if chooser.scopes.count > 1 {
+            search.searchBar.delegate = self
+            search.searchBar.scopeButtonTitles = chooser.scopes.map(\.title)
+            search.searchBar.selectedScopeButtonIndex = 0
+            search.searchBar.showsScopeBar = true
+            search.scopeBarActivation = .manual
+        }
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
+        navigationItem.preferredSearchBarPlacement = .stacked
     }
 
     private func row(for id: String) -> ModelChooserRow? { rowsByID[id] }
@@ -115,16 +129,26 @@ final class ModelPickerViewController: UIViewController {
                 content.secondaryText = row.detail
                 content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
                 content.secondaryTextProperties.font = Theme.Ramp.font(.toolOutput)
+                content.secondaryTextProperties.numberOfLines = 1
+                content.secondaryTextProperties.lineBreakMode = .byTruncatingTail
             }
-            if let wall = row.wall {
-                content.textProperties.color = Theme.Color.tertiaryLabel
-                cell.accessibilityLabel = "\(row.title). \(QuotaSurface.bannerBody(wall))"
-            }
+            content.textProperties.numberOfLines = 1
+            content.textProperties.lineBreakMode = .byTruncatingTail
+            if row.wall != nil { content.textProperties.color = Theme.Color.tertiaryLabel }
+            cell.accessibilityLabel = Self.spoken(row)
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
             var accessories: [UICellAccessory] = []
             if let wall = row.wall { accessories.append(Self.wallPill(wall)) }
-            accessories += row.facts.map(Self.factAccessory)
+            accessories += row.facts.filter { !$0.isCapability }.map(Self.pill)
+            let room = cell.traitCollection.horizontalSizeClass == .compact ? 2 : 4
+            accessories = Array(accessories.prefix(room))
+            if accessories.count < room,
+                let marks = Self.capabilityAccessory(
+                    row, slots: self.chooser.policy.capabilitySlots)
+            {
+                accessories.append(marks)
+            }
             if row.canExpand { accessories.append(self.expandAccessory(row)) }
             if row.isSelected { accessories.append(.checkmark()) }
             cell.accessories = accessories
@@ -147,12 +171,15 @@ final class ModelPickerViewController: UIViewController {
 
         let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionFooter
-        ) { view, _, _ in
+        ) { [weak self] view, _, _ in
             var content = UIListContentConfiguration.footer()
-            content.text = String(
-                localized:
-                    "Models are grouped by family, not by provider — one row per model, with every provider that runs it behind the chevron. Local models run on your server's own machine."
-            )
+            content.text =
+                self?.chooser.isNarrowed == true
+                ? self?.chooser.summary
+                : String(
+                    localized:
+                        "One row per model, grouped by family. The chevron opens the other providers that run it."
+                )
             view.contentConfiguration = content
         }
 
@@ -187,19 +214,57 @@ final class ModelPickerViewController: UIViewController {
         return text
     }
 
-    private static func factAccessory(_ fact: ModelFact) -> UICellAccessory {
-        switch fact {
-        case .local, .providers, .server:
-            return pill(fact)
-        default:
-            let image = UIImageView(
-                image: UIImage(
-                    systemName: fact.symbol,
-                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)))
-            image.tintColor = Theme.Color.tertiaryLabel
-            image.accessibilityLabel = fact.label
-            return .customView(configuration: .init(customView: image, placement: .trailing()))
+    /// The whole row in words. A narrow screen has room for two marks and drops the rest, which is
+    /// the right trade for the eye and the wrong one for a reader who cannot see the row at all —
+    /// so everything the row knows is spoken whether or not it fitted.
+    private static func spoken(_ row: ModelChooserRow) -> String {
+        var parts = [row.title]
+        if !row.detail.isEmpty { parts.append(row.detail) }
+        if let wall = row.wall { parts.append(QuotaSurface.bannerBody(wall)) }
+        parts += row.facts.map(\.label)
+        if row.isSelected { parts.append(String(localized: "Currently chosen")) }
+        return parts.joined(separator: ". ")
+    }
+
+    /// What a model reads, as one fixed set of slots rather than a per-row huddle of symbols: a
+    /// slot the model lacks is left empty, so the marks line up down the list and a row that reads
+    /// less than its neighbours is visible as a gap instead of found by reading.
+    private static func capabilityAccessory(
+        _ row: ModelChooserRow, slots: [ModelFact]
+    ) -> UICellAccessory? {
+        guard !slots.isEmpty else { return nil }
+        let worn = Set(row.facts.filter(\.isCapability))
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 5
+        stack.alignment = .center
+        var said: [String] = []
+        for slot in slots {
+            let box = UIImageView()
+            box.contentMode = .center
+            box.widthAnchor.constraint(equalToConstant: 15).isActive = true
+            guard worn.contains(slot) else {
+                stack.addArrangedSubview(box)
+                continue
+            }
+            box.image = UIImage(
+                systemName: slot.symbol,
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .regular))
+            box.tintColor = Theme.Color.tertiaryLabel
+            said.append(slot.label)
+            stack.addArrangedSubview(box)
         }
+        stack.isAccessibilityElement = !said.isEmpty
+        stack.accessibilityLabel = said.joined(separator: ", ")
+        let width = CGFloat(slots.count) * 15 + CGFloat(slots.count - 1) * stack.spacing
+        stack.frame = CGRect(x: 0, y: 0, width: width, height: 18)
+        NSLayoutConstraint.activate([
+            stack.widthAnchor.constraint(equalToConstant: width),
+            stack.heightAnchor.constraint(equalToConstant: 18),
+        ])
+        return .customView(
+            configuration: .init(
+                customView: stack, placement: .trailing(), maintainsFixedSize: true))
     }
 
     private static func pill(_ fact: ModelFact) -> UICellAccessory {
@@ -222,23 +287,19 @@ final class ModelPickerViewController: UIViewController {
     private static func pill(
         text: String, tint: UIColor, label accessibility: String, minimum: CGFloat
     ) -> UICellAccessory {
-        let label = UILabel()
-        label.text = text
-        label.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
-        label.textColor = tint
-        label.textAlignment = .center
-        label.accessibilityLabel = accessibility
-        label.sizeToFit()
-        let padH: CGFloat = 6
-        let padV: CGFloat = 3
-        let width = max(minimum, label.bounds.width + padH * 2)
-        let pill = UIView(
-            frame: CGRect(x: 0, y: 0, width: width, height: label.bounds.height + padV * 2))
-        label.frame = CGRect(x: padH, y: padV, width: width - padH * 2, height: label.bounds.height)
-        pill.addSubview(label)
+        let pill = PillLabel()
+        pill.text = text
+        pill.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        pill.textColor = tint
+        pill.textAlignment = .center
+        pill.accessibilityLabel = accessibility
+        pill.minimumWidth = minimum
         pill.backgroundColor = tint.withAlphaComponent(0.12)
         pill.layer.cornerRadius = 5
         pill.layer.cornerCurve = .continuous
+        pill.setContentCompressionResistancePriority(.required, for: .horizontal)
+        pill.setContentHuggingPriority(.required, for: .horizontal)
+        pill.fixSize()
         return .customView(
             configuration: .init(customView: pill, placement: .trailing(), maintainsFixedSize: true))
     }
@@ -279,13 +340,24 @@ final class ModelPickerViewController: UIViewController {
         }
         sectionIDs = chooser.sections.map(\.id)
         dataSource.apply(snapshot, animatingDifferences: false)
-        if let empty = chooser.emptyResult {
-            var config = UIContentUnavailableConfiguration.search()
-            config.text = empty
-            contentUnavailableConfiguration = config
-        } else {
+        guard let empty = chooser.emptyResult else {
             contentUnavailableConfiguration = nil
+            return
         }
+        var config = UIContentUnavailableConfiguration.search()
+        config.text = empty
+        if let escape = chooser.emptyEscape {
+            var button = UIButton.Configuration.borderless()
+            button.title = String(localized: "Clear the filter")
+            config.button = button
+            config.buttonProperties.primaryAction = UIAction { [weak self] _ in
+                guard let self, self.chooser.setScope(escape) else { return }
+                self.search.searchBar.selectedScopeButtonIndex =
+                    self.chooser.scopes.firstIndex(of: escape) ?? 0
+                self.applySnapshot()
+            }
+        }
+        contentUnavailableConfiguration = config
     }
 
     @objc private func close() { dismiss(animated: true) }
@@ -312,6 +384,37 @@ final class ModelPickerViewController: UIViewController {
     #endif
 }
 
+/// A pill that measures itself. An accessory laid out from a hand-set frame has no size for the
+/// cell to lay out *around*, so two of them on one row were drawn in the same place — which is how
+/// a row ended up wearing "used up" and "3 levels" on top of each other. A label with an honest
+/// `intrinsicContentSize` is the whole fix.
+private final class PillLabel: UILabel {
+    var minimumWidth: CGFloat = 0
+    private let inset = UIEdgeInsets(top: 3, left: 6, bottom: 3, right: 6)
+
+    override var intrinsicContentSize: CGSize {
+        let size = super.intrinsicContentSize
+        return CGSize(
+            width: max(minimumWidth, size.width + inset.left + inset.right),
+            height: size.height + inset.top + inset.bottom)
+    }
+
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.inset(by: inset))
+    }
+
+    /// An accessory is laid out from whichever of the two a cell asks for, and which one it asks
+    /// for is not ours to know — so the size is stated both ways.
+    func fixSize() {
+        let size = intrinsicContentSize
+        frame = CGRect(origin: .zero, size: size)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: size.width),
+            heightAnchor.constraint(equalToConstant: size.height),
+        ])
+    }
+}
+
 extension ModelPickerViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
@@ -327,6 +430,16 @@ extension ModelPickerViewController: UICollectionViewDelegate {
 extension ModelPickerViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
         chooser.search(searchController.searchBar.text ?? "")
+        applySnapshot()
+    }
+}
+
+extension ModelPickerViewController: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, selectedScopeButtonIndexDidChange index: Int) {
+        guard chooser.scopes.indices.contains(index),
+            chooser.setScope(chooser.scopes[index])
+        else { return }
+        Theme.Haptics.selection()
         applySnapshot()
     }
 }

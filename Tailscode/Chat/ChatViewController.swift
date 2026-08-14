@@ -3486,23 +3486,44 @@ final class ChatViewController: UIViewController {
     @objc private func presentModelPicker() {
         guard !availableModels.isEmpty else { return }
         Theme.Haptics.tap()
-        let picker = ModelPickerViewController(
-            sources: ModelFleet.sources(
-                profiles: ConnectionController.shared.profiles,
-                current: viewModel.contextID, currentModels: availableModels,
-                allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
-            selected: viewModel.selectedModel,
-            quotas: QuotaSurface.relevantQuotas(
-                for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
-        ) { [weak self] pick in
-            self?.apply(pick)
-        }
+        let picker = Self.demoPicker { [weak self] pick in self?.apply(pick) }
+            ?? ModelPickerViewController(
+                sources: ModelFleet.sources(
+                    profiles: ConnectionController.shared.profiles,
+                    current: viewModel.contextID, currentModels: availableModels,
+                    allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend)),
+                selected: viewModel.selectedModel,
+                quotas: QuotaSurface.relevantQuotas(
+                    for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
+            ) { [weak self] pick in
+                self?.apply(pick)
+            }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
+            sheet.selectedDetentIdentifier = .large
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+    }
+
+    /// The shared fixture, when a run asks for it: a fleet's worth of catalog with no fleet
+    /// attached, so the surface that has to survive two hundred models can be looked at on all
+    /// three desks without owning two hundred models.
+    private static func demoPicker(
+        onSelect: @escaping (ModelPick) -> Void
+    ) -> ModelPickerViewController? {
+        #if DEBUG
+            guard ProcessInfo.processInfo.environment["TAILSCODE_OPEN_MODELS"] == "demo" else {
+                return nil
+            }
+            return ModelPickerViewController(
+                sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
+                quotas: ModelChooserDemo.quotas(), recents: ModelChooserDemo.recents,
+                onSelect: onSelect)
+        #else
+            return nil
+        #endif
     }
 
     /// A model on this server changes what this chat runs. A model on another one cannot — the

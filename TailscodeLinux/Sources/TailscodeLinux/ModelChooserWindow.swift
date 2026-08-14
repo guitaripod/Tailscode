@@ -21,46 +21,57 @@ final class ModelChooserWindow: @unchecked Sendable {
     private let list: UnsafeMutablePointer<GtkWidget>
     private let scroller: UnsafeMutablePointer<GtkWidget>
     private let count: UnsafeMutablePointer<GtkWidget>
+    private let band: UnsafeMutablePointer<GtkWidget>
+    /// One width for every row's capability marks, so what a model reads forms a column rather than
+    /// a ragged edge that moves with the length of the name beside it.
+    private var markColumn: UnsafeMutableRawPointer?
     private var rowWidgets: [UInt] = []
+    private var scopeButtons: [(scope: ModelChooserScope, widget: UInt)] = []
 
     static func present(
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota] = [],
+        recents: [ModelSelection] = RecentModelsStore.all(),
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
         open = ModelChooserWindow(
-            sources: sources, selected: selected, parent: parent, quotas: quotas, onPick: onPick)
+            sources: sources, selected: selected, parent: parent, quotas: quotas,
+            recents: recents, onPick: onPick)
     }
 
     private init(
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota],
-        onPick: @escaping @Sendable (ModelPick) -> Void
+        recents: [ModelSelection], onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
-        chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
+        chooser = ModelChooser(
+            sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onPick = onPick
 
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Model"))
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 620, 620)
+        gtk_window_set_default_size(ptr(window), 740, 660)
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
 
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
         Gtk.margins(column, top: 14, bottom: 12, leading: 14, trailing: 14)
         gtk_window_set_child(ptr(window), column)
-
-        count = Gtk.label(chooser.summary, css: "model-summary", selectable: false)
-        gtk_box_append(ptr(column), count)
 
         entry = gtk_entry_new()!
         gtk_entry_set_placeholder_text(
             ptr(entry), Localized.text("Search models, providers, ids"))
         Gtk.addClass(entry, "model-search")
         gtk_box_append(ptr(column), entry)
+
+        count = Gtk.label(chooser.summary, css: "model-summary", selectable: false)
+        gtk_label_set_xalign(op(count), 1)
+        band = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.margins(band, top: 2, bottom: 2, leading: 2, trailing: 2)
+        gtk_box_append(ptr(column), band)
 
         scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
@@ -74,6 +85,13 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
             Gtk.onMain { [weak self] in self?.queryChanged() }
         }
+        Gtk.connect(UnsafeMutableRawPointer(entry), "icon-release") { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                gtk_editable_set_text(op(self.entry), "")
+                gtk_widget_grab_focus(self.entry)
+            }
+        }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
             return self.key(keyval: keyval, state: state)
@@ -82,9 +100,56 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.onMain { ModelChooserWindow.open = nil }
         }
 
+        buildScopes()
         render()
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
+    }
+
+    /// The standing filters, as chips beside the count. They carry their own key, because a filter
+    /// nobody can see the shortcut for is a filter reached with the mouse forever.
+    private func buildScopes() {
+        for (index, scope) in chooser.scopes.enumerated() {
+            let button = gtk_button_new()!
+            Gtk.addClass(button, "flat")
+            Gtk.addClass(button, "model-scope")
+            let label = gtk_label_new(nil)!
+            gtk_label_set_markup(
+                op(label),
+                "\(PangoMarkdown.escape(scope.title))"
+                    + "  <span alpha=\"55%\">⌃\(index + 1)</span>")
+            gtk_button_set_child(ptr(button), label)
+            gtk_widget_set_tooltip_text(button, scope.detail)
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self, self.chooser.setScope(scope) else { return }
+                    self.refresh()
+                }
+            }
+            scopeButtons.append((scope, UInt(bitPattern: button)))
+            gtk_box_append(ptr(band), button)
+        }
+        gtk_widget_set_hexpand(count, 1)
+        gtk_widget_set_valign(count, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(band), count)
+        syncScopes()
+    }
+
+    private func syncScopes() {
+        for entry in scopeButtons {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: entry.widget) else { continue }
+            let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            Gtk.setTone(
+                widget, entry.scope == chooser.scope ? "model-scope-on" : nil,
+                from: ["model-scope-on"])
+        }
+    }
+
+    /// Everything the list's own state feeds: the count, the chips, the rows.
+    private func refresh() {
+        gtk_label_set_text(op(count), chooser.summary)
+        syncScopes()
+        render()
     }
 
     private func close() {
@@ -94,9 +159,11 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     private func queryChanged() {
         guard let raw = gtk_editable_get_text(op(entry)) else { return }
-        chooser.search(String(cString: raw))
-        gtk_label_set_text(op(count), chooser.summary)
-        render()
+        let typed = String(cString: raw)
+        gtk_entry_set_icon_from_icon_name(
+            ptr(entry), GTK_ENTRY_ICON_SECONDARY, typed.isEmpty ? nil : "edit-clear-symbolic")
+        chooser.search(typed)
+        refresh()
     }
 
     private func key(keyval: UInt32, state: UInt32) -> Bool {
@@ -113,7 +180,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             pick(chosen)
             return true
         }
-        render()
+        refresh()
         return true
     }
 
@@ -123,13 +190,33 @@ final class ModelChooserWindow: @unchecked Sendable {
         handler(chosen)
     }
 
+    /// The width of the column the chevron sits in, kept under every row that has no chevron so the
+    /// list has one right edge rather than two.
+    private static let chevronWidth: Int32 = 24
+
     private func render() {
         Gtk.removeChildren(of: list)
         rowWidgets = []
+        if let group = markColumn { g_object_unref(group) }
+        markColumn = UnsafeMutableRawPointer(gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL))
         if let empty = chooser.emptyResult {
             let notice = Gtk.label(empty, css: "row-detail", wrap: true, selectable: false)
-            Gtk.margins(notice, top: 24, bottom: 24, leading: 6, trailing: 6)
+            gtk_label_set_xalign(op(notice), 0.5)
+            Gtk.margins(notice, top: 28, bottom: 10, leading: 6, trailing: 6)
             gtk_box_append(ptr(list), notice)
+            if let escape = chooser.emptyEscape {
+                let way = Gtk.button(
+                    Localized.text("Clear the filter"), css: ["model-scope"]
+                ) { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        guard let self, self.chooser.setScope(escape) else { return }
+                        self.refresh()
+                    }
+                }
+                gtk_widget_set_halign(way, GTK_ALIGN_CENTER)
+                Gtk.margins(way, top: 4, bottom: 24)
+                gtk_box_append(ptr(list), way)
+            }
             return
         }
         var index = 0
@@ -159,6 +246,10 @@ final class ModelChooserWindow: @unchecked Sendable {
         return row
     }
 
+    /// One row in three columns that hold their places down the whole list: the tick, the name over
+    /// what it is, and everything the row wears flush to the right edge. The facts used to sit
+    /// immediately after the name, so their left edge moved with every name's length and the eye had
+    /// to find them again on each line; against the right edge they read as a column.
     private func make(
         _ row: ModelChooserRow, index: Int
     ) -> UnsafeMutablePointer<GtkWidget> {
@@ -167,43 +258,59 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.addClass(button, "model-row")
         gtk_widget_set_hexpand(button, 1)
 
-        let mark = Gtk.label(row.isSelected ? "✓" : " ", css: "model-check", selectable: false)
-        gtk_label_set_ellipsize(op(mark), PANGO_ELLIPSIZE_NONE)
-        gtk_widget_set_size_request(mark, 14, -1)
-        gtk_widget_set_valign(mark, GTK_ALIGN_START)
-        Gtk.margins(mark, top: 2)
+        let tick = Gtk.label(row.isSelected ? "✓" : " ", css: "model-check", selectable: false)
+        gtk_label_set_ellipsize(op(tick), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_size_request(tick, 14, -1)
+        gtk_widget_set_valign(tick, GTK_ALIGN_CENTER)
 
-        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let title = Gtk.markupLabel(Self.markup(row), css: "row-title")
         gtk_label_set_wrap(op(title), 0)
         gtk_label_set_selectable(op(title), 0)
         gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
         gtk_widget_set_hexpand(title, 1)
         if row.wall != nil { Gtk.addClass(title, "model-row-spent") }
-        gtk_box_append(ptr(titleRow), title)
+
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        gtk_box_append(ptr(lines), title)
+        if !row.detail.isEmpty {
+            let detail = Gtk.label(row.detail, css: "row-detail", selectable: false)
+            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
+            gtk_box_append(ptr(lines), detail)
+        }
+        gtk_widget_set_hexpand(lines, 1)
+        gtk_widget_set_valign(lines, GTK_ALIGN_CENTER)
+
+        let trailing = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 5)
+        gtk_widget_set_halign(trailing, GTK_ALIGN_END)
+        gtk_widget_set_valign(trailing, GTK_ALIGN_CENTER)
         if let wall = row.wall {
-            let pill = Gtk.label(QuotaSurface.rowNote(wall), css: "model-fact", selectable: false)
+            let pill = Gtk.label(QuotaSurface.rowMark(wall), css: "model-fact", selectable: false)
             gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
             gtk_widget_set_tooltip_text(pill, QuotaSurface.bannerBody(wall))
             Gtk.addClass(pill, "model-fact-spent")
-            gtk_box_append(ptr(titleRow), pill)
+            gtk_box_append(ptr(trailing), pill)
         }
-        for fact in row.facts {
-            gtk_box_append(ptr(titleRow), Self.factPill(fact))
+        for fact in row.facts where !fact.isCapability {
+            gtk_box_append(ptr(trailing), Self.factPill(fact))
         }
-
-        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
-        gtk_box_append(ptr(lines), titleRow)
-        if !row.detail.isEmpty {
-            gtk_box_append(ptr(lines), Gtk.label(row.detail, css: "row-detail", selectable: false))
+        let capabilities = row.facts.filter(\.isCapability)
+        let marks = Gtk.label(
+            capabilities.map(\.tag).joined(separator: " "), css: "model-mark", selectable: false)
+        gtk_label_set_ellipsize(op(marks), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(marks), 0)
+        gtk_widget_set_valign(marks, GTK_ALIGN_CENTER)
+        if !capabilities.isEmpty {
+            gtk_widget_set_tooltip_text(marks, capabilities.map(\.label).joined(separator: " · "))
         }
-        gtk_widget_set_hexpand(lines, 1)
+        if let group = markColumn { gtk_size_group_add_widget(ptr(group), marks) }
+        gtk_box_append(ptr(trailing), marks)
 
         let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.margins(content, top: 3, bottom: 3, leading: 4, trailing: 4)
-        gtk_box_append(ptr(content), mark)
+        Gtk.margins(content, top: 4, bottom: 4, leading: 4, trailing: 6)
+        gtk_box_append(ptr(content), tick)
         gtk_box_append(ptr(content), lines)
+        gtk_box_append(ptr(content), trailing)
         gtk_button_set_child(ptr(button), content)
 
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
@@ -212,8 +319,15 @@ final class ModelChooserWindow: @unchecked Sendable {
 
         let wrapper = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         if row.isNested { Gtk.addClass(wrapper, "model-row-nested") }
+        if row.isSelected { Gtk.addClass(wrapper, "model-row-current") }
         if index == chooser.cursor { Gtk.addClass(wrapper, "row-focused") }
         gtk_box_append(ptr(wrapper), button)
+        guard row.canExpand else {
+            let gutter = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+            gtk_widget_set_size_request(gutter, Self.chevronWidth, -1)
+            gtk_box_append(ptr(wrapper), gutter)
+            return wrapper
+        }
         if row.canExpand {
             let expanded = row.isExpanded
             let chevron = gtk_button_new()!
@@ -223,6 +337,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 ptr(chevron),
                 Gtk.label(expanded ? "⌄" : "›", css: "model-chevron-glyph", selectable: false))
             gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
+            gtk_widget_set_size_request(chevron, Self.chevronWidth, -1)
             gtk_widget_set_tooltip_text(chevron, Localized.text("The other providers that run it"))
             Gtk.connect(UnsafeMutableRawPointer(chevron), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
