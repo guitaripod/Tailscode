@@ -326,9 +326,7 @@ final class ComposerView: NSView {
         editorRow.spacing = MacTheme.Spacing.s
         editorRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSStackView(views: [chips, editorRow, pills])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [chips, editorRow, pills])
         column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)

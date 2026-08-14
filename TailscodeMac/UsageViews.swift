@@ -139,13 +139,11 @@ enum UsageFormat {
 /// resetting. Transparent over the sidebar material — the glass is the only background.
 @MainActor
 final class UsageFooterView: NSView {
-    private let column = NSStackView()
+    private let column = FillingStack()
 
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = 4
         column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)
@@ -225,7 +223,7 @@ final class UsageFooterView: NSView {
 /// button asks again. Popover chrome is the system material — content, not floating glass.
 @MainActor
 final class UsagePanelViewController: NSViewController {
-    private let column = NSStackView()
+    private let column = FillingStack()
     private var quotas: [(String, UsageQuota)]
     private let refresh: () async -> [(String, UsageQuota)]
     private let onAnalytics: () -> Void
@@ -246,8 +244,6 @@ final class UsagePanelViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
@@ -288,9 +284,7 @@ final class UsagePanelViewController: NSViewController {
             right: MacTheme.Spacing.m)
         footer.translatesAutoresizingMaskIntoConstraints = false
 
-        let content = NSStackView(views: [scroll, footer])
-        content.orientation = .vertical
-        content.alignment = .width
+        let content = FillingStack(views: [scroll, footer])
         content.spacing = MacTheme.Spacing.s
         content.translatesAutoresizingMaskIntoConstraints = false
 
@@ -391,9 +385,7 @@ final class UsagePanelViewController: NSViewController {
                     phrasing, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.tertiaryLabel))
         }
-        let hero = NSStackView(views: views)
-        hero.orientation = .vertical
-        hero.alignment = .width
+        let hero = FillingStack(views: views)
         hero.spacing = MacTheme.Spacing.s
         hero.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -408,9 +400,7 @@ final class UsagePanelViewController: NSViewController {
     private func card(_ holding: QuotaHolding) -> NSView {
         let quota = holding.quota
         let slug = holding.slug
-        let card = NSStackView()
-        card.orientation = .vertical
-        card.alignment = .width
+        let card = FillingStack()
         card.spacing = MacTheme.Spacing.s
         card.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
@@ -466,9 +456,7 @@ final class UsagePanelViewController: NSViewController {
     private static func gaugeBlock(_ gauge: UsageQuota.Gauge, slug: String?) -> NSView {
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = UsageFormat.severity(fraction)
-        let block = NSStackView()
-        block.orientation = .vertical
-        block.alignment = .width
+        let block = FillingStack()
         block.spacing = 3
 
         let title = RowKit.label(

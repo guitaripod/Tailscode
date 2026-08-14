@@ -17,7 +17,7 @@ import TailscodeCore
 final class VideoSlotView: NSView, NSTextFieldDelegate {
     private(set) var slot: VideoSlot
     private let playerView = AVPlayerView()
-    private let promptStack = NSStackView()
+    private let promptStack = FillingStack()
     private let field = NSTextField()
     private let headingLabel = NSTextField(labelWithString: Localized.text("Watch"))
     private let reasonLabel = NSTextField(labelWithString: "")
@@ -109,8 +109,6 @@ final class VideoSlotView: NSView, NSTextFieldDelegate {
         noticeLabel.translatesAutoresizingMaskIntoConstraints = false
         renderNotice()
 
-        promptStack.orientation = .vertical
-        promptStack.alignment = .width
         promptStack.spacing = MacTheme.Spacing.m
         promptStack.translatesAutoresizingMaskIntoConstraints = false
         promptStack.setViews(

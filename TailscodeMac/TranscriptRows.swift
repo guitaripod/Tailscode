@@ -429,9 +429,7 @@ struct TranscriptRow: Hashable {
     /// reader, where the CLI's own formatting is the only structure the text has.
     @MainActor
     static func richBody(_ text: String, context: TranscriptContext?) -> NSView {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = 10
         column.translatesAutoresizingMaskIntoConstraints = false
         for segment in MessageSegment.split(text) {
@@ -519,9 +517,7 @@ struct TranscriptRow: Hashable {
     private static func codeBlock(
         language: String?, body: String, context: TranscriptContext?
     ) -> NSView {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = 2
         column.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -562,9 +558,7 @@ struct TranscriptRow: Hashable {
         _ compaction: Compaction, key: String, context: TranscriptContext
     ) -> NSView {
         let story = CompactionStory.done(compaction)
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(RowKit.hairline())
@@ -967,7 +961,7 @@ enum RowKit {
 /// one thing a caller cannot reconstruct from a key is where on screen the clicked header is.
 @MainActor
 final class DisclosureRow: NSView {
-    private let stack = NSStackView()
+    private let stack = FillingStack()
     private let makeBody: () -> NSView
     private let onToggle: (Bool, DisclosureRow) -> Void
     private var body: NSView?
@@ -985,8 +979,6 @@ final class DisclosureRow: NSView {
         self.onToggle = onToggle
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        stack.orientation = .vertical
-        stack.alignment = .width
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)

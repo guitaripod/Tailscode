@@ -48,13 +48,13 @@ final class UpdateWindowController: NSWindowController {
 /// pointer, on the one screen where somebody is watching a button.
 @MainActor
 final class UpdateBoardViewController: NSViewController {
-    private let column = NSStackView()
+    private let column = FillingStack()
     private let scroll = NSScrollView()
     private let statusLabel = NSTextField(labelWithString: "")
     private let heroHeadline = NSTextField(labelWithString: "")
     private let heroDetail = NSTextField(wrappingLabelWithString: "")
     private let heroChecked = NSTextField(labelWithString: "")
-    private let heroCard = NSStackView()
+    private let heroCard = FillingStack()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let footerRow = NSStackView()
     private lazy var everythingButton = UpdateReadingViews.button(
@@ -81,8 +81,6 @@ final class UpdateBoardViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
@@ -202,8 +200,6 @@ final class UpdateBoardViewController: NSViewController {
         heroDetail.isSelectable = true
         heroDetail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         heroChecked.translatesAutoresizingMaskIntoConstraints = false
-        heroCard.orientation = .vertical
-        heroCard.alignment = .width
         heroCard.spacing = MacTheme.Spacing.s
         heroCard.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,

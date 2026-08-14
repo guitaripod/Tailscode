@@ -11,14 +11,12 @@ import TailscodeCore
 @MainActor
 final class WatchBoardView: NSView {
     private let scrollView = NSScrollView()
-    private let groups = NSStackView()
+    private let groups = FillingStack()
     private var rowViews: [String: WatchRowView] = [:]
     private var onActivate: ((String, Int) -> Void)?
 
     init() {
         super.init(frame: .zero)
-        groups.orientation = .vertical
-        groups.alignment = .width
         groups.spacing = MacTheme.Spacing.m
         groups.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.xs, left: 0, bottom: MacTheme.Spacing.s, right: 0)
@@ -61,9 +59,7 @@ final class WatchBoardView: NSView {
         }
         let focused = board.focused?.id
         for section in board.sections {
-            let stack = NSStackView()
-            stack.orientation = .vertical
-            stack.alignment = .width
+            let stack = FillingStack()
             stack.spacing = 2
             stack.addArrangedSubview(Self.header(section))
             for (offset, row) in section.rows.enumerated() {
@@ -128,7 +124,7 @@ final class WatchRowView: NSView {
     private let note = NSTextField(labelWithString: "")
     private let star = NSImageView()
     private let titleRow = NSStackView()
-    private let lines = NSStackView()
+    private let lines = FillingStack()
     private var thumbnailURL: String?
     var onClick: (() -> Void)?
 
@@ -169,8 +165,6 @@ final class WatchRowView: NSView {
         note.textColor = MacTheme.Color.tertiaryLabel
         note.lineBreakMode = .byTruncatingTail
 
-        lines.orientation = .vertical
-        lines.alignment = .width
         lines.spacing = 1
         lines.setViews([titleRow, detail, note], in: .top)
         lines.setContentHuggingPriority(.init(1), for: .horizontal)

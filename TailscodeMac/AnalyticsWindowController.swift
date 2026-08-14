@@ -10,7 +10,7 @@ import TailscodeCore
 @MainActor
 final class AnalyticsWindowController: NSWindowController {
     private let fetch: () async -> UsageAnalytics?
-    private let column = NSStackView()
+    private let column = FillingStack()
     private let scroll = NSScrollView()
     private var analytics: UsageAnalytics?
     private var loading = false
@@ -48,8 +48,6 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func makeContent() -> NSView {
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
@@ -492,9 +490,7 @@ final class AnalyticsWindowController: NSWindowController {
             fill.widthAnchor.constraint(greaterThanOrEqualToConstant: 2),
         ])
 
-        let block = NSStackView(views: [top, track])
-        block.orientation = .vertical
-        block.alignment = .width
+        let block = FillingStack(views: [top, track])
         block.spacing = 3
         return block
     }
@@ -514,9 +510,7 @@ final class AnalyticsWindowController: NSWindowController {
     }
 
     private func card(views: [NSView]) -> NSView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .vertical
-        stack.alignment = .width
+        let stack = FillingStack(views: views)
         stack.spacing = MacTheme.Spacing.s
         stack.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,

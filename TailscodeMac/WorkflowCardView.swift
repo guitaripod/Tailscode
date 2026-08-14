@@ -178,9 +178,7 @@ enum WorkflowCardView {
             body.addArrangedSubview(rail)
         }
         if !run.agents.isEmpty {
-            let list = NSStackView()
-            list.orientation = .vertical
-            list.alignment = .width
+            let list = FillingStack()
             list.spacing = 1
             list.identifier = agentsID
             for agent in run.agents {
@@ -299,9 +297,7 @@ enum WorkflowCardView {
                 if open, context?.subagentRows[rowKey] == nil { request?(agentID) }
             }
         ) { [weak context] in
-            let body = NSStackView()
-            body.orientation = .vertical
-            body.alignment = .width
+            let body = FillingStack()
             body.spacing = 6
             body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             guard let context else { return RowKit.inset(body, leading: 20) }

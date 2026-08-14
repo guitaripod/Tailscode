@@ -39,7 +39,7 @@ final class ServersWindow: NSWindowController {
     static let installCommand = BridgeInstall.installCommand
 
     private let onChanged: @MainActor () -> Void
-    private let listColumn = NSStackView()
+    private let listColumn = FillingStack()
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private let addressField = NSTextField()
     private let nameField = NSTextField()
@@ -68,8 +68,6 @@ final class ServersWindow: NSWindowController {
     }
 
     private func makeContent() -> NSView {
-        listColumn.orientation = .vertical
-        listColumn.alignment = .width
         listColumn.spacing = MacTheme.Spacing.m
 
         addressField.placeholderString = Localized.text(
@@ -97,14 +95,12 @@ final class ServersWindow: NSWindowController {
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
 
-        let column = NSStackView(views: [
+        let column = FillingStack(views: [
             MacDialogs.sectionHeader(Localized.text("CONFIGURED")),
             listColumn,
             MacDialogs.sectionHeader(Localized.text("ADD A SERVER")),
             addressField, nameField, passwordField, kindRow, statusLabel, actions,
         ])
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.m
         column.setCustomSpacing(MacTheme.Spacing.xl, after: listColumn)
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)

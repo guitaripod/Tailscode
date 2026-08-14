@@ -8,7 +8,7 @@ import TailscodeCore
 final class ChooserView: NSView {
     private let heading = NSTextField(labelWithString: "")
     private let hint = NSTextField(labelWithString: "")
-    private let rows = NSStackView()
+    private let rows = FillingStack()
     private var onActivate: ((Int) -> Void)?
 
     init() {
@@ -18,8 +18,6 @@ final class ChooserView: NSView {
         hint.font = MacTheme.Ramp.font(.panelFootnote)
         hint.textColor = MacTheme.Color.tertiaryLabel
 
-        rows.orientation = .vertical
-        rows.alignment = .width
         rows.spacing = 2
 
         let column = NSStackView(views: [heading, hint, rows])

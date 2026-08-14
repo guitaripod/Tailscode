@@ -301,9 +301,7 @@ final class ImageViewer: NSObject {
             right: MacTheme.Spacing.l)
         bar.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSStackView(views: [scrollView, bar])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [scrollView, bar])
         column.spacing = 0
         column.translatesAutoresizingMaskIntoConstraints = false
 

@@ -147,9 +147,7 @@ final class SidebarViewController: NSViewController {
 
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
 
-        let footer = NSStackView(views: [bulkBar, updateFooter, usageFooter, orb])
-        footer.orientation = .vertical
-        footer.alignment = .width
+        let footer = FillingStack(views: [bulkBar, updateFooter, usageFooter, orb])
         footer.spacing = MacTheme.Spacing.xs
         footer.translatesAutoresizingMaskIntoConstraints = false
 

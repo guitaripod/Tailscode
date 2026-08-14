@@ -68,9 +68,7 @@ final class SignInSheet {
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
 
-        let column = NSStackView(views: [title, status, linkColumn, codeField, buttons])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [title, status, linkColumn, codeField, buttons])
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         column.translatesAutoresizingMaskIntoConstraints = false

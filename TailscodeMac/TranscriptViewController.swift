@@ -33,9 +33,9 @@ final class TranscriptViewController: NSViewController {
     var onDragPerform: ((NSDraggingInfo) -> Bool)?
 
     private let scrollView = NSScrollView()
-    private let canvas = NSStackView()
-    private let rowsStack = NSStackView()
-    private let pendingStack = NSStackView()
+    private let canvas = FillingStack()
+    private let rowsStack = FillingStack()
+    private let pendingStack = FillingStack()
     private let earlierButton = RowKit.ActionButton(title: "") {}
     private let statusBand = StatusBandView()
     /// What a popover opened from a band fact points at.
@@ -644,13 +644,9 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func configureCanvas() {
-        rowsStack.orientation = .vertical
-        rowsStack.alignment = .width
         rowsStack.spacing = MacTheme.Spacing.m
         rowsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        pendingStack.orientation = .vertical
-        pendingStack.alignment = .width
         pendingStack.spacing = MacTheme.Spacing.s
         pendingStack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -659,8 +655,6 @@ final class TranscriptViewController: NSViewController {
         earlierButton.contentTintColor = MacTheme.Color.secondaryLabel
         earlierButton.font = MacTheme.Ramp.font(.panelFootnote)
 
-        canvas.orientation = .vertical
-        canvas.alignment = .width
         canvas.spacing = MacTheme.Spacing.m
         canvas.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.l, left: MacTheme.Spacing.xl, bottom: MacTheme.Spacing.l,
@@ -720,9 +714,7 @@ final class TranscriptViewController: NSViewController {
                 for: self.backend?.agentType, among: self.quotasForStatus?() ?? [])
         }
 
-        let column = NSStackView(views: [composer])
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack(views: [composer])
         column.spacing = MacTheme.Spacing.xs
         column.edgeInsets = NSEdgeInsets(
             top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
@@ -745,9 +737,7 @@ final class TranscriptViewController: NSViewController {
         auth.isHidden = true
         authGlass = auth
 
-        let host = NSStackView(views: [auth, band, card])
-        host.orientation = .vertical
-        host.alignment = .width
+        let host = FillingStack(views: [auth, band, card])
         host.spacing = MacTheme.Spacing.s
         host.translatesAutoresizingMaskIntoConstraints = false
         let group = MacTheme.glassGroup()
@@ -2289,9 +2279,7 @@ final class TranscriptViewController: NSViewController {
     /// reader window rather than cramped into the flow: title, the facts under it, the body at
     /// reading width, and a copy that hands over every byte.
     private func presentReader(title: String, subtitle: String?, body: String, mono: Bool) {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = 0
         column.translatesAutoresizingMaskIntoConstraints = false
 
@@ -2316,9 +2304,7 @@ final class TranscriptViewController: NSViewController {
             column.addArrangedSubview(scrollable)
         } else {
             let content = TranscriptRow.richBody(body, context: context)
-            let padded = NSStackView(views: [content])
-            padded.orientation = .vertical
-            padded.alignment = .width
+            let padded = FillingStack(views: [content])
             padded.edgeInsets = NSEdgeInsets(
                 top: MacTheme.Spacing.m, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
                 right: MacTheme.Spacing.l)

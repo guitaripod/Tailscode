@@ -82,9 +82,7 @@ enum ToolRowView {
                 if open { reveal?(row) }
             }
         ) {
-            let body = NSStackView()
-            body.orientation = .vertical
-            body.alignment = .width
+            let body = FillingStack()
             body.spacing = 2
             body.translatesAutoresizingMaskIntoConstraints = false
             for (index, step) in steps.enumerated() {
@@ -182,18 +180,14 @@ enum ToolRowView {
     private static func bodyColumn(
         _ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext
     ) -> NSView? {
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .width
+        let column = FillingStack()
         column.spacing = 4
         column.translatesAutoresizingMaskIntoConstraints = false
         var hasContent = false
 
         if call.asksUserQuestion {
             for answered in call.recordedAnswers {
-                let line = NSStackView()
-                line.orientation = .vertical
-                line.alignment = .width
+                let line = FillingStack()
                 line.spacing = 0
                 line.addArrangedSubview(
                     RowKit.wrapping(
@@ -274,9 +268,7 @@ enum ToolRowView {
     /// file's own syntax — the same treatment a fenced patch gets — cut at eighty lines with the
     /// remainder counted rather than drawn.
     static func diffBlock(_ lines: [(prefix: String, text: String)], language: String?) -> NSView {
-        let block = NSStackView()
-        block.orientation = .vertical
-        block.alignment = .width
+        let block = FillingStack()
         block.spacing = 0
         block.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         block.translatesAutoresizingMaskIntoConstraints = false
@@ -426,9 +418,7 @@ enum SubagentRowView {
                 if open, context?.subagentRows[call.id] == nil { request?(call) }
             }
         ) { [weak context] in
-            let body = NSStackView()
-            body.orientation = .vertical
-            body.alignment = .width
+            let body = FillingStack()
             body.spacing = 6
             body.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             body.translatesAutoresizingMaskIntoConstraints = false

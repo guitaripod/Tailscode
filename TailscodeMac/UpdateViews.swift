@@ -200,7 +200,7 @@ final class UpdateCardView: NSView {
     private let actionButton = NSButton()
     private let asideButton = NSButton()
     private let buttons = NSStackView()
-    private let column = NSStackView()
+    private let column = FillingStack()
 
     private var reading: UpdateReading?
     private var invitation: UpdateInvitation?
@@ -248,8 +248,6 @@ final class UpdateCardView: NSView {
             buttons.addArrangedSubview(view)
         }
 
-        column.orientation = .vertical
-        column.alignment = .width
         column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         var rows: [NSView] = [header, subtitle, detail, asideNote, running, newest, supervisor]
