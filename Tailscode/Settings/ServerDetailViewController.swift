@@ -651,15 +651,50 @@ final class ServerDetailViewController: UIViewController {
         Task { [weak self] in
             guard let self else { return }
             guard
-                let restartable = (self.backend
-                    ?? ConnectionController.shared.makeBackend(for: self.profile))
-                    as? any RestartableBackend
+                let backend = (self.backend
+                    ?? ConnectionController.shared.makeBackend(for: self.profile)),
+                let restartable = backend as? any RestartableBackend
             else { return }
             do {
                 try await restartable.restart()
                 self.statusText = ServerRestart.underway
+                self.applySnapshot()
             } catch {
-                self.statusText = error.localizedDescription
+                self.offerSetup(backend: backend)
+            }
+        }
+    }
+
+    /// A machine set up by hand refuses the restart, and the refusal is the offer: the setup that
+    /// makes it restartable is one press, not a terminal instruction.
+    private func offerSetup(backend: any CodingAgentBackend) {
+        guard let settable = backend as? any ServeManagerBackend else {
+            statusText = ServerRestart.refused(profile.name)
+            applySnapshot()
+            return
+        }
+        let alert = UIAlertController(
+            title: ServerRestart.setupTitle,
+            message: ServerRestart.setupDetail,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: ServerRestart.setupAction, style: .default) { [weak self] _ in
+                self?.installSetup(settable)
+            })
+        present(alert, animated: true)
+    }
+
+    private func installSetup(_ settable: any ServeManagerBackend) {
+        statusText = ServerRestart.setupUnderway
+        applySnapshot()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await settable.installServeManager()
+                self.statusText = ServerRestart.underway
+            } catch {
+                self.statusText = ServerRestart.setupFailedDetail
             }
             self.applySnapshot()
         }

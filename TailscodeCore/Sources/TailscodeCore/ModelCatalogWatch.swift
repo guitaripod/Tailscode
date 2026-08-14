@@ -38,7 +38,7 @@ public enum ModelCatalogWatch {
                         let asked = try await backend.availableModels()
                         if !asked.isEmpty { ModelCatalogStore.store(asked, for: profileID) }
                         continuation.yield(ModelCatalogReading(models: asked, reachable: true))
-                        return
+                        break
                     } catch {
                         continuation.yield(
                             ModelCatalogReading(models: remembered, reachable: false))

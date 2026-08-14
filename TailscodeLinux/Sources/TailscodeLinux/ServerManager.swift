@@ -772,7 +772,8 @@ final class ServerManager: @unchecked Sendable {
 
     /// The press states its cost first, then hands the ask over and stops: the connection it went
     /// over dies with the process it restarted, so the reconnect every pane already watches is what
-    /// says the machine is back.
+    /// says the machine is back. A machine set up by hand refuses the restart, and the refusal is
+    /// the offer: the setup that makes it restartable is one press, not a terminal instruction.
     private func confirmRestart(id: String, name: String) {
         guard let window else { return }
         Dialogs.confirm(
@@ -785,12 +786,41 @@ final class ServerManager: @unchecked Sendable {
                     let restartable = await ServerDirectory.shared.backend(for: profile)
                         as? any RestartableBackend
                 else { return }
-                let failed = (try? await restartable.restart()) == nil
-                Gtk.onMain { [weak self] in
-                    self?.toast(
-                        failed
-                            ? Localized.text("%@ cannot restart itself.", name)
-                            : Localized.text("%@ is restarting.", name))
+                do {
+                    try await restartable.restart()
+                    Gtk.onMain { [weak self] in
+                        self?.toast(Localized.text("%@ is restarting.", name))
+                    }
+                } catch {
+                    self?.offerSetup(name: name, backend: restartable)
+                }
+            }
+        }
+    }
+
+    private func offerSetup(name: String, backend: any CodingAgentBackend) {
+        guard let window else { return }
+        guard let settable = backend as? any ServeManagerBackend else {
+            Gtk.onMain { [weak self] in
+                self?.toast(ServerRestart.refused(name))
+            }
+            return
+        }
+        Dialogs.confirm(
+            title: ServerRestart.setupTitle,
+            body: ServerRestart.setupDetail,
+            confirmLabel: ServerRestart.setupAction, parent: window
+        ) { [weak self] in
+            Task { [weak self] in
+                do {
+                    try await settable.installServeManager()
+                    Gtk.onMain { [weak self] in
+                        self?.toast(Localized.text("%@ is restarting with its new setup.", name))
+                    }
+                } catch {
+                    Gtk.onMain { [weak self] in
+                        self?.toast(ServerRestart.setupFailedDetail)
+                    }
                 }
             }
         }

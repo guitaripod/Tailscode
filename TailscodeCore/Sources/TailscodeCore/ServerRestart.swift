@@ -40,6 +40,40 @@ public enum ServerRestart {
     public static var symbol: String { "arrow.clockwise.circle" }
     public static var glyph: String { "⟳" }
 
+    /// A server that cannot restart itself is offered the setup that makes it able to, in the same
+    /// breath that says the restart failed: the failure and the fix are one decision, and a machine
+    /// set up by hand is the one machine most in need of a press that does the setting up.
+    public static var setupTitle: String { Localized.text("Set up this server") }
+
+    public static var setupDetail: String {
+        Localized.text(
+            "This server was started by hand, so nothing on it can restart it. One press installs the managed service that keeps its model list current and lets every device restart it — no terminal needed on that machine.")
+    }
+
+    public static var setupAction: String { Localized.text("Set up") }
+    public static var setupUnderway: String { Localized.text("Setting up…") }
+
+    public static var setupFailedTitle: String { Localized.text("Setup did not take") }
+
+    public static var setupFailedDetail: String {
+        Localized.text(
+            "The install ran but the machine does not restart cleanly. Run the opencode setup command on it by hand, then try again.")
+    }
+
+    /// A restart that failed and cannot be offered a setup either — the honest refusal, said the
+    /// same on every desk.
+    public static var refusedTitle: String { Localized.text("Cannot restart") }
+
+    public static func refused(_ serverName: String) -> String {
+        Localized.text("%@ cannot restart itself.", serverName)
+    }
+
+    /// Whether a machine can be offered the setup at all — a backend with no route for it should
+    /// never show a press that cannot land.
+    public static func isSettable(_ backend: any CodingAgentBackend) -> Bool {
+        backend is any ServeManagerBackend
+    }
+
     /// Whether this server can be asked at all. A machine set up by hand has no restart command on
     /// it, and the ask fails at the ask rather than looking like a restart that did nothing — but
     /// a client should not offer what a backend has no route for in the first place.

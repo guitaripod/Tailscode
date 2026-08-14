@@ -227,6 +227,10 @@ EOF
 }
 
 install_launchd() {
+    ## A brew formula's own service holds the port this install is about to claim. It is asked to
+    ## let go, not killed by pid — a service a package manager started has its own opinion about
+    ## being stopped, and bootout is how it is told.
+    launchctl bootout "gui/$(id -u)/com.opencode.serve" >/dev/null 2>&1 || true
     agent "$LABEL" "$RUNNER" "" >/dev/null
     agent "$LABEL.refresh" "$REFRESHER" "$((REFRESH_MINUTES * 60))" >/dev/null
     for label in "$LABEL" "$LABEL.refresh"; do

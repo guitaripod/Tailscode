@@ -22,6 +22,26 @@ struct ModelCatalogWatchTests {
         return seen
     }
 
+    @Test("A live ask finishes once the server answers, so a subscriber's loop ends")
+    func finishesAfterAnswer() async {
+        let backend = MockBackend(models: Self.catalog)
+        let answer = await withTaskGroup(of: Int?.self) { group in
+            group.addTask {
+                var seen = 0
+                for await _ in ModelCatalogWatch.readings(profileID: "w-finish", backend: backend) {
+                    seen += 1
+                }
+                return seen
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(5))
+                return nil
+            }
+            return await group.next() ?? nil
+        }
+        #expect(answer == 2)
+    }
+
     @Test("A live ask yields the remembered list first, then the server's answer")
     func freshAnswer() async {
         let backend = MockBackend(models: Self.catalog)
