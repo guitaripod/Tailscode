@@ -252,5 +252,39 @@ extension DeviceStores {
                 EffortPreferenceStore.setEffort(nil, forKey: key)
             }
         }
+
+        @Test("Effort levels come from the picked model where the catalog names them")
+        func effortFollowsTheModel() {
+            let models = [
+                ModelInfo(
+                    id: "opus", name: "Opus", providerID: "anthropic",
+                    variants: ["low", "high", "ultracode"]),
+                ModelInfo(id: "haiku", name: "Haiku", providerID: "anthropic"),
+            ]
+            let agent = ["low", "medium", "high"]
+            #expect(
+                QuickAskEffort.options(
+                    models: models,
+                    selection: ModelSelection(providerID: "anthropic", modelID: "opus"),
+                    agentOptions: agent) == ["low", "high", "ultracode"])
+            #expect(
+                QuickAskEffort.options(
+                    models: models,
+                    selection: ModelSelection(providerID: "anthropic", modelID: "haiku"),
+                    agentOptions: agent) == agent)
+            #expect(
+                QuickAskEffort.options(models: models, selection: nil, agentOptions: agent)
+                    == agent)
+            #expect(QuickAskEffort.options(models: [], selection: nil, agentOptions: []).isEmpty)
+        }
+
+        @Test("An agent with no levels never reads as one that has a default")
+        func effortLabelStatesWhatItKnows() {
+            #expect(QuickAskEffort.label("high", options: ["low", "high"]) == "high")
+            #expect(QuickAskEffort.label(nil, options: ["low", "high"]) == "server effort")
+            #expect(QuickAskEffort.label(nil, options: []) == "no effort")
+            #expect(QuickAskEffort.isOffered(options: []) == false)
+            #expect(QuickAskEffort.isOffered(options: ["low"]))
+        }
     }
 }

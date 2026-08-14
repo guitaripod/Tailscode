@@ -24,6 +24,7 @@ final class QuickAskPanel: NSPanel {
         placeholder: Localized.text("Ask anything — no project, no setup"))
     private let serverPopup = NSPopUpButton()
     private let modelButton = NSButton()
+    private let effortButton = NSPopUpButton()
     private let attachButton = NSButton()
     private let chips = AttachmentChips()
     private let status = NSTextField(labelWithString: "")
@@ -106,6 +107,10 @@ final class QuickAskPanel: NSPanel {
         modelButton.target = self
         modelButton.action = #selector(chooseModel)
 
+        effortButton.controlSize = .small
+        effortButton.target = self
+        effortButton.action = #selector(effortChanged)
+
         attachButton.bezelStyle = .rounded
         attachButton.controlSize = .small
         attachButton.title = Localized.text("Attach…")
@@ -126,7 +131,7 @@ final class QuickAskPanel: NSPanel {
             self.syncAttachments()
         }
 
-        let aim = NSStackView(views: [serverPopup, modelButton, attachButton])
+        let aim = NSStackView(views: [serverPopup, modelButton, effortButton, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
         let column = QuickAskDropView(views: [editor, chips, aim, status, starters])
@@ -310,6 +315,53 @@ final class QuickAskPanel: NSPanel {
         }
     }
 
+    /// How hard the machine is asked to think, which is half of what a question costs and the
+    /// other half of the aim: the levels are the picked model's own where the catalog names them
+    /// and the agent's otherwise, and a pick is the quick ask's own memory on that server rather
+    /// than the machine's — the same bargain the model button strikes.
+    private func effortOptions() -> [String] {
+        let server = targetServer
+        let agent = ServerDirectory.shared.backend(for: server)?.reasoningEffortOptions ?? []
+        return QuickAskEffort.options(
+            models: ModelCatalogStore.cached(server.id),
+            selection: QuickAskDefaults.model(forProfileID: server.id), agentOptions: agent)
+    }
+
+    private func refreshEffort() {
+        let server = targetServer
+        let options = effortOptions()
+        dropUnofferedEffort(on: server.id, options: options)
+        effortButton.isHidden = !QuickAskEffort.isOffered(options: options)
+        effortButton.removeAllItems()
+        effortButton.addItem(withTitle: Localized.text("Server default"))
+        for option in options {
+            effortButton.addItem(
+                withTitle: option == Ultracode.effortLevel ? "\(option) ✦" : option)
+        }
+        let chosen = QuickAskDefaults.effort(forProfileID: server.id)
+        let index = chosen.flatMap { options.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        effortButton.selectItem(at: min(index, effortButton.numberOfItems - 1))
+    }
+
+    /// A model whose levels are its own can make the level already picked unrunnable. The aim
+    /// then hands the choice back to the machine rather than keeping a word the question could
+    /// not be asked with — a control may never name a level the send would not carry.
+    private func dropUnofferedEffort(on profileID: String, options: [String]) {
+        guard let chosen = QuickAskDefaults.effort(forProfileID: profileID), !chosen.isEmpty,
+            !options.contains(chosen)
+        else { return }
+        QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
+    }
+
+    @objc private func effortChanged() {
+        let options = effortOptions()
+        let index = effortButton.indexOfSelectedItem - 1
+        let level = options.indices.contains(index) ? options[index] : nil
+        QuickAskDefaults.recordEffort(level, forProfileID: targetServer.id)
+        refreshAim()
+        editor.focus()
+    }
+
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
     /// the strip that the new model cannot read is dropped out loud rather than carried to a send
     /// the other machine would refuse.
@@ -330,9 +382,9 @@ final class QuickAskPanel: NSPanel {
     private func refreshAim() {
         let server = targetServer
         modelButton.title = ModelBadge.label(
-            model: QuickAskDefaults.model(forProfileID: server.id),
-            effort: QuickAskDefaults.effort(forProfileID: server.id))
+            model: QuickAskDefaults.model(forProfileID: server.id), effort: nil)
         modelButton.isHidden = ModelCatalogStore.cached(server.id).isEmpty
+        refreshEffort()
         let able = abilities
         attachButton.isHidden = !able.attachments
         refreshAura()
@@ -515,6 +567,7 @@ final class QuickAskPanel: NSPanel {
         editor.isEditable = false
         serverPopup.isEnabled = false
         modelButton.isEnabled = false
+        effortButton.isEnabled = false
         attachButton.isEnabled = false
         refreshStarterVisibility()
         status.stringValue = QuickAskComposition.waitingTitle(server: server.name)
@@ -530,6 +583,7 @@ final class QuickAskPanel: NSPanel {
             self.editor.isEditable = true
             self.serverPopup.isEnabled = true
             self.modelButton.isEnabled = true
+            self.effortButton.isEnabled = true
             self.attachButton.isEnabled = true
             self.status.stringValue = "\(failure.title) — \(failure.detail)"
             self.refreshStarterVisibility()

@@ -10,8 +10,9 @@ import TailscodeCore
 /// conversation with no project directory on the server named in the chip, and the window stays
 /// up only long enough for that server to answer, so a failed mint keeps the question in hand
 /// rather than swallowing it. The aim is both halves and both are the quick ask's own: tab or a
-/// click moves the machine, `alt+m` or the model chip opens the catalog, and `QuickAskDefaults`
-/// remembers each per server beside the composer's memory rather than inside it.
+/// click moves the machine, `alt+m` or the model chip opens the catalog, `alt+e` or the effort
+/// chip says how hard it is asked to think, and `QuickAskDefaults` remembers all three per server
+/// beside the composer's memory rather than inside it.
 ///
 /// Owing no form is not the same as being able to do nothing. `alt+a` attaches a file and
 /// `alt+v` takes the clipboard's picture, offered only where the aim can read them; the empty
@@ -22,6 +23,10 @@ final class QuickAskWindow: @unchecked Sendable {
     nonisolated(unsafe) private(set) static var open: QuickAskWindow?
 
     private let servers: [ConnectionProfile]
+    /// What each machine's agent takes as an effort level, read where a backend could be asked:
+    /// this window holds profiles rather than connections, and a level it cannot offer honestly
+    /// is one it must not offer at all.
+    private let agentEfforts: [String: [String]]
     private let recents: [SessionEntry]
     private var targetIndex: Int
     private let onAsk:
@@ -34,6 +39,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private let title: UnsafeMutablePointer<GtkWidget>
     private let target: UnsafeMutablePointer<GtkWidget>
     private let model: UnsafeMutablePointer<GtkWidget>
+    private let effort: UnsafeMutablePointer<GtkWidget>
     private let attach: UnsafeMutablePointer<GtkWidget>
     private let send: UnsafeMutablePointer<GtkWidget>
     private let chips: UnsafeMutablePointer<GtkWidget>
@@ -52,7 +58,8 @@ final class QuickAskWindow: @unchecked Sendable {
     /// - Parameter onResume: opens a question already asked on this machine rather than asking a
     ///   new one.
     static func present(
-        servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
+        servers: [ConnectionProfile], agentEfforts: [String: [String]] = [:],
+        preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
         onAsk: @escaping @Sendable (
             String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
@@ -62,12 +69,13 @@ final class QuickAskWindow: @unchecked Sendable {
         guard !servers.isEmpty else { return }
         open?.close()
         open = QuickAskWindow(
-            servers: servers, preferredServer: preferredServer, recents: recents, parent: parent,
-            onAsk: onAsk, onResume: onResume)
+            servers: servers, agentEfforts: agentEfforts, preferredServer: preferredServer,
+            recents: recents, parent: parent, onAsk: onAsk, onResume: onResume)
     }
 
     private init(
-        servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
+        servers: [ConnectionProfile], agentEfforts: [String: [String]],
+        preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
         onAsk: @escaping @Sendable (
             String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
@@ -75,6 +83,7 @@ final class QuickAskWindow: @unchecked Sendable {
         onResume: @escaping @Sendable (SessionEntry) -> Void
     ) {
         self.servers = servers
+        self.agentEfforts = agentEfforts
         self.recents = recents
         self.onAsk = onAsk
         self.onResume = onResume
@@ -99,6 +108,9 @@ final class QuickAskWindow: @unchecked Sendable {
         model = Gtk.button("", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.chooseModel() }
         }
+        effort = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
+            QuickAskWindow.open?.effortRows() ?? []
+        }
         attach = Gtk.button("📎", css: ["flat", "ask-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.pickAttachments() }
         }
@@ -118,6 +130,7 @@ final class QuickAskWindow: @unchecked Sendable {
         adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
         adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), target)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), attach)
+        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), effort)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), model)
         gtk_window_set_titlebar(ptr(window), header)
 
@@ -186,6 +199,13 @@ final class QuickAskWindow: @unchecked Sendable {
             guard state & KeyChord.altMask != 0 else { return false }
             if keyval == UInt32(UnicodeScalar("m").value) {
                 Gtk.onMain { [weak self] in self?.chooseModel() }
+                return true
+            }
+            if keyval == UInt32(UnicodeScalar("e").value) {
+                Gtk.onMain { [weak self] in
+                    guard let self, gtk_widget_get_visible(self.effort) != 0 else { return }
+                    gtk_menu_button_popup(op(self.effort))
+                }
                 return true
             }
             if keyval == UInt32(UnicodeScalar("a").value) {
@@ -312,10 +332,15 @@ final class QuickAskWindow: @unchecked Sendable {
             op(UnsafeMutableRawPointer(title)), Self.subtitle())
         gtk_button_set_label(
             ptr(model),
-            ModelBadge.label(
-                model: QuickAskDefaults.model(forProfileID: server.id),
-                effort: QuickAskDefaults.effort(forProfileID: server.id)))
+            ModelBadge.label(model: QuickAskDefaults.model(forProfileID: server.id), effort: nil))
         gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
+        let levels = effortOptions()
+        dropUnofferedEffort(on: server.id, options: levels)
+        gtk_menu_button_set_label(
+            op(effort),
+            QuickAskEffort.label(
+                QuickAskDefaults.effort(forProfileID: server.id), options: levels))
+        gtk_widget_set_visible(effort, QuickAskEffort.isOffered(options: levels) ? 1 : 0)
         refreshAura()
         let able = abilities
         gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
@@ -364,6 +389,50 @@ final class QuickAskWindow: @unchecked Sendable {
         if ready { Gtk.addClass(send, "ask-send-ready") } else {
             gtk_widget_remove_css_class(send, "ask-send-ready")
         }
+    }
+
+    /// How hard the machine is asked to think, which is half of what a question costs and the
+    /// other half of the aim: the levels are the picked model's own where the catalog names them
+    /// and the agent's otherwise, and a pick is the quick ask's own memory on that server rather
+    /// than the machine's — the same bargain the model chip strikes.
+    private func effortOptions() -> [String] {
+        let server = targetServer
+        return QuickAskEffort.options(
+            models: ModelCatalogStore.cached(server.id),
+            selection: QuickAskDefaults.model(forProfileID: server.id),
+            agentOptions: agentEfforts[server.id] ?? [])
+    }
+
+    /// A model whose levels are its own can make the level already picked unrunnable. The aim
+    /// then hands the choice back to the machine rather than keeping a word the question could
+    /// not be asked with — a chip may never name a level the send would not carry.
+    private func dropUnofferedEffort(on profileID: String, options: [String]) {
+        guard let chosen = QuickAskDefaults.effort(forProfileID: profileID), !chosen.isEmpty,
+            !options.contains(chosen)
+        else { return }
+        QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
+    }
+
+    private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
+        let server = targetServer
+        var rows: [(String, String?, @Sendable () -> Void)] = [
+            (Localized.text("Server default"), Localized.text("Let the machine decide"),
+             { Gtk.onMain { QuickAskWindow.open?.setEffort(nil, on: server.id) } })
+        ]
+        for option in effortOptions() {
+            let power = option == Ultracode.effortLevel
+            rows.append(
+                (power ? "\(option) ✦" : option, power ? Ultracode.menuSubtitle : nil,
+                 { Gtk.onMain { QuickAskWindow.open?.setEffort(option, on: server.id) } }))
+        }
+        return rows
+    }
+
+    private func setEffort(_ level: String?, on profileID: String) {
+        QuickAskDefaults.recordEffort(level, forProfileID: profileID)
+        refreshTarget()
+        editor.focus()
+        AppLog.write(.ui, "ASK effort=\(level ?? "server")")
     }
 
     /// Vim is the composer's, so it is the quick ask's: the same engine, the same badge, the same

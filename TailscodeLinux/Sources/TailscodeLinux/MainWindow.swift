@@ -328,6 +328,15 @@ final class MainWindow: @unchecked Sendable {
                     self.presentServers()
                 case "settings":
                     self.presentSettings()
+                case "models":
+                    ModelChooserWindow.present(
+                        sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
+                        parent: self.window, quotas: ModelChooserDemo.quotas(),
+                        recents: ModelChooserDemo.recents
+                    ) { pick in
+                        FileHandle.standardOutput.write(
+                            Data("MODELS \(pick.serverName)/\(pick.modelName)\n".utf8))
+                    }
                 case "usage":
                     self.presentUsage()
                 case "usagestate":
@@ -2857,6 +2866,13 @@ final class MainWindow: @unchecked Sendable {
         let fallback = pane.entry?.profileID
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
+            var gathered: [String: [String]] = [:]
+            for profile in profiles {
+                gathered[profile.id] =
+                    await ServerDirectory.shared.backend(for: profile)?.reasoningEffortOptions
+                    ?? []
+            }
+            let efforts = gathered
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 guard !profiles.isEmpty else {
@@ -2864,7 +2880,8 @@ final class MainWindow: @unchecked Sendable {
                     return
                 }
                 QuickAskWindow.present(
-                    servers: profiles, preferredServer: fallback, recents: self.entries,
+                    servers: profiles, agentEfforts: efforts, preferredServer: fallback,
+                    recents: self.entries,
                     parent: self.window,
                     onAsk: { [weak self] profileID, text, attachments, done in
                         Gtk.onMain { [weak self] in
