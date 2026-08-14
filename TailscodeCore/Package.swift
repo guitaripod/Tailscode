@@ -39,7 +39,7 @@ let package = Package(
 /// never be built from an unpublished working copy.
 enum Kit {
     static let remote = "https://github.com/guitaripod/CodingAgentKit.git"
-    static let version = Version(0, 16, 0)
+    static let version = Version(0, 17, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
