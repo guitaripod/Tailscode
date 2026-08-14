@@ -112,7 +112,12 @@ Shared toolkit-free logic lives in `TailscodeCore/`. Every user-facing capabilit
 - **macOS** 26+ for TailscodeMac.
 - **Linux** with **GTK 4.12+ and libadwaita 1.4+** — Ubuntu 24.04, Debian 13, Fedora 40 and Arch all clear it; Ubuntu 22.04 and Debian 12 do not. Optional VTE, mpv and WebKitGTK add the terminal, video and browser panes. The Flatpak carries its own copies of all of it.
 - A machine on your tailnet running one of:
-  - `opencode serve` (port 4096)
+  - `opencode serve` (port 4096) — one command sets it up as a service and keeps its model list current, which a long-lived opencode server does not do on its own:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/guitaripod/Tailscode/master/scripts/opencode-serve-install.sh | bash
+    ```
+
   - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098)
 
 ## Install on Linux

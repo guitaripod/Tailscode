@@ -476,11 +476,11 @@ final class ServerSetupViewController: UIViewController {
     }
 
     private func adoptGeneratedPasswordIfNeeded() {
-        guard backend == .claudeCode, passwordField.text.isEmpty else { return }
+        guard passwordField.text.isEmpty else { return }
         showPasswordField(focus: false)
         passwordField.setText(generatedPassword)
         passwordNote.text = String(
-            localized: "Filled in below, so this phone and the bridge carry the same password.")
+            localized: "Filled in below, so this phone and the server carry the same password.")
         passwordNote.isHidden = false
     }
 

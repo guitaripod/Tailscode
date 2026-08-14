@@ -66,8 +66,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         column.addArrangedSubview(
             commandRow(label: "claude-bridge", command: ServersWindow.installCommand))
         column.addArrangedSubview(
-            commandRow(
-                label: "opencode", command: "opencode serve --hostname 0.0.0.0 --port 4096"))
+            commandRow(label: "opencode", command: BridgeInstall.opencodeInstallCommand))
 
         column.addArrangedSubview(
             stepRow(number: "3", title: Localized.text("Connect this Mac"), pill: nil))

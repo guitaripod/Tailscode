@@ -13,10 +13,19 @@ public enum BridgeInstall {
     public static let installCommand =
         "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash"
 
+    /// The same one command for the other agent: opencode itself if the machine hasn't got it, a
+    /// service that survives a reboot, and the check that keeps its model list current. That last
+    /// part is not a nicety — a long-lived `opencode serve` resolves its providers once, at
+    /// startup, so a model a plan gained today reaches no client at all until somebody restarts
+    /// the server by hand, which nobody knows to do.
+    public static let opencodeInstallCommand =
+        "curl -fsSL https://raw.githubusercontent.com/guitaripod/Tailscode/master/scripts/opencode-serve-install.sh | bash"
+
     public static func command(for backend: AgentType, password: String) -> String {
         switch backend {
         case .openCode:
-            return "opencode serve --hostname 0.0.0.0 --port 4096"
+            return
+                "curl -fsSL https://raw.githubusercontent.com/guitaripod/Tailscode/master/scripts/opencode-serve-install.sh | OPENCODE_SERVER_PASSWORD=\(password) bash"
         case .claudeCode:
             return
                 "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | BRIDGE_PASSWORD=\(password) bash"

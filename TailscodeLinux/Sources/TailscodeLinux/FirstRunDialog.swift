@@ -90,8 +90,10 @@ final class FirstRunDialog: @unchecked Sendable {
             note: Localized.text("Needs git and a Swift 6 toolchain on that machine."))
         appendCommand(
             to: content, label: "opencode",
-            command: "curl -fsSL https://opencode.ai/install | bash",
-            note: Localized.text("Then: opencode serve --hostname 0.0.0.0 --port 4096"))
+            command: BridgeInstall.command(for: .openCode, password: mintedPassword),
+            note: Localized.text(
+                "Installs opencode if it is missing, serves it on port 4096, and keeps its model list current."
+            ))
 
         appendStep(to: content, number: "3", title: Localized.text("Connect this machine"), pill: nil)
 
