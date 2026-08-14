@@ -29,7 +29,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev libgdk-pixbuf-2.0-dev libepoxy-dev \
             libvte-2.91-gtk4-dev libmpv-dev libwebkitgtk-6.0-dev \
-            desktop-file-utils appstream git curl
+            desktop-file-utils appstream git curl xvfb xauth
 
       # Every optional pane is decided by probing for its headers at manifest time, so a missing
       # -dev package does not fail the build — it silently ships an app without the terminal, the
@@ -67,10 +67,13 @@ jobs:
             echo "$floor is newer than GLIBC_2.39 — this artifact would not run on Ubuntu 24.04"
             exit 1; }
 
+      # The tarball stages into build/linux-tarball, which is the tree that actually ships — the
+      # binary is checked where a user will find it rather than in a staging path this job never
+      # writes.
       - name: It starts
         run: |
-          xvfb-run -a build/linux-stage/usr/bin/tailscode --version ||
-            build/linux-stage/usr/bin/tailscode --version
+          xvfb-run -a build/linux-tarball/usr/bin/tailscode --version ||
+            build/linux-tarball/usr/bin/tailscode --version
 
       - uses: actions/upload-artifact@v4
         with:
@@ -83,4 +86,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" build/*.tar.gz build/*.sha256 --clobber
+        run: |
+          # A tag pushed from a working copy has no release object behind it, and uploading to one
+          # that does not exist fails the job after the artifact is already built. The release is
+          # made if it is missing; the prose is the same text every other store front gets, and the
+          # generated commit list stands in only when that file has nothing for this version yet.
+          version=${GITHUB_REF_NAME#v}
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if notes=$(python3 -c "import json;print(json.load(open('docs/release-notes.json'))['$version']['en-US'])" 2>/dev/null); then
+              gh release create "$GITHUB_REF_NAME" --title "$version" --notes "$notes"
+            else
+              gh release create "$GITHUB_REF_NAME" --title "$version" --generate-notes
+            fi
+          fi
+          gh release upload "$GITHUB_REF_NAME" build/*.tar.gz build/*.sha256 --clobber
