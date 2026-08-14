@@ -208,7 +208,8 @@ final class ServersWindow: NSWindowController {
 
     /// The press states its cost first, then hands the ask over and stops: the connection it went
     /// over dies with the process it restarted, so the reconnect every screen already watches is
-    /// what says the machine is back.
+    /// what says the machine is back. A machine set up by hand refuses the restart, and the refusal
+    /// is the offer: the setup that makes it restartable is one press, not a terminal instruction.
     @objc private func restartTapped(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
             let profile = ServerDirectory.shared.profiles.first(where: { $0.id == id })
@@ -221,18 +222,55 @@ final class ServersWindow: NSWindowController {
         ) {
             Task { [weak self] in
                 guard
-                    let restartable = ServerDirectory.shared.backend(for: profile)
-                        as? any RestartableBackend
+                    let backend = ServerDirectory.shared.backend(for: profile),
+                    let restartable = backend as? any RestartableBackend
                 else { return }
                 do {
                     try await restartable.restart()
                     self?.setStatus(ServerRestart.underway)
                 } catch {
-                    self?.setStatus(
-                        Localized.text(
-                            "%@ would not restart — %@", profile.name,
-                            (error as? AgentError)?.errorDescription
-                                ?? error.localizedDescription))
+                    self?.offerSetup(name: profile.name, backend: backend)
+                }
+            }
+        }
+    }
+
+    private func offerSetup(name: String, backend: any CodingAgentBackend) {
+        guard let settable = backend as? any ServeManagerBackend else {
+            MacDialogs.confirm(
+                on: window,
+                title: ServerRestart.refusedTitle,
+                body: ServerRestart.refused(name),
+                confirmLabel: Localized.text("OK"),
+                destructive: false
+            ) {}
+            return
+        }
+        MacDialogs.confirm(
+            on: window,
+            title: ServerRestart.setupTitle,
+            body: ServerRestart.setupDetail,
+            confirmLabel: ServerRestart.setupAction,
+            destructive: false
+        ) {
+            Task {
+                do {
+                    try await settable.installServeManager()
+                    MacDialogs.confirm(
+                        on: self.window,
+                        title: ServerRestart.setupUnderway,
+                        body: Localized.text("%@ is restarting with its new setup.", name),
+                        confirmLabel: Localized.text("OK"),
+                        destructive: false
+                    ) {}
+                } catch {
+                    MacDialogs.confirm(
+                        on: self.window,
+                        title: ServerRestart.setupFailedTitle,
+                        body: ServerRestart.setupFailedDetail,
+                        confirmLabel: Localized.text("OK"),
+                        destructive: false
+                    ) {}
                 }
             }
         }

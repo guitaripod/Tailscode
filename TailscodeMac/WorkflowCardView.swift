@@ -30,10 +30,13 @@ enum WorkflowCardView {
         header.orientation = .horizontal
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
+        let expanded = context.isExpanded(key)
         header.addArrangedSubview(
             RowKit.label(glyph(run, now), font: MacTheme.Ramp.font(.code), color: glyphColor(run)))
-        header.addArrangedSubview(
-            RowKit.label("▸ workflow", font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
+        let word = RowKit.label(
+            "\(ToolRowView.disclosureGlyph(expanded)) workflow", font: MacTheme.Ramp.font(.code),
+            color: MacTheme.Color.label)
+        header.addArrangedSubview(word)
         header.addArrangedSubview(
             RowKit.label(
                 name(run, call), font: MacTheme.Ramp.font(.workflowName),
@@ -52,8 +55,9 @@ enum WorkflowCardView {
         let toggle = context.onToggle
         let reveal = context.revealRow
         return DisclosureRow(
-            header: header, expanded: context.isExpanded(key),
+            header: header, expanded: expanded,
             onToggle: { open, row in
+                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) workflow"
                 toggle?(key, open)
                 if open { reveal?(row) }
             }
@@ -279,7 +283,7 @@ enum WorkflowCardView {
         header.addArrangedSubview(tool)
         let elapsed = RowKit.label(
             agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
-            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.tertiaryLabel)
+            font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.secondaryLabel)
         elapsed.isHidden = agent.elapsed(at: now) == nil
         header.addArrangedSubview(elapsed)
 

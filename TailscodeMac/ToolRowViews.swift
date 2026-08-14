@@ -13,6 +13,7 @@ enum ToolRowView {
         guard hasBody(call, summary) else {
             let blank = disclosureMark(false)
             blank.alphaValue = 0
+            blank.setAccessibilityElement(false)
             header.insertArrangedSubview(blank, at: 0)
             return header
         }
