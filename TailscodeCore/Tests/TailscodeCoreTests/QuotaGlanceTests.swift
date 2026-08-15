@@ -76,6 +76,36 @@ struct QuotaGlanceTests {
         #expect(strip.lines[1].trailing == "40%")
     }
 
+    @Test("A wall names every provider still open, not just the roomiest one")
+    func reliefNamesEveryOpenProvider() {
+        let strip = glance([
+            ("arch", quota("opencode go", [("Weekly", 1.0)])),
+            ("arch", quota("Claude", [("5-hour session", 0.63), ("Weekly", 0.42)])),
+            ("arch", quota("Grok", [("Monthly spend", 0.14)])),
+        ])
+        #expect(strip.lines[0].tone == .danger)
+        #expect(strip.lines[1].text.contains("Grok"))
+        #expect(strip.lines[1].tone == .ok)
+        #expect(strip.lines.contains { $0.text.contains("Claude") && $0.trailing == "63%" })
+        #expect(strip.lines.contains { $0.text.contains("Claude") && $0.tone == .warn })
+    }
+
+    @Test("Open providers past the strip's room are counted, never dropped")
+    func reliefOverflow() {
+        let strip = glance([
+            ("arch", quota("opencode go", [("Weekly", 1.0)])),
+            ("arch", quota("Claude", [("Weekly", 0.5)])),
+            ("arch", quota("Grok", [("Weekly credits", 0.1)])),
+            ("arch", quota("Kimi", [("Weekly", 0.2)])),
+            ("arch", quota("Bonsai", [("Weekly", 0.3)])),
+        ])
+        #expect(strip.lines.filter { $0.kind == .window }.count == 4)
+        #expect(
+            strip.lines.contains {
+                $0.kind == .notice && $0.text == Localized.text("+%@ more open", "1")
+            })
+    }
+
     @Test("A wall around one model leaves its provider open")
     func scopedWall() {
         let strip = glance([

@@ -1060,6 +1060,15 @@ public enum SelfTest {
             wall.lines[1].tone == .ok && wall.lines[1].text.contains("Grok"),
             "and the strip says where there is still room")
 
+        let crowded = glance([
+            ("", quota("opencode go", [("Weekly", 1.0)])),
+            ("", quota("Claude", [("5-hour session", 0.63), ("Weekly", 0.42)])),
+            ("", quota("Grok", [("Monthly spend", 0.14)])),
+        ])
+        try expect(
+            crowded.lines.contains { $0.text.contains("Claude") && $0.trailing == "63%" },
+            "a wall names every provider still open, never only the roomiest")
+
         let shut = glance([
             ("", quota("Claude", [("Weekly", 1.0)])),
             ("", quota("Grok", [("Weekly credits", 1.0)])),

@@ -110,7 +110,7 @@ public struct QuotaGlance: Sendable, Equatable {
                             "+%@ more used up", String(walls.count - maxWindows)),
                         tone: .danger))
             }
-            lines.append(relief(among: windows, walls: walls, holdings: holdings, now: now))
+            lines += relief(among: windows, walls: walls, holdings: holdings, now: now)
         } else {
             let warm =
                 windows
@@ -164,13 +164,19 @@ public struct QuotaGlance: Sendable, Equatable {
             fraction: clamped(gauge.fraction), slug: holding.slug)
     }
 
-    /// The line a wall is only useful with: where there is still room. A provider is only shut out
+    /// The lines a wall is only useful with: where there is still room. A provider is only shut out
     /// by a window that meters its whole account — a wall around one model leaves the provider
     /// open, which is exactly the difference between picking something else and waiting.
+    ///
+    /// *Every* provider still open gets a line, roomiest first, rather than only the one with the
+    /// most left. Naming one and dropping the rest is not brevity: it reads as the whole answer to
+    /// what is left, so an account holding four live providers with one window full showed up as
+    /// an account holding one — and the provider a person actually sends with can be the one that
+    /// silently goes missing.
     private static func relief(
         among windows: [(QuotaHolding, UsageQuota.Gauge)],
         walls: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding], now: Date
-    ) -> Line {
+    ) -> [Line] {
         let blocked = Set(
             walls.filter { QuotaBinding.scope(of: $0.1) == .account }.map { key($0.0) })
         let open = windows.filter {
@@ -182,23 +188,44 @@ public struct QuotaGlance: Sendable, Equatable {
             if let held = tightestPerProvider[id], held.1.fraction >= entry.1.fraction { continue }
             tightestPerProvider[id] = entry
         }
-        guard
-            let pick = tightestPerProvider.values.min(by: { $0.1.fraction < $1.1.fraction })
-        else {
-            if let money = balance(in: holdings), money.1.fraction < QuotaSurface.exhaustedFloor {
-                return Line(
-                    kind: .notice, text: Localized.text("Only the prepaid balance is left"),
-                    tone: .warn)
-            }
-            return Line(
-                kind: .notice, text: Localized.text("Nothing left to send with"), tone: .danger)
+        let ranked = tightestPerProvider.values.sorted {
+            $0.1.fraction != $1.1.fraction
+                ? $0.1.fraction < $1.1.fraction
+                : $0.0.providerName < $1.0.providerName
         }
-        return Line(
-            kind: .window,
-            text: Localized.text(
-                "%@ %@ still open", pick.0.providerName, pick.1.label),
-            trailing: percent(pick.1), tone: .ok, fraction: clamped(pick.1.fraction),
-            slug: pick.0.slug)
+        guard let pick = ranked.first else {
+            if let money = balance(in: holdings), money.1.fraction < QuotaSurface.exhaustedFloor {
+                return [
+                    Line(
+                        kind: .notice, text: Localized.text("Only the prepaid balance is left"),
+                        tone: .warn)
+                ]
+            }
+            return [
+                Line(kind: .notice, text: Localized.text("Nothing left to send with"), tone: .danger)
+            ]
+        }
+        var out = [
+            Line(
+                kind: .window,
+                text: Localized.text(
+                    "%@ %@ still open", pick.0.providerName, pick.1.label),
+                trailing: percent(pick.1), tone: .ok, fraction: clamped(pick.1.fraction),
+                slug: pick.0.slug)
+        ]
+        let rest = ranked.dropFirst()
+        out += rest.prefix(maxWindows - 1).map {
+            line(for: $0.0, $0.1, tone: $0.1.fraction >= warmFloor ? .warn : .ok, now: now)
+        }
+        if rest.count > maxWindows - 1 {
+            out.append(
+                Line(
+                    kind: .notice,
+                    text: Localized.text(
+                        "+%@ more open", String(rest.count - (maxWindows - 1))),
+                    tone: .quiet))
+        }
+        return out
     }
 
     private static func balanceLine(_ holding: QuotaHolding, _ gauge: UsageQuota.Gauge) -> Line {
