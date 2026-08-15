@@ -34,7 +34,7 @@ enum WorkflowCardView {
         header.addArrangedSubview(
             RowKit.label(glyph(run, now), font: MacTheme.Ramp.font(.code), color: glyphColor(run)))
         let word = RowKit.label(
-            "\(ToolRowView.disclosureGlyph(expanded)) workflow", font: MacTheme.Ramp.font(.code),
+            "\(ToolRowView.disclosureGlyph(expanded)) \(Localized.text("workflow"))", font: MacTheme.Ramp.font(.code),
             color: MacTheme.Color.label)
         header.addArrangedSubview(word)
         header.addArrangedSubview(
@@ -57,7 +57,7 @@ enum WorkflowCardView {
         return DisclosureRow(
             header: header, expanded: expanded,
             onToggle: { open, row in
-                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) workflow"
+                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) \(Localized.text("workflow"))"
                 toggle?(key, open)
                 if open { reveal?(row) }
             }

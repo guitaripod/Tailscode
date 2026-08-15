@@ -492,7 +492,7 @@ enum SubagentRowView {
         let expanded = context.isExpanded(key)
         header.addArrangedSubview(ToolRowView.glyphLabel(call.status))
         let word = RowKit.label(
-            "\(ToolRowView.disclosureGlyph(expanded)) agent", font: MacTheme.Ramp.font(.toolName),
+            "\(ToolRowView.disclosureGlyph(expanded)) \(Localized.text("agent"))", font: MacTheme.Ramp.font(.toolName),
             color: MacTheme.Color.label)
         header.addArrangedSubview(word)
         let title = call.summary.title ?? call.title ?? call.name
@@ -517,7 +517,7 @@ enum SubagentRowView {
         return DisclosureRow(
             header: header, expanded: expanded,
             onToggle: { [weak context] open, row in
-                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) agent"
+                word.stringValue = "\(ToolRowView.disclosureGlyph(open)) \(Localized.text("agent"))"
                 toggle?(key, open)
                 if open { reveal?(row) }
                 if open, context?.subagentRows[call.id] == nil { request?(call) }
