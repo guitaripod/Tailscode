@@ -142,9 +142,8 @@ final class ChatPane: @unchecked Sendable {
     private var modelsReachable: Bool?
     private var catalogWatchTask: Task<Void, Never>?
     private var commands: [AgentCommand] = []
-    private var completionPopover: UnsafeMutablePointer<GtkWidget>?
-    private(set) var completionMatches: [AgentCommand] = []
-    private var completionCursor = 0
+    private lazy var completion = SlashPopover(anchor: composerScroller)
+    var completionMatches: [AgentCommand] { completion.matches }
     private var chosenModel: ModelSelection?
     private var chosenEffort: String?
     var ultracodeInFlight = false
@@ -1208,7 +1207,13 @@ final class ChatPane: @unchecked Sendable {
                     .keys.sorted().joined(separator: ", "))
         if updatedLastRowInPlace(rows) { return }
         if pointerHeld, !placeholderShown, fillComplete {
+            let first = heldRows == nil
             heldRows = rows
+            if first {
+                Gtk.after(Self.pointerHoldCeiling) { [weak self] in
+                    Gtk.onMain { [weak self] in self?.releasePointer() }
+                }
+            }
             return
         }
         let initialFill = placeholderShown
@@ -1322,6 +1327,9 @@ final class ChatPane: @unchecked Sendable {
     /// a tenth of a second later.
     private var pointerHeld = false
     private var heldRows: [TranscriptRow]?
+    /// A press the toolkit never finishes — a gesture claimed and then dropped without a cancel —
+    /// must not stop the transcript for the rest of the turn. Long enough that no click reaches it.
+    private static let pointerHoldCeiling: UInt32 = 1200
 
     private func releasePointer() {
         pointerHeld = false
@@ -2404,14 +2412,16 @@ final class ChatPane: @unchecked Sendable {
 
         if completionShown {
             switch keyval {
-            case Keymap.tab: acceptCompletion(at: completionCursor); return true
-            case Keymap.shiftTab: moveCompletion(by: -1); return true
-            case Keymap.down: moveCompletion(by: 1); return true
-            case Keymap.up: moveCompletion(by: -1); return true
-            case Keymap.escape: dismissCompletion(); return true
+            case Keymap.tab:
+                if let command = completion.selected { acceptSlashCommand(command) }
+                return true
+            case Keymap.shiftTab: completion.move(by: -1); return true
+            case Keymap.down: completion.move(by: 1); return true
+            case Keymap.up: completion.move(by: -1); return true
+            case Keymap.escape: completion.dismiss(); return true
             default:
-                if control, Keymap.scalar(keyval) == "n" { moveCompletion(by: 1); return true }
-                if control, Keymap.scalar(keyval) == "p" { moveCompletion(by: -1); return true }
+                if control, Keymap.scalar(keyval) == "n" { completion.move(by: 1); return true }
+                if control, Keymap.scalar(keyval) == "p" { completion.move(by: -1); return true }
             }
         }
 
@@ -2642,49 +2652,24 @@ final class ChatPane: @unchecked Sendable {
         gtk_adjustment_set_value(adjustment, next)
     }
 
-    /// Typing `/word` offers what it could become, right above the prompt box. The popover never
-    /// takes focus — it is a suggestion, not a dialog.
-    var completionShown: Bool {
-        completionPopover.map { gtk_widget_get_visible($0) != 0 } ?? false
-    }
+    /// Typing `/word` offers what it could become, right above the prompt box, through the same
+    /// popover the quick ask paints — one list, so neither composer can learn something the other
+    /// does not.
+    var completionShown: Bool { completion.isShown }
 
     private func updateSlashCompletion() {
         let typing = !Preferences.vimComposer || vim.mode == .insert
         guard typing else {
-            dismissCompletion()
+            completion.dismiss()
             return
         }
-        let presentation = SlashPresentation.of(
-            text: composerText(), commands: commands,
-            recents: SlashRecents.surviving(in: commands))
-        switch presentation {
-        case .hidden:
-            dismissCompletion()
-        case .naming(let matches):
-            completionMatches = matches.map(\.command)
-            completionCursor = min(completionCursor, max(0, matches.count - 1))
-            renderCompletion(presentation)
-        case .arguments, .noMatch:
-            completionMatches = []
-            completionCursor = 0
-            renderCompletion(presentation)
-        }
-    }
-
-    private func moveCompletion(by delta: Int) {
-        let count = completionMatches.count
-        guard count > 0 else { return }
-        completionCursor = ((completionCursor + delta) % count + count) % count
-        renderCompletion(
-            .naming(
-                matches: completionMatches.map {
-                    SlashMatch(command: $0, kind: .prefix, highlight: [])
-                }))
-    }
-
-    private func acceptCompletion(at index: Int) {
-        guard index < completionMatches.count else { return }
-        acceptSlashCommand(completionMatches[index])
+        completion.hasProject = entry?.session.directory?.isEmpty == false
+        completion.catalogSize = commands.count
+        completion.renderCompletion(
+            SlashPresentation.of(
+                text: composerText(), commands: commands,
+                recents: SlashRecents.surviving(in: commands)),
+            cursor: completion.cursor)
     }
 
     private func acceptSlashCommand(_ command: AgentCommand) {
@@ -2702,120 +2687,7 @@ final class ChatPane: @unchecked Sendable {
     }
 
     func dismissCompletion() {
-        guard let completionPopover, gtk_widget_get_visible(completionPopover) != 0 else {
-            return
-        }
-        gtk_popover_popdown(ptr(completionPopover))
-    }
-
-    /// Argument stage, hints, and no-match live here with the naming list — the greppable anchor
-    /// for slashCompletion on Linux.
-    private func renderCompletion(_ presentation: SlashPresentation? = nil) {
-        let anchor = composerScroller
-        let surface =
-            presentation
-            ?? SlashPresentation.of(
-                text: composerText(), commands: commands,
-                recents: SlashRecents.surviving(in: commands))
-        guard surface.isVisible else {
-            dismissCompletion()
-            return
-        }
-        let popover: UnsafeMutablePointer<GtkWidget>
-        if let existing = completionPopover {
-            popover = existing
-        } else {
-            popover = gtk_popover_new()!
-            gtk_widget_set_parent(popover, anchor)
-            gtk_popover_set_autohide(ptr(popover), 0)
-            gtk_popover_set_has_arrow(ptr(popover), 0)
-            gtk_popover_set_position(ptr(popover), GTK_POS_TOP)
-            completionPopover = popover
-        }
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        switch surface {
-        case .hidden:
-            break
-        case .naming(let matches):
-            let start = max(0, min(completionCursor - 3, matches.count - 8))
-            let end = min(matches.count, start + 8)
-            for index in start..<end {
-                let command = matches[index].command
-                gtk_box_append(
-                    ptr(column),
-                    completionButton(
-                        title: "/\(command.name)",
-                        detail: [command.argumentHint, command.details, command.scope]
-                            .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · "),
-                        selected: index == completionCursor
-                    ) { [weak self] in
-                        Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
-                    })
-            }
-            if start > 0 || end < matches.count {
-                let hidden = matches.count - (end - start)
-                gtk_box_append(
-                    ptr(column),
-                    Gtk.label("… \(hidden) more", css: "row-detail", selectable: false))
-            }
-        case .arguments(let command, let typed):
-            gtk_box_append(
-                ptr(column),
-                Gtk.label("/\(command.name)", css: "row-title", selectable: false))
-            if let hint = command.argumentHint, !hint.isEmpty {
-                gtk_box_append(
-                    ptr(column), Gtk.label(hint, css: "row-title", selectable: false))
-            }
-            if !command.details.isEmpty {
-                gtk_box_append(
-                    ptr(column),
-                    Gtk.label(command.details, css: "row-detail", selectable: false))
-            }
-            if !typed.isEmpty {
-                gtk_box_append(
-                    ptr(column),
-                    Gtk.label(
-                        Localized.text("Writing: %@", typed), css: "row-detail",
-                        selectable: false))
-            }
-        case .noMatch(let query):
-            gtk_box_append(
-                ptr(column),
-                Gtk.label(
-                    Localized.text("No command named “%@”", query), css: "row-detail",
-                    selectable: false))
-            if !commands.isEmpty {
-                gtk_box_append(
-                    ptr(column),
-                    completionButton(
-                        title: Localized.text("Browse every command"),
-                        detail: Localized.text("%@ on this server", "\(commands.count)"),
-                        selected: false
-                    ) { [weak self] in
-                        Gtk.onMain { [weak self] in self?.presentCommandCatalog() }
-                    })
-            }
-        }
-        gtk_popover_set_child(ptr(popover), column)
-        gtk_popover_popup(ptr(popover))
-    }
-
-    private func completionButton(
-        title: String, detail: String, selected: Bool, action: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let item = gtk_button_new()!
-        Gtk.addClass(item, "flat")
-        if selected { Gtk.addClass(item, "completion-selected") }
-        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        gtk_box_append(ptr(lines), Gtk.label(title, css: "row-title", selectable: false))
-        if !detail.isEmpty {
-            let label = Gtk.label(detail, css: "row-detail", selectable: false)
-            gtk_label_set_max_width_chars(op(label), 64)
-            gtk_box_append(ptr(lines), label)
-        }
-        gtk_button_set_child(ptr(item), lines)
-        Gtk.connect(UnsafeMutableRawPointer(item), "clicked", action)
-        return item
+        completion.dismiss()
     }
 
     /// The greppable catalog surface for Linux — every command this server offers.
