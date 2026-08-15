@@ -49,7 +49,7 @@ final class ChatPane: @unchecked Sendable {
     private var contextEstimate: Int?
     private var echoedPrompt: String?
     private var pendingFirstMessage:
-        (sessionID: String, text: String, attachments: [PendingAttachment])?
+        (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var notice: String?
     let editor = PromptEditor(
         css: "composer", placeholder: Localized.text("Message… (/ for commands)"))
@@ -667,16 +667,16 @@ final class ChatPane: @unchecked Sendable {
     /// same way. The key is what makes misdelivery impossible: a stream that reaches the words
     /// for any other session drops them rather than sending a question into a stranger's chat.
     func queueFirstMessage(
-        _ text: String, attachments: [PendingAttachment] = [], forSession sessionID: String
+        _ send: QuickAskSend, attachments: [PendingAttachment] = [], forSession sessionID: String
     ) {
-        pendingFirstMessage = (sessionID, text, attachments)
+        pendingFirstMessage = (sessionID, send, attachments)
     }
 
     /// The one read of the queue, serialized through the GTK main loop because the queue is
     /// written there: whichever stream task reaches its conversation first takes the whole value,
     /// and everyone else sees nothing.
     private func takeQueuedFirstMessage() async
-        -> (sessionID: String, text: String, attachments: [PendingAttachment])?
+        -> (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     {
         await withCheckedContinuation { continuation in
             Gtk.onMain { [weak self] in
@@ -818,17 +818,24 @@ final class ChatPane: @unchecked Sendable {
             {
                 let model = self.chosenModel
                 let effort = self.chosenEffort
+                let words = queued.send.text
                 Gtk.onMain { [weak self] in
                     guard let self, self.sessionID == sessionID else { return }
-                    self.echoedPrompt = queued.text
-                    if Ultracode.invokes(queued.text) || effort == Ultracode.effortLevel {
+                    self.echoedPrompt = words
+                    if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
                         self.ultracodeInFlight = true
                         self.refreshUltracodeAura()
                     }
                 }
-                try? await conversation.send(
-                    queued.text, model: model, reasoningEffort: effort,
-                    attachments: queued.attachments.map(\.prompt))
+                switch queued.send.kind {
+                case .prompt:
+                    try? await conversation.send(
+                        words, model: model, reasoningEffort: effort,
+                        attachments: queued.attachments.map(\.prompt))
+                case .command(let command, let arguments):
+                    try? await conversation.run(
+                        command, arguments: arguments, model: model, reasoningEffort: effort)
+                }
             }
             var countedMessages = -1
             let tracing = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil

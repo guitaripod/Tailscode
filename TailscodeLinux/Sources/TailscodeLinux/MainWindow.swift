@@ -2153,7 +2153,7 @@ final class MainWindow: @unchecked Sendable {
     /// the copy the dialog captured would hit the same wrong port again.
     private func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil, attachments: [PendingAttachment] = [],
+        firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
         quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
@@ -2171,16 +2171,18 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// - Parameter firstMessage: words that should go out the moment the minted chat's own
-    ///   conversation exists — queued on the pane keyed to the minted session in the same main
-    ///   loop turn that opens it, so nothing can slip between the queue and the open and no
-    ///   other conversation can ever inherit them. A failed mint queues nothing.
+    /// - Parameter firstMessage: what should go out the moment the minted chat's own conversation
+    ///   exists — queued on the pane keyed to the minted session in the same main loop turn that
+    ///   opens it, so nothing can slip between the queue and the open and no other conversation can
+    ///   ever inherit it. A failed mint queues nothing. It carries the decision the surface already
+    ///   made rather than bare words, because the catalog that answers `/` belongs to the machine
+    ///   the question was aimed at and is fetched long before the chat it will run in exists.
     /// - Parameter quickAsk: stamps the minted conversation with the quick ask's own aim, so the
     ///   question runs on the model it was aimed at rather than on the server's own memory, which
     ///   the aim deliberately left alone.
     private func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
-        firstMessage: String? = nil, attachments: [PendingAttachment] = [],
+        firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
         quickAsk: Bool = false,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
@@ -2861,12 +2863,14 @@ final class MainWindow: @unchecked Sendable {
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
             var gathered: [String: [String]] = [:]
+            var grammar: [String: Bool] = [:]
             for profile in profiles {
-                gathered[profile.id] =
-                    await ServerDirectory.shared.backend(for: profile)?.reasoningEffortOptions
-                    ?? []
+                let backend = await ServerDirectory.shared.backend(for: profile)
+                gathered[profile.id] = backend?.reasoningEffortOptions ?? []
+                grammar[profile.id] = backend?.resolvesCommandsFromPromptText == true
             }
             let efforts = gathered
+            let promptTextGrammar = grammar
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 guard !profiles.isEmpty else {
@@ -2874,14 +2878,15 @@ final class MainWindow: @unchecked Sendable {
                     return
                 }
                 QuickAskWindow.present(
-                    servers: profiles, agentEfforts: efforts, preferredServer: fallback,
+                    servers: profiles, agentEfforts: efforts,
+                    promptTextGrammar: promptTextGrammar, preferredServer: fallback,
                     recents: self.entries,
                     parent: self.window,
-                    onAsk: { [weak self] profileID, text, attachments, done in
+                    onAsk: { [weak self] profileID, send, attachments, done in
                         Gtk.onMain { [weak self] in
                             self?.createChat(
                                 onProfileID: profileID, directory: nil, into: pane,
-                                firstMessage: text, attachments: attachments, quickAsk: true,
+                                firstMessage: send, attachments: attachments, quickAsk: true,
                                 done: done)
                         }
                     },

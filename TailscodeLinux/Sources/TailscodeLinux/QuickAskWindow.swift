@@ -27,11 +27,18 @@ final class QuickAskWindow: @unchecked Sendable {
     /// this window holds profiles rather than connections, and a level it cannot offer honestly
     /// is one it must not offer at all.
     private let agentEfforts: [String: [String]]
+    /// Which machines resolve their own slash words out of the prompt text. Read where a backend
+    /// could be asked, for the same reason the effort levels are: this window holds profiles rather
+    /// than connections, and the grammar belongs to the server the question is aimed at.
+    private let promptTextGrammar: [String: Bool]
+    /// What the aimed server can be told to do. Answered from what it last published so the first
+    /// keystroke is never blank, and corrected by a fetch behind it.
+    private var commands: [AgentCommand] = []
     private let recents: [SessionEntry]
     private var targetIndex: Int
     private let onAsk:
-        @Sendable (String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) ->
-            Void) -> Void
+        @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?)
+            -> Void) -> Void
     private let onResume: @Sendable (SessionEntry) -> Void
 
     private let window: UnsafeMutablePointer<GtkWidget>
@@ -51,6 +58,7 @@ final class QuickAskWindow: @unchecked Sendable {
     private var pastedImageCount = 0
     private var asking = false
     private var summonWatch: NSObjectProtocol?
+    private var completion: SlashPopover?
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
     ///   when it worked, or with the reason it did not; the words and their attachments travel
@@ -59,31 +67,35 @@ final class QuickAskWindow: @unchecked Sendable {
     ///   new one.
     static func present(
         servers: [ConnectionProfile], agentEfforts: [String: [String]] = [:],
+        promptTextGrammar: [String: Bool] = [:],
         preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
         onAsk: @escaping @Sendable (
-            String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
+            String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void,
         onResume: @escaping @Sendable (SessionEntry) -> Void
     ) {
         guard !servers.isEmpty else { return }
         open?.close()
         open = QuickAskWindow(
-            servers: servers, agentEfforts: agentEfforts, preferredServer: preferredServer,
-            recents: recents, parent: parent, onAsk: onAsk, onResume: onResume)
+            servers: servers, agentEfforts: agentEfforts, promptTextGrammar: promptTextGrammar,
+            preferredServer: preferredServer, recents: recents, parent: parent, onAsk: onAsk,
+            onResume: onResume)
     }
 
     private init(
         servers: [ConnectionProfile], agentEfforts: [String: [String]],
+        promptTextGrammar: [String: Bool],
         preferredServer: String?, recents: [SessionEntry],
         parent: UnsafeMutablePointer<GtkWidget>?,
         onAsk: @escaping @Sendable (
-            String, String, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
+            String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void,
         onResume: @escaping @Sendable (SessionEntry) -> Void
     ) {
         self.servers = servers
         self.agentEfforts = agentEfforts
+        self.promptTextGrammar = promptTextGrammar
         self.recents = recents
         self.onAsk = onAsk
         self.onResume = onResume
@@ -156,6 +168,13 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_box_append(ptr(column), starters)
         editor.carryModeOn(field)
 
+        let completion = SlashPopover(anchor: field)
+        completion.hasProject = false
+        completion.onPick = { [weak self] command in
+            Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
+        }
+        self.completion = completion
+
         /// The whole surface takes a drop, not a button on it: something dragged out of a file
         /// manager is a question about that thing, and aiming it at a paperclip is not a gesture
         /// anybody should have to make.
@@ -169,11 +188,33 @@ final class QuickAskWindow: @unchecked Sendable {
             self?.refreshStarterVisibility()
             self?.refreshSend()
             self?.refreshAura()
+            self?.updateSlashCompletion()
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
             let control = state & KeyChord.controlMask != 0
             let shift = state & Keymap.shift != 0
+            if self.completion?.isShown == true {
+                if keyval == Keymap.down || (control && keyval == UInt32(UnicodeScalar("n").value)) {
+                    Gtk.onMain { [weak self] in self?.completion?.move(by: 1) }
+                    return true
+                }
+                if keyval == Keymap.up || (control && keyval == UInt32(UnicodeScalar("p").value)) {
+                    Gtk.onMain { [weak self] in self?.completion?.move(by: -1) }
+                    return true
+                }
+                if keyval == Keymap.tab {
+                    Gtk.onMain { [weak self] in
+                        guard let self, let command = self.completion?.selected else { return }
+                        self.acceptSlashCommand(command)
+                    }
+                    return true
+                }
+                if keyval == Keymap.escape {
+                    Gtk.onMain { [weak self] in self?.completion?.dismiss() }
+                    return true
+                }
+            }
             if let claimed = self.vimKey(keyval: keyval, state: state) { return claimed }
             if keyval == Keymap.escape {
                 Gtk.onMain { [weak self] in self?.close() }
@@ -239,6 +280,7 @@ final class QuickAskWindow: @unchecked Sendable {
         refreshTarget()
         restoreDraft()
         updateVimBadge()
+        loadCommands()
         gtk_window_present(ptr(window))
         editor.focus()
         AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
@@ -280,6 +322,53 @@ final class QuickAskWindow: @unchecked Sendable {
         refreshTarget()
         write(DraftStore.text(for: draftScope))
         refreshAura()
+        loadCommands()
+    }
+
+    /// A question typed here can be a command, so the surface has to know what the machine it is
+    /// aimed at answers to. What that server last published is read straight away — a list that is
+    /// blank for the first second is a list nobody trusts — and the fetch behind it only corrects
+    /// it. There is no project, so the catalog is the machine's own and the commands that read a
+    /// transcript are dropped: the conversation this send mints has nothing for them to read.
+    private func loadCommands() {
+        let server = targetServer
+        commands = CommandCatalogStore.forQuickAsk(CommandCatalogStore.cached(server.id))
+        completion?.catalogSize = commands.count
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            guard let profile = profiles.first(where: { $0.id == server.id }),
+                let backend = await ServerDirectory.shared.backend(for: profile),
+                backend.capabilities.supportsCommands
+            else { return }
+            let fetched = await CommandCatalogStore.refresh(profileID: server.id, backend: backend)
+            Gtk.onMain { [weak self] in
+                guard let self, self.targetServer.id == server.id else { return }
+                self.commands = CommandCatalogStore.forQuickAsk(fetched)
+                self.completion?.catalogSize = self.commands.count
+                self.updateSlashCompletion()
+            }
+        }
+    }
+
+    private func updateSlashCompletion() {
+        guard let completion else { return }
+        let typing = !Preferences.vimComposer || editor.vim.mode == .insert
+        guard typing else {
+            completion.dismiss()
+            return
+        }
+        completion.renderCompletion(
+            SlashPresentation.of(
+                text: editor.text, commands: commands,
+                recents: SlashRecents.surviving(in: commands)),
+            cursor: completion.cursor)
+    }
+
+    private func acceptSlashCommand(_ command: AgentCommand) {
+        SlashRecents.record(command.name)
+        write(command.takesArguments ? "/\(command.name) " : "/\(command.name)")
+        editor.focus()
+        updateSlashCompletion()
     }
 
     private func cycleTarget() {
@@ -704,13 +793,18 @@ final class QuickAskWindow: @unchecked Sendable {
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         asking = true
+        completion?.dismiss()
         editor.setSensitive(false)
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
-        onAsk(server.id, text, attachments) { [weak self] failure in
+        let send = QuickAskSend.decide(
+            text: text, commands: commands,
+            resolvesFromPromptText: promptTextGrammar[server.id] == true)
+        if case .command(let command, _) = send.kind { SlashRecents.record(command.name) }
+        onAsk(server.id, send, attachments) { [weak self] failure in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
                 guard let failure else {
@@ -747,6 +841,8 @@ final class QuickAskWindow: @unchecked Sendable {
     private func close() {
         stashDraft()
         DraftStore.flush()
+        completion?.tearDown()
+        completion = nil
         if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
         summonWatch = nil
         gtk_window_destroy(ptr(window))

@@ -421,6 +421,30 @@ public enum SelfTest {
             "everything, alphabetically, for a bare slash")
         try expect(
             SlashCompletion.matches(commands, query: "zzz").isEmpty, "no match means no list")
+
+        /// A quick ask is the same box, so it answers the same grammar — except that the chat it
+        /// mints has no turns for a transcript command to read, and no project for a repository's
+        /// own commands to come from.
+        let offered = CommandCatalogStore.forQuickAsk(commands)
+        try expect(!offered.contains { $0.name == "compact" }, "a quick ask offers no compaction")
+        try expect(offered.count == commands.count - 2, "only the transcript words are dropped")
+        try expect(
+            QuickAskSend.decide(
+                text: "/flyr HEL to ICN", commands: commands, resolvesFromPromptText: false
+            ).kind == .command(commands[3], arguments: "HEL to ICN"),
+            "a typed command runs as a command")
+        try expect(
+            QuickAskSend.decide(
+                text: "/compact", commands: commands, resolvesFromPromptText: false).kind
+                == .prompt, "compaction never survives the quick ask's own catalog")
+        try expect(
+            QuickAskSend.decide(
+                text: "/flyr", commands: commands, resolvesFromPromptText: true).kind == .prompt,
+            "an agent that reads its own slash grammar gets the prompt untouched")
+        try expect(
+            SlashPresentation.noMatchWording("commit", hasProject: false)
+                != SlashPresentation.noMatchWording("commit", hasProject: true),
+            "a word missing for want of a project says so")
         return checks
     }
 
