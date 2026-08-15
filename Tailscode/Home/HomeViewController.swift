@@ -17,6 +17,14 @@ final class HomeViewController: UIViewController {
     private var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
+    private let commandPalette = SlashCommandPalette()
+    /// What the aimed machine can be told to do. Home's composer mints the conversation a command
+    /// would run in, so it owes the same grammar the chat's own composer answers: a slash typed
+    /// here is a command, not the first four letters of a question.
+    private var commands: [AgentCommand] = []
+    private var catalogProfileID: String?
+    private var composerFloor: NSLayoutConstraint!
+    private var composerRidesKeyboard: NSLayoutConstraint!
     private let settingsButton = UpdateMarkButton()
     private lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
     private let orbView = PresenceOrbView()
@@ -120,11 +128,19 @@ final class HomeViewController: UIViewController {
                     self?.focusComposer()
                 }
             }
+            if let text = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSE_TYPE"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    self?.focusComposer()
+                    self?.composerBar.tourSetText(text)
+                }
+            }
         #endif
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        composerFollowsKeyboard(composerBar.isEditing)
         if deferredSnapshot { renderSnapshot() }
         if hasAppeared { Task { await load() } }
         hasAppeared = true
@@ -145,8 +161,48 @@ final class HomeViewController: UIViewController {
 
     override var keyCommands: [UIKeyCommand]? {
         guard keyContext == .insert else { return nil }
-        return KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+        let insert = KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+        return commandPalette.isHidden ? insert : paletteKeyCommands() + insert
     }
+
+    /// Only while the list is up, and only then claiming priority over the system: the arrows have
+    /// to keep moving the caret through an ordinary question, Return has to keep sending it, and
+    /// escape has to close the list before it gives up the keyboard.
+    private func paletteKeyCommands() -> [UIKeyCommand] {
+        let bindings: [(String, Selector)] = [
+            (UIKeyCommand.inputUpArrow, #selector(paletteSelectPrevious)),
+            (UIKeyCommand.inputDownArrow, #selector(paletteSelectNext)),
+            ("\t", #selector(paletteSelectNext)),
+            ("\r", #selector(paletteAccept)),
+            (UIKeyCommand.inputEscape, #selector(paletteDismiss)),
+        ]
+        var commands = bindings.map { input, action -> UIKeyCommand in
+            let command = UIKeyCommand(input: input, modifierFlags: [], action: action)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+        let back = UIKeyCommand(
+            input: "\t", modifierFlags: .shift, action: #selector(paletteSelectPrevious))
+        back.wantsPriorityOverSystemBehavior = true
+        commands.append(back)
+        return commands
+    }
+
+    @objc private func paletteSelectNext() { commandPalette.moveSelection(by: 1) }
+
+    @objc private func paletteSelectPrevious() { commandPalette.moveSelection(by: -1) }
+
+    @objc private func paletteAccept() {
+        guard commandPalette.activateSelection() else {
+            let text = composerBar.currentText
+            guard !text.isEmpty else { return }
+            Theme.Haptics.send()
+            composerSend(text)
+            return
+        }
+    }
+
+    @objc private func paletteDismiss() { hideCommandPalette() }
 
     @objc private func handleInsertKeyCommand(_ command: UIKeyCommand) {
         guard let token = command.propertyList as? String,
@@ -165,6 +221,8 @@ final class HomeViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        composerFollowsKeyboard(false)
+        hideCommandPalette()
         stopLiveRefresh()
     }
 
@@ -1136,12 +1194,54 @@ final class HomeViewController: UIViewController {
         composerBar.delegate = self
         composerBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(composerBar)
+        composerFloor = composerBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        composerRidesKeyboard = composerBar.bottomAnchor.constraint(
+            equalTo: view.keyboardLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([
             composerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             composerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            composerBar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            composerFloor,
+        ])
+
+        commandPalette.isHidden = true
+        commandPalette.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(commandPalette)
+        NSLayoutConstraint.activate([
+            commandPalette.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            commandPalette.trailingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            commandPalette.bottomAnchor.constraint(
+                equalTo: composerBar.topAnchor, constant: Theme.Spacing.xs),
+            commandPalette.topAnchor.constraint(
+                greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
+                constant: Theme.Spacing.s),
         ])
         configureOrb()
+    }
+
+    /// The composer follows the keyboard only while this screen is the one being typed into.
+    ///
+    /// `keyboardLayoutGuide` tracks the keyboard whether or not its own view controller is on
+    /// screen, so a chat popped with its keyboard still up handed Home a guide sitting halfway up
+    /// the display — and the docked bar was drawn there, floating in the middle of the screen, for
+    /// as long as the dismissal took. Home has exactly one text field, so the rule is simple: the
+    /// bar rests at the bottom edge, and takes the keyboard's word for where it goes only from the
+    /// moment its own composer starts being typed into until this screen goes away.
+    ///
+    /// The floor is the view's own bottom rather than the safe area's: that is where the keyboard
+    /// guide sits with no keyboard up, so adopting it is a change of authority rather than a
+    /// change of position, and the bar does not hop the height of the home indicator on the first
+    /// tap.
+    private func composerFollowsKeyboard(_ follows: Bool) {
+        guard composerRidesKeyboard.isActive != follows else { return }
+        if follows {
+            composerFloor.isActive = false
+            composerRidesKeyboard.isActive = true
+        } else {
+            composerRidesKeyboard.isActive = false
+            composerFloor.isActive = true
+        }
     }
 
     private func configureOrb() {
@@ -1358,11 +1458,106 @@ extension HomeViewController: HomeComposerBarDelegate {
         composerSend(text)
     }
 
-    func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {}
+    func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {
+        composerFollowsKeyboard(true)
+        updateCommandPalette(for: bar.currentText)
+    }
 
     func homeComposerTextDidChange(_ text: String) {
+        updateCommandPalette(for: composerBar.currentText)
         guard let scope = composerDraftScope else { return }
         DraftStore.record(text, for: scope)
+    }
+
+    /// What the aimed machine can be told to do, read from memory first and corrected by the
+    /// machine afterwards. Fetched with no directory even when the composer is aimed at a project:
+    /// the catalog answers what this server knows, and the words that read a transcript are dropped
+    /// because the conversation this send mints has none.
+    private func loadCommandsIfNeeded(for profile: ConnectionProfile) {
+        guard catalogProfileID != profile.id else { return }
+        catalogProfileID = profile.id
+        commands = CommandCatalogStore.forQuickAsk(CommandCatalogStore.cached(profile.id))
+        updateCommandPalette(for: composerBar.currentText)
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsCommands
+        else {
+            commands = []
+            hideCommandPalette()
+            return
+        }
+        Task { [weak self] in
+            let fetched = await CommandCatalogStore.refresh(
+                profileID: profile.id, backend: backend)
+            guard let self, self.catalogProfileID == profile.id else { return }
+            self.commands = CommandCatalogStore.forQuickAsk(fetched)
+            self.updateCommandPalette(for: self.composerBar.currentText)
+        }
+    }
+
+    /// The same reading the chat composer answers, drawn in the same list: candidates while the
+    /// command is being named, that one command's signature once it is settled, and a word the
+    /// catalog lacks said out loud rather than left to vanish under the caret.
+    private func updateCommandPalette(for text: String) {
+        guard composerBar.isEditing, !composerBar.isHidden else { return hideCommandPalette() }
+        switch SlashPresentation.of(
+            text: text, commands: commands, recents: SlashRecents.surviving(in: commands))
+        {
+        case .hidden:
+            hideCommandPalette()
+        case .naming(let matches):
+            commandPalette.update(
+                with: .commands([
+                    SlashCommandSection(
+                        title: "",
+                        commands: matches.map { paletteRow(for: $0.command, highlight: $0.highlight) })
+                ]))
+            showCommandPalette()
+        case .arguments(let command, let typed):
+            commandPalette.update(
+                with: .arguments(command: paletteRow(for: command), typed: typed))
+            showCommandPalette()
+        case .noMatch(let query):
+            commandPalette.update(
+                with: .noMatch(
+                    wording: SlashPresentation.noMatchWording("/\(query)", hasProject: false),
+                    browse: nil))
+            showCommandPalette()
+        }
+    }
+
+    private func paletteRow(for command: AgentCommand, highlight: [Int] = []) -> SlashCommand {
+        SlashCommand(
+            id: "server:\(command.name)",
+            keywords: [command.name.lowercased()],
+            title: "/\(command.name)",
+            subtitle: command.details,
+            symbol: CommandSymbol.of(command),
+            highlight: highlight.map { $0 + 1 },
+            argumentHint: command.argumentHint,
+            badge: command.scope,
+            runsOnServer: true
+        ) { [weak self] in self?.selectCommand(command) }
+    }
+
+    private func selectCommand(_ command: AgentCommand) {
+        Theme.Haptics.selection()
+        hideCommandPalette()
+        composerBar.setText(command.takesArguments ? "/\(command.name) " : "/\(command.name)")
+        composerBar.focus()
+    }
+
+    private func showCommandPalette() {
+        guard commandPalette.isHidden else { return }
+        commandPalette.alpha = 0
+        commandPalette.isHidden = false
+        UIView.animate(withDuration: 0.18) { self.commandPalette.alpha = 1 }
+    }
+
+    private func hideCommandPalette() {
+        guard !commandPalette.isHidden else { return }
+        UIView.animate(
+            withDuration: 0.15, animations: { self.commandPalette.alpha = 0 },
+            completion: { _ in self.commandPalette.isHidden = true })
     }
 
     /// Home's composer has no session to belong to, so what is written in it belongs to where it
@@ -1427,6 +1622,7 @@ extension HomeViewController: HomeComposerBarDelegate {
         else { return }
         syncComposerDraft(
             to: .home(profileID: target.profileID, directory: target.directory))
+        loadCommandsIfNeeded(for: profile)
         let project = target.directory.map { ($0 as NSString).lastPathComponent }
         let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
         let modelLabel = modelChipLabel(for: profile)
@@ -1664,10 +1860,26 @@ extension HomeViewController: HomeComposerBarDelegate {
 
     /// The session is created only now, on commit; the composer keeps the
     /// text until the create succeeds so a dead server loses nothing.
+    /// What the words turn out to be, asked of the shared grammar before anything is minted: a
+    /// command the aimed machine knows runs as a command in the conversation this send creates, and
+    /// everything else — including a word on a server that reads its own slashes out of the prompt
+    /// — goes as the words that were written.
+    private func composerDecision(_ text: String, on profile: ConnectionProfile) -> QuickAskSend {
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsCommands
+        else { return QuickAskSend(text: text, kind: .prompt) }
+        return QuickAskSend.decide(
+            text: text, commands: commands,
+            resolvesFromPromptText: backend.resolvesCommandsFromPromptText)
+    }
+
     private func composerSend(_ text: String) {
         guard let target = composeTarget,
             let profile = viewModel.servers.first(where: { $0.id == target.profileID })
         else { return }
+        let send = composerDecision(text, on: profile)
+        if case .command(let command, _) = send.kind { SlashRecents.record(command.name) }
+        hideCommandPalette()
         composerBar.setSending(true)
         Task {
             guard let entry = await viewModel.newSession(on: profile, directory: target.directory)
@@ -1695,7 +1907,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             Theme.Haptics.success()
             openChat(
                 for: entry, seeding: modelChoices[profile.id],
-                sending: (send: QuickAskSend(text: text, kind: .prompt), attachments: []))
+                sending: (send: send, attachments: []))
         }
     }
 }
