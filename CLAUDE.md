@@ -19,6 +19,7 @@ Author on Linux, build on the Mac over Tailscale:
 - `scripts/build-mac.sh` — rsync Kit + app to `macbook`, `xcodegen`, `xcodebuild` (simulator). Use to check compilation.
 - `scripts/run-mac.sh` — build + install on an iPhone simulator + capture screenshots to `/tmp/tailscode-*.png`. Targets a specific device UDID (never `booted`, which is ambiguous when a visionOS sim is also booted).
 - `--demo` launch arg → scripted conversation (no server), for screenshots. DEBUG env `TAILSCODE_HOST`/`TAILSCODE_PASSWORD` → auto-connect for a live session-list screenshot.
+- `scripts/install-macapp.sh` — release-build TailscodeMac and replace `/Applications/Tailscode.app`. **This is the last step of any Mac work**, the same way `scripts/install-linuxapp.sh` is for Linux: a build that only ever exists under `build-mac/` is a change nobody can use, and the app launched from the Dock is the one that has to have it. `--tree <path>` / `--tree-constraints` / `--open <surface>` write any window's real geometry and Auto Layout ambiguity to a file, which is how a layout is checked without a screen.
 
 ## Develop the Linux client headlessly (never on the real desktop)
 
