@@ -149,6 +149,7 @@ final class ComposerView: NSView {
         refreshAura()
         models = modelsByProfile[entry.profileID] ?? []
         commands = commandsBySession[entry.session.id] ?? []
+        completion.hasProject = entry.session.directory != nil
         dismissCompletion()
         sendButton.title = Localized.text("Send")
         pills.setStopShown(false)

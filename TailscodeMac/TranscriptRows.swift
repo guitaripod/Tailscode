@@ -7,7 +7,7 @@ import TailscodeCore
 /// rebuilt freely; this survives them.
 @MainActor
 final class TranscriptContext {
-    var expanded: Set<String> = []
+    var expanded = TranscriptExpansion()
     /// The newest text of a thought that is still being written. A reasoning row's header counts
     /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
     /// The row is updated in place instead, and a body opened afterwards reads the current text
@@ -43,7 +43,9 @@ final class TranscriptContext {
     var resumeInterrupted: (() -> Void)?
     var dismissInterrupted: (() -> Void)?
 
-    func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
+    /// A run reads as open when any step inside it is, so folding a step into a run carries the
+    /// reader's decision in with it rather than collapsing it.
+    func isExpanded(_ key: String) -> Bool { expanded.reads(key) }
 }
 
 /// Folds messages into rows with a per-message memo: a streamed token changes one message, so
@@ -95,8 +97,17 @@ final class TranscriptRowBuilder {
 /// run row the same way the iOS app groups them, so the three clients read the middle of a turn
 /// alike.
 enum ActivityStep: Hashable {
-    case reasoning(String)
-    case tool(ToolCall)
+    case reasoning(key: String, String)
+    case tool(key: String, ToolCall)
+
+    /// The row's own durable key, carried in rather than re-derived from where the step ended up.
+    /// A step's position inside a run moves whenever the run is re-split, and a key that moves is
+    /// a reader's expansion thrown away.
+    var key: String {
+        switch self {
+        case .reasoning(let key, _), .tool(let key, _): return key
+        }
+    }
 }
 
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
@@ -277,13 +288,15 @@ struct TranscriptRow: Hashable {
     /// only what is its own card (a subagent, a workflow, a picture) never joins a run, and a run
     /// with no tools stays its own thought rows so a lone reflection still reads as one.
     ///
-    /// A run that never reached a tool emits one row per thought, and each of those rows is its own
-    /// row: `runKey` names where the run started, so handing it to all of them would give a stretch
-    /// of pure thinking N rows and one identifier. Everything downstream reads a key as an identity
-    /// — the diff anchors by it, the expansion set is keyed by it, the entrance remembers it — so
-    /// duplicates make the diff resolve to the wrong row and open every thought at once. The step's
-    /// index inside the run is what tells them apart, and it is stable while the run grows because a
-    /// thought is only ever appended.
+    /// Every step keeps the key its own row had. Everything downstream reads a key as an identity —
+    /// the diff anchors by it, the expansion is filed under it, the entrance remembers it — and a
+    /// step's place inside a run is not one: a lone call becomes the second step of a run the moment
+    /// another joins it, and the run re-splits whenever `placeBoard` lifts a board out of its
+    /// middle. Keyed by where it sat, the reader's decision was thrown away by the arrival that
+    /// reshaped the run, which reads exactly like the click never landing.
+    ///
+    /// The lone tool is emitted under the run's key for the same reason: it is the row that is about
+    /// to become a run, so its identity stops changing at the moment the fan-out starts.
     static func fuse(_ rows: [TranscriptRow]) -> [TranscriptRow] {
         var fused: [TranscriptRow] = []
         var run: [ActivityStep] = []
@@ -292,18 +305,17 @@ struct TranscriptRow: Hashable {
         func flush() {
             guard !run.isEmpty else { return }
             let tools = run.compactMap { step -> ToolCall? in
-                if case .tool(let call) = step { return call }
+                if case .tool(_, let call) = step { return call }
                 return nil
             }
             if tools.isEmpty {
-                for (offset, step) in run.enumerated() {
-                    if case .reasoning(let text) = step {
-                        fused.append(
-                            TranscriptRow(key: "\(runKey):r\(offset)", kind: .reasoning(text)))
+                for step in run {
+                    if case .reasoning(let key, let text) = step {
+                        fused.append(TranscriptRow(key: key, kind: .reasoning(text)))
                     }
                 }
             } else if tools.count == 1, run.count == 1 {
-                fused.append(TranscriptRow(key: runKey, kind: .tool(tools[0])))
+                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .tool(tools[0])))
             } else {
                 fused.append(TranscriptRow(key: "run:\(runKey)", kind: .run(run)))
             }
@@ -314,10 +326,10 @@ struct TranscriptRow: Hashable {
             switch row.kind {
             case .tool(let call):
                 if run.isEmpty { runKey = row.key }
-                run.append(.tool(call))
+                run.append(.tool(key: row.key, call))
             case .reasoning(let text):
                 if run.isEmpty { runKey = row.key }
-                run.append(.reasoning(text))
+                run.append(.reasoning(key: row.key, text))
             default:
                 flush()
                 fused.append(row)
@@ -343,8 +355,8 @@ struct TranscriptRow: Hashable {
         case .run(let steps):
             return steps.map { step -> String in
                 switch step {
-                case .reasoning(let text): return text
-                case .tool(let call): return Self.searchText(for: call)
+                case .reasoning(_, let text): return text
+                case .tool(_, let call): return Self.searchText(for: call)
                 }
             }.joined(separator: " ")
         case .file(let reference, _):

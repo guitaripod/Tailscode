@@ -1574,7 +1574,7 @@ final class MainWindowController: NSWindowController {
         QuickAskPanel.present(
             over: window, servers: profiles, preferredServer: currentEntry?.profileID,
             recents: sidebar.entries,
-            onAsk: { [weak self] profileID, text, attachments, done in
+            onAsk: { [weak self] profileID, send, attachments, done in
                 guard let self,
                     let profile = ServerDirectory.shared.profiles.first(where: {
                         $0.id == profileID
@@ -1584,7 +1584,7 @@ final class MainWindowController: NSWindowController {
                     return
                 }
                 self.mintQuickAsk(
-                    on: profile, text: text, attachments: attachments, done: done)
+                    on: profile, send: send, attachments: attachments, done: done)
             },
             onResume: { [weak self] entry in self?.sidebar.open(entry) })
     }
@@ -1593,8 +1593,13 @@ final class MainWindowController: NSWindowController {
     /// one main-actor turn, so nothing a hand does mid-flight can slip between the queue and the
     /// open, and no other conversation can ever inherit the question. A failed mint queues
     /// nothing and answers the panel with its reason.
+    ///
+    /// What travels is the decision rather than the string: the catalog that could answer a slash
+    /// belongs to the machine being aimed at, and it was read where the question was typed, so a
+    /// command typed into a quick ask runs as a command here rather than reaching the model as the
+    /// word it was typed as.
     private func mintQuickAsk(
-        on profile: ConnectionProfile, text: String, attachments: [PendingAttachment],
+        on profile: ConnectionProfile, send: QuickAskSend, attachments: [PendingAttachment],
         done: @escaping @MainActor (NewChatFailure?) -> Void
     ) {
         guard let backend = ServerDirectory.shared.backend(for: profile) else {
@@ -1621,7 +1626,7 @@ final class MainWindowController: NSWindowController {
                 host: profile.baseURL.host ?? profile.name,
                 backendType: profile.backend, session: session)
             self.transcript.queueFirstMessage(
-                text, attachments: attachments, forSession: entry.session.id)
+                send, attachments: attachments, forSession: entry.session.id)
             self.sidebar.noteCreated(entry)
             /// The panel is answered — which is what closes it — only once the conversation is
             /// on screen behind it, and the keyboard is moved after the close rather than

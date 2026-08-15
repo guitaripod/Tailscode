@@ -134,7 +134,7 @@ final class TranscriptViewController: NSViewController {
     private var unseenRows = 0
     private var echoedPrompt: String?
     private var pendingFirstMessage:
-        (sessionID: String, text: String, attachments: [PendingAttachment])?
+        (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var pendingSignature = "\u{0}"
     private var compactingElapsed: NSTextField?
     private var sessionRows: [String: [TranscriptRow]] = [:]
@@ -320,7 +320,8 @@ final class TranscriptViewController: NSViewController {
         emptyLabel.isHidden = true
         composer.isHidden = false
         composer.prepare(for: entry, backend: backend)
-        context.expanded = []
+        context.expanded.reset()
+        forgetHeldRows()
         context.subagentRows = [:]
         context.agentFacts = [:]
         inFlightImages = []
@@ -393,23 +394,42 @@ final class TranscriptViewController: NSViewController {
         if let queued = pendingFirstMessage {
             pendingFirstMessage = nil
             if queued.sessionID == entry.session.id {
-                let choice = composer.promptChoice
-                sendPrompt(
-                    queued.text, model: choice.model, effort: choice.effort,
-                    attachments: queued.attachments.map(\.prompt))
+                sendQueued(queued.send, attachments: queued.attachments)
             }
         }
     }
 
     /// A quick ask's words arrive before this pane's conversation exists, so they wait here —
-    /// keyed to the session they were minted for — and go out through `sendPrompt` the moment
-    /// open() builds that session's conversation. Any other open drops them: the key is what
-    /// makes sending a question into a stranger's chat impossible, and the caller queues in the
-    /// same main-actor turn that opens the minted chat, so nothing can slip in between.
+    /// keyed to the session they were minted for — and go out the moment open() builds that
+    /// session's conversation. Any other open drops them: the key is what makes sending a question
+    /// into a stranger's chat impossible, and the caller queues in the same main-actor turn that
+    /// opens the minted chat, so nothing can slip in between.
     func queueFirstMessage(
-        _ text: String, attachments: [PendingAttachment] = [], forSession sessionID: String
+        _ send: QuickAskSend, attachments: [PendingAttachment] = [], forSession sessionID: String
     ) {
-        pendingFirstMessage = (sessionID, text, attachments)
+        pendingFirstMessage = (sessionID, send, attachments)
+    }
+
+    /// The decision the quick ask already made, carried out rather than made again: a command goes
+    /// out through the command route exactly as picking it from the list would have sent it, and
+    /// everything else is the prompt it was written as. The catalog that could answer a slash is
+    /// the aimed machine's, and it was read where the question was typed.
+    private func sendQueued(_ send: QuickAskSend, attachments: [PendingAttachment]) {
+        let choice = composer.promptChoice
+        switch send.kind {
+        case .prompt:
+            sendPrompt(
+                send.text, model: choice.model, effort: choice.effort,
+                attachments: attachments.map(\.prompt))
+        case .command(let command, let arguments):
+            SlashRecents.record(command.name)
+            guard let conversation else { return }
+            Task {
+                try? await conversation.run(
+                    command, arguments: arguments, model: choice.model,
+                    reasoningEffort: choice.effort)
+            }
+        }
     }
 
     /// Re-dials without disturbing the stream — the socket a sleeping Mac wakes up holding looks
@@ -584,6 +604,7 @@ final class TranscriptViewController: NSViewController {
         composer.stashDraft()
         cascade.release()
         stopTailRepair()
+        forgetHeldRows()
         page?.shutdown()
         video?.shutdown()
         streamTask?.cancel()
@@ -842,11 +863,7 @@ final class TranscriptViewController: NSViewController {
     private func wireContext() {
         context.onToggle = { [weak self] key, open in
             guard let self else { return }
-            if open {
-                self.context.expanded.insert(key)
-            } else {
-                self.context.expanded.remove(key)
-            }
+            self.context.expanded.set(key, open: open)
             self.followsBottom = false
         }
         context.revealRow = { [weak self] row in
@@ -1161,7 +1178,7 @@ final class TranscriptViewController: NSViewController {
             case .tool(let call), .subagent(let call), .workflow(let call):
                 map[call.id] = call.status
             case .run(let steps):
-                for case .tool(let call) in steps { map[call.id] = call.status }
+                for case .tool(_, let call) in steps { map[call.id] = call.status }
             default:
                 break
             }
@@ -1380,7 +1397,7 @@ final class TranscriptViewController: NSViewController {
     func scrollToAgent(_ id: String) {
         for (index, row) in renderedRows.enumerated() {
             guard case .subagent(let call) = row.kind, call.id == id else { continue }
-            context.expanded.insert(row.key)
+            context.expanded.set(row.key, open: true)
             replaceRows { $0.key == row.key }
             fetchSubagent(call)
             scrollToRow(at: index)
@@ -1673,6 +1690,10 @@ final class TranscriptViewController: NSViewController {
             Set(rows.map(\.key)).count == rows.count,
             "the transcript handed one key to two rows")
         if updatedLastRowInPlace(rows) { return }
+        if pointerHeld, !placeholderShown, fillComplete {
+            holdRows(rows)
+            return
+        }
         let initialFill = placeholderShown
         if placeholderShown {
             tearDownAllRows()
@@ -1714,6 +1735,70 @@ final class TranscriptViewController: NSViewController {
         }
         scheduleImageSweep()
         if edit.complete, !findBar.isHidden { runFind(retarget: false) }
+    }
+
+    /// A click is a press and a release, and a row rebuilt between the two never becomes one.
+    ///
+    /// A run row's value changes on every arrival — a tool's status, its output, a thought still
+    /// being written inside it — so the view under the pointer is destroyed and remade dozens of
+    /// times a second while a turn runs, and AppKit resets a click recognizer whose view left the
+    /// window: the disclosure the reader is trying to open is gone before their finger comes up.
+    /// The rows are held for the length of the press and applied on the release, so a click always
+    /// lands on the row it was aimed at and the transcript catches up a tenth of a second later.
+    private var heldRows: [TranscriptRow]?
+    private var holdMonitor: Any?
+    private var holdGeneration = 0
+    /// A press this window never sees the end of — a drag that left the app, an up a sheet
+    /// swallowed — must not stop the transcript for the rest of the turn. Long enough that no
+    /// click reaches it.
+    private static let pointerHoldCeiling: TimeInterval = 1.2
+
+    /// Whether a button is down on this window. A press elsewhere on the desk is somebody else's
+    /// gesture and holds nothing here.
+    private var pointerHeld: Bool {
+        NSEvent.pressedMouseButtons != 0 && view.window?.isKeyWindow == true
+    }
+
+    private func holdRows(_ rows: [TranscriptRow]) {
+        let first = heldRows == nil
+        heldRows = rows
+        guard first else { return }
+        holdMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]
+        ) { [weak self] event in
+            DispatchQueue.main.async { [weak self] in self?.releasePointer() }
+            return event
+        }
+        holdGeneration += 1
+        let generation = holdGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pointerHoldCeiling) { [weak self] in
+            guard let self, self.holdGeneration == generation else { return }
+            self.releasePointer()
+        }
+    }
+
+    /// The release is taken one runloop hop after the mouse-up rather than inside it: the monitor
+    /// sees the event before the window dispatches it, and rebuilding the row there would tear down
+    /// the header the click is about to land on.
+    private func releasePointer() {
+        stopWatchingPointer()
+        guard let rows = heldRows else { return }
+        heldRows = nil
+        applyRows(rows)
+    }
+
+    /// What a chat switch does with a held arrival: drops it. The rows belong to the conversation
+    /// that produced them, and applying them into the one that replaced it would put a stranger's
+    /// turn on screen.
+    private func forgetHeldRows() {
+        stopWatchingPointer()
+        heldRows = nil
+    }
+
+    private func stopWatchingPointer() {
+        if let holdMonitor { NSEvent.removeMonitor(holdMonitor) }
+        holdMonitor = nil
+        holdGeneration += 1
     }
 
     /// What has to happen to the rows on screen for them to become `rows`, and whether that leaves

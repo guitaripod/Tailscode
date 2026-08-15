@@ -62,6 +62,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkTranscriptRows()
+            report("transcript rows: \(checks) claims hold — a step keeps its own key")
+        } catch {
+            report("transcript rows: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkShortcuts()
             report("shortcuts: \(checks) keys resolve, rebind and stay conflict-free")
         } catch {
@@ -307,8 +315,10 @@ enum SelfTest {
             (item?.headIndent ?? 0) > (item?.firstLineHeadIndent ?? 0),
             "a wrapped list line hangs past its bullet instead of returning to the margin")
         try expect((item?.paragraphSpacing ?? 0) > 0, "items are spaced apart, not run together")
+        let prose = paragraph(in: listed, over: "plain line")
         try expect(
-            paragraph(in: listed, over: "plain line") == nil, "prose is not indented like a list")
+            (prose?.headIndent ?? 0) == 0 && (prose?.firstLineHeadIndent ?? 0) == 0,
+            "prose is not indented like a list")
         try expect(!listed.string.contains("- first"), "the marker is replaced by its glyph")
 
         let bold = MacMarkdown.render("**bold** here")
@@ -634,6 +644,76 @@ enum SelfTest {
             "everything, alphabetically, for a bare slash")
         try expect(
             SlashCompletion.matches(commands, query: "zzz").isEmpty, "no match means no list")
+
+        let offered = CommandCatalogStore.forQuickAsk(commands)
+        try expect(
+            !offered.contains { $0.name == "compact" || $0.name == "usage" },
+            "a quick ask is never offered the commands that read a transcript it has yet to write")
+        guard
+            case .command(let picked, let arguments) = QuickAskSend.decide(
+                text: "/flyr HEL", commands: offered, resolvesFromPromptText: false
+            ).kind
+        else { throw SelfTestFailure("completion case failed: a typed command runs as a command") }
+        try expect(
+            picked.name == "flyr" && arguments == "HEL",
+            "a typed command runs as a command, arguments and all")
+        try expect(
+            QuickAskSend.decide(
+                text: "/compact keep the plan", commands: commands, resolvesFromPromptText: false
+            ).kind == .prompt, "compaction is never what a quick ask means")
+        try expect(
+            QuickAskSend.decide(
+                text: "/flyr HEL", commands: offered, resolvesFromPromptText: true
+            ).kind == .prompt, "an agent that resolves its own grammar gets the prompt untouched")
+        try expect(
+            SlashPresentation.noMatchWording("commit", hasProject: false)
+                != SlashPresentation.noMatchWording("commit", hasProject: true),
+            "a word missing for want of a project says which reason it is")
+        return checks
+    }
+
+    /// What the reader opened stays open while the turn that drew it keeps arriving. A step's place
+    /// inside a run is not its identity — a lone call becomes the second step of a run the moment
+    /// another joins it — so the key it was drawn under has to survive the fold that reshapes it.
+    private static func checkTranscriptRows() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("transcript row case failed: \(label)") }
+            checks += 1
+        }
+        func call(_ id: String) -> ToolCall {
+            ToolCall(id: id, name: "Read", status: .completed)
+        }
+
+        let lone = TranscriptRow.fuse([TranscriptRow(key: "m1:p1", kind: .tool(call("t1")))])
+        try expect(
+            lone.map(\.key) == ["run:m1:p1"], "a lone call already wears the key its run will")
+        let fanned = TranscriptRow.fuse([
+            TranscriptRow(key: "m1:p1", kind: .tool(call("t1"))),
+            TranscriptRow(key: "m1:p2", kind: .tool(call("t2"))),
+        ])
+        try expect(
+            fanned.map(\.key) == ["run:m1:p1"],
+            "a second step joins that row instead of renaming it")
+        guard case .run(let steps) = fanned.first?.kind else {
+            throw SelfTestFailure("transcript row case failed: two calls fold into one run")
+        }
+        try expect(
+            steps.map(\.key) == ["m1:p1", "m1:p2"], "and every step keeps the key its row had")
+        try expect(
+            TranscriptRow.fuse([
+                TranscriptRow(key: "m1:p1", kind: .reasoning("first")),
+                TranscriptRow(key: "m1:p2", kind: .reasoning("second")),
+            ]).map(\.key) == ["m1:p1", "m1:p2"],
+            "a run that never reached a tool stays its own thoughts, each still itself")
+
+        let context = TranscriptContext()
+        context.expanded.set("run:m1:p1", open: true)
+        try expect(
+            context.isExpanded("run:m1:p1"),
+            "so the row opened while it was a lone call is still open once it is a run")
+        context.expanded.set("run:m1:p1", open: false)
+        try expect(!context.isExpanded("run:m1:p1"), "and closing it closes it")
         return checks
     }
 

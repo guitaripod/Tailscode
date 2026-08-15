@@ -10,6 +10,11 @@ import TailscodeCore
 final class CompletionPopover: NSView {
     var onPick: ((AgentCommand) -> Void)?
     var onBrowse: (() -> Void)?
+    /// Whether the catalog behind this list was resolved inside a project. A repository's own
+    /// command files are absent from a directory-less catalog *and* unresolvable by the turn it
+    /// would start, so a word missing for that reason says which reason it is instead of reading
+    /// as a typo.
+    var hasProject = true
 
     private let column = FillingStack()
     private var presentation: SlashPresentation = .hidden
@@ -143,7 +148,7 @@ final class CompletionPopover: NSView {
     private func paintNoMatch(_ query: String) {
         clearRows()
         let message = RowKit.label(
-            Localized.text("No command named “%@”", query),
+            SlashPresentation.noMatchWording(query, hasProject: hasProject),
             font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.onGlassSecondary)
         message.lineBreakMode = .byWordWrapping
         message.maximumNumberOfLines = 3

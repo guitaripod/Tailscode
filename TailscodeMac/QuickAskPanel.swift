@@ -16,6 +16,11 @@ import TailscodeCore
 /// offered only where the aim can read it. The empty panel argues for itself with
 /// `QuickAskStarters` (⌘1…⌘9, or a click) and hands back the last few questions asked on this
 /// machine, so the blank field is a way into everything the agent can do instead of a text box.
+///
+/// It is a composer, so a slash means here what it means in a chat: the aimed machine's own
+/// catalog, minus the commands that read a transcript the mint has yet to write, ranked and walked
+/// the way the chat's box ranks and walks it — and what is typed leaves as the decision
+/// `QuickAskSend` made rather than as the word it was typed as.
 @MainActor
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
@@ -29,10 +34,14 @@ final class QuickAskPanel: NSPanel {
     private let chips = AttachmentChips()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let starters = NSStackView()
+    private let completion = CompletionPopover()
     private let servers: [ConnectionProfile]
     private let recents: [SessionEntry]
     private var attachments: [PendingAttachment] = []
     private var offered: [QuickAskStarter] = []
+    private var commands: [AgentCommand] = []
+    private var completionMatches: [SlashMatch] = []
+    private var completionCursor = 0
     private var pastedImageCount = 0
     private var asking = false
     private var draftProfileID: String?
@@ -40,16 +49,17 @@ final class QuickAskPanel: NSPanel {
     private var resizeScheduled = false
     private var modelSheet: ModelChooserSheet?
     private var catalogWatch: Task<Void, Never>?
+    private var commandFetch: Task<Void, Never>?
     private let onAsk:
-        (String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void) ->
-            Void
+        (String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void)
+            -> Void
     private let onResume: (SessionEntry) -> Void
 
     static func present(
         over window: NSWindow?, servers: [ConnectionProfile], preferredServer: String?,
         recents: [SessionEntry],
         onAsk: @escaping (
-            String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
+            String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
         ) -> Void,
         onResume: @escaping (SessionEntry) -> Void
     ) {
@@ -72,7 +82,7 @@ final class QuickAskPanel: NSPanel {
     private init(
         servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
         onAsk: @escaping (
-            String, String, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
+            String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
         ) -> Void,
         onResume: @escaping (SessionEntry) -> Void
     ) {
@@ -90,6 +100,7 @@ final class QuickAskPanel: NSPanel {
         editor.onChanged = { [weak self] in
             self?.stashDraft()
             self?.refreshStarterVisibility()
+            self?.updateSlashCompletion()
             self?.refreshAura()
             self?.resize()
         }
@@ -135,10 +146,13 @@ final class QuickAskPanel: NSPanel {
             self.syncAttachments()
         }
 
+        completion.hasProject = false
+        completion.onPick = { [weak self] command in self?.accept(command) }
+
         let aim = NSStackView(views: [serverPopup, modelButton, effortButton, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
-        let column = QuickAskDropView(views: [editor, chips, aim, status, starters])
+        let column = QuickAskDropView(views: [editor, completion, chips, aim, status, starters])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 8
@@ -149,6 +163,7 @@ final class QuickAskPanel: NSPanel {
         contentView = column
         status.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
         refreshAim()
+        refreshCommands()
         installMonitor()
         resize()
     }
@@ -166,6 +181,8 @@ final class QuickAskPanel: NSPanel {
         DraftStore.flush()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        commandFetch?.cancel()
+        catalogWatch?.cancel()
         super.close()
     }
 
@@ -173,6 +190,11 @@ final class QuickAskPanel: NSPanel {
     /// otherwise and shift always writes the line break — the same bargain the chat's own box
     /// makes — and vim, when it is on, is the same engine wearing the same modes, so escape
     /// leaves insert before it closes the panel.
+    ///
+    /// The list, while it is up, answers first. Outside insert mode the vim branch swallows every
+    /// unmodified key, so a walk claimed after it would never see j or k — and escape has to close
+    /// the list before it closes the panel, since a question is lost the moment nobody thought to
+    /// keep it. Nothing is taken while the list is down.
     private func installMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self, !self.asking else { return event }
@@ -180,6 +202,7 @@ final class QuickAskPanel: NSPanel {
             let control = flags.contains(.control)
             let shift = flags.contains(.shift)
             let isReturn = event.keyCode == 36 || event.keyCode == 76
+            if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
             if PromptEditor.vimPreferred, self.editor.hasFocus {
                 let key = PromptEditor.vimKey(for: event)
                 let letter = event.charactersIgnoringModifiers?.lowercased()
@@ -211,6 +234,136 @@ final class QuickAskPanel: NSPanel {
         case .send: submit()
         }
         editor.refreshMode()
+    }
+
+    /// The walk, and only the walk: a key is taken while there are rows to move through, so past
+    /// the command's name — where the list is showing one signature rather than a choice — enter
+    /// still sends and tab still belongs to the panel. Escape closes whatever the list is showing,
+    /// because the panel's own escape is the one that throws the question away.
+    private func handleCompletionKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags
+        guard !flags.contains(.command), !flags.contains(.option) else { return false }
+        if event.keyCode == 53 {
+            dismissCompletion()
+            return true
+        }
+        guard !completionMatches.isEmpty else { return false }
+        switch event.keyCode {
+        case 48:
+            if flags.contains(.shift) { moveCompletion(by: -1) } else { acceptCompletion() }
+            return true
+        case 36, 76:
+            acceptCompletion()
+            return true
+        case 125:
+            moveCompletion(by: 1)
+            return true
+        case 126:
+            moveCompletion(by: -1)
+            return true
+        default:
+            break
+        }
+        guard flags.contains(.control), let letter = event.charactersIgnoringModifiers?.lowercased()
+        else { return false }
+        if letter == "n" {
+            moveCompletion(by: 1)
+            return true
+        }
+        if letter == "p" {
+            moveCompletion(by: -1)
+            return true
+        }
+        return false
+    }
+
+    /// The catalog this ask can offer: what the aimed machine last published, read from memory so
+    /// the first keystroke is never blank, minus the commands that read a transcript — the chat
+    /// this send mints has none — and nothing at all from a server whose agent has no commands.
+    /// The fetch carries no directory, because a quick ask has no project.
+    private func refreshCommands() {
+        let server = targetServer
+        commandFetch?.cancel()
+        guard let backend = ServerDirectory.shared.backend(for: server),
+            backend.capabilities.supportsCommands
+        else {
+            commands = []
+            updateSlashCompletion()
+            return
+        }
+        commands = CommandCatalogStore.forQuickAsk(CommandCatalogStore.cached(server.id))
+        updateSlashCompletion()
+        commandFetch = Task { [weak self] in
+            let fetched = await CommandCatalogStore.refresh(profileID: server.id, backend: backend)
+            guard let self, !Task.isCancelled, self.targetServer.id == server.id else { return }
+            self.commands = CommandCatalogStore.forQuickAsk(fetched)
+            self.updateSlashCompletion()
+        }
+    }
+
+    /// Which row is highlighted is kept by which command it is, never by where it sat: a narrowing
+    /// keystroke re-ranks and shortens the list, and an index would quietly move the highlight onto
+    /// a different command — which is then the one Tab takes.
+    private func updateSlashCompletion() {
+        let typing = !PromptEditor.vimPreferred || editor.vim.mode == .insert
+        guard typing, !asking else {
+            dismissCompletion()
+            return
+        }
+        let presentation = SlashPresentation.of(
+            text: editor.text, commands: commands,
+            recents: SlashRecents.surviving(in: commands))
+        switch presentation {
+        case .hidden:
+            dismissCompletion()
+        case .naming(let matches):
+            let previous =
+                completionMatches.indices.contains(completionCursor)
+                ? completionMatches[completionCursor].command.id : nil
+            completionMatches = matches
+            completionCursor =
+                previous.flatMap { id in matches.firstIndex { $0.command.id == id } } ?? 0
+            completion.renderCompletion(presentation, cursor: completionCursor)
+            resize()
+        case .arguments, .noMatch:
+            completionMatches = []
+            completionCursor = 0
+            completion.renderCompletion(presentation)
+            resize()
+        }
+    }
+
+    private func moveCompletion(by delta: Int) {
+        let count = completionMatches.count
+        guard count > 0 else { return }
+        completionCursor = ((completionCursor + delta) % count + count) % count
+        completion.renderCompletion(.naming(matches: completionMatches), cursor: completionCursor)
+        resize()
+    }
+
+    private func acceptCompletion() {
+        guard completionMatches.indices.contains(completionCursor) else { return }
+        accept(completionMatches[completionCursor].command)
+    }
+
+    /// A command that takes arguments leaves the caret past its trailing space, ready for them;
+    /// one that takes none is written whole, and the list gives way rather than offering the word
+    /// it just wrote.
+    private func accept(_ command: AgentCommand) {
+        SlashRecents.record(command.name)
+        let text = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
+        editor.setText(text, caretAtEnd: true)
+        editor.vim.reset(to: text, cursor: text.count, mode: .insert)
+        editor.refreshMode()
+        editor.focus()
+    }
+
+    private func dismissCompletion() {
+        completionMatches = []
+        completionCursor = 0
+        guard completion.isShowing else { return }
+        completion.hide()
+        resize()
     }
 
     /// The powers are visibly on before the question is sent: the aim's own effort, or the word
@@ -274,6 +427,7 @@ final class QuickAskPanel: NSPanel {
     @objc private func serverChanged() {
         retargetDraft()
         refreshAim()
+        refreshCommands()
     }
 
     private var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
@@ -611,7 +765,12 @@ final class QuickAskPanel: NSPanel {
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         let server = targetServer
+        let send = QuickAskSend.decide(
+            text: text, commands: commands,
+            resolvesFromPromptText: ServerDirectory.shared.backend(for: server)?
+                .resolvesCommandsFromPromptText == true)
         asking = true
+        dismissCompletion()
         editor.isEditable = false
         serverPopup.isEnabled = false
         modelButton.isEnabled = false
@@ -619,7 +778,7 @@ final class QuickAskPanel: NSPanel {
         attachButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(QuickAskComposition.waitingTitle(server: server.name))
-        onAsk(server.id, text, attachments) { [weak self] failure in
+        onAsk(server.id, send, attachments) { [weak self] failure in
             guard let self else { return }
             guard let failure else {
                 QuickAskDefaults.record(profileID: server.id)

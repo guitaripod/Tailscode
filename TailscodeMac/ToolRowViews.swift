@@ -39,7 +39,7 @@ enum ToolRowView {
     /// even when folded. Expanding in place opens the same rows compact mode folded away.
     static func makeRun(_ steps: [ActivityStep], key: String, context: TranscriptContext) -> NSView {
         let calls = steps.compactMap { step -> ToolCall? in
-            if case .tool(let call) = step { return call }
+            if case .tool(_, let call) = step { return call }
             return nil
         }
         let header = NSStackView()
@@ -96,13 +96,12 @@ enum ToolRowView {
             let body = FillingStack()
             body.spacing = 2
             body.translatesAutoresizingMaskIntoConstraints = false
-            for (index, step) in steps.enumerated() {
+            for step in steps {
                 switch step {
-                case .reasoning(let text):
-                    body.addArrangedSubview(
-                        reasoning(text, key: "\(key):r\(index)", context: context))
-                case .tool(let call):
-                    body.addArrangedSubview(make(call, key: "\(key):\(index)", context: context))
+                case .reasoning(let stepKey, let text):
+                    body.addArrangedSubview(reasoning(text, key: stepKey, context: context))
+                case .tool(let stepKey, let call):
+                    body.addArrangedSubview(make(call, key: stepKey, context: context))
                 }
             }
             return RowKit.inset(body, leading: 16)
