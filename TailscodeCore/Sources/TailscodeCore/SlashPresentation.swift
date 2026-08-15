@@ -40,6 +40,18 @@ public enum SlashPresentation: Sendable, Equatable {
         case .naming, .arguments, .noMatch: return true
         }
     }
+
+    /// What a surface says when the catalog has never heard the word being typed.
+    ///
+    /// A quick ask carries no project, so a repository's own command files are not in its catalog
+    /// and could not be resolved by the turn it starts either. Saying only "no such command" would
+    /// be true of the ask and false of the machine, and the person would go looking for a command
+    /// that exists.
+    public static func noMatchWording(_ query: String, hasProject: Bool) -> String {
+        hasProject
+            ? Localized.text("No command called %@", query)
+            : Localized.text("No command called %@ outside a project", query)
+    }
 }
 
 /// Source labels for the browsable catalog — one wording so iOS, Linux and Mac group the same.

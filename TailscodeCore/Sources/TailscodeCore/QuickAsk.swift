@@ -119,6 +119,49 @@ public enum QuickAskDefaults {
     }
 }
 
+/// What a quick ask's words turn out to be when they are sent.
+///
+/// A quick ask is a composer, so `/` means there what it means in a chat — but the decision has to
+/// be made *here*, before the mint, because the conversation it will run in does not exist yet and
+/// its catalog has not been fetched. The words travel with the decision so a failure can hand them
+/// back, and a command that is only a command on the server it was typed for stays that way.
+public struct QuickAskSend: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable {
+        case prompt
+        case command(AgentCommand, arguments: String?)
+    }
+
+    public let text: String
+    public let kind: Kind
+
+    public init(text: String, kind: Kind) {
+        self.text = text
+        self.kind = kind
+    }
+
+    /// The shared grammar, asked once. On an agent that resolves its own slash words from the
+    /// prompt text this collapses to `.prompt` — which is correct rather than a shortfall: the
+    /// server is the authority on its own grammar and the words go to it as written.
+    ///
+    /// Compaction is deliberately not a case here. A conversation minted by this send has no turns
+    /// to trade, so the words that read a transcript are dropped from the catalog before the
+    /// decision rather than after it — a surface that forgot to filter what it *offered* still
+    /// cannot run one by hand.
+    public static func decide(
+        text: String, commands: [AgentCommand], resolvesFromPromptText: Bool
+    ) -> QuickAskSend {
+        switch SlashDispatch.decide(
+            text: text, commands: CommandCatalogStore.forQuickAsk(commands),
+            supportsCompaction: false, resolvesFromPromptText: resolvesFromPromptText)
+        {
+        case .run(let command, let arguments):
+            return QuickAskSend(text: text, kind: .command(command, arguments: arguments))
+        case .compactPreflight, .plainText:
+            return QuickAskSend(text: text, kind: .prompt)
+        }
+    }
+}
+
 /// How hard the machine is asked to think, for a surface that has no conversation to read it
 /// from. Effort is a property of the model where the catalog says so — the picked model's own
 /// variants — and a property of the agent otherwise, which is exactly the rule a chat composer
