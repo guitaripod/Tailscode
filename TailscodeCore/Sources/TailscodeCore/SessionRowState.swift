@@ -68,6 +68,10 @@ public enum SessionRowState: Equatable, Sendable {
 public enum SessionPresence: Sendable, Equatable {
     /// Nothing on this device is watching it; the listing is the only witness.
     case unobserved
+    /// Something here is watching and has not been told anything yet. Not an answer: a watcher
+    /// that has just subscribed knows strictly less than the one it replaced, and a row must never
+    /// be settled on that difference.
+    case unsettled
     /// A turn is running here, optionally with the step it is on.
     case running(String?)
     /// A turn is running here and is waiting to be answered.
@@ -78,15 +82,31 @@ public enum SessionPresence: Sendable, Equatable {
     public var isInFlight: Bool {
         switch self {
         case .running, .awaitingApproval: return true
-        case .unobserved, .failed: return false
+        case .unobserved, .unsettled, .failed: return false
+        }
+    }
+
+    /// How much a reading is worth when two witnesses on this device disagree about one
+    /// conversation. A settled "nothing is running" outranks a watcher that has not been told
+    /// anything yet; a turn in flight outranks both, because only a witness that has heard the
+    /// server can claim one.
+    public var rank: Int {
+        switch self {
+        case .unsettled: return 0
+        case .unobserved: return 1
+        case .failed: return 2
+        case .running: return 3
+        case .awaitingApproval: return 4
         }
     }
 
     /// The presence a conversation state reads as, shared by the pane drawing the chat and the
     /// background watcher that keeps the row alive after the pane moved on — the two must never
     /// disagree about a turn. The order is the status band's own: a failure outranks everything,
-    /// a question or an approval outranks merely being busy.
+    /// a question or an approval outranks merely being busy — except that a conversation nobody
+    /// has told anything yet has nothing to report at all, not even a failure it inherited.
     public static func reading(_ state: ConversationState, step: String?) -> SessionPresence {
+        if state.status == .unknown { return .unsettled }
         if state.lastFailure != nil { return .failed }
         if !state.pendingPermissions.isEmpty || !state.pendingQuestions.isEmpty {
             return .awaitingApproval
@@ -175,7 +195,7 @@ public struct SessionRowModel: Equatable, Sendable {
         case .awaitingApproval: return .awaitingApproval
         case .running: return .live
         case .failed where !unreachable: return .failed
-        case .failed, .unobserved: break
+        case .failed, .unobserved, .unsettled: break
         }
         if unreachable { return .offline }
         return entry.session.isWorking ? .live : .idle

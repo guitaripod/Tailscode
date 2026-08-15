@@ -38,10 +38,11 @@ final class ChatPane: @unchecked Sendable {
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
     private var usage: AgentUsage?
-    /// What the whole conversation has cost, asked of the server on the same slow poll as the
-    /// agents. A backend that cannot account for it leaves this nil and the band falls back to the
-    /// last turn's price.
-    private var spend: SessionSpend?
+    /// What the whole conversation has cost. The server's own account when it keeps one, else what
+    /// the transcript itself says — and never erased by a poll that came back with nothing, which
+    /// is what left the chart on the one machine the session was started from.
+    private var spendReading = SpendReading()
+    private var spend: SessionSpend? { spendReading.value }
     /// Which branch this conversation's work is landing on, read on the same slow poll. Nil for a
     /// server that cannot read a repository, which is how the band knows to say nothing at all.
     private var git: GitState?
@@ -175,8 +176,11 @@ final class ChatPane: @unchecked Sendable {
     /// the pane streaming a conversation is the only witness that can say it is running now, that
     /// it stopped to ask something, or that its last turn failed. The reading is shared with the
     /// background watcher, so the row and the band never speak two vocabularies for one turn.
+    /// A pane that has taken a chat and has not heard anything about it yet is watching, not
+    /// reporting that nothing is running: the row it just took over from the background watcher
+    /// must not settle on the difference between two witnesses.
     var presence: SessionPresence {
-        guard let state = lastState else { return .unobserved }
+        guard let state = lastState else { return entry == nil ? .unobserved : .unsettled }
         return SessionPresence.reading(state, step: bandState.facts.runningTool)
     }
 
@@ -232,7 +236,7 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
-        gtk_scrolled_window_set_child(op(scroller), canvas)
+        gtk_scrolled_window_set_child(op(scroller), makeTranscriptViewport(canvas))
         gtk_widget_set_vexpand(scroller, 1)
         transcriptScroller = scroller
 
@@ -1010,6 +1014,9 @@ final class ChatPane: @unchecked Sendable {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
+        if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
+            updateStatus()
+        }
         if ultracodeInFlight, state.status != .running, state.hasLoadedTranscript {
             ultracodeInFlight = false
             refreshUltracodeAura()
@@ -1972,8 +1979,9 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, self.sessionID == sessionID else { return }
                 self.usage = usage
                 self.git = repository.map { GitState(snapshot: $0) }
-                self.spend = report.map(SessionSpend.init(report:))
-                    ?? SessionSpend(messages: self.lastState?.messages ?? [])
+                self.spendReading.note(report: report, for: sessionID)
+                self.spendReading.note(
+                    messages: self.lastState?.messages ?? [], for: sessionID)
                 if let agents {
                     self.applyAgentFacts(agents)
                 } else {
@@ -3322,8 +3330,28 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_grab_focus(entryView)
     }
 
+    /// A scrolled window conjures its own viewport, and a conjured one scrolls to whatever takes
+    /// focus. Every row in a transcript is a button: a rebuild that destroys the row holding focus
+    /// — which is every arrival of a running turn — and the close of a sibling pane both re-home
+    /// focus inside this list, and the viewport answered by animating the transcript to the top
+    /// under a reader who was mid-conversation. The sidebar paid this debt already
+    /// (`makeSidebarViewport`); nothing had paid it here. What genuinely wants the transcript to
+    /// move — find, a disclosure opening — scrolls by hand and is unaffected.
+    private func makeTranscriptViewport(
+        _ child: UnsafeMutablePointer<GtkWidget>
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let viewport = gtk_viewport_new(nil, nil)!
+        gtk_viewport_set_scroll_to_focus(op(viewport), 0)
+        gtk_viewport_set_child(op(viewport), child)
+        return viewport
+    }
+
+    /// The transcript box is a plain `GtkBox` and cannot hold focus, so grabbing it moved nothing
+    /// and `ctrl+w` left the keyboard wherever it happened to be — often on a disclosure inside
+    /// the transcript it had just left. The composer is what a person types into when a pane takes
+    /// the keyboard, so that is what takes it.
     func focusTranscript() {
-        gtk_widget_grab_focus(transcriptBox)
+        focusComposer()
     }
 
     /// Everything the settings window can change that is not a colour, applied to this pane.

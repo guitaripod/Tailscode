@@ -850,6 +850,10 @@ final class MainWindow: @unchecked Sendable {
     /// alive in the background and feeds the sidebar exactly what the pane saw.
     private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     private var backgroundPresence: [String: SessionPresence] = [:]
+    /// What each conversation's last settled witness said, carried across the moment one watcher
+    /// hands a chat to another. Without it, opening a live chat on a server whose listing cannot
+    /// report a turn dropped the row to RECENT for one round trip and then took it back.
+    private var presenceLedger = PresenceLedger()
 
     func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
         let key = SessionPinStore.key(entry.profileID, entry.session.id)
@@ -1361,21 +1365,11 @@ final class MainWindow: @unchecked Sendable {
             guard let entry = pane.entry else { return }
             let key = SessionPinStore.key(entry.profileID, entry.session.id)
             let presence = pane.presence
-            guard Self.loudness(presence) > Self.loudness(observed[key] ?? .unobserved) else {
-                return
-            }
+            guard presence.rank > (observed[key] ?? .unsettled).rank else { return }
             observed[key] = presence
         }
-        return observed
-    }
-
-    private static func loudness(_ presence: SessionPresence) -> Int {
-        switch presence {
-        case .unobserved: return 0
-        case .failed: return 1
-        case .running: return 2
-        case .awaitingApproval: return 3
-        }
+        presenceLedger.absorb(observed)
+        return presenceLedger.readings()
     }
 
     /// One line describing the selection, for the headless driver: how many are held, and which
