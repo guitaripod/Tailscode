@@ -220,12 +220,60 @@ targets:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE App Store 2026
 
+  TailscodeMacWidget:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: TailscodeMacWidget
+      - path: Resources/Localizable.xcstrings
+        buildPhase: resources
+      - path: Tailscode/Usage/UsageWidgetStore.swift
+      - path: Tailscode/Usage/UsagePushPayload.swift
+      - path: Tailscode/Usage/UsageWidgetWriter.swift
+      - path: TailscodeWidget/UsageWidgetConfiguration.swift
+      - path: TailscodeWidget/UsageWidgetViews.swift
+      - path: TailscodeWidget/UsageControlWidget.swift
+      - path: Tailscode/Usage/UsageControlIntents.swift
+    dependencies:
+      - package: CodingAgentKit
+        product: CodingAgentKit
+      - package: CodingAgentKit
+        product: CodingAgentKitApple
+      - package: TailscodeCore
+        product: TailscodeCore
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
+    info:
+      path: TailscodeMacWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
+        MARKETING_VERSION: "1.21"
+        CURRENT_PROJECT_VERSION: "43"
+        SKIP_INSTALL: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+
   TailscodeMac:
     type: application
     platform: macOS
     deploymentTarget: "26.0"
     sources:
       - path: TailscodeMac
+      - path: Tailscode/Usage/UsageWidgetStore.swift
+      - path: Tailscode/Usage/UsageWidgetWriter.swift
+      - path: Tailscode/Usage/UsagePushPayload.swift
       - path: TailscodeMac/Resources/AppIcon.icns
         buildPhase: resources
     dependencies:
@@ -235,6 +283,7 @@ targets:
         product: CodingAgentKitApple
       - package: TailscodeCore
         product: TailscodeCore
+      - target: TailscodeMacWidget
     info:
       path: TailscodeMac/Info.plist
       properties:

@@ -928,7 +928,18 @@ final class MainWindowController: NSWindowController {
             quotasAnsweredAt = Date()
         }
         sidebar.renderUsage(lastQuotas, answeredAt: quotasAnsweredAt)
+        publishWidgetSnapshot()
         return true
+    }
+
+    /// The quotas outlive the window they were fetched in. Every poll that came back with numbers
+    /// leaves them where the widget extension can find them without this app running, and asks
+    /// WidgetKit to redraw — a widget showing a figure from yesterday is the one lie this surface
+    /// can tell, and an empty answer is left alone precisely so the stored one can age into CACHED
+    /// rather than into nothing.
+    private func publishWidgetSnapshot() {
+        guard !lastQuotas.isEmpty else { return }
+        UsageWidgetStore.writeLive(lastQuotas.map(\.1))
     }
 
     /// The numbers move on the poll's cadence; the words about them move on their own, so a reset
