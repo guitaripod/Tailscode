@@ -45,6 +45,18 @@ enum ChatRowBuilder {
             /// re-identifies the moment a card lands: a delete and an insert rather than a repaint,
             /// which blinks the group out and silently collapses it if the reader had it open. Its
             /// ordinal only changes when the message actually grows another run.
+            ///
+            /// Which is only true while every boundary that exists stays where it is, and the
+            /// board's used to move: the card hangs off the newest board call, so a fresh one
+            /// handed the previous call back to the steps, dissolved the boundary it had made and
+            /// merged the run after it into the run before — the reader's open run deleted mid-turn
+            /// by a plan update. So the boundary belongs to the *position before a board call*
+            /// rather than to the call that currently wears the card: every board call ends the run
+            /// it interrupted, and a call that has stopped being the anchor simply opens the run
+            /// that follows as the one-line tool row it always was. An empty part is not a part:
+            /// text with nothing in it yet ends no run, the way empty reasoning already ended
+            /// none, so the only runs that ever come to sit side by side are the ones a board
+            /// call parted.
             func flushActivity() {
                 guard !steps.isEmpty else { return }
                 rows.append(
@@ -71,12 +83,16 @@ enum ChatRowBuilder {
                                 role: message.role, content: .subagent(card)))
                         continue
                     }
-                    if call.id == boardCallID {
+                    if !board.isEmpty, TaskBoard.isBoardCall(call.name) {
                         flushActivity()
-                        rows.append(
-                            ChatRow(
-                                id: Self.boardKey, messageID: message.id,
-                                role: message.role, content: .taskBoard(board)))
+                        if call.id == boardCallID {
+                            rows.append(
+                                ChatRow(
+                                    id: Self.boardKey, messageID: message.id,
+                                    role: message.role, content: .taskBoard(board)))
+                        } else {
+                            steps.append(.tool(call))
+                        }
                         continue
                     }
                     if let run = runs[call.id] {
@@ -98,8 +114,8 @@ enum ChatRowBuilder {
                         pendingUnattached = []
                     }
                 case .text(let text):
-                    flushActivity()
                     if text.isEmpty { continue }
+                    flushActivity()
                     if message.role == .user {
                         let (interrupted, remainder) = Self.strippedInterruption(text)
                         if interrupted {
@@ -187,6 +203,8 @@ enum ChatRowBuilder {
     /// It moves, then, and that is fine as long as it stays the same row while it moves. Naming the
     /// row after the call it is standing on made every revision a delete and an insert where a
     /// person sees one card counting up; `boardKey` is the identity, the anchor is only the place.
+    /// What must not move with it is the seam it leaves in the work either side of it, which is
+    /// why every board call ends its run whether or not it is the one wearing the card.
     private static func boardAnchor(_ calls: [ToolCall]) -> String? { calls.last?.id }
 
     /// There is only ever one board in a conversation, so it can simply say so.
@@ -278,11 +296,18 @@ enum ChatRowBuilder {
         return "\(date.formatted(.dateTime.month(.abbreviated).day())), \(time)"
     }
 
+    /// Joins the run a turn ended on to the run the next message opens with, so work split across
+    /// messages reads as one group.
+    ///
+    /// Only across messages. Two runs the builder put back to back *inside* one message were split
+    /// on purpose — the board card that used to sit between them has moved down to a newer plan —
+    /// and merging them there is the very deletion the ordinals exist to prevent: the second run
+    /// would vanish into the first and take the reader's open group with it.
     static func fuseActivity(_ rows: [ChatRow]) -> [ChatRow] {
         var merged: [ChatRow] = []
         for row in rows {
             if case .activity(let steps) = row.content, let last = merged.last,
-                case .activity(let prior) = last.content
+                case .activity(let prior) = last.content, last.messageID != row.messageID
             {
                 merged[merged.count - 1] = ChatRow(
                     id: last.id, messageID: last.messageID, role: last.role,

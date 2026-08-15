@@ -25,9 +25,16 @@ import UniformTypeIdentifiers
 /// and the attachments — through a failed create, which is named where the asking happened with
 /// the one action that fixes it; where the conversation opens stays the host's, so `onOpen`
 /// receives the entry with the question still unsent.
+///
+/// Being the chat's own composer includes what `/` means in it. The catalog is the machine's own —
+/// fetched with no project and remembered per server, minus the commands that read a transcript
+/// the minted conversation will not have — and the decision about what the words turn out to be is
+/// made here, before the mint, because the conversation that would answer it does not exist yet:
+/// `onOpen` therefore carries a `QuickAskSend` rather than a string, and a command runs as a
+/// command in the chat it opens.
 @MainActor
 final class QuickAskViewController: UIViewController {
-    var onOpen: ((SessionEntry, String, ModelChoice, [PromptAttachment]) -> Void)?
+    var onOpen: ((SessionEntry, QuickAskSend, ModelChoice, [PromptAttachment]) -> Void)?
     /// A question already asked here, reopened rather than asked again.
     var onResume: ((SessionEntry) -> Void)?
 
@@ -38,8 +45,12 @@ final class QuickAskViewController: UIViewController {
     private var abilities = QuickAskAbilities.words
     private var attachments: [PendingAttachment] = []
     private var phase: NewChatPhase = .asking
-    private var lastAttempt: (profile: ConnectionProfile, text: String)?
+    private var lastAttempt: (profile: ConnectionProfile, send: QuickAskSend)?
     private var pastedImageCount = 0
+    /// What this server can be told to do, minus the commands that read a transcript. Seeded from
+    /// memory so the first `/` is never answered with a blank list, then corrected by the machine.
+    private var commands: [AgentCommand] = []
+    private var catalogProfileID: String?
 
     private let titleLabel = UILabel()
     private let targetButton = UIButton(type: .system)
@@ -52,6 +63,7 @@ final class QuickAskViewController: UIViewController {
     private let attachmentScroll = UIScrollView()
     private let attachmentStrip = UIStackView()
     private let composer = ComposerView()
+    private let commandPalette = SlashCommandPalette()
     private let enhancement = PromptEnhancementController()
     private weak var enhanceOverlay: PromptEnhanceOverlay?
 
@@ -299,6 +311,20 @@ final class QuickAskViewController: UIViewController {
             composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
+
+        commandPalette.isHidden = true
+        view.addSubview(commandPalette)
+        NSLayoutConstraint.activate([
+            commandPalette.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            commandPalette.trailingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            commandPalette.bottomAnchor.constraint(
+                equalTo: attachmentScroll.topAnchor, constant: -Theme.Spacing.xs),
+            commandPalette.topAnchor.constraint(
+                greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
+                constant: Theme.Spacing.s),
+        ])
     }
 
 
@@ -316,6 +342,9 @@ final class QuickAskViewController: UIViewController {
             targetButton.configuration?.title = String(localized: "No servers")
             targetButton.menu = nil
             abilities = .words
+            commands = []
+            catalogProfileID = nil
+            hideCommandPalette()
             refreshComposerAffordances()
             renderStarters()
             return
@@ -327,6 +356,7 @@ final class QuickAskViewController: UIViewController {
         targetButton.menu = aimMenu(for: profile)
         resolveAimIfNeeded(for: profile)
         refreshAbilities(for: profile)
+        loadCommandsIfNeeded(for: profile)
         renderStarters()
     }
 
@@ -516,6 +546,102 @@ final class QuickAskViewController: UIViewController {
     }
 
 
+    /// What the aimed machine can be told to do, read from memory first and corrected by the
+    /// machine afterwards — a list that is blank for the first second is a list nobody trusts. It
+    /// is fetched with no directory, because a question carries no project, and the commands that
+    /// read a transcript are dropped: the conversation this send mints has none.
+    private func loadCommandsIfNeeded(for profile: ConnectionProfile) {
+        guard catalogProfileID != profile.id else { return }
+        catalogProfileID = profile.id
+        commands = CommandCatalogStore.forQuickAsk(CommandCatalogStore.cached(profile.id))
+        updateCommandPalette(for: composer.currentText)
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsCommands
+        else {
+            commands = []
+            hideCommandPalette()
+            return
+        }
+        Task { [weak self] in
+            let fetched = await CommandCatalogStore.refresh(
+                profileID: profile.id, backend: backend)
+            guard let self, self.targetProfileID == profile.id else { return }
+            self.commands = CommandCatalogStore.forQuickAsk(fetched)
+            self.updateCommandPalette(for: self.composer.currentText)
+        }
+    }
+
+    /// The same reading the chat composer answers, drawn in the same list: candidates while the
+    /// command is being named, that one command's signature once it is settled, and a word the
+    /// catalog lacks said out loud rather than left to vanish under the caret. Only the server's
+    /// own commands are offered — the app's palette rows act on a transcript, and this surface
+    /// has none.
+    private func updateCommandPalette(for text: String) {
+        guard case .asking = phase else { return hideCommandPalette() }
+        switch SlashPresentation.of(
+            text: text, commands: commands, recents: SlashRecents.surviving(in: commands))
+        {
+        case .hidden:
+            hideCommandPalette()
+        case .naming(let matches):
+            commandPalette.update(
+                with: .commands([
+                    SlashCommandSection(
+                        title: "",
+                        commands: matches.map { row(for: $0.command, highlight: $0.highlight) })
+                ]))
+            showCommandPalette()
+        case .arguments(let command, let typed):
+            commandPalette.update(with: .arguments(command: row(for: command), typed: typed))
+            showCommandPalette()
+        case .noMatch(let query):
+            commandPalette.update(
+                with: .noMatch(
+                    wording: SlashPresentation.noMatchWording("/\(query)", hasProject: false),
+                    browse: nil))
+            showCommandPalette()
+        }
+    }
+
+    private func row(for command: AgentCommand, highlight: [Int] = []) -> SlashCommand {
+        SlashCommand(
+            id: "server:\(command.name)",
+            keywords: [command.name.lowercased()],
+            title: "/\(command.name)",
+            subtitle: command.details,
+            symbol: CommandSymbol.of(command),
+            highlight: highlight.map { $0 + 1 },
+            argumentHint: command.argumentHint,
+            badge: command.scope,
+            runsOnServer: true
+        ) { [weak self] in self?.selectCommand(command) }
+    }
+
+    /// Picking a command that takes arguments lands it in the composer with the caret after the
+    /// space, to be completed rather than fired bare — a tap is a choice, not a submission.
+    private func selectCommand(_ command: AgentCommand) {
+        Theme.Haptics.selection()
+        hideCommandPalette()
+        composer.setDraft(
+            command.takesArguments ? "/\(command.name) " : "/\(command.name)", focus: true)
+        stashDraft()
+    }
+
+    private func showCommandPalette() {
+        guard commandPalette.isHidden else { return }
+        commandPalette.alpha = 0
+        commandPalette.isHidden = false
+        UIView.animate(withDuration: 0.18) { self.commandPalette.alpha = 1 }
+    }
+
+    private func hideCommandPalette() {
+        guard !commandPalette.isHidden else { return }
+        UIView.animate(
+            withDuration: 0.15, animations: { self.commandPalette.alpha = 0 },
+            completion: { _ in self.commandPalette.isHidden = true })
+    }
+
+
     /// The blank box's argument for itself: what this thing can be asked to do, offered against
     /// what the aim can take, and the last few questions asked here so a lookup worth continuing
     /// is one touch away rather than somewhere in the chat list.
@@ -610,6 +736,7 @@ final class QuickAskViewController: UIViewController {
         let draft = DraftStore.text(for: .quickAsk(profileID: profileID))
         composer.setDraft(draft, focus: false)
         refreshComposerAffordances()
+        updateCommandPalette(for: draft)
     }
 
     private func stashDraft() {
@@ -719,11 +846,25 @@ final class QuickAskViewController: UIViewController {
         guard QuickAskComposition.canSend(text: words, attachments: attachments.count) else {
             return
         }
-        mint(on: profile, text: words)
+        hideCommandPalette()
+        mint(on: profile, send: decide(words, on: profile))
     }
 
-    private func mint(on profile: ConnectionProfile, text: String) {
-        lastAttempt = (profile, text)
+    /// What the words turn out to be, asked of the shared grammar before anything is minted: a
+    /// command the machine knows runs as a command in the conversation this send creates, and
+    /// everything else — including a word on a server that reads its own slashes out of the
+    /// prompt — goes as the words that were written.
+    private func decide(_ text: String, on profile: ConnectionProfile) -> QuickAskSend {
+        guard let backend = viewModel.backend(forProfileID: profile.id),
+            backend.capabilities.supportsCommands
+        else { return QuickAskSend(text: text, kind: .prompt) }
+        return QuickAskSend.decide(
+            text: text, commands: commands,
+            resolvesFromPromptText: backend.resolvesCommandsFromPromptText)
+    }
+
+    private func mint(on profile: ConnectionProfile, send: QuickAskSend) {
+        lastAttempt = (profile, send)
         show(.starting(server: profile.name))
         Task { [weak self] in
             let result = await self?.viewModel.createSession(on: profile, directory: nil)
@@ -734,10 +875,10 @@ final class QuickAskViewController: UIViewController {
                 QuickAskDefaults.stamp(profileID: profile.id, sessionID: entry.session.id)
                 DraftStore.clear(.quickAsk(profileID: profile.id))
                 Theme.Haptics.success()
-                self.hand(entry, text: text)
+                self.hand(entry, send: send)
             case .failure(let failure):
                 Theme.Haptics.error()
-                self.composer.setDraft(text, focus: false)
+                self.composer.setDraft(send.text, focus: false)
                 self.stashDraft()
                 self.show(.failed(failure))
             }
@@ -749,10 +890,10 @@ final class QuickAskViewController: UIViewController {
     /// the words. Dismissing first and opening in the completion made a person watch two
     /// animations take turns — and put the open inside the exact moment a navigation transition is
     /// running, which is where the question used to be dropped.
-    private func hand(_ entry: SessionEntry, text: String) {
+    private func hand(_ entry: SessionEntry, send: QuickAskSend) {
         let payload = attachments.map(\.prompt)
         attachments = []
-        onOpen?(entry, text, aim, payload)
+        onOpen?(entry, send, aim, payload)
         (presentingViewController ?? self).dismiss(animated: true)
     }
 
@@ -771,7 +912,9 @@ final class QuickAskViewController: UIViewController {
             composer.isUserInteractionEnabled = true
             scrollView.alpha = 1
             updateStarterVisibility()
+            updateCommandPalette(for: composition)
         case .starting(let server):
+            hideCommandPalette()
             composer.unfocus()
             composer.isUserInteractionEnabled = false
             scrollView.isHidden = true
@@ -780,6 +923,7 @@ final class QuickAskViewController: UIViewController {
             statusView.showWaiting()
             titleLabel.text = QuickAskComposition.waitingTitle(server: server)
         case .failed(let failure):
+            hideCommandPalette()
             composer.isUserInteractionEnabled = true
             scrollView.isHidden = true
             statusView.isHidden = false
@@ -807,7 +951,7 @@ final class QuickAskViewController: UIViewController {
             show(.asking)
         case .retry:
             guard let attempt = lastAttempt else { return show(.asking) }
-            mint(on: attempt.profile, text: attempt.text)
+            mint(on: attempt.profile, send: attempt.send)
         case .editServer(let profileID):
             guard let profile = viewModel.servers.first(where: { $0.id == profileID }) else {
                 return show(.asking)
@@ -819,7 +963,7 @@ final class QuickAskViewController: UIViewController {
                 let refreshed =
                     self.viewModel.servers.first { $0.id == attempt.profile.id } ?? attempt.profile
                 self.dismiss(animated: true) {
-                    self.mint(on: refreshed, text: attempt.text)
+                    self.mint(on: refreshed, send: attempt.send)
                 }
             }
             present(UINavigationController(rootViewController: editor), animated: true)
@@ -833,7 +977,7 @@ final class QuickAskViewController: UIViewController {
             do {
                 try ConnectionController.shared.save(profile, password: password)
                 viewModel.refreshSources()
-                mint(on: profile, text: lastAttempt?.text ?? composition)
+                mint(on: profile, send: lastAttempt?.send ?? decide(composition, on: profile))
             } catch {
                 show(
                     .failed(
@@ -860,7 +1004,7 @@ final class QuickAskViewController: UIViewController {
 
 
     override var keyCommands: [UIKeyCommand]? {
-        [
+        let ask = [
             UIKeyCommand(
                 title: String(localized: "Ask"), action: #selector(sendFromKeyboard),
                 input: "\r", modifierFlags: .command),
@@ -868,7 +1012,45 @@ final class QuickAskViewController: UIViewController {
                 title: String(localized: "Close"), action: #selector(closeFromKeyboard),
                 input: UIKeyCommand.inputEscape),
         ]
+        return commandPalette.isHidden ? ask : paletteKeyCommands() + ask
     }
+
+    /// Only while the list is up, and only then claiming priority over the system: the arrows have
+    /// to keep moving the caret through an ordinary question, Return has to keep writing a line,
+    /// and escape has to close the list before it closes the sheet — a question is not thrown away
+    /// by dismissing a completion.
+    private func paletteKeyCommands() -> [UIKeyCommand] {
+        let bindings: [(String, Selector)] = [
+            (UIKeyCommand.inputUpArrow, #selector(paletteSelectPrevious)),
+            (UIKeyCommand.inputDownArrow, #selector(paletteSelectNext)),
+            ("\t", #selector(paletteSelectNext)),
+            ("\r", #selector(paletteAccept)),
+            (UIKeyCommand.inputEscape, #selector(paletteDismiss)),
+        ]
+        var commands = bindings.map { input, action -> UIKeyCommand in
+            let command = UIKeyCommand(input: input, modifierFlags: [], action: action)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+        let back = UIKeyCommand(
+            input: "\t", modifierFlags: .shift, action: #selector(paletteSelectPrevious))
+        back.wantsPriorityOverSystemBehavior = true
+        commands.append(back)
+        return commands
+    }
+
+    @objc private func paletteSelectNext() { commandPalette.moveSelection(by: 1) }
+
+    @objc private func paletteSelectPrevious() { commandPalette.moveSelection(by: -1) }
+
+    @objc private func paletteAccept() {
+        guard commandPalette.activateSelection() else {
+            composer.triggerSend()
+            return
+        }
+    }
+
+    @objc private func paletteDismiss() { hideCommandPalette() }
 
     @objc private func sendFromKeyboard() { send() }
 
@@ -883,6 +1065,7 @@ extension QuickAskViewController: ComposerViewDelegate {
     func composerTextDidChange(_ text: String) {
         stashDraft()
         updateStarterVisibility()
+        updateCommandPalette(for: text)
         enhancement.updateInput(text)
         enhanceOverlay?.requestDismiss()
     }

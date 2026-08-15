@@ -108,6 +108,9 @@ final class ChatViewController: UIViewController {
     private let attachmentStrip = UIStackView()
     private var suppressBannerUntil: Date = .distantPast
     private var userScrolledUp = false
+    /// A finger resting on the transcript, which is not the same gesture as a drag and stops the
+    /// stream following the bottom all the same.
+    private var isFingerDown = false
     private var lastRenderedIDs: Set<String> = []
     private let enhancement = PromptEnhancementController()
     private var enhanceOverlay: PromptEnhanceOverlay?
@@ -131,15 +134,35 @@ final class ChatViewController: UIViewController {
 
     var sessionID: String { viewModel.session.id }
 
-    /// A question handed to a chat already on screen — a quick ask aimed at the conversation this
-    /// device is already looking at. It goes out as an ordinary send rather than through the open,
-    /// which has nothing left to do.
-    func deliver(_ text: String, attachments: [PromptAttachment]) {
-        guard isViewLoaded else {
-            viewModel.send(text, attachments: attachments)
-            return
+    /// A question handed to this conversation from somewhere else — a quick ask that minted it, or
+    /// one aimed at the chat this device is already looking at.
+    ///
+    /// It arrives as a decision rather than as words: the quick ask asked the shared grammar what
+    /// the text turns out to be before it minted anything, so a command runs here through the
+    /// command route instead of reaching the model as the word it was typed as.
+    func deliver(_ send: QuickAskSend, attachments: [PromptAttachment]) {
+        switch send.kind {
+        case .prompt:
+            guard isViewLoaded else {
+                viewModel.send(send.text, attachments: attachments)
+                return
+            }
+            sendDraft(send.text, attachments: attachments)
+        case .command(let command, let arguments):
+            SlashRecents.record(command.name)
+            keepInHand(attachments)
+            viewModel.run(command, arguments: arguments)
         }
-        sendDraft(text, attachments: attachments)
+    }
+
+    /// Pictures and files that came with a question whose words turned out to be a command. The
+    /// command route carries no attachments, so rather than drop them on the way in they are put
+    /// where this chat's composer keeps anything else waiting: in hand, for the next message.
+    private func keepInHand(_ attachments: [PromptAttachment]) {
+        guard !attachments.isEmpty else { return }
+        loadViewIfNeeded()
+        pendingAttachments.append(contentsOf: attachments)
+        updateAttachmentStrip()
     }
 
     init(viewModel: ChatViewModel) {
@@ -448,6 +471,13 @@ final class ChatViewController: UIViewController {
         let dismissTap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         dismissTap.cancelsTouchesInView = false
         collectionView.addGestureRecognizer(dismissTap)
+        let touchWatch = UILongPressGestureRecognizer(
+            target: self, action: #selector(transcriptTouchChanged))
+        touchWatch.minimumPressDuration = 0
+        touchWatch.cancelsTouchesInView = false
+        touchWatch.delaysTouchesBegan = false
+        touchWatch.delegate = self
+        collectionView.addGestureRecognizer(touchWatch)
         collectionView.register(TextBubbleCell.self, forCellWithReuseIdentifier: TextBubbleCell.reuseID)
         collectionView.register(CodeBlockCell.self, forCellWithReuseIdentifier: CodeBlockCell.reuseID)
         collectionView.register(TableCell.self, forCellWithReuseIdentifier: TableCell.reuseID)
@@ -1633,7 +1663,9 @@ final class ChatViewController: UIViewController {
             dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
                 guard let self else { return }
                 self.updateTranscriptInsets()
-                if nearBottom && !self.userScrolledUp { self.scrollToBottom(animated: animated) }
+                if nearBottom && !self.userScrolledUp && !self.isFingerDown {
+                    self.scrollToBottom(animated: animated)
+                }
                 if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
             }
         }
@@ -3033,7 +3065,11 @@ final class ChatViewController: UIViewController {
         let sections = commandSections(query: query)
         guard sections.contains(where: { !$0.commands.isEmpty }) else {
             guard !query.isEmpty else { return hideCommandPalette() }
-            commandPalette.update(with: .noMatch(query: query, browse: browseCommand()))
+            commandPalette.update(
+                with: .noMatch(
+                    wording: SlashPresentation.noMatchWording(
+                        "/\(query)", hasProject: viewModel.session.directory != nil),
+                    browse: browseCommand()))
             showCommandPalette()
             return
         }
@@ -3746,6 +3782,27 @@ final class ChatViewController: UIViewController {
     /// the conversation that spawned it.
     /// Merges any adjacent activity rows into one, so a run of thinking/tool steps (even across
     /// message boundaries) reads as a single collapsible group.
+    /// Following the bottom is suspended for as long as a finger is on the transcript.
+    ///
+    /// A tap is not a drag, so `userScrolledUp` never hears about it: the finger goes down on a
+    /// tool row's header, the next arrival of the turn scrolls the transcript out from under it,
+    /// the touch leaves the header's bounds and the release arrives as `touchUpOutside` — the row
+    /// never opens, and it looks like an expander that does not work while the agent is busy. So a
+    /// press is watched for its own sake: it holds the transcript still where it is, and letting go
+    /// re-pins it to the bottom if that is still where the reader was. Opening a row is what turns
+    /// following off for real, and it does that itself.
+    @objc private func transcriptTouchChanged(_ recognizer: UILongPressGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed:
+            isFingerDown = true
+        case .ended, .cancelled, .failed:
+            isFingerDown = false
+            if !userScrolledUp, isNearBottom() { scrollToBottom(animated: true) }
+        default:
+            break
+        }
+    }
+
     private func isNearBottom() -> Bool {
         let offsetY = collectionView.contentOffset.y
         let height = collectionView.contentSize.height
@@ -4345,6 +4402,16 @@ extension ChatViewController: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         refreshAgentsChip()
     }
+}
+
+/// The press that reports a finger on the transcript watches rather than claims: it runs beside the
+/// scroll view's pan, the keyboard-dismissing tap and every button inside a cell, so nothing it
+/// observes is taken away from the row underneath it.
+extension ChatViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool { true }
 }
 
 extension ChatViewController: ImageBubbleCellDelegate {

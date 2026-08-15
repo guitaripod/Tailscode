@@ -39,7 +39,10 @@ struct SlashCommandSection {
 enum SlashPaletteContent {
     case commands([SlashCommandSection])
     case arguments(command: SlashCommand, typed: String)
-    case noMatch(query: String, browse: SlashCommand?)
+    /// `wording` is the whole sentence, composed by `SlashPresentation.noMatchWording` — a
+    /// surface with no project says so, because a command that exists in a repository could not
+    /// have been resolved from here either.
+    case noMatch(wording: String, browse: SlashCommand?)
 }
 
 /// A floating command list shown above the composer when the draft begins with `/`.
@@ -151,8 +154,8 @@ final class SlashCommandPalette: UIView {
             }
         case .arguments(let command, let typed):
             stack.addArrangedSubview(SlashArgumentView(command: command, typed: typed))
-        case .noMatch(let query, let browse):
-            stack.addArrangedSubview(makeNoMatch(query))
+        case .noMatch(let wording, let browse):
+            stack.addArrangedSubview(makeNoMatch(wording))
             if let browse { stack.addArrangedSubview(makeRow(browse)) }
         }
 
@@ -219,10 +222,10 @@ final class SlashCommandPalette: UIView {
     /// A word the catalog does not have keeps the palette on screen saying so. Letting the list
     /// vanish reads as the app losing track of the draft, when in fact the words are about to be
     /// sent as an ordinary message — which is the one thing worth saying here.
-    private func makeNoMatch(_ query: String) -> UIView {
+    private func makeNoMatch(_ wording: String) -> UIView {
         let container = UIView()
         let title = UILabel()
-        title.text = String(localized: "No command called /\(query)")
+        title.text = wording
         title.font = Theme.Ramp.font(.rowTitle)
         title.adjustsFontForContentSizeCategory = true
         title.textColor = Theme.Color.onGlass

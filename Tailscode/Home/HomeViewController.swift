@@ -924,15 +924,20 @@ final class HomeViewController: UIViewController {
     /// dismissal is exactly when a transition is most likely to be running, which is what made it
     /// a coin toss. So `sending` is carried through the retry, delivered to a chat already open,
     /// and sent by the one path that has the view model.
+    ///
+    /// The question travels as a decision rather than as words (`QuickAskSend`), because a slash
+    /// typed into a surface that has no conversation yet still has to run as a command in the one
+    /// it mints. Both roads out of here hand it to the same `deliver`: the chat already on screen
+    /// used to be the road that quietly bypassed the grammar.
     @discardableResult
     private func openChat(
         for entry: SessionEntry, seeding choice: ModelChoice? = nil,
-        sending question: (text: String, attachments: [PromptAttachment])? = nil
+        sending question: (send: QuickAskSend, attachments: [PromptAttachment])? = nil
     ) -> ChatViewModel? {
         guard let nav = navigationController else { return nil }
         if let top = nav.topViewController as? ChatViewController, top.sessionID == entry.session.id
         {
-            if let question { top.deliver(question.text, attachments: question.attachments) }
+            if let question { top.deliver(question.send, attachments: question.attachments) }
             return nil
         }
         if nav.transitionCoordinator != nil {
@@ -953,11 +958,9 @@ final class HomeViewController: UIViewController {
         /// A sheet still over the stack is the one animation this movement gets: the chat is
         /// pushed behind it and revealed as it slides away, rather than the two of them taking
         /// turns for the better part of a second.
-        nav.pushViewController(
-            ChatViewController(viewModel: chatViewModel), animated: presentedViewController == nil)
-        if let question {
-            chatViewModel.send(question.text, attachments: question.attachments)
-        }
+        let chat = ChatViewController(viewModel: chatViewModel)
+        nav.pushViewController(chat, animated: presentedViewController == nil)
+        if let question { chat.deliver(question.send, attachments: question.attachments) }
         return chatViewModel
     }
 
@@ -1078,9 +1081,9 @@ final class HomeViewController: UIViewController {
             return
         }
         let ask = QuickAskViewController.present(from: self, viewModel: viewModel)
-        ask.onOpen = { [weak self] entry, text, aim, attachments in
+        ask.onOpen = { [weak self] entry, send, aim, attachments in
             self?.openChat(
-                for: entry, seeding: aim, sending: (text: text, attachments: attachments))
+                for: entry, seeding: aim, sending: (send: send, attachments: attachments))
         }
         ask.onResume = { [weak self] entry in
             self?.openChat(for: entry)
@@ -1692,7 +1695,7 @@ extension HomeViewController: HomeComposerBarDelegate {
             Theme.Haptics.success()
             openChat(
                 for: entry, seeding: modelChoices[profile.id],
-                sending: (text: text, attachments: []))
+                sending: (send: QuickAskSend(text: text, kind: .prompt), attachments: []))
         }
     }
 }
