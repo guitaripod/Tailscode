@@ -185,6 +185,14 @@ void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data
 void tailscode_on_press_capture(
     GtkWidget *widget, void (*handler)(double x, double y, void *), void *data);
 
+/// Whether a pointer button is currently held anywhere inside `widget`, reported as it goes down
+/// and again as it comes back up. Watched from the capture phase and never claimed, so the press
+/// keeps its ordinary meaning; a sequence the toolkit cancels (a drag that became a scroll) counts
+/// as coming up. A transcript uses it to know that a click is in flight and that the row under the
+/// pointer must not be torn down before the release lands on it.
+void tailscode_on_press_hold(
+    GtkWidget *widget, void (*down)(void *), void (*up)(void *), void *data);
+
 /// A double click on `paned`'s own handle — the gap between its two children, not anywhere in
 /// them. The gesture watches in the capture phase so it sees the press before the paned's resize
 /// drag does, and claims the sequence only for the second press on the handle, which leaves an

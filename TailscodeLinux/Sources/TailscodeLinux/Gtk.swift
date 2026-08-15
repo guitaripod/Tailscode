@@ -117,6 +117,25 @@ enum Gtk {
         tailscode_on_press_capture(widget, callback, box)
     }
 
+    /// Whether a pointer button is held anywhere inside `widget`. Watched from the capture phase
+    /// and never claimed, so the press keeps its ordinary meaning.
+    static func onPressHold(
+        _ widget: UnsafeMutablePointer<GtkWidget>,
+        down: @escaping @Sendable () -> Void,
+        up: @escaping @Sendable () -> Void
+    ) {
+        let box = Unmanaged.passRetained(HoldBox(down: down, up: up)).toOpaque()
+        let downCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<HoldBox>.fromOpaque(raw).takeUnretainedValue().down()
+        }
+        let upCallback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
+            guard let raw else { return }
+            Unmanaged<HoldBox>.fromOpaque(raw).takeUnretainedValue().up()
+        }
+        tailscode_on_press_hold(widget, downCallback, upCallback, box)
+    }
+
     /// A double click on a paned's handle — the divider itself, never its children. Single
     /// clicks and drags pass through untouched, so the handle keeps its ordinary meaning.
     static func onPanedHandleDoubleClick(
@@ -148,6 +167,15 @@ enum Gtk {
     final class PointBox: @unchecked Sendable {
         let handler: @Sendable (Double, Double) -> Void
         init(_ handler: @escaping @Sendable (Double, Double) -> Void) { self.handler = handler }
+    }
+
+    final class HoldBox: @unchecked Sendable {
+        let down: @Sendable () -> Void
+        let up: @Sendable () -> Void
+        init(down: @escaping @Sendable () -> Void, up: @escaping @Sendable () -> Void) {
+            self.down = down
+            self.up = up
+        }
     }
 
     /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.

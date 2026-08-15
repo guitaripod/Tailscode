@@ -8,7 +8,7 @@ import TailscodeCore
 /// pictures and subagent transcripts already fetched, and the callbacks that fetch more. Rows are
 /// rebuilt freely; this survives them.
 final class TranscriptContext: @unchecked Sendable {
-    var expanded: Set<String> = []
+    var expanded = TranscriptExpansion()
     /// The newest text of a thought that is still being written. A reasoning row's header counts
     /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
     /// The row is updated in place instead, and a body opened afterwards reads the current text
@@ -56,7 +56,9 @@ final class TranscriptContext: @unchecked Sendable {
     var onImageStored: (@Sendable (String) -> Void)?
     private var textureOrder: [String] = []
 
-    func isExpanded(_ key: String) -> Bool { expanded.contains(key) }
+    /// A run reads as open when any step inside it is, so folding a step into a run carries the
+    /// reader's decision in with it rather than collapsing it.
+    func isExpanded(_ key: String) -> Bool { expanded.reads(key) }
 
     /// The longest side a transcript picture is kept at. A 4K screenshot downsampled to this
     /// side is ~10 MB of texture instead of ~33 MB, and the 1:1 pixel view never touches the
@@ -160,8 +162,17 @@ final class TranscriptRowBuilder: @unchecked Sendable {
 /// run row the same way the iOS app groups them, so the three clients read the middle of a turn
 /// alike.
 enum ActivityStep: Hashable {
-    case reasoning(String)
-    case tool(ToolCall)
+    case reasoning(key: String, String)
+    case tool(key: String, ToolCall)
+
+    /// The row's own durable key, carried in rather than re-derived from where the step ended up.
+    /// A step's position inside a run moves whenever the run is re-split, and a key that moves is
+    /// a reader's expansion thrown away.
+    var key: String {
+        switch self {
+        case .reasoning(let key, _), .tool(let key, _): return key
+        }
+    }
 }
 
 /// One line of the transcript, in the CLIs' grammar: the prompt behind an accent rule, the
@@ -353,18 +364,17 @@ struct TranscriptRow: Hashable {
         func flush() {
             guard !run.isEmpty else { return }
             let tools = run.compactMap { step -> ToolCall? in
-                if case .tool(let call) = step { return call }
+                if case .tool(_, let call) = step { return call }
                 return nil
             }
             if tools.isEmpty {
-                for (offset, step) in run.enumerated() {
-                    if case .reasoning(let text) = step {
-                        fused.append(
-                            TranscriptRow(key: "\(runKey):r\(offset)", kind: .reasoning(text)))
+                for step in run {
+                    if case .reasoning(let key, let text) = step {
+                        fused.append(TranscriptRow(key: key, kind: .reasoning(text)))
                     }
                 }
             } else if tools.count == 1, run.count == 1 {
-                fused.append(TranscriptRow(key: runKey, kind: .tool(tools[0])))
+                fused.append(TranscriptRow(key: "run:\(runKey)", kind: .tool(tools[0])))
             } else {
                 fused.append(TranscriptRow(key: "run:\(runKey)", kind: .run(run)))
             }
@@ -375,10 +385,10 @@ struct TranscriptRow: Hashable {
             switch row.kind {
             case .tool(let call):
                 if run.isEmpty { runKey = row.key }
-                run.append(.tool(call))
+                run.append(.tool(key: row.key, call))
             case .reasoning(let text):
                 if run.isEmpty { runKey = row.key }
-                run.append(.reasoning(text))
+                run.append(.reasoning(key: row.key, text))
             default:
                 flush()
                 fused.append(row)
@@ -457,8 +467,8 @@ struct TranscriptRow: Hashable {
         case .run(let steps):
             return steps.map { step -> String in
                 switch step {
-                case .reasoning(let text): return text
-                case .tool(let call): return Self.searchText(for: call)
+                case .reasoning(_, let text): return text
+                case .tool(_, let call): return Self.searchText(for: call)
                 }
             }.joined(separator: " ")
         case .file(let reference, _):

@@ -804,6 +804,49 @@ void tailscode_on_press_capture(
 }
 
 typedef struct {
+    void (*down)(void *);
+    void (*up)(void *);
+    void *data;
+} TailscodeHold;
+
+static void tailscode_hold_down(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)gesture; (void)n_press; (void)x; (void)y;
+    TailscodeHold *box = raw;
+    box->down(box->data);
+}
+
+static void tailscode_hold_up(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)gesture; (void)n_press; (void)x; (void)y;
+    TailscodeHold *box = raw;
+    box->up(box->data);
+}
+
+static void tailscode_hold_cancelled(
+    GtkGesture *gesture, GdkEventSequence *sequence, gpointer raw) {
+    (void)gesture; (void)sequence;
+    TailscodeHold *box = raw;
+    box->up(box->data);
+}
+
+void tailscode_on_press_hold(
+    GtkWidget *widget, void (*down)(void *), void (*up)(void *), void *data) {
+    TailscodeHold *box = g_new0(TailscodeHold, 1);
+    box->down = down;
+    box->up = up;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), 0);
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    g_signal_connect_data(click, "pressed", G_CALLBACK(tailscode_hold_down), box, NULL, 0);
+    g_signal_connect(click, "released", G_CALLBACK(tailscode_hold_up), box);
+    g_signal_connect_data(click, "cancel", G_CALLBACK(tailscode_hold_cancelled), box,
+                          (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
+typedef struct {
     void (*handler)(void *);
     void *data;
     guint32 last_press;

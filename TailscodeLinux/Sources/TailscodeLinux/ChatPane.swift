@@ -238,6 +238,10 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(canvas), pendingBox)
         gtk_scrolled_window_set_child(op(scroller), makeTranscriptViewport(canvas))
         gtk_widget_set_vexpand(scroller, 1)
+        Gtk.onPressHold(
+            scroller,
+            down: { [weak self] in Gtk.onMain { [weak self] in self?.pointerHeld = true } },
+            up: { [weak self] in Gtk.onMain { [weak self] in self?.releasePointer() } })
         transcriptScroller = scroller
 
         let overlay = gtk_overlay_new()!
@@ -404,8 +408,8 @@ final class ChatPane: @unchecked Sendable {
         context.onToggle = { [weak self] key, open in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                if open { self.context.expanded.insert(key) } else {
-                    self.context.expanded.remove(key)
+                if open { self.context.expanded.set(key, open: true) } else {
+                    self.context.expanded.set(key, open: false)
                 }
                 self.followsBottom = false
             }
@@ -725,7 +729,7 @@ final class ChatPane: @unchecked Sendable {
         ultracodeInFlight = false
         refreshUltracodeAura()
         turnStartedAt = nil
-        context.expanded = []
+        context.expanded.reset()
         context.subagentRows = [:]
         context.liveReasoning = [:]
         context.agentFacts = [:]
@@ -1203,6 +1207,10 @@ final class ChatPane: @unchecked Sendable {
                 + Dictionary(grouping: rows, by: \.key).filter { $0.value.count > 1 }
                     .keys.sorted().joined(separator: ", "))
         if updatedLastRowInPlace(rows) { return }
+        if pointerHeld, !placeholderShown, fillComplete {
+            heldRows = rows
+            return
+        }
         let initialFill = placeholderShown
         if placeholderShown {
             Gtk.removeChildren(of: transcriptBox)
@@ -1304,6 +1312,24 @@ final class ChatPane: @unchecked Sendable {
     /// Nothing here is chunked. Chunking is for the first fill, where the rows have never been on
     /// screen and the cost is real; a tail being put back from rows the pane already holds must
     /// land in one frame, because the alternative is the collapse this exists to remove.
+    /// A click is a press and a release, and a row rebuilt between the two never becomes one.
+    ///
+    /// A run row's value changes on every arrival — a tool's status, its output, a thought still
+    /// being written inside it — so the widget under the pointer is destroyed and remade dozens of
+    /// times a second while a turn runs, and the disclosure the reader is trying to open is gone
+    /// before their finger comes up. The rows are held for the length of the press and applied on
+    /// the release: a click always lands on the row it was aimed at, and the transcript catches up
+    /// a tenth of a second later.
+    private var pointerHeld = false
+    private var heldRows: [TranscriptRow]?
+
+    private func releasePointer() {
+        pointerHeld = false
+        guard let rows = heldRows else { return }
+        heldRows = nil
+        applyRows(rows)
+    }
+
     private func reconcileRows(with rows: [TranscriptRow], from start: Int) {
         let window = Array(rows[start...])
         let plan = RowDiff.plan(from: renderedRows.map(\.key), to: window.map(\.key))
@@ -1868,7 +1894,7 @@ final class ChatPane: @unchecked Sendable {
     private func scrollToAgent(_ id: String) {
         for (index, row) in renderedRows.enumerated() {
             guard case .subagent(let call) = row.kind, call.id == id else { continue }
-            context.expanded.insert(row.key)
+            context.expanded.set(row.key, open: true)
             replaceRows { $0.key == row.key }
             fetchSubagent(call)
             scrollToRow(at: index)
@@ -3557,7 +3583,7 @@ final class ChatPane: @unchecked Sendable {
         state.hasLoadedTranscript = true
         state.status = .idle
         apply(state: state, rows: rowBuilder.rows(for: state.messages))
-        context.expanded.insert("demo-launch:p")
+        context.expanded.set("demo-launch:p", open: true)
         refreshWorkflowRuns()
         replaceRows { if case .workflow = $0.kind { return true } else { return false } }
     }

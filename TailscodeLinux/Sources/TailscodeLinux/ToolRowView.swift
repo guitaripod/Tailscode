@@ -41,7 +41,7 @@ enum ToolRowView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let calls = steps.compactMap { step -> ToolCall? in
-            if case .tool(let call) = step { return call }
+            if case .tool(_, let call) = step { return call }
             return nil
         }
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
@@ -89,15 +89,14 @@ enum ToolRowView {
         ) {
             let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
             Gtk.margins(body, leading: 16)
-            for (index, step) in steps.enumerated() {
+            for step in steps {
                 switch step {
-                case .reasoning(let text):
+                case .reasoning(let stepKey, let text):
                     gtk_box_append(
                         ptr(body),
-                        TranscriptRow.reasoning(text, key: "\(key):r\(index)", context: context))
-                case .tool(let call):
-                    gtk_box_append(
-                        ptr(body), make(call, key: "\(key):\(index)", context: context))
+                        TranscriptRow.reasoning(text, key: stepKey, context: context))
+                case .tool(let stepKey, let call):
+                    gtk_box_append(ptr(body), make(call, key: stepKey, context: context))
                 }
             }
             return body
