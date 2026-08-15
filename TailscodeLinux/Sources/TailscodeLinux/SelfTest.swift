@@ -1,3 +1,4 @@
+import CAdw
 import CGtkShim
 import CodingAgentKit
 import CodingAgentKitApple
@@ -44,6 +45,14 @@ public enum SelfTest {
             report("markup: \(checks) shapes render")
         } catch {
             report("markup: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkTable()
+            report("table: \(checks) widths measure the height they draw")
+        } catch {
+            report("table: \(error)")
             failures += 1
         }
 
@@ -1280,6 +1289,60 @@ public enum SelfTest {
             throw SelfTestFailure("interruption rows wrong: \(rows.map(\.kind))")
         }
         return cases.count + 1
+    }
+
+    /// The height a table hands the transcript has to be the height it will draw at.
+    ///
+    /// A grid whose columns hug their content is measured by the box above it for the width of the
+    /// whole pane and then allocated only its own natural width, so the two heights have to agree.
+    /// A cell that asks for extra space — a rule spanning the columns is the tempting one — makes
+    /// `GtkGrid` measure a distribution it never allocates, every wrapping cell comes out a line
+    /// short, and the last rows are drawn over the paragraph beneath the table.
+    private static func checkTable() throws -> Int {
+        let table = MarkdownTable(
+            header: ["Tab", "Mod", "Download"],
+            alignments: [.leading, .leading, .leading],
+            rows: [
+                ["102", "Free Flight", "**Main-102-1-1** (v1.1, main)"],
+                [
+                    "16", "Retro Sound Pack",
+                    "**Spyro Reignited Retro Sound Pack-0-1-1568225269** (main, 2nd)",
+                ],
+                [
+                    "4", "Intro Movie Remover",
+                    "**Intro Movie Remover** (skip Credits_Remover optional unless you want it)",
+                ],
+                ["233", "60fps Cutscenes", "**Reignited Interpolated 60fps Cutscenes** (2.1GB .rar)"],
+            ])
+        guard gtk_init_check() != 0 else { return 0 }
+        let widget = TranscriptRow.table(table)
+        g_object_ref_sink(UnsafeMutableRawPointer(widget))
+        defer { g_object_unref(UnsafeMutableRawPointer(widget)) }
+
+        func measure(_ orientation: GtkOrientation, for size: Int32) -> Int32 {
+            var minimum: Int32 = 0
+            var natural: Int32 = 0
+            gtk_widget_measure(widget, orientation, size, &minimum, &natural, nil, nil)
+            return natural
+        }
+
+        let width = measure(GTK_ORIENTATION_HORIZONTAL, for: -1)
+        guard width > 0 else { throw SelfTestFailure("a table with cells asks for no width") }
+        let drawn = measure(GTK_ORIENTATION_VERTICAL, for: width)
+        var checks = 0
+        for pane in [width - 120, width, width + 200, width + 900] where pane > 0 {
+            let allocated = min(width, pane)
+            let asked = measure(GTK_ORIENTATION_VERTICAL, for: pane)
+            let needed = measure(GTK_ORIENTATION_VERTICAL, for: allocated)
+            guard asked >= needed else {
+                throw SelfTestFailure(
+                    "a table measured \(asked) tall for a \(pane) pane draws \(needed) at the "
+                        + "\(allocated) it is given — the rows past that fall on the words below")
+            }
+            checks += 1
+        }
+        guard drawn > 0 else { throw SelfTestFailure("a table with rows asks for no height") }
+        return checks + 1
     }
 
     /// Pango markup is a string, so a code block is one escape away from a parse error that empties

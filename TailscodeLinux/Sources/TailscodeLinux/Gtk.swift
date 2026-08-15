@@ -465,6 +465,18 @@ enum Gtk {
         return rule
     }
 
+    /// A hairline for a cell that spans a grid's columns, which asks for nothing. A rule that
+    /// wants extra space inside a grid whose columns hug their content makes `GtkGrid` measure a
+    /// height for a width distribution it never allocates: every wrapping cell is then measured
+    /// one line short, and the table draws its last row over the paragraph beneath it. Spanning
+    /// the columns already gives the rule the whole width of what it seats.
+    static func spanningHairline() -> UnsafeMutablePointer<GtkWidget> {
+        let rule = box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        addClass(rule, "turn-rule")
+        gtk_widget_set_halign(rule, GTK_ALIGN_FILL)
+        return rule
+    }
+
     final class Slot: @unchecked Sendable {
         var bits: UInt = 0
     }

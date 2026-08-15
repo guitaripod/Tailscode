@@ -596,7 +596,7 @@ struct TranscriptRow: Hashable {
         for (column, title) in table.header.enumerated() {
             gtk_grid_attach(grid, cell(title, header: true, column: column), Int32(column), 0, 1, 1)
         }
-        let rule = Gtk.hairline()
+        let rule = Gtk.spanningHairline()
         Gtk.margins(rule, top: 2, bottom: 2)
         gtk_grid_attach(grid, rule, 0, 1, Int32(table.columnCount), 1)
         for row in table.rows.indices {
