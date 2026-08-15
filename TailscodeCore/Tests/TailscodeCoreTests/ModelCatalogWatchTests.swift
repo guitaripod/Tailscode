@@ -24,6 +24,7 @@ struct ModelCatalogWatchTests {
 
     @Test("A live ask finishes once the server answers, so a subscriber's loop ends")
     func finishesAfterAnswer() async {
+        ModelCatalogStore.forget("w-finish")
         let backend = MockBackend(models: Self.catalog)
         let answer = await withTaskGroup(of: Int?.self) { group in
             group.addTask {
@@ -44,6 +45,7 @@ struct ModelCatalogWatchTests {
 
     @Test("A live ask yields the remembered list first, then the server's answer")
     func freshAnswer() async {
+        ModelCatalogStore.forget("w-fresh")
         let backend = MockBackend(models: Self.catalog)
         let readings = await collect(profileID: "w-fresh", backend: backend) { $0.reachable == true }
         #expect(readings.count == 2)
@@ -56,6 +58,7 @@ struct ModelCatalogWatchTests {
 
     @Test("A server that refuses is retried, and the answer lands when it comes back")
     func retriesUntilReachable() async {
+        ModelCatalogStore.forget("w-retry")
         let backend = MockBackend(models: Self.catalog, modelsFailures: 2)
         let readings = await collect(profileID: "w-retry", backend: backend) { $0.reachable == true }
         #expect(readings.count >= 2)
@@ -67,6 +70,7 @@ struct ModelCatalogWatchTests {
 
     @Test("A watched answer lands in the store, so a later reader paints it from memory")
     func answerIsRemembered() async throws {
+        ModelCatalogStore.forget("w-remembered")
         let backend = MockBackend(models: Self.catalog)
         let readings = await collect(profileID: "w-remembered", backend: backend) { $0.reachable == true }
         #expect(readings.last?.reachable == true)

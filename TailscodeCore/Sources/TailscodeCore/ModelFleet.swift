@@ -21,6 +21,13 @@ public enum ModelCatalogStore {
         UserDefaults.standard.set(data, forKey: prefix + profileID)
     }
 
+    /// Forgets one server's catalog — what a removed profile leaves behind, and what a test that
+    /// asserts on the first reading has to do before it asks, since the remembered list outlives
+    /// the process that wrote it.
+    public static func forget(_ profileID: String) {
+        UserDefaults.standard.removeObject(forKey: prefix + profileID)
+    }
+
     /// Asks a server what it runs and remembers the answer. Failure is silent on purpose: a server
     /// that cannot be reached keeps the catalog it last gave, which is what lets the chooser still
     /// name its models.
