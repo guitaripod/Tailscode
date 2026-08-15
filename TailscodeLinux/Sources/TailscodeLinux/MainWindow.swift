@@ -263,9 +263,13 @@ final class MainWindow: @unchecked Sendable {
                 case "compactui":
                     Dialogs.compactPreflight(
                         parent: self.window,
-                        facts: CompactPreflight.make(state: self.activePane.lastState),
+                        facts: CompactPreflight.make(
+                            state: self.activePane.lastState,
+                            showsInstruction: argument != "noinstruction"),
                         draft: nil
-                    ) { _ in }
+                    ) { _ in
+                        FileHandle.standardOutput.write(Data("COMPACT confirmed\n".utf8))
+                    }
                 case "orb":
                     FileHandle.standardOutput.write(Data("ORB \(self.orb.stateLine)\n".utf8))
                 case "mark":

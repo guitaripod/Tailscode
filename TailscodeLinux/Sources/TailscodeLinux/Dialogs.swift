@@ -286,16 +286,21 @@ enum Dialogs {
                 DraftStore.record(String(cString: text), for: draft)
             }
         }
+        /// The window is closed from its own handle rather than from the field's root: a server
+        /// that takes no instruction (opencode decides what its summary keeps) draws no field, and
+        /// closing through one that does not exist left the confirmation standing over a
+        /// compaction that had already started.
+        let windowBits = UInt(bitPattern: window)
         let compact: @Sendable () -> Void = {
+            var instruction = ""
             if let entryBits, let raw = UnsafeMutableRawPointer(bitPattern: entryBits) {
-                let field: UnsafeMutablePointer<GtkWidget> = ptr(raw)
-                let instruction = entryText(field)
-                if let draft { DraftStore.clear(draft) }
-                close(field)
-                onCompact(instruction.isEmpty ? nil : instruction)
-            } else {
-                onCompact(nil)
+                instruction = entryText(ptr(raw))
             }
+            if let draft { DraftStore.clear(draft) }
+            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
+                gtk_window_destroy(ptr(raw))
+            }
+            onCompact(instruction.isEmpty ? nil : instruction)
         }
         if let entry {
             Gtk.connect(UnsafeMutableRawPointer(entry), "activate", compact)
