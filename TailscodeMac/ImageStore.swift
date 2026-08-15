@@ -297,6 +297,9 @@ final class ImageViewer: NSObject {
         }
         save.bezelStyle = .rounded
         barViews.append(save)
+        for button in barViews.compactMap({ $0 as? NSButton }) {
+            button.font = MacTheme.Ramp.font(.control)
+        }
 
         let bar = NSStackView(views: barViews)
         bar.orientation = .horizontal

@@ -229,7 +229,7 @@ final class ServersWindow: NSWindowController {
                     try await restartable.restart()
                     self.setStatus(ServerRestart.underway)
                 } catch {
-                    self.offerSetup(name: profile.name, backend: backend)
+                    self?.offerSetup(name: profile.name, backend: backend)
                 }
             }
         }

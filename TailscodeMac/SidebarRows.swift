@@ -142,6 +142,7 @@ final class SidebarSessionCell: NSView {
         title.font = MacTheme.Ramp.font(.rowTitle)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
         titleRow.orientation = .horizontal
         titleRow.spacing = 6
@@ -186,7 +187,7 @@ final class SidebarSessionCell: NSView {
             glyphWidth,
             titleFloor,
             titleRow.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 4),
-            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: age.leadingAnchor, constant: -6),
+            titleRow.trailingAnchor.constraint(equalTo: age.leadingAnchor, constant: -6),
             titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             age.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             age.firstBaselineAnchor.constraint(equalTo: detail.firstBaselineAnchor),
@@ -353,6 +354,7 @@ final class SidebarSessionCell: NSView {
         label.textColor = tint
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         let capsule = NSView()
         capsule.wantsLayer = true
