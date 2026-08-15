@@ -1194,7 +1194,8 @@ final class HomeViewController: UIViewController {
         composerBar.delegate = self
         composerBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(composerBar)
-        composerFloor = composerBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        composerFloor = composerBar.bottomAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         composerRidesKeyboard = composerBar.bottomAnchor.constraint(
             equalTo: view.keyboardLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([
@@ -1229,10 +1230,11 @@ final class HomeViewController: UIViewController {
     /// bar rests at the bottom edge, and takes the keyboard's word for where it goes only from the
     /// moment its own composer starts being typed into until this screen goes away.
     ///
-    /// The floor is the view's own bottom rather than the safe area's: that is where the keyboard
-    /// guide sits with no keyboard up, so adopting it is a change of authority rather than a
-    /// change of position, and the bar does not hop the height of the home indicator on the first
-    /// tap.
+    /// The floor is the safe area's bottom, which is exactly where the keyboard guide rests with
+    /// no keyboard up — `usesBottomSafeArea` is on by default, so the guide is not the view's own
+    /// bottom edge. Adopting it is therefore a change of authority rather than a change of
+    /// position, and the bar neither hops nor spends the first tap climbing out from under the
+    /// home indicator.
     private func composerFollowsKeyboard(_ follows: Bool) {
         guard composerRidesKeyboard.isActive != follows else { return }
         if follows {
