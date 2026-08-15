@@ -23,6 +23,8 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     private let onSaved: () -> Void
     private var window: FloatingWindow?
     private let tailnetPill = MacDialogs.detailLabel("")
+    private let tailnetRemedy = TailnetRemedyView(inset: 22)
+    private var tailscale: TailscaleReading?
     private let agentPill = MacDialogs.detailLabel("")
     private let addressField = NSTextField()
     private let passwordField = NSSecureTextField()
@@ -58,6 +60,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         column.addArrangedSubview(
             stepRow(number: "1", title: Localized.text("Tailscale on this Mac"), pill: tailnetPill))
         setPill(tailnetPill, text: Localized.text("Checking…"), color: MacTheme.Color.secondaryLabel)
+        tailnetRemedy.isHidden = true
+        column.addArrangedSubview(tailnetRemedy)
+        tailnetRemedy.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40)
+            .isActive = true
 
         column.addArrangedSubview(
             stepRow(
@@ -222,22 +228,27 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     }
 
     /// This Mac's tailnet presence, re-proved every few seconds while the window is open —
-    /// someone starting Tailscale mid-setup watches the step go green by itself.
+    /// someone starting Tailscale mid-setup watches the step go green by itself. The CLI is asked
+    /// off the main actor, because a step that polls must never be a step that stutters.
     private func pollTailnet() {
         Task { [weak self] in
             while let self, !self.closed {
-                let address = TailnetStatusMac.localAddress()
-                if let address {
-                    self.setPill(self.tailnetPill, text: address, color: MacTheme.Color.success)
-                } else {
-                    self.setPill(
-                        self.tailnetPill,
-                        text: Localized.text("Not connected — open Tailscale"),
-                        color: MacTheme.Color.warning)
-                }
+                let status = await Task.detached(priority: .utility) { TailnetStatusMac.read() }
+                    .value
+                guard !self.closed else { return }
+                self.show(status.reading)
                 try? await Task.sleep(for: .seconds(3))
             }
         }
+    }
+
+    /// Step 1 as one of five states, each with the one thing that fixes it. "Not connected — open
+    /// Tailscale" stood for all of them, and it is the right advice for exactly one — and it is
+    /// advice, which a checklist is not supposed to give.
+    private func show(_ reading: TailscaleReading) {
+        tailscale = reading
+        setPill(tailnetPill, text: reading.title, color: reading.tone.color)
+        tailnetRemedy.write(reading)
     }
 
     private var preferredBackend: AgentType {
@@ -289,7 +300,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         diagnosisLabel.stringValue = Localized.text("Probing %@…", address.displayHost)
         probeGeneration += 1
         let generation = probeGeneration
-        let tailnetUp = TailnetStatusMac.localAddress() != nil
+        let tailnet = tailscale
         Task { [weak self] in
             let verdict = await ProbeSweep.best(
                 address: address, password: password.isEmpty ? nil : password,
@@ -304,14 +315,14 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             }
             guard let self, !self.closed, generation == self.probeGeneration else { return }
             self.consume(
-                verdict, address: address, password: password, tailnetUp: tailnetUp,
+                verdict, address: address, password: password, tailnet: tailnet,
                 reachability: reachability, userInitiated: userInitiated)
         }
     }
 
     private func consume(
         _ verdict: ProbeSweep.Verdict, address: HostAddress, password: String,
-        tailnetUp: Bool, reachability: PortReachability.Verdict?, userInitiated: Bool
+        tailnet: TailscaleReading?, reachability: PortReachability.Verdict?, userInitiated: Bool
     ) {
         switch verdict.outcome {
         case .ok(let agent, let version):
@@ -344,9 +355,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         case .unreachable:
             clearVerification()
             setPill(agentPill, text: Localized.text("No answer"), color: MacTheme.Color.warning)
-            guard tailnetUp else {
+            if let tailnet, !tailnet.isUp, tailnet != .sandboxed {
                 diagnosisLabel.stringValue = Localized.text(
-                    "This Mac is not on the tailnet — step 1 has to be true first.")
+                    "This Mac is not on the tailnet — %@. Step 1 has to be true first.",
+                    tailnet.title)
                 return
             }
             switch reachability {

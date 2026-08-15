@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import CodingAgentKitApple
 import TailscodeCore
 
 /// The shared vocabulary of quota rendering: severity thresholds, brand tints, countdowns and
@@ -111,16 +112,31 @@ enum UsageFormat {
         return track
     }
 
-    /// A spend window reads as money, everything else as the percent already used — or "Used up"
-    /// when the window is at the wall.
+    /// Money without a ceiling is a prepaid balance rather than a window: nothing fills, nothing
+    /// resets, and the only cap anyone could draw would be invented.
+    static func isBalance(_ gauge: UsageQuota.Gauge) -> Bool {
+        gauge.usedUSD != nil && gauge.limitUSD == nil
+    }
+
+    /// A spend window reads as money, a balance as the money itself, and everything else as the
+    /// percent already used — or "Used up" when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
             return Localized.text(
                 "%@ of %@", QuotaGlance.money(used, gauge.currency),
                 QuotaGlance.money(limit, gauge.currency))
         }
+        if isBalance(gauge) { return DeepSeekBalance.amount(for: gauge) }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
+    }
+
+    /// The ink a balance's number wears: ordinary label ink, because money in hand is a fact
+    /// rather than a severity — and the failure colour at zero, which is the one wall a balance
+    /// can hit.
+    static func balanceColor(_ gauge: UsageQuota.Gauge) -> NSColor {
+        gauge.fraction >= QuotaSurface.exhaustedFloor
+            ? MacTheme.Color.danger : MacTheme.Color.label
     }
 
     static func countdown(to date: Date) -> String {
@@ -141,6 +157,7 @@ enum UsageFormat {
 final class UsageFooterView: NSView {
     private let column = FillingStack()
     private var last: ([(String, UsageQuota)], Date?) = ([], nil)
+    private var probing = false
 
     init() {
         super.init(frame: .zero)
@@ -157,6 +174,8 @@ final class UsageFooterView: NSView {
         isHidden = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: DeepSeekBalance.didChange, object: nil)
     }
 
     @available(*, unavailable)
@@ -173,11 +192,30 @@ final class UsageFooterView: NSView {
     func render(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
         last = (quotas, answeredAt)
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let glance = QuotaGlance.make(from: quotas, answeredAt: answeredAt)
+        let glance = QuotaGlance.make(
+            from: DeepSeekBalance.folded(into: quotas), answeredAt: answeredAt)
         isHidden = glance.isEmpty
         toolTip = glance.tooltip.isEmpty ? nil : glance.tooltip
         for line in glance.lines {
             column.addArrangedSubview(row(line))
+        }
+        probeBalance()
+    }
+
+    /// The prepaid balance rides the strip's own cadence: no server holds it, so it is asked for
+    /// where it is drawn. The ask is throttled inside `DeepSeekBalance`, costs nothing without a
+    /// key, and only redraws the strip when the money actually moved — a repaint per poll of an
+    /// unchanged number is motion the reader would have to read.
+    private func probeBalance() {
+        guard !probing else { return }
+        probing = true
+        let drawn = DeepSeekBalance.cached
+        Task { [weak self] in
+            let reading = await DeepSeekBalance.refresh()
+            guard let self else { return }
+            self.probing = false
+            guard reading != drawn else { return }
+            self.render(self.last.0, answeredAt: self.last.1)
         }
     }
 
@@ -251,6 +289,9 @@ final class UsagePanelViewController: NSViewController {
     private let refresh: () async -> [(String, UsageQuota)]
     private let onAnalytics: () -> Void
     private var refreshing = false
+    /// The prepaid balance is this Mac's own reading rather than a server's report, so it is held
+    /// beside the servers' quotas and folded in only where the cards are built.
+    private var balance: DeepSeekBalance.Reading?
 
     init(
         initial: [(String, UsageQuota)],
@@ -260,6 +301,7 @@ final class UsagePanelViewController: NSViewController {
         self.quotas = initial
         self.refresh = refresh
         self.onAnalytics = onAnalytics
+        self.balance = DeepSeekBalance.cached
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -334,6 +376,8 @@ final class UsagePanelViewController: NSViewController {
             guard let self else { return }
             let fresh = await self.refresh()
             if !fresh.isEmpty { self.quotas = fresh }
+            let reading = await DeepSeekBalance.refresh()
+            self.balance = reading ?? DeepSeekBalance.cached
             self.refreshing = false
             self.renderCards()
         }
@@ -341,21 +385,24 @@ final class UsagePanelViewController: NSViewController {
 
     private func renderCards() {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if quotas.isEmpty {
+        let holdings = QuotaRollup.account(from: reports())
+        if holdings.isEmpty {
             column.addArrangedSubview(
                 RowKit.label(
                     refreshing
                         ? Localized.text("Asking the providers…")
                         : Localized.text("No provider reports a quota."),
                     font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel))
-            return
+        } else {
+            if let hero = heroCard(holdings) {
+                column.addArrangedSubview(hero)
+            }
+            for holding in holdings {
+                column.addArrangedSubview(card(holding))
+            }
         }
-        let holdings = QuotaRollup.account(from: quotas)
-        if let hero = heroCard(holdings) {
-            column.addArrangedSubview(hero)
-        }
-        for holding in holdings {
-            column.addArrangedSubview(card(holding))
+        if let invitation = deepseekCard() {
+            column.addArrangedSubview(invitation)
         }
         if refreshing {
             column.addArrangedSubview(
@@ -365,11 +412,78 @@ final class UsagePanelViewController: NSViewController {
         }
     }
 
+    private func reports() -> [(String, UsageQuota)] {
+        guard let balance else { return quotas }
+        return quotas + [("", DeepSeekBalance.snapshot(for: balance))]
+    }
+
+    /// What the panel says about DeepSeek when there is no balance to draw: a key nobody has set
+    /// is a state with words and one action rather than a blank space, and a key that has been set
+    /// but not yet answered for says exactly that instead of reading as an account with no money.
+    /// It is offered only where it could matter — an opencode server is what fronts these models —
+    /// so an account that has never touched DeepSeek is not told about one.
+    private func deepseekCard() -> NSView? {
+        guard balance == nil else { return nil }
+        let hasKey = DeepSeekCredentials.hasToken
+        let fronted = ServerDirectory.shared.profiles.contains { $0.backend == .openCode }
+        guard hasKey || fronted else { return nil }
+
+        let words =
+            hasKey
+            ? Localized.text(
+                "The key is set and api.deepseek.com has not answered yet — the prepaid balance appears here as soon as it does.")
+            : Localized.text(
+                "DeepSeek models billed straight to your own platform account are metered by a prepaid balance rather than by a plan. Add the key and the balance joins these numbers.")
+        let action =
+            hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
+
+        let card = FillingStack()
+        card.spacing = MacTheme.Spacing.s
+        card.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.m)
+        card.wantsLayer = true
+        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
+        card.layer?.cornerRadius = MacTheme.Radius.control
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addArrangedSubview(
+            RowKit.label(
+                Localized.text("DeepSeek"), font: MacTheme.Ramp.font(.panelTitle),
+                color: MacTheme.Color.label))
+        card.addArrangedSubview(
+            RowKit.wrapping(
+                words, font: MacTheme.Ramp.font(.panelFootnote),
+                color: MacTheme.Color.secondaryLabel))
+        let button = RowKit.ActionButton(title: action) { [weak self] in
+            self?.editDeepSeekKey()
+        }
+        button.controlSize = .small
+        let row = NSStackView(views: [button, RowKit.spacer()])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = MacTheme.Spacing.s
+        card.addArrangedSubview(row)
+        return card
+    }
+
+    /// The editor is sheeted on the app's own window rather than on the popover, which is
+    /// transient: a sheet hung off a window that closes the moment the keyboard moves is a sheet
+    /// that vanishes mid-paste.
+    private func editDeepSeekKey() {
+        DeepSeekKeySheet.present(on: NSApp?.mainWindow) { [weak self] in
+            guard let self else { return }
+            self.balance = DeepSeekBalance.cached
+            self.renderCards()
+            self.startRefresh()
+        }
+    }
+
     /// The panel leads with the tightest window across every provider — the one that decides
     /// when the next send unlocks — as one big bar with its countdown. The cards below carry
     /// the rest.
     private func heroCard(_ holdings: [QuotaHolding]) -> NSView? {
-        guard let (holding, gauge) = QuotaRollup.tightest(in: holdings) else { return nil }
+        guard let (holding, gauge) = QuotaRollup.tightest(in: Self.windowsOnly(holdings))
+        else { return nil }
         let quota = holding.quota
         let slug = holding.slug
         let fraction = min(max(gauge.fraction, 0), 1)
@@ -418,6 +532,18 @@ final class UsagePanelViewController: NSViewController {
         hero.layer?.cornerRadius = MacTheme.Radius.control
         hero.translatesAutoresizingMaskIntoConstraints = false
         return hero
+    }
+
+    /// A balance never leads. The hero is the window that decides when the next send unlocks, and
+    /// a prepaid balance is neither a window nor a countdown — an empty one would otherwise take
+    /// the top of the panel wearing "Tightest window" over money that resets on nothing.
+    private static func windowsOnly(_ holdings: [QuotaHolding]) -> [QuotaHolding] {
+        holdings.compactMap { holding -> QuotaHolding? in
+            var quota = holding.quota
+            quota.gauges = quota.gauges.filter { !UsageFormat.isBalance($0) }
+            guard !quota.gauges.isEmpty else { return nil }
+            return QuotaHolding(quota: quota, machines: holding.machines)
+        }
     }
 
     private func card(_ holding: QuotaHolding) -> NSView {
@@ -476,9 +602,13 @@ final class UsagePanelViewController: NSViewController {
         return card
     }
 
+    /// One gauge, and one exception to it: money with no ceiling is drawn as the number itself.
+    /// A bar under a balance would have to invent the cap it fills against, and the card's own
+    /// details already say what the money is made of — topped up, and granted.
     private static func gaugeBlock(_ gauge: UsageQuota.Gauge, slug: String?) -> NSView {
         let fraction = min(max(gauge.fraction, 0), 1)
         let severity = UsageFormat.severity(fraction)
+        let isBalance = UsageFormat.isBalance(gauge)
         let block = FillingStack()
         block.spacing = 3
 
@@ -486,17 +616,21 @@ final class UsagePanelViewController: NSViewController {
             gauge.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.label)
         title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
         let amount = RowKit.label(
-            UsageFormat.amount(for: gauge), font: MacTheme.Ramp.font(.panelFootnote),
-            color: UsageFormat.severityColor(severity))
+            UsageFormat.amount(for: gauge),
+            font: MacTheme.Ramp.font(isBalance ? .metricValue : .panelFootnote),
+            color: isBalance
+                ? UsageFormat.balanceColor(gauge) : UsageFormat.severityColor(severity))
         let row = NSStackView(views: [title, RowKit.spacer(), amount])
         row.orientation = .horizontal
         row.spacing = MacTheme.Spacing.s
         block.addArrangedSubview(row)
 
-        block.addArrangedSubview(
-            UsageFormat.fullWidthBar(
-                fraction: fraction, height: 6,
-                fill: UsageFormat.fillColor(severity: severity, slug: slug)))
+        if !isBalance {
+            block.addArrangedSubview(
+                UsageFormat.fullWidthBar(
+                    fraction: fraction, height: 6,
+                    fill: UsageFormat.fillColor(severity: severity, slug: slug)))
+        }
 
         if let resets = gauge.resetsAt {
             let phrasing =

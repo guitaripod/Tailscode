@@ -71,8 +71,10 @@ enum ParityManifest {
         case .usagePanel: return .implemented("UsagePanel")
         case .usageAnalytics: return .implemented("AnalyticsCardRenderer")
         case .deepseekBalance:
-            return .gap(
-                "The Mac's usage surfaces read quotas through the bridge, which has no DeepSeek balance route; parity owes a local api.deepseek.com fetch behind a Keychain-stored key and the balance card in UsageViews.")
+            return .partial(
+                "DeepSeekBalance",
+                missing:
+                    "The key is held in the same Keychain the profiles use, the fetch is local and throttled, and the balance is drawn as money — no bar, no invented cap — in the sidebar strip, the quota panel and the settings row. What it does not yet reach is the model chooser's walls: those read the quota list MainWindowController.collectQuotas gathers from the servers, which no DeepSeek reading is folded into, so an empty balance greys no DeepSeek row.")
         case .sessionSpend: return .implemented("SpendPanelViewController")
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
@@ -107,11 +109,7 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")
         case .firstRunSetup: return .implemented("FirstRunWindow")
-        case .tailscaleReadiness:
-            return .gap(
-                "the Mac shows the tailnet address or nothing at all, with no reading behind it and "
-                + "no action offered. TailscaleReading is toolkit-free and the CLI answers the same "
-                + "way on macOS, so this is work not yet done rather than a platform that cannot")
+        case .tailscaleReadiness: return .implemented("TailnetRemedyView")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("MacNotifier")
         case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")

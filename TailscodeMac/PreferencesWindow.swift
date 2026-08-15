@@ -19,6 +19,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private var summonRecorder: Any?
     private var hapticStop = -1
     private let watchAccounts = NSStackView()
+    private let deepseekRow = NSStackView()
     /// The block the accounts notification calls. A block observer is held by the notification
     /// centre rather than by this window, so it outlives the window unless it is handed back —
     /// `nonisolated(unsafe)` because `deinit` is the one place that must reach it and `deinit` is
@@ -244,6 +245,20 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         renderWatchAccounts()
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Usage")))
+        column.addArrangedSubview(
+            indented(
+                MacDialogs.detailLabel(
+                    Localized.text(
+                        "The full quota picture lives at the foot of the chat list; the DeepSeek key is the one account fact this machine keeps."),
+                    wraps: true), by: 0))
+        deepseekRow.orientation = .vertical
+        deepseekRow.alignment = .leading
+        deepseekRow.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(deepseekRow)
+        renderDeepSeek()
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(
             MacDialogs.sectionHeader(Localized.text("Ask from anywhere")))
         column.addArrangedSubview(
@@ -382,6 +397,29 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             let caption = MacDialogs.detailLabel(note, wraps: true)
             watchAccounts.addArrangedSubview(caption)
             caption.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+        }
+    }
+
+    /// The optional DeepSeek key, stated as the fact it is: set, or not. The row is drawn again in
+    /// place after the editor closes, because whether a key exists is exactly what the editor
+    /// changes and the content is otherwise only made at the next presentation.
+    private func renderDeepSeek() {
+        for view in deepseekRow.arrangedSubviews { view.removeFromSuperview() }
+        let button = NSButton(
+            title: Localized.text("Edit"), target: self, action: #selector(editDeepSeekKey))
+        let view = buttonRow(
+            title: Localized.text("DeepSeek API key"),
+            subtitle: DeepSeekCredentials.hasToken
+                ? Localized.text("Saved in this Mac's Keychain")
+                : Localized.text("Not set"),
+            button: button)
+        deepseekRow.addArrangedSubview(view)
+        view.widthAnchor.constraint(equalTo: deepseekRow.widthAnchor).isActive = true
+    }
+
+    @objc private func editDeepSeekKey() {
+        DeepSeekKeySheet.present(on: window) { [weak self] in
+            self?.renderDeepSeek()
         }
     }
 

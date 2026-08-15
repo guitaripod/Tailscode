@@ -29,6 +29,10 @@ enum ServerProbe {
 /// fails here, named, rather than becoming a row that never loads — and the failure names its
 /// cause: the address didn't parse, the port didn't answer, the password was refused.
 ///
+/// Every address here is a tailnet address, so this Mac's own tailnet stands above the form as one
+/// of five readings — up, signed out, not running, not installed, or unable to see — each with the
+/// one press that changes it, re-taken while the window is open.
+///
 /// Keeping each server current is also this window's job: every claude-bridge row carries a
 /// Software line that reads `/update`, offers the update with the commits it would bring, and
 /// follows it through the server's own restart. A bridge too old to have the route says so and
@@ -41,6 +45,12 @@ final class ServersWindow: NSWindowController {
     private let onChanged: @MainActor () -> Void
     private let listColumn = FillingStack()
     private let listHeader = MacDialogs.sectionHeader(Localized.text("CONFIGURED"))
+    private let tailnetHeader = MacDialogs.sectionHeader(Localized.text("THIS MAC"))
+    private let tailnetCaption = NSTextField(labelWithString: Localized.text("Tailscale"))
+    private let tailnetPill = MacDialogs.detailLabel("")
+    private let tailnetRemedy = TailnetRemedyView()
+    private var tailnet: TailscaleReading?
+    private var watchingTailnet = false
     private let addHeader = MacDialogs.sectionHeader(Localized.text("ADD A SERVER"))
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private let addressField = NSTextField()
@@ -69,14 +79,18 @@ final class ServersWindow: NSWindowController {
     @objc private func repaint() {
         applyTheme()
         renderList()
+        if let tailnet { showTailnet(tailnet) }
     }
 
     private func applyTheme() {
         addressField.font = MacTheme.Ramp.font(.code)
-        for header in [listHeader, addHeader] {
+        for header in [listHeader, tailnetHeader, addHeader] {
             header.font = MacTheme.Ramp.font(.sectionLabel)
             header.textColor = MacTheme.Color.secondaryLabel
         }
+        tailnetCaption.font = MacTheme.Ramp.font(.panelLabel)
+        tailnetCaption.textColor = MacTheme.Color.label
+        tailnetPill.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.font = MacTheme.Ramp.font(.panelFootnote)
         statusLabel.textColor = MacTheme.Color.secondaryLabel
     }
@@ -87,6 +101,33 @@ final class ServersWindow: NSWindowController {
     func present() {
         renderList()
         window?.makeKeyAndOrderFront(nil)
+        pollTailnet()
+    }
+
+    /// Every address in this window is a tailnet address, so this Mac's own tailnet is the first
+    /// thing that has to be true — and it is one of five states rather than an address or nothing.
+    /// The reading is re-taken while the window is on screen, so somebody who signs Tailscale in
+    /// from here watches the line change without pressing anything.
+    private func pollTailnet() {
+        guard !watchingTailnet else { return }
+        watchingTailnet = true
+        Task { [weak self] in
+            while let owner = self, owner.window?.isVisible == true {
+                let status = await Task.detached(priority: .utility) { TailnetStatusMac.read() }
+                    .value
+                guard let owner = self, owner.window?.isVisible == true else { break }
+                owner.showTailnet(status.reading)
+                try? await Task.sleep(for: .seconds(5))
+            }
+            self?.watchingTailnet = false
+        }
+    }
+
+    private func showTailnet(_ reading: TailscaleReading) {
+        tailnet = reading
+        tailnetPill.stringValue = reading.title
+        tailnetPill.textColor = reading.tone.color
+        tailnetRemedy.write(reading)
     }
 
     private func makeContent() -> NSView {
@@ -115,12 +156,19 @@ final class ServersWindow: NSWindowController {
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
 
+        let tailnetRow = NSStackView(views: [tailnetCaption, Self.spacer(), tailnetPill])
+        tailnetRow.orientation = .horizontal
+        tailnetRow.spacing = MacTheme.Spacing.s
+        tailnetRemedy.isHidden = true
+
         let column = FillingStack(views: [
-            listHeader, listColumn, addHeader,
+            listHeader, listColumn, tailnetHeader, tailnetRow, tailnetRemedy, addHeader,
             addressField, nameField, passwordField, kindRow, statusLabel, actions,
         ])
         column.spacing = MacTheme.Spacing.m
         column.setCustomSpacing(MacTheme.Spacing.xl, after: listColumn)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: tailnetRow)
+        column.setCustomSpacing(MacTheme.Spacing.xl, after: tailnetRemedy)
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         return MacDialogs.scrollColumn(holding: column)
     }
@@ -356,6 +404,13 @@ final class ServersWindow: NSWindowController {
                             "%@ answered but refused the password. Check it on the server.",
                             verdict.url.absoluteString))
             case .notAnAgentServer, .unreachable:
+                if let tailnet = self.tailnet, !tailnet.isUp, tailnet != .sandboxed {
+                    self.setStatus(
+                        Localized.text(
+                            "This Mac is not on the tailnet — %@. Nothing over it answers until "
+                                + "that is true.", tailnet.title))
+                    return
+                }
                 let cause = await Self.diagnose(address: address, backend: backend)
                 self.setStatus(cause)
             }

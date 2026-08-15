@@ -92,8 +92,11 @@ final class TranscriptViewController: NSViewController {
     /// one the person most needs to find, so it outranks merely running; a failure is only
     /// reported once nothing is running, and the step is the tool the band is already naming.
     /// Nothing is inferred here that the pane's own state does not already say.
+    /// A pane that has taken a chat and has not heard anything about it yet is watching, not
+    /// reporting that nothing is running: the row it just took over from the background watcher
+    /// must not settle on the difference between two witnesses.
     var presence: SessionPresence {
-        guard let state = lastState else { return .unobserved }
+        guard let state = lastState else { return entry == nil ? .unobserved : .unsettled }
         return SessionPresence.reading(state, step: lastFacts?.runningTool)
     }
 
@@ -152,9 +155,11 @@ final class TranscriptViewController: NSViewController {
         (background: CGColor?, border: CGColor?, width: CGFloat, radius: CGFloat)?
     private var agents: [SubagentSummary] = []
     private var usage: AgentUsage?
-    /// What the whole conversation has cost, asked of the server on the same slow poll as the
-    /// agents; a backend that cannot account for it leaves the band on the last turn's price.
-    private(set) var spend: SessionSpend?
+    /// What the whole conversation has cost. The server's own account when it keeps one, else what
+    /// the transcript itself says — and never erased by a poll that came back with nothing, which
+    /// is what left the chart on the one machine the session was started from.
+    private var spendReading = SpendReading()
+    var spend: SessionSpend? { spendReading.value }
     /// Which branch this conversation's work is landing on, read on the same slow poll. Nil for a
     /// server that cannot read a repository, which is how the band knows to say nothing at all.
     private(set) var git: GitState?
@@ -336,6 +341,7 @@ final class TranscriptViewController: NSViewController {
         setFindShown(false)
         agents = []
         usage = nil
+        git = nil
         contextEstimate = nil
         countedMessages = -1
         turnStartedAt = nil
@@ -383,6 +389,7 @@ final class TranscriptViewController: NSViewController {
                 try? await Task.sleep(for: .seconds(delay))
             }
         }
+        refreshTurnFacts()
         if let queued = pendingFirstMessage {
             pendingFirstMessage = nil
             if queued.sessionID == entry.session.id {
@@ -1038,6 +1045,9 @@ final class TranscriptViewController: NSViewController {
     private func apply(state: ConversationState, rows: [TranscriptRow]) {
         noteHapticEdges(state: state, rows: rows)
         lastState = state
+        if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
+            updateStatus()
+        }
         onState?(state)
         var confirmed = rows
         confirmed.removeAll { $0.key.hasPrefix("echo:") }
@@ -1227,7 +1237,9 @@ final class TranscriptViewController: NSViewController {
 
     /// Subagents and cost are polled rather than streamed: the bridge reports both on request
     /// only, and a fan-out is worth watching while it runs. One final refresh after the turn
-    /// stops settles the agents list on "done" instead of freezing mid-flight glyphs.
+    /// stops settles the agents list on "done" instead of freezing mid-flight glyphs, and one
+    /// when the chat opens: a conversation started on another machine is never running here, so
+    /// waiting for a turn tick meant its account, its usage and its branch never arrived at all.
     private func refreshTurnFacts() {
         guard let backend, let entry else { return }
         startAgentStreamIfAvailable()
@@ -1241,8 +1253,8 @@ final class TranscriptViewController: NSViewController {
             guard let self, self.entry?.session.id == sessionID else { return }
             self.usage = usage
             self.git = repository.map { GitState(snapshot: $0) }
-            self.spend = report.map(SessionSpend.init(report:))
-                ?? SessionSpend(messages: self.lastState?.messages ?? [])
+            self.spendReading.note(report: report, for: sessionID)
+            self.spendReading.note(messages: self.lastState?.messages ?? [], for: sessionID)
             if let agents {
                 self.applyAgentSummaries(agents)
             } else {
@@ -1264,7 +1276,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// A proto-2 bridge pushes each fan-out's live facts as they change; older servers are
-    /// polled. Started lazily on the first turn tick after a chat opens.
+    /// polled. Started on the first fact refresh after a chat opens.
     private func startAgentStreamIfAvailable() {
         guard agentStreamSessionID != entry?.session.id else { return }
         guard let backend, let entry else { return }

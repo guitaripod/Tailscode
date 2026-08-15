@@ -836,16 +836,22 @@ final class MainWindowController: NSWindowController {
         splitPanes.eachPane { pane in
             guard let entry = pane.currentEntry else { return }
             let presence = pane.presence
-            guard presence != .unobserved else { return }
-            observed[SessionPinStore.key(entry.profileID, entry.session.id)] = presence
+            let key = SessionPinStore.key(entry.profileID, entry.session.id)
+            guard presence.rank > (observed[key] ?? .unsettled).rank else { return }
+            observed[key] = presence
         }
-        return observed
+        presenceLedger.absorb(observed)
+        return presenceLedger.readings()
     }
 
     /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
     /// seat until it settles — the same retention the phone gives an in-flight chat.
     private var backgroundWatch: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     private var backgroundPresence: [String: SessionPresence] = [:]
+    /// What each conversation's last settled witness said, carried across the moment one watcher
+    /// hands a chat to another. Without it, opening a live chat on a server whose listing cannot
+    /// report a turn dropped the row to RECENT for one round trip and then took it back.
+    private var presenceLedger = PresenceLedger()
 
     func keepWatching(_ conversation: AgentConversation, entry: SessionEntry) {
         let key = SessionPinStore.key(entry.profileID, entry.session.id)
