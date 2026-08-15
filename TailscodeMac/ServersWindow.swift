@@ -152,7 +152,9 @@ final class ServersWindow: NSWindowController {
         let probe = NSButton(
             title: Localized.text("Probe and save"), target: self, action: #selector(probeAndSave))
         probe.keyEquivalent = "\r"
-        let actions = NSStackView(views: [Self.spacer(), close, probe])
+        let scan = NSButton(
+            title: Localized.text("Find my machines"), target: self, action: #selector(findMachines))
+        let actions = NSStackView(views: [scan, Self.spacer(), close, probe])
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
 
@@ -338,6 +340,32 @@ final class ServersWindow: NSWindowController {
             ServerDirectory.shared.delete(id: id)
             self?.onChanged()
             self?.renderList()
+        }
+    }
+
+    /// The other way to add a server: ask the tailnet instead of typing an address. What the scan
+    /// finds is filled into the form rather than saved behind the person's back — the label and the
+    /// password are still theirs to give, and the probe that saves is the same one either road ends
+    /// at, so a machine found by scanning is checked exactly as a machine typed by hand.
+    @objc private func findMachines() {
+        guard let window else { return }
+        DiscoveryPanel.present(
+            on: window, configured: ServerDirectory.shared.profiles
+        ) { [weak self] suggestion in
+            guard let self else { return }
+            self.addressField.stringValue = suggestion.baseURL.absoluteString
+            if self.nameField.stringValue.isEmpty {
+                self.nameField.stringValue = suggestion.recommendedProfileName
+            }
+            self.claudeRadio.state = suggestion.backend == .claudeCode ? .on : .off
+            self.opencodeRadio.state = suggestion.backend == .openCode ? .on : .off
+            if suggestion.requiresAuth, self.passwordField.stringValue.isEmpty {
+                self.setStatus(
+                    Localized.text("%@ wants a password.", suggestion.recommendedProfileName))
+                self.window?.makeFirstResponder(self.passwordField)
+            } else {
+                self.probeAndSave()
+            }
         }
     }
 
