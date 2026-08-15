@@ -48,6 +48,7 @@ final class ChatViewController: UIViewController {
     /// ever looks again. A deadline nobody is watching is not a deadline.
     private var seamWatch: Task<Void, Never>?
     private var questionSelection = QuestionCell.Selection()
+    private weak var transcriptDismissTap: UITapGestureRecognizer?
     private var answeredQuestionIDs: Set<String> = []
     private var lastNotifiedQuestionID: String?
     private var availableModels: [ModelInfo] = []
@@ -470,7 +471,9 @@ final class ChatViewController: UIViewController {
         collectionView.scrollsToTop = true
         let dismissTap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         dismissTap.cancelsTouchesInView = false
+        dismissTap.delegate = self
         collectionView.addGestureRecognizer(dismissTap)
+        transcriptDismissTap = dismissTap
         let touchWatch = UILongPressGestureRecognizer(
             target: self, action: #selector(transcriptTouchChanged))
         touchWatch.minimumPressDuration = 0
@@ -1067,19 +1070,23 @@ final class ChatViewController: UIViewController {
                     selection: self.questionSelection,
                     submitted: self.answeredQuestionIDs.contains(request.id),
                     onSelectionChanged: { [weak self] selection in
-                        self?.questionSelection = selection
+                        guard let self else { return }
+                        self.questionSelection = selection
+                        self.recordAnswerDrafts(selection, for: request)
                     },
                     onSubmit: { [weak self] answers in
                         guard let self, self.answeredQuestionIDs.insert(request.id).inserted
                         else { return }
+                        self.clearAnswerDrafts(for: request)
                         self.viewModel.answerQuestion(request, answers: answers)
                     },
-                    onCustom: { [weak self] questionIndex in
-                        self?.promptCustomAnswer(for: request, questionIndex: questionIndex)
+                    onEditingBegan: { [weak self] in
+                        self?.revealPendingCard()
                     },
                     onSkip: { [weak self] in
                         guard let self, self.answeredQuestionIDs.insert(request.id).inserted
                         else { return }
+                        self.clearAnswerDrafts(for: request)
                         self.viewModel.rejectQuestion(request)
                     })
                 cell.turnInset = self.turnGap(at: indexPath)
@@ -1550,7 +1557,7 @@ final class ChatViewController: UIViewController {
         let previousQuestionID = pendingQuestion?.id
         pendingPermission = state.pendingPermissions.first
         if pendingQuestion?.id != state.pendingQuestions.first?.id {
-            questionSelection = QuestionCell.Selection()
+            questionSelection = restoredSelection(for: state.pendingQuestions.first)
         }
         pendingQuestion = state.pendingQuestions.first
         withdrawResolvedRequests(
@@ -2993,39 +3000,44 @@ final class ChatViewController: UIViewController {
         }
     #endif
 
-    private func promptCustomAnswer(for request: QuestionRequest, questionIndex: Int) {
-        let item = request.questions[questionIndex]
-        let scope = answerDraftScope(for: request, questionIndex: questionIndex)
-        let remembered = questionSelection.custom[questionIndex] ?? ""
-        let alert = UIAlertController(
-            title: item.header.isEmpty ? String(localized: "Your answer") : item.header,
-            message: item.question, preferredStyle: .alert)
-        alert.addTextField { field in
-            field.placeholder = String(localized: "Type your answer")
-            field.text = remembered.isEmpty ? DraftStore.text(for: scope) : remembered
-            field.addAction(
-                UIAction { [weak field] _ in DraftStore.record(field?.text ?? "", for: scope) },
-                for: .editingChanged)
+    /// What is being typed into an ask, written down as it is typed. The card is rebuilt from the
+    /// transcript on every launch, so an answer half-written when the app closed has nowhere else
+    /// to live.
+    private func recordAnswerDrafts(
+        _ selection: QuestionCell.Selection, for request: QuestionRequest
+    ) {
+        for index in request.questions.indices {
+            DraftStore.record(
+                selection.custom[index] ?? "", for: answerDraftScope(for: request, questionIndex: index))
         }
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(
-            UIAlertAction(title: String(localized: "Use answer"), style: .default) {
-                [weak self] _ in
+    }
+
+    private func clearAnswerDrafts(for request: QuestionRequest) {
+        for index in request.questions.indices {
+            DraftStore.clear(answerDraftScope(for: request, questionIndex: index))
+        }
+    }
+
+    /// What was typed towards a question before the app was closed on it, put back on the card the
+    /// question comes back on.
+    private func restoredSelection(for request: QuestionRequest?) -> QuestionCell.Selection {
+        var selection = QuestionCell.Selection()
+        guard let request else { return selection }
+        for index in request.questions.indices {
+            let text = DraftStore.text(for: answerDraftScope(for: request, questionIndex: index))
+            if !text.isEmpty { selection.custom[index] = text }
+        }
+        return selection
+    }
+
+    /// The keyboard rising for an answer typed into a card halfway up the transcript would leave
+    /// the card under it, so the transcript comes with it.
+    private func revealPendingCard() {
+        DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let text = alert.textFields?.first?.text?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            DraftStore.clear(scope)
-            questionSelection.custom[questionIndex] = text.isEmpty ? nil : text
-            let fastPath = request.questions.count == 1 && !item.multiple
-            if fastPath, let answers = questionSelection.answers(for: request) {
-                viewModel.answerQuestion(request, answers: answers)
-            } else if let id = pendingQuestion?.id {
-                var snapshot = dataSource.snapshot()
-                snapshot.reconfigureItems(["question:\(id)"])
-                dataSource.apply(snapshot, animatingDifferences: false)
-            }
-        })
-        present(alert, animated: true)
+            self.userScrolledUp = false
+            self.scrollToBottom(animated: true)
+        }
     }
 
     @objc private func dismissKeyboard() { view.endEditing(true) }
@@ -4412,6 +4424,21 @@ extension ChatViewController: UIGestureRecognizerDelegate {
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool { true }
+
+    /// A tap on the transcript puts the keyboard away — except the tap that asked for it. A card
+    /// with a field in it is part of the transcript, and a finger landing in that field means to
+    /// type, not to dismiss.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch
+    ) -> Bool {
+        guard gestureRecognizer === transcriptDismissTap else { return true }
+        var view = touch.view
+        while let candidate = view {
+            if candidate is UITextInput { return false }
+            view = candidate.superview
+        }
+        return true
+    }
 }
 
 extension ChatViewController: ImageBubbleCellDelegate {

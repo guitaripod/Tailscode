@@ -291,7 +291,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .questionCells, area: "transcript", title: "Questions, not tool rows",
             spec:
-                "An AskUserQuestion call docks as a question card at the end of the transcript and the answer goes out through the normal send path, never a direct backend call."),
+                "An AskUserQuestion call docks as a question card at the end of the transcript and the answer goes out through the normal send path, never a direct backend call. The options an agent offers are a shortlist, not the whole of what can be said, so every card carries a line to type an answer of your own on — present on the card beside the options rather than behind a sheet or a menu, because an alternative you have to go looking for reads as absent, and the answer the agent needs is often the one it did not think to offer. On a question that takes one answer, typing takes the ticks off and the return key sends it; on one that takes several, what is typed stands beside them. It is a prompt box like any other: what is half-written into it is kept by DraftStore against the ask itself, so it survives the app being closed on the question it answers."),
         CapabilityDefinition(
             id: .compactionSeam, area: "transcript", title: "Compaction is a seam",
             spec:
