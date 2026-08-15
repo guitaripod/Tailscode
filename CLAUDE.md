@@ -29,7 +29,18 @@ The desktop this repo is written on is in use. **Never open a development build 
 - `shot [out.png]`, `click X Y`, `drag X1 Y1 X2 Y2`, `scroll up|down [n]`, `key ctrl+w v`, `type 'text'`
 - `drive '2000:open=1;4000:splits'` (the app's own `TAILSCODE_DRIVE` verbs), `selftest`, `run <cmd…>` (anything inside the harness display + bus)
 
-`DesktopGuard` enforces it: a binary under `.build/` exits 3 rather than render on a session it wasn't invited to (`--force-desktop` overrides). `scripts/install-linuxapp.sh` is what puts a change in front of the person, and stays the last step of any Linux work.
+`DesktopGuard` enforces it: a binary under `.build/` exits 3 rather than render on a session it wasn't invited to (`--force-desktop` overrides).
+
+## Shipping a change is part of making it (enforced)
+
+A change that only exists in a build directory has not been made. **Every task that touches a client or a server ends by putting it on the machine it runs on** — not when asked, not when convenient, as the last step, every time:
+
+- **Linux client → `scripts/install-linuxapp.sh`.** Builds release, installs, and restarts the app the person actually uses. Nothing else does this: the headless harness (`dev-linuxapp.sh`) and `swift build` both leave the installed binary untouched, so a passing selftest is not a shipped change.
+- **claude-bridge → `swift build -c release` in `~/Dev/swift/claude-bridge`, then `systemctl --user restart claude-bridge`.** Never from inside a session running on that bridge — the restart tears down its cgroup and kills every agent with it (see [[claude-bridge-cgroup-self-restart]]); hand the two commands over instead when work is in flight.
+- **Kit / Core** reach a client only through that client's own install, so a Kit fix is not delivered until the client carrying it has been reinstalled.
+- **iOS / macOS** cannot be installed from this machine — say so plainly and name what the person has to run, rather than letting a green build read as a delivered change.
+
+Report the version and pid the install printed. If an install is deliberately skipped — the work is server-side only, or the person is mid-session on that very binary — say which and why in the same breath as reporting the work done.
 
 ## Conventions (non-negotiable)
 
