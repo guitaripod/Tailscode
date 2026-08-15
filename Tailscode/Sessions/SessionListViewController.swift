@@ -878,7 +878,7 @@ final class SessionListViewController: UIViewController {
     private func isLive(_ entry: SessionEntry) -> Bool {
         switch presence(for: entry) {
         case .running, .awaitingApproval: return true
-        case .failed, .unobserved: return entry.session.isWorking
+        case .failed, .unobserved, .unsettled: return entry.session.isWorking
         }
     }
 

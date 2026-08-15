@@ -57,6 +57,11 @@ final class ChatViewController: UIViewController {
     private var expandedReasoning: Set<String> = []
     private var seenReasoning: Set<String> = []
     private var wasRunning = false
+    /// A chat opened on a device that never held it asks the server for its account before the
+    /// history has arrived, and a request that raced the transcript answers nothing. The moment
+    /// the transcript lands is the one edge that says the conversation is really here, so it is
+    /// worth one more ask.
+    private var hadLoadedTranscript = false
     private var lastStreamingID: String?
     private var hasRevealed = false
     private var revealFallback: Task<Void, Never>?
@@ -75,7 +80,10 @@ final class ChatViewController: UIViewController {
     /// What the whole conversation has cost, beside its size — the two facts a long chat is
     /// judged by. Tapping opens the account behind the number.
     private let spendChip = UIButton(type: .system)
-    private var spend: SessionSpend?
+    /// The server's own account when it keeps one, else what the transcript says — kept apart so a
+    /// poll that came back with nothing cannot erase a good reading, which is what left the chart
+    /// on the one device the session was started from.
+    private var spendReading = SpendReading()
     /// The branch the work is landing on, and how far the tree has drifted from it. Tapping opens
     /// the repository — read-only, because this app never commits on anyone's behalf.
     private let gitChip = UIButton(type: .system)
@@ -1643,6 +1651,10 @@ final class ChatViewController: UIViewController {
             refreshSpend()
             refreshGit()
         }
+        if state.hasLoadedTranscript, !hadLoadedTranscript {
+            hadLoadedTranscript = true
+            refreshSpend()
+        }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id
@@ -1912,6 +1924,7 @@ final class ChatViewController: UIViewController {
             countedMessages = state.messages.count
             contextEstimate = StatusFacts.estimateContextTokens(state.messages)
         }
+        spendReading.note(messages: state.messages, for: viewModel.session.id)
         updateContextChip()
         updateSpendChip()
         let facts = StatusFacts.from(
@@ -2089,7 +2102,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func updateSpendChip() {
-        guard let spend, !spend.isEmpty else {
+        guard let spend = spendReading.value, !spend.isEmpty else {
             spendChip.isHidden = true
             return
         }
@@ -2098,7 +2111,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func presentSpend() {
-        guard let spend, !spend.isEmpty else { return }
+        guard let spend = spendReading.value, !spend.isEmpty else { return }
         Theme.Haptics.tap()
         let panel = SpendViewController(spend: spend, title: title ?? viewModel.session.title)
         let nav = UINavigationController(rootViewController: panel)
@@ -2108,17 +2121,16 @@ final class ChatViewController: UIViewController {
         present(nav, animated: true)
     }
 
-    /// Asked of the server on the same slow poll as the agents; a backend that cannot account for
-    /// the conversation falls back to whatever the transcript already in hand can be made to say.
+    /// Asked of the server when the chat opens, when a turn lands and when the transcript finally
+    /// arrives. A request that came back with nothing is not news that the money is gone, so it
+    /// leaves whatever the transcript itself already worked out standing.
     private func refreshSpend() {
         let sessionID = viewModel.session.id
         Task { [weak self] in
             guard let self else { return }
             let report = try? await self.viewModel.backend.sessionSpend(sessionID)
             guard self.viewModel.session.id == sessionID else { return }
-            self.spend = report.map(SessionSpend.init(report:))
-                ?? SessionSpend(messages: self.viewModel.state.messages)
-            self.updateSpendChip()
+            if self.spendReading.note(report: report, for: sessionID) { self.updateSpendChip() }
         }
     }
 

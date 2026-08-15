@@ -58,10 +58,15 @@ final class SessionActivity {
         retained.values.filter { $0.contextID == profileID }.count
     }
 
+    /// What a conversation this device is driving has told it, in the vocabulary the row and the
+    /// desktop bands share. A reading nobody has answered yet says nothing at all: it leaves the
+    /// last thing a witness did say standing, because settling on the gap between two witnesses
+    /// drops the retained view model and announces a turn nobody watched finish.
     func update(
-        sessionID: String, profileID: String, title: String, status: Status,
+        sessionID: String, profileID: String, title: String, presence: SessionPresence,
         keepAlive: ChatViewModel
     ) {
+        guard let status = Self.status(for: presence) else { return }
         switch status {
         case .running, .awaitingApproval:
             retained[sessionID] = keepAlive
@@ -89,6 +94,18 @@ final class SessionActivity {
             }
         }
         NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    /// Nil for a witness that has not been told anything yet — the one reading this list must not
+    /// act on. A failure and a turn nothing here can see any more are both idle: the pill says
+    /// what is running, and neither of them is.
+    private static func status(for presence: SessionPresence) -> Status? {
+        switch presence {
+        case .unsettled: return nil
+        case .running: return .running
+        case .awaitingApproval: return .awaitingApproval
+        case .failed, .unobserved: return .idle
+        }
     }
 
     /// A turn the bridge's own push already announced still happened, and is still something that

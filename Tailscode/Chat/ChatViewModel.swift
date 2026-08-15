@@ -440,7 +440,7 @@ final class ChatViewModel {
                 SessionActivity.shared.update(
                     sessionID: self.session.id, profileID: self.contextID,
                     title: self.alertTitle,
-                    status: awaiting ? .awaitingApproval : (self.isBusy ? .running : .idle),
+                    presence: self.presence(for: state),
                     keepAlive: self)
                 self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
@@ -454,6 +454,17 @@ final class ChatViewModel {
     }
 
     private var streamGeneration = 0
+
+    /// What this device can honestly say about the turn: the reading every client shares, raised
+    /// only by a send whose echo is still local. A conversation that has just been handed over
+    /// reads as unsettled and settles nothing; one this device has just sent to is running here
+    /// whatever the server has got around to saying.
+    private func presence(for state: ConversationState) -> SessionPresence {
+        let reading = SessionPresence.reading(state, step: nil)
+        let sending = SessionPresence.running(nil)
+        guard optimisticThinking, reading.rank < sending.rank else { return reading }
+        return sending
+    }
 
     /// Runs when the states() stream ends on its own — a terminal failure or
     /// reconnect exhaustion, not a `stop()`/`resync()` (those bump the
