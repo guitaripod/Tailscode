@@ -157,6 +157,7 @@ final class CascadeDriver {
     /// setting changed mid-answer would swap renderers under the reader's eye, and the row the
     /// switch was thrown during is the one row it must not disturb.
     private var renderer = StreamRenderer.default
+    private var arrival = AuroraArrival()
 
     /// Called on a frame that changed something, saying whether the reveal itself moved or only the
     /// band did. The controller repaints exactly the live row, and the answer is what tells it
@@ -186,7 +187,10 @@ final class CascadeDriver {
             release()
             return
         }
-        if id != live.id { renderer = StreamRendererSetting.choice }
+        if id != live.id {
+            renderer = StreamRendererSetting.choice
+            arrival = AuroraArrival()
+        }
         live.focus(id, length: length, sealed: sealed, at: CACurrentMediaTime())
         start()
         watch()
@@ -268,7 +272,7 @@ final class CascadeDriver {
         guard renderer == .aurora, AuroraStreamView.isAvailable else { return nil }
         return AuroraFrame(
             progress: live.progress, phase: live.phase, time: clock, rate: live.rate, edge: edge,
-            spark: spark, motion: true)
+            spark: spark, motion: true, arrival: arrival.level)
     }
 
     private func start() {
@@ -288,7 +292,9 @@ final class CascadeDriver {
     @objc private func tick(_ link: CADisplayLink) {
         let before = live.revealed
         clock = link.timestamp
-        guard live.advance(to: link.timestamp) else { return }
+        let moving = live.advance(to: link.timestamp)
+        let landing = arrival.advance(to: link.timestamp, settled: live.isSettled) > 0
+        guard moving || landing else { return }
         onFrame?(live.revealed != before)
         if !live.isActive { stop() }
     }

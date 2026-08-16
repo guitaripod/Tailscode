@@ -37,6 +37,7 @@ struct AuroraUniforms {
     float margin;
     float intensity;
     float motion;
+    float arrival;
 };
 
 /// One character of the answer as geometry: where it was laid out, how tall its line is, and which
@@ -181,8 +182,9 @@ vertex AuroraVarying aurora_glyph_vertex(
     out.source = padded;
 
     float2 moved = padded;
-    if (uniforms.motion > 0.5) {
-        float remaining = 1.0 - aurora_ease(min(1.0, max(distance, 0.0) / uniforms.landing));
+    if (uniforms.motion > 0.5 && uniforms.arrival > 0.002) {
+        float remaining = uniforms.arrival
+            * (1.0 - aurora_ease(min(1.0, max(distance, 0.0) / uniforms.landing)));
         float2 pivot = float2(quad.rect.x + quad.rect.z * 0.5, quad.rect.y + quad.rect.w);
         float2 local = padded - pivot;
         float angle = remaining * uniforms.tilt * aurora_wobble(index);
@@ -273,7 +275,8 @@ fragment float4 aurora_glyph_fragment(
         /// below, has any business reading a blurred level, and it asks for one by name.
         float4 sampled = ink.sample(flat, uv, level(0.0));
         if (uniforms.motion > 0.5) {
-            float fringe = max(0.0, 1.0 - max(in.distance, 0.0) / uniforms.dispersionReach);
+            float fringe = uniforms.arrival
+                * max(0.0, 1.0 - max(in.distance, 0.0) / uniforms.dispersionReach);
             float split = fringe * fringe * uniforms.dispersionDepth * in.height
                 / max(uniforms.regionSize.x, 1.0) * uniforms.inkSize.x;
             if (split > 0.00002) {
@@ -298,7 +301,8 @@ fragment float4 aurora_glyph_fragment(
         float spill = halo * halo * heat * uniforms.bloomPeak
             * aurora_falloff(in.source, in.rect, reach);
         if (inside) { spill *= 0.4; }
-        float burn = max(0.0, 1.0 - max(in.distance, 0.0) / uniforms.emberReach);
+        float burn = uniforms.arrival
+            * max(0.0, 1.0 - max(in.distance, 0.0) / uniforms.emberReach);
         float ember = aurora_embers(in, burn * burn * burn, uniforms);
         float lightAlpha = min(0.8, (spill + ember) * alpha * uniforms.intensity);
         if (lightAlpha > 0.003) {

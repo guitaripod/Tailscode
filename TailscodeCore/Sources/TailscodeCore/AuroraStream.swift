@@ -132,6 +132,47 @@ public enum StreamRendererDemo {
     }
 }
 
+/// Whether anything is still arriving.
+///
+/// The wave is measured in characters behind the leading edge, which is exactly right while text
+/// is coming: distance is proportional to age, so no per-character timestamps are needed and the
+/// effect survives a re-render. But it carries one assumption — that the edge keeps moving — and a
+/// reveal that has caught up with everything it was given breaks it. The last character then sits
+/// at distance zero for as long as the row lives, and every term that expresses *arriving* stays
+/// pinned at full: the glyph never finishes falling, its colour never closes back together, and it
+/// goes on shedding light. On the settled renderer that is invisible, because arriving is only a
+/// colour there. On this one it is a smear across the final word.
+///
+/// So the arrival terms are held on a second, tiny clock: the moment the pacer runs dry they
+/// complete, and the moment anything arrives they are live again. Falling is eased because a
+/// glyph mid-landing must not be snapped into place; rising is immediate because the very next
+/// character has to land properly rather than fade up into landing. What stays is what is
+/// deliberately a resting state — the heat, the band, and the nib, which rests rather than goes
+/// out because an answer paused on a tool call has not finished.
+public struct AuroraArrival: Sendable {
+    public private(set) var level: Double = 1
+    private var clock: Double?
+
+    public init() {}
+
+    @discardableResult
+    public mutating func advance(to time: Double, settled: Bool) -> Double {
+        defer { clock = time }
+        guard settled else {
+            level = 1
+            return level
+        }
+        guard let previous = clock else {
+            level = 0
+            return level
+        }
+        let elapsed = min(max(time - previous, 0), 0.1)
+        level -= level * (1 - exp(-elapsed / AuroraField.arrivalFall))
+        if level < 0.002 { level = 0 }
+        return level
+    }
+}
+
 /// One glyph's whole state at one moment, for the renderer that can afford to move it.
 ///
 /// Everything here is a pure function of how far the glyph sits behind the leading edge, so it
@@ -250,6 +291,9 @@ public enum AuroraField {
 
     /// Ease-out, shared with the transcript's entrances so the whole product lands on one curve.
     public static func ease(_ t: Double) -> Double { StreamCascade.ease(t) }
+
+    /// How long the arrival effects take to finish once nothing is arriving any more.
+    public static let arrivalFall = 0.22
 
     /// Where the nib sits, in characters from the start of the text: at the last written glyph
     /// rather than in the gap after it, so the light is on the ink and not on the paper.

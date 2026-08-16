@@ -14,6 +14,8 @@ struct AuroraFrame {
     let edge: UIColor
     let spark: UIColor
     let motion: Bool
+    /// How much of the effect is still about text *arriving*. See `AuroraArrival`.
+    let arrival: Double
 }
 
 /// The device, the queue and the two pipelines, once for the whole app.
@@ -243,6 +245,7 @@ private struct AuroraUniforms {
     var margin: Float
     var intensity: Float
     var motion: Float
+    var arrival: Float
 }
 
 /// The answer written by the GPU: the same wave the settled renderer paints, rasterised over
@@ -480,7 +483,8 @@ final class AuroraStreamView: UIView {
             nibGlow: Float(AuroraField.nibGlow),
             margin: Float(AuroraField.quadMargin),
             intensity: motion,
-            motion: motion)
+            motion: motion,
+            arrival: Float(min(max(frame.arrival, 0), 1)))
     }
 
     /// The nib rides the character it has just written, so its place is that character's own box

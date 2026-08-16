@@ -180,6 +180,47 @@ struct AuroraTests {
         #expect(fractional)
     }
 
+    /// The wave is measured in characters behind the edge, which assumes the edge keeps moving. A
+    /// reveal that has caught up breaks that assumption: the last character sits at distance zero
+    /// for as long as the row lives, and every term that expresses *arriving* would stay pinned at
+    /// full — a smear across the final word rather than a settled sentence.
+    @Test("Arriving finishes when nothing is arriving")
+    func arrivalRetires() {
+        var arrival = AuroraArrival()
+        #expect(arrival.level == 1)
+        arrival.advance(to: 0, settled: false)
+        #expect(arrival.level == 1)
+        var time = 0.0
+        for _ in 0..<600 {
+            time += 1.0 / 120
+            arrival.advance(to: time, settled: true)
+        }
+        #expect(arrival.level == 0)
+    }
+
+    /// Falling is eased so a glyph mid-landing is not snapped into place; rising is immediate,
+    /// because the very next character has to land properly rather than fade up into landing.
+    @Test("The next character lands at once")
+    func arrivalRisesImmediately() {
+        var arrival = AuroraArrival()
+        var time = 0.0
+        arrival.advance(to: time, settled: false)
+        for _ in 0..<10 {
+            time += 1.0 / 120
+            arrival.advance(to: time, settled: true)
+        }
+        #expect(arrival.level < 1)
+        #expect(arrival.level > 0)
+        time += 1.0 / 120
+        #expect(arrival.advance(to: time, settled: false) == 1)
+    }
+
+    @Test("A row that was over before it was watched never animates its arrival")
+    func arrivalStartsSettled() {
+        var arrival = AuroraArrival()
+        #expect(arrival.advance(to: 12, settled: true) == 0)
+    }
+
     @Test("A settled reveal owes nothing between characters either")
     func settledProgressIsWhole() {
         var cadence = StreamCadence()

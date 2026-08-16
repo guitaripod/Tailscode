@@ -16,6 +16,7 @@ final class StreamRendererPreview: UIView {
     private let textView = UITextView()
     private lazy var aurora = AuroraTextPainter(textView: textView, host: bubble)
     private var live = LiveCascade()
+    private var arrival = AuroraArrival()
     private var height: NSLayoutConstraint!
     private var lastCycle = Double.greatestFiniteMagnitude
     private var pass = 0
@@ -86,6 +87,7 @@ final class StreamRendererPreview: UIView {
     func rest() {
         aurora.release()
         live = LiveCascade()
+        arrival = AuroraArrival()
         lastCycle = .greatestFiniteMagnitude
         textView.attributedText = nil
     }
@@ -95,6 +97,7 @@ final class StreamRendererPreview: UIView {
         if cycle < lastCycle {
             aurora.release()
             live = LiveCascade()
+            arrival = AuroraArrival()
             pass += 1
         }
         lastCycle = cycle
@@ -109,6 +112,7 @@ final class StreamRendererPreview: UIView {
         live.focus(row, length: rendered.length, sealed: sealed, at: time)
         live.advance(to: time)
         live.lands(live.revealed, at: time)
+        arrival.advance(to: time, settled: live.isSettled)
         paint(rendered, at: time, row: row)
     }
 
@@ -121,7 +125,7 @@ final class StreamRendererPreview: UIView {
         if choice == .aurora, AuroraStreamView.isAvailable {
             tail.aurora = AuroraFrame(
                 progress: live.progress, phase: live.phase, time: time, rate: live.rate, edge: edge,
-                spark: spark, motion: true)
+                spark: spark, motion: true, arrival: arrival.level)
             if aurora.paint(rendered, cascade: tail, key: "\(row):\(rendered.length)") { return }
         }
         aurora.release()
