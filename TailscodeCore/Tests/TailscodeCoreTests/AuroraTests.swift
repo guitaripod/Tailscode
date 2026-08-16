@@ -221,6 +221,60 @@ struct AuroraTests {
         #expect(arrival.advance(to: 12, settled: true) == 0)
     }
 
+    /// What the transcript relies on when the agent stops writing a paragraph and goes off to run
+    /// something: sealing a row must *finish* it, not hand it over. The pacer trails by design, so
+    /// there are always characters owed at that moment, and dropping the row there put a paste in
+    /// the middle of every answer that called a tool.
+    @Test("Sealing a row part-written finishes it rather than dumping it")
+    func sealedRowDrains() {
+        var live = LiveCascade()
+        var time = 0.0
+        live.focus("row", length: 40, sealed: false, at: time)
+        for _ in 0..<30 {
+            time += 1.0 / 120
+            live.advance(to: time)
+            live.lands(live.revealed, at: time)
+        }
+        live.focus("row", length: 240, sealed: false, at: time)
+        for _ in 0..<10 {
+            time += 1.0 / 120
+            live.advance(to: time)
+            live.lands(live.revealed, at: time)
+        }
+        let owedAtSeal = 240 - live.revealed
+        #expect(owedAtSeal > 40)
+
+        live.focus("row", length: 240, sealed: true, at: time)
+        var frames = 0
+        while live.revealed < 240, frames < 600 {
+            time += 1.0 / 120
+            live.advance(to: time)
+            live.lands(live.revealed, at: time)
+            frames += 1
+        }
+        #expect(live.revealed == 240)
+        #expect(frames > 8)
+        #expect(!live.owes)
+    }
+
+    /// The same row, sealed, must never rewind: what has been shown has been shown.
+    @Test("A sealed row only ever moves forward")
+    func sealedRowNeverRewinds() {
+        var live = LiveCascade()
+        var time = 0.0
+        live.focus("row", length: 200, sealed: false, at: time)
+        var highest = 0
+        for step in 0..<400 {
+            time += 1.0 / 120
+            if step == 120 { live.focus("row", length: 200, sealed: true, at: time) }
+            live.advance(to: time)
+            live.lands(live.revealed, at: time)
+            #expect(live.revealed >= highest)
+            highest = live.revealed
+        }
+        #expect(highest == 200)
+    }
+
     @Test("A settled reveal owes nothing between characters either")
     func settledProgressIsWhole() {
         var cadence = StreamCadence()

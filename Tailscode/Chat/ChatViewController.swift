@@ -1353,6 +1353,7 @@ final class ChatViewController: UIViewController {
         let released = cascade.key
         if let abandonedCascadeRow, abandonedCascadeRow != live?.id { self.abandonedCascadeRow = nil }
         guard let live, let source = live.streamedText, live.id != abandonedCascadeRow else {
+            if drainStrandedCascade(in: rows) { return }
             cascade.release()
             if let released {
                 if let whole = wholeCascadeRow, whole.id == released, rowsByID[released] == nil {
@@ -1373,6 +1374,70 @@ final class ChatViewController: UIViewController {
             row.id, length: renderedLength(of: row), sealed: sealed, ultracode: cascadeUltracode)
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
         settleDrainedCascade()
+    }
+
+    /// A stall that is only the gate holding is not a stall in the writing.
+    ///
+    /// The renderer is held at the last position where no inline token is half-open, against a
+    /// closer that is a few characters behind — a wait the buffer exists to absorb. But a part ends
+    /// where it ends, and a marker that was going to close sometimes never does, so Core stops
+    /// waiting after `patience`. It only ever answers that question when a client asks it, and the
+    /// one thing that has stopped happening in a stall is text arriving, so nobody asks: the row is
+    /// handed over whole and then abandoned for the rest of the turn, and everything the agent
+    /// writes after it lands as a paste.
+    ///
+    /// So the stall asks. If the gate gives up and there are still characters to write, the row goes
+    /// on being written — the reveal keeps its place and the wave keeps the row. Only a row with
+    /// nothing left to say is given up, which is what the give-up was always for.
+    private func reopenGatedCascade(_ key: String) -> Bool {
+        guard let whole = wholeCascadeRow, whole.id == key, let source = whole.streamedText,
+            dataSource.indexPath(for: key) != nil
+        else { return false }
+        let sealed = turnIsOver
+        let safe = cascade.renderable(
+            row: key, source, sealed: sealed, markdown: whole.streamsMarkdown)
+        let row = safe == source ? whole : whole.held(to: safe)
+        let length = renderedLength(of: row)
+        guard length > cascade.revealed else { return false }
+        rowsByID[key] = row
+        cascade.focus(key, length: length, sealed: sealed, ultracode: cascadeUltracode)
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems([key])
+        dataSource.apply(snapshot, animatingDifferences: false)
+        return true
+    }
+
+    /// Finishes writing a row the stream has already moved on from.
+    ///
+    /// The pacer trails what has arrived by design — that is the whole of the smoothing — so at the
+    /// moment the agent stops writing a paragraph and goes off to run something, there are still a
+    /// couple of hundred characters owed on it. Letting the row go there hands every one of them
+    /// over in a single frame, and that is the same failure the end of a turn used to have, just
+    /// moved into the middle: the answer is written beautifully right up until the tool call, and
+    /// then its last sentence appears at once. An agent that works calls tools several times a
+    /// minute, so in practice most of an answer arrived as a hand and every seam of it as a paste.
+    ///
+    /// A row the stream has left is therefore *sealed* rather than dropped. Nothing more is coming,
+    /// so the gate stops holding it against a closer that will never arrive and the buffer drains at
+    /// the end-of-turn cadence; the wave comes off only once the reveal has actually reached the
+    /// end. Which is the same rule the end of a turn already keeps — taking a row up and letting go
+    /// of it are two different moments — applied to the other way a row stops being written.
+    ///
+    /// Returns whether the wave is still on the row. A row that has caught up, one that has been
+    /// given up as stalled, and one the transcript no longer contains all say no, and the caller
+    /// lets go of it exactly as before.
+    private func drainStrandedCascade(in rows: [ChatRow]) -> Bool {
+        guard let key = cascade.key, cascade.owes, key != abandonedCascadeRow,
+            let whole = wholeCascadeRow, whole.id == key, let source = whole.streamedText,
+            rows.contains(where: { $0.id == key })
+        else { return false }
+        let safe = cascade.renderable(
+            row: key, source, sealed: true, markdown: whole.streamsMarkdown)
+        let row = safe == source ? whole : whole.held(to: safe)
+        rowsByID[key] = row
+        cascade.focus(
+            key, length: renderedLength(of: row), sealed: true, ultracode: cascadeUltracode)
+        return cascade.owes
     }
 
     /// Whether the wave paints the unlocked colours: the turn in flight was sent with ultracode on,
@@ -1405,6 +1470,7 @@ final class ChatViewController: UIViewController {
     /// whole and then rewound would be a worse lie than the stall.
     private func giveUpCascade() {
         guard let key = cascade.key else { return }
+        if reopenGatedCascade(key) { return }
         cascade.release()
         abandonedCascadeRow = key
         settledCascadeRows.insert(key)
