@@ -772,7 +772,16 @@ final class MainWindowController: NSWindowController {
 
     private func wireChildren() {
         sidebar.onOpen = { [weak self] entry, backend in
-            self?.handleOpen(entry, backend: backend)
+            guard let self else { return }
+            if self.splitPanes.paneCount > 1 {
+                if let pane = self.splitPanes.pane(showing: entry.session.id) {
+                    self.splitPanes.focus(pane, grabKeyboard: true)
+                    self.focusedPaneChanged()
+                    return
+                }
+                self.splitPanes.collapse(to: self.splitPanes.active)
+            }
+            self.handleOpen(entry, backend: backend)
         }
         sidebar.onOpenSplit = { [weak self] entries, arrangement in
             self?.openMarkedSplit(entries, as: arrangement)

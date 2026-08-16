@@ -2064,8 +2064,21 @@ final class MainWindow: @unchecked Sendable {
 
     /// Opening from the list always lands in the focused pane; a background pane keeps what it
     /// has, which is the point of having panes.
+    /// Opening a chat from the list answers for the whole window, not one pane of it. A chat
+    /// already on screen is gone to — its pane takes the focus. A chat that is not collapses the
+    /// window to one pane first: a plain row was clicked, so a plain window is what was asked
+    /// for, and replacing one member of a split would shrink the merged row by a chat nobody
+    /// closed.
     private func open(_ entry: SessionEntry) {
         freshlyCreated = nil
+        if splitHost.paneCount > 1 {
+            if let pane = splitHost.pane(showing: entry.session.id) {
+                focused = .transcript
+                splitHost.focus(pane, grabKeyboard: true)
+                return
+            }
+            splitHost.collapse(to: splitHost.activePane)
+        }
         activePane.open(entry)
     }
 
