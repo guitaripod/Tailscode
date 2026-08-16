@@ -134,6 +134,20 @@ struct QuotaSurfaceTests {
         #expect(plain == "connection refused")
     }
 
+    @Test("A failure that is not a wall keeps its own words, whatever else is used up")
+    func otherFailureOutranksAStandingWall() {
+        let spent = [quota("opencode go", [gauge(label: "Monthly", fraction: 1.0, resetsIn: 9000)])]
+        let message = "Model not found: ollama/qwen3.5:4b-q8_0. Did you mean: qwen3.8:4b-q8_0?"
+        #expect(QuotaSurface.resolve(failureMessage: message, quotas: spent) == nil)
+        #expect(
+            QuotaSurface.statusFailureMessage(failure: message, quotas: spent) == message,
+            "a countdown belonging to a provider this turn never reached is not the reason it died")
+        #expect(QuotaSurface.resolve(failureMessage: "connection refused", quotas: spent) == nil)
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: spent)?.window == "Monthly",
+            "and the pre-emptive reading is still there for the send that has not happened yet")
+    }
+
     @Test("An opencode retry message names the provider, window, and reset countdown")
     func opencodeRetryMessage() {
         let message =

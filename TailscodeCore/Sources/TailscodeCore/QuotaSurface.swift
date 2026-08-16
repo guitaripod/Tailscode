@@ -168,14 +168,23 @@ public enum QuotaSurface {
     /// The measurement is asked of the provider the failure names, never of the account: a full
     /// Claude weekly is not the explanation for a turn that died on opencode-go, and a live
     /// opencode-go reading is not permission to dismiss Claude's wall.
+    ///
+    /// A turn that died of something else keeps its own sentence. A standing wall is an answer to
+    /// *why the next send will not go*, never to *why this one failed*: a model the server does not
+    /// have, a refused connection, a tool that exited non-zero are each the only thing worth reading
+    /// on that screen, and covering one with a countdown belonging to a provider the turn never
+    /// reached is how a person is sent to wait three hours for a wall that was never in their way.
+    /// So a failure is answered only where it is itself a wall; the pre-emptive reading is what
+    /// `failureMessage == nil` asks for, and nothing else may summon it.
     public static func resolve(
         failureMessage: String?, quotas: [UsageQuota], model: String? = nil,
         named name: String? = nil, selection: ModelSelection? = nil, now: Date = Date()
     ) -> QuotaExhaustion? {
-        guard let message = failureMessage, isQuotaFailure(message) else {
+        guard let message = failureMessage else {
             let billed = billingQuotas(in: quotas, selection: selection, model: model, named: name)
             return hottestExhausted(in: billed, model: model, named: name, now: now)
         }
+        guard isQuotaFailure(message) else { return nil }
         let hint = providerHint(in: message)
         let attributed = hint.map { provider in
             quotas.filter { ProviderBrand.slug($0.providerName) == ProviderBrand.slug(provider) }

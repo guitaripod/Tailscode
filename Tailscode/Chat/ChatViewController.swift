@@ -1966,16 +1966,8 @@ final class ChatViewController: UIViewController {
             guard let f = state.lastFailure, f != viewModel.dismissedFailure else { return nil }
             return f.message
         }()
-        let exhaustion =
-            failure.flatMap {
-                QuotaSurface.resolve(
-                    failureMessage: $0, quotas: quotas, model: model, selection: selection)
-            } ?? (failure == nil
-                ? QuotaSurface.hottestExhausted(
-                    in: QuotaSurface.billingQuotas(
-                        in: quotas, selection: selection, model: model),
-                    model: model)
-                : nil)
+        let exhaustion = QuotaSurface.resolve(
+            failureMessage: failure, quotas: quotas, model: model, selection: selection)
         guard let exhaustion else { return false }
         banner.show(
             QuotaSurface.bannerBody(exhaustion), color: Theme.Color.danger,
