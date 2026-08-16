@@ -56,7 +56,7 @@ public enum PasteIntake {
     public static let inlineLineLimit = 400
 
     public static func plan(
-        for offer: ClipboardOffer, abilities: QuickAskAbilities, alreadyNamed: Int = 0
+        for offer: ClipboardOffer, abilities: ModelAbilities, alreadyNamed: Int = 0
     ) -> PastePlan {
         var attachments: [PendingAttachment] = []
         var notices: [String] = []

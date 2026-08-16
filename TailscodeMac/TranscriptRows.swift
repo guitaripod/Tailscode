@@ -132,6 +132,8 @@ struct TranscriptRow: Hashable {
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
+        /// What the answer above it took, drawn only where the reader asked for it.
+        case responseStats(ResponseStats)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -233,6 +235,11 @@ struct TranscriptRow: Hashable {
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
+        if ResponseStatsSetting.isEnabled, !rows.isEmpty,
+            let stats = ResponseStats(turn: message, promptedAt: prompt?.createdAt)
+        {
+            rows.append(TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return rows
     }
@@ -367,6 +374,8 @@ struct TranscriptRow: Hashable {
             return compaction.summary ?? ""
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .responseStats(let stats):
+            return stats.spoken
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -409,6 +418,8 @@ struct TranscriptRow: Hashable {
             return Self.seam(compaction, key: key, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
+        case .responseStats(let stats):
+            return Self.responseStats(stats)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -625,6 +636,44 @@ struct TranscriptRow: Hashable {
         column.addArrangedSubview(card)
         column.addArrangedSubview(RowKit.hairline())
         return column
+    }
+
+    /// What the answer above it took: one quiet strip of symbol-and-number, each figure carrying
+    /// the sentence behind it as a tooltip. It is deliberately the dimmest thing in the transcript
+    /// — a reader who turned it on wants the numbers available, not competing with the answer they
+    /// describe — and it holds perfectly still, like every settled state in this app.
+    @MainActor
+    private static func responseStats(_ stats: ResponseStats) -> NSView {
+        let strip = NSStackView()
+        strip.orientation = .horizontal
+        strip.alignment = .firstBaseline
+        strip.spacing = MacTheme.Spacing.m
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        for fact in stats.facts {
+            let cell = NSStackView()
+            cell.orientation = .horizontal
+            cell.alignment = .firstBaseline
+            cell.spacing = 3
+            if let symbol = NSImage(
+                systemSymbolName: fact.symbol, accessibilityDescription: fact.label)
+            {
+                let icon = NSImageView(image: symbol)
+                icon.contentTintColor = MacTheme.Color.tertiaryLabel
+                icon.symbolConfiguration = NSImage.SymbolConfiguration(
+                    pointSize: MacTheme.Ramp.font(.responseStat).pointSize, weight: .regular)
+                cell.addArrangedSubview(icon)
+            }
+            cell.addArrangedSubview(
+                RowKit.label(
+                    fact.value, font: MacTheme.Ramp.font(.responseStat),
+                    color: MacTheme.Color.tertiaryLabel))
+            cell.toolTip = "\(fact.label) — \(fact.detail)"
+            strip.addArrangedSubview(cell)
+        }
+        strip.setAccessibilityElement(true)
+        strip.setAccessibilityRole(.group)
+        strip.setAccessibilityLabel(stats.spoken)
+        return strip
     }
 
     /// A turn that finished having said nothing. It is a card rather than a prose row because

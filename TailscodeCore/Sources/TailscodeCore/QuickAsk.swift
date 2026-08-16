@@ -161,36 +161,3 @@ public struct QuickAskSend: Sendable, Equatable {
         }
     }
 }
-
-/// How hard the machine is asked to think, for a surface that has no conversation to read it
-/// from. Effort is a property of the model where the catalog says so — the picked model's own
-/// variants — and a property of the agent otherwise, which is exactly the rule a chat composer
-/// follows, so the quick ask and the chat can never offer different levels for the same aim.
-public enum QuickAskEffort {
-    public static func options(
-        models: [ModelInfo], selection: ModelSelection?, agentOptions: [String]
-    ) -> [String] {
-        if let selection,
-            let variants = models.first(where: {
-                $0.providerID == selection.providerID && $0.id == selection.modelID
-            })?.variants, !variants.isEmpty
-        {
-            return variants
-        }
-        return agentOptions
-    }
-
-    /// What the control says. A level picked by hand is the word itself; nothing picked is the
-    /// server deciding, which is a real answer rather than a blank; an agent with no levels at
-    /// all says so, because a control that offers nothing must not read as one that offers a
-    /// default.
-    public static func label(_ level: String?, options: [String]) -> String {
-        if let level, !level.isEmpty { return level }
-        guard !options.isEmpty else { return Localized.text("no effort") }
-        return Localized.text("server effort")
-    }
-
-    /// Whether the control is worth showing at all: an agent that takes no effort level is not
-    /// asked to explain a control nobody can use.
-    public static func isOffered(options: [String]) -> Bool { !options.isEmpty }
-}

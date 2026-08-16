@@ -30,6 +30,14 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// a ragged edge that moves with the length of the name beside it.
     private var markColumn: UnsafeMutableRawPointer?
     private var rowWidgets: [UInt] = []
+    /// Where the list must land once GTK knows how tall the rebuilt box is. A scroller whose
+    /// children were replaced this frame reports the old height — often one screenful — so a
+    /// position set before that is clamped to the top and then stays there. Held until the
+    /// adjustment's own `upper` says the real size, and cleared the moment it is honoured.
+    private var pendingScroll: Double?
+    /// Which hold is current, so a rebuild that arrives during another's settle window does not
+    /// have its own position let go by the older one's timer.
+    private var scrollGeneration = 0
     private var scopeButtons: [(scope: ModelChooserScope, widget: UInt)] = []
 
     static func present(
@@ -110,9 +118,14 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.onMain { ModelChooserWindow.open = nil }
         }
 
+        if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
+            Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
+                Gtk.onMain { [weak self] in self?.applyPendingScroll() }
+            }
+        }
         buildScopes()
         syncFold()
-        render()
+        render(keepingScroll: false, revealingCursor: true)
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
     }
@@ -134,7 +147,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
                     guard let self, self.chooser.setScope(scope) else { return }
-                    self.refresh()
+                    self.refresh(keepingScroll: false)
                 }
             }
             scopeButtons.append((scope, UInt(bitPattern: button)))
@@ -149,7 +162,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 guard let self, let action = self.chooser.foldAction,
                     self.chooser.setAllCollapsed(action.collapses)
                 else { return }
-                self.refresh()
+                self.refresh(keepingScroll: true)
             }
         }
         syncScopes()
@@ -176,11 +189,11 @@ final class ModelChooserWindow: @unchecked Sendable {
     }
 
     /// Everything the list's own state feeds: the count, the chips, the rows.
-    private func refresh() {
+    private func refresh(keepingScroll: Bool = false, revealingCursor: Bool = true) {
         gtk_label_set_text(op(count), chooser.summary)
         syncScopes()
         syncFold()
-        render()
+        render(keepingScroll: keepingScroll, revealingCursor: revealingCursor)
     }
 
     /// A catalog that arrived while the window is open — a server that came back from a restart —
@@ -200,7 +213,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         scopeButtons = []
         Gtk.removeChildren(of: band)
         buildScopes()
-        refresh()
+        refresh(keepingScroll: false)
     }
 
     private func close() {
@@ -214,7 +227,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_entry_set_icon_from_icon_name(
             ptr(entry), GTK_ENTRY_ICON_SECONDARY, typed.isEmpty ? nil : "edit-clear-symbolic")
         chooser.search(typed)
-        refresh()
+        refresh(keepingScroll: false)
     }
 
     private func key(keyval: UInt32, state: UInt32) -> Bool {
@@ -231,7 +244,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             pick(chosen)
             return true
         }
-        refresh()
+        refresh(keepingScroll: true)
         return true
     }
 
@@ -245,7 +258,22 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// list has one right edge rather than two.
     private static let chevronWidth: Int32 = 24
 
-    private func render() {
+    /// - Parameter keepingScroll: whether the list is still answering the same question and must
+    ///   therefore stay exactly where the reader left it. Opening a family, or a row's other
+    ///   providers, adds lines *below* the line that was pressed, so every pixel above it is
+    ///   unchanged and the honest answer is to move nothing — but the whole box is rebuilt to draw
+    ///   them, and a box emptied of its children takes the scroller's position to zero with it.
+    ///   Left there, the cursor is then brought into view from the top of a list it never left,
+    ///   and a press that asked to see one more row throws the catalog across itself. A new
+    ///   question — a query, a filter, a fresh catalog — is a different list, and that one starts
+    ///   at the top on purpose.
+    /// - Parameter revealingCursor: whether the focused row is worth pulling into view. It is when
+    ///   the cursor just moved — a keypress asked for that row — and it is not when a fold opened
+    ///   somewhere the cursor does not live: the cursor sits on the model this chat already runs,
+    ///   usually the first row of the list, so chasing it after opening a family at the bottom
+    ///   throws the reader back to the top of a catalog they were reading the end of.
+    private func render(keepingScroll: Bool, revealingCursor: Bool) {
+        let held = keepingScroll ? scrollOffset() : nil
         Gtk.removeChildren(of: list)
         rowWidgets = []
         if let group = markColumn { g_object_unref(group) }
@@ -261,7 +289,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 ) { [weak self] in
                     Gtk.onMain { [weak self] in
                         guard let self, self.chooser.setScope(escape) else { return }
-                        self.refresh()
+                        self.refresh(keepingScroll: false)
                     }
                 }
                 gtk_widget_set_halign(way, GTK_ALIGN_CENTER)
@@ -284,7 +312,12 @@ final class ModelChooserWindow: @unchecked Sendable {
         }
         gtk_widget_queue_draw(list)
         gtk_widget_queue_draw(scroller)
-        revealCursor()
+        settle(at: held, revealingCursor: revealingCursor)
+    }
+
+    private func scrollOffset() -> Double? {
+        guard let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) else { return nil }
+        return gtk_adjustment_get_value(adjustment)
     }
 
     /// A heading a long catalog can be aimed with: the family, what is under it, and — where it
@@ -315,7 +348,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self, self.chooser.toggleSection(id) else { return }
-                self.refresh()
+                self.refresh(keepingScroll: true, revealingCursor: false)
             }
         }
         return button
@@ -419,7 +452,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                     guard let self else { return }
                     self.chooser.focus(index)
                     _ = self.chooser.setExpanded(!expanded, at: index)
-                    self.render()
+                    self.render(keepingScroll: true, revealingCursor: false)
                 }
             }
             gtk_box_append(ptr(wrapper), chevron)
@@ -436,10 +469,13 @@ final class ModelChooserWindow: @unchecked Sendable {
         pick(row.pick)
     }
 
-    /// The focused row is brought into view without stealing focus from the search field — a
-    /// chooser you type into cannot hand the caret to the list every time the cursor moves.
-    private func revealCursor() {
-        guard chooser.cursor < rowWidgets.count else { return }
+    /// Puts the list back where the reader left it, then brings the focused row into view if the
+    /// cursor is what moved — never stealing focus from the search field, because a chooser you
+    /// type into cannot hand the caret to the list every time the cursor moves.
+    private func settle(at held: Double?, revealingCursor: Bool) {
+        holdScroll(at: held)
+        guard revealingCursor, chooser.cursor < rowWidgets.count else { return }
+        holdScroll(at: nil)
         let rowBits = rowWidgets[chooser.cursor]
         let listBits = UInt(bitPattern: list)
         let scrollerBits = UInt(bitPattern: scroller)
@@ -463,6 +499,43 @@ final class ModelChooserWindow: @unchecked Sendable {
                     min(
                         max(0, offset + height - page + 8),
                         max(0, gtk_adjustment_get_upper(adjustment) - page)))
+            }
+        }
+    }
+
+    /// A held position, re-asserted for as long as the rebuild is still settling.
+    ///
+    /// One attempt is not enough, in both directions. `gtk_adjustment_set_value` clamps against
+    /// the adjustment's *current* upper, so a position set before the rebuilt box has been
+    /// measured is clamped to the top; and a box emptied and refilled passes through a state where
+    /// it is one row tall, which clamps a position that had already been set correctly. Either way
+    /// the list ends at zero. So the wanted value is held and re-applied on every height the
+    /// scroller reports (`notify::upper`) until the rebuild has stopped changing size, and then
+    /// let go — a reader who scrolls after that owns the position again.
+    private func applyPendingScroll() {
+        guard let wanted = pendingScroll,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        let ceiling = max(0, gtk_adjustment_get_upper(adjustment) - page)
+        gtk_adjustment_set_value(adjustment, min(max(0, wanted), ceiling))
+    }
+
+    /// How long a rebuild is given to stop changing height. Long enough to outlast the frame the
+    /// box is refilled on, short enough that it can never be mistaken for the app resisting a
+    /// scroll the reader made.
+    private static let settleWindow: UInt32 = 250
+
+    private func holdScroll(at value: Double?) {
+        pendingScroll = value
+        applyPendingScroll()
+        guard value != nil else { return }
+        let token = scrollGeneration + 1
+        scrollGeneration = token
+        Gtk.after(Self.settleWindow) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.scrollGeneration == token else { return }
+                self.pendingScroll = nil
             }
         }
     }

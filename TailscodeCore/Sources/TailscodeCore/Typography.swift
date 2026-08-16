@@ -143,6 +143,9 @@ public enum TypeRole: String, CaseIterable, Sendable {
     case option
     case seamLabel
     case seamFootnote
+    /// One figure in the strip under an answer. Mono and tabular because the strip is a column of
+    /// numbers down a transcript, and small because it must never compete with what it describes.
+    case responseStat
     case panelTitle
     case panelLabel
     case panelDetail
@@ -262,6 +265,10 @@ public enum Typography {
                 axis: .prose, family: .mono, ratio: 0.78, weight: .semibold, tracking: 0.1)
         case .seamFootnote:
             return TypeSpec(axis: .prose, family: .prose, ratio: 0.82, lineHeight: 1.05)
+        case .responseStat:
+            return TypeSpec(
+                axis: .prose, family: .mono, ratio: 0.74, weight: .medium, tracking: 0.02,
+                figures: .tabular)
         case .paneHeadline:
             return TypeSpec(
                 axis: .prose, family: .mono, ratio: 1.1, weight: .bold, tracking: 0.04)
@@ -370,7 +377,7 @@ public enum Typography {
             .treeRow, .treePath:
             return .machine
         case .headline, .paneHeadline, .cardTitle, .cardBody, .option, .seamLabel, .seamFootnote,
-            .pairingCode:
+            .responseStat, .pairingCode:
             return .structure
         case .panelTitle, .panelLabel, .panelDetail, .panelFootnote, .control:
             return .panel

@@ -30,7 +30,7 @@ final class SettingsViewController: UIViewController {
     }
 
     private enum Toggle: Hashable {
-        case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity
+        case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity, responseStats
         case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
         case presenceOrb
 
@@ -40,6 +40,7 @@ final class SettingsViewController: UIViewController {
             case .sendOnReturn: return String(localized: "Send on return key")
             case .promptEnhancement: return String(localized: "Enhance prompts")
             case .compactActivity: return String(localized: "Compact agent steps")
+            case .responseStats: return ResponseStatsSetting.title
             case .notifyTurnComplete: return String(localized: "Turn finished")
             case .notifyApprovals: return String(localized: "Approvals and questions")
             case .notifyUsage: return String(localized: "Usage warnings")
@@ -60,6 +61,7 @@ final class SettingsViewController: UIViewController {
             case .compactActivity:
                 return String(
                     localized: "Agent steps collapse to a slim line — tap to unfold the details")
+            case .responseStats: return ResponseStatsSetting.explanation
             case .notifyTurnComplete:
                 return String(localized: "When an agent this device is watching goes idle")
             case .notifyApprovals:
@@ -86,6 +88,7 @@ final class SettingsViewController: UIViewController {
             case .sendOnReturn: return "return"
             case .promptEnhancement: return "sparkles"
             case .compactActivity: return "rectangle.compress.vertical"
+            case .responseStats: return "gauge.with.dots.needle.67percent"
             case .notifyTurnComplete: return "checkmark.bubble"
             case .notifyApprovals: return "hand.raised"
             case .notifyUsage: return "gauge.with.needle"
@@ -101,6 +104,7 @@ final class SettingsViewController: UIViewController {
             case .sendOnReturn: return ThemePalette.color(\.info, system: .systemTeal)
             case .promptEnhancement: return Theme.Color.accent
             case .compactActivity: return ThemePalette.color(\.info, system: .systemOrange)
+            case .responseStats: return Theme.Color.info
             case .notifyTurnComplete: return Theme.Color.success
             case .notifyApprovals: return Theme.Color.warning
             case .notifyUsage: return Theme.Color.info
@@ -116,6 +120,7 @@ final class SettingsViewController: UIViewController {
             case .sendOnReturn: return AppPreferences.sendOnReturn
             case .promptEnhancement: return AppPreferences.promptEnhancement
             case .compactActivity: return AppPreferences.compactActivity
+            case .responseStats: return ResponseStatsSetting.isEnabled
             case .notifyTurnComplete: return AppPreferences.notifyTurnComplete
             case .notifyApprovals: return AppPreferences.notifyApprovals
             case .notifyUsage: return AppPreferences.notifyUsageWarnings
@@ -132,6 +137,7 @@ final class SettingsViewController: UIViewController {
             case .sendOnReturn: AppPreferences.sendOnReturn = value
             case .promptEnhancement: AppPreferences.promptEnhancement = value
             case .compactActivity: AppPreferences.compactActivity = value
+            case .responseStats: ResponseStatsSetting.setEnabled(value)
             case .notifyTurnComplete: AppPreferences.notifyTurnComplete = value
             case .notifyApprovals: AppPreferences.notifyApprovals = value
             case .notifyUsage: AppPreferences.notifyUsageWarnings = value
@@ -838,7 +844,8 @@ final class SettingsViewController: UIViewController {
                 .chat,
                 [
                     .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .haptics,
-                    .toggle(.compactActivity), .toggle(.sendOnReturn), .keyboardShortcuts,
+                    .toggle(.compactActivity), .toggle(.responseStats), .toggle(.sendOnReturn),
+                    .keyboardShortcuts,
                 ]
             ),
             (.appearance, [.appearance, .toggle(.presenceOrb)]),

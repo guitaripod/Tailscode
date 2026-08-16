@@ -164,6 +164,13 @@ enum ChatRowBuilder {
                     id: "\(message.id):answerless", messageID: message.id, role: message.role,
                     content: .answerless(answerless)))
             }
+            if ResponseStatsSetting.isEnabled,
+                let stats = ResponseStats(turn: message, promptedAt: lastPrompt?.createdAt)
+            {
+                rows.append(ChatRow(
+                    id: "\(message.id):stats", messageID: message.id, role: message.role,
+                    content: .responseStats(stats)))
+            }
         }
         rows.append(
             contentsOf: Self.agentRows(

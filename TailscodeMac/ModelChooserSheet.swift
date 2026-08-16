@@ -240,9 +240,20 @@ final class ModelChooserSheet: NSObject {
     }
 
     private func refreshed() -> NSEvent? {
-        rebuild()
+        rebuildKeepingScroll()
         revealCursor()
         return nil
+    }
+
+    /// Reloading a table whose row count just changed clamps the clip view, and the reveal that
+    /// follows then aims at a cursor that was never on screen — which is how opening one family
+    /// threw the whole catalog past the place it was being read. Opening or shutting a fold is
+    /// still the same list, so it is rebuilt around the position rather than over it.
+    private func rebuildKeepingScroll() {
+        let held = scroll.contentView.bounds.origin
+        rebuild()
+        scroll.contentView.scroll(to: held)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     private func rebuild() {
@@ -320,8 +331,7 @@ final class ModelChooserSheet: NSObject {
         switch entries[clicked] {
         case .header(let section):
             guard chooser.toggleSection(section.id) else { return }
-            rebuild()
-            revealCursor()
+            rebuildKeepingScroll()
         case .row(let row, let index):
             chooser.focus(index)
             pick(row.selection)
@@ -332,7 +342,7 @@ final class ModelChooserSheet: NSObject {
         guard let action = chooser.foldAction, chooser.setAllCollapsed(action.collapses) else {
             return
         }
-        rebuild()
+        rebuildKeepingScroll()
         revealCursor()
     }
 
@@ -347,8 +357,7 @@ final class ModelChooserSheet: NSObject {
         guard chooser.setExpanded(!(chooser.focused?.isExpanded ?? false), at: index) else {
             return
         }
-        rebuild()
-        revealCursor()
+        rebuildKeepingScroll()
     }
 
     fileprivate func expandAction(_ index: Int) -> () -> Void {

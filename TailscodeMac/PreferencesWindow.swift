@@ -189,6 +189,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                     "Thinking and tool calls between prompts fold to one line you can open"),
                 value: compactTools, action: #selector(compactChanged)))
         column.addArrangedSubview(
+            switchRow(
+                title: ResponseStatsSetting.title,
+                subtitle: ResponseStatsSetting.explanation,
+                value: ResponseStatsSetting.isEnabled, action: #selector(responseStatsChanged)))
+        column.addArrangedSubview(
             stepperRow(
                 title: Localized.text("Rows kept on screen"),
                 subtitle: Localized.text(
@@ -332,6 +337,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @objc private func compactChanged(_ sender: NSButton) {
         defaults.set(sender.state == .on, forKey: "tailscode.compactTools")
+        onTranscriptChanged()
+    }
+
+    @objc private func responseStatsChanged(_ sender: NSButton) {
+        ResponseStatsSetting.setEnabled(sender.state == .on)
         onTranscriptChanged()
     }
 

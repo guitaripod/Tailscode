@@ -41,6 +41,8 @@ enum ChatFind {
             return message
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .responseStats(let stats):
+            return stats.spoken
         }
     }
 

@@ -42,7 +42,7 @@ final class QuickAskViewController: UIViewController {
     private var targetProfileID: String?
     private var aim = ModelChoice()
     private var resolvedAimFor: String?
-    private var abilities = QuickAskAbilities.words
+    private var abilities = ModelAbilities.words
     private var attachments: [PendingAttachment] = []
     private var phase: NewChatPhase = .asking
     private var lastAttempt: (profile: ConnectionProfile, send: QuickAskSend)?
@@ -541,7 +541,7 @@ final class QuickAskViewController: UIViewController {
     /// the other machine would refuse.
     private func refreshAbilities(for profile: ConnectionProfile) {
         let backend = viewModel.backend(forProfileID: profile.id)
-        abilities = QuickAskAbilities.resolve(
+        abilities = ModelAbilities.resolve(
             supportsAttachments: backend?.capabilities.supportsAttachments ?? false,
             model: modelCapabilities(for: profile),
             camera: UIImagePickerController.isSourceTypeAvailable(.camera))

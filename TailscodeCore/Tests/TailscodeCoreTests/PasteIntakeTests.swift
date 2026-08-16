@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Paste intake")
 struct PasteIntakeTests {
-    private let able = QuickAskAbilities(attachments: true, vision: true)
+    private let able = ModelAbilities(attachments: true, vision: true)
 
     @Test("Words are words")
     func words() {
@@ -41,7 +41,7 @@ struct PasteIntakeTests {
 
     @Test("What the model cannot read is refused by name rather than dropped")
     func refusals() {
-        let blind = QuickAskAbilities(attachments: true, vision: false)
+        let blind = ModelAbilities(attachments: true, vision: false)
         let picture = PasteIntake.plan(for: ClipboardOffer(image: Data([1])), abilities: blind)
         #expect(picture.attachments.isEmpty)
         #expect(picture.notices.count == 1)

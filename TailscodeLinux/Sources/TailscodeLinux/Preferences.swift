@@ -149,6 +149,19 @@ enum Preferences {
         write(value, forKey: "tailscode.compactTools")
     }
 
+    /// Whether an answer wears what it took. The choice itself is Core's (`ResponseStatsSetting`,
+    /// one key on every client); this end makes the write durable on a desktop whose defaults are
+    /// keyed to the executable path.
+    static var responseStats: Bool {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_STATS"] { return raw == "1" }
+        return ResponseStatsSetting.isEnabled
+    }
+
+    static func setResponseStats(_ value: Bool) {
+        ResponseStatsSetting.setEnabled(value)
+        write(value ? true : nil, forKey: ResponseStatsSetting.defaultsKey)
+    }
+
     /// Tighter vertical rhythm everywhere in the canvas.
     static var denseRows: Bool {
         flag("tailscode.denseRows", environment: "TAILSCODE_DENSE")
@@ -370,6 +383,16 @@ enum SettingsDialog {
                 value: Preferences.compactTools
             ) { value in
                 Preferences.setCompactTools(value)
+                onLayoutChanged()
+            })
+        adw_preferences_group_add(
+            ptr(transcript),
+            switchRow(
+                title: ResponseStatsSetting.title,
+                subtitle: ResponseStatsSetting.explanation,
+                value: Preferences.responseStats
+            ) { value in
+                Preferences.setResponseStats(value)
                 onLayoutChanged()
             })
         adw_preferences_group_add(

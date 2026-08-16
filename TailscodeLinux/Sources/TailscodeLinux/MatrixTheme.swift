@@ -543,6 +543,9 @@ enum MatrixTheme {
         .card-compaction { border-left: 2px solid \(special); }
         .card-compaction-failed { border-left: 2px solid \(danger); }
         .card-answerless { border-left: 2px solid \(warn); }
+        .response-stats { opacity: 0.62; }
+        .response-stat-glyph { color: \(textDim); \(t(.responseStat)) }
+        .response-stat-value { color: \(textDim); \(t(.responseStat)) }
         .card-interrupted { border-left: 2px solid \(warn); }
         .seam-footnote { color: \(textDim); \(t(.seamFootnote)) }
         .seam-bar trough {

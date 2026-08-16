@@ -150,16 +150,17 @@ final class ChatViewModel {
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
 
     /// Effort is a property of the model where the catalog says so (opencode's variants differ
-    /// per model); the backend-wide list serves agents whose models all take the same levels.
+    /// per model); the backend-wide list serves agents whose models all take the same levels. The
+    /// rule is Core's, so what this chat offers and what the desktops offer for the same model can
+    /// never differ.
     var reasoningEffortOptions: [String] {
-        if let variants = activeModelVariants, !variants.isEmpty { return variants }
-        return backend.reasoningEffortOptions
+        ModelEffort.options(
+            models: knownModels, modelID: activeModelID,
+            agentOptions: backend.reasoningEffortOptions)
     }
 
-    private var activeModelVariants: [String]? {
-        let active = selectedModel?.modelID ?? lastAssistantModelID ?? session.model
-        guard let active else { return nil }
-        return knownModels.first { $0.id == active }?.variants
+    private var activeModelID: String? {
+        selectedModel?.modelID ?? lastAssistantModelID ?? session.model
     }
 
     private var lastAssistantModelID: String? {
@@ -193,36 +194,33 @@ final class ChatViewModel {
         return nil
     }
 
+    /// The effort the chip names, and nothing at all where the model takes no effort: a word left
+    /// over from the model that answered last is a claim about a control this model does not have.
     var displayedEffort: String? {
+        guard !reasoningEffortOptions.isEmpty else { return nil }
         if let currentEffort { return currentEffort }
         if let stored = session.reasoningEffort, !stored.isEmpty { return stored }
         return lastAssistantEffort
     }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
 
-    /// Whether the current model can receive an image attachment. Falls back
-    /// to the backend-level capability when the server didn't advertise
-    /// per-model capabilities (or no model is selected yet).
-    var canAttachImages: Bool {
-        guard supportsAttachments else { return false }
-        guard let caps = selectedModelCapabilities else { return true }
-        return caps.attachment && caps.imageInput
+    /// What the model answering this chat can be handed. Resolved against the model actually in
+    /// play rather than only an explicit pick, so a conversation reopened on another device — where
+    /// the model comes from the server's own record — narrows its composer the same way.
+    var abilities: ModelAbilities {
+        ModelAbilities.resolve(
+            supportsAttachments: supportsAttachments, models: knownModels,
+            selection: selectedModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
+            camera: true)
     }
+
+    /// Whether the current model can receive an image attachment.
+    var canAttachImages: Bool { abilities.vision }
 
     /// Whether the current model can receive non-image file attachments
     /// (e.g. a large paste converted to a text file).
-    var canAttachFiles: Bool {
-        guard supportsAttachments else { return false }
-        guard let caps = selectedModelCapabilities else { return true }
-        return caps.attachment
-    }
-
-    private var selectedModelCapabilities: ModelCapabilities? {
-        guard let selected = selectedModel else { return nil }
-        return knownModels.first {
-            $0.providerID == selected.providerID && $0.id == selected.modelID
-        }?.capabilities
-    }
+    var canAttachFiles: Bool { abilities.attachments }
     var canClear: Bool { backend.capabilities.supportsClearing }
     var canFork: Bool { backend.capabilities.supportsForking }
     var canAbort: Bool { backend.capabilities.supportsAbort }

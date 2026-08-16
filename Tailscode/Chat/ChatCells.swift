@@ -28,6 +28,8 @@ struct ChatRow: Hashable {
         case timestamp(String)
         case error(String)
         case answerless(AnswerlessTurn)
+        /// What the answer above it took, drawn only where the reader asked for it.
+        case responseStats(ResponseStats)
     }
 }
 

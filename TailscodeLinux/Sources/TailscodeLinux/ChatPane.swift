@@ -2083,11 +2083,28 @@ final class ChatPane: @unchecked Sendable {
             applyTintClass(to: modelButton, from: modelTintClasses, chosen: modelTintClass())
         }
         if let effortButton {
-            gtk_menu_button_set_label(op(effortButton), effortPillText())
+            let word = effortPillText()
+            gtk_widget_set_visible(effortButton, word == nil ? 0 : 1)
+            gtk_menu_button_set_label(op(effortButton), word ?? "")
             applyTintClass(
-                to: effortButton, from: effortTintClasses,
-                chosen: ModelTint.effortClass(effortPillText()))
+                to: effortButton, from: effortTintClasses, chosen: word.flatMap(ModelTint.effortClass))
         }
+        if let attachButton {
+            gtk_widget_set_visible(attachButton, abilities.attachments ? 1 : 0)
+        }
+        dropUnsendableAttachments()
+    }
+
+    /// A model switch is the one way something already picked becomes unsendable. It is dropped
+    /// out loud rather than left to fail on the other machine, and never silently: a picture that
+    /// vanishes from a composer with no word is the app losing work.
+    private func dropUnsendableAttachments() {
+        let able = abilities
+        let refused = attachments.filter { !able.accepts(mime: $0.mime) }
+        guard !refused.isEmpty else { return }
+        attachments.removeAll { attachment in refused.contains { $0.id == attachment.id } }
+        renderAttachments()
+        setNotice(ModelAbilities.dropped(refused.count))
     }
 
     /// The composer's two pills wear the same colours the list chips do — the family's hue on the
@@ -2140,12 +2157,16 @@ final class ChatPane: @unchecked Sendable {
         return nil
     }
 
-    private func effortPillText() -> String {
+    /// What the effort pill says, or nil where the model takes no effort at all — a pill reading
+    /// "no effort control" spent a permanent slot in the chrome explaining the absence of a control
+    /// nobody asked for, and on a catalog where most models have no levels it was the usual state.
+    private func effortPillText() -> String? {
+        let options = effortOptions()
+        guard !options.isEmpty else { return nil }
         if let chosenEffort { return chosenEffort }
         if let stored = entry?.session.reasoningEffort, !stored.isEmpty { return stored }
         if let observed = observedEffort() { return observed }
-        guard !effortOptions().isEmpty else { return Localized.text("no effort control") }
-        return Localized.text("server effort")
+        return ModelEffort.label(nil, options: options)
     }
 
     private func observedEffort() -> String? {
@@ -2157,15 +2178,22 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Effort is a property of the model on servers whose catalog says so; the backend-wide list
-    /// is the fallback for agents where every model takes the same levels.
+    /// is the fallback for agents where every model takes the same levels. The rule is Core's, so
+    /// what this offers and what the phone offers for the same model can never differ.
     private func effortOptions() -> [String] {
-        let active = activeModelID
-        if let active, let variants = models.first(where: { $0.id == active })?.variants,
-            !variants.isEmpty
-        {
-            return variants
-        }
-        return backend?.reasoningEffortOptions ?? []
+        ModelEffort.options(
+            models: models, modelID: activeModelID,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+    }
+
+    /// What the picked model can be handed. A capability is the model's far more often than the
+    /// server's — one opencode machine fronts a hundred, and half of them cannot see a picture.
+    private var abilities: ModelAbilities {
+        ModelAbilities.resolve(
+            supportsAttachments: backend?.capabilities.supportsAttachments != false,
+            models: models,
+            selection: chosenModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) })
     }
 
     /// The pill offers what this person actually works with — the shared shortlist — and hands the
@@ -2262,7 +2290,7 @@ final class ChatPane: @unchecked Sendable {
     private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
         let options = effortOptions()
         guard !options.isEmpty else {
-            return [(Localized.text("This agent has no effort control"), nil, {})]
+            return [(Localized.text("This model has no effort control"), nil, {})]
         }
         var rows: [(String, String?, @Sendable () -> Void)] = [
             (Localized.text("Server default"), nil, { [weak self] in
@@ -2710,12 +2738,7 @@ final class ChatPane: @unchecked Sendable {
     /// have to be saved to disk and picked back up, and only words go in as words. What this model
     /// cannot be handed is refused by name in the notice line rather than dropped.
     private func pasteIntoComposer() {
-        let able = QuickAskAbilities.resolve(
-            supportsAttachments: backend?.capabilities.supportsAttachments != false,
-            model: chosenModel.flatMap { pick in
-                models.first { $0.providerID == pick.providerID && $0.id == pick.modelID }?
-                    .capabilities
-            })
+        let able = abilities
         let named = pastedImageCount
         Gtk.readClipboard { offer in
             Gtk.onMain { [weak self] in
@@ -2850,15 +2873,20 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func attachRows() -> [(String, String?, @Sendable () -> Void)] {
-        guard backend?.capabilities.supportsAttachments != false else {
-            return [(Localized.text("This server does not take attachments"), nil, {})]
+        let able = abilities
+        let supported = backend?.capabilities.supportsAttachments != false
+        if let reason = able.unavailableReason(supportsAttachments: supported) {
+            return [(reason, nil, {})]
         }
-        return [
+        var rows: [(String, String?, @Sendable () -> Void)] = [
             (Localized.text("Attach files…"), Localized.text("Up to 8 MB each"),
-             { [weak self] in Gtk.onMain { [weak self] in self?.pickAttachments() } }),
-            (Localized.text("Paste image"), Localized.text("From the clipboard, as PNG"),
-             { [weak self] in Gtk.onMain { [weak self] in self?.pasteImageAttachment() } }),
+             { [weak self] in Gtk.onMain { [weak self] in self?.pickAttachments() } })
         ]
+        guard able.vision else { return rows }
+        rows.append(
+            (Localized.text("Paste image"), Localized.text("From the clipboard, as PNG"),
+             { [weak self] in Gtk.onMain { [weak self] in self?.pasteImageAttachment() } }))
+        return rows
     }
 
     private func pickAttachments() {

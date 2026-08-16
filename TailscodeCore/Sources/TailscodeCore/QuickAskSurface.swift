@@ -1,51 +1,6 @@
 import CodingAgentKit
 import Foundation
 
-/// What the aim can actually be handed. A surface offers an errand only where the errand can be
-/// carried out: a server that takes no attachments has no attach affordance at all, and a model
-/// that cannot see has no picture rows — a row that leads to "this model can't read that" is
-/// worse than a row that was never offered.
-public struct QuickAskAbilities: Sendable, Equatable {
-    public var attachments: Bool
-    public var vision: Bool
-    /// Whether this device has a camera to point at something. A fact about the machine holding
-    /// the surface, not about the machine answering it.
-    public var camera: Bool
-
-    public init(attachments: Bool = false, vision: Bool = false, camera: Bool = false) {
-        self.attachments = attachments
-        self.vision = vision
-        self.camera = camera
-    }
-
-    /// Words only — the honest answer for a backend that takes nothing but a prompt.
-    public static let words = QuickAskAbilities()
-
-    /// The backend's word narrowed by the model's own, which is the only one that decides whether
-    /// a picture can be read. A model the catalog cannot describe is trusted to the backend rather
-    /// than assumed blind: a server that never published per-model capabilities must not lose its
-    /// attach affordance over a fact nobody stated.
-    public static func resolve(
-        supportsAttachments: Bool, model: ModelCapabilities?, camera: Bool = false
-    ) -> QuickAskAbilities {
-        guard supportsAttachments else { return QuickAskAbilities(camera: false) }
-        guard let model else {
-            return QuickAskAbilities(attachments: true, vision: true, camera: camera)
-        }
-        return QuickAskAbilities(
-            attachments: model.attachment, vision: model.attachment && model.imageInput,
-            camera: camera && model.attachment && model.imageInput)
-    }
-
-    /// Whether an attachment already in hand may still go out. A model switch mid-compose is the
-    /// one way a picture becomes unsendable after it was picked, and the surface has to drop it
-    /// rather than let the send fail on the other machine.
-    public func accepts(mime: String) -> Bool {
-        guard attachments else { return false }
-        return vision || !mime.hasPrefix("image/")
-    }
-}
-
 /// One errand the empty surface offers. It is not a canned prompt so much as the first half of a
 /// sentence: the words land in the composer with the caret at their end, and the person finishes
 /// them. Nothing is ever sent by touching one — a question the app wrote and sent on its own
@@ -153,7 +108,7 @@ public enum QuickAskStarters {
     /// them. A recent row that the current aim cannot carry out is dropped like any other: what
     /// this device reached for last is a preference, never a promise the model has to keep.
     public static func offered(
-        for abilities: QuickAskAbilities, recents: [String] = QuickAskStarterRecents.recent()
+        for abilities: ModelAbilities, recents: [String] = QuickAskStarterRecents.recent()
     ) -> [QuickAskStarter] {
         let capable = all.filter { starter in
             switch starter.needs {

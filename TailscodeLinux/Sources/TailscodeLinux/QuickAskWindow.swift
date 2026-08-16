@@ -403,7 +403,7 @@ final class QuickAskWindow: @unchecked Sendable {
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
     /// the strip that the new model cannot read is dropped out loud rather than carried to a send
     /// the other machine would refuse.
-    private var abilities: QuickAskAbilities {
+    private var abilities: ModelAbilities {
         let server = targetServer
         let selection = QuickAskDefaults.model(forProfileID: server.id)
         let capabilities = selection.flatMap { pick in
@@ -411,7 +411,7 @@ final class QuickAskWindow: @unchecked Sendable {
                 $0.providerID == pick.providerID && $0.id == pick.modelID
             }?.capabilities
         }
-        return QuickAskAbilities.resolve(supportsAttachments: true, model: capabilities)
+        return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
     private func refreshTarget() {
@@ -427,9 +427,9 @@ final class QuickAskWindow: @unchecked Sendable {
         dropUnofferedEffort(on: server.id, options: levels)
         gtk_menu_button_set_label(
             op(effort),
-            QuickAskEffort.label(
+            ModelEffort.label(
                 QuickAskDefaults.effort(forProfileID: server.id), options: levels))
-        gtk_widget_set_visible(effort, QuickAskEffort.isOffered(options: levels) ? 1 : 0)
+        gtk_widget_set_visible(effort, ModelEffort.isOffered(options: levels) ? 1 : 0)
         refreshAura()
         let able = abilities
         gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
@@ -486,7 +486,7 @@ final class QuickAskWindow: @unchecked Sendable {
     /// than the machine's — the same bargain the model chip strikes.
     private func effortOptions() -> [String] {
         let server = targetServer
-        return QuickAskEffort.options(
+        return ModelEffort.options(
             models: ModelCatalogStore.cached(server.id),
             selection: QuickAskDefaults.model(forProfileID: server.id),
             agentOptions: agentEfforts[server.id] ?? [])

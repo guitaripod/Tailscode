@@ -115,7 +115,7 @@ extension DeviceStores {
 
         @Test("A backend that takes nothing is offered nothing")
         func noAttachmentsMeansNoRows() {
-            let abilities = QuickAskAbilities.resolve(supportsAttachments: false, model: nil)
+            let abilities = ModelAbilities.resolve(supportsAttachments: false, model: nil)
             #expect(!abilities.attachments)
             #expect(!abilities.vision)
             #expect(!abilities.accepts(mime: "text/plain"))
@@ -126,14 +126,14 @@ extension DeviceStores {
 
         @Test("A model the catalog cannot describe keeps the backend's word")
         func unknownModelIsTrusted() {
-            let abilities = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            let abilities = ModelAbilities.resolve(supportsAttachments: true, model: nil)
             #expect(abilities.attachments)
             #expect(abilities.vision)
         }
 
         @Test("A model that reads files but cannot see refuses only the pictures")
         func blindModelKeepsFiles() {
-            let abilities = QuickAskAbilities.resolve(
+            let abilities = ModelAbilities.resolve(
                 supportsAttachments: true,
                 model: ModelCapabilities(attachment: true, imageInput: false, pdfInput: true))
             #expect(abilities.accepts(mime: "text/plain"))
@@ -145,16 +145,16 @@ extension DeviceStores {
 
         @Test("A camera belongs to the device, never to the server")
         func cameraIsTheDevices() {
-            let phone = QuickAskAbilities.resolve(
+            let phone = ModelAbilities.resolve(
                 supportsAttachments: true, model: nil, camera: true)
             #expect(QuickAskStarters.offered(for: phone, recents: []).contains { $0.opens == .camera })
-            let desk = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            let desk = ModelAbilities.resolve(supportsAttachments: true, model: nil)
             #expect(!QuickAskStarters.offered(for: desk, recents: []).contains { $0.opens == .camera })
         }
 
         @Test("What this device reaches for floats without hiding the rest")
         func recentStartersFloat() {
-            let abilities = QuickAskAbilities.resolve(supportsAttachments: true, model: nil)
+            let abilities = ModelAbilities.resolve(supportsAttachments: true, model: nil)
             let offered = QuickAskStarters.offered(for: abilities, recents: ["translate", "web"])
             #expect(offered.first?.id == "translate")
             #expect(offered.dropFirst().first?.id == "web")
@@ -263,28 +263,28 @@ extension DeviceStores {
             ]
             let agent = ["low", "medium", "high"]
             #expect(
-                QuickAskEffort.options(
+                ModelEffort.options(
                     models: models,
                     selection: ModelSelection(providerID: "anthropic", modelID: "opus"),
                     agentOptions: agent) == ["low", "high", "ultracode"])
             #expect(
-                QuickAskEffort.options(
+                ModelEffort.options(
                     models: models,
                     selection: ModelSelection(providerID: "anthropic", modelID: "haiku"),
                     agentOptions: agent) == agent)
             #expect(
-                QuickAskEffort.options(models: models, selection: nil, agentOptions: agent)
+                ModelEffort.options(models: models, selection: nil, agentOptions: agent)
                     == agent)
-            #expect(QuickAskEffort.options(models: [], selection: nil, agentOptions: []).isEmpty)
+            #expect(ModelEffort.options(models: [], selection: nil, agentOptions: []).isEmpty)
         }
 
-        @Test("An agent with no levels never reads as one that has a default")
+        @Test("An aim with no levels has no control rather than a control saying so")
         func effortLabelStatesWhatItKnows() {
-            #expect(QuickAskEffort.label("high", options: ["low", "high"]) == "high")
-            #expect(QuickAskEffort.label(nil, options: ["low", "high"]) == "server effort")
-            #expect(QuickAskEffort.label(nil, options: []) == "no effort")
-            #expect(QuickAskEffort.isOffered(options: []) == false)
-            #expect(QuickAskEffort.isOffered(options: ["low"]))
+            #expect(ModelEffort.label("high", options: ["low", "high"]) == "high")
+            #expect(ModelEffort.label(nil, options: ["low", "high"]) == "server effort")
+            #expect(ModelEffort.label(nil, options: []) == nil)
+            #expect(ModelEffort.isOffered(options: []) == false)
+            #expect(ModelEffort.isOffered(options: ["low"]))
         }
     }
 }

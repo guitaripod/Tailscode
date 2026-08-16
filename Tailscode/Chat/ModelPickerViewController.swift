@@ -179,7 +179,7 @@ final class ModelPickerViewController: UIViewController {
                 SectionTapRecognizer(section: section.id) { [weak self] id in
                     guard let self, self.chooser.toggleSection(id) else { return }
                     Theme.Haptics.selection()
-                    self.applySnapshot()
+                    self.applySnapshot(keepingScroll: true)
                 })
         }
 
@@ -258,7 +258,7 @@ final class ModelPickerViewController: UIViewController {
             self.chooser.focus(index)
             _ = self.chooser.setExpanded(!row.isExpanded, at: index)
             Theme.Haptics.selection()
-            self.applySnapshot()
+            self.applySnapshot(keepingScroll: true)
         }
         return .customView(
             configuration: .init(
@@ -266,7 +266,25 @@ final class ModelPickerViewController: UIViewController {
                 reservedLayoutWidth: .actual, maintainsFixedSize: true))
     }
 
-    private func applySnapshot() {
+    /// Opening a family, or a row's other providers, adds rows *below* the row that was pressed, so
+    /// the honest answer is to move nothing — but the sections' layout is rebuilt to hold them and
+    /// the list can land somewhere else entirely, which for a press that asked to see one more row
+    /// reads as the catalog throwing itself. A fold keeps the reader where they were; a new
+    /// question — a query, a filter, a fresh catalog — is a different list and starts at the top.
+    private func applySnapshot(keepingScroll: Bool = false) {
+        let held = keepingScroll ? collectionView.contentOffset : nil
+        applyRows()
+        guard let held else { return }
+        collectionView.layoutIfNeeded()
+        let inset = collectionView.adjustedContentInset
+        let ceiling = max(
+            -inset.top,
+            collectionView.contentSize.height + inset.bottom - collectionView.bounds.height)
+        collectionView.setContentOffset(
+            CGPoint(x: held.x, y: min(held.y, ceiling)), animated: false)
+    }
+
+    private func applyRows() {
         var snapshot = NSDiffableDataSourceSnapshot<String, String>()
         rowsByID.removeAll(keepingCapacity: true)
         for section in chooser.sections {
@@ -310,7 +328,7 @@ final class ModelPickerViewController: UIViewController {
             primaryAction: UIAction { [weak self] _ in
                 guard let self, self.chooser.setAllCollapsed(action.collapses) else { return }
                 Theme.Haptics.selection()
-                self.applySnapshot()
+                self.applySnapshot(keepingScroll: true)
             })
     }
 

@@ -165,8 +165,12 @@ final class PillsRow: NSView {
         modelPill.title = text
     }
 
-    func setEffortTitle(_ text: String) {
-        effortPill.title = text
+    /// Nil hides the pill outright: a model with no effort levels has no effort control, and a
+    /// pill reading "no effort control" spent a permanent slot in the chrome explaining the
+    /// absence of something nobody asked for.
+    func setEffortTitle(_ text: String?) {
+        effortPill.isHidden = text == nil
+        effortPill.title = text ?? ""
     }
 
     /// The pills wear the same colours the list chips do — the family's hue on the model, the

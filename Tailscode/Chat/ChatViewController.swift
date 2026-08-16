@@ -209,6 +209,9 @@ final class ChatViewController: UIViewController {
             name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(catalogDidChange), name: ModelCatalog.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(responseStatsDidChange),
+            name: ResponseStatsSetting.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.willResignActiveNotification,
             UIApplication.didEnterBackgroundNotification,
@@ -505,6 +508,8 @@ final class ChatViewController: UIViewController {
             TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)
         collectionView.register(
             AnswerlessTurnCell.self, forCellWithReuseIdentifier: AnswerlessTurnCell.reuseID)
+        collectionView.register(
+            ResponseStatsCell.self, forCellWithReuseIdentifier: ResponseStatsCell.reuseID)
         collectionView.register(
             InterruptedTurnCell.self, forCellWithReuseIdentifier: InterruptedTurnCell.reuseID)
 
@@ -1207,6 +1212,13 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: AnswerlessTurnCell.reuseID, for: indexPath)
                     as! AnswerlessTurnCell
                 cell.configure(turn) { [weak self] in self?.askAgain(turn) }
+                return cell
+            case .responseStats(let stats):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: ResponseStatsCell.reuseID, for: indexPath)
+                    as! ResponseStatsCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(stats)
                 return cell
             }
         }
@@ -2415,6 +2427,13 @@ final class ChatViewController: UIViewController {
     /// A warm catalog is answered from the cache and refreshed behind it, so the models this chat
     /// can offer are settled a round trip after the read. Taking the landing is what puts a model
     /// the server gained since the last launch into the picker in this run rather than the next.
+    /// Turning the strip on is a change to what the transcript is made of, not to how a row draws,
+    /// so the rows are built again rather than reconfigured — a chat left open behind the settings
+    /// screen must not have to wait for the next turn to answer the switch that was just flipped.
+    @objc private func responseStatsDidChange() {
+        render(viewModel.state)
+    }
+
     @objc private func catalogDidChange(_ note: Notification) {
         guard note.userInfo?["profileID"] as? String == viewModel.contextID,
             viewModel.supportsModelSelection || viewModel.supportsReasoningEffort
@@ -2445,10 +2464,13 @@ final class ChatViewController: UIViewController {
     /// actually see: hides the picker for text-only models and drops pending
     /// image attachments that a model switch made unsendable.
     private func refreshAttachmentGating() {
-        if !viewModel.canAttachImages, pendingAttachments.contains(where: { $0.mime.hasPrefix("image/") }) {
-            pendingAttachments.removeAll { $0.mime.hasPrefix("image/") }
+        let able = viewModel.abilities
+        let kept = pendingAttachments.filter { able.accepts(mime: $0.mime) }
+        if kept.count != pendingAttachments.count {
+            let dropped = pendingAttachments.count - kept.count
+            pendingAttachments = kept
             updateAttachmentStrip()
-            presentToast(String(localized: "Image removed — this model can't see images."))
+            presentToast(ModelAbilities.dropped(dropped))
         }
         composer.showsAttach = canAttachAnything
     }
@@ -3280,7 +3302,7 @@ final class ChatViewController: UIViewController {
                     "cpu"
                 ) { [weak self] in self?.presentModelPicker() })
         }
-        if viewModel.supportsReasoningEffort {
+        if viewModel.supportsReasoningEffort, !viewModel.reasoningEffortOptions.isEmpty {
             list.append(
                 makeCommand(
                     ["effort", "reasoning", "think"], String(localized: "Reasoning effort"),
@@ -3472,7 +3494,7 @@ final class ChatViewController: UIViewController {
                 continue
             case .answerless(let turn):
                 body = "_\(turn.title) — \(turn.detail)_"
-            case .timestamp, .error:
+            case .responseStats, .timestamp, .error:
                 continue
             }
             out.append("**\(who):** \(body)")
@@ -4359,6 +4381,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return row.compaction?.summary
         case .answerless(let turn):
             return turn.detail
+        case .responseStats(let stats):
+            return stats.line
         case .timestamp, .error:
             return nil
         }

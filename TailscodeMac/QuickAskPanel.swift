@@ -498,7 +498,7 @@ final class QuickAskPanel: NSPanel {
     private func effortOptions() -> [String] {
         let server = targetServer
         let agent = ServerDirectory.shared.backend(for: server)?.reasoningEffortOptions ?? []
-        return QuickAskEffort.options(
+        return ModelEffort.options(
             models: ModelCatalogStore.cached(server.id),
             selection: QuickAskDefaults.model(forProfileID: server.id), agentOptions: agent)
     }
@@ -507,7 +507,7 @@ final class QuickAskPanel: NSPanel {
         let server = targetServer
         let options = effortOptions()
         dropUnofferedEffort(on: server.id, options: options)
-        effortButton.isHidden = !QuickAskEffort.isOffered(options: options)
+        effortButton.isHidden = !ModelEffort.isOffered(options: options)
         effortButton.removeAllItems()
         effortButton.addItem(withTitle: Localized.text("Server default"))
         for option in options {
@@ -542,7 +542,7 @@ final class QuickAskPanel: NSPanel {
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
     /// the strip that the new model cannot read is dropped out loud rather than carried to a send
     /// the other machine would refuse.
-    private var abilities: QuickAskAbilities {
+    private var abilities: ModelAbilities {
         let server = targetServer
         let selection = QuickAskDefaults.model(forProfileID: server.id)
         let capabilities = selection.flatMap { pick in
@@ -550,7 +550,7 @@ final class QuickAskPanel: NSPanel {
                 $0.providerID == pick.providerID && $0.id == pick.modelID
             }?.capabilities
         }
-        return QuickAskAbilities.resolve(supportsAttachments: true, model: capabilities)
+        return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
     /// The button names what the question will actually run on, and the line under it says how

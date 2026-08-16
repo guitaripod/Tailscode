@@ -65,6 +65,8 @@ enum ParityManifest {
         case .modelEffortPicker: return .implemented("PillsRow")
         case .unifiedModelChooser: return .implemented("ModelChooserSheet")
         case .modelEffortDisplay: return .implemented("ModelBadge")
+        case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")
+        case .responseStats: return .implemented("responseStats")
         case .ultracodeAura: return .implemented("UltracodeAura")
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBandView")

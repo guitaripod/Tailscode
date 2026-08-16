@@ -292,18 +292,18 @@ final class ComposerView: NSView {
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        attachmentsSupported ? .copy : []
+        abilities.attachments ? .copy : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        attachmentsSupported ? .copy : []
+        abilities.attachments ? .copy : []
     }
 
     /// Dropping files on the prompt box attaches them, which is how a file gets from Finder into
     /// a conversation without a dialog in between; an image dragged out of another app arrives
     /// as a pasted picture.
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        guard attachmentsSupported else { return false }
+        guard abilities.attachments else { return false }
         let pasteboard = sender.draggingPasteboard
         if let urls = pasteboard.readObjects(
             forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
@@ -413,19 +413,20 @@ final class ComposerView: NSView {
         ].compactMap { $0 }.joined(separator: " · ")
         pills.setDestination(destination)
         pills.setModelTitle(modelPillText())
-        pills.setEffortTitle(effortPillText())
+        let effortWord = effortPillText()
+        pills.setEffortTitle(effortWord)
         let activeModel = activeModelID
         pills.setModelTint(
             activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
                 .map(MacTheme.Color.modelIdentity))
-        let effortWord = effortPillText()
-        if effortWord.lowercased() == Ultracode.effortLevel {
+        if let effortWord, effortWord.lowercased() == Ultracode.effortLevel {
             pills.setEffortTint(nil)
             pills.setEffortRainbow(effortWord)
         } else {
-            pills.setEffortTint(MacTheme.Color.modelEffort(effortWord))
+            pills.setEffortTint(effortWord.flatMap(MacTheme.Color.modelEffort))
         }
-        pills.setAttachShown(attachmentsSupported)
+        pills.setAttachShown(abilities.attachments)
+        dropUnsendableAttachments()
         updateVimUI()
     }
 
@@ -459,12 +460,14 @@ final class ComposerView: NSView {
         return nil
     }
 
-    private func effortPillText() -> String {
+    /// What the effort pill says, or nil where the model takes no effort at all.
+    private func effortPillText() -> String? {
+        let options = effortOptions()
+        guard !options.isEmpty else { return nil }
         if let chosenEffort { return chosenEffort }
         if let stored = entry?.session.reasoningEffort, !stored.isEmpty { return stored }
         if let observed = observedEffort() { return observed }
-        guard !effortOptions().isEmpty else { return Localized.text("no effort control") }
-        return Localized.text("server effort")
+        return ModelEffort.label(nil, options: options)
     }
 
     private func observedEffort() -> String? {
@@ -477,15 +480,33 @@ final class ComposerView: NSView {
 
     /// Effort is a property of the model on servers whose catalog says so (opencode's variants
     /// differ per model); the backend-wide list is the fallback for agents like Claude Code
-    /// where every model takes the same levels.
+    /// where every model takes the same levels. The rule is Core's, so what this offers and what
+    /// the phone offers for the same model can never differ.
     private func effortOptions() -> [String] {
-        let active = activeModelID
-        if let active, let variants = models.first(where: { $0.id == active })?.variants,
-            !variants.isEmpty
-        {
-            return variants
-        }
-        return backend?.reasoningEffortOptions ?? []
+        ModelEffort.options(
+            models: models, modelID: activeModelID,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+    }
+
+    /// What the picked model can be handed. A capability is the model's far more often than the
+    /// server's — one opencode machine fronts a hundred, and half of them cannot see a picture.
+    private var abilities: ModelAbilities {
+        ModelAbilities.resolve(
+            supportsAttachments: attachmentsSupported, models: models,
+            selection: chosenModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) })
+    }
+
+    /// A model switch is the one way something already picked becomes unsendable. It is dropped
+    /// out loud rather than left to fail on the other machine.
+    private func dropUnsendableAttachments() {
+        let able = abilities
+        let kept = attachments.filter { able.accepts(mime: $0.mime) }
+        guard kept.count != attachments.count else { return }
+        let dropped = attachments.count - kept.count
+        attachments = kept
+        syncChips()
+        onToast?(ModelAbilities.dropped(dropped))
     }
 
     /// The pill offers what this person actually works with — the shared shortlist — and hands the
@@ -564,7 +585,7 @@ final class ComposerView: NSView {
     private func effortMenuRows() -> [PillsRow.MenuRow] {
         let options = effortOptions()
         guard !options.isEmpty else {
-            return [PillsRow.MenuRow(Localized.text("This agent has no effort control"))]
+            return [PillsRow.MenuRow(Localized.text("This model has no effort control"))]
         }
         var rows = [
             PillsRow.MenuRow(
@@ -653,22 +674,26 @@ final class ComposerView: NSView {
     }
 
     private func attachMenuRows() -> [PillsRow.MenuRow] {
-        guard attachmentsSupported else {
-            return [PillsRow.MenuRow(Localized.text("This server does not take attachments"))]
+        let able = abilities
+        if let reason = able.unavailableReason(supportsAttachments: attachmentsSupported) {
+            return [PillsRow.MenuRow(reason)]
         }
-        return [
+        var rows = [
             PillsRow.MenuRow(
                 Localized.text("Attach files…"), subtitle: Localized.text("Up to 8 MB each")
             ) { [weak self] in
                 self?.pickAttachments()
-            },
+            }
+        ]
+        guard able.vision else { return rows }
+        rows.append(
             PillsRow.MenuRow(
                 Localized.text("Paste image"),
                 subtitle: Localized.text("From the clipboard, as PNG")
             ) { [weak self] in
                 self?.pasteImageAttachment()
-            },
-        ]
+            })
+        return rows
     }
 
     private func pickAttachments() {
@@ -728,7 +753,7 @@ final class ComposerView: NSView {
             offer.text = pasteboard.string(forType: .string)
         }
         let plan = PasteIntake.plan(
-            for: offer, abilities: pasteAbilities, alreadyNamed: pastedImageCount)
+            for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
         pastedImageCount = plan.named
         if let notice = plan.notices.first { onToast?(notice) }
         guard plan.text == nil else { return false }
@@ -738,14 +763,6 @@ final class ComposerView: NSView {
         return true
     }
 
-    private var pasteAbilities: QuickAskAbilities {
-        QuickAskAbilities.resolve(
-            supportsAttachments: attachmentsSupported,
-            model: chosenModel.flatMap { pick in
-                models.first { $0.providerID == pick.providerID && $0.id == pick.modelID }?
-                    .capabilities
-            })
-    }
 
     private func addPastedImage(_ data: Data) {
         guard data.count <= AttachmentIntake.byteCap else {

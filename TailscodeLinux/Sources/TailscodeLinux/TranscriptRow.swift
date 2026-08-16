@@ -198,6 +198,8 @@ struct TranscriptRow: Hashable {
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
+        /// What the answer above it took, drawn only where the reader asked for it.
+        case responseStats(ResponseStats)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -297,6 +299,12 @@ struct TranscriptRow: Hashable {
         if let answerless = AnswerlessTurnReading.read(message, prompt: prompt) {
             rows.append(
                 TranscriptRow(key: "\(message.id):answerless", kind: .answerless(answerless)))
+        }
+        if Preferences.responseStats, !rows.isEmpty,
+            let stats = ResponseStats(turn: message, promptedAt: prompt?.createdAt)
+        {
+            rows.append(
+                TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return rows
     }
@@ -479,6 +487,8 @@ struct TranscriptRow: Hashable {
             return compaction.summary ?? ""
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
+        case .responseStats(let stats):
+            return stats.spoken
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -521,6 +531,8 @@ struct TranscriptRow: Hashable {
             return Self.seam(compaction, key: key, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
+        case .responseStats(let stats):
+            return Self.responseStats(stats)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -829,6 +841,39 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(column), card)
         gtk_box_append(ptr(column), Gtk.hairline())
         return column
+    }
+
+    /// What the answer above it took: one quiet strip of glyph-and-number, tooltipped with the
+    /// sentence behind each figure. It is deliberately the dimmest thing in the transcript — a
+    /// reader who turned it on wants it available, not competing with the answer it describes.
+    private static func responseStats(
+        _ stats: ResponseStats
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        Gtk.addClass(row, "response-stats")
+        Gtk.margins(row, top: 2, bottom: 2, leading: 2)
+        gtk_widget_set_halign(row, GTK_ALIGN_START)
+        for fact in stats.facts {
+            let cell = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 4)
+            gtk_box_append(ptr(cell), Self.statLabel(fact.glyph, css: "response-stat-glyph"))
+            gtk_box_append(ptr(cell), Self.statLabel(fact.value, css: "response-stat-value"))
+            gtk_widget_set_tooltip_text(cell, "\(fact.label) — \(fact.detail)")
+            gtk_box_append(ptr(row), cell)
+        }
+        return row
+    }
+
+    /// A figure is never abbreviated. `Gtk.label` ellipsizes by default, which is right for a name
+    /// and wrong for a number — "41…" and "~<$0.0…" are not smaller readings of 410 and a
+    /// hundredth of a cent, they are unreadable — so the strip keeps every character it has and
+    /// lets the row be as wide as its facts.
+    private static func statLabel(
+        _ text: String, css: String
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: css, selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(label), 0)
+        return label
     }
 
     /// A turn that finished having said nothing. It is a card rather than a prose row because
