@@ -48,7 +48,7 @@ final class MainWindow: @unchecked Sendable {
     /// nothing, so a title taken off for being too wide would measure zero, look like it fits, and
     /// come straight back — the flicker of a header arguing with itself once per frame.
     private var sidebarTitleWidth: Int32 = 0
-    private var lastSidebar: ([SessionRowModel], [String], String, String)?
+    private var lastSidebar: ([ChatListItem], [String], String, String)?
 
     /// The last full row list per session, shared across every pane so a chat reopened anywhere —
     /// same pane, another pane, a second pane on the same session — paints in the first frame.
@@ -79,7 +79,7 @@ final class MainWindow: @unchecked Sendable {
     /// pointer here must never outlive the row it names.
     private var sidebarRows: [SidebarRowWidget] = []
     private var sidebarReveal: String?
-    private var visible: [SessionRowModel] = []
+    private var visible: [ChatListItem] = []
     private var unreachable: [String] = []
     private var watchSummary: WatchSummary?
     private var watchCheckedAt: Date?
@@ -241,13 +241,13 @@ final class MainWindow: @unchecked Sendable {
                 switch verb {
                 case "open":
                     if let index = Int(argument), index < self.visible.count {
-                        self.open(self.visible[index].entry)
+                        self.openItem(self.visible[index])
                     }
                 case "openid":
-                    if let match = self.visible.first(where: { $0.entry.session.id == argument }) {
-                        self.open(match.entry)
+                    if let match = self.visibleEntries.first(where: { $0.session.id == argument }) {
+                        self.open(match)
                     } else {
-                        let ids = self.visible.prefix(6).map { $0.entry.session.id }
+                        let ids = self.visibleEntries.prefix(6).map { $0.session.id }
                         FileHandle.standardOutput.write(
                             Data(
                                 "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
@@ -274,7 +274,7 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("ORB \(self.orb.stateLine)\n".utf8))
                 case "mark":
                     if let index = Int(argument), index < self.visible.count {
-                        self.toggleMark(self.visible[index].entry)
+                        self.toggleMark(self.visible[index])
                     } else {
                         self.toggleMarkAtCursor()
                     }
@@ -289,6 +289,12 @@ final class MainWindow: @unchecked Sendable {
                     self.openMarkedSplit(SplitArrangement(rawValue: argument) ?? .grid)
                     FileHandle.standardOutput.write(
                         Data("MARKSPLIT \(self.splitHost.paneCount)\n".utf8))
+                case "opentab":
+                    if let item = self.visible.first(where: { $0.isTab }) {
+                        self.openItem(item)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data("OPENTAB \(self.splitHost.paneCount)\n".utf8))
                 case "sections":
                     let described = self.visible.map { "\($0.state):\($0.title)" }
                         .joined(separator: " | ")
@@ -307,8 +313,10 @@ final class MainWindow: @unchecked Sendable {
                 case "newchatui":
                     self.presentNewChat()
                 case "pscope":
-                    if let index = Int(argument), index < self.visible.count {
-                        self.setProjectScope(ProjectScope(of: self.visible[index].entry))
+                    if let index = Int(argument), index < self.visible.count,
+                        let lead = self.visible[index].lead
+                    {
+                        self.setProjectScope(ProjectScope(of: lead.entry))
                     } else {
                         self.toggleProjectScope()
                     }
@@ -1181,12 +1189,14 @@ final class MainWindow: @unchecked Sendable {
         let active = matching.filter {
             !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
         }
-        let sections: [(String, [SessionRowModel])] =
+        let grouped: [(String, [SessionRowModel])] =
             showingArchive
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
+        let sections = SplitTabGrouping.apply(
+            to: grouped, tabs: showingArchive ? [] : SplitTabStore.all())
         visible = sections.flatMap(\.1)
-        marks.prune(to: visible.map(\.entry))
+        marks.prune(to: visibleEntries)
         syncCursorToSelection()
 
         let missed = ActivityInbox.ordered(limit: 5)
@@ -1306,25 +1316,14 @@ final class MainWindow: @unchecked Sendable {
             guard built < sidebarLimit else { break }
             gtk_box_append(
                 ptr(sidebarList), SidebarRow.header(title, count: members.count))
-            for row in members {
+            for item in members {
                 guard built < sidebarLimit else { break }
-                let widget = SidebarRow.make(
-                    row, focused: row.entry.session.id == selectedID,
-                    marked: marks.contains(row.entry), vocabulary: vocabulary,
-                    onOpen: { [weak self] in
-                        self?.open(row.entry)
-                    },
-                    onMark: { [weak self] in
-                        Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
-                    },
-                    onMenu: { [weak self] bits, x, y in
-                        self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
-                    })
+                let widget = makeSidebarItem(item, vocabulary: vocabulary)
                 gtk_box_append(ptr(sidebarList), widget)
                 sidebarRows.append(
                     SidebarRowWidget(
-                        key: SessionPinStore.key(row.entry.profileID, row.entry.session.id),
-                        sessionID: row.entry.session.id, widget: widget))
+                        key: item.key, sessionIDs: item.entries.map(\.session.id),
+                        widget: widget))
                 built += 1
             }
         }
@@ -1379,7 +1378,7 @@ final class MainWindow: @unchecked Sendable {
     /// One line describing the selection, for the headless driver: how many are held, and which
     /// rows they are in the order the list is drawing them.
     private var marksSummary: String {
-        let titles = marks.resolve(in: visible.map(\.entry)).map { entry in
+        let titles = marks.resolve(in: visibleEntries).map { entry in
             SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false).title
         }
         return "\(marks.count) [\(titles.joined(separator: " | "))]"
@@ -1404,7 +1403,7 @@ final class MainWindow: @unchecked Sendable {
     /// the window held — the gesture asked for these conversations, and it persists like any
     /// hand-built layout.
     private func openMarkedSplit(_ arrangement: SplitArrangement) {
-        let chosen = marks.resolve(in: visible.map(\.entry))
+        let chosen = marks.resolve(in: visibleEntries)
         guard let layout = SplitEven.layout(count: chosen.count, as: arrangement) else { return }
         var sessions: [String: SplitPaneSession] = [:]
         for (pane, entry) in zip(layout.paneIDs, chosen) {
@@ -1423,6 +1422,141 @@ final class MainWindow: @unchecked Sendable {
         splitHost.activePane.focusTranscript()
     }
 
+    /// Every conversation the list is drawing, whatever it is grouped into — what a mark, a bulk
+    /// verb and the driver's own index are spent on. A remembered split hands over all of its
+    /// chats, because the row stands for all of them.
+    private var visibleEntries: [SessionEntry] {
+        visible.flatMap(\.entries)
+    }
+
+    private func makeSidebarItem(_ item: ChatListItem, vocabulary: ChatListVocabulary)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        switch item {
+        case .chat(let row):
+            return SidebarRow.make(
+                row, focused: row.entry.session.id == activePane.sessionID,
+                marked: marks.contains(row.entry), vocabulary: vocabulary,
+                onOpen: { [weak self] in
+                    self?.open(row.entry)
+                },
+                onMark: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
+                },
+                onMenu: { [weak self] bits, x, y in
+                    self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
+                })
+        case .tab(let row):
+            let open = activePane.sessionID
+            return SidebarRow.tab(
+                row, focused: open.map { id in row.members.contains { $0.entry.session.id == id } }
+                    ?? false,
+                marked: row.members.allSatisfy { marks.contains($0.entry) },
+                onOpen: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.restoreSplit(row.tab) }
+                },
+                onOpenMember: { [weak self] index in
+                    Gtk.onMain { [weak self] in
+                        guard let self, index < row.members.count else { return }
+                        self.open(row.members[index].entry)
+                    }
+                },
+                onMark: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.toggleMark(.tab(row)) }
+                },
+                onMenu: { [weak self] bits, x, y in
+                    self?.presentTabMenu(row, rowBits: bits, x: x, y: y)
+                })
+        }
+    }
+
+    /// Opening what a row stands for: a conversation is opened, a remembered split is put back in
+    /// the window whole.
+    private func openItem(_ item: ChatListItem) {
+        switch item {
+        case .chat(let row): open(row.entry)
+        case .tab(let row): restoreSplit(row.tab)
+        }
+    }
+
+    /// A remembered arrangement put back: the tree it had, every pane bound to the chat it was
+    /// holding, and any page or stream that was open beside them. A member whose server cannot
+    /// answer right now keeps its pane and its placeholder rather than failing the whole gesture —
+    /// the window's shape is what was asked for, and the listing catches up on its own.
+    private func restoreSplit(_ tab: SplitTab) {
+        let bindings = splitHost.restore(tab.snapshot)
+        guard !bindings.isEmpty else { return }
+        for (pane, binding) in bindings {
+            guard
+                let entry = entries.first(where: {
+                    $0.profileID == binding.profileID && $0.session.id == binding.sessionID
+                })
+            else { continue }
+            SessionSeenStore.markSeen(entry.session.id)
+            splitHost.panes[pane]?.open(entry)
+        }
+        splitHost.persist()
+        marks.clear()
+        lastSidebar = nil
+        renderSidebar()
+        focusedPaneChanged()
+        splitHost.activePane.focusTranscript()
+    }
+
+    /// The menu on a remembered split: what it can be spent on as a selection, the arrangement
+    /// itself, each chat inside it, and the way to stop the list grouping them at all.
+    private func presentTabMenu(_ row: SplitTabRow, rowBits: UInt, x: Double, y: Double) {
+        guard let raw = UnsafeMutableRawPointer(bitPattern: rowBits) else { return }
+        let offsetY = tailscode_widget_offset_y(ptr(raw), sidebarList)
+        guard offsetY >= 0 else { return }
+        let tab = row.tab
+        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = bulkMenuRows()
+        rows.append(
+            (Localized.text("Open as one split"), row.lead,
+             { [weak self] in
+                 Gtk.onMain { [weak self] in self?.restoreSplit(tab) }
+             }))
+        for member in row.members {
+            let entry = member.entry
+            rows.append(
+                (Localized.text("Open just %@", member.title), member.facets().lead,
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in self?.open(entry) }
+                 }))
+        }
+        rows.append(
+            (Localized.text("Forget this split"),
+             Localized.text("The chats stay; the list stops grouping them"),
+             { [weak self] in
+                 Gtk.onMain { [weak self] in
+                     SplitTabStore.forget(identity: tab.identity)
+                     SettingsFile.capture()
+                     self?.lastSidebar = nil
+                     self?.renderSidebar()
+                 }
+             }))
+        Gtk.contextMenu(on: sidebarList, x: x + 4, y: offsetY + y, rows: rows)
+    }
+
+    /// Marking a remembered split holds every chat in it: the row is one row, so the mark it wears
+    /// has to mean the same thing the row does. Marked when all of them are, so a second press
+    /// lets the whole of it go.
+    private func toggleMark(_ item: ChatListItem) {
+        switch item {
+        case .chat(let row):
+            marks.toggle(row.entry)
+        case .tab(let row):
+            let entries = row.members.map(\.entry)
+            if entries.allSatisfy(marks.contains) {
+                for entry in entries where marks.contains(entry) { marks.toggle(entry) }
+            } else {
+                for entry in entries where !marks.contains(entry) { marks.toggle(entry) }
+            }
+        }
+        lastSidebar = nil
+        renderSidebar()
+    }
+
     private func toggleMark(_ entry: SessionEntry) {
         marks.toggle(entry)
         lastSidebar = nil
@@ -1433,11 +1567,11 @@ final class MainWindow: @unchecked Sendable {
     /// whichever chat a background pane happens to be holding.
     private func toggleMarkAtCursor() {
         guard cursor < visible.count else { return }
-        toggleMark(visible[cursor].entry)
+        toggleMark(visible[cursor])
     }
 
     private func toggleMarkAll() {
-        marks.toggleAll(in: visible.map(\.entry))
+        marks.toggleAll(in: visibleEntries)
         lastSidebar = nil
         renderSidebar()
     }
@@ -1454,7 +1588,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func perform(bulk action: BulkChatAction) {
-        let chosen = marks.resolve(in: visible.map(\.entry))
+        let chosen = marks.resolve(in: visibleEntries)
         guard !chosen.isEmpty else { return }
         switch action {
         case .delete: confirmBulkDelete(chosen)
@@ -1652,7 +1786,8 @@ final class MainWindow: @unchecked Sendable {
     /// the accent is taken off the rows that are on screen and put on the one that is open.
     private func markFocusedRow(_ selectedID: String?) {
         for row in sidebarRows {
-            SidebarRow.setFocused(row.widget, row.sessionID == selectedID)
+            SidebarRow.setFocused(
+                row.widget, selectedID.map(row.sessionIDs.contains) ?? false)
         }
     }
 
@@ -1664,8 +1799,7 @@ final class MainWindow: @unchecked Sendable {
     /// which is the one case where the two disagree.
     private func revealCursorRow() {
         guard cursor < visible.count else { return }
-        let entry = visible[cursor].entry
-        let target = SessionPinStore.key(entry.profileID, entry.session.id)
+        let target = visible[cursor].key
         sidebarReveal = target
         applySidebarReveal()
         Gtk.after(120) { [weak self] in
@@ -1702,7 +1836,9 @@ final class MainWindow: @unchecked Sendable {
             return
         }
         if let selectedID = activePane.sessionID,
-            let index = visible.firstIndex(where: { $0.entry.session.id == selectedID })
+            let index = visible.firstIndex(where: { item in
+                item.entries.contains { $0.session.id == selectedID }
+            })
         {
             cursor = index
         } else {
@@ -2835,7 +2971,7 @@ final class MainWindow: @unchecked Sendable {
     private func toggleProjectScope() {
         guard projectScope == nil else { return setProjectScope(nil) }
         let entry =
-            cursor < visible.count ? visible[cursor].entry : activePane.entry
+            cursor < visible.count ? visible[cursor].lead?.entry : activePane.entry
         guard let entry else { return }
         setProjectScope(ProjectScope(of: entry))
     }
@@ -2914,8 +3050,7 @@ final class MainWindow: @unchecked Sendable {
             perform(bulk: .delete)
             return
         }
-        guard cursor < visible.count else { return }
-        let entry = visible[cursor].entry
+        guard cursor < visible.count, let entry = visible[cursor].lead?.entry else { return }
         Task { [weak self] in
             let profiles = await ServerDirectory.shared.profiles()
             guard let profile = profiles.first(where: { $0.id == entry.profileID }),
@@ -2967,7 +3102,7 @@ final class MainWindow: @unchecked Sendable {
 
     private func openCursor() {
         guard cursor < visible.count else { return }
-        open(visible[cursor].entry)
+        openItem(visible[cursor])
     }
 
     /// Every pane closes: the chat list collapses into the split view, the file tree and the
@@ -3234,6 +3369,8 @@ final class MainWindow: @unchecked Sendable {
 /// again — the pin key a reveal names it by, and the bare session id the accent is decided on.
 private struct SidebarRowWidget {
     let key: String
-    let sessionID: String
+    /// Every conversation the row stands for: a remembered split wears the accent when any of the
+    /// chats inside it is the one on screen.
+    let sessionIDs: [String]
     let widget: UnsafeMutablePointer<GtkWidget>
 }

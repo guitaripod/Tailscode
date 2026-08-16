@@ -204,6 +204,18 @@ final class MainWindowController: NSWindowController {
         focusedPaneChanged()
     }
 
+    /// A remembered arrangement put back: the tree it had, every pane bound to the chat it was
+    /// holding, and any page or stream that was open beside them. The panes bind through the same
+    /// machinery a launch restore uses, so a member whose server cannot answer right now keeps its
+    /// pane and resolves on the next refresh instead of failing the whole gesture.
+    private func restoreSplitTab(_ tab: SplitTab) {
+        for member in tab.members { SessionSeenStore.markSeen(member.sessionID) }
+        pendingBindings = splitPanes.restore(tab.snapshot)
+        resolvePendingBindings()
+        splitPanes.persist()
+        focusedPaneChanged()
+    }
+
     /// Opening a row into a fresh pane beside the ones already on screen: split, then run the
     /// same open path a sidebar click takes.
     private func openInNewSplit(_ entry: SessionEntry) {
@@ -743,6 +755,9 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onOpenSplit = { [weak self] entries, arrangement in
             self?.openMarkedSplit(entries, as: arrangement)
+        }
+        sidebar.onOpenSplitTab = { [weak self] tab in
+            self?.restoreSplitTab(tab)
         }
         sidebar.onOpenInSplit = { [weak self] entry in
             self?.openInNewSplit(entry)

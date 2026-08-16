@@ -312,8 +312,13 @@ final class SplitPaneHost: NSViewController {
 
     /// The same key and shape the Linux desktop persists, so both restore the same arrangement.
     /// A lone pane clears the record: the plain window needs no layout file.
+    ///
+    /// The same moment is where an arrangement becomes something the chat list can offer back: a
+    /// window holding several conversations is recorded as one tab, so a split survives the window
+    /// moving on rather than having to be built again by hand.
     func persist() {
         let current = snapshot()
+        SplitTabStore.record(current)
         if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty,
             let encoded = current.encoded
         {

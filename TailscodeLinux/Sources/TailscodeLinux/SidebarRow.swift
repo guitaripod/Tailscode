@@ -247,16 +247,155 @@ enum SidebarRow {
         return holder
     }
 
+    /// Several conversations held in one window, drawn as the one row they are. The names are the
+    /// row's title, in the order the panes read; the shape and the count lead the detail line; and
+    /// the state is the loudest pane's, because a split with a question waiting in it is a split
+    /// that needs you.
+    ///
+    /// Each member also gets a line of its own under the row, because merging the rows must not
+    /// take away the ability to open one chat: those are buttons, and a press inside a `GtkButton`
+    /// belongs to that button, so the row's own button is a sibling of them rather than their
+    /// parent.
+    static func tab(
+        _ model: SplitTabRow, focused: Bool, marked: Bool = false,
+        onOpen: @escaping @Sendable () -> Void,
+        onOpenMember: @escaping @Sendable (Int) -> Void,
+        onMark: @escaping @Sendable () -> Void = {},
+        onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "session-row")
+        Gtk.addClass(button, "split-tab-row")
+        if focused { Gtk.addClass(button, "row-focused") }
+        if marked { Gtk.addClass(button, "row-marked") }
+
+        let state = model.state
+        let glyph = Gtk.label(state.glyph.text, css: state.glyph.css, selectable: false)
+        gtk_widget_set_valign(glyph, GTK_ALIGN_START)
+        Gtk.margins(glyph, top: 3)
+        ActivityPulse.apply(state.activity?.icon, to: glyph)
+        if let spoken = state.activity?.spoken { gtk_widget_set_tooltip_text(glyph, spoken) }
+
+        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let title = Gtk.label(
+            model.title, css: model.unread ? "row-title-unread" : "row-title", selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_box_append(ptr(titleRow), title)
+        if let pill = state.pill {
+            gtk_box_append(ptr(titleRow), makePill(pill.text, css: pill.css))
+        }
+        if model.pinned {
+            gtk_box_append(ptr(titleRow), makePill(Localized.text("PINNED"), css: "pill-pinned"))
+        }
+
+        let facets = model.facets()
+        let detail = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let lead = Gtk.label(facets.project ?? "", css: "row-project", selectable: false)
+        gtk_box_append(ptr(detail), lead)
+        if let origin = facets.origin {
+            let label = Gtk.label("· \(origin)", css: "row-detail", selectable: false)
+            gtk_widget_set_hexpand(label, 1)
+            gtk_box_append(ptr(detail), label)
+        }
+        let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(detail), spacer)
+        let age = Gtk.label(facets.age, css: "row-age", selectable: false)
+        gtk_label_set_ellipsize(op(age), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(age), 1)
+        gtk_widget_set_size_request(age, 30, -1)
+        gtk_box_append(ptr(detail), age)
+
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        gtk_box_append(ptr(column), titleRow)
+        gtk_box_append(ptr(column), detail)
+        gtk_widget_set_hexpand(column, 1)
+
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(row, top: 4, bottom: 4, leading: 4, trailing: 4)
+        gtk_box_append(ptr(row), glyph)
+        gtk_box_append(ptr(row), column)
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_hexpand(button, 1)
+        gtk_widget_set_tooltip_text(button, Localized.text("Open all of these as one split"))
+        tailscode_set_accessible_label(button, model.accessibleLabel)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
+        let buttonBits = UInt(bitPattern: button)
+        Gtk.onRightClick(button) { x, y in onMenu(buttonBits, x, y) }
+
+        let top = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_box_append(ptr(top), makeMark(marked: marked, onMark: onMark))
+        gtk_box_append(ptr(top), button)
+
+        let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(holder, "session-row-holder")
+        Gtk.addClass(holder, "split-tab-holder")
+        gtk_box_append(ptr(holder), top)
+        for (index, member) in model.members.enumerated() {
+            gtk_box_append(ptr(holder), memberLine(member, index: index, onOpen: onOpenMember))
+        }
+        return holder
+    }
+
+    /// One conversation inside a remembered split, on a line of its own: pressing it opens that
+    /// chat alone, the way its row would have before the split swallowed it.
+    private static func memberLine(
+        _ model: SessionRowModel, index: Int, onOpen: @escaping @Sendable (Int) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "split-tab-member")
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(line), glyph)
+        let title = Gtk.label(
+            model.title, css: model.unread ? "row-note" : "row-detail", selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_label_set_xalign(op(title), 0)
+        gtk_box_append(ptr(line), title)
+        gtk_button_set_child(ptr(button), line)
+        gtk_widget_set_hexpand(button, 1)
+        gtk_widget_set_tooltip_text(button, Localized.text("Open just this chat"))
+        tailscode_set_accessible_label(
+            button, Localized.text("Open just %@", model.title))
+        Gtk.makeChatDragSource(
+            button,
+            payload: PaneDragPayload(
+                profileID: model.entry.profileID, sessionID: model.entry.session.id).encoded)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { onOpen(index) }
+        return button
+    }
+
     /// The accent moved, not the list: a row that is already on screen is re-marked in place. The
-    /// row's own button is the holder's last child — the mark that selects it comes first — and it
-    /// is the only thing `focused` ever decided.
+    /// row's own button is found by its class rather than by position, because a remembered split
+    /// carries its members' lines under the same holder.
     static func setFocused(_ holder: UnsafeMutablePointer<GtkWidget>, _ focused: Bool) {
-        guard let button = gtk_widget_get_last_child(holder) else { return }
+        guard let button = rowButton(in: holder) else { return }
         if focused {
             gtk_widget_add_css_class(button, "row-focused")
         } else {
             gtk_widget_remove_css_class(button, "row-focused")
         }
+    }
+
+    private static func rowButton(_ depth: Int = 0, in widget: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>?
+    {
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            if gtk_widget_has_css_class(current, "session-row") != 0 { return current }
+            if depth < 2, let found = rowButton(depth + 1, in: current) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
+    private static func rowButton(in widget: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>?
+    {
+        rowButton(0, in: widget)
     }
 
     /// The second line, read as three things rather than one: what the conversation is in, where

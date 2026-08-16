@@ -101,6 +101,24 @@ public enum SplitEven {
         return layout
     }
 
+    /// Which of the three arrangements a tree reads as, so a remembered split can be drawn small
+    /// without storing a name beside it: every divider along one axis is that line, and a tree
+    /// mixing both is a grid however it nests. A window of one pane is no arrangement at all and
+    /// reads as the plainest of the three.
+    public static func shape(of layout: SplitLayout) -> SplitArrangement {
+        var axes: Set<SplitAxis> = []
+        collectAxes(layout.root, into: &axes)
+        if axes.count > 1 { return .grid }
+        return axes.first == .vertical ? .stacked : .sideBySide
+    }
+
+    private static func collectAxes(_ node: SplitNode, into axes: inout Set<SplitAxis>) {
+        guard case .split(_, let axis, _, let first, let second) = node else { return }
+        axes.insert(axis)
+        collectAxes(first, into: &axes)
+        collectAxes(second, into: &axes)
+    }
+
     /// How a grid distributes `count` across rows: as square as the count allows, with the
     /// remainder spread rather than dumped — seven panes read as 3·2·2, never 3·3·1.
     static func gridRows(_ count: Int) -> [Int] {

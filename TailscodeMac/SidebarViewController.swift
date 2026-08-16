@@ -27,6 +27,8 @@ final class SidebarViewController: NSViewController {
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
+    /// A remembered arrangement pressed in the list: the window puts it back whole.
+    var onOpenSplitTab: ((SplitTab) -> Void)?
     var onToast: ((String) -> Void)?
     /// The standing mark was touched: the Update Center is the whole of what it leads to.
     var onOpenUpdates: (() -> Void)?
@@ -65,7 +67,7 @@ final class SidebarViewController: NSViewController {
     /// The rows the keyboard cursor acts on, which is exactly the conversations on screen. While
     /// search results have replaced the list it holds nothing: j/k opening a chat that is nowhere
     /// in the window, and Space marking one, are worse than a cursor that does nothing at all.
-    private var visible: [SessionRowModel] = []
+    private var visible: [ChatListItem] = []
     /// Every row the list knows about, before the filter and the archive view narrow it — what a
     /// bulk verb acts on, so a mark survives a keystroke in the filter field.
     private var known: [SessionRowModel] = []
@@ -97,11 +99,13 @@ final class SidebarViewController: NSViewController {
     private var searchTask: Task<Void, Never>?
     private var cursor = 0
     private var selectedID: String?
-    private var lastSidebar: ([SessionRowModel], [String], String, String)?
+    private var lastSidebar: ([ChatListItem], [String], String, String)?
     private var refreshTask: Task<Void, Never>?
     private var listStreamTasks: [Task<Void, Never>] = []
     private var suppressSelectionSync = false
     private var menuModel: SessionRowModel?
+    /// The remembered split a context menu was opened on, held for the same reason `menuModel` is.
+    private var menuTab: SplitTabRow?
     private var menuBackend: (any CodingAgentBackend)?
 
     override func loadView() {
@@ -312,7 +316,37 @@ final class SidebarViewController: NSViewController {
 
     func openCursor() {
         guard cursor < visible.count else { return }
-        open(visible[cursor].entry)
+        openItem(visible[cursor])
+    }
+
+    /// Opening what a row stands for: a conversation is opened, a remembered split is put back in
+    /// the window whole.
+    func openItem(_ item: ChatListItem) {
+        switch item {
+        case .chat(let row): open(row.entry)
+        case .tab(let row): onOpenSplitTab?(row.tab)
+        }
+    }
+
+    /// Every conversation the list is drawing, whatever it is grouped into — what a mark and a
+    /// bulk verb are spent on.
+    private var visibleEntries: [SessionEntry] {
+        visible.flatMap(\.entries)
+    }
+
+    /// Marking a remembered split holds every chat in it: the row is one row, so the mark it wears
+    /// has to mean the same thing the row does.
+    private func toggleMark(_ item: ChatListItem) {
+        switch item {
+        case .chat(let row):
+            selection.toggle(row.entry)
+        case .tab(let row):
+            let entries = row.members.map(\.entry)
+            let held = entries.allSatisfy(selection.contains)
+            for entry in entries where selection.contains(entry) == held {
+                selection.toggle(entry)
+            }
+        }
     }
 
     func focusFilter() {
@@ -355,7 +389,7 @@ final class SidebarViewController: NSViewController {
     /// Space: the row under the keyboard cursor joins the set, or leaves it.
     func toggleMarkUnderCursor() {
         guard cursor < visible.count else { return }
-        selection.toggle(visible[cursor].entry)
+        toggleMark(visible[cursor])
         lastSidebar = nil
         render()
     }
@@ -364,7 +398,7 @@ final class SidebarViewController: NSViewController {
     /// nothing. The archive view and the filter decide what "shown" means, so select-all never
     /// reaches a row the eye cannot see.
     func toggleMarkAllShown() {
-        selection.toggleAll(in: visible.map(\.entry))
+        selection.toggleAll(in: visibleEntries)
         lastSidebar = nil
         render()
     }
@@ -388,8 +422,7 @@ final class SidebarViewController: NSViewController {
             presentBulkDelete(marked)
             return
         }
-        guard cursor < visible.count else { return }
-        let entry = visible[cursor].entry
+        guard cursor < visible.count, let entry = visible[cursor].lead?.entry else { return }
         guard let backend = backend(for: entry) else {
             onNotice?(Localized.text("That server is not configured."))
             return
@@ -606,10 +639,12 @@ final class SidebarViewController: NSViewController {
         let active = matching.filter {
             !isArchived($0) || $0.state == .live || $0.state == .awaitingApproval
         }
-        let sections: [(String, [SessionRowModel])] =
+        let grouped: [(String, [SessionRowModel])] =
             showingArchive
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
+        let sections = SplitTabGrouping.apply(
+            to: grouped, tabs: showingArchive ? [] : SplitTabStore.all())
         visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
         syncCursorToSelection()
 
@@ -662,12 +697,22 @@ final class SidebarViewController: NSViewController {
             for (title, members) in sections {
                 guard built < sidebarLimit else { break }
                 next.append(.header(title, members.count))
-                for model in members {
+                for item in members {
                     guard built < sidebarLimit else { break }
-                    next.append(
-                        .session(
-                            model, marked: selection.contains(model.entry),
-                            vocabulary: vocabulary))
+                    switch item {
+                    case .chat(let model):
+                        next.append(
+                            .session(
+                                model, marked: selection.contains(model.entry),
+                                vocabulary: vocabulary))
+                    case .tab(let model):
+                        next.append(
+                            .tab(
+                                model,
+                                marked: model.members.allSatisfy {
+                                    selection.contains($0.entry)
+                                }))
+                    }
                     built += 1
                 }
             }
@@ -703,7 +748,9 @@ final class SidebarViewController: NSViewController {
             return
         }
         if let selectedID,
-            let index = visible.firstIndex(where: { $0.entry.session.id == selectedID })
+            let index = visible.firstIndex(where: { item in
+                item.entries.contains { $0.session.id == selectedID }
+            })
         {
             cursor = index
         } else {
@@ -728,8 +775,12 @@ final class SidebarViewController: NSViewController {
 
     private func rowIndex(of sessionID: String) -> Int? {
         rows.firstIndex {
-            if case .session(let model, _, _) = $0 { return model.entry.session.id == sessionID }
-            return false
+            switch $0 {
+            case .session(let model, _, _): return model.entry.session.id == sessionID
+            case .tab(let model, _):
+                return model.members.contains { $0.entry.session.id == sessionID }
+            default: return false
+            }
         }
     }
 
@@ -1054,6 +1105,8 @@ final class SidebarViewController: NSViewController {
         switch rows[index] {
         case .session(let model, _, _):
             open(model.entry)
+        case .tab(let model, _):
+            onOpenSplitTab?(model.tab)
         case .more:
             sidebarLimit += 200
             lastSidebar = nil
@@ -1135,14 +1188,26 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
         -> NSView?
     {
-        SidebarCellFactory.view(for: rows[row], in: tableView) { [weak self] in
-            self?.clearMissed()
-        }
+        SidebarCellFactory.view(
+            for: rows[row], in: tableView,
+            onClearMissed: { [weak self] in self?.clearMissed() },
+            onOpenMember: { [weak self] tab, index in
+                guard let self,
+                    let binding = tab.members.indices.contains(index) ? tab.members[index] : nil,
+                    let entry = self.known.first(where: {
+                        $0.entry.profileID == binding.profileID
+                            && $0.entry.session.id == binding.sessionID
+                    })
+                else { return }
+                self.open(entry.entry)
+            })
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if case .session = rows[row] { return true }
-        return false
+        switch rows[row] {
+        case .session, .tab: return true
+        default: return false
+        }
     }
 
     /// Native arrow keys move the highlight without opening; the cursor follows so Enter opens
@@ -1150,11 +1215,16 @@ extension SidebarViewController: NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionSync else { return }
         let row = tableView.selectedRow
-        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row],
-            let index = visible.firstIndex(where: {
-                $0.entry.session.id == model.entry.session.id
-            })
-        else { return }
+        guard row >= 0, row < rows.count else { return }
+        let key: String
+        switch rows[row] {
+        case .session(let model, _, _):
+            key = ChatSelection.key(model.entry)
+        case .tab(let model, _):
+            key = "split:\(model.tab.identity)"
+        default: return
+        }
+        guard let index = visible.firstIndex(where: { $0.key == key }) else { return }
         cursor = index
     }
 }
@@ -1168,7 +1238,12 @@ extension SidebarViewController: NSMenuDelegate {
         menuModel = nil
         menuBackend = nil
         let row = tableView.clickedRow
-        guard row >= 0, row < rows.count, case .session(let model, _, _) = rows[row] else { return }
+        guard row >= 0, row < rows.count else { return }
+        if case .tab(let model, _) = rows[row] {
+            buildTabMenu(menu, for: model)
+            return
+        }
+        guard case .session(let model, _, _) = rows[row] else { return }
         menuModel = model
         let entry = model.entry
         if let profile = ServerDirectory.shared.profiles.first(where: { $0.id == entry.profileID }) {
@@ -1268,6 +1343,47 @@ extension SidebarViewController: NSMenuDelegate {
                 BulkChatCopy.button(.delete, count: selection.count) + "…",
                 subtitle: Localized.text("Every marked chat, on every server they are on"),
                 destructive: true, action: #selector(menuDeleteMarked)))
+    }
+
+    /// The menu on a remembered split: the arrangement itself, each chat inside it, and the way
+    /// to stop the list grouping them at all. The members are held on the controller so the items
+    /// can act without a target per row.
+    private func buildTabMenu(_ menu: NSMenu, for model: SplitTabRow) {
+        menuTab = model
+        menu.addItem(
+            menuItem(
+                Localized.text("Open as one split"), subtitle: model.lead,
+                action: #selector(menuOpenTab)))
+        for (index, member) in model.members.enumerated() {
+            let item = menuItem(
+                Localized.text("Open just %@", member.title),
+                subtitle: member.facets().lead, action: #selector(menuOpenTabMember(_:)))
+            item.tag = index
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        menu.addItem(
+            menuItem(
+                Localized.text("Forget this split"),
+                subtitle: Localized.text("The chats stay; the list stops grouping them"),
+                action: #selector(menuForgetTab)))
+    }
+
+    @objc private func menuOpenTab() {
+        guard let tab = menuTab?.tab else { return }
+        onOpenSplitTab?(tab)
+    }
+
+    @objc private func menuOpenTabMember(_ sender: NSMenuItem) {
+        guard let members = menuTab?.members, members.indices.contains(sender.tag) else { return }
+        open(members[sender.tag].entry)
+    }
+
+    @objc private func menuForgetTab() {
+        guard let tab = menuTab?.tab else { return }
+        SplitTabStore.forget(identity: tab.identity)
+        lastSidebar = nil
+        render()
     }
 
     private func menuItem(

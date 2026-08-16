@@ -14,6 +14,7 @@ enum ParityManifest {
         case .activityIconography: return .implemented("ActivityPulse")
         case .bulkSelection: return .implemented("SidebarSelectionBar")
         case .bulkSplit: return .implemented("openMarkedSplit")
+        case .splitTabs: return .implemented("restoreSplit")
         case .sessionPinning: return .implemented("pill-pinned")
         case .unreadTracking: return .implemented("toggleUnreadSelected")
         case .savedChats: return .implemented("SavedChatStore")

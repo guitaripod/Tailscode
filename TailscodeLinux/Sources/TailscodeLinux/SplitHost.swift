@@ -447,10 +447,15 @@ final class SplitHost: @unchecked Sendable {
 
     /// A lone pane needs no layout written — except when it is a slot, which is the one thing a
     /// single pane can hold that the chat list cannot restore on its own.
+    ///
+    /// The same moment is where an arrangement becomes something the chat list can offer back:
+    /// a window holding several conversations is recorded as one tab, so a split survives the
+    /// window moving on rather than having to be built again by hand.
     func persist() {
         let snapshot = snapshot()
         guard let encoded = snapshot.encoded else { return }
         let worthKeeping = paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
         SettingsFile.set(worthKeeping ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
+        if SplitTabStore.record(snapshot) != nil { SettingsFile.capture() }
     }
 }

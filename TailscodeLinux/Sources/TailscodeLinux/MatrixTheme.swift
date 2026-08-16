@@ -273,6 +273,22 @@ enum MatrixTheme {
         .row-mark-on, .session-row-holder:hover .row-mark-on { opacity: 1; }
         .row-mark-glyph { font-size: \(c(0.82)); }
         .row-mark-on .row-mark-glyph { color: \(accent); }
+        .split-tab-holder {
+            border-left: 2px solid alpha(\(accent), 0.35);
+            margin-bottom: 2px;
+        }
+        .split-tab-member {
+            padding: 1px 6px 1px 22px;
+            border: none;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            opacity: 0.8;
+        }
+        .split-tab-member:hover {
+            background-color: alpha(\(accent), 0.08);
+            opacity: 1;
+        }
         .selection-bar {
             background-color: alpha(\(accent), 0.10);
             border: 1px solid alpha(\(accent), 0.45);

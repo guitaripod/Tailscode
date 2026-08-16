@@ -19,6 +19,7 @@ enum ParityManifest {
         case .deleteSession: return .implemented("confirmDelete")
         case .bulkSelection: return .implemented("performBulk")
         case .bulkSplit: return .notApplicable("one conversation fills a phone; a selection has no tiling to be spent on, and the same reason splitPanes is not applicable applies to opening several at once")
+        case .splitTabs: return .notApplicable("one conversation fills a phone; with no tiling there is no arrangement of several chats for a row to stand for, the same reason splitPanes and bulkSplit are not applicable")
         case .renameSession: return .implemented("promptRename")
         case .forkSession: return .implemented("forkConversation")
         case .transcriptSearch: return .implemented("TranscriptSearchViewController")
