@@ -355,7 +355,9 @@ final class ToolStepRenderer {
         let label = UILabel()
         label.font = Theme.Ramp.font(.toolOutput)
         label.textColor = Theme.Color.secondaryLabel
-        label.numberOfLines = 10
+        // A block short enough to read whole is shown whole; the ceiling is the shared one, so a
+        // command's output is not cut at ten lines on the phone and shown in full on a desk.
+        label.numberOfLines = TranscriptBlocks.inlineLines
         label.lineBreakMode = .byTruncatingTail
         label.text = text
         return label

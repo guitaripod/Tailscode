@@ -441,8 +441,9 @@ struct TranscriptRow: Hashable {
         let rule = RowKit.Ground(frame: .zero)
         rule.fill = MacTheme.Color.accent
 
-        let label = RowKit.wrapping(
-            text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label)
+        let label = RowKit.attributedLabel(
+            MacMarkdown.plainWithLinks(
+                text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(rule)

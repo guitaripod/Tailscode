@@ -239,6 +239,15 @@ enum PangoMarkdown {
         return result
     }
 
+    /// A run of plain text — a prompt somebody typed, a line a tool printed — with its addresses
+    /// made touchable and nothing else about it interpreted. An agent pastes a URL into a sentence
+    /// and so does a person, and a transcript that renders one as grey text makes the reader retype
+    /// it off a screen they cannot select on. No emphasis, no headings: this is not markdown, it is
+    /// what somebody wrote, and the only thing worth finding in it is the address.
+    static func plainWithLinks(_ text: String, accent: String) -> String {
+        linkify(escape(text), accent: accent)
+    }
+
     /// Addresses pasted bare into prose, made into the same anchors a markdown link produces. It
     /// runs after the markdown form so an anchor already built is stepped over whole — its href
     /// holds an address too, and linking one twice is a tag inside a tag Pango refuses to parse.

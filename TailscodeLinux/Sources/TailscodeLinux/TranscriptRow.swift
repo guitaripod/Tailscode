@@ -556,7 +556,9 @@ struct TranscriptRow: Hashable {
         let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(rule, "prompt-rule")
         gtk_widget_set_size_request(rule, 2, -1)
-        let label = Gtk.label(text, css: "prompt-text", wrap: true)
+        let label = Gtk.markupLabel(
+            PangoMarkdown.plainWithLinks(text, accent: MatrixTheme.palette.accent),
+            css: "prompt-text")
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), label)

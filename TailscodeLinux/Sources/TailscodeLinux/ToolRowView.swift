@@ -237,7 +237,9 @@ enum ToolRowView {
     /// collapsed to a couple of lines with a scrollbar beside it. Fixing the height is the whole
     /// fix; the reader gets a screenful and scrolls inside it.
     private static func outputBlock(_ output: String) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(output, css: "tool-output", wrap: true)
+        let label = Gtk.markupLabel(
+            PangoMarkdown.plainWithLinks(output, accent: MatrixTheme.palette.accent),
+            css: "tool-output")
         gtk_label_set_xalign(op(label), 0)
         guard !TranscriptBlocks.fitsInline(output) else { return label }
         let scroller = gtk_scrolled_window_new()!

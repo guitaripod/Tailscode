@@ -263,8 +263,10 @@ enum ToolRowView {
         }
 
         if let output = displayableOutput(call, summary), !output.isEmpty {
-            let label = RowKit.wrapping(
-                output, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
+            let label = RowKit.attributedLabel(
+                MacMarkdown.plainWithLinks(
+                    output, font: MacTheme.Ramp.font(.toolOutput),
+                    color: MacTheme.Color.secondaryLabel))
             column.addArrangedSubview(
                 TranscriptBlocks.fitsInline(output)
                     ? label

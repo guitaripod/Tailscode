@@ -42,6 +42,30 @@ enum MacMarkdown {
         cache.removeAll(keepingCapacity: true)
     }
 
+    /// A run of plain text — a prompt somebody typed, a line a tool printed — with its addresses
+    /// made touchable and nothing else about it interpreted. An agent pastes a URL into a sentence
+    /// and so does a person, and a transcript that renders one as grey text makes the reader retype
+    /// it by hand. No emphasis, no headings: this is not markdown, it is what somebody wrote.
+    static func plainWithLinks(_ text: String, font: NSFont, color: NSColor) -> NSAttributedString {
+        let spans = Autolink.spans(in: text)
+        let base: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        guard !spans.isEmpty else { return NSAttributedString(string: text, attributes: base) }
+        let rendered = NSMutableAttributedString()
+        var cursor = text.startIndex
+        for span in spans {
+            rendered.append(
+                NSAttributedString(string: String(text[cursor..<span.range.lowerBound]), attributes: base))
+            var linked = base
+            linked[.foregroundColor] = MacTheme.Color.accent
+            linked[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            if let url = URL(string: span.url) { linked[.link] = url }
+            rendered.append(NSAttributedString(string: span.text, attributes: linked))
+            cursor = span.range.upperBound
+        }
+        rendered.append(NSAttributedString(string: String(text[cursor...]), attributes: base))
+        return rendered
+    }
+
     /// One inline span's whole styling, carried through the walk so nested emphasis composes
     /// instead of replacing.
     private struct Style {

@@ -1128,12 +1128,25 @@ final class ChatPane: @unchecked Sendable {
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue(_ state: ConversationState) {
         guard state.status != .running, state.compaction?.isRunning != true,
-            state.lastFailure == nil, editingQueued == nil, let conversation
+            state.lastFailure == nil, editingQueued == nil, !queue.isEmpty, let conversation
         else { return }
+        guard !draining else { return }
+        draining = true
+        defer { draining = false }
         guard let next = queue.takeFirst() else { return }
         deliver(next, through: conversation)
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
+        // Re-rendering from inside the render is what makes a transcript write itself twice: the
+        // second pass adopts the tail the first one is still revealing. The queue is one row at the
+        // end of the list, so the next ordinary state is soon enough to take it off.
+        Gtk.onMain { [weak self] in
+            guard let self, let state = self.lastState else { return }
+            self.apply(state: state, rows: self.lastFullRows)
+        }
     }
+
+    /// Guards the drain against re-entering itself: `drainQueue` runs at the end of `apply`, and
+    /// sending re-applies.
+    private var draining = false
 
     private func deliver(_ send: QueuedSend, through conversation: AgentConversation) {
         echoedPrompt = send.text
@@ -2927,7 +2940,6 @@ final class ChatPane: @unchecked Sendable {
             renderAttachments()
             _ = queue.replace(id: id, text: text, attachments: outgoing.map(\.prompt))
             if let state = lastState { apply(state: state, rows: lastFullRows) }
-            drainQueue(lastState ?? ConversationState())
             return
         }
         if handleSlashCommand(text) { return }

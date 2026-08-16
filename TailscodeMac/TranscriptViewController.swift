@@ -963,7 +963,6 @@ final class TranscriptViewController: NSViewController {
             editingQueued = nil
             _ = queue.replace(id: id, text: text, attachments: attachments)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
-            drainQueue()
             return
         }
         let send = QueuedSend(text: text, model: model, effort: effort, attachments: attachments)
@@ -997,12 +996,20 @@ final class TranscriptViewController: NSViewController {
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue() {
         guard let state = lastState, state.status != .running,
-            state.compaction?.isRunning != true, state.lastFailure == nil, editingQueued == nil
+            state.compaction?.isRunning != true, state.lastFailure == nil, editingQueued == nil,
+            !queue.isEmpty, !draining
         else { return }
+        draining = true
+        defer { draining = false }
         guard let next = queue.takeFirst() else { return }
         sendPrompt(
             next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
+
+    /// Guards the drain against re-entering itself: `drainQueue` runs at the end of `apply`, and
+    /// sending re-applies. Re-rendering from inside the render is what makes a transcript write
+    /// itself twice — the second pass adopts the tail the first one is still revealing.
+    private var draining = false
 
     /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
     /// replaces it.
