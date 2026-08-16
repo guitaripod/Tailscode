@@ -117,6 +117,7 @@ enum ParityManifest {
         case .usageWidgets: return .implemented("publishWidgetSnapshot")
         case .homeQuickActions: return .notApplicable("macOS has no Home screen to long-press; the Dock is the OS's own launcher, and the destinations the phone's quick actions reach are one click inside the app's window")
         case .presenceOrb: return .implemented("PresenceOrbView")
+        case .auroraStream: return .gap("the Mac has the same Metal and the same CADisplayLink and wants this; what it does not have is the glyph geometry, which the transcript reads out of its own NSLayoutManager per row — the iOS mapper is written against UITextView's stack and the port is real work rather than a recompile. Until then every answer on this desk is written by the settled renderer, which is the whole product's floor and loses no meaning")
         case .gameCenter:
             return .partial(
                 "MacGameCenter",

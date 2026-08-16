@@ -104,6 +104,13 @@ final class HomeViewController: UIViewController {
                     self?.presentQuickAsk()
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_STREAM"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    self?.navigationController?.pushViewController(
+                        StreamRendererViewController(), animated: false)
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
