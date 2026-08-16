@@ -442,7 +442,7 @@ final class QuickAskViewController: UIViewController {
                                 self?.pickedAim(for: profile)
                             },
                             browseAll: { [weak self] in
-                                self?.presentModelPicker(profile: profile, models: models)
+                                self?.presentModelPicker(profile: profile, backend: backend, models: models)
                             })))
             }
         }
@@ -490,7 +490,9 @@ final class QuickAskViewController: UIViewController {
         }
     }
 
-    private func presentModelPicker(profile: ConnectionProfile, models: [ModelInfo]) {
+    private func presentModelPicker(
+        profile: ConnectionProfile, backend: any CodingAgentBackend, models: [ModelInfo]
+    ) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
         let picker = ModelPickerViewController(
@@ -518,6 +520,15 @@ final class QuickAskViewController: UIViewController {
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+        let contextID = profile.id
+        let allowsServerDefault = profile.backend == .claudeCode
+        Task { @MainActor in
+            let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
+            picker.update(
+                sources: ModelFleet.sources(
+                    profiles: viewModel.servers, current: contextID,
+                    currentModels: fresh, allowsServerDefault: allowsServerDefault))
+        }
     }
 
     /// What the aim can be handed, re-read whenever either half of it moves. A picture already in

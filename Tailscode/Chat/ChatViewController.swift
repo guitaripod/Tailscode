@@ -3569,6 +3569,15 @@ final class ChatViewController: UIViewController {
         }
         let contextID = viewModel.contextID
         let backend = viewModel.backend
+        Task { @MainActor in
+            let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
+            picker.update(
+                sources: ModelFleet.sources(
+                    profiles: ConnectionController.shared.profiles,
+                    current: contextID, currentModels: fresh,
+                    allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                    reachability: pickerReachability))
+        }
         pickerWatch?.cancel()
         pickerWatch = Task { [weak self, weak picker] in
             for await reading in ModelCatalogWatch.readings(profileID: contextID, backend: backend)

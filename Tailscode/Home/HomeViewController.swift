@@ -1712,7 +1712,7 @@ extension HomeViewController: HomeComposerBarDelegate {
                                     },
                                     browseAll: { [weak self] in
                                         self?.presentComposeModelPicker(
-                                            profile: profile, models: models)
+                                            profile: profile, backend: backend, models: models)
                                     })))
                     }
                 }
@@ -1741,7 +1741,9 @@ extension HomeViewController: HomeComposerBarDelegate {
         updateComposer()
     }
 
-    private func presentComposeModelPicker(profile: ConnectionProfile, models: [ModelInfo]) {
+    private func presentComposeModelPicker(
+        profile: ConnectionProfile, backend: any CodingAgentBackend, models: [ModelInfo]
+    ) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
         let picker = ModelPickerViewController(
@@ -1766,6 +1768,15 @@ extension HomeViewController: HomeComposerBarDelegate {
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+        let contextID = profile.id
+        let allowsServerDefault = profile.backend == .claudeCode
+        Task { @MainActor in
+            let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
+            picker.update(
+                sources: ModelFleet.sources(
+                    profiles: ConnectionController.shared.profiles, current: contextID,
+                    currentModels: fresh, allowsServerDefault: allowsServerDefault))
+        }
     }
 
     private func composeTargetMenu() -> UIMenu {

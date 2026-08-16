@@ -45,6 +45,13 @@ enum ModelCatalog {
         return await fetch(profileID: profileID, backend: backend)
     }
 
+    /// A fetch that lands before it answers — the picker's open path, where a
+    /// stale name is a row for a model the server no longer has. Chips keep the
+    /// warm cache because they only need to name a choice.
+    static func fresh(for profileID: String, backend: any CodingAgentBackend) async -> [ModelInfo] {
+        await fetch(profileID: profileID, backend: backend)
+    }
+
     private static func refresh(profileID: String, backend: any CodingAgentBackend) {
         guard !inFlight.contains(profileID) else { return }
         Task { _ = await fetch(profileID: profileID, backend: backend) }

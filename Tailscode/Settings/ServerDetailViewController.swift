@@ -447,7 +447,7 @@ final class ServerDetailViewController: UIViewController {
                                         self?.setDefaultEffort(level)
                                     },
                                     browseAll: { [weak self] in
-                                        self?.presentModelPicker(models: models)
+                                        self?.presentModelPicker(backend: backend, models: models)
                                     })))
                     }
                 }
@@ -468,7 +468,7 @@ final class ServerDetailViewController: UIViewController {
         reconfigure([.defaultModel])
     }
 
-    private func presentModelPicker(models: [ModelInfo]) {
+    private func presentModelPicker(backend: any CodingAgentBackend, models: [ModelInfo]) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
         let source = ModelSource(
@@ -488,6 +488,19 @@ final class ServerDetailViewController: UIViewController {
             sheet.prefersGrabberVisible = true
         }
         present(nav, animated: true)
+        let contextID = profile.id
+        let profileSnapshot = profile
+        Task { @MainActor in
+            let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
+            picker.update(
+                sources: [
+                    ModelSource(
+                        profileID: profileSnapshot.id, name: profileSnapshot.name,
+                        backend: profileSnapshot.backend, models: fresh, isCurrent: true,
+                        allowsServerDefault: true,
+                        acceptsAnyModelID: profileSnapshot.backend == .claudeCode)
+                ])
+        }
     }
 
     private var supportsModelDefaults: Bool {
