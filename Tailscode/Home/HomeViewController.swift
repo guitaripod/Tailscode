@@ -1,12 +1,14 @@
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
+import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The app's front door, organized around three jobs: triage (what needs you
 /// right now — blocked or live agents, unreachable servers), continue (recent
 /// conversations, badged when they changed since you last looked), and start
-/// (the docked composer, the quick-ask sheet, and project cards that open
+/// (the docked composer in either of its two lanes, and project cards that open
 /// each project's own board).
 @MainActor
 final class HomeViewController: UIViewController {
@@ -18,6 +20,24 @@ final class HomeViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     private let composerBar = HomeComposerBar()
     private let commandPalette = SlashCommandPalette()
+    private let suggestions = HomeAskSuggestions()
+    private let attachmentStrip = HomeAttachmentStrip()
+    private let failureCard = HomeComposerFailureCard()
+    /// Everything that floats between the board and the box, in the order a hand reaches for it:
+    /// what went wrong furthest away, then what is being offered, then what is already in hand.
+    private let accessories = UIStackView()
+    /// Which lane the box is in. The chat lane starts a conversation in a project; the ask lane
+    /// starts one on a machine and carries the ask's own memory of what should answer it.
+    private var askLane: QuickAskLane = .chat
+    private var attachments: [PendingAttachment] = []
+    private var abilities = ModelAbilities.words
+    private var pastedImageCount = 0
+    private let enhancement = PromptEnhancementController()
+    private weak var enhanceOverlay: PromptEnhanceOverlay?
+    /// The mint that failed, kept whole so its remedy can be applied and the same words retried
+    /// without asking anybody to type them again.
+    private var lastAttempt: (aim: ComposerAim, send: QuickAskSend)?
+    private var lastFailure: NewChatFailure?
     /// What the aimed machine can be told to do. Home's composer mints the conversation a command
     /// would run in, so it owes the same grammar the chat's own composer answers: a slash typed
     /// here is a command, not the first four letters of a question.
@@ -47,6 +67,24 @@ final class HomeViewController: UIViewController {
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.
     private var appliedContent: [HomeItem: Int] = [:]
+
+    /// Everything the lane decides, resolved once. The two lanes differ by exactly this much —
+    /// where the conversation lands, which memory names the model, and which draft is in the box —
+    /// so every path that used to read the compose target reads this instead and stops caring
+    /// which lane it is in.
+    struct ComposerAim {
+        let lane: QuickAskLane
+        let profile: ConnectionProfile
+        let directory: String?
+        /// Where this device files the model and effort for this lane on this server. The ask
+        /// lane's is a context beside the server's own, never inside it, so pointing lookups at
+        /// something cheap never re-aims the project chats.
+        let memoryKey: String
+        /// The context a resolve reads from, which is the ask's own only once one is claimed —
+        /// until then a question runs on what a new chat there would have used.
+        let resolutionContext: String?
+        let draftScope: DraftScope
+    }
 
     init() {
         let sources = ConnectionController.shared.allBackends().map {
@@ -102,6 +140,7 @@ final class HomeViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     self?.presentQuickAsk()
+                    self?.seedAskForVerification()
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
@@ -228,8 +267,8 @@ final class HomeViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let overlap = max(
-            0, view.bounds.height - composerBar.frame.minY - view.safeAreaInsets.bottom)
+        let top = min(composerBar.frame.minY, accessories.frame.minY)
+        let overlap = max(0, view.bounds.height - top - view.safeAreaInsets.bottom)
         let inset = composerBar.isHidden ? 0 : overlap + Theme.Spacing.s
         if collectionView.contentInset.bottom != inset {
             collectionView.contentInset.bottom = inset
@@ -288,6 +327,39 @@ final class HomeViewController: UIViewController {
         func tourAim(serverIndex: Int, directory: String?) {
             guard viewModel.servers.indices.contains(serverIndex) else { return }
             setComposeTarget(profile: viewModel.servers[serverIndex], directory: directory)
+        }
+
+        /// Puts the ask lane into a named state so each one can be reviewed without a hand:
+        /// `attach` hangs a picture and a file in the strip, `failed` shows a diagnosis with its
+        /// remedy above the box.
+        private func seedAskForVerification() {
+            guard let mode = ProcessInfo.processInfo.environment["TAILSCODE_ASK_STATE"]
+            else { return }
+            switch mode {
+            case "attach":
+                let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
+                let png = renderer.image { context in
+                    Theme.Color.accent.setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+                }.pngData() ?? Data()
+                attachments = [
+                    PendingAttachment(name: "shelf.png", mime: "image/png", data: png),
+                    PendingAttachment(
+                        name: "notes.txt", mime: "text/plain",
+                        data: Data(repeating: 0x20, count: 2048)),
+                ]
+                composerBar.setDraft("What is on this shelf?", focus: false)
+                refreshAttachments()
+            case "failed":
+                composerBar.setDraft("What is on this shelf?", focus: false)
+                showFailure(
+                    NewChatDiagnosis.failure(
+                        server: NewChatServer(
+                            profileID: "demo", name: composerAim?.profile.name ?? "studio",
+                            backend: .claudeCode, address: "100.64.0.1:4098"),
+                        directory: nil, error: "Connection refused", witness: .unknown))
+            default: break
+            }
         }
     #endif
 
@@ -476,11 +548,7 @@ final class HomeViewController: UIViewController {
                 })
         }
         composeItem.accessibilityLabel = String(localized: "New chat")
-        let ask = UIBarButtonItem(
-            image: UIImage(systemName: "sparkle"),
-            primaryAction: UIAction { [weak self] _ in self?.presentQuickAsk() })
-        ask.accessibilityLabel = String(localized: "Quick ask")
-        navigationItem.rightBarButtonItems = [composeItem, ask]
+        navigationItem.rightBarButtonItems = [composeItem]
     }
 
     private var lastEnrichment: Date?
@@ -1122,30 +1190,38 @@ final class HomeViewController: UIViewController {
             animated: true)
     }
 
-    /// One gesture summons the surface — the chrome's sparkle, the icon's jump list, the
-    /// Control Center tile — and where the conversation opens afterwards is the same road every
-    /// conversation takes, with the words sent the moment the chat is up. With no servers the
-    /// gesture goes to setup instead of presenting a dead text box, and a surface already up is
-    /// left alone rather than stacked on.
+    /// One gesture puts the box in the ask lane — the icon's jump list, the Control Center tile,
+    /// the keyboard's own verb — and it lands on the box that is already there rather than on a
+    /// sheet over it. Anything covering Home is dismissed first, because a question summoned from
+    /// outside the app is a question aimed at the field, not at whatever was left open. With no
+    /// servers the gesture goes to setup instead of focusing a dead text box.
     func presentQuickAsk() {
-        if let presented = presentedViewController {
-            guard !(presented is QuickAskViewController) else { return }
+        if presentedViewController != nil {
             dismiss(animated: true) { [weak self] in self?.presentQuickAsk() }
             return
         }
+        navigationController?.popToViewController(self, animated: true)
         Theme.Haptics.tap()
         guard !viewModel.servers.isEmpty else {
             presentServerSetup()
             return
         }
-        let ask = QuickAskViewController.present(from: self, viewModel: viewModel)
-        ask.onOpen = { [weak self] entry, send, aim, attachments in
-            self?.openChat(
-                for: entry, seeding: aim, sending: (send: send, attachments: attachments))
-        }
-        ask.onResume = { [weak self] entry in
-            self?.openChat(for: entry)
-        }
+        setLane(.ask, animated: composerBar.lane != .ask)
+        composerBar.focus()
+    }
+
+    /// Throwing the switch is a change of destination, so it moves the draft the way re-aiming the
+    /// chip does: what is written belongs to the lane it was written in, and each lane hands back
+    /// whatever it was left holding.
+    private func setLane(_ lane: QuickAskLane, animated: Bool) {
+        guard askLane != lane else { return }
+        askLane = lane
+        composerBar.setLane(lane, animated: animated)
+        dismissFailure()
+        appliedComposerState = nil
+        updateComposer()
+        updateSuggestions()
+        updateCommandPalette(for: composerBar.currentText)
     }
 
     func pushUsage() {
@@ -1204,6 +1280,8 @@ final class HomeViewController: UIViewController {
             composerFloor,
         ])
 
+        configureAccessories()
+
         commandPalette.isHidden = true
         commandPalette.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(commandPalette)
@@ -1213,12 +1291,53 @@ final class HomeViewController: UIViewController {
             commandPalette.trailingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             commandPalette.bottomAnchor.constraint(
-                equalTo: composerBar.topAnchor, constant: Theme.Spacing.xs),
+                equalTo: accessories.topAnchor, constant: -Theme.Spacing.xs),
             commandPalette.topAnchor.constraint(
                 greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: Theme.Spacing.s),
         ])
         configureOrb()
+    }
+
+    /// The three things that float in the gap between the board and the box, in one stack so they
+    /// can never land on top of each other: what failed, what is offered, what is in hand. Each
+    /// hides itself, and a stack with nothing in it takes no room at all — the bar's own floor
+    /// never moves.
+    private func configureAccessories() {
+        accessories.axis = .vertical
+        accessories.spacing = Theme.Spacing.xs
+        accessories.translatesAutoresizingMaskIntoConstraints = false
+        failureCard.isHidden = true
+        suggestions.isHidden = true
+        attachmentStrip.isHidden = true
+        [failureCard, suggestions, attachmentStrip].forEach(accessories.addArrangedSubview)
+        view.addSubview(accessories)
+        NSLayoutConstraint.activate([
+            accessories.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            accessories.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            accessories.bottomAnchor.constraint(
+                equalTo: composerBar.topAnchor, constant: -Theme.Spacing.xs),
+        ])
+        suggestions.onStarter = { [weak self] starter in self?.pickStarter(starter) }
+        suggestions.onRecent = { [weak self] entry in
+            Theme.Haptics.tap()
+            self?.openChat(for: entry)
+        }
+        attachmentStrip.onRemove = { [weak self] id in
+            guard let self else { return }
+            self.attachments.removeAll { $0.id == id }
+            Theme.Haptics.tap()
+            self.refreshAttachments()
+        }
+        failureCard.onFix = { [weak self] in self?.applyFix() }
+        failureCard.onDismiss = { [weak self] in
+            Theme.Haptics.tap()
+            self?.dismissFailure()
+        }
+        enhancement.onStatusChange = { [weak self] status in
+            self?.handleEnhancementStatus(status)
+        }
+        view.addInteraction(UIDropInteraction(delegate: self))
     }
 
     /// The composer follows the keyboard only while this screen is the one being typed into.
@@ -1251,7 +1370,7 @@ final class HomeViewController: UIViewController {
         view.addSubview(orbView)
         NSLayoutConstraint.activate([
             orbView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            orbView.bottomAnchor.constraint(equalTo: composerBar.topAnchor, constant: -10),
+            orbView.bottomAnchor.constraint(equalTo: accessories.topAnchor, constant: -10),
             orbView.widthAnchor.constraint(equalToConstant: 76),
             orbView.heightAnchor.constraint(equalToConstant: 76),
         ])
@@ -1463,12 +1582,88 @@ extension HomeViewController: HomeComposerBarDelegate {
     func homeComposerDidBeginEditing(_ bar: HomeComposerBar) {
         composerFollowsKeyboard(true)
         updateCommandPalette(for: bar.currentText)
+        updateSuggestions()
+        enhancement.prewarm()
     }
 
     func homeComposerTextDidChange(_ text: String) {
         updateCommandPalette(for: composerBar.currentText)
+        updateSuggestions()
+        enhancement.updateInput(composerBar.currentText)
+        enhanceOverlay?.requestDismiss()
         guard let scope = composerDraftScope else { return }
         DraftStore.record(text, for: scope)
+    }
+
+    /// The bar has already thrown itself; what the lane means is decided here.
+    func homeComposerDidToggleLane(_ bar: HomeComposerBar) {
+        setLane(bar.lane, animated: false)
+    }
+
+    /// Photos and files are different errands, and only the ones this aim can carry out are
+    /// offered: a model that cannot see is never handed a photo picker.
+    func homeComposerAttachOptions() -> [UIMenuElement] {
+        var actions: [UIMenuElement] = []
+        if abilities.vision {
+            actions.append(
+                UIAction(
+                    title: String(localized: "Photo Library"),
+                    image: UIImage(systemName: "photo.on.rectangle")
+                ) { [weak self] _ in self?.presentPhotoPicker() })
+        }
+        if abilities.camera {
+            actions.append(
+                UIAction(title: String(localized: "Take Photo"), image: UIImage(systemName: "camera")
+                ) { [weak self] _ in self?.presentCamera() })
+        }
+        if abilities.attachments {
+            actions.append(
+                UIAction(title: String(localized: "Files"), image: UIImage(systemName: "folder")
+                ) { [weak self] _ in self?.presentDocumentPicker() })
+        }
+        if UIPasteboard.general.hasImages || UIPasteboard.general.hasStrings {
+            actions.append(
+                UIAction(
+                    title: String(localized: "Paste"),
+                    image: UIImage(systemName: "doc.on.clipboard")
+                ) { [weak self] _ in self?.pasteFromClipboard() })
+        }
+        return actions
+    }
+
+    /// A screenshot in hand is the commonest thing a phone has to show an agent, so pasting one
+    /// attaches it rather than doing nothing at all.
+    func homeComposerDidPasteImage(_ data: Data, mime: String) {
+        guard abilities.vision else {
+            toast(String(localized: "This model can't read pictures."))
+            return
+        }
+        pastedImageCount += 1
+        attach(data: data, name: "pasted-\(pastedImageCount).png", mime: mime)
+    }
+
+    /// A paste too large to read as a sentence becomes the file it already is, so the question
+    /// stays a question and the wall of text rides beside it.
+    func homeComposerDidPasteLargeText(_ text: String) {
+        guard abilities.attachments, let data = text.data(using: .utf8) else {
+            composerBar.insertText(text)
+            return
+        }
+        composerBar.deleteSelection()
+        attach(data: data, name: "pasted-\(UUID().uuidString.prefix(8)).txt", mime: "text/plain")
+        toast(
+            String(
+                localized: "Attached \(text.count.formatted()) characters — sent with the message."))
+    }
+
+    /// Holding Send raises the on-device enhancement deck for words worth sharpening — the same
+    /// gesture the chat's composer answers, because the front door is exactly where a vague
+    /// sentence costs a whole round trip.
+    func homeComposerDidLongPressSend(from view: UIView) {
+        let text = composerBar.currentText
+        guard !text.isEmpty else { return }
+        enhancement.requestNow(for: text)
+        presentEnhanceOverlay(original: text)
     }
 
     /// What the aimed machine can be told to do, read from memory first and corrected by the
@@ -1553,18 +1748,23 @@ extension HomeViewController: HomeComposerBarDelegate {
         commandPalette.alpha = 0
         commandPalette.isHidden = false
         UIView.animate(withDuration: 0.18) { self.commandPalette.alpha = 1 }
+        updateSuggestions()
     }
 
     private func hideCommandPalette() {
         guard !commandPalette.isHidden else { return }
         UIView.animate(
             withDuration: 0.15, animations: { self.commandPalette.alpha = 0 },
-            completion: { _ in self.commandPalette.isHidden = true })
+            completion: { _ in
+                self.commandPalette.isHidden = true
+                self.updateSuggestions()
+            })
     }
 
     /// Home's composer has no session to belong to, so what is written in it belongs to where it
-    /// is aimed: re-aiming the chip stashes the text under the destination it was written for and
-    /// hands back whatever was left unsent for the new one, the way switching chats does in a pane.
+    /// is aimed: re-aiming the chip — or throwing the lane switch — stashes the text under the
+    /// destination it was written for and hands back whatever was left unsent for the new one, the
+    /// way switching chats does in a pane.
     private func syncComposerDraft(to scope: DraftScope) {
         guard composerDraftScope != scope else { return }
         let carried = composerBar.rawText
@@ -1612,6 +1812,33 @@ extension HomeViewController: HomeComposerBarDelegate {
         return (first.id, FileBrowserRecents.all(for: first.id).first)
     }
 
+    /// Everything the lane decides, resolved in one place. The chat lane goes to a project the
+    /// person keeps aimed; the ask lane goes to the machine the last question went to, falling back
+    /// to whatever the composer was already pointed at rather than to an arbitrary server.
+    var composerAim: ComposerAim? {
+        switch askLane {
+        case .chat:
+            guard let target = composeTarget,
+                let profile = viewModel.servers.first(where: { $0.id == target.profileID })
+            else { return nil }
+            return ComposerAim(
+                lane: .chat, profile: profile, directory: target.directory,
+                memoryKey: profile.id, resolutionContext: nil,
+                draftScope: .home(profileID: profile.id, directory: target.directory))
+        case .ask:
+            guard
+                let id = QuickAskDefaults.target(
+                    among: viewModel.servers.map(\.id), fallback: composeTarget?.profileID),
+                let profile = viewModel.servers.first(where: { $0.id == id })
+            else { return nil }
+            return ComposerAim(
+                lane: .ask, profile: profile, directory: nil,
+                memoryKey: QuickAskDefaults.contextID(forProfileID: profile.id),
+                resolutionContext: QuickAskDefaults.aimContext(forProfileID: profile.id),
+                draftScope: .quickAsk(profileID: profile.id))
+        }
+    }
+
     /// Reapplies only when something the user can see actually changed: the live
     /// refresh runs this every few seconds, and reassigning a button's menu
     /// underneath an open one is exactly the kind of churn that makes a picker
@@ -1619,28 +1846,39 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// so skipping the rebuild can't serve a stale list.
     private func updateComposer() {
         composerBar.isHidden = viewModel.servers.isEmpty
-        guard let target = composeTarget,
-            let profile = viewModel.servers.first(where: { $0.id == target.profileID })
-        else { return }
-        syncComposerDraft(
-            to: .home(profileID: target.profileID, directory: target.directory))
-        loadCommandsIfNeeded(for: profile)
-        let project = target.directory.map { ($0 as NSString).lastPathComponent }
-        let title = project.map { "\($0) · \(profile.name)" } ?? profile.name
-        let modelLabel = modelChipLabel(for: profile)
+        guard let aim = composerAim else {
+            updateSuggestions()
+            return
+        }
+        syncComposerDraft(to: aim.draftScope)
+        loadCommandsIfNeeded(for: aim.profile)
+        let title = composerChipTitle(for: aim)
+        let modelLabel = modelChipLabel(for: aim)
         composerBar.ultracodeEffort =
-            modelChoices[profile.id]?.effort
-            ?? EffortPreferenceStore.globalEffort(forContextID: profile.id)
-        let state = "\(profile.id)|\(target.directory ?? "")|\(title)|\(modelLabel ?? "")"
+            modelChoices[aim.memoryKey]?.effort
+            ?? EffortPreferenceStore.globalEffort(
+                forContextID: aim.resolutionContext ?? aim.profile.id)
+        let state = [
+            aim.lane.rawValue, aim.profile.id, aim.directory ?? "", title, modelLabel ?? "",
+        ].joined(separator: "|")
         guard state != appliedComposerState else { return }
         appliedComposerState = state
         let icon = UIImage(
-            systemName: profile.backend.symbolName,
+            systemName: aim.profile.backend.symbolName,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
-            .withTintColor(profile.backend.brandColor, renderingMode: .alwaysOriginal)
-        composerBar.setContext(icon: icon, title: title, menu: composeTargetMenu())
-        updateModelChip(for: profile, label: modelLabel)
+            .withTintColor(aim.profile.backend.brandColor, renderingMode: .alwaysOriginal)
+        composerBar.setContext(icon: icon, title: title, menu: composerTargetMenu(for: aim))
+        updateModelChip(for: aim, label: modelLabel)
+        refreshAbilities(for: aim)
+        updateSuggestions()
         view.setNeedsLayout()
+    }
+
+    /// A chat names the project it will live in; a question has none to name, so the chip says
+    /// only which machine is being asked rather than inventing a place for the answer to live.
+    private func composerChipTitle(for aim: ComposerAim) -> String {
+        guard aim.lane == .chat, let directory = aim.directory else { return aim.profile.name }
+        return "\((directory as NSString).lastPathComponent) · \(aim.profile.name)"
     }
 
     /// The chip names the model the next message will actually run on — resolved
@@ -1648,34 +1886,33 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// a blind commitment to whatever the server happens to default to. Nil for
     /// a backend that has neither model nor effort control, which then shows no
     /// chip at all.
-    private func modelChipLabel(for profile: ConnectionProfile) -> String? {
-        guard let backend = viewModel.backend(forProfileID: profile.id),
+    private func modelChipLabel(for aim: ComposerAim) -> String? {
+        guard let backend = viewModel.backend(forProfileID: aim.profile.id),
             backend.capabilities.supportsModelSelection
                 || backend.capabilities.supportsReasoningEffort
         else { return nil }
-        let choice = modelChoices[profile.id] ?? ModelChoice()
+        let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
         return ModelBadge.label(model: choice.model, effort: choice.effort)
     }
 
-    private func updateModelChip(for profile: ConnectionProfile, label: String?) {
-        guard let label, let backend = viewModel.backend(forProfileID: profile.id) else {
+    private func updateModelChip(for aim: ComposerAim, label: String?) {
+        guard let label, let backend = viewModel.backend(forProfileID: aim.profile.id) else {
             composerBar.setModel(title: nil, menu: nil)
             return
         }
-        composerBar.setModel(title: label, menu: modelMenu(for: profile, backend: backend))
-        resolveModelChoiceIfNeeded(for: profile, backend: backend)
+        composerBar.setModel(title: label, menu: modelMenu(for: aim, backend: backend))
+        resolveModelChoiceIfNeeded(for: aim, backend: backend)
     }
 
-    private func resolveModelChoiceIfNeeded(
-        for profile: ConnectionProfile, backend: any CodingAgentBackend
-    ) {
-        guard modelChoices[profile.id] == nil, resolvingModels.insert(profile.id).inserted else {
-            return
-        }
+    private func resolveModelChoiceIfNeeded(for aim: ComposerAim, backend: any CodingAgentBackend) {
+        guard modelChoices[aim.memoryKey] == nil,
+            resolvingModels.insert(aim.memoryKey).inserted
+        else { return }
         Task { @MainActor in
-            let choice = await ChatModelResolver.choice(profileID: profile.id, backend: backend)
-            resolvingModels.remove(profile.id)
-            modelChoices[profile.id] = choice
+            let choice = await ChatModelResolver.choice(
+                profileID: aim.profile.id, backend: backend, contextID: aim.resolutionContext)
+            resolvingModels.remove(aim.memoryKey)
+            modelChoices[aim.memoryKey] = choice
             updateComposer()
         }
     }
@@ -1683,9 +1920,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// Built lazily on every present: the catalog may still be in flight when
     /// the chip is first drawn, and a menu opened a second later must show the
     /// models rather than the placeholder it was built with.
-    private func modelMenu(for profile: ConnectionProfile, backend: any CodingAgentBackend)
-        -> UIMenu
-    {
+    private func modelMenu(for aim: ComposerAim, backend: any CodingAgentBackend) -> UIMenu {
         UIMenu(
             title: String(localized: "Model"),
             children: [
@@ -1694,72 +1929,122 @@ extension HomeViewController: HomeComposerBarDelegate {
                         guard let self else { return completion([]) }
                         let models =
                             backend.capabilities.supportsModelSelection
-                            ? await ModelCatalog.models(for: profile.id, backend: backend) : []
-                        completion(
-                            ModelMenu.elements(
-                                models: models,
-                                choice: self.modelChoices[profile.id] ?? ModelChoice(),
-                                efforts: backend.reasoningEffortOptions,
-                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
-                                quotas: QuotaSurface.relevantQuotas(
-                                    for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
-                                actions: ModelMenu.Actions(
-                                    selectModel: { [weak self] selection in
-                                        self?.setComposeModel(selection, for: profile)
-                                    },
-                                    selectEffort: { [weak self] level in
-                                        self?.setComposeEffort(level, for: profile)
-                                    },
-                                    browseAll: { [weak self] in
-                                        self?.presentComposeModelPicker(
-                                            profile: profile, backend: backend, models: models)
-                                    })))
+                            ? await ModelCatalog.models(for: aim.profile.id, backend: backend) : []
+                        var elements = ModelMenu.elements(
+                            models: models,
+                            choice: self.modelChoices[aim.memoryKey] ?? ModelChoice(),
+                            efforts: backend.reasoningEffortOptions,
+                            allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
+                            quotas: QuotaSurface.relevantQuotas(
+                                for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
+                            actions: ModelMenu.Actions(
+                                selectModel: { [weak self] selection in
+                                    self?.setComposeModel(selection, for: aim)
+                                },
+                                selectEffort: { [weak self] level in
+                                    self?.setComposeEffort(level, for: aim)
+                                },
+                                browseAll: { [weak self] in
+                                    self?.presentComposeModelPicker(
+                                        aim: aim, backend: backend, models: models)
+                                }))
+                        if let follow = self.followServerElement(for: aim) {
+                            elements.append(follow)
+                        }
+                        completion(elements)
                     }
                 }
             ])
     }
 
-    private func setComposeModel(_ selection: ModelSelection?, for profile: ConnectionProfile) {
-        ModelPreferenceStore.recordPick(selection, sessionKey: nil, contextID: profile.id)
-        if selection == nil {
-            modelChoices[profile.id] = nil
-        } else {
-            var choice = modelChoices[profile.id] ?? ModelChoice()
+    /// The ask lane's aim is its own once it has been set by hand, which is the whole point of it
+    /// — and the way back is one row rather than a settings screen.
+    private func followServerElement(for aim: ComposerAim) -> UIMenuElement? {
+        guard aim.lane == .ask, QuickAskDefaults.hasOwnAim(forProfileID: aim.profile.id) else {
+            return nil
+        }
+        return UIMenu(
+            options: .displayInline,
+            children: [
+                UIAction(
+                    title: String(localized: "Follow this server"),
+                    subtitle: String(localized: "Use what a new chat here would"),
+                    image: UIImage(systemName: "arrow.uturn.backward")
+                ) { [weak self] _ in
+                    guard let self else { return }
+                    QuickAskDefaults.clearOwnAim(forProfileID: aim.profile.id)
+                    self.modelChoices[aim.memoryKey] = nil
+                    self.appliedComposerState = nil
+                    self.updateComposer()
+                }
+            ])
+    }
+
+    /// A pick in the ask lane claims that lane's own memory and leaves the server's exactly as it
+    /// was: pointing lookups at something cheap may never re-aim the project chats.
+    private func setComposeModel(_ selection: ModelSelection?, for aim: ComposerAim) {
+        switch aim.lane {
+        case .chat:
+            ModelPreferenceStore.recordPick(selection, sessionKey: nil, contextID: aim.profile.id)
+            if selection == nil {
+                modelChoices[aim.memoryKey] = nil
+            } else {
+                var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
+                choice.model = selection
+                modelChoices[aim.memoryKey] = choice
+            }
+        case .ask:
+            QuickAskDefaults.recordModel(selection, forProfileID: aim.profile.id)
+            var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
             choice.model = selection
-            modelChoices[profile.id] = choice
+            modelChoices[aim.memoryKey] = choice
         }
         Theme.Haptics.selection()
+        appliedComposerState = nil
         updateComposer()
     }
 
-    private func setComposeEffort(_ level: String?, for profile: ConnectionProfile) {
-        EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: profile.id)
-        var choice = modelChoices[profile.id] ?? ModelChoice()
+    private func setComposeEffort(_ level: String?, for aim: ComposerAim) {
+        switch aim.lane {
+        case .chat:
+            EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: aim.profile.id)
+        case .ask:
+            QuickAskDefaults.recordEffort(level, forProfileID: aim.profile.id)
+        }
+        var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
         choice.effort = level
-        modelChoices[profile.id] = choice
+        modelChoices[aim.memoryKey] = choice
         Theme.Haptics.selection()
+        appliedComposerState = nil
         updateComposer()
     }
 
     private func presentComposeModelPicker(
-        profile: ConnectionProfile, backend: any CodingAgentBackend, models: [ModelInfo]
+        aim: ComposerAim, backend: any CodingAgentBackend, models: [ModelInfo]
     ) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
+        let profile = aim.profile
         let picker = ModelPickerViewController(
             sources: ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: profile.id,
                 currentModels: models, allowsServerDefault: profile.backend == .claudeCode),
-            selected: modelChoices[profile.id]?.model,
+            selected: modelChoices[aim.memoryKey]?.model,
             quotas: QuotaSurface.relevantQuotas(
                 for: profile.backend, among: UsageWidgetStore.cachedQuotas())
         ) { [weak self] pick in
             guard let self else { return }
-            if pick.isElsewhere {
+            guard pick.isElsewhere else {
+                self.setComposeModel(pick.selection, for: aim)
+                return
+            }
+            switch aim.lane {
+            case .chat:
                 ModelFleet.adopt(pick)
                 self.aimCompose(at: pick.profileID)
-            } else {
-                self.setComposeModel(pick.selection, for: profile)
+            case .ask:
+                QuickAskDefaults.adopt(pick)
+                self.aimAsk(at: pick.profileID)
             }
         }
         let nav = UINavigationController(rootViewController: picker)
@@ -1784,14 +2069,25 @@ extension HomeViewController: HomeComposerBarDelegate {
         }
     }
 
-    private func composeTargetMenu() -> UIMenu {
-        UIMenu(
-            title: String(localized: "Start the chat in…"),
-            children: [
-                UIDeferredMenuElement.uncached { [weak self] completion in
-                    completion(self?.composeTargets() ?? [])
-                }
-            ])
+    private func composerTargetMenu(for aim: ComposerAim) -> UIMenu {
+        switch aim.lane {
+        case .chat:
+            return UIMenu(
+                title: String(localized: "Start the chat in…"),
+                children: [
+                    UIDeferredMenuElement.uncached { [weak self] completion in
+                        completion(self?.composeTargets() ?? [])
+                    }
+                ])
+        case .ask:
+            return UIMenu(
+                title: String(localized: "Ask on"),
+                children: [
+                    UIDeferredMenuElement.uncached { [weak self] completion in
+                        completion(self?.askTargets() ?? [])
+                    }
+                ])
+        }
     }
 
     private func composeTargets() -> [UIMenuElement] {
@@ -1828,6 +2124,18 @@ extension HomeViewController: HomeComposerBarDelegate {
         return serverMenus
     }
 
+    /// A question carries no project, so the ask lane's chip offers machines and nothing else.
+    private func askTargets() -> [UIMenuElement] {
+        let current = composerAim?.profile.id
+        return viewModel.servers.map { profile in
+            UIAction(
+                title: profile.name, subtitle: profile.backend.displayName,
+                image: UIImage(systemName: profile.backend.symbolName),
+                state: profile.id == current ? .on : .off
+            ) { [weak self] _ in self?.aimAsk(at: profile.id) }
+        }
+    }
+
     /// Explicitly chosen recents first, then directories of past sessions.
     private func recentDirectories(for profile: ConnectionProfile) -> [String] {
         let sessionDirs = viewModel.entries
@@ -1848,6 +2156,19 @@ extension HomeViewController: HomeComposerBarDelegate {
         resolvedComposeTarget = nil
         if let directory { FileBrowserRecents.record(directory, for: profile.id) }
         Theme.Haptics.selection()
+        setLane(.chat, animated: true)
+        appliedComposerState = nil
+        updateComposer()
+    }
+
+    /// Moving the question to another machine takes the draft with it: what is typed belongs to
+    /// the question, not to the server it was pointed at a second ago, and the words already filed
+    /// under the machine being left stay there for the next time it is aimed at.
+    private func aimAsk(at profileID: String) {
+        guard profileID != composerAim?.profile.id else { return }
+        QuickAskDefaults.record(profileID: profileID)
+        Theme.Haptics.selection()
+        appliedComposerState = nil
         updateComposer()
     }
 
@@ -1876,8 +2197,6 @@ extension HomeViewController: HomeComposerBarDelegate {
         }
     }
 
-    /// The session is created only now, on commit; the composer keeps the
-    /// text until the create succeeds so a dead server loses nothing.
     /// What the words turn out to be, asked of the shared grammar before anything is minted: a
     /// command the aimed machine knows runs as a command in the conversation this send creates, and
     /// everything else — including a word on a server that reads its own slashes out of the prompt
@@ -1891,41 +2210,429 @@ extension HomeViewController: HomeComposerBarDelegate {
             resolvesFromPromptText: backend.resolvesCommandsFromPromptText)
     }
 
+    /// The session is created only now, on commit; the box keeps the words and whatever is in its
+    /// strip until the create succeeds, so a dead server loses nothing.
     private func composerSend(_ text: String) {
-        guard let target = composeTarget,
-            let profile = viewModel.servers.first(where: { $0.id == target.profileID })
+        guard let aim = composerAim,
+            QuickAskComposition.canSend(text: text, attachments: attachments.count)
         else { return }
-        let send = composerDecision(text, on: profile)
+        let send = composerDecision(text, on: aim.profile)
         if case .command(let command, _) = send.kind { SlashRecents.record(command.name) }
         hideCommandPalette()
+        dismissFailure()
+        mint(aim: aim, send: send)
+    }
+
+    private func mint(aim: ComposerAim, send: QuickAskSend) {
+        lastAttempt = (aim, send)
         composerBar.setSending(true)
-        Task {
-            guard let entry = await viewModel.newSession(on: profile, directory: target.directory)
-            else {
-                composerBar.setSending(false)
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.viewModel.createSession(
+                on: aim.profile, directory: aim.directory)
+            self.composerBar.setSending(false)
+            switch result {
+            case .success(let entry):
+                self.landed(entry, aim: aim, send: send)
+            case .failure(let failure):
                 Theme.Haptics.error()
-                let alert = UIAlertController(
-                    title: String(localized: "Couldn't start the chat"),
-                    message: String(
-                        localized:
-                            "\(profile.name) didn't respond. Check the connection and try again."),
-                    preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
-                present(alert, animated: true)
+                self.composerBar.setText(send.text)
+                DraftStore.record(send.text, for: aim.draftScope)
+                self.showFailure(failure)
+            }
+        }
+    }
+
+    /// The handover is one movement: the conversation is opened with the words and whatever rode
+    /// with them already on their way, and the box is emptied only once the machine has agreed to
+    /// hold them.
+    private func landed(_ entry: SessionEntry, aim: ComposerAim, send: QuickAskSend) {
+        switch aim.lane {
+        case .chat:
+            if let directory = aim.directory {
+                FileBrowserRecents.record(directory, for: aim.profile.id)
+            }
+            AppPreferences.lastComposeTarget = (aim.profile.id, aim.directory)
+        case .ask:
+            QuickAskDefaults.record(profileID: aim.profile.id)
+            QuickAskDefaults.stamp(profileID: aim.profile.id, sessionID: entry.session.id)
+        }
+        let payload = attachments.map(\.prompt)
+        attachments = []
+        refreshAttachments()
+        composerBar.clearText()
+        DraftStore.clear(aim.draftScope)
+        view.endEditing(true)
+        Theme.Haptics.success()
+        openChat(
+            for: entry, seeding: modelChoices[aim.memoryKey],
+            sending: (send: send, attachments: payload))
+    }
+}
+
+/// The ask lane's own furniture: what it offers while it is empty, what it can be handed, and what
+/// it says when the machine on the other end refuses to mint a conversation.
+extension HomeViewController {
+    /// The strip is the lane's empty state and nothing more: the moment there is a question — or
+    /// something in hand, or a command being named — it gets out of the way, and it comes back if
+    /// the box is emptied again.
+    private var wantsSuggestions: Bool {
+        askLane == .ask && !composerBar.isHidden && composerBar.currentText.isEmpty
+            && attachments.isEmpty && commandPalette.isHidden
+    }
+
+    func updateSuggestions() {
+        guard wantsSuggestions else { return setAccessory(suggestions, visible: false) }
+        if let aim = composerAim {
+            suggestions.update(
+                starters: QuickAskStarters.offered(for: abilities),
+                recents: QuickAskRecents.asks(among: viewModel.entries, profileID: aim.profile.id),
+                note: nil)
+        } else {
+            suggestions.update(starters: [], recents: [], note: QuickAskWords.noServers)
+        }
+        setAccessory(suggestions, visible: true)
+    }
+
+    /// A starter is the first half of a sentence, never a question the app asked on somebody's
+    /// behalf: the words land in the box with the caret at their end, and a row that needs a
+    /// picture or a file opens the picker for it in the same touch.
+    func pickStarter(_ starter: QuickAskStarter) {
+        Theme.Haptics.tap()
+        QuickAskStarterRecents.record(starter.id)
+        if composerBar.currentText.isEmpty {
+            composerBar.setDraft(starter.prompt, focus: true)
+        } else {
+            composerBar.focus()
+        }
+        switch starter.opens {
+        case .none: break
+        case .photos: presentPhotoPicker()
+        case .camera: presentCamera()
+        case .files: presentDocumentPicker()
+        }
+    }
+
+    private func setAccessory(_ view: UIView, visible: Bool) {
+        guard view.isHidden == visible else { return }
+        UIView.animate(withDuration: 0.2) {
+            view.isHidden = !visible
+            view.alpha = visible ? 1 : 0
+            self.accessories.layoutIfNeeded()
+        }
+    }
+
+    /// What the aim can be handed, re-read whenever either half of it moves. A picture already in
+    /// the strip that the new model cannot read is dropped out loud rather than carried to a send
+    /// the other machine would refuse.
+    func refreshAbilities(for aim: ComposerAim) {
+        let backend = viewModel.backend(forProfileID: aim.profile.id)
+        abilities = ModelAbilities.resolve(
+            supportsAttachments: backend?.capabilities.supportsAttachments ?? false,
+            model: modelCapabilities(for: aim),
+            camera: UIImagePickerController.isSourceTypeAvailable(.camera))
+        composerBar.showsAttach = abilities.attachments
+        let kept = attachments.filter { abilities.accepts(mime: $0.mime) }
+        let dropped = attachments.count - kept.count
+        if dropped > 0 {
+            attachments = kept
+            toast(QuickAskComposition.droppedNotice(count: dropped))
+        }
+        refreshAttachments()
+    }
+
+    private func modelCapabilities(for aim: ComposerAim) -> ModelCapabilities? {
+        guard let selection = modelChoices[aim.memoryKey]?.model else { return nil }
+        return ModelCatalog.cached(for: aim.profile.id).first {
+            $0.providerID == selection.providerID && $0.id == selection.modelID
+        }?.capabilities
+    }
+
+    func refreshAttachments() {
+        attachmentStrip.update(attachments)
+        composerBar.carriesAttachments = !attachments.isEmpty
+        setAccessory(attachmentStrip, visible: !attachments.isEmpty)
+        updateSuggestions()
+    }
+
+    func attach(_ attachment: PendingAttachment) {
+        guard abilities.accepts(mime: attachment.mime) else {
+            toast(String(localized: "This model can't read \(attachment.name)."))
+            return
+        }
+        attachments.append(attachment)
+        Theme.Haptics.success()
+        refreshAttachments()
+    }
+
+    func attach(data: Data, name: String, mime: String) {
+        guard data.count <= AttachmentIntake.byteCap else {
+            toast(
+                String(
+                    localized:
+                        "\(name) is \(AttachmentIntake.sizeText(data.count)) — the cap is 8 MB."))
+            return
+        }
+        attach(PendingAttachment(name: name, mime: mime, data: data))
+    }
+
+    func presentPhotoPicker() {
+        Theme.Haptics.tap()
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 5
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    func presentCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
+        Theme.Haptics.tap()
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    func presentDocumentPicker() {
+        Theme.Haptics.tap()
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        picker.delegate = self
+        picker.allowsMultipleSelection = true
+        present(picker, animated: true)
+    }
+
+    /// The pasteboard, taken for what it is holding: a picture becomes an attachment, words go
+    /// into the box where the caret is.
+    func pasteFromClipboard() {
+        let pasteboard = UIPasteboard.general
+        if pasteboard.hasImages, abilities.vision {
+            guard let image = pasteboard.image, let data = image.pngData() else {
+                toast(String(localized: "The clipboard holds no picture."))
                 return
             }
-            if let directory = target.directory {
-                FileBrowserRecents.record(directory, for: profile.id)
+            pastedImageCount += 1
+            attach(data: data, name: "pasted-\(pastedImageCount).png", mime: "image/png")
+            return
+        }
+        guard let text = pasteboard.string, !text.isEmpty else {
+            toast(String(localized: "The clipboard holds nothing to send."))
+            return
+        }
+        composerBar.insertText(text)
+    }
+
+    func toast(_ message: String) {
+        ToastView(message: message).flash(in: view, above: composerBar.topAnchor)
+    }
+
+    func showFailure(_ failure: NewChatFailure) {
+        lastFailure = failure
+        failureCard.show(failure)
+        setAccessory(failureCard, visible: true)
+        UIAccessibility.post(notification: .announcement, argument: failure.spoken)
+    }
+
+    func dismissFailure() {
+        guard lastFailure != nil else { return }
+        lastFailure = nil
+        setAccessory(failureCard, visible: false)
+    }
+
+    /// The remedy, applied and the send retried on the spot — somebody who tapped "Use :4098"
+    /// asked for an answer, not for a settings screen.
+    func applyFix() {
+        guard let failure = lastFailure else { return }
+        Theme.Haptics.tap()
+        dismissFailure()
+        switch failure.fix {
+        case .none:
+            break
+        case .retry:
+            guard let attempt = lastAttempt else { return }
+            mint(aim: attempt.aim, send: attempt.send)
+        case .editServer(let profileID):
+            guard let profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+                return
             }
-            AppPreferences.lastComposeTarget = target
-            composerBar.setSending(false)
-            composerBar.clearText()
-            DraftStore.clear(.home(profileID: target.profileID, directory: target.directory))
-            view.endEditing(true)
-            Theme.Haptics.success()
-            openChat(
-                for: entry, seeding: modelChoices[profile.id],
-                sending: (send: send, attachments: []))
+            let editor = ServerEditViewController(profile: profile)
+            editor.onSaved = { [weak self] _ in
+                guard let self else { return }
+                self.viewModel.refreshSources()
+                self.dismiss(animated: true) { self.retryLastAttempt() }
+            }
+            present(UINavigationController(rootViewController: editor), animated: true)
+        case .repoint(let profileID, let url, _):
+            guard var profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+                return
+            }
+            let password = ConnectionController.shared.password(for: profile.id)
+            profile.baseURL = url
+            do {
+                try ConnectionController.shared.save(profile, password: password)
+                viewModel.refreshSources()
+                retryLastAttempt()
+            } catch {
+                showFailure(
+                    NewChatDiagnosis.failure(
+                        server: NewChatServer(
+                            profileID: profile.id, name: profile.name, backend: profile.backend,
+                            address: ServerLabel.address(profile)),
+                        directory: nil, error: AgentErrorText.readable(error), witness: .unknown))
+            }
+        }
+    }
+
+    /// The aim is re-read rather than replayed: a fix that changed the server changed the profile
+    /// the attempt was holding, and minting against the stale one would fail the same way twice.
+    private func retryLastAttempt() {
+        guard let attempt = lastAttempt, let aim = composerAim else { return }
+        mint(aim: aim, send: attempt.send)
+    }
+
+    private func presentEnhanceOverlay(original: String) {
+        enhanceOverlay?.removeFromSuperview()
+        let overlay = PromptEnhanceOverlay()
+        overlay.delegate = self
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: composerBar.topAnchor),
+        ])
+        enhanceOverlay = overlay
+        overlay.render(enhancement.status, original: original)
+        view.layoutIfNeeded()
+        let anchor = composerBar.sendControlAnchor
+        let origin = anchor.convert(
+            CGPoint(x: anchor.bounds.midX, y: anchor.bounds.midY), to: overlay)
+        overlay.animateIn(fromButtonCenter: origin)
+    }
+
+    func handleEnhancementStatus(_ status: PromptEnhancementController.Status) {
+        composerBar.setEnhanceHint(enhancement.hasFreshSuggestions)
+        enhanceOverlay?.render(status, original: enhancement.latestInput)
+    }
+}
+
+extension HomeViewController: PromptEnhanceOverlayDelegate {
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
+        Theme.Haptics.success()
+        composerBar.setDraft(prompt.text, focus: true)
+        overlay.requestDismiss()
+    }
+
+    func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {
+        UIPasteboard.general.string = prompt.text
+        Theme.Haptics.success()
+        toast(String(localized: "Enhanced prompt copied."))
+    }
+
+    func enhanceOverlayDidRequestRetry(_ overlay: PromptEnhanceOverlay) {
+        Theme.Haptics.tap()
+        enhancement.retry()
+    }
+
+    func enhanceOverlayDidDismiss(_ overlay: PromptEnhanceOverlay) {
+        if enhanceOverlay === overlay { enhanceOverlay = nil }
+        composerBar.setEnhanceHint(enhancement.hasFreshSuggestions)
+    }
+}
+
+extension HomeViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        for result in results {
+            let provider = result.itemProvider
+            let name = provider.suggestedName
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) {
+                [weak self] data, _ in
+                guard let data else { return }
+                let kind = ImageBytes.kind(of: data)
+                Task { @MainActor in
+                    self?.attach(
+                        data: data,
+                        name: "\(name ?? "image-\(UUID().uuidString.prefix(8))").\(kind.ext)",
+                        mime: kind.mime)
+                }
+            }
+        }
+    }
+}
+
+extension HomeViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    func imagePickerController(
+        _ picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) {
+        picker.dismiss(animated: true)
+        guard let image = info[.originalImage] as? UIImage,
+            let data = image.jpegData(compressionQuality: 0.9)
+        else { return }
+        pastedImageCount += 1
+        attach(data: data, name: "photo-\(pastedImageCount).jpg", mime: "image/jpeg")
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+}
+
+extension HomeViewController: UIDocumentPickerDelegate {
+    func documentPicker(
+        _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
+    ) {
+        for url in urls {
+            switch AttachmentIntake.read(path: url.path) {
+            case .success(let attachment): attach(attachment)
+            case .failure(let refusal): toast(refusal.message)
+            }
+        }
+    }
+}
+
+/// A picture dragged onto the front door is a question about that picture: the drop is taken where
+/// it lands, on any part of the screen, because aiming at a 32-point paperclip with something held
+/// in the other hand is not a gesture anybody should have to make.
+extension HomeViewController: UIDropInteractionDelegate {
+    func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool
+    {
+        abilities.attachments && !composerBar.isHidden
+    }
+
+    func dropInteraction(
+        _ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession
+    ) -> UIDropProposal {
+        UIDropProposal(operation: .copy)
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+        for item in session.items {
+            let provider = item.itemProvider
+            let name = provider.suggestedName ?? String(localized: "attachment")
+            if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) {
+                    [weak self] data, _ in
+                    guard let data else { return }
+                    let kind = ImageBytes.kind(of: data)
+                    Task { @MainActor in
+                        self?.attach(data: data, name: "\(name).\(kind.ext)", mime: kind.mime)
+                    }
+                }
+                continue
+            }
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.item.identifier) {
+                [weak self] url, _ in
+                guard let url, let data = try? Data(contentsOf: url) else { return }
+                let filename = url.lastPathComponent
+                let mime = AttachmentIntake.mime(forExtension: url.pathExtension)
+                Task { @MainActor in
+                    self?.attach(data: data, name: filename, mime: mime)
+                }
+            }
         }
     }
 }

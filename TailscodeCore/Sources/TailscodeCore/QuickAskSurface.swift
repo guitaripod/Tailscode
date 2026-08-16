@@ -173,6 +173,61 @@ public enum QuickAskRecents {
     }
 }
 
+/// What the one prompt box on a client's front door is aimed at.
+///
+/// A desktop takes a key from the whole machine, so its quick ask is a window that arrives over
+/// whatever was in front. A phone has no key to take and no window to arrive in — but it already
+/// has a prompt box sitting at the bottom of its front door, and a question differs from the thing
+/// typed there in exactly one way: it has no project. So the phone's quick ask is that same box in
+/// its other lane, and the switch between them is the whole gesture: no sheet to summon, no second
+/// composer to learn, and the words survive the flip because each lane keeps its own draft.
+///
+/// The two lanes are told apart by what they aim at rather than by what they can do: `chat` starts
+/// a conversation in a project, `ask` starts one on a machine with the ask's own model — and both
+/// send pictures, files and slash commands, because a lookup and an errand are the same gesture.
+public enum QuickAskLane: String, Sendable, CaseIterable {
+    case chat
+    case ask
+
+    public var toggled: QuickAskLane { self == .ask ? .chat : .ask }
+
+    /// The one word on the switch. It names the lane being offered rather than the one in force,
+    /// which is why it does not change when the switch is thrown — a control whose label moves
+    /// under the finger is a control nobody can aim at twice.
+    public static var switchTitle: String { Localized.text("Ask") }
+
+    public var placeholder: String {
+        switch self {
+        case .chat: return Localized.text("Start a new chat…")
+        case .ask: return Localized.text("Ask anything — no project, no setup")
+        }
+    }
+
+    /// What a screen reader is told the switch is, said as the state it is in. A toggle that reads
+    /// out its verb instead of its state leaves the one fact a blind reader came for unsaid.
+    public var spoken: String {
+        switch self {
+        case .chat:
+            return Localized.text(
+                "Quick ask off. Sending starts a chat in the project named beside this switch.")
+        case .ask:
+            return Localized.text(
+                "Quick ask on. Sending asks the named machine with no project, on the model this ask remembers."
+            )
+        }
+    }
+}
+
+/// The words the empty ask lane argues for itself with, and the ones its recents wear. Held here
+/// rather than in a client so the offer and the memory are described the same way wherever the
+/// lane is drawn — a strip of chips above a docked bar, or rows down a summoned panel.
+public enum QuickAskWords {
+    public static var offer: String { Localized.text("Try") }
+    public static var asked: String { Localized.text("Asked here") }
+    public static var untitled: String { Localized.text("Untitled question") }
+    public static var noServers: String { Localized.text("Add a server to ask anything") }
+}
+
 /// What the surface is doing with the question in it. The words are the whole point: a quick ask
 /// that is waiting says which machine it is waiting on, and one that failed says so where the
 /// asking happened rather than as an alert on whatever screen a dismissal revealed.
