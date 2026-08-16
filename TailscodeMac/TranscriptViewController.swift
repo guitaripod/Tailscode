@@ -73,7 +73,7 @@ final class TranscriptViewController: NSViewController {
     /// Told to the hub when a slot starts, stops, or learns its stream's title, so the layout is
     /// written back exactly as an opened conversation writes it back.
     var onVideoChanged: (() -> Void)?
-    private var lastState: ConversationState?
+    private(set) var lastState: ConversationState?
     /// The facts the band last drew, kept so the chat list can borrow the step the turn is on
     /// rather than scanning the transcript for it a second time.
     private var lastFacts: StatusFacts?

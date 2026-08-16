@@ -1732,6 +1732,7 @@ final class ChatPane: @unchecked Sendable {
     /// on the next arrival would start its reveal again from nothing, and an answer that snapped
     /// to whole and then rewound would be a worse lie than the stall.
     private func giveUpCascade() {
+        if reopenGatedCascade() { return }
         let key = cascade.key ?? lastStreamedKey
         cascade.release()
         abandoned = key

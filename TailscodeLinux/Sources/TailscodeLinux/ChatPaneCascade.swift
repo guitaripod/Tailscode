@@ -22,6 +22,7 @@ extension ChatPane {
         let released = cascade.key
         if let abandoned, abandoned != live?.key { self.abandoned = nil }
         guard let live, let source = live.streamedText, live.key != abandoned else {
+            if drainStrandedCascade(in: rows) { return rows }
             cascade.release()
             if let released { handOver(released, in: rows) }
             return rows
@@ -48,6 +49,77 @@ extension ChatPane {
         return paced
     }
 
+    /// Finishes writing a row the stream has already moved on from.
+    ///
+    /// The pacer trails what has arrived by design — that is the whole of the smoothing — so at the
+    /// moment the agent stops writing a paragraph and goes off to run something, or the turn simply
+    /// ends, there are still a couple of hundred characters owed on that row. Letting go there
+    /// settles it, and settling hands every one of them over in a single frame: the answer is
+    /// written beautifully right up to the seam and the last sentence of it appears at once. An
+    /// agent that works calls tools several times a minute, so most of a reply arrived as a hand
+    /// and every seam of it as a paste.
+    ///
+    /// So a row the stream has left is *sealed* rather than let go. Nothing more is coming, so the
+    /// gate stops holding it against a closer that will never arrive and the buffer drains at the
+    /// end-of-turn cadence; the wave comes off only once the reveal has actually reached the end,
+    /// which is the ordinary release path one state later. Taking a row up and letting go of it
+    /// were already two different moments — this is the other way a row stops being written, and it
+    /// now obeys the same rule.
+    ///
+    /// Returns whether the wave is still on the row. A row that has caught up, one given up as
+    /// stalled, and one the transcript no longer holds all say no, and the caller lets go exactly
+    /// as before.
+    private func drainStrandedCascade(in rows: [TranscriptRow]) -> Bool {
+        guard let key = cascade.key, cascade.owes, key != abandoned,
+            let row = rows.last(where: { $0.key == key })
+                ?? lastFullRows.last(where: { $0.key == key }),
+            let source = row.streamedText,
+            let markup = Self.cascadeMarkup(for: row)
+        else { return false }
+        _ = cascade.renderable(row: key, source, sealed: true, markdown: row.streamsMarkdown)
+        cascade.focus(
+            key, markup: markup, sealed: true, ultracode: auraActive || ultracodeInFlight,
+            clock: transcriptBox)
+        guard cascade.key == key, cascade.owes else { return false }
+        lastStreamedKey = key
+        return true
+    }
+
+    /// A stall that is only the gate holding is not a stall in the writing.
+    ///
+    /// The renderer is held at the last position where no inline token is half-open, against a
+    /// closer that is a few characters behind — a wait the buffer exists to absorb. But a part ends
+    /// where it ends, and a marker that was going to close sometimes never does, so Core stops
+    /// waiting after its patience. It only ever answers that question when a client asks it, and
+    /// the one thing that has stopped happening in a stall is text arriving, so nobody asks: the
+    /// row was handed over whole and then abandoned for the rest of the turn, which made every
+    /// later part of that answer land as a paste too.
+    ///
+    /// So the stall asks. If the gate gives up and there are still characters to write, the row
+    /// goes on being written. Only a row with nothing left to say is given up, which is what the
+    /// give-up was always for.
+    func reopenGatedCascade() -> Bool {
+        guard let key = cascade.key,
+            let row = lastFullRows.last(where: { $0.key == key }),
+            let source = row.streamedText
+        else { return false }
+        let sealed = lastState?.status != .running
+        let safe = cascade.renderable(
+            row: key, source, sealed: sealed, markdown: row.streamsMarkdown)
+        let held = safe == source ? row : row.truncated(to: safe)
+        guard let markup = Self.cascadeMarkup(for: held),
+            let rendered = CascadePainter.renderedText(of: markup),
+            rendered.unicodeScalars.count > cascade.revealed
+        else { return false }
+        cascade.focus(
+            key, markup: markup, sealed: sealed, ultracode: auraActive || ultracodeInFlight,
+            clock: transcriptBox)
+        guard cascade.key == key else { return false }
+        lastStreamedKey = key
+        paintCascade()
+        return true
+    }
+
     /// The wave letting go of a row, made good. A settle that could not be made here is put on the
     /// repair clock rather than dropped: this is the last state the pane will see for a turn that
     /// just ended, and the wave has already given up the frame clock it would have needed.
@@ -66,13 +138,19 @@ extension ChatPane {
     ///
     /// Returns whether the words are where the row says they are. Painting in place is a promise
     /// made to the diff — the row is marked rendered and left alone — so every reason this can fail
-    /// (the live row is not the last one rendered, its widget is gone, the label is not where a row
-    /// of that kind keeps its words) is a promise the pane has to know it cannot keep.
+    /// (the row is gone, its widget with it, the label is not where a row of that kind keeps its
+    /// words) is a promise the pane has to know it cannot keep.
+    ///
+    /// The row is found by its key rather than taken to be the last one. It usually is the last
+    /// one — only the last row can be *taken up* — but a row the stream has moved on from goes on
+    /// being written while a tool call sits below it, and assuming the bottom of the transcript
+    /// would refuse every one of those frames and leave the drain to the watchdog.
     @discardableResult
     func paintCascade() -> Bool {
-        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty else { return false }
-        let index = renderedRows.count - 1
-        guard index < rowWidgets.count, renderedRows[index].key == key,
+        guard let key = cascade.key, !placeholderShown, !renderedRows.isEmpty,
+            let index = renderedRows.lastIndex(where: { $0.key == key })
+        else { return false }
+        guard index < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
         else { return false }
