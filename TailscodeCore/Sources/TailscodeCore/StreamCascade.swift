@@ -79,6 +79,16 @@ public struct StreamCadence: Sendable {
     public var backlog: Int { max(0, available - revealed) }
     public var isSettled: Bool { revealed >= available }
 
+    /// Where the edge actually is, sub-character.
+    ///
+    /// `revealed` is the count a painter can slice a string at, so it is a whole number and it
+    /// steps. At the pacer's floor rate that step lands once every four or five frames, which a
+    /// renderer that only changes a glyph's colour never shows — but one that moves the edge
+    /// itself would draw as a stutter in the one effect whose entire purpose is to not be one. So
+    /// the carry is published beside the count: whoever paints characters takes `revealed`, and
+    /// whoever draws the edge takes this.
+    public var progress: Double { Double(revealed) + (backlog > 0 ? min(carry, 1) : 0) }
+
     /// What the stream has produced so far. Text only grows during a turn, but a re-render can
     /// hand over a shorter string — a fence closing moves a segment's boundary — and the reveal
     /// clamps rather than pretending to have shown characters that no longer exist.
@@ -429,6 +439,11 @@ public struct LiveCascade: Sendable {
     public var isActive: Bool { id != nil }
     public var isSettled: Bool { cadence.isSettled }
     public var rate: Double { cadence.rate }
+
+    /// The leading edge, sub-character, for a renderer that draws the edge rather than the
+    /// characters behind it. Clamped to what has actually landed on screen, because an edge drawn
+    /// ahead of a paint that did not happen is a nib hanging over blank paper.
+    public var progress: Double { min(cadence.progress, Double(total)) }
 
     /// Whether the reader is still owed words: fewer characters are on screen than the row has, or
     /// the renderer is being held behind a markdown token that has not closed yet. The second half

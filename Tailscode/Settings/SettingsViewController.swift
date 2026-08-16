@@ -168,6 +168,7 @@ final class SettingsViewController: UIViewController {
         case deepseekKey
         case keyboardShortcuts
         case haptics
+        case streamRenderer
         case appearance
         case pro
         case viewLogs
@@ -609,6 +610,13 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "keyboard")
             content.imageProperties.tintColor = Theme.Color.accent
             cell.accessories = [.disclosureIndicator()]
+        case .streamRenderer:
+            content.text = String(localized: "Streaming")
+            content.secondaryText = StreamRendererSetting.choice.summary
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "text.line.first.and.arrowtriangle.forward")
+            content.imageProperties.tintColor = Theme.Color.special
+            cell.accessories = [rendererBadge(), .disclosureIndicator()]
         case .haptics:
             content.text = String(localized: "Haptic feedback")
             content.secondaryText =
@@ -800,6 +808,25 @@ final class SettingsViewController: UIViewController {
         return .customView(configuration: .init(customView: label, placement: .trailing()))
     }
 
+    /// Which hand is writing, and the mark it wears while it is still being proven — carried on
+    /// the row rather than only on the screen behind it, so a setting that is alpha says so where
+    /// it is switched on from.
+    private func rendererBadge() -> UICellAccessory {
+        let choice = StreamRendererSetting.choice
+        let name = UILabel()
+        name.font = Theme.Ramp.font(.panelLabel)
+        name.textColor = Theme.Color.secondaryLabel
+        name.text = choice.title
+        guard choice.isAlpha else {
+            return .customView(configuration: .init(customView: name, placement: .trailing()))
+        }
+        let row = UIStackView(arrangedSubviews: [name, AlphaBadge()])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.xs
+        return .customView(configuration: .init(customView: row, placement: .trailing()))
+    }
+
     /// The row states the choice rather than offering it: which identity, and which of its two
     /// faces. Both are one screen away, where they can be seen instead of read.
     private static var themeSummary: String {
@@ -843,7 +870,8 @@ final class SettingsViewController: UIViewController {
             (
                 .chat,
                 [
-                    .toggle(.promptEnhancement), .toggle(.autoExpandThinking), .haptics,
+                    .toggle(.promptEnhancement), .toggle(.autoExpandThinking),
+                    .streamRenderer, .haptics,
                     .toggle(.compactActivity), .toggle(.responseStats), .toggle(.sendOnReturn),
                     .keyboardShortcuts,
                 ]
@@ -972,6 +1000,11 @@ final class SettingsViewController: UIViewController {
         case .keyboardShortcuts:
             return String(
                 localized: "keyboard shortcuts keys hardware cheatsheet rebind",
+                comment: "search keywords")
+        case .streamRenderer:
+            return String(
+                localized:
+                    "streaming stream reveal cascade aurora metal gpu renderer typing animation alpha",
                 comment: "search keywords")
         case .haptics:
             return String(
@@ -1217,6 +1250,10 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(LicensesViewController(), animated: true)
         case .keyboardShortcuts:
             ShortcutCheatsheetViewController.present(from: self)
+        case .streamRenderer:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(
+                StreamRendererViewController(), animated: true)
         case .haptics:
             Theme.Haptics.tap()
             navigationController?.pushViewController(HapticsViewController(), animated: true)

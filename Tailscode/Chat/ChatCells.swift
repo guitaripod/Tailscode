@@ -72,6 +72,7 @@ final class TextBubbleCell: UICollectionViewCell {
     private var timestampLeading: NSLayoutConstraint?
     private var timestampTrailing: NSLayoutConstraint?
     private var bubbleTop: NSLayoutConstraint!
+    private lazy var aurora = AuroraTextPainter(textView: textView, host: bubble)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -133,6 +134,12 @@ final class TextBubbleCell: UICollectionViewCell {
         textView.textAlignment = .natural
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
+        aurora.release()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        aurora.revalidate()
     }
 
     /// The answer bubble hugs its text tighter than the other rows: the surface is
@@ -173,6 +180,7 @@ final class TextBubbleCell: UICollectionViewCell {
     ) {
         let isUser = role == .user
 
+        aurora.release()
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         applyHorizontalInsets(
@@ -211,8 +219,10 @@ final class TextBubbleCell: UICollectionViewCell {
                     string: text,
                     attributes: Theme.Ramp.attributes(
                         .thought, color: Theme.Color.secondaryLabel))
-                textView.attributedText = cascade.paint(
-                    string, settled: Theme.Color.secondaryLabel)
+                if !paintAurora(string, cascade: cascade, text: text, reasoning: true) {
+                    textView.attributedText = cascade.paint(
+                        string, settled: Theme.Color.secondaryLabel)
+                }
             } else {
                 textView.text = text
             }
@@ -233,8 +243,13 @@ final class TextBubbleCell: UICollectionViewCell {
             textView.textColor = Theme.Color.label
             textView.font = Theme.Ramp.font(.answer)
             let rendered = Self.rendered(text, color: Theme.Color.label)
-            textView.attributedText =
-                cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
+            let drawn =
+                cascade.map { paintAurora(rendered, cascade: $0, text: text, reasoning: false) }
+                ?? false
+            if !drawn {
+                textView.attributedText =
+                    cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
+            }
             textView.linkTextAttributes = [
                 .foregroundColor: Theme.Color.accent,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -250,10 +265,14 @@ final class TextBubbleCell: UICollectionViewCell {
             let string = NSAttributedString(
                 string: text,
                 attributes: Theme.Ramp.attributes(.thought, color: Theme.Color.secondaryLabel))
+            if paintAurora(string, cascade: cascade, text: text, reasoning: true) { return }
+            aurora.release()
             textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
             return
         }
         let rendered = Self.rendered(text, color: Theme.Color.label)
+        if paintAurora(rendered, cascade: cascade, text: text, reasoning: false) { return }
+        aurora.release()
         if textView.textStorage.length == rendered.length,
             textView.textStorage.string == rendered.string
         {
@@ -261,6 +280,12 @@ final class TextBubbleCell: UICollectionViewCell {
         } else {
             textView.attributedText = cascade.paint(rendered, settled: Theme.Color.label)
         }
+    }
+
+    private func paintAurora(
+        _ rendered: NSAttributedString, cascade: CascadeTail, text: String, reasoning: Bool
+    ) -> Bool {
+        aurora.paint(rendered, cascade: cascade, key: (reasoning ? "thought:" : "answer:") + text)
     }
 
     /// Renders inline markdown (bold/italic/code/links) while preserving whitespace, and styles
@@ -674,6 +699,9 @@ final class CodeBlockCell: UICollectionViewCell {
     /// The text the label was last given, which is what decides whether this row is still the row
     /// the reader was reading sideways.
     private var laidOutText = ""
+    private var aurora: AuroraStreamView?
+    private var auroraStack: AuroraTextStack?
+    private var auroraSource: String?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -784,10 +812,14 @@ final class CodeBlockCell: UICollectionViewCell {
         let layout = Self.laidOut(block.source, expanded: expanded)
         rewindIfAnotherBlock(layout.text)
         let base = Self.highlightedCode(layout.text, language: block.language)
-        let storage = NSMutableAttributedString(
-            attributedString: cascade.map { $0.paint(base, settled: Theme.Color.label) } ?? base)
-        paintedStorage = storage
-        codeLabel.attributedText = storage
+        releaseAurora()
+        let drawn = cascade.map { paintAurora(base, cascade: $0, key: layout.text) } ?? false
+        if !drawn {
+            let storage = NSMutableAttributedString(
+                attributedString: cascade.map { $0.paint(base, settled: Theme.Color.label) } ?? base)
+            paintedStorage = storage
+            codeLabel.attributedText = storage
+        }
         codeLabel.washes = Self.washes(layout.text, language: block.language)
         lineNumberLabel.text = Self.lineNumbers(count: layout.shownLines)
         let title =
@@ -857,8 +889,10 @@ final class CodeBlockCell: UICollectionViewCell {
     /// the gutter still numbering fourteen — a frame is allowed to change light, never a size the
     /// layout depends on.
     func applyCascade(_ cascade: CascadeTail, block: CodeBlock, expanded: Bool) {
-        let base = Self.highlightedCode(
-            Self.laidOut(block.source, expanded: expanded).text, language: block.language)
+        let laid = Self.laidOut(block.source, expanded: expanded).text
+        let base = Self.highlightedCode(laid, language: block.language)
+        if paintAurora(base, cascade: cascade, key: laid) { return }
+        releaseAurora()
         if let storage = paintedStorage, storage.length == base.length,
             storage.string == base.string
         {
@@ -870,6 +904,68 @@ final class CodeBlockCell: UICollectionViewCell {
             attributedString: cascade.paint(base, settled: Theme.Color.label))
         paintedStorage = storage
         codeLabel.attributedText = storage
+    }
+
+    /// One frame of the alpha renderer over a block of code.
+    ///
+    /// Code has no inline markdown to protect and no wrapping to be surprised by, so the band is
+    /// simply the tail of what the highlighter produced — the same range, read out of a layout of
+    /// this cell's own and handed to the GPU by being made clear in the label's storage. The
+    /// highlighter's colours survive it: the wave tints what is already there, so a keyword leaving
+    /// the edge lands on the colour it would have had if it had never been in one.
+    private func paintAurora(_ base: NSAttributedString, cascade: CascadeTail, key: String) -> Bool
+    {
+        guard let frame = cascade.aurora, let view = ensureAurora() else { return false }
+        if auroraSource != key {
+            let stack = auroraStack ?? AuroraTextStack()
+            auroraStack = stack
+            codeLabel.attributedText = base
+            paintedStorage = nil
+            layoutIfNeeded()
+            stack.adopt(base)
+            let band = max(0, min(cascade.revealed, base.length) - cascade.span)
+            guard base.length > band,
+                view.adopt(
+                    layoutManager: stack.layoutManager, container: stack.container,
+                    glyphOrigin: .zero, from: band, upTo: base.length)
+            else { return false }
+            let storage = NSMutableAttributedString(attributedString: base)
+            storage.addAttribute(
+                .foregroundColor, value: UIColor.clear,
+                range: NSRange(location: band, length: base.length - band))
+            paintedStorage = storage
+            codeLabel.repaint(storage)
+            auroraSource = key
+        }
+        view.paint(frame)
+        return true
+    }
+
+    private func ensureAurora() -> AuroraStreamView? {
+        if let aurora { return aurora }
+        guard AuroraStreamView.isAvailable else { return nil }
+        let view = AuroraStreamView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        codeScroll.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: codeLabel.topAnchor),
+            view.bottomAnchor.constraint(equalTo: codeLabel.bottomAnchor),
+            view.leadingAnchor.constraint(equalTo: codeLabel.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: codeLabel.trailingAnchor),
+        ])
+        aurora = view
+        return view
+    }
+
+    private func releaseAurora() {
+        guard auroraSource != nil || aurora?.isLit == true else { return }
+        auroraSource = nil
+        aurora?.release()
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        releaseAurora()
     }
 
     private static func lineNumbers(count: Int) -> String {

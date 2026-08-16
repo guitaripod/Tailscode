@@ -13,6 +13,10 @@ struct CascadeTail {
     let phase: Double
     let edge: UIColor
     let spark: UIColor
+    /// The same frame, for the hand that draws the edge instead of tinting the characters behind
+    /// it. Non-nil only while the alpha renderer is the chosen one and this device can run it; a
+    /// cell that cannot use it falls back to `paint`/`repaint` below and loses no meaning.
+    var aurora: AuroraFrame?
 
     /// The row as it should look this frame. Everything past the reveal is drawn at zero alpha
     /// rather than cut off: the paragraph is measured once when it arrives and never again, so no
@@ -147,6 +151,12 @@ final class CascadeDriver {
     private var link: CADisplayLink?
     private var watchdog: Timer?
     private var ultracode = false
+    private var clock = CACurrentMediaTime()
+
+    /// Which hand writes, decided once when the row is taken up rather than asked per frame: a
+    /// setting changed mid-answer would swap renderers under the reader's eye, and the row the
+    /// switch was thrown during is the one row it must not disturb.
+    private var renderer = StreamRenderer.default
 
     /// Called on a frame that changed something, saying whether the reveal itself moved or only the
     /// band did. The controller repaints exactly the live row, and the answer is what tells it
@@ -176,6 +186,7 @@ final class CascadeDriver {
             release()
             return
         }
+        if id != live.id { renderer = StreamRendererSetting.choice }
         live.focus(id, length: length, sealed: sealed, at: CACurrentMediaTime())
         start()
         watch()
@@ -244,9 +255,20 @@ final class CascadeDriver {
     func tail(for id: String) -> CascadeTail? {
         guard live.id == id, Self.motionAllowed else { return nil }
         let edge = CascadeTint.edge(ultracode: ultracode, phase: live.phase)
+        let spark = CascadeTint.spark(for: edge, traits: UITraitCollection.current)
         return CascadeTail(
             revealed: live.revealed, span: StreamCascade.span, phase: live.phase, edge: edge,
-            spark: CascadeTint.spark(for: edge, traits: UITraitCollection.current))
+            spark: spark, aurora: auroraFrame(edge: edge, spark: spark))
+    }
+
+    /// The alpha renderer's own half of the frame, offered only where it can actually be run. A
+    /// device with no Metal device, or a build whose shader did not compile, is handed nothing and
+    /// writes with the settled hand — which is the whole product's floor and says the same thing.
+    private func auroraFrame(edge: UIColor, spark: UIColor) -> AuroraFrame? {
+        guard renderer == .aurora, AuroraStreamView.isAvailable else { return nil }
+        return AuroraFrame(
+            progress: live.progress, phase: live.phase, time: clock, rate: live.rate, edge: edge,
+            spark: spark, motion: true)
     }
 
     private func start() {
@@ -265,6 +287,7 @@ final class CascadeDriver {
 
     @objc private func tick(_ link: CADisplayLink) {
         let before = live.revealed
+        clock = link.timestamp
         guard live.advance(to: link.timestamp) else { return }
         onFrame?(live.revealed != before)
         if !live.isActive { stop() }

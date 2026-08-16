@@ -119,6 +119,7 @@ enum ParityManifest {
         case .homeQuickActions: return .implemented("HomeQuickActions")
         case .usageWidgets: return .implemented("WidgetGlance")
         case .presenceOrb: return .implemented("PresenceOrbView")
+        case .auroraStream: return .implemented("AuroraStreamView")
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")
         case .quickAsk: return .implemented("HomeComposerBar")
