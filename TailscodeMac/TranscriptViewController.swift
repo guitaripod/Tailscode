@@ -775,6 +775,9 @@ final class TranscriptViewController: NSViewController {
         composer.isHidden = true
         cascade.onFrame = { [weak self] in self?.paintCascade() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
+        context.editQueued = { [weak self] id in self?.editQueued(id) }
+        composer.onTakeBackQueued = { [weak self] in self?.takeBackLastQueued() ?? false }
+        composer.isEditingQueued = { [weak self] in self?.editingQueued != nil }
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
             self?.sendPrompt(text, model: model, effort: effort, attachments: attachments)
         }
@@ -943,11 +946,36 @@ final class TranscriptViewController: NSViewController {
 
     /// The prompt is on screen before the server has heard of it. A busy bridge can take seconds
     /// to answer, and a composer that empties into silence reads as a hang.
+    /// Prompts written while a turn was running, held here rather than handed to the server so
+    /// they can still be reworded, reordered or taken back — which is the whole point of them
+    /// being a queue and not a send.
+    private var queue = SendQueue()
+    /// Which waiting message the composer is rewriting. A message taken back and sent again would
+    /// land at the end of the queue, which is not editing but deleting and re-adding.
+    private var editingQueued: UUID?
+
     private func sendPrompt(
         _ text: String, model: ModelSelection?, effort: String?,
         attachments: [PromptAttachment]
     ) {
         guard let conversation else { return }
+        if let id = editingQueued {
+            editingQueued = nil
+            _ = queue.replace(id: id, text: text, attachments: attachments)
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            drainQueue()
+            return
+        }
+        let send = QueuedSend(text: text, model: model, effort: effort, attachments: attachments)
+        // A prompt written while a turn runs is held here, not handed over: a message you can
+        // still change is worth more than a message one place further along.
+        if lastState?.status == .running || lastState?.compaction?.isRunning == true {
+            queue.append(send)
+            MacHaptics.shared.play(.send)
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            scrollToBottom()
+            return
+        }
         MacHaptics.shared.play(.send)
         echoedPrompt = text
         if let state = lastState { apply(state: state, rows: lastFullRows) }
@@ -962,6 +990,41 @@ final class TranscriptViewController: NSViewController {
                 self?.undoEchoedPrompt(text)
             }
         }
+    }
+
+    /// The moment the turn yields, the next thing written goes. Never while one is running and
+    /// never while the composer is holding one open for rewriting: sending it out from under the
+    /// person editing it is the one thing the queue exists to prevent.
+    private func drainQueue() {
+        guard let state = lastState, state.status != .running,
+            state.compaction?.isRunning != true, state.lastFailure == nil, editingQueued == nil
+        else { return }
+        guard let next = queue.takeFirst() else { return }
+        sendPrompt(
+            next.text, model: next.model, effort: next.effort, attachments: next.attachments)
+    }
+
+    /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
+    /// replaces it.
+    private func editQueued(_ id: UUID) {
+        guard let waiting = queue.item(id: id), !waiting.isCommand else { return }
+        guard composer.adoptForEditing(waiting) else {
+            onToast?(Localized.text("Send or clear what is in the composer first."))
+            return
+        }
+        editingQueued = id
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+    }
+
+    /// ↑ in an empty composer takes the last thing written back — the one being reconsidered.
+    func takeBackLastQueued() -> Bool {
+        guard
+            SendQueueReading.upArrowTakesBack(
+                composerText: composer.currentText, queue: queue),
+            let last = queue.items.last
+        else { return false }
+        editQueued(last.id)
+        return true
     }
 
     /// A send that never reached the server is not a turn. The echo is the only thing on screen
@@ -1109,6 +1172,7 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        drainQueue()
     }
 
     /// What the transcript draws: the rows the server has confirmed, plus the prompt this device is
@@ -1135,12 +1199,20 @@ final class TranscriptViewController: NSViewController {
     /// happened, and it belongs below everything that did. Like the echo, it is added on the way
     /// to the screen and never memoized — the server owns it, not this device.
     private func docked(_ rows: [TranscriptRow], state: ConversationState) -> [TranscriptRow] {
-        guard let cutOff = InterruptedTurnReading.read(state.interruption) else { return rows }
         var rows = rows
-        if !rows.isEmpty {
-            rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
+        if let cutOff = InterruptedTurnReading.read(state.interruption) {
+            if !rows.isEmpty {
+                rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
+            }
+            rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
         }
-        rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
+        // What has been written and not sent sits at the very end, in the order it will go.
+        for (index, waiting) in queue.items.enumerated() {
+            rows.append(
+                TranscriptRow(
+                    key: "queued:\(waiting.id.uuidString)",
+                    kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
+        }
         return rows
     }
 

@@ -544,6 +544,10 @@ enum MatrixTheme {
         .card-compaction-failed { border-left: 2px solid \(danger); }
         .card-answerless { border-left: 2px solid \(warn); }
         .response-stats { opacity: 0.62; }
+        .queued-row { opacity: 0.55; padding: 2px 0; border-radius: 4px; }
+        .queued-row:hover { opacity: 0.85; background-color: alpha(\(accent), 0.07); }
+        .queued-rule { background-color: \(textDim); }
+        .queued-hint { color: \(textDim); \(t(.hint)) }
         .response-stat-glyph { color: \(textDim); \(t(.responseStat)) }
         .response-stat-value { color: \(textDim); \(t(.responseStat)) }
         .card-interrupted { border-left: 2px solid \(warn); }

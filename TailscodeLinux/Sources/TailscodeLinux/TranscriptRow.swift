@@ -47,6 +47,9 @@ final class TranscriptContext: @unchecked Sendable {
     /// The words of a turn that said nothing, sent again — the pane's own send, so the retry is a
     /// message like any other rather than a second road into the backend.
     var askAgain: (@Sendable (String) -> Void)?
+    /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
+    /// a transcript that has not happened yet, so it is the one row a press means something on.
+    var editQueued: (@Sendable (UUID) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine. Both go
     /// through the pane, which is the one place that knows which conversation is being looked at.
     var resumeInterrupted: (@Sendable () -> Void)?
@@ -200,6 +203,8 @@ struct TranscriptRow: Hashable {
         case answerless(AnswerlessTurn)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
+        /// Written, not sent: a prompt waiting behind the turn that is running.
+        case queuedSend(QueuedSend, position: Int, of: Int)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -489,6 +494,8 @@ struct TranscriptRow: Hashable {
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):
             return stats.spoken
+        case .queuedSend(let send, _, _):
+            return SendQueueReading.rowTitle(send)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -533,6 +540,8 @@ struct TranscriptRow: Hashable {
             return Self.answerless(turn, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
+        case .queuedSend(let send, let position, let total):
+            return Self.queuedSend(send, position: position, of: total, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -664,7 +673,6 @@ struct TranscriptRow: Hashable {
             })
         gtk_box_append(ptr(column), header)
 
-        let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
         let text = Gtk.markupLabel(
             PangoSyntax.render(body, language: language, palette: MatrixTheme.palette),
             css: "code-body", wrap: false)
@@ -672,8 +680,12 @@ struct TranscriptRow: Hashable {
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC)
         gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
         gtk_scrolled_window_set_propagate_natural_width(op(scroller), 0)
-        if lines > 18, body.count > 600 {
-            gtk_scrolled_window_set_max_content_height(op(scroller), 320)
+        // A block short enough to read whole is drawn whole; only a long one is held to a
+        // screenful, and that height is stated rather than inferred.
+        if !TranscriptBlocks.fitsInline(body) {
+            let height = Int32(TranscriptBlocks.cappedHeight)
+            gtk_scrolled_window_set_min_content_height(op(scroller), height)
+            gtk_scrolled_window_set_max_content_height(op(scroller), height)
         }
         gtk_scrolled_window_set_child(op(scroller), text)
         gtk_box_append(ptr(column), scroller)
@@ -841,6 +853,48 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(column), card)
         gtk_box_append(ptr(column), Gtk.hairline())
         return column
+    }
+
+    /// A prompt that has been written and not sent, drawn as the prompt it will become — same
+    /// accent rule, same words — but dimmed, marked, and pressable, because it is the one row in
+    /// the transcript that is still the reader's to change. Nothing about it may read as sent.
+    private static func queuedSend(
+        _ send: QueuedSend, position: Int, of total: Int, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(rule, "prompt-rule")
+        Gtk.addClass(rule, "queued-rule")
+        gtk_widget_set_size_request(rule, 2, -1)
+
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        let label = Gtk.label(
+            "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(send))", css: "prompt-text",
+            wrap: true)
+        gtk_label_set_xalign(op(label), 0)
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(lines), label)
+        gtk_box_append(
+            ptr(lines), Gtk.label(SendQueueReading.hint, css: "queued-hint", selectable: false))
+        gtk_widget_set_hexpand(lines, 1)
+
+        gtk_box_append(ptr(row), rule)
+        gtk_box_append(ptr(row), lines)
+
+        guard !send.isCommand else {
+            Gtk.addClass(row, "queued-row")
+            return row
+        }
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "queued-row")
+        gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_hexpand(button, 1)
+        gtk_widget_set_tooltip_text(button, SendQueueReading.spoken(send, position: position, of: total))
+        let edit = context.editQueued
+        let id = send.id
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { edit?(id) }
+        return button
     }
 
     /// What the answer above it took: one quiet strip of glyph-and-number, tooltipped with the

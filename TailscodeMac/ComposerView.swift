@@ -12,6 +12,11 @@ final class ComposerView: NSView {
     var onRunCommand: ((AgentCommand, String?, ModelSelection?, String?) -> Void)?
     var onCompactRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
+    /// ↑ from an empty box: the pane takes its last waiting message back for rewriting, and says
+    /// whether it did — the key belongs to the text view otherwise.
+    var onTakeBackQueued: (() -> Bool)?
+    /// Whether the pane is holding a waiting message open in this box.
+    var isEditingQueued: (() -> Bool)?
     var onToast: ((String) -> Void)?
     /// The attachments-in-waiting changed — the status band counts them.
     var onAttachmentsChanged: (() -> Void)?
@@ -183,7 +188,9 @@ final class ComposerView: NSView {
     func sendNow() {
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoing = attachments
-        guard !text.isEmpty || !outgoing.isEmpty else { return }
+        // Emptying the box is how a message being rewritten is taken back, so a send with nothing
+        // in it is a real action while one is open — and nothing at all otherwise.
+        guard !text.isEmpty || !outgoing.isEmpty || isEditingQueued?() == true else { return }
         setEditorText("", caretAtEnd: true)
         if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
@@ -197,6 +204,27 @@ final class ComposerView: NSView {
         }
         refreshAura()
         onSubmitPrompt?(text, chosenModel, chosenEffort, outgoing.map(\.prompt))
+    }
+
+    /// What is in the box, for a caller deciding whether a key means something else.
+    var currentText: String { editor.text }
+
+    func takeBackQueued() -> Bool { onTakeBackQueued?() ?? false }
+
+    /// Takes a waiting message into the box to be rewritten. Refuses while something is half
+    /// typed: a rewrite may not throw away a sentence somebody is in the middle of.
+    func adoptForEditing(_ send: QueuedSend) -> Bool {
+        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        setEditorText(send.text, caretAtEnd: true)
+        editor.focus()
+        attachments = send.attachments.map {
+            PendingAttachment(
+                name: $0.filename ?? "attachment", mime: $0.mime, data: $0.data ?? Data())
+        }
+        syncChips()
+        return true
     }
 
     /// Words handed to the composer from the transcript — the one action a turn that said

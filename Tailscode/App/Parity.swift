@@ -61,7 +61,7 @@ enum ParityManifest {
         case .commandCatalog: return .implemented("CommandCatalogViewController")
         case .attachments: return .implemented("pendingAttachments")
         case .drafts: return .implemented("draftScope")
-        case .sendQueue: return .implemented("flushQueue")
+        case .sendQueue: return .implemented("editQueued")
         case .modelEffortPicker: return .implemented("modelBarButton")
         case .unifiedModelChooser: return .implemented("ModelChooser")
         case .modelEffortDisplay: return .implemented("displayedModel")

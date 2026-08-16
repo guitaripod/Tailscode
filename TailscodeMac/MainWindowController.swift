@@ -1299,6 +1299,11 @@ final class MainWindowController: NSWindowController {
             }
         }
 
+        // ↑ in an empty box takes the last thing written back for rewriting. Only from an empty
+        // box: in a half-typed paragraph that key is moving the caret, and taking it would be the
+        // worse bug by far.
+        if event.keyCode == 126, !control, !shift, composer.takeBackQueued() { return true }
+
         if isReturn, !shift, ComposerView.sendOnReturn || control {
             composer.sendNow()
             return true

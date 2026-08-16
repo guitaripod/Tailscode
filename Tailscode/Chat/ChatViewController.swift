@@ -324,8 +324,20 @@ final class ChatViewController: UIViewController {
 
     override var keyCommands: [UIKeyCommand]? {
         let palette = commandPalette.isHidden ? [] : paletteKeyCommands()
-        guard keyContext == .insert else { return palette.isEmpty ? nil : palette }
-        return palette + KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
+        var takeBack: [UIKeyCommand] = []
+        if commandPalette.isHidden,
+            SendQueueReading.upArrowTakesBack(
+                composerText: composer.currentText, queue: viewModel.queue)
+        {
+            let command = UIKeyCommand(
+                input: UIKeyCommand.inputUpArrow, modifierFlags: [],
+                action: #selector(takeBackLastQueued))
+            command.wantsPriorityOverSystemBehavior = true
+            takeBack.append(command)
+        }
+        guard keyContext == .insert else { return (palette + takeBack).isEmpty ? nil : palette + takeBack }
+        return palette + takeBack
+            + KeyBridge.shared.insertKeyCommands(action: #selector(handleInsertKeyCommand(_:)))
     }
 
     /// Only while the palette is up, and only then claiming priority over the system: the same
@@ -1017,8 +1029,10 @@ final class ChatViewController: UIViewController {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
                 cell.configure(
-                    text: "⏳ \(message.text)", role: .user, reasoning: false)
-                cell.contentView.alpha = 0.5
+                    text: "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(message))",
+                    role: .user, reasoning: false)
+                cell.contentView.alpha = self.editingQueued == message.id ? 0.28 : 0.5
+                cell.accessibilityHint = SendQueueReading.hint
                 return cell
             }
             if id == "thinking" {
@@ -2454,6 +2468,56 @@ final class ChatViewController: UIViewController {
         composer.ultracodeInFlight = viewModel.ultracodeInFlight
     }
 
+    /// Which waiting message the composer is currently rewriting, if any.
+    ///
+    /// Taking a queued message back into the composer and sending it again would put it at the end
+    /// of the queue, which is not editing — it is deleting and re-adding, and it silently reorders
+    /// what somebody wrote. So the composer remembers which entry it holds and the send puts it
+    /// back where it was.
+    private var editingQueued: UUID?
+
+    /// Puts a waiting message in the composer to be rewritten. The entry stays in the queue and
+    /// keeps its place; only sending replaces it.
+    private func editQueued(_ send: QueuedSend) {
+        guard !send.isCommand else { return }
+        editingQueued = send.id
+        composer.isEditingQueued = true
+        composer.setDraft(send.text)
+        composer.becomeFirstResponder()
+        if !send.attachments.isEmpty {
+            pendingAttachments = send.attachments
+            composer.showsAttach = canAttachAnything
+            updateAttachmentStrip()
+        }
+        Theme.Haptics.selection()
+        render(viewModel.state)
+    }
+
+    /// ↑ in an empty composer takes back the last thing written — the one being reconsidered.
+    /// Only from an empty box: in a half-typed paragraph that key is moving the caret, and taking
+    /// it would be the worse bug.
+    @objc private func takeBackLastQueued() {
+        guard
+            SendQueueReading.upArrowTakesBack(
+                composerText: composer.currentText, queue: viewModel.queue),
+            let last = viewModel.queued.last
+        else { return }
+        editQueued(last)
+    }
+
+    private func finishQueuedEdit(_ text: String) -> Bool {
+        guard let id = editingQueued else { return false }
+        editingQueued = nil
+        composer.isEditingQueued = false
+        let attachments = pendingAttachments
+        pendingAttachments = []
+        composer.showsAttach = canAttachAnything
+        updateAttachmentStrip()
+        viewModel.replaceQueued(id: id, text: text, attachments: attachments)
+        DraftStore.clear(draftScope)
+        return true
+    }
+
     /// A model that takes no images can still take files — the agent opens those
     /// on the server — so the affordance survives a switch to a text-only model.
     private var canAttachAnything: Bool {
@@ -3886,6 +3950,7 @@ extension ChatViewController: ComposerViewDelegate {
     /// authority on its own grammar.
     func composerDidSend(_ text: String) {
         hideCommandPalette()
+        if finishQueuedEdit(text) { return }
         switch SlashDispatch.decide(
             text: text, commands: viewModel.serverCommands,
             supportsCompaction: viewModel.supportsCompaction,
@@ -4251,6 +4316,25 @@ extension ChatViewController: PHPickerViewControllerDelegate {
 }
 
 extension ChatViewController: UICollectionViewDelegate {
+    /// A waiting message is the one row in a transcript that is still yours, so touching it opens
+    /// it for rewriting rather than doing nothing. Everything else in the transcript has happened
+    /// and a tap on it means nothing.
+    func collectionView(
+        _ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath
+    ) -> Bool {
+        dataSource.itemIdentifier(for: indexPath)?.hasPrefix("queued:") == true
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath
+    ) {
+        collectionView.deselectItem(at: indexPath, animated: false)
+        guard let id = dataSource.itemIdentifier(for: indexPath),
+            let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
+        else { return }
+        editQueued(message)
+    }
+
     func collectionView(
         _ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
@@ -4275,14 +4359,7 @@ extension ChatViewController: UICollectionViewDelegate {
                     UIAction(
                         title: String(localized: "Edit"), image: UIImage(systemName: "pencil")
                     ) { _ in
-                        guard let self, let removed = self.viewModel.removeQueued(id: message.id)
-                        else { return }
-                        self.composer.setDraft(removed.text)
-                        if !removed.attachments.isEmpty {
-                            self.pendingAttachments.append(contentsOf: removed.attachments)
-                            self.composer.showsAttach = true
-                            self.updateAttachmentStrip()
-                        }
+                        self?.editQueued(message)
                     },
                     UIAction(
                         title: String(localized: "Remove from queue"),

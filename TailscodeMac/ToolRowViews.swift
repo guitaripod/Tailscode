@@ -265,7 +265,11 @@ enum ToolRowView {
         if let output = displayableOutput(call, summary), !output.isEmpty {
             let label = RowKit.wrapping(
                 output, font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.secondaryLabel)
-            column.addArrangedSubview(RowKit.heightCappedScroll(around: label, max: 300))
+            column.addArrangedSubview(
+                TranscriptBlocks.fitsInline(output)
+                    ? label
+                    : RowKit.heightCappedScroll(
+                        around: label, max: TranscriptBlocks.cappedHeight))
             let full = fullOutput(call, summary)
             if let full, full.count > output.count {
                 column.addArrangedSubview(

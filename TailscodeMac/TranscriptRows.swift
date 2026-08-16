@@ -39,6 +39,9 @@ final class TranscriptContext {
     /// The words of a turn that said nothing, sent again — the transcript's own send, so the
     /// retry is a message like any other rather than a second road into the backend.
     var askAgain: ((String) -> Void)?
+    /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
+    /// a transcript that has not happened yet, so it is the one row a press means something on.
+    var editQueued: ((UUID) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine.
     var resumeInterrupted: (() -> Void)?
     var dismissInterrupted: (() -> Void)?
@@ -134,6 +137,8 @@ struct TranscriptRow: Hashable {
         case answerless(AnswerlessTurn)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
+        /// Written, not sent: a prompt waiting behind the turn that is running.
+        case queuedSend(QueuedSend, position: Int, of: Int)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -376,6 +381,8 @@ struct TranscriptRow: Hashable {
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):
             return stats.spoken
+        case .queuedSend(let send, _, _):
+            return SendQueueReading.rowTitle(send)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -420,6 +427,8 @@ struct TranscriptRow: Hashable {
             return Self.answerless(turn, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
+        case .queuedSend(let send, let position, let total):
+            return Self.queuedSend(send, position: position, of: total, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -574,7 +583,8 @@ struct TranscriptRow: Hashable {
 
         let text = RowKit.code(body, language: language)
         let lines = body.split(separator: "\n", omittingEmptySubsequences: false).count
-        let scrolled = RowKit.codeScroll(around: text, cap: lines > 18 && body.count > 600 ? 320 : nil)
+        let scrolled = RowKit.codeScroll(
+            around: text, cap: TranscriptBlocks.fitsInline(body) ? nil : TranscriptBlocks.cappedHeight)
         column.addArrangedSubview(scrolled)
         return column
     }
@@ -635,6 +645,36 @@ struct TranscriptRow: Hashable {
 
         column.addArrangedSubview(card)
         column.addArrangedSubview(RowKit.hairline())
+        return column
+    }
+
+    /// A prompt that has been written and not sent, drawn as the prompt it will become — same
+    /// words, same place — but dimmed, marked, and pressable, because it is the one row in the
+    /// transcript that is still the reader's to change. Nothing about it may read as sent.
+    @MainActor
+    private static func queuedSend(
+        _ send: QueuedSend, position: Int, of total: Int, context: TranscriptContext
+    ) -> NSView {
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        column.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(
+            RowKit.wrapping(
+                "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(send))",
+                font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel))
+        column.addArrangedSubview(
+            RowKit.label(
+                SendQueueReading.hint, font: MacTheme.Ramp.font(.hint),
+                color: MacTheme.Color.tertiaryLabel))
+        column.setAccessibilityElement(true)
+        column.setAccessibilityRole(.group)
+        column.setAccessibilityLabel(SendQueueReading.spoken(send, position: position, of: total))
+        column.toolTip = SendQueueReading.hint
+        guard !send.isCommand, let edit = context.editQueued else { return column }
+        let id = send.id
+        column.addGestureRecognizer(RowKit.PressGesture { edit(id) })
         return column
     }
 
@@ -902,6 +942,24 @@ enum RowKit {
 
     /// A quiet inline action — "copy", "read summary", "open full output" — drawn as tinted text,
     /// not a bezel, because the transcript is content and bezels are chrome.
+    /// A click on a plain view, carrying the closure it should run. AppKit's gesture recognizers
+    /// take a target and a selector, and a row built in a static function has neither — so the
+    /// gesture is its own target and holds the closure itself.
+    final class PressGesture: NSClickGestureRecognizer {
+        private let handler: () -> Void
+
+        init(_ handler: @escaping () -> Void) {
+            self.handler = handler
+            super.init(target: nil, action: nil)
+            self.target = self
+            self.action = #selector(fire)
+        }
+
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+        @objc private func fire() { handler() }
+    }
+
     static func linkButton(_ title: String, action: @escaping () -> Void) -> NSButton {
         let button = ActionButton(title: title, action: action)
         button.isBordered = false

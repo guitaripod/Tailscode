@@ -400,12 +400,12 @@ final class ChatViewModel {
         let vmTag = String(UInt(bitPattern: ObjectIdentifier(self).hashValue) & 0xffff, radix: 16)
         guard streamTask == nil else {
             AppLogger.chat.info(
-                "start reuse vm=\(vmTag) queued=\(queued.count) echoes=\(localEchoes.count)")
+                "start reuse vm=\(vmTag) queued=\(queue.count) echoes=\(localEchoes.count)")
             onState?(state)
             return
         }
         AppLogger.chat.info(
-            "start fresh vm=\(vmTag) queued=\(queued.count) echoes=\(localEchoes.count)")
+            "start fresh vm=\(vmTag) queued=\(queue.count) echoes=\(localEchoes.count)")
         streamGeneration += 1
         let generation = streamGeneration
         streamTask = Task { [weak self] in
@@ -442,7 +442,7 @@ final class ChatViewModel {
                     keepAlive: self)
                 self.syncLiveActivity(with: state)
                 if state.status != .running { self.flushQueue() }
-                if !self.isBusy, !awaiting, !self.isBound, self.queued.isEmpty {
+                if !self.isBusy, !awaiting, !self.isBound, self.queue.isEmpty {
                     self.stop()
                 }
             }
@@ -551,27 +551,38 @@ final class ChatViewModel {
         }
     }
 
-    struct QueuedMessage {
-        let id = UUID()
-        let text: String
-        let model: ModelSelection?
-        let effort: String?
-        let attachments: [PromptAttachment]
-    }
+    /// The messages written while a turn was running. Held here rather than handed to the server
+    /// precisely so they can still be changed: the next thing you type is the thing you most often
+    /// want to reword once you have read another paragraph of the answer.
+    private(set) var queue = SendQueue()
+    private var lastSent: QueuedSend?
 
-    private(set) var queued: [QueuedMessage] = []
-    private var lastSent: QueuedMessage?
+    var queued: [QueuedSend] { queue.items }
 
-    func removeQueued(id: UUID) -> QueuedMessage? {
-        guard let index = queued.firstIndex(where: { $0.id == id }) else { return nil }
-        let removed = queued.remove(at: index)
-        onState?(state)
+    @discardableResult
+    func removeQueued(id: UUID) -> QueuedSend? {
+        let removed = queue.remove(id: id)
+        if removed != nil { onState?(state) }
         return removed
     }
 
+    /// The last thing written, taken back into the composer — what ↑ from an empty box means.
+    @discardableResult
+    func takeBackLastQueued() -> QueuedSend? {
+        let taken = queue.takeLast()
+        if taken != nil { onState?(state) }
+        return taken
+    }
+
+    /// Rewrites a waiting message in place, keeping its turn in the order.
+    func replaceQueued(id: UUID, text: String, attachments: [PromptAttachment]) {
+        guard queue.replace(id: id, text: text, attachments: attachments) else { return }
+        onState?(state)
+    }
+
     private func flushQueue() {
-        guard !isBusy, !queued.isEmpty, !queueHeldAfterFailure else { return }
-        let next = queued.removeFirst()
+        guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure else { return }
+        guard let next = queue.takeFirst() else { return }
         onState?(state)
         deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
@@ -585,11 +596,11 @@ final class ChatViewModel {
     /// server answers again. With messages already waiting behind it, the
     /// failure returns to the head of the queue instead of the composer, so
     /// the user's intended order survives.
-    private func recoverFailedSend(_ pending: QueuedMessage) {
-        if queued.isEmpty {
+    private func recoverFailedSend(_ pending: QueuedSend) {
+        if queue.isEmpty {
             onSendFailed?(pending.text)
         } else {
-            queued.insert(pending, at: 0)
+            queue.requeueAtHead(pending)
             queueHeldAfterFailure = true
             onState?(state)
         }
@@ -633,7 +644,8 @@ final class ChatViewModel {
         attachments: [PromptAttachment] = []
     ) {
         if isBusy {
-            queued.append(QueuedMessage(text: text, model: model, effort: effort, attachments: attachments))
+            queue.append(
+                QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
             onState?(state)
             return
         }
@@ -674,7 +686,7 @@ final class ChatViewModel {
         sendGeneration += 1
         let generation = sendGeneration
         dismissedFailure = nil
-        let pending = QueuedMessage(
+        let pending = QueuedSend(
             text: text, model: model, effort: effort, attachments: attachments)
         lastSent = pending
         let echo = LocalEcho(

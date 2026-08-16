@@ -205,13 +205,7 @@ enum ToolRowView {
         }
 
         if let output = displayableOutput(call, summary), !output.isEmpty {
-            let label = Gtk.label(output, css: "tool-output", wrap: true)
-            let scroller = gtk_scrolled_window_new()!
-            gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-            gtk_scrolled_window_set_max_content_height(op(scroller), 300)
-            gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
-            gtk_scrolled_window_set_child(op(scroller), label)
-            gtk_box_append(ptr(column), scroller)
+            gtk_box_append(ptr(column), outputBlock(output))
             if let full = fullOutput(call, summary), full.count > 1500 {
                 let present = context.presentText
                 let name = call.name
@@ -232,6 +226,27 @@ enum ToolRowView {
 
     private static func fullOutput(_ call: ToolCall, _ summary: ToolCallSummary) -> String? {
         call.status == .error ? call.sanitizedOutput : summary.displayOutput
+    }
+
+    /// What a tool said, given room to be read.
+    ///
+    /// A short output is a label in the column and nothing else — it wraps, it grows, and it is
+    /// there. Only a long one goes inside a scroller, and that scroller is told its exact height
+    /// rather than asked to work one out: `propagate-natural-height` measures a wrapping label at
+    /// its *unwrapped* width, which for any real command output is one very long line, so the box
+    /// collapsed to a couple of lines with a scrollbar beside it. Fixing the height is the whole
+    /// fix; the reader gets a screenful and scrolls inside it.
+    private static func outputBlock(_ output: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(output, css: "tool-output", wrap: true)
+        gtk_label_set_xalign(op(label), 0)
+        guard !TranscriptBlocks.fitsInline(output) else { return label }
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        let height = Int32(TranscriptBlocks.cappedHeight)
+        gtk_scrolled_window_set_min_content_height(op(scroller), height)
+        gtk_scrolled_window_set_max_content_height(op(scroller), height)
+        gtk_scrolled_window_set_child(op(scroller), label)
+        return scroller
     }
 
     private static func displayableOutput(_ call: ToolCall, _ summary: ToolCallSummary) -> String? {

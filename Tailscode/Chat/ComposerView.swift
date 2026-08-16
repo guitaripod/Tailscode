@@ -312,11 +312,16 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// The hardware keyboard's send — the same path as the button, so busy-state and haptics
     /// behave identically.
+    /// Whether the chat is holding a waiting message open in this box.
+    var isEditingQueued = false
+
     func triggerSend() { sendTapped() }
 
     @objc private func sendTapped() {
         let text = trimmed
-        if text.isEmpty, !carriesAttachments {
+        // Emptying the box is how a message being rewritten is taken back, so a send with nothing
+        // in it is a real action while one is open — and the stop button otherwise.
+        if text.isEmpty, !carriesAttachments, !isEditingQueued {
             if isBusy { delegate?.composerDidTapStop() }
             return
         }

@@ -48,6 +48,14 @@ final class ChatPane: @unchecked Sendable {
     private var git: GitState?
     private var contextEstimate: Int?
     private var echoedPrompt: String?
+    /// Prompts written while a turn was running, held here rather than handed to the server so
+    /// they can still be reworded, reordered or taken back — which is the whole point of them
+    /// being a queue and not a send.
+    private var queue = SendQueue()
+    /// Which waiting message the composer is rewriting. A message taken back and sent again would
+    /// land at the end of the queue, which is not editing but deleting and re-adding, and it
+    /// silently reorders what somebody wrote.
+    private var editingQueued: UUID?
     private var pendingFirstMessage:
         (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var notice: String?
@@ -434,6 +442,9 @@ final class ChatPane: @unchecked Sendable {
         }
         context.toast = { [weak self] text in
             Gtk.onMain { [weak self] in self?.host?.toast(text) }
+        }
+        context.editQueued = { [weak self] id in
+            Gtk.onMain { [weak self] in self?.editQueued(id) }
         }
         context.askAgain = { [weak self] words in
             Gtk.onMain { [weak self] in self?.askAgain(words) }
@@ -1044,7 +1055,12 @@ final class ChatPane: @unchecked Sendable {
                         .parts.compactMap(\.text).joined(separator: "\n")),
                 state: state, windowActive: host?.windowIsActive ?? false)
         }
-        var rows = rows
+        // Everything this device docks at the end — the echo, the cut-off card, the queue — is
+        // added on the way to the screen and then memoized in `lastFullRows`, and three callers
+        // hand that memo straight back in. Taking them off first is what makes this idempotent:
+        // without it a re-entrant apply appends a second copy and every consumer downstream, which
+        // assumes one row per key, tears.
+        var rows = rows.filter { !Self.dockedKey($0.key) }
         if let echoedPrompt {
             if state.messages.contains(where: {
                 $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
@@ -1064,6 +1080,13 @@ final class ChatPane: @unchecked Sendable {
                 rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
             }
             rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
+        }
+        // What has been written and not sent sits at the very end, in the order it will go.
+        for (index, waiting) in queue.items.enumerated() {
+            rows.append(
+                TranscriptRow(
+                    key: "queued:\(waiting.id.uuidString)",
+                    kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
         }
         lastFullRows = rows
         refreshWorkflowRuns()
@@ -1097,6 +1120,74 @@ final class ChatPane: @unchecked Sendable {
         refreshPills()
         updateStatus()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        drainQueue(state)
+    }
+
+    /// The moment the turn yields, the next thing written goes. Never while one is running and
+    /// never while the composer is holding one open for rewriting: sending it out from under the
+    /// person editing it is the one thing the queue exists to prevent.
+    private func drainQueue(_ state: ConversationState) {
+        guard state.status != .running, state.compaction?.isRunning != true,
+            state.lastFailure == nil, editingQueued == nil, let conversation
+        else { return }
+        guard let next = queue.takeFirst() else { return }
+        deliver(next, through: conversation)
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+    }
+
+    private func deliver(_ send: QueuedSend, through conversation: AgentConversation) {
+        echoedPrompt = send.text
+        if Ultracode.invokes(send.text) || send.effort == Ultracode.effortLevel {
+            ultracodeInFlight = true
+            refreshUltracodeAura()
+        }
+        // Only prompts are ever queued here: a slash command is answered before the composer
+        // reaches the queue, by the server's own grammar.
+        Task {
+            try? await conversation.send(
+                send.text, model: send.model, reasoningEffort: send.effort,
+                attachments: send.attachments)
+        }
+    }
+
+    /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
+    /// replaces it.
+    private func editQueued(_ id: UUID) {
+        guard let waiting = queue.item(id: id), !waiting.isCommand else { return }
+        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard pending.isEmpty else {
+            setNotice(Localized.text("Send or clear what is in the composer first."))
+            return
+        }
+        editingQueued = id
+        gtk_text_buffer_set_text(
+            gtk_text_view_get_buffer(ptr(entryView)), waiting.text, -1)
+        vim.reset(to: waiting.text, cursor: waiting.text.count, mode: .insert)
+        updateVimBadge()
+        gtk_widget_grab_focus(entryView)
+        attachments = waiting.attachments.map {
+            PendingAttachment(
+                name: $0.filename ?? "attachment", mime: $0.mime, data: $0.data ?? Data())
+        }
+        renderAttachments()
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+    }
+
+    /// ↑ in an empty composer takes back the last thing written — the one being reconsidered.
+    /// Only from an empty box: in a half-typed paragraph that key is moving the caret.
+    func takeBackLastQueued() -> Bool {
+        guard
+            SendQueueReading.upArrowTakesBack(
+                composerText: composerText(), queue: queue),
+            let last = queue.items.last
+        else { return false }
+        editQueued(last.id)
+        return true
+    }
+
+    /// Whether a row is one this device docks at the end rather than one the server reported.
+    private static func dockedKey(_ key: String) -> Bool {
+        key.hasPrefix("echo:") || key.hasPrefix("queued:") || key.hasPrefix("interrupted")
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
@@ -2481,6 +2572,13 @@ final class ChatPane: @unchecked Sendable {
             return true
         }
 
+        // ↑ in an empty box takes the last thing written back for rewriting. Only from an empty
+        // box: in a half-typed paragraph that key is moving the caret, and taking it would be the
+        // worse bug by far.
+        if keyval == Keymap.up || keyval == 0xFF97, !control, !shift, takeBackLastQueued() {
+            return true
+        }
+
         let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
         if isReturn, !shift, Preferences.sendOnReturn || control {
             sendFromComposer()
@@ -2813,29 +2911,43 @@ final class ChatPane: @unchecked Sendable {
     func sendFromComposer() {
         let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoing = attachments
-        guard !text.isEmpty || !outgoing.isEmpty, let conversation else { return }
+        // Emptying the box is how a message being rewritten is taken back, so a send with nothing
+        // in it is a real action while one is open — and nothing at all otherwise.
+        guard !text.isEmpty || !outgoing.isEmpty || editingQueued != nil, let conversation
+        else { return }
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
         if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
+        if let id = editingQueued {
+            editingQueued = nil
+            if let draftScope { DraftStore.clear(draftScope) }
+            attachments = []
+            renderAttachments()
+            _ = queue.replace(id: id, text: text, attachments: outgoing.map(\.prompt))
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            drainQueue(lastState ?? ConversationState())
+            return
+        }
         if handleSlashCommand(text) { return }
-        echoedPrompt = text
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
-        scrollToBottom()
         attachments = []
         renderAttachments()
-        let model = chosenModel
-        let effort = chosenEffort
-        if Ultracode.invokes(text) || effort == Ultracode.effortLevel {
-            ultracodeInFlight = true
+        let send = QueuedSend(
+            text: text, model: chosenModel, effort: chosenEffort,
+            attachments: outgoing.map(\.prompt))
+        // A prompt written while a turn runs is held here, not handed over: a message you can
+        // still change is worth more than a message one place further along.
+        guard lastState?.status != .running, lastState?.compaction?.isRunning != true else {
+            queue.append(send)
+            if let state = lastState { apply(state: state, rows: lastFullRows) }
+            scrollToBottom()
+            return
         }
+        if let state = lastState { apply(state: state, rows: lastFullRows) }
+        scrollToBottom()
+        deliver(send, through: conversation)
         refreshUltracodeAura()
-        Task {
-            try? await conversation.send(
-                text, model: model, reasoningEffort: effort,
-                attachments: outgoing.map(\.prompt))
-        }
     }
 
     /// The words of a turn that said nothing, asked again. They go through the composer rather
