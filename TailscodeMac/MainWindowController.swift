@@ -204,15 +204,36 @@ final class MainWindowController: NSWindowController {
         focusedPaneChanged()
     }
 
-    /// A remembered arrangement put back: the tree it had, every pane bound to the chat it was
-    /// holding, and any page or stream that was open beside them. The panes bind through the same
-    /// machinery a launch restore uses, so a member whose server cannot answer right now keeps its
-    /// pane and resolves on the next refresh instead of failing the whole gesture.
+    /// The row is the window's own arrangement, so pressing it goes to it rather than rebuilding
+    /// it: the split is already on screen, and tearing down live streams to reopen the same chats
+    /// would cost the reader exactly the panes they asked for.
     private func restoreSplitTab(_ tab: SplitTab) {
-        for member in tab.members { SessionSeenStore.markSeen(member.sessionID) }
-        pendingBindings = splitPanes.restore(tab.snapshot)
-        resolvePendingBindings()
-        splitPanes.persist()
+        transcript.focusComposer()
+        focusedPaneChanged()
+    }
+
+    /// A member pressed on the split's row: its pane is already on screen, so the press goes to
+    /// it — focused, keyboard and all.
+    private func goToSplitMember(_ entry: SessionEntry) {
+        guard let pane = splitPanes.pane(showing: entry.session.id) else {
+            guard
+                let profile = ServerDirectory.shared.profiles.first(where: {
+                    $0.id == entry.profileID
+                }), let backend = ServerDirectory.shared.backend(for: profile)
+            else { return }
+            handleOpen(entry, backend: backend)
+            return
+        }
+        splitPanes.focus(pane, grabKeyboard: true)
+        focusedPaneChanged()
+    }
+
+    /// The split taken apart in one gesture: every pane but the kept one closes, and the merged
+    /// row separates back into the plain rows it stood for. Named a chat, the pane showing it is
+    /// the one that inherits the window.
+    private func unsplit(keeping entry: SessionEntry?) {
+        let keep = entry.flatMap { splitPanes.pane(showing: $0.session.id) } ?? splitPanes.active
+        splitPanes.collapse(to: keep)
         focusedPaneChanged()
     }
 
@@ -758,6 +779,19 @@ final class MainWindowController: NSWindowController {
         }
         sidebar.onOpenSplitTab = { [weak self] tab in
             self?.restoreSplitTab(tab)
+        }
+        sidebar.onGoToMember = { [weak self] entry in
+            self?.goToSplitMember(entry)
+        }
+        sidebar.onUnsplit = { [weak self] keeping in
+            self?.unsplit(keeping: keeping)
+        }
+        sidebar.splitTabSource = { [weak self] in
+            guard let self, self.splitPanes.paneCount > 1 else { return nil }
+            return SplitTab(snapshot: self.splitPanes.snapshot())
+        }
+        splitPanes.onLayoutChanged = { [weak self] in
+            self?.sidebar.noteLayoutChanged()
         }
         sidebar.onOpenInSplit = { [weak self] entry in
             self?.openInNewSplit(entry)

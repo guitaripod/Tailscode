@@ -101,6 +101,20 @@ final class SplitHost: @unchecked Sendable {
         persist()
     }
 
+    /// The whole tree collapsed onto one pane: every other pane closes, the kept one inherits
+    /// the window and the focus. This is the unsplit gesture — one press, not a close per pane.
+    func collapse(to keep: ChatPane) {
+        guard layout.contains(keep.id) else { return }
+        for id in layout.paneIDs where id != keep.id {
+            guard layout.close(id) != nil else { continue }
+            if let pane = panes.removeValue(forKey: id) { pane.shutdown() }
+        }
+        layout.focus(keep.id)
+        rebuild()
+        host?.focusedPaneChanged()
+        persist()
+    }
+
     /// Closes the focused pane; its conversation stops streaming and the sibling inherits the
     /// space. The last pane refuses — a window with no conversation surface is not this app.
     func closeActive() {
@@ -447,15 +461,10 @@ final class SplitHost: @unchecked Sendable {
 
     /// A lone pane needs no layout written — except when it is a slot, which is the one thing a
     /// single pane can hold that the chat list cannot restore on its own.
-    ///
-    /// The same moment is where an arrangement becomes something the chat list can offer back:
-    /// a window holding several conversations is recorded as one tab, so a split survives the
-    /// window moving on rather than having to be built again by hand.
     func persist() {
         let snapshot = snapshot()
         guard let encoded = snapshot.encoded else { return }
         let worthKeeping = paneCount > 1 || !snapshot.videos.isEmpty || !snapshot.pages.isEmpty
         SettingsFile.set(worthKeeping ? encoded : nil, forKey: SplitSnapshot.defaultsKey)
-        if SplitTabStore.record(snapshot) != nil { SettingsFile.capture() }
     }
 }

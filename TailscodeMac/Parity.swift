@@ -19,7 +19,7 @@ enum ParityManifest {
         case .deleteSession: return .implemented("deleteSession")
         case .bulkSelection: return .implemented("SidebarBulkBar")
         case .bulkSplit: return .implemented("openMarkedSplit")
-        case .splitTabs: return .implemented("restoreSplitTab")
+        case .splitTabs: return .implemented("goToSplitMember")
         case .renameSession: return .implemented("renameSession")
         case .forkSession: return .implemented("forkSession")
         case .transcriptSearch: return .implemented("runTranscriptSearch")

@@ -105,6 +105,26 @@ final class SplitPaneHost: NSViewController {
         return fresh
     }
 
+    /// The whole tree collapsed onto one pane: every other pane closes, the kept one inherits
+    /// the window and the focus. This is the unsplit gesture — one press, not a close per pane.
+    func collapse(to keep: TranscriptViewController) {
+        guard let keepID = panes.first(where: { $0.value === keep })?.key,
+            layout.contains(keepID)
+        else { return }
+        for id in layout.paneIDs where id != keepID {
+            guard layout.close(id) != nil else { continue }
+            if let pane = panes.removeValue(forKey: id) {
+                pane.shutdownPane()
+                pane.removeFromParent()
+                pane.view.removeFromSuperview()
+            }
+        }
+        layout.focus(keepID)
+        rebuild()
+        onFocusChanged?()
+        persist()
+    }
+
     /// Closes the focused pane; its conversation stops streaming and the sibling inherits the
     /// space. The last pane refuses — a window with no conversation surface is not this app.
     func closeActive() {
@@ -312,13 +332,8 @@ final class SplitPaneHost: NSViewController {
 
     /// The same key and shape the Linux desktop persists, so both restore the same arrangement.
     /// A lone pane clears the record: the plain window needs no layout file.
-    ///
-    /// The same moment is where an arrangement becomes something the chat list can offer back: a
-    /// window holding several conversations is recorded as one tab, so a split survives the window
-    /// moving on rather than having to be built again by hand.
     func persist() {
         let current = snapshot()
-        SplitTabStore.record(current)
         if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty,
             let encoded = current.encoded
         {

@@ -856,6 +856,13 @@ final class MainWindow: @unchecked Sendable {
         renderSidebar()
     }
 
+    /// A pane changed which conversation it holds. The layout on disk carries the sessions, so a
+    /// relaunch restores what the panes were actually showing, and the chat list's merged row
+    /// re-reads its members from the same snapshot.
+    func paneRebound() {
+        splitHost.persist()
+    }
+
     /// Watches a conversation whose pane moved on, so a turn still in flight keeps its LIVE NOW
     /// seat until it settles. A pane switching chats (or closing) stops streaming, and a listing
     /// — opencode's especially — cannot say a turn is running; this keeps the one subscription
@@ -1194,7 +1201,7 @@ final class MainWindow: @unchecked Sendable {
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
         let sections = SplitTabGrouping.apply(
-            to: grouped, tabs: showingArchive ? [] : SplitTabStore.all())
+            to: grouped, tab: showingArchive ? nil : SplitTab(snapshot: splitHost.snapshot()))
         visible = sections.flatMap(\.1)
         marks.prune(to: visibleEntries)
         syncCursorToSelection()
@@ -1458,7 +1465,7 @@ final class MainWindow: @unchecked Sendable {
                 onOpenMember: { [weak self] index in
                     Gtk.onMain { [weak self] in
                         guard let self, index < row.members.count else { return }
-                        self.open(row.members[index].entry)
+                        self.goToMember(row.members[index].entry)
                     }
                 },
                 onMark: { [weak self] in
@@ -1479,61 +1486,73 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// A remembered arrangement put back: the tree it had, every pane bound to the chat it was
-    /// holding, and any page or stream that was open beside them. A member whose server cannot
-    /// answer right now keeps its pane and its placeholder rather than failing the whole gesture —
-    /// the window's shape is what was asked for, and the listing catches up on its own.
-    private func restoreSplit(_ tab: SplitTab) {
-        let bindings = splitHost.restore(tab.snapshot)
-        guard !bindings.isEmpty else { return }
-        for (pane, binding) in bindings {
-            guard
-                let entry = entries.first(where: {
-                    $0.profileID == binding.profileID && $0.session.id == binding.sessionID
-                })
-            else { continue }
-            SessionSeenStore.markSeen(entry.session.id)
-            splitHost.panes[pane]?.open(entry)
+    /// The split collapsed onto one of its chats: that pane inherits the window, everything else
+    /// closes, and the list separates. A member no pane is showing — the tree changed under the
+    /// menu — is opened plainly instead of doing nothing.
+    private func unsplit(keeping entry: SessionEntry) {
+        if let pane = splitHost.pane(showing: entry.session.id) {
+            splitHost.collapse(to: pane)
+        } else {
+            splitHost.collapse(to: splitHost.activePane)
+            open(entry)
         }
-        splitHost.persist()
-        marks.clear()
         lastSidebar = nil
         renderSidebar()
-        focusedPaneChanged()
-        splitHost.activePane.focusTranscript()
     }
 
-    /// The menu on a remembered split: what it can be spent on as a selection, the arrangement
-    /// itself, each chat inside it, and the way to stop the list grouping them at all.
+    /// A member pressed on the split's row: its pane is already on screen, so the press goes to
+    /// it — focused, keyboard and all — rather than opening the same chat a second time in
+    /// whichever pane happened to hold the accent.
+    private func goToMember(_ entry: SessionEntry) {
+        if let pane = splitHost.pane(showing: entry.session.id) {
+            focused = .transcript
+            splitHost.focus(pane, grabKeyboard: true)
+            SessionSeenStore.markSeen(entry.session.id)
+            renderSidebar()
+            return
+        }
+        open(entry)
+    }
+
+    /// The row is the window's own arrangement, so pressing it goes to it rather than rebuilding
+    /// it: the split is already on screen, and tearing down live streams to reopen the same chats
+    /// would cost the reader exactly the panes they asked for.
+    private func restoreSplit(_ tab: SplitTab) {
+        focused = .transcript
+        splitHost.activePane.focusTranscript()
+        focusedPaneChanged()
+    }
+
+    /// The split taken apart in one gesture: every pane but the focused one closes, and the
+    /// merged row separates back into the plain rows it stood for — the chats themselves are
+    /// exactly where they always were.
+    private func unsplitAll() {
+        splitHost.collapse(to: splitHost.activePane)
+        lastSidebar = nil
+        renderSidebar()
+    }
+
+    /// The menu on the split's row: what it can be spent on as a selection, each chat inside it
+    /// on its own, and the one gesture that takes the arrangement apart.
     private func presentTabMenu(_ row: SplitTabRow, rowBits: UInt, x: Double, y: Double) {
         guard let raw = UnsafeMutableRawPointer(bitPattern: rowBits) else { return }
         let offsetY = tailscode_widget_offset_y(ptr(raw), sidebarList)
         guard offsetY >= 0 else { return }
-        let tab = row.tab
         var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = bulkMenuRows()
-        rows.append(
-            (Localized.text("Open as one split"), row.lead,
-             { [weak self] in
-                 Gtk.onMain { [weak self] in self?.restoreSplit(tab) }
-             }))
         for member in row.members {
             let entry = member.entry
             rows.append(
-                (Localized.text("Open just %@", member.title), member.facets().lead,
+                (Localized.text("Open just %@", member.title),
+                 Localized.text("Unsplit down to this one chat"),
                  { [weak self] in
-                     Gtk.onMain { [weak self] in self?.open(entry) }
+                     Gtk.onMain { [weak self] in self?.unsplit(keeping: entry) }
                  }))
         }
         rows.append(
-            (Localized.text("Forget this split"),
-             Localized.text("The chats stay; the list stops grouping them"),
+            (Localized.text("Unsplit"),
+             Localized.text("Back to one pane; the chats keep their own rows"),
              { [weak self] in
-                 Gtk.onMain { [weak self] in
-                     SplitTabStore.forget(identity: tab.identity)
-                     SettingsFile.capture()
-                     self?.lastSidebar = nil
-                     self?.renderSidebar()
-                 }
+                 Gtk.onMain { [weak self] in self?.unsplitAll() }
              }))
         Gtk.contextMenu(on: sidebarList, x: x + 4, y: offsetY + y, rows: rows)
     }

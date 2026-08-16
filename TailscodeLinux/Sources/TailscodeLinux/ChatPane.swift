@@ -795,6 +795,7 @@ final class ChatPane: @unchecked Sendable {
         agentStreamSessionID = nil
         Trace.mark("open pane ready")
         host?.paneOpened(self)
+        host?.paneRebound()
         Gtk.onMain { [weak self] in self?.host?.scheduleSidebarRender() }
 
         let sessionID = entry.session.id

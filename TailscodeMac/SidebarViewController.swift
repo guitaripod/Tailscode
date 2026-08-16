@@ -27,8 +27,16 @@ final class SidebarViewController: NSViewController {
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
-    /// A remembered arrangement pressed in the list: the window puts it back whole.
+    /// The split's own row pressed: the arrangement is already on screen, so the window goes to
+    /// it rather than rebuilding it.
     var onOpenSplitTab: ((SplitTab) -> Void)?
+    /// A member of the split pressed: jump to the pane that is showing it.
+    var onGoToMember: ((SessionEntry) -> Void)?
+    /// The unsplit gesture: back to one pane, keeping the given chat when one is named.
+    var onUnsplit: ((SessionEntry?) -> Void)?
+    /// The window's current arrangement, read live at every render — the merged row exists
+    /// exactly as long as the split does.
+    var splitTabSource: (() -> SplitTab?)?
     var onToast: ((String) -> Void)?
     /// The standing mark was touched: the Update Center is the whole of what it leads to.
     var onOpenUpdates: (() -> Void)?
@@ -433,6 +441,12 @@ final class SidebarViewController: NSViewController {
     /// A pane's stream said something new. The list only rebuilds when what it would say about a
     /// conversation actually changed, because a running turn reports on every chunk and rebuilding
     /// the whole table per chunk is the one thing this list must never do.
+    /// The window's arrangement changed — a split, an unsplit, a pane rebound. The merged row is
+    /// a function of it, so the list re-reads; the render diff keeps a no-op cheap.
+    func noteLayoutChanged() {
+        render()
+    }
+
     func notePresenceChanged() {
         let presence = presenceSource?() ?? [:]
         guard presence != lastPresence else { return }
@@ -644,7 +658,7 @@ final class SidebarViewController: NSViewController {
             ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
             : groupIntoSections(active).map { ($0.0.title, $0.1) }
         let sections = SplitTabGrouping.apply(
-            to: grouped, tabs: showingArchive ? [] : SplitTabStore.all())
+            to: grouped, tab: showingArchive ? nil : splitTabSource?())
         visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
         syncCursorToSelection()
 
@@ -1199,7 +1213,8 @@ extension SidebarViewController: NSTableViewDelegate {
                             && $0.entry.session.id == binding.sessionID
                     })
                 else { return }
-                self.open(entry.entry)
+                SessionSeenStore.markSeen(entry.entry.session.id)
+                self.onGoToMember?(entry.entry)
             })
     }
 
@@ -1345,45 +1360,34 @@ extension SidebarViewController: NSMenuDelegate {
                 destructive: true, action: #selector(menuDeleteMarked)))
     }
 
-    /// The menu on a remembered split: the arrangement itself, each chat inside it, and the way
-    /// to stop the list grouping them at all. The members are held on the controller so the items
-    /// can act without a target per row.
+    /// The menu on the split's row: each chat inside it on its own, and the one gesture that
+    /// takes the arrangement apart. The members are held on the controller so the items can act
+    /// without a target per row.
     private func buildTabMenu(_ menu: NSMenu, for model: SplitTabRow) {
         menuTab = model
-        menu.addItem(
-            menuItem(
-                Localized.text("Open as one split"), subtitle: model.lead,
-                action: #selector(menuOpenTab)))
         for (index, member) in model.members.enumerated() {
             let item = menuItem(
                 Localized.text("Open just %@", member.title),
-                subtitle: member.facets().lead, action: #selector(menuOpenTabMember(_:)))
+                subtitle: Localized.text("Unsplit down to this one chat"),
+                action: #selector(menuOpenTabMember(_:)))
             item.tag = index
             menu.addItem(item)
         }
         menu.addItem(.separator())
         menu.addItem(
             menuItem(
-                Localized.text("Forget this split"),
-                subtitle: Localized.text("The chats stay; the list stops grouping them"),
-                action: #selector(menuForgetTab)))
-    }
-
-    @objc private func menuOpenTab() {
-        guard let tab = menuTab?.tab else { return }
-        onOpenSplitTab?(tab)
+                Localized.text("Unsplit"),
+                subtitle: Localized.text("Back to one pane; the chats keep their own rows"),
+                action: #selector(menuUnsplit)))
     }
 
     @objc private func menuOpenTabMember(_ sender: NSMenuItem) {
         guard let members = menuTab?.members, members.indices.contains(sender.tag) else { return }
-        open(members[sender.tag].entry)
+        onUnsplit?(members[sender.tag].entry)
     }
 
-    @objc private func menuForgetTab() {
-        guard let tab = menuTab?.tab else { return }
-        SplitTabStore.forget(identity: tab.identity)
-        lastSidebar = nil
-        render()
+    @objc private func menuUnsplit() {
+        onUnsplit?(nil)
     }
 
     private func menuItem(
