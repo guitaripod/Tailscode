@@ -490,16 +490,21 @@ final class ServerDetailViewController: UIViewController {
         present(nav, animated: true)
         let contextID = profile.id
         let profileSnapshot = profile
+        let sources = { (models: [ModelInfo]) in
+            [
+                ModelSource(
+                    profileID: profileSnapshot.id, name: profileSnapshot.name,
+                    backend: profileSnapshot.backend, models: models, isCurrent: true,
+                    allowsServerDefault: true,
+                    acceptsAnyModelID: profileSnapshot.backend == .claudeCode)
+            ]
+        }
+        let watch = PickerCatalogWatch.keep(
+            picker: picker, profileID: contextID, backend: backend, sources: sources)
+        picker.onClose = { watch.cancel() }
         Task { @MainActor in
             let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
-            picker.update(
-                sources: [
-                    ModelSource(
-                        profileID: profileSnapshot.id, name: profileSnapshot.name,
-                        backend: profileSnapshot.backend, models: fresh, isCurrent: true,
-                        allowsServerDefault: true,
-                        acceptsAnyModelID: profileSnapshot.backend == .claudeCode)
-                ])
+            picker.update(sources: sources(fresh))
         }
     }
 

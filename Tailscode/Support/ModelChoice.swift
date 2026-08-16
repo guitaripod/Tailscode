@@ -79,6 +79,23 @@ enum ModelCatalog {
     }
 }
 
+/// Keeps a presented picker honest against one server: the ordinary fresh fetch answers the moment
+/// the server does, and the retrying watch is what makes a chooser opened across a restart list the
+/// new models the moment the machine is back rather than the next time the app launches.
+@MainActor
+enum PickerCatalogWatch {
+    static func keep(
+        picker: ModelPickerViewController, profileID: String, backend: any CodingAgentBackend,
+        sources: @escaping ([ModelInfo]) -> [ModelSource]
+    ) -> Task<Void, Never> {
+        Task { @MainActor in
+            for await reading in ModelCatalogWatch.readings(profileID: profileID, backend: backend) {
+                picker.update(sources: sources(reading.models))
+            }
+        }
+    }
+}
+
 /// Which model and effort a chat on a given server will actually run with —
 /// resolved identically for a session that exists and for one the composer
 /// hasn't created yet, so what Home promises is what the chat delivers.

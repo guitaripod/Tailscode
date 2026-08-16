@@ -1770,12 +1770,17 @@ extension HomeViewController: HomeComposerBarDelegate {
         present(nav, animated: true)
         let contextID = profile.id
         let allowsServerDefault = profile.backend == .claudeCode
+        let sources = { (models: [ModelInfo]) in
+            ModelFleet.sources(
+                profiles: ConnectionController.shared.profiles, current: contextID,
+                currentModels: models, allowsServerDefault: allowsServerDefault)
+        }
+        let watch = PickerCatalogWatch.keep(
+            picker: picker, profileID: contextID, backend: backend, sources: sources)
+        picker.onClose = { watch.cancel() }
         Task { @MainActor in
             let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
-            picker.update(
-                sources: ModelFleet.sources(
-                    profiles: ConnectionController.shared.profiles, current: contextID,
-                    currentModels: fresh, allowsServerDefault: allowsServerDefault))
+            picker.update(sources: sources(fresh))
         }
     }
 
