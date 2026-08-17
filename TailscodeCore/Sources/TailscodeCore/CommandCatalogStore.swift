@@ -44,6 +44,30 @@ public enum CommandCatalogStore {
         return commands
     }
 
+    /// The catalog a composer should offer: what the server published, plus the one word this app
+    /// answers itself.
+    ///
+    /// `/design` is contributed here rather than fetched because the app is what makes it mean
+    /// anything — the brief states where the board goes and the board surface reads it back from
+    /// there. A server that has a design command of its own loses the row rather than sharing it:
+    /// two identical words in one list, only one of which does what the list says, is worse than
+    /// one word that always does.
+    public static func forComposer(_ commands: [AgentCommand], supportsDesign: Bool)
+        -> [AgentCommand]
+    {
+        guard supportsDesign else { return commands }
+        let rest = commands.filter { $0.name != SlashDispatch.designWord }
+        return [designCommand] + rest
+    }
+
+    public static let designCommand = AgentCommand(
+        name: SlashDispatch.designWord,
+        details: Localized.text(
+            "Draw a few alternatives for a surface, pick one, then have it built"),
+        argumentHint: Localized.text("<what to design>"),
+        source: .builtin,
+        scope: "Tailscode")
+
     /// The catalog a surface with no conversation may offer.
     ///
     /// A quick ask mints its chat as it sends, so every command that reads a transcript has nothing

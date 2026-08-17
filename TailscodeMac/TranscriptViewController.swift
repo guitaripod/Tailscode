@@ -13,6 +13,10 @@ final class TranscriptViewController: NSViewController {
     var onState: ((ConversationState) -> Void)?
     /// A floating confirmation, presented by the hub so it clears toasts app-wide.
     var onToast: ((String) -> Void)?
+    /// The board window this pane opened, held because an NSWindowController with nobody keeping
+    /// it alive closes the moment the frame that made it returns.
+    private var designBoard: DesignBoardWindowController?
+    private var inFlightDesignBoards: Set<String> = []
     /// A click on the status band, routed through the hub — reading the status and steering the
     /// turn are one gesture, and the hub owns the steering.
     var onBandAction: ((StatusFacts.Action) -> Void)?
@@ -794,6 +798,9 @@ final class TranscriptViewController: NSViewController {
         composer.onCompactRequested = { [weak self] instruction in
             self?.presentCompactPreflight(initialInstruction: instruction)
         }
+        composer.onDesignRequested = { [weak self] request in
+            self?.presentDesignPreflight(request: request)
+        }
         composer.onStop = { [weak self] in self?.stopTurn() }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
@@ -913,6 +920,12 @@ final class TranscriptViewController: NSViewController {
                 self.onToast?(Localized.text("Send or clear what is in the composer first."))
                 return
             }
+        }
+        context.openDesign = { [weak self] source in
+            self?.openDesign(source)
+        }
+        context.requestDesignBoard = { [weak self] directory in
+            self?.readDesignBoard(directory)
         }
         context.resumeInterrupted = { [weak self] in
             guard let conversation = self?.conversation else { return }
@@ -1058,6 +1071,63 @@ final class TranscriptViewController: NSViewController {
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
     /// instruction for what the summary must keep where the server takes one — so it always
+    /// `/design` opens the shared decision screen too: it spends a whole turn drawing pictures on
+    /// somebody else's machine, and the brief leaves as an ordinary prompt so the board it produces
+    /// lands in this transcript.
+    func presentDesignPreflight(request: String = "") {
+        MacDialogs.designPreflight(on: view.window, request: request) { [weak self] brief in
+            guard let self else { return }
+            guard self.composer.sendAgain(brief.prompt) else {
+                self.onToast?(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
+        }
+    }
+
+    /// What a board turned out to be, so its card names it rather than its folder. Asked once per
+    /// directory: a card that only ever names a folder makes the reader open a board to find out
+    /// whether it is worth opening.
+    private func readDesignBoard(_ directory: String) {
+        guard let files = backend as? any FileBrowsingBackend,
+            context.designBoards[directory] == nil,
+            inFlightDesignBoards.insert(directory).inserted
+        else { return }
+        let path = DesignPaths.manifest(in: directory)
+        Task { [weak self] in
+            let text = try? await files.fileContent(path: path)
+            await MainActor.run { [weak self] in
+                guard let self, let text, let manifest = DesignManifest.parse(text) else { return }
+                self.context.designBoards[directory] = manifest
+                self.replaceRows { row in
+                    guard case .designBoard(let sighting) = row.kind else { return false }
+                    return sighting.source == .board(directory: directory)
+                }
+            }
+        }
+    }
+
+    /// A board opens in a window of its own; a design published somewhere else is handed to the
+    /// system, which is the only thing that can open it.
+    private func openDesign(_ source: DesignSource) {
+        switch source {
+        case .board(let directory):
+            guard let backend else { return }
+            let board = DesignBoardWindowController(directory: directory, backend: backend) {
+                [weak self] prompt in
+                guard let self else { return }
+                guard self.composer.sendAgain(prompt) else {
+                    self.onToast?(Localized.text("Send or clear what is in the composer first."))
+                    return
+                }
+            }
+            designBoard = board
+            board.present()
+        case .artifact(let url):
+            guard let link = URL(string: url) else { return }
+            NSWorkspace.shared.open(link)
+        }
+    }
+
     /// opens the shared decision screen first, whose every word is ``CompactPreflight``'s.
     func presentCompactPreflight(initialInstruction: String = "") {
         guard let conversation, let entry else { return }

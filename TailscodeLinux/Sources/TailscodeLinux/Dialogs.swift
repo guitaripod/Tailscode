@@ -314,6 +314,131 @@ enum Dialogs {
         gtk_window_present(ptr(window))
     }
 
+    /// `/design` never fires bare either: it spends a whole turn on somebody else's machine drawing
+    /// pictures, so it opens the decision screen whose every word is the shared ``DesignPreflight``'s
+    /// — what it will do, what it will not touch, and where the mocks will land.
+    static func designPreflight(
+        parent: UnsafeMutablePointer<GtkWidget>?, request: String,
+        onDesign: @escaping @Sendable (DesignBrief) -> Void
+    ) {
+        let facts = DesignPreflight.make(
+            directory: DesignPaths.directory(for: "…"), count: DesignBrief.defaultCount)
+        let (window, content) = Self.window(
+            title: Localized.text("Design it first?"), parent: parent, width: 540)
+
+        let headline = Gtk.label(facts.headline, css: "preflight-headline", selectable: false)
+        gtk_widget_set_halign(headline, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), headline)
+        for paragraph in facts.paragraphs {
+            let body = Gtk.label(paragraph, css: "agent-text", wrap: true, selectable: false)
+            gtk_widget_set_halign(body, GTK_ALIGN_START)
+            gtk_box_append(ptr(content), body)
+        }
+
+        func caption(_ text: String) {
+            let label = Gtk.label(
+                text.uppercased(), css: "section-header", wrap: true, selectable: false)
+            gtk_widget_set_halign(label, GTK_ALIGN_START)
+            gtk_widget_set_margin_top(label, 4)
+            gtk_box_append(ptr(content), label)
+        }
+
+        func field(_ placeholder: String, initial: String = "") -> UnsafeMutablePointer<GtkWidget> {
+            let entry = gtk_entry_new()!
+            gtk_entry_set_placeholder_text(ptr(entry), placeholder)
+            gtk_editable_set_text(op(entry), initial)
+            gtk_box_append(ptr(content), entry)
+            return entry
+        }
+
+        caption(facts.requestCaption)
+        let requestField = field(facts.requestPlaceholder, initial: request)
+        caption(facts.referenceCaption)
+        let referenceField = field(facts.referencePlaceholder)
+        caption(facts.notesCaption)
+        let notesField = field(facts.notesPlaceholder)
+
+        caption(facts.countCaption)
+        let counts = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_widget_set_halign(counts, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), counts)
+
+        let waitLabel = Gtk.label(facts.wait, css: "seam-footnote", wrap: true, selectable: false)
+        gtk_widget_set_halign(waitLabel, GTK_ALIGN_START)
+        gtk_box_append(ptr(content), waitLabel)
+
+        let chosen = Counter(DesignBrief.defaultCount)
+        let countsBits = UInt(bitPattern: counts)
+        let waitBits = UInt(bitPattern: waitLabel)
+        let requestBits = UInt(bitPattern: requestField)
+
+        @Sendable func renderCounts() {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: countsBits) else { return }
+            let row: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            Gtk.removeChildren(of: row)
+            for number in DesignBrief.minimumCount...DesignBrief.maximumCount {
+                let button = Gtk.button("\(number)", css: ["design-letter"]) {
+                    chosen.value = number
+                    renderCounts()
+                }
+                if number == chosen.value { Gtk.addClass(button, "design-letter-on") }
+                gtk_box_append(ptr(row), button)
+            }
+        }
+        renderCounts()
+
+        let windowBits = UInt(bitPattern: window)
+        let referenceBits = UInt(bitPattern: referenceField)
+        let notesBits = UInt(bitPattern: notesField)
+        let design: @Sendable () -> Void = {
+            func read(_ bits: UInt) -> String {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return "" }
+                return entryText(ptr(raw))
+            }
+            let brief = DesignBrief(
+                request: read(requestBits), count: chosen.value, reference: read(referenceBits),
+                notes: read(notesBits))
+            guard brief.isReady else {
+                if let raw = UnsafeMutableRawPointer(bitPattern: requestBits) {
+                    gtk_widget_grab_focus(ptr(raw))
+                }
+                return
+            }
+            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
+                gtk_window_destroy(ptr(raw))
+            }
+            onDesign(brief)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(requestField), "activate", design)
+        Gtk.connect(UnsafeMutableRawPointer(referenceField), "activate", design)
+        Gtk.connect(UnsafeMutableRawPointer(notesField), "activate", design)
+        Gtk.connect(UnsafeMutableRawPointer(requestField), "changed") {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: requestBits),
+                let waitRaw = UnsafeMutableRawPointer(bitPattern: waitBits)
+            else { return }
+            let brief = DesignBrief(request: entryText(ptr(raw)), count: chosen.value)
+            gtk_label_set_text(
+                op(waitRaw),
+                DesignPreflight.make(directory: brief.directory, count: chosen.value).wait)
+        }
+
+        gtk_box_append(
+            ptr(content),
+            buttonRow(
+                window: window,
+                confirm: Gtk.button(
+                    facts.confirmTitle, css: ["suggested-action"], onClick: design)))
+        gtk_window_present(ptr(window))
+        gtk_widget_grab_focus(requestField)
+    }
+
+    /// A number a dialog's closures agree on. GTK callbacks are `@Sendable` and outlive the frame
+    /// that made them, so a chosen count cannot live in a local the way it would in a view class.
+    private final class Counter: @unchecked Sendable {
+        var value: Int
+        init(_ value: Int) { self.value = value }
+    }
+
     /// A new conversation needs a server and a directory; everything else the agent works out.
     /// The question is asked by ``NewChatWindow`` over the shared `NewChatChooser`; what this
     /// function owns is the translation from this desktop's own facts into it — which profiles

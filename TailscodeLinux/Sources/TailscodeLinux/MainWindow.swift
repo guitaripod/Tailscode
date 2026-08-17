@@ -258,6 +258,15 @@ final class MainWindow: @unchecked Sendable {
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)
+                case "designui":
+                    self.presentDesignPreflight(for: self.activePane, argument: argument)
+                case "designdemo":
+                    DesignBoardWindow.present(
+                        board: DesignDemo.board, pages: DesignDemo.pages, parent: self.window,
+                        send: { [weak self] prompt in
+                            Gtk.onMain { [weak self] in self?.activePane.sendComposed(prompt) }
+                        },
+                        notice: { _ in })
                 case "compactdemo":
                     self.activePane.driverCompactionDemo(argument.isEmpty ? "done" : argument)
                 case "compactui":
@@ -2564,6 +2573,18 @@ final class MainWindow: @unchecked Sendable {
                     instructions: instruction, model: choice.model,
                     reasoningEffort: choice.effort)
             }
+        }
+    }
+
+    /// The brief leaves as a prompt in the conversation it was asked from, so the board it produces
+    /// lands in the transcript that will build it.
+    func presentDesignPreflight(for pane: ChatPane, request: String = "") {
+        presentDesignPreflight(for: pane, argument: request)
+    }
+
+    private func presentDesignPreflight(for pane: ChatPane, argument request: String) {
+        Dialogs.designPreflight(parent: window, request: request) { [weak pane] brief in
+            Gtk.onMain { [weak pane] in pane?.sendComposed(brief.prompt) }
         }
     }
 

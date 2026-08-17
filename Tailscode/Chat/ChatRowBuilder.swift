@@ -95,6 +95,14 @@ enum ChatRowBuilder {
                         }
                         continue
                     }
+                    if let sighting = DesignReading.sighting(of: call, in: message) {
+                        flushActivity()
+                        rows.append(
+                            ChatRow(
+                                id: "design:\(call.id)", messageID: message.id,
+                                role: message.role, content: .designBoard(sighting)))
+                        continue
+                    }
                     if let run = runs[call.id] {
                         flushActivity()
                         rows.append(

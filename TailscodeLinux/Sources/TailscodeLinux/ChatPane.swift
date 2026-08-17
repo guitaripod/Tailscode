@@ -140,6 +140,7 @@ final class ChatPane: @unchecked Sendable {
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private(set) var page: WebPane?
     private(set) var backend: (any CodingAgentBackend)?
+    private var inFlightDesignBoards: Set<String> = []
     private(set) var conversation: AgentConversation?
     private(set) var lastState: ConversationState?
     private var streamTask: Task<Void, Never>?
@@ -453,6 +454,12 @@ final class ChatPane: @unchecked Sendable {
         }
         context.askAgain = { [weak self] words in
             Gtk.onMain { [weak self] in self?.askAgain(words) }
+        }
+        context.openDesign = { [weak self] source in
+            Gtk.onMain { [weak self] in self?.openDesign(source) }
+        }
+        context.requestDesignBoard = { [weak self] directory in
+            Gtk.onMain { [weak self] in self?.readDesignBoard(directory) }
         }
         context.resumeInterrupted = { [weak self] in
             Gtk.onMain { [weak self] in self?.resumeInterruptedTurn() }
@@ -2536,7 +2543,18 @@ final class ChatPane: @unchecked Sendable {
         rows.append(
             ("/goal", Localized.text("Set a standing goal the agent pursues"),
              { [weak self] in Gtk.onMain { [weak self] in self?.insertIntoComposer("/goal ") } }))
-        for command in commands where command.name != "compact" && command.name != "goal" {
+        if supportsDesign {
+            rows.append(
+                ("/design", CommandCatalogStore.designCommand.details,
+                 { [weak self] in Gtk.onMain { [weak self] in
+                     guard let self else { return }
+                     self.host?.presentDesignPreflight(for: self, request: "")
+                 } }))
+        }
+        for command in commands
+        where command.name != "compact" && command.name != "goal"
+            && !(supportsDesign && command.name == SlashDispatch.designWord)
+        {
             let insertion = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
             rows.append(
                 ("/\(command.name)", command.details.isEmpty ? command.source.rawValue : command.details,
@@ -2895,11 +2913,12 @@ final class ChatPane: @unchecked Sendable {
             return
         }
         completion.hasProject = entry?.session.directory?.isEmpty == false
-        completion.catalogSize = commands.count
+        let offered = composerCommands
+        completion.catalogSize = offered.count
         completion.renderCompletion(
             SlashPresentation.of(
-                text: composerText(), commands: commands,
-                recents: SlashRecents.surviving(in: commands)),
+                text: composerText(), commands: offered,
+                recents: SlashRecents.surviving(in: offered)),
             cursor: completion.cursor)
     }
 
@@ -2924,7 +2943,7 @@ final class ChatPane: @unchecked Sendable {
     /// The greppable catalog surface for Linux — every command this server offers.
     func presentCommandCatalog() {
         dismissCompletion()
-        CommandCatalog.present(parent: root, commands: commands) { [weak self] command in
+        CommandCatalog.present(parent: root, commands: composerCommands) { [weak self] command in
             Gtk.onMain { [weak self] in self?.acceptSlashCommand(command) }
         }
     }
@@ -3059,6 +3078,64 @@ final class ChatPane: @unchecked Sendable {
         }
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), words, -1)
         sendFromComposer()
+    }
+
+    /// A prompt the app composed rather than the person typed — a design brief, a follow-up on an
+    /// artboard — sent through the same composer for the same reasons: it is echoed, drafted and
+    /// refused exactly like the words somebody types, and nothing half-written is thrown away.
+    func sendComposed(_ words: String) {
+        askAgain(words)
+    }
+
+    /// Whether a board could be read back at all. The brief is only worth spending a turn on where
+    /// this server can hand files over — otherwise the mocks would be written somewhere no client
+    /// could ever open them.
+    var supportsDesign: Bool { backend?.capabilities.supportsFileBrowsing == true }
+
+    /// The catalog a composer offers here: the server's own, plus the word this app answers.
+    var composerCommands: [AgentCommand] {
+        CommandCatalogStore.forComposer(commands, supportsDesign: supportsDesign)
+    }
+
+    /// What a board turned out to be, so its card names it rather than its folder. Asked once per
+    /// directory: a card that only ever names a folder makes the reader open a board to find out
+    /// whether it is worth opening.
+    private func readDesignBoard(_ directory: String) {
+        guard let files = backend as? any FileBrowsingBackend,
+            context.designBoards[directory] == nil,
+            inFlightDesignBoards.insert(directory).inserted
+        else { return }
+        let path = DesignPaths.manifest(in: directory)
+        Task { [weak self] in
+            let text = try? await files.fileContent(path: path)
+            Gtk.onMain { [weak self] in
+                guard let self, let text, let manifest = DesignManifest.parse(text) else { return }
+                self.context.designBoards[directory] = manifest
+                self.replaceRows { row in
+                    guard case .designBoard(let sighting) = row.kind else { return false }
+                    return sighting.source == .board(directory: directory)
+                }
+            }
+        }
+    }
+
+    private func openDesign(_ source: DesignSource) {
+        switch source {
+        case .board(let directory):
+            DesignBoardWindow.present(
+                directory: directory, backend: backend, parent: host?.windowWidget,
+                send: { [weak self] prompt in
+                    Gtk.onMain { [weak self] in self?.sendComposed(prompt) }
+                },
+                notice: { [weak self] text in
+                    Gtk.onMain { [weak self] in self?.setNotice(text) }
+                })
+        case .artifact(let url):
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+            process.arguments = [url]
+            try? process.run()
+        }
     }
 
     /// Continues a turn the server's machine stopped in the middle of. The work resumes on that
@@ -3536,12 +3613,16 @@ final class ChatPane: @unchecked Sendable {
     /// go out as an ordinary prompt.
     private func handleSlashCommand(_ text: String) -> Bool {
         switch SlashDispatch.decide(
-            text: text, commands: commands,
+            text: text, commands: composerCommands,
             supportsCompaction: backend?.capabilities.supportsCompaction != false,
-            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true)
+            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true,
+            supportsDesign: supportsDesign)
         {
         case .compactPreflight(let instruction):
             host?.presentCompactPreflight(for: self, initialInstruction: instruction)
+            return true
+        case .designPreflight(let request):
+            host?.presentDesignPreflight(for: self, request: request)
             return true
         case .run(let command, let arguments):
             guard let conversation else { return false }

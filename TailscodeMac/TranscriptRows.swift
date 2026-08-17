@@ -39,6 +39,13 @@ final class TranscriptContext {
     /// The words of a turn that said nothing, sent again — the transcript's own send, so the
     /// retry is a message like any other rather than a second road into the backend.
     var askAgain: ((String) -> Void)?
+    /// A board of design alternatives, opened. The pane owns it because reading the mocks is the
+    /// server's file route and building one is the pane's own send.
+    var openDesign: ((DesignSource) -> Void)?
+    /// What each board in this transcript turned out to be, so its card can name it rather than
+    /// its folder. Filled by the pane the first time a card asks.
+    var designBoards: [String: DesignManifest] = [:]
+    var requestDesignBoard: ((String) -> Void)?
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: ((UUID) -> Void)?
@@ -133,6 +140,9 @@ struct TranscriptRow: Hashable {
         case subagent(ToolCall)
         case workflow(ToolCall)
         case file(FileReference, mine: Bool)
+        /// A board of design alternatives the agent wrote, standing where the manifest that made
+        /// it was written rather than as a line about a file.
+        case designBoard(DesignSighting)
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
@@ -227,6 +237,10 @@ struct TranscriptRow: Hashable {
                 rows.append(TranscriptRow(key: key, kind: .reasoning(trimmed)))
             case .tool(let call):
                 if call.asksUserQuestion, call.isAwaitingAnswer { continue }
+                if let sighting = DesignReading.sighting(of: call, in: message) {
+                    rows.append(TranscriptRow(key: key, kind: .designBoard(sighting)))
+                    continue
+                }
                 rows.append(
                     TranscriptRow(
                         key: key, kind: Self.kind(for: call)))
@@ -379,6 +393,9 @@ struct TranscriptRow: Hashable {
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
             return compaction.summary ?? ""
+        case .designBoard(let sighting):
+            let reading = DesignCardReading.make(sighting: sighting, board: nil)
+            return "\(reading.title) \(reading.detail)"
         case .answerless(let turn):
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):
@@ -423,6 +440,8 @@ struct TranscriptRow: Hashable {
             return SubagentRowView.make(call, key: key, context: context)
         case .file(let reference, let mine):
             return ImageRowView.make(reference, mine: mine, key: key, context: context)
+        case .designBoard(let sighting):
+            return Self.designBoard(sighting, context: context)
         case .taskBoard(let board):
             return TaskBoardView.make(board)
         case .compaction(let compaction):
@@ -799,6 +818,44 @@ struct TranscriptRow: Hashable {
         strip.setAccessibilityRole(.group)
         strip.setAccessibilityLabel(stats.spoken)
         return strip
+    }
+
+    /// A board of alternatives, offered rather than described. The letters are on the card
+    /// because they are what the reader picks by, and the card is the way in — a design reachable
+    /// only through a file path is a design nobody looks at.
+    @MainActor
+    private static func designBoard(_ sighting: DesignSighting, context: TranscriptContext) -> NSView
+    {
+        var board: DesignBoard?
+        if case .board(let directory) = sighting.source {
+            if let manifest = context.designBoards[directory] {
+                board = DesignBoard(directory: directory, manifest: manifest)
+            } else {
+                context.requestDesignBoard?(directory)
+            }
+        }
+        let reading = DesignCardReading.make(sighting: sighting, board: board)
+        let card = RowKit.card(
+            symbol: reading.symbol, title: reading.title, detail: reading.detail,
+            tint: MacTheme.Color.info)
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel("\(reading.title). \(reading.detail)")
+        if !reading.letters.isEmpty {
+            let strip = NSStackView()
+            strip.orientation = .horizontal
+            strip.spacing = MacTheme.Spacing.xs
+            for letter in reading.letters {
+                strip.addArrangedSubview(
+                    RowKit.label(
+                        letter, font: MacTheme.Ramp.font(.badge), color: MacTheme.Color.accent))
+            }
+            card.addArrangedSubview(strip)
+        }
+        let open = context.openDesign
+        let source = sighting.source
+        card.addArrangedSubview(RowKit.linkButton(reading.action) { open?(source) })
+        return card
     }
 
     /// A turn that finished having said nothing. It is a card rather than a prose row because

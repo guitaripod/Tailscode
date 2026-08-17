@@ -33,6 +33,9 @@ enum ChatFind {
             return row.compaction?.summary ?? "compaction"
         case .taskBoard(let board):
             return board.items.map(\.subject).joined(separator: " ")
+        case .designBoard(let sighting):
+            let reading = DesignCardReading.make(sighting: sighting, board: nil)
+            return "\(reading.title) \(reading.detail)"
         case .file(let reference), .image(let reference):
             return reference.filename ?? reference.path ?? ""
         case .timestamp:

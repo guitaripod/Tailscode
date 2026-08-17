@@ -329,6 +329,11 @@ TailscodeWeb *tailscode_web_new(
 GtkWidget *tailscode_web_widget(TailscodeWeb *web);
 void tailscode_web_load(TailscodeWeb *web, const char *uri);
 
+/// Markup held in memory rather than an address to fetch — a design mock read off the server over
+/// the file route has no URL on this machine, and writing it to a temporary file to give it one
+/// would leave somebody else's work on this disk.
+void tailscode_web_load_html(TailscodeWeb *web, const char *html, const char *base_uri);
+
 /// One of "back", "forward", "reload", "stop".
 void tailscode_web_verb(TailscodeWeb *web, const char *verb);
 void tailscode_web_zoom(TailscodeWeb *web, double level);

@@ -25,6 +25,11 @@ final class ChatViewController: UIViewController {
     private var seamCount = 0
     private var renderedIDOrder: [String] = []
     private var pendingAttachments: [PromptAttachment] = []
+    /// What each design board in this transcript turned out to be, so its card can say so. Kept
+    /// per directory rather than per row: a board revised later in the conversation writes its
+    /// manifest again and both cards are pictures of the same board.
+    private var designManifests: [String: DesignManifest] = [:]
+    private var designReads: Set<String> = []
     /// Names pasted pictures apart, so two screenshots in one prompt are two files rather than one
     /// overwriting the other on the machine that reads them.
     private var pastedImageCount = 0
@@ -529,6 +534,8 @@ final class ChatViewController: UIViewController {
             ResponseStatsCell.self, forCellWithReuseIdentifier: ResponseStatsCell.reuseID)
         collectionView.register(
             InterruptedTurnCell.self, forCellWithReuseIdentifier: InterruptedTurnCell.reuseID)
+        collectionView.register(
+            DesignBoardCell.self, forCellWithReuseIdentifier: DesignBoardCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -915,6 +922,65 @@ final class ChatViewController: UIViewController {
         present(nav, animated: true)
     }
 
+    /// `/design` never fires bare either: it spends a whole turn drawing pictures on somebody
+    /// else's machine, so the sheet states what it will do and what it will not touch first. The
+    /// brief leaves as an ordinary prompt, so the board it produces lands in this transcript.
+    private func presentDesignPreflight(request: String = "") {
+        let sheet = DesignPreflightViewController(request: request) { [weak self] brief in
+            self?.sendDraft(brief.prompt)
+        }
+        let nav = UINavigationController(rootViewController: sheet)
+        if let presentation = nav.sheetPresentationController {
+            presentation.detents = [.large(), .medium()]
+            presentation.selectedDetentIdentifier = .large
+            presentation.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
+    /// What the card says once the manifest has been read: the board's own title, how many
+    /// alternatives it holds and the letters they are picked by. Asked for once per directory the
+    /// first time the card is drawn, because a card that only ever names a folder makes the reader
+    /// open a board to find out whether it is worth opening.
+    private func designBoard(for sighting: DesignSighting, row: String) -> DesignBoard? {
+        guard case .board(let directory) = sighting.source else { return nil }
+        if let manifest = designManifests[directory] {
+            return DesignBoard(directory: directory, manifest: manifest)
+        }
+        guard let files = viewModel.backend as? any FileBrowsingBackend,
+            designReads.insert(directory).inserted
+        else { return nil }
+        let path = DesignPaths.manifest(in: directory)
+        Task { [weak self] in
+            let text = try? await files.fileContent(path: path)
+            await MainActor.run { [weak self] in
+                guard let self, let text, let manifest = DesignManifest.parse(text) else { return }
+                self.designManifests[directory] = manifest
+                self.remeasureRow(row)
+            }
+        }
+        return nil
+    }
+
+    /// A board opens over the conversation; a design published somewhere else is handed to the
+    /// system, which is the only thing that can open it.
+    private func openDesign(_ source: DesignSource) {
+        switch source {
+        case .board(let directory):
+            let board = DesignBoardViewController(
+                directory: directory, backend: viewModel.backend
+            ) { [weak self] prompt in
+                self?.sendDraft(prompt)
+            }
+            let nav = UINavigationController(rootViewController: board)
+            nav.modalPresentationStyle = .fullScreen
+            present(nav, animated: true)
+        case .artifact(let url):
+            guard let link = URL(string: url) else { return }
+            UIApplication.shared.open(link)
+        }
+    }
+
     private func presentCompactionSummary(_ row: CompactionRow) {
         guard let compaction = row.compaction, row.isReadable else { return }
         let nav = UINavigationController(
@@ -1219,6 +1285,16 @@ final class ChatViewController: UIViewController {
                 cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(board)
                 return cell
+            case .designBoard(let sighting):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: DesignBoardCell.reuseID, for: indexPath)
+                    as! DesignBoardCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(
+                    DesignCardReading.make(
+                        sighting: sighting, board: self.designBoard(for: sighting, row: row.id))
+                ) { [weak self] in self?.openDesign(sighting.source) }
+                return cell
             case .file(let file):
                 let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
                 return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
@@ -1422,8 +1498,9 @@ final class ChatViewController: UIViewController {
         let row = safe == source ? whole : whole.held(to: safe)
         let length = renderedLength(of: row)
         guard length > cascade.revealed else { return false }
-        rowsByID[key] = row
         cascade.focus(key, length: length, sealed: sealed, ultracode: cascadeUltracode)
+        guard cascade.key == key else { return false }
+        rowsByID[key] = row
         var snapshot = dataSource.snapshot()
         snapshot.reconfigureItems([key])
         dataSource.apply(snapshot, animatingDifferences: false)
@@ -2765,10 +2842,10 @@ final class ChatViewController: UIViewController {
             ])
         }
         let commands = UIDeferredMenuElement.uncached { [weak self] completion in
-            guard let self, !self.viewModel.serverCommands.isEmpty else { return completion([]) }
+            guard let self, !self.viewModel.composerCommands.isEmpty else { return completion([]) }
             completion([
                 UIAction(
-                    title: String(localized: "Commands (\(self.viewModel.serverCommands.count))"),
+                    title: String(localized: "Commands (\(self.viewModel.composerCommands.count))"),
                     image: UIImage(systemName: "square.grid.2x2")
                 ) { [weak self] _ in self?.presentCommandCatalog() }
             ])
@@ -3028,6 +3105,20 @@ final class ChatViewController: UIViewController {
         func tourPresentSubagents() { presentSubagents(viewModel.trackedSubagents) }
 
         func tourPresentCompactPreflight() { presentCompactPreflight() }
+
+        func tourPresentDesignPreflight(_ request: String) {
+            presentDesignPreflight(request: request)
+        }
+
+        /// The board over a demo board rather than a server's files, so the surface can be
+        /// photographed without a machine on the other end spending minutes drawing mocks.
+        func tourPresentDesignBoard() {
+            let board = DesignBoardViewController(
+                board: DesignDemo.board, pages: DesignDemo.pages, onSend: { _ in })
+            let nav = UINavigationController(rootViewController: board)
+            nav.modalPresentationStyle = .fullScreen
+            present(nav, animated: true)
+        }
 
         func tourOpenCompactionSummary() { openFirstCompactionSummary() }
 
@@ -3311,7 +3402,7 @@ final class ChatViewController: UIViewController {
     /// Only a real server command earns the argument stage: the app's own rows take no arguments,
     /// so holding one on screen while somebody types past it would promise something untrue.
     private func presentArgumentHint(name: String, typed: String) {
-        guard let command = viewModel.serverCommands.first(where: { $0.name == name }) else {
+        guard let command = viewModel.composerCommands.first(where: { $0.name == name }) else {
             hideCommandPalette()
             return
         }
@@ -3353,9 +3444,9 @@ final class ChatViewController: UIViewController {
     /// handful of commands this device actually reaches for sits above both, because a phone
     /// types the same three all week.
     private func commandSections(query: String) -> [SlashCommandSection] {
-        let recentNames = SlashRecents.surviving(in: viewModel.serverCommands)
+        let recentNames = SlashRecents.surviving(in: viewModel.composerCommands)
         let ranked = SlashCompletion.ranked(
-            viewModel.serverCommands, query: query, recents: recentNames)
+            viewModel.composerCommands, query: query, recents: recentNames)
         let app = appCommands().compactMap { command -> SlashCommand? in
             guard let highlight = Self.appMatch(command, query: query) else { return nil }
             var matched = command
@@ -3363,7 +3454,7 @@ final class ChatViewController: UIViewController {
             return matched
         }
 
-        guard !ranked.isEmpty || !viewModel.serverCommands.isEmpty else {
+        guard !ranked.isEmpty || !viewModel.composerCommands.isEmpty else {
             return [SlashCommandSection(title: "", commands: app)]
         }
 
@@ -3402,7 +3493,7 @@ final class ChatViewController: UIViewController {
     }
 
     private func browseCommand() -> SlashCommand? {
-        let total = viewModel.serverCommands.count
+        let total = viewModel.composerCommands.count
         guard total > 0 else { return nil }
         return SlashCommand(
             id: "app:·browse",
@@ -3450,6 +3541,11 @@ final class ChatViewController: UIViewController {
             presentCompactPreflight()
             return
         }
+        if command.name == SlashDispatch.designWord, viewModel.supportsDesign {
+            composer.clear()
+            presentDesignPreflight(request: "")
+            return
+        }
         guard !command.takesArguments else {
             composer.setDraft("/\(command.name) ", focus: true)
             return
@@ -3472,13 +3568,18 @@ final class ChatViewController: UIViewController {
             presentCompactPreflight(instruction: arguments ?? "")
             return
         }
+        if command.name == SlashDispatch.designWord, viewModel.supportsDesign {
+            composer.clear()
+            presentDesignPreflight(request: arguments ?? "")
+            return
+        }
         composer.clear()
         DraftStore.clear(draftScope)
         viewModel.run(command, arguments: arguments)
     }
 
     private func presentCommandCatalog() {
-        let catalog = CommandCatalogViewController(commands: viewModel.serverCommands)
+        let catalog = CommandCatalogViewController(commands: viewModel.composerCommands)
         catalog.onPick = { [weak self] command in self?.selectServerCommand(command) }
         let nav = UINavigationController(rootViewController: catalog)
         if let sheet = nav.sheetPresentationController {
@@ -3691,6 +3792,9 @@ final class ChatViewController: UIViewController {
                 continue
             case .answerless(let turn):
                 body = "_\(turn.title) — \(turn.detail)_"
+            case .designBoard(let sighting):
+                let reading = DesignCardReading.make(sighting: sighting, board: nil)
+                body = "_\(reading.title) — \(reading.detail)_"
             case .responseStats, .timestamp, .error:
                 continue
             }
@@ -4085,14 +4189,20 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         hideCommandPalette()
         if finishQueuedEdit(text) { return }
         switch SlashDispatch.decide(
-            text: text, commands: viewModel.serverCommands,
+            text: text, commands: viewModel.composerCommands,
             supportsCompaction: viewModel.supportsCompaction,
-            resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText)
+            resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText,
+            supportsDesign: viewModel.supportsDesign)
         {
         case .compactPreflight(let instruction):
             DraftStore.clear(draftScope)
             SlashRecents.record("compact")
             presentCompactPreflight(instruction: instruction)
+        case .designPreflight(let request):
+            DraftStore.clear(draftScope)
+            SlashRecents.record(SlashDispatch.designWord)
+            composer.clear()
+            presentDesignPreflight(request: request)
         case .run(let command, let arguments):
             runServerCommand(command, arguments: arguments)
         case .plainText:
@@ -4621,6 +4731,9 @@ extension ChatViewController: UICollectionViewDelegate {
             return row.compaction?.summary
         case .answerless(let turn):
             return turn.detail
+        case .designBoard(let sighting):
+            let reading = DesignCardReading.make(sighting: sighting, board: nil)
+            return "\(reading.title) — \(reading.detail)"
         case .responseStats(let stats):
             return stats.line
         case .timestamp, .error:

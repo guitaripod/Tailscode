@@ -11,6 +11,7 @@ final class ComposerView: NSView {
     var onSubmitPrompt: ((String, ModelSelection?, String?, [PromptAttachment]) -> Void)?
     var onRunCommand: ((AgentCommand, String?, ModelSelection?, String?) -> Void)?
     var onCompactRequested: ((String) -> Void)?
+    var onDesignRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
     /// ↑ from an empty box: the pane takes its last waiting message back for rewriting, and says
     /// whether it did — the key belongs to the text view otherwise.
@@ -24,7 +25,14 @@ final class ComposerView: NSView {
     let completion = CompletionPopover()
 
     var attachmentCount: Int { attachments.count }
-    var availableCommands: [AgentCommand] { commands }
+    var availableCommands: [AgentCommand] {
+        CommandCatalogStore.forComposer(commands, supportsDesign: supportsDesign)
+    }
+
+    /// Whether a design board could be read back at all. The brief is only worth spending a turn on
+    /// where this server hands files over — otherwise the mocks would be written somewhere no
+    /// client could ever open them.
+    var supportsDesign: Bool { backend?.capabilities.supportsFileBrowsing == true }
 
     private let editor = PromptEditor(placeholder: Localized.text("Message… (/ for commands)"))
     private let sendButton = NSButton()
@@ -663,7 +671,18 @@ final class ComposerView: NSView {
                 self?.insertText("/goal ")
             },
         ]
-        for command in commands where command.name != "compact" && command.name != "goal" {
+        if supportsDesign {
+            rows.append(
+                PillsRow.MenuRow(
+                    "/design", subtitle: CommandCatalogStore.designCommand.details
+                ) { [weak self] in
+                    self?.onDesignRequested?("")
+                })
+        }
+        for command in commands
+        where command.name != "compact" && command.name != "goal"
+            && !(supportsDesign && command.name == SlashDispatch.designWord)
+        {
             let insertion = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
             rows.append(
                 PillsRow.MenuRow(
@@ -681,12 +700,16 @@ final class ComposerView: NSView {
     /// go out as an ordinary prompt.
     private func handleSlashCommand(_ text: String) -> Bool {
         switch SlashDispatch.decide(
-            text: text, commands: commands,
+            text: text, commands: availableCommands,
             supportsCompaction: backend?.capabilities.supportsCompaction != false,
-            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true)
+            resolvesFromPromptText: backend?.resolvesCommandsFromPromptText == true,
+            supportsDesign: supportsDesign)
         {
         case .compactPreflight(let instruction):
             onCompactRequested?(instruction)
+            return true
+        case .designPreflight(let request):
+            onDesignRequested?(request)
             return true
         case .run(let command, let arguments):
             SlashRecents.record(command.name)
@@ -854,9 +877,10 @@ final class ComposerView: NSView {
         }
         completion.onPick = { [weak self] command in self?.accept(command) }
         completion.onBrowse = { [weak self] in self?.onBrowseCommands?() }
+        let offered = availableCommands
         let presentation = SlashPresentation.of(
-            text: editor.text, commands: commands,
-            recents: SlashRecents.surviving(in: commands))
+            text: editor.text, commands: offered,
+            recents: SlashRecents.surviving(in: offered))
         switch presentation {
         case .hidden:
             dismissCompletion()

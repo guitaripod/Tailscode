@@ -327,6 +327,16 @@ final class ChatViewModel {
     private(set) var serverCommands: [AgentCommand] = []
     var onCommandsChange: (() -> Void)?
 
+    /// Whether a design board could be read back at all. The brief is only worth spending a turn
+    /// on where this server hands files over — otherwise the mocks would be written somewhere no
+    /// client could ever open them.
+    var supportsDesign: Bool { backend.capabilities.supportsFileBrowsing }
+
+    /// What the composer offers: the server's catalog, plus the one word this app answers itself.
+    var composerCommands: [AgentCommand] {
+        CommandCatalogStore.forComposer(serverCommands, supportsDesign: supportsDesign)
+    }
+
     /// The server's command catalog, fetched once per chat. A server that can't answer leaves the
     /// list empty and the palette shows only the app's own actions.
     func loadServerCommands() {

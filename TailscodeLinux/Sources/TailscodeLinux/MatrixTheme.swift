@@ -567,6 +567,33 @@ enum MatrixTheme {
         .response-stat-glyph { color: \(textDim); \(t(.responseStat)) }
         .response-stat-value { color: \(textDim); \(t(.responseStat)) }
         .card-interrupted { border-left: 2px solid \(warn); }
+        .card-design { border-left: 2px solid \(info); }
+        .design-letter, .design-letter:hover {
+            \(t(.chip))
+            min-height: 0;
+            padding: 2px 12px;
+            color: \(textDim);
+            background-color: transparent;
+            border: 1px solid \(rule);
+            border-radius: 3px;
+            box-shadow: none;
+        }
+        .design-letter:hover { border-color: \(info); color: \(text); }
+        .design-letter-on, .design-letter-on:hover {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            border-color: \(accent);
+        }
+        .design-frame { background-color: \(canvasRaised); border: 1px solid \(rule); }
+        .design-note {
+            \(t(.cardBody))
+            color: \(text);
+            background-color: alpha(\(special), 0.12);
+            border-left: 2px solid \(special);
+            padding: 8px 10px;
+        }
+        .design-rationale { color: \(text); \(t(.cardBody)) }
+        .design-caption { color: \(accent); \(t(.cardTitle)) }
         .seam-footnote { color: \(textDim); \(t(.seamFootnote)) }
         .seam-bar trough {
             min-height: 4px;

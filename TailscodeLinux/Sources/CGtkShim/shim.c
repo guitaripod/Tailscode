@@ -2068,6 +2068,11 @@ void tailscode_web_load(TailscodeWeb *web, const char *uri) {
     webkit_web_view_load_uri(web->view, uri);
 }
 
+void tailscode_web_load_html(TailscodeWeb *web, const char *html, const char *base_uri) {
+    if (!web || !html) return;
+    webkit_web_view_load_html(web->view, html, base_uri);
+}
+
 void tailscode_web_verb(TailscodeWeb *web, const char *verb) {
     if (!web || !verb) return;
     if (g_strcmp0(verb, "back") == 0 && webkit_web_view_can_go_back(web->view)) {
@@ -2119,6 +2124,12 @@ GtkWidget *tailscode_web_widget(TailscodeWeb *web) {
 void tailscode_web_load(TailscodeWeb *web, const char *uri) {
     (void)web;
     (void)uri;
+}
+
+void tailscode_web_load_html(TailscodeWeb *web, const char *html, const char *base_uri) {
+    (void)web;
+    (void)html;
+    (void)base_uri;
 }
 
 void tailscode_web_verb(TailscodeWeb *web, const char *verb) {

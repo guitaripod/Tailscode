@@ -48,6 +48,15 @@
             Task { await driver.modelWalk() }
         }
 
+        /// Holds one of the design surfaces open — the brief being composed, or the board of
+        /// alternatives it produces. Both are surfaces a unit test cannot photograph and a live
+        /// design would cost minutes of somebody's machine to reach.
+        static func startDesignWalk(in window: UIWindow) {
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.designWalk() }
+        }
+
         static func startChatsWalk(in window: UIWindow) {
             let driver = TourDriver(window: window)
             running = driver
@@ -287,6 +296,20 @@
         /// The chat list's own surfaces, each held still long enough to be photographed: the
         /// sectioned list, a held selection with its verbs, and the new-conversation modal in both
         /// of the chooser's modes.
+        private func designWalk() async {
+            let state = ProcessInfo.processInfo.environment["TAILSCODE_DESIGN_STATE"] ?? "board"
+            AppLogger.ui.info("designwalk: state=\(state)")
+            await hold(2.0)
+            home?.openSession(withID: "demo-c1")
+            await hold(2.5)
+            if state == "preflight" {
+                chat?.tourPresentDesignPreflight("the composer, for what people actually use it for")
+            } else {
+                chat?.tourPresentDesignBoard()
+            }
+            AppLogger.ui.info("designwalk: settled")
+        }
+
         private func chatsWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_CHATS_STATE"] ?? "sections"
             AppLogger.ui.info("chatswalk: state=\(state)")

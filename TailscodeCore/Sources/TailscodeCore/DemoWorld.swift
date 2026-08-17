@@ -39,6 +39,7 @@ public enum DemoWorld {
             "demo-c2": claudeMigrationScript,
             "demo-c3": claudeDarkModeScript,
             "demo-c4": claudeExplainerScript,
+            "demo-c5": claudeDesignScript,
         ],
         replyTurns: [claudeReplyA, claudeReplyB],
         interactive: true,
@@ -55,6 +56,10 @@ public enum DemoWorld {
                 id: "demo-c2", agentType: .claudeCode, title: "Migrate CI to self-hosted runners",
                 directory: "/Users/demo/dev/pulse-infra", createdAt: ago(11_000), updatedAt: ago(3300),
                 model: "claude-opus-4-8", reasoningEffort: "medium"),
+            AgentSession(
+                id: "demo-c5", agentType: .claudeCode, title: "Redesign the composer",
+                directory: "/Users/demo/dev/pulse-ios", createdAt: ago(2600), updatedAt: ago(2400),
+                model: "claude-opus-4-8", reasoningEffort: "high"),
             AgentSession(
                 id: "demo-c4", agentType: .claudeCode, title: "Explain the auth token refresh flow",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000),
@@ -134,6 +139,7 @@ public enum DemoWorld {
                 FileNode(path: "/Users/demo/dev/pulse-ios/project.yml", name: "project.yml", isDirectory: false),
             ],
         ],
+        fileContents: demoDesignFiles,
         subagentsBySession: [
             "demo-c2": [
                 SubagentSummary(
@@ -506,6 +512,68 @@ public enum DemoWorld {
                 id: "perm-c3", sessionID: "demo-c3",
                 title: "Edit Pulse/Settings/SettingsView.swift", toolName: "Edit"))),
             step(.status(.running)),
+        ]
+    }
+
+    /// The board every client can open in the demo: the manifest and the mocks the transcript's
+    /// card points at, served from the same paths the card names.
+    private static var demoDesignFiles: [String: String] {
+        var files: [String: String] = [:]
+        let board = DesignDemo.board
+        let manifest = try? JSONEncoder().encode(board.manifest)
+        files[DesignPaths.manifest(in: board.directory)] =
+            manifest.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        for artboard in board.artboards {
+            files[board.path(of: artboard)] = DesignDemo.pages[artboard.letter] ?? ""
+        }
+        return files
+    }
+
+    /// A design turn: the brief goes out as an ordinary prompt, the agent draws three alternatives
+    /// into the project, and the manifest it writes last becomes the board card in the transcript.
+    private static var claudeDesignScript: [MockScriptStep] {
+        [
+            step(user("c5u1", .claudeCode, DesignBrief(
+                request: "the composer, for what people actually use it for", count: 3,
+                reference: "Pulse/Chat/ComposerView.swift", slug: "composer-0818-1423").prompt,
+                at: ago(2580))),
+            step(assistant("c5a1", .claudeCode, at: ago(2560), model: "claude-opus-4-8", parts: [
+                MessagePart(id: "r", kind: .reasoning(
+                    "Reading the composer as it is, then drawing three alternatives that differ in what they make easy rather than in colour.")),
+                MessagePart(id: "t1", kind: .tool(ToolCall(
+                    id: "c5t1", name: "Read", status: .completed,
+                    input: .object(["file_path": .string("Pulse/Chat/ComposerView.swift")]),
+                    title: "Read Pulse/Chat/ComposerView.swift"))),
+                MessagePart(id: "t2", kind: .text(
+                    "Nine actions, one line, and the two people reach for most are behind a menu. Drawing three ways out of that:")),
+                MessagePart(id: "t3", kind: .tool(ToolCall(
+                    id: "c5t2", name: "Write", status: .completed,
+                    input: .object([
+                        "file_path": .string("\(DesignDemo.directory)/A.html")
+                    ]),
+                    title: "Write A.html"))),
+                MessagePart(id: "t4", kind: .tool(ToolCall(
+                    id: "c5t3", name: "Write", status: .completed,
+                    input: .object([
+                        "file_path": .string("\(DesignDemo.directory)/B.html")
+                    ]),
+                    title: "Write B.html"))),
+                MessagePart(id: "t5", kind: .tool(ToolCall(
+                    id: "c5t4", name: "Write", status: .completed,
+                    input: .object([
+                        "file_path": .string("\(DesignDemo.directory)/C.html")
+                    ]),
+                    title: "Write C.html"))),
+                MessagePart(id: "t6", kind: .tool(ToolCall(
+                    id: "c5t5", name: "Write", status: .completed,
+                    input: .object([
+                        "file_path": .string(DesignPaths.manifest(in: DesignDemo.directory))
+                    ]),
+                    title: "Write board.json"))),
+                MessagePart(id: "t7", kind: .text(
+                    "Three alternatives, drawn and nothing built: conservative, an adaptive row, and everything visible at once.")),
+            ], cost: nil, tokens: 18_600)),
+            step(.status(.idle)),
         ]
     }
 

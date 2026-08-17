@@ -80,6 +80,9 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--chatswalk") {
                 TourDriver.startChatsWalk(in: window)
             }
+            if CommandLine.arguments.contains("--designwalk") {
+                TourDriver.startDesignWalk(in: window)
+            }
         #endif
     }
 

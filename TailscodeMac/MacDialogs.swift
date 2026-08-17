@@ -183,6 +183,128 @@ enum MacDialogs {
         window.beginSheet(panel)
     }
 
+    /// The decision screen `/design` opens instead of sending the word. A design spends a whole
+    /// turn on somebody else's machine drawing pictures, so the sheet states what it will do, what
+    /// it will not touch, and where the mocks will land. Every word is the shared
+    /// ``DesignPreflight``'s; this sheet only lays them out.
+    static func designPreflight(
+        on window: NSWindow?, request: String = "",
+        onConfirm: @escaping @MainActor (DesignBrief) -> Void
+    ) {
+        let facts = DesignPreflight.make(
+            directory: DesignBrief(request: request).directory, count: DesignBrief.defaultCount)
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 100),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        panel.title = Localized.text("Design it first?")
+
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.m
+        column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
+        column.translatesAutoresizingMaskIntoConstraints = false
+
+        let headline = NSTextField(labelWithString: facts.headline)
+        headline.font = MacTheme.Ramp.font(.headline)
+        column.addArrangedSubview(headline)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: headline)
+
+        for paragraph in facts.paragraphs {
+            let body = NSTextField(wrappingLabelWithString: paragraph)
+            body.font = MacTheme.Ramp.font(.panelLabel)
+            body.textColor = MacTheme.Color.secondaryLabel
+            column.addArrangedSubview(body)
+            body.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+        }
+
+        func field(_ caption: String, placeholder: String, initial: String = "") -> NSTextField {
+            let label = NSTextField(labelWithString: caption.uppercased())
+            label.font = MacTheme.Ramp.font(.metricLabel)
+            label.textColor = MacTheme.Color.tertiaryLabel
+            column.addArrangedSubview(label)
+            column.setCustomSpacing(MacTheme.Spacing.xs, after: label)
+            let entry = NSTextField(string: initial)
+            entry.placeholderString = placeholder
+            column.addArrangedSubview(entry)
+            entry.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+            return entry
+        }
+
+        let requestField = field(
+            facts.requestCaption, placeholder: facts.requestPlaceholder, initial: request)
+        let referenceField = field(
+            facts.referenceCaption, placeholder: facts.referencePlaceholder)
+        let notesField = field(facts.notesCaption, placeholder: facts.notesPlaceholder)
+
+        let countCaption = NSTextField(labelWithString: facts.countCaption.uppercased())
+        countCaption.font = MacTheme.Ramp.font(.metricLabel)
+        countCaption.textColor = MacTheme.Color.tertiaryLabel
+        column.addArrangedSubview(countCaption)
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: countCaption)
+        let counts = NSSegmentedControl(
+            labels: (DesignBrief.minimumCount...DesignBrief.maximumCount).map { "\($0)" },
+            trackingMode: .selectOne, target: nil, action: nil)
+        counts.selectedSegment = DesignBrief.defaultCount - DesignBrief.minimumCount
+        column.addArrangedSubview(counts)
+
+        let wait = NSTextField(wrappingLabelWithString: facts.wait)
+        wait.font = MacTheme.Ramp.font(.panelFootnote)
+        wait.textColor = MacTheme.Color.tertiaryLabel
+        column.addArrangedSubview(wait)
+        wait.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+
+        let dismiss: @MainActor () -> Void = { [weak window, weak panel] in
+            guard let panel else { return }
+            if let window { window.endSheet(panel) } else { panel.orderOut(nil) }
+        }
+        let cancel = RowKit.ActionButton(title: Localized.text("Cancel")) { dismiss() }
+        cancel.keyEquivalent = "\u{1b}"
+        let confirm = RowKit.ActionButton(title: facts.confirmTitle) {
+            [weak requestField, weak referenceField, weak notesField, weak counts] in
+            func text(_ entry: NSTextField?) -> String {
+                entry?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
+            let count = (counts?.selectedSegment ?? 0) + DesignBrief.minimumCount
+            let brief = DesignBrief(
+                request: text(requestField), count: count, reference: text(referenceField),
+                notes: text(notesField))
+            guard brief.isReady else {
+                requestField?.becomeFirstResponder()
+                return
+            }
+            dismiss()
+            onConfirm(brief)
+        }
+        confirm.keyEquivalent = "\r"
+
+        let buttons = NSStackView(views: [RowKit.spacer(), cancel, confirm])
+        buttons.orientation = .horizontal
+        buttons.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(buttons)
+        buttons.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -40).isActive = true
+
+        let content = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: content.topAnchor),
+            column.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            content.widthAnchor.constraint(equalToConstant: 520),
+        ])
+        panel.contentView = content
+        panel.setContentSize(content.fittingSize)
+        panel.initialFirstResponder = requestField
+        guard let window else {
+            panel.center()
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+        window.beginSheet(panel)
+    }
+
     /// A top-anchored column inside a scroll view — the shape the servers window and every
     /// list-like dialog wants, where AppKit's default document would grow from the bottom.
     static func scrollColumn(holding column: NSStackView) -> NSScrollView {

@@ -23,6 +23,9 @@ struct ChatRow: Hashable {
         case subagentGroup(SubagentGroup)
         case compaction(CompactionRow)
         case taskBoard(TaskBoard)
+        /// A board of design alternatives the agent wrote, standing where the manifest that made
+        /// it was written rather than as a line about a file.
+        case designBoard(DesignSighting)
         case file(FileReference)
         case image(FileReference)
         case timestamp(String)

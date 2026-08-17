@@ -125,6 +125,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case quickAsk
     case summonAnywhere
     case updateCenter
+    case designBoards
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -296,6 +297,10 @@ public enum CapabilityRegistry {
             id: .questionCells, area: "transcript", title: "Questions, not tool rows",
             spec:
                 "An AskUserQuestion call docks as a question card at the end of the transcript and the answer goes out through the normal send path, never a direct backend call. The options an agent offers are a shortlist, not the whole of what can be said, so every card carries a line to type an answer of your own on — present on the card beside the options rather than behind a sheet or a menu, because an alternative you have to go looking for reads as absent, and the answer the agent needs is often the one it did not think to offer. On a question that takes one answer, typing takes the ticks off and the return key sends it; on one that takes several, what is typed stands beside them. It is a prompt box like any other: what is half-written into it is kept by DraftStore against the ask itself, so it survives the app being closed on the question it answers."),
+        CapabilityDefinition(
+            id: .designBoards, area: "transcript", title: "A design is looked at, not described",
+            spec:
+                "A change to a surface is argued about in pictures, so /design opens a preflight (DesignPreflight) that composes one brief — what to design, where it is now, what it must respect, how many alternatives — and sends it as an ordinary turn: the agent writes one self-contained HTML mock per alternative into .tailscode/design/<slug>/ plus a board.json naming each one, and changes no source. The brief states the convention rather than a command name, so it works on every agent this app talks to, and the word is answered by the app rather than by the server's catalog (SlashDispatch.designPreflight, CommandCatalogStore.designCommand) because what comes back is a surface this client renders. The board announces itself by that manifest being written — DesignReading watches the path, not the tool's name, since every agent calls its writer something different — and docks as a card at the call that wrote it, never a line of blue text. Opening it reads the manifest and each mock over the file route and renders them in the platform's own engine (WKWebView, WebKitGTK): one artboard at a time, full-bleed, its letter and name over it, its rationale and the annotations the agent stuck on it beside it, arrows or 1-9 to switch. Three verbs and no more: change this one (rewrites that mock in place), one more (appends an artboard), build this (the implement prompt, which says outright that the mock is a picture of the result rather than code to paste, and carries any last instruction). Every word is DesignBoardState's and every prompt is DesignFollowUp's, so a client decides only how a mock is framed. A board whose manifest cannot be read says so and offers the reread; a design skill that published to a link instead of to files is surfaced as that link rather than swallowed."),
         CapabilityDefinition(
             id: .compactionSeam, area: "transcript", title: "Compaction is a seam",
             spec:

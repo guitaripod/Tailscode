@@ -120,6 +120,7 @@ enum ParityManifest {
         case .projectBoard: return .implemented("toggleProjectScope")
         case .quickAsk: return .implemented("QuickAskWindow")
         case .summonAnywhere: return .implemented("Summon")
+        case .designBoards: return .implemented("DesignBoardWindow")
         }
     }
 }

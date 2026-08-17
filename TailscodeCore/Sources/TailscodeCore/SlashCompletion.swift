@@ -107,16 +107,26 @@ public enum SlashStage: Sendable, Equatable {
 /// clients owe the same answer: a command the server knows runs as a command, `/compact` always
 /// passes through its preflight, and anything the server has never heard of goes out as the words
 /// the person wrote — the server is the authority on its own grammar.
+///
+/// `/design` is the one word this app answers before the server does, and it is not a contradiction
+/// of that rule but the reason for it: what comes back is a board this client renders, chooses from
+/// and sends follow-ups about, so the brief has to state the convention the board surface reads. A
+/// server that has its own design skill still has it — under its own name, in the catalog, one row
+/// down — and what it publishes elsewhere is surfaced as the link it is.
 public enum SlashDispatch: Sendable, Equatable {
     case compactPreflight(instruction: String)
+    case designPreflight(request: String)
     case run(command: AgentCommand, arguments: String?)
     case plainText
+
+    public static let designWord = "design"
 
     public static func decide(
         text: String,
         commands: [AgentCommand],
         supportsCompaction: Bool,
-        resolvesFromPromptText: Bool
+        resolvesFromPromptText: Bool,
+        supportsDesign: Bool = false
     ) -> SlashDispatch {
         let (name, arguments): (String, String)
         switch SlashStage.of(text) {
@@ -130,6 +140,9 @@ public enum SlashDispatch: Sendable, Equatable {
         guard !name.isEmpty else { return .plainText }
         if name == "compact", supportsCompaction {
             return .compactPreflight(instruction: arguments)
+        }
+        if name == designWord, supportsDesign {
+            return .designPreflight(request: arguments)
         }
         guard let command = commands.first(where: { $0.name == name }), !resolvesFromPromptText
         else { return .plainText }

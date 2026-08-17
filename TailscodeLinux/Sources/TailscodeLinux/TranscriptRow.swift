@@ -47,6 +47,13 @@ final class TranscriptContext: @unchecked Sendable {
     /// The words of a turn that said nothing, sent again — the pane's own send, so the retry is a
     /// message like any other rather than a second road into the backend.
     var askAgain: (@Sendable (String) -> Void)?
+    /// A board of design alternatives, opened. The pane owns it because reading the mocks is the
+    /// server's file route and building one is the pane's own send.
+    var openDesign: (@Sendable (DesignSource) -> Void)?
+    /// What each board in this transcript turned out to be, so its card can name it rather than
+    /// its folder. Filled by the pane the first time a card asks.
+    var designBoards: [String: DesignManifest] = [:]
+    var requestDesignBoard: (@Sendable (String) -> Void)?
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: (@Sendable (UUID) -> Void)?
@@ -199,6 +206,9 @@ struct TranscriptRow: Hashable {
         case subagent(ToolCall)
         case workflow(ToolCall)
         case file(FileReference, mine: Bool)
+        /// A board of design alternatives the agent wrote, standing where the manifest that made it
+        /// was written rather than as a line about a file.
+        case designBoard(DesignSighting)
         case taskBoard(TaskBoard)
         case compaction(Compaction)
         case answerless(AnswerlessTurn)
@@ -288,7 +298,9 @@ struct TranscriptRow: Hashable {
             case .tool(let call):
                 if call.asksUserQuestion, call.isAwaitingAnswer { continue }
                 let kind: Kind
-                if call.summaryKind == .workflow {
+                if let sighting = DesignReading.sighting(of: call, in: message) {
+                    kind = .designBoard(sighting)
+                } else if call.summaryKind == .workflow {
                     kind = .workflow(call)
                 } else {
                     kind = call.spawnsSubagent ? .subagent(call) : .tool(call)
@@ -488,6 +500,9 @@ struct TranscriptRow: Hashable {
             }.joined(separator: " ")
         case .file(let reference, _):
             return reference.filename ?? reference.path ?? ""
+        case .designBoard(let sighting):
+            let reading = DesignCardReading.make(sighting: sighting, board: nil)
+            return "\(reading.title) \(reading.detail)"
         case .taskBoard(let board):
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
@@ -536,6 +551,8 @@ struct TranscriptRow: Hashable {
             return WorkflowCardView.make(call, key: key, context: context)
         case .file(let reference, let mine):
             return Self.filePart(reference, mine: mine, key: key, context: context)
+        case .designBoard(let sighting):
+            return Self.designBoard(sighting, context: context)
         case .taskBoard(let board):
             return TaskBoardView.make(board)
         case .compaction(let compaction):
@@ -997,6 +1014,55 @@ struct TranscriptRow: Hashable {
     /// A turn that finished having said nothing. It is a card rather than a prose row because
     /// there is no prose — the transcript would otherwise show the question and then simply the
     /// next thing, with the whole turn missing.
+    /// A board of alternatives, offered rather than described. The letters are on the card because
+    /// they are what the reader will pick by, and the whole row is the way in — a design that has
+    /// to be found through a file path is a design nobody looks at.
+    private static func designBoard(
+        _ sighting: DesignSighting, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        var board: DesignBoard?
+        if case .board(let directory) = sighting.source {
+            if let manifest = context.designBoards[directory] {
+                board = DesignBoard(directory: directory, manifest: manifest)
+            } else {
+                context.requestDesignBoard?(directory)
+            }
+        }
+        let reading = DesignCardReading.make(sighting: sighting, board: board)
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "card-design")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(heading), Gtk.label("▣", css: "glyph-info", selectable: false))
+        let title = Gtk.label(reading.title, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(reading.detail, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        if !reading.letters.isEmpty {
+            let strip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            for letter in reading.letters {
+                gtk_box_append(
+                    ptr(strip), Gtk.label(letter, css: "design-letter", selectable: false))
+            }
+            gtk_widget_set_halign(strip, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), strip)
+        }
+
+        let open = context.openDesign
+        let source = sighting.source
+        let button = Gtk.button(reading.action, css: ["flat", "seam-read"]) { open?(source) }
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), button)
+        return card
+    }
+
     private static func answerless(
         _ turn: AnswerlessTurn, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
