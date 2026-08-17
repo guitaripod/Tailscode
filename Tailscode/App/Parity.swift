@@ -55,7 +55,7 @@ enum ParityManifest {
         case .authBanner: return .implemented("presentSignIn")
         case .followBottom: return .implemented("syncFAB")
         case .transcriptFind: return .implemented("runFind")
-        case .userEcho: return .implemented("LocalEcho")
+        case .userEcho: return .implemented("PendingSendLedger")
         case .vimComposer: return .notApplicable("a touch composer; modal editing presumes a hardware keyboard")
         case .slashCompletion: return .implemented("SlashCommandPalette")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

@@ -55,7 +55,7 @@ enum ParityManifest {
         case .authBanner: return .implemented("authBanner")
         case .followBottom: return .implemented("jumpToBottom")
         case .transcriptFind: return .implemented("findEntry")
-        case .userEcho: return .implemented("echoedPrompt")
+        case .userEcho: return .implemented("PendingSendLedger")
         case .vimComposer: return .implemented("VimEngine")
         case .slashCompletion: return .implemented("renderCompletion")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

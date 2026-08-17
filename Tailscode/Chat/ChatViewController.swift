@@ -20,6 +20,9 @@ final class ChatViewController: UIViewController {
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []
+    /// How many compaction seams the transcript carries, counted when it was last built so a
+    /// redraw of the docked rows does not walk it again.
+    private var seamCount = 0
     private var renderedIDOrder: [String] = []
     private var pendingAttachments: [PromptAttachment] = []
     /// Names pasted pictures apart, so two screenshots in one prompt are two files rather than one
@@ -497,6 +500,8 @@ final class ChatViewController: UIViewController {
         touchWatch.delegate = self
         collectionView.addGestureRecognizer(touchWatch)
         collectionView.register(TextBubbleCell.self, forCellWithReuseIdentifier: TextBubbleCell.reuseID)
+        collectionView.register(
+            PendingSendCell.self, forCellWithReuseIdentifier: PendingSendCell.reuseID)
         collectionView.register(CodeBlockCell.self, forCellWithReuseIdentifier: CodeBlockCell.reuseID)
         collectionView.register(TableCell.self, forCellWithReuseIdentifier: TableCell.reuseID)
         collectionView.register(
@@ -1028,11 +1033,15 @@ final class ChatViewController: UIViewController {
             {
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
+                let held = self.viewModel.queueHold != nil
+                    && self.viewModel.queued.first?.id == message.id
                 cell.configure(
-                    text: "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(message))",
+                    text: SendQueueReading.rowLine(message, held: held),
                     role: .user, reasoning: false)
                 cell.contentView.alpha = self.editingQueued == message.id ? 0.28 : 0.5
-                cell.accessibilityHint = SendQueueReading.hint
+                cell.accessibilityHint = held
+                    ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
+                    : SendQueueReading.hint
                 return cell
             }
             if id == "thinking" {
@@ -1045,30 +1054,35 @@ final class ChatViewController: UIViewController {
                 cell.configure(live, onTap: nil)
                 return cell
             }
-            if id.hasPrefix("local:"), id.contains(":img"),
-                let echo = self.viewModel.localEchoes.first(where: {
-                    id.hasPrefix("local:\($0.id.uuidString):img")
+            if id.hasPrefix("pending:"), id.contains(":img"),
+                let echo = self.viewModel.pendingSends.first(where: {
+                    id.hasPrefix("pending:\($0.id.uuidString):img")
                 }),
                 let index = Int(id.components(separatedBy: ":img").last ?? ""),
-                echo.attachments.indices.contains(index)
+                echo.pictures.indices.contains(index)
             {
-                let attachment = echo.attachments[index]
+                let attachment = echo.pictures[index]
                 let cell = collectionView.dequeueReusableCell(
                     withReuseIdentifier: ImageBubbleCell.reuseID, for: indexPath) as! ImageBubbleCell
                 cell.delegate = self
                 cell.configure(
                     file: FileReference(
-                        path: nil, mime: attachment.mime, url: "local:\(echo.id.uuidString):\(index)",
+                        path: nil, mime: attachment.mime,
+                        url: "pending:\(echo.id.uuidString):\(index)",
                         filename: attachment.filename),
                     role: .user, backend: self.viewModel.backend, localData: attachment.data)
                 return cell
             }
-            if id.hasPrefix("local:"),
-                let echo = self.viewModel.localEchoes.first(where: { "local:\($0.id.uuidString)" == id })
+            if id.hasPrefix("pending:"),
+                let send = self.viewModel.pendingSends.first(where: {
+                    "pending:\($0.id.uuidString)" == id
+                })
             {
                 let cell = collectionView.dequeueReusableCell(
-                    withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
-                cell.configure(text: echo.text, role: .user, reasoning: false)
+                    withReuseIdentifier: PendingSendCell.reuseID, for: indexPath)
+                    as! PendingSendCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(send, delegate: self)
                 return cell
             }
             if id == Self.interruptedRowID, let turn = self.interrupted {
@@ -1597,27 +1611,52 @@ final class ChatViewController: UIViewController {
                 self.dataSource.apply(snapshot, animatingDifferences: false)
             }
         }
-        viewModel.onSendFailed = { [weak self] text in
+        viewModel.onPending = { [weak self] in
             guard let self else { return }
-            Theme.Haptics.error()
-            if self.composer.currentText.isEmpty {
-                self.composer.setDraft(text, focus: false)
-                DraftStore.record(text, for: self.draftScope)
-                self.flushDraft()
-                self.presentToast(
-                    String(localized: "Not sent — your message is back in the composer."))
-            } else {
-                UIPasteboard.general.string = text
-                self.presentToast(String(localized: "Not sent — message copied to clipboard."))
+            let failures = self.viewModel.pendingSends.filter(\.isFailed).map(\.id)
+            if Set(failures) != self.announcedFailedSends {
+                if !Set(failures).subtracting(self.announcedFailedSends).isEmpty {
+                    Theme.Haptics.error()
+                }
+                self.announcedFailedSends = Set(failures)
             }
+            self.renderPending()
         }
     }
 
+    /// Which failed rows have already been felt. A failure is worth one knock, and the row is
+    /// redrawn on every clock tick that ages its caption.
+    private var announcedFailedSends: Set<UUID> = []
+
+    /// The server's account of the conversation moved, so every row is built from it again.
     private func render(_ state: ConversationState) {
+        lastRenderedState = state
+        compose(state, rebuild: rebuildTranscript(state))
+    }
+
+    /// Only what this device is holding changed — a message sent, taken back, failed, or moved in
+    /// the queue — and the server's account did not move at all.
+    ///
+    /// So it is not rebuilt. Rebuilding means walking every message in the conversation and making
+    /// a row out of every part of it, which in one of the long ones is most of a second of main
+    /// thread, and that second used to sit between pressing Send and seeing the words. What is
+    /// redrawn here is the handful of rows docked at the end, which is the whole of what changed.
+    private func renderPending() {
+        guard let state = lastRenderedState else { return }
+        compose(state, rebuild: nil)
+    }
+
+    /// What a rebuild leaves behind for the compose pass: the rows as they were, so a repaint can
+    /// be told from an insertion, and the counts derived from walking them.
+    private struct TranscriptRebuild {
+        let previous: [String: ChatRow]
+        let rows: [ChatRow]
+    }
+
+    private func rebuildTranscript(_ state: ConversationState) -> TranscriptRebuild {
         let runs = WorkflowRunAssembly.runs(
             messages: state.messages, agents: viewModel.trackedSubagents, now: workflowNow)
         workflowRuns = runs
-        lastRenderedState = state
         updateWorkflowTicker()
         let rows = ChatRowBuilder.makeRows(
             from: state.messages, agents: subagentPlacement(for: state.messages),
@@ -1626,6 +1665,7 @@ final class ChatViewController: UIViewController {
         let uniqueRows = Self.dedupeRows(rows)
         rowsByID = Dictionary(uniqueKeysWithValues: uniqueRows.map { ($0.id, $0) })
         orderedIDs = uniqueRows.map(\.id)
+        seamCount = uniqueRows.count(where: { Self.isSeam($0) })
         paceCascade(uniqueRows)
         streamingActivityID = orderedIDs.last(where: { id in
             guard let content = rowsByID[id]?.content else { return false }
@@ -1644,7 +1684,10 @@ final class ChatViewController: UIViewController {
                 expandedReasoning.subtract(oldest)
             }
         }
+        return TranscriptRebuild(previous: previous, rows: rows)
+    }
 
+    private func compose(_ state: ConversationState, rebuild: TranscriptRebuild?) {
         let previousPermissionID = pendingPermission?.id
         let previousQuestionID = pendingQuestion?.id
         pendingPermission = state.pendingPermissions.first
@@ -1655,21 +1698,23 @@ final class ChatViewController: UIViewController {
         withdrawResolvedRequests(
             previousPermission: previousPermissionID, previousQuestion: previousQuestionID)
         var ids = orderedIDs
-        for echo in viewModel.localEchoes {
-            for index in echo.attachments.indices {
-                ids.append("local:\(echo.id.uuidString):img\(index)")
+        var pendingIDs: [String] = []
+        for send in viewModel.pendingSends {
+            for index in send.pictures.indices {
+                pendingIDs.append("pending:\(send.id.uuidString):img\(index)")
             }
-            if !echo.text.isEmpty || echo.attachments.isEmpty {
-                ids.append("local:\(echo.id.uuidString)")
+            if !send.text.isEmpty || send.pictures.isEmpty {
+                pendingIDs.append("pending:\(send.id.uuidString)")
             }
         }
+        ids.append(contentsOf: pendingIDs)
         let lastContentRole: MessageRole? =
-            viewModel.localEchoes.isEmpty
+            viewModel.pendingSends.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
         let previousCompaction = liveCompaction
         updateLiveCompaction(
-            state.compaction, seams: uniqueRows.count(where: { Self.isSeam($0) }),
-            queued: !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty)
+            state.compaction, seams: seamCount,
+            queued: !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty)
         if let liveCompaction {
             ids.append(liveCompaction.id)
         } else if viewModel.isBusy, pendingPermission == nil, pendingQuestion == nil,
@@ -1694,7 +1739,7 @@ final class ChatViewController: UIViewController {
             entranceEligible
             ? uniqueIDs.filter {
                 !lastRenderedIDs.contains($0)
-                    && ($0.hasPrefix("local:") || $0.hasPrefix("queued:"))
+                    && ($0.hasPrefix("pending:") || $0.hasPrefix("queued:"))
             } : []
         let entranceThinking =
             entranceEligible && uniqueIDs.contains("thinking")
@@ -1713,7 +1758,20 @@ final class ChatViewController: UIViewController {
         snapshot.appendSections([.main])
         snapshot.appendItems(uniqueIDs, toSection: .main)
 
-        var changed = orderedIDs.filter { previous[$0] != nil && previous[$0] != rowsByID[$0] }
+        var changed: [String] = []
+        if let rebuild {
+            changed = orderedIDs.filter {
+                rebuild.previous[$0] != nil && rebuild.previous[$0] != rowsByID[$0]
+            }
+        }
+        // A row this device is holding changes without the transcript moving — sending becomes
+        // sent becomes not-sent, and a queue renumbers itself when one of its messages goes. Only
+        // rows that were already on screen are repainted; the ones this pass is adding arrive
+        // drawn.
+        for id in pendingIDs + viewModel.queued.map({ "queued:\($0.id.uuidString)" })
+        where lastRenderedIDs.contains(id) && !changed.contains(id) {
+            changed.append(id)
+        }
         if let liveCompaction, liveCompaction != previousCompaction {
             changed.append(liveCompaction.id)
         }
@@ -1729,19 +1787,22 @@ final class ChatViewController: UIViewController {
             }
             lastStreamingID = streamingID
         }
-        let previousToolStatuses = Self.collectToolStatuses(from: previous.values.flatMap { row in
-            if case .activity(let steps) = row.content { return steps }
-            return []
-        })
-        let currentToolStatuses = Self.collectToolStatuses(from: rows.flatMap { row in
-            if case .activity(let steps) = row.content { return steps }
-            return []
-        })
-        for (id, previousStatus) in previousToolStatuses {
-            if let currentStatus = currentToolStatuses[id],
-                previousStatus != currentStatus, currentStatus == .completed
-            {
-                Theme.Haptics.step()
+        if let rebuild {
+            let previousToolStatuses = Self.collectToolStatuses(
+                from: rebuild.previous.values.flatMap { row in
+                    if case .activity(let steps) = row.content { return steps }
+                    return []
+                })
+            let currentToolStatuses = Self.collectToolStatuses(from: rebuild.rows.flatMap { row in
+                if case .activity(let steps) = row.content { return steps }
+                return []
+            })
+            for (id, previousStatus) in previousToolStatuses {
+                if let currentStatus = currentToolStatuses[id],
+                    previousStatus != currentStatus, currentStatus == .completed
+                {
+                    Theme.Haptics.step()
+                }
             }
         }
         let animated = animateNextRender && hasRevealed
@@ -1771,8 +1832,10 @@ final class ChatViewController: UIViewController {
 
         composer.setBusy(viewModel.isBusy)
         syncFAB()
-        noteUnread(orderedIDs.filter { previous[$0] == nil }.count)
-        updateNavStatus(for: state)
+        if let rebuild {
+            noteUnread(orderedIDs.filter { rebuild.previous[$0] == nil }.count)
+        }
+        updateNavStatus(for: state, messagesMoved: rebuild != nil)
         if wasRunning && state.status != .running {
             if state.messages.last?.isAnswerless == true {
                 Theme.Haptics.warning()
@@ -2042,12 +2105,15 @@ final class ChatViewController: UIViewController {
     /// clock — derived through the shared `StatusFacts` rather than a private phase guess. The
     /// richer iOS wording for the busy line still comes from `liveStatus`, but the phase and
     /// color are the facts'.
-    private func updateNavStatus(for state: ConversationState) {
-        if state.messages.count != countedMessages {
+    /// - Parameter messagesMoved: whether the transcript itself changed. When it did not — a
+    ///   redraw of what this device is holding — the two readings that walk every message in the
+    ///   conversation would return exactly what they returned last time, at the same cost.
+    private func updateNavStatus(for state: ConversationState, messagesMoved: Bool = true) {
+        if messagesMoved, state.messages.count != countedMessages {
             countedMessages = state.messages.count
             contextEstimate = StatusFacts.estimateContextTokens(state.messages)
         }
-        spendReading.note(messages: state.messages, for: viewModel.session.id)
+        if messagesMoved { spendReading.note(messages: state.messages, for: viewModel.session.id) }
         updateContextChip()
         updateSpendChip()
         let facts = StatusFacts.from(
@@ -2296,7 +2362,7 @@ final class ChatViewController: UIViewController {
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
         let hasRows =
-            !orderedIDs.isEmpty || !viewModel.localEchoes.isEmpty || !viewModel.queued.isEmpty
+            !orderedIDs.isEmpty || !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty
         updatePlaceholders(hasRows: hasRows, for: viewModel.state)
         UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
@@ -2548,7 +2614,7 @@ final class ChatViewController: UIViewController {
             updateAttachmentStrip()
         }
         Theme.Haptics.selection()
-        render(viewModel.state)
+        renderPending()
     }
 
     /// ↑ in an empty composer takes back the last thing written — the one being reconsidered.
@@ -3800,7 +3866,7 @@ final class ChatViewController: UIViewController {
     /// exact condition that renders a duplicate. Logs the shape so the trigger
     /// (reuse path, resync, stale echo) can be pinned from a device log.
     private static func logPendingPhantom(state: ConversationState, viewModel: ChatViewModel) {
-        let pendingTexts = viewModel.queued.map(\.text) + viewModel.localEchoes.map(\.text)
+        let pendingTexts = viewModel.queued.map(\.text) + viewModel.pendingSends.map(\.text)
         guard !pendingTexts.isEmpty else { return }
         let serverUserTexts = Set(
             state.messages.filter { $0.role == .user }.map { $0.text })
@@ -3808,7 +3874,7 @@ final class ChatViewController: UIViewController {
         guard !phantoms.isEmpty else { return }
         AppLogger.chat.error(
             "pending phantom: \(phantoms.count) pending bubble(s) duplicate a server message — "
-                + "queued=\(viewModel.queued.count) echoes=\(viewModel.localEchoes.count) "
+                + "queued=\(viewModel.queued.count) echoes=\(viewModel.pendingSends.count) "
                 + "serverUsers=\(serverUserTexts.count) first=\"\(phantoms[0].prefix(30))\"")
     }
 
@@ -4001,7 +4067,7 @@ final class ChatViewController: UIViewController {
     }
 }
 
-extension ChatViewController: ComposerViewDelegate {
+extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     /// A typed slash goes where the palette would have sent it — the person who types the whole
     /// command should not get different behaviour from the person who tapped the row. Anything
     /// the server has never heard of goes out as the words that were written: the server is the
@@ -4052,6 +4118,36 @@ extension ChatViewController: ComposerViewDelegate {
     private func askAgain(_ turn: AnswerlessTurn) {
         guard turn.offersRemedy, !viewModel.isBusy else { return }
         sendDraft(turn.prompt)
+    }
+
+    /// What a row that did not go offers. Sending again is the ordinary send — it keeps the row,
+    /// so the words never move; editing hands them and whatever was clipped to them back to the
+    /// composer and takes the row away, because two copies of the same message on screen is the
+    /// confusion this row exists to prevent.
+    func pendingSend(_ id: UUID, act: PendingSend.Act) {
+        switch act {
+        case .retry:
+            Theme.Haptics.tap()
+            announcedFailedSends.remove(id)
+            userScrolledUp = false
+            viewModel.retryPending(id: id)
+        case .edit:
+            guard let taken = viewModel.takeBackPending(id: id) else { return }
+            announcedFailedSends.remove(id)
+            composer.setDraft(taken.text)
+            composer.becomeFirstResponder()
+            DraftStore.record(taken.text, for: draftScope)
+            if !taken.attachments.isEmpty {
+                pendingAttachments = taken.attachments
+                composer.showsAttach = canAttachAnything
+                updateAttachmentStrip()
+            }
+            Theme.Haptics.selection()
+        case .discard:
+            announcedFailedSends.remove(id)
+            viewModel.discardPending(id: id)
+            Theme.Haptics.tap()
+        }
     }
 
     func composerTextDidChange(_ text: String) {
@@ -4650,19 +4746,20 @@ extension ChatViewController: ImageBubbleCellDelegate {
             if case .image(let file)? = rowsByID[id]?.content {
                 return GalleryImage(id: id, file: file, localData: nil)
             }
-            guard id.hasPrefix("local:"), id.contains(":img"),
-                let echo = viewModel.localEchoes.first(where: {
-                    id.hasPrefix("local:\($0.id.uuidString):img")
+            guard id.hasPrefix("pending:"), id.contains(":img"),
+                let echo = viewModel.pendingSends.first(where: {
+                    id.hasPrefix("pending:\($0.id.uuidString):img")
                 }),
                 let index = Int(id.components(separatedBy: ":img").last ?? ""),
-                echo.attachments.indices.contains(index)
+                echo.pictures.indices.contains(index)
             else { return nil }
-            let attachment = echo.attachments[index]
+            let attachment = echo.pictures[index]
             return GalleryImage(
                 id: id,
                 file: FileReference(
                     path: nil, mime: attachment.mime,
-                    url: "local:\(echo.id.uuidString):\(index)", filename: attachment.filename),
+                    url: "pending:\(echo.id.uuidString):\(index)",
+                    filename: attachment.filename),
                 localData: attachment.data)
         }
     }

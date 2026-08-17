@@ -133,6 +133,34 @@ public enum SendQueueReading {
     /// The short form, for a row too narrow for the sentence.
     public static var badge: String { Localized.text("waiting") }
 
+    /// A queue stops draining when the message at its head fails to go, and it stays stopped
+    /// until the server answers again — sending the next one into the same fault is how a single
+    /// tailnet blip used to destroy everything behind it. That hold is a state, and it belongs on
+    /// the row it is holding rather than nowhere: a queue that has quietly stopped looks exactly
+    /// like a queue waiting its turn, and the difference is the only thing worth knowing.
+    public static var heldBadge: String { Localized.text("held") }
+
+    /// The mark a held row wears instead of the hourglass, because a queue that has stopped is a
+    /// different fact from a queue that is waiting and must not wear the same face.
+    public static let heldGlyph = "⏸"
+    public static let heldSymbol = "pause.circle"
+
+    /// The whole visible line of a waiting row, so three clients cannot drift on what it says.
+    public static func rowLine(_ send: QueuedSend, held: Bool = false) -> String {
+        held
+            ? "\(heldGlyph) \(heldBadge) · \(rowTitle(send))"
+            : "\(glyph) \(rowTitle(send))"
+    }
+
+    public static func heldHint(reason: String?) -> String {
+        guard let reason = reason?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !reason.isEmpty
+        else {
+            return Localized.text("Held — the last send didn't go. It goes when the server answers.")
+        }
+        return Localized.text("Held — %@. It goes when the server answers.", reason)
+    }
+
     public static func spoken(_ send: QueuedSend, position: Int, of total: Int) -> String {
         let where_ = total > 1
             ? Localized.text("%d of %d waiting", position, total)

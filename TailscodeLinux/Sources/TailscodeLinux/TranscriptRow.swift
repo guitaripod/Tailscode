@@ -50,6 +50,7 @@ final class TranscriptContext: @unchecked Sendable {
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: (@Sendable (UUID) -> Void)?
+    var pendingAct: (@Sendable (UUID, PendingSend.Act) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine. Both go
     /// through the pane, which is the one place that knows which conversation is being looked at.
     var resumeInterrupted: (@Sendable () -> Void)?
@@ -205,6 +206,7 @@ struct TranscriptRow: Hashable {
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
         case queuedSend(QueuedSend, position: Int, of: Int)
+        case pendingSend(PendingSend, now: Date)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -496,6 +498,8 @@ struct TranscriptRow: Hashable {
             return stats.spoken
         case .queuedSend(let send, _, _):
             return SendQueueReading.rowTitle(send)
+        case .pendingSend(let send, let now):
+            return PendingSendReading.spoken(send, now: now)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -542,6 +546,8 @@ struct TranscriptRow: Hashable {
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
             return Self.queuedSend(send, position: position, of: total, context: context)
+        case .pendingSend(let send, let now):
+            return Self.pendingSend(send, now: now, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -897,6 +903,62 @@ struct TranscriptRow: Hashable {
         let id = send.id
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { edit?(id) }
         return button
+    }
+
+    /// A message on its way out: the words drawn as the prompt they will become, with a line
+    /// under them saying whether they went.
+    ///
+    /// It is the prompt's own rule and the prompt's own words because that is what it is — what
+    /// is added is the one thing the transcript could never say, which is that this message is
+    /// not in the server's account yet. A send that failed keeps its words right here and offers
+    /// the three things worth doing about them, rather than dropping them back into a composer
+    /// the reader has to notice.
+    private static func pendingSend(
+        _ send: PendingSend, now: Date, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(rule, "prompt-rule")
+        if send.isFailed { Gtk.addClass(rule, "pending-rule-failed") }
+        gtk_widget_set_size_request(rule, 2, -1)
+
+        let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        let label = Gtk.markupLabel(
+            PangoMarkdown.plainWithLinks(send.text, accent: MatrixTheme.palette.accent),
+            css: "prompt-text")
+        gtk_widget_set_hexpand(label, 1)
+        gtk_box_append(ptr(lines), label)
+
+        let icon = PendingSendReading.icon(send)
+        let status = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_widget_set_halign(status, GTK_ALIGN_START)
+        gtk_box_append(
+            ptr(status), Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false))
+        gtk_box_append(
+            ptr(status),
+            Gtk.label(
+                PendingSendReading.caption(send, now: now), css: "queued-hint", selectable: false))
+        gtk_box_append(ptr(lines), status)
+
+        if !send.acts.isEmpty, let act = context.pendingAct {
+            let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+            gtk_widget_set_halign(buttons, GTK_ALIGN_START)
+            let id = send.id
+            for choice in send.acts {
+                gtk_box_append(
+                    ptr(buttons),
+                    Gtk.button(PendingSendReading.title(choice), css: ["flat", "seam-read"]) {
+                        act(id, choice)
+                    })
+            }
+            gtk_box_append(ptr(lines), buttons)
+        }
+
+        gtk_widget_set_hexpand(lines, 1)
+        gtk_box_append(ptr(row), rule)
+        gtk_box_append(ptr(row), lines)
+        gtk_widget_set_tooltip_text(row, PendingSendReading.spoken(send, now: now))
+        return row
     }
 
     /// What the answer above it took: one quiet strip of glyph-and-number, tooltipped with the

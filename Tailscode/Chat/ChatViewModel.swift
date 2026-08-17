@@ -24,7 +24,15 @@ final class ChatViewModel {
 
     var isBound = true
     var onState: ((ConversationState) -> Void)?
-    var onSendFailed: ((String) -> Void)?
+    /// A change to what this device is holding — a message sent, taken, failed or queued — and
+    /// nothing at all to the server's account of the conversation.
+    ///
+    /// It is a separate signal because it has a separate cost. Redrawing from a state means
+    /// rebuilding every row of the transcript from every message in it, which in a conversation
+    /// of a few thousand rows is most of a second of main thread — and the one moment that must
+    /// never cost most of a second is the one right after somebody presses Send. A client
+    /// answering this redraws only what it is itself holding.
+    var onPending: (() -> Void)?
     var onModelChange: (() -> Void)?
     var onError: ((String) -> Void)?
     var onQuestionFailed: ((String) -> Void)?
@@ -400,12 +408,12 @@ final class ChatViewModel {
         let vmTag = String(UInt(bitPattern: ObjectIdentifier(self).hashValue) & 0xffff, radix: 16)
         guard streamTask == nil else {
             AppLogger.chat.info(
-                "start reuse vm=\(vmTag) queued=\(queue.count) echoes=\(localEchoes.count)")
+                "start reuse vm=\(vmTag) queued=\(queue.count) echoes=\(pending.count)")
             onState?(state)
             return
         }
         AppLogger.chat.info(
-            "start fresh vm=\(vmTag) queued=\(queue.count) echoes=\(localEchoes.count)")
+            "start fresh vm=\(vmTag) queued=\(queue.count) echoes=\(pending.count)")
         streamGeneration += 1
         let generation = streamGeneration
         streamTask = Task { [weak self] in
@@ -431,7 +439,10 @@ final class ChatViewModel {
                 if (self.displayedModel, self.displayedEffort) != displayedBefore {
                     self.onModelChange?()
                 }
-                if state.status == .running { self.queueHeldAfterFailure = false }
+                if state.status == .running {
+                    self.queueHeldAfterFailure = false
+                    self.queueHold = nil
+                }
                 self.onState?(state)
                 let awaiting =
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
@@ -499,31 +510,22 @@ final class ChatViewModel {
         }
     }
 
-    /// A locally-echoed prompt, shown instantly while the server round-trip
-    /// is in flight; dropped once the server transcript grows a new user
-    /// message (count-based, so re-sending "ok" can't match an old message,
-    /// and server-side prompt rewrites can't strand a duplicate).
-    struct LocalEcho {
-        let id = UUID()
-        let text: String
-        let baselineUserCount: Int
-        /// Rendered from the bytes still in memory, so an image the user just
-        /// picked is on screen before the server has echoed the message back.
-        var attachments: [PromptAttachment] = []
-    }
+    /// What this device has written and the server has not echoed back yet, with what became of
+    /// each — the row a person sees the instant they press Send, and the only place a send that
+    /// never went still holds its words. The ledger and its wording are Core's; this owns the
+    /// clock and the network.
+    private(set) var pending = PendingSendLedger()
 
-    private(set) var localEchoes: [LocalEcho] = []
+    var pendingSends: [PendingSend] { pending.sends }
+
     private(set) var optimisticThinking = false
     private var activityLive = false
     private var turnSawRunning = false
 
     private func reconcileOptimisticState(with state: ConversationState) {
         if state.status == .running { optimisticThinking = false }
-        if !localEchoes.isEmpty {
-            let userCount = state.messages.count { $0.role == .user }
-            localEchoes.removeAll { userCount > $0.baselineUserCount }
-        }
-        if optimisticThinking, localEchoes.isEmpty,
+        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        if optimisticThinking, !pending.hasInFlight,
             let last = state.messages.last, last.role == .assistant, !last.text.isEmpty
         {
             optimisticThinking = false
@@ -562,7 +564,7 @@ final class ChatViewModel {
     @discardableResult
     func removeQueued(id: UUID) -> QueuedSend? {
         let removed = queue.remove(id: id)
-        if removed != nil { onState?(state) }
+        if removed != nil { onPending?() }
         return removed
     }
 
@@ -570,20 +572,19 @@ final class ChatViewModel {
     @discardableResult
     func takeBackLastQueued() -> QueuedSend? {
         let taken = queue.takeLast()
-        if taken != nil { onState?(state) }
+        if taken != nil { onPending?() }
         return taken
     }
 
     /// Rewrites a waiting message in place, keeping its turn in the order.
     func replaceQueued(id: UUID, text: String, attachments: [PromptAttachment]) {
         guard queue.replace(id: id, text: text, attachments: attachments) else { return }
-        onState?(state)
+        onPending?()
     }
 
     private func flushQueue() {
         guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure else { return }
         guard let next = queue.takeFirst() else { return }
-        onState?(state)
         deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
 
@@ -593,17 +594,61 @@ final class ChatViewModel {
     /// message 1 to the composer, message 2 to the pasteboard, message 3 over
     /// that — so one tailnet blip silently destroyed everything the user had
     /// queued. The queue is preserved and drains from the state loop once the
-    /// server answers again. With messages already waiting behind it, the
-    /// failure returns to the head of the queue instead of the composer, so
-    /// the user's intended order survives.
-    private func recoverFailedSend(_ pending: QueuedSend) {
+    /// server answers again.
+    ///
+    /// Where the words end up follows from what else is waiting. With nothing behind it the
+    /// message stays exactly where it was written, as its own row, now saying it did not go and
+    /// offering to send it again — the words are never moved out from under the reader into a
+    /// composer or a pasteboard they have to go looking in. With messages already queued behind
+    /// it, it returns to the head of the queue instead, because the order somebody wrote things
+    /// in outranks the row they were written on.
+    private func recoverFailedSend(_ send: QueuedSend, row: UUID, reason: String) {
         if queue.isEmpty {
-            onSendFailed?(pending.text)
+            pending.mark(id: row, .failed(reason: reason))
+            queueHold = nil
         } else {
-            queue.requeueAtHead(pending)
+            pending.remove(id: row)
+            queue.requeueAtHead(send)
             queueHeldAfterFailure = true
-            onState?(state)
+            queueHold = reason
         }
+        onPending?()
+    }
+
+    /// Why the queue stopped draining, when it has. A queue that quietly stopped looks exactly
+    /// like one waiting its turn, and the difference is the only thing worth knowing.
+    private(set) var queueHold: String?
+
+    /// Sends a failed row again, keeping its place and its identity — with a turn now running it
+    /// joins the queue like anything else written during one.
+    func retryPending(id: UUID) {
+        guard let send = pending.send(id: id), send.isFailed else { return }
+        let attachments = send.attachments
+        let text = send.text
+        guard !isBusy else {
+            pending.remove(id: id)
+            queue.append(QueuedSend(text: text, attachments: attachments))
+            onPending?()
+            return
+        }
+        deliver(
+            text, model: send.model ?? selectedModel, effort: send.effort ?? currentEffort,
+            attachments: attachments, reusing: id)
+    }
+
+    /// Takes a failed row back to be rewritten. The row goes; its words are the caller's now.
+    @discardableResult
+    func takeBackPending(id: UUID) -> PendingSend? {
+        let taken = pending.remove(id: id)
+        if taken != nil { onPending?() }
+        return taken
+    }
+
+    @discardableResult
+    func discardPending(id: UUID) -> PendingSend? {
+        let dropped = pending.remove(id: id)
+        if dropped != nil { onPending?() }
+        return dropped
     }
 
     /// Gates auto-flush after a failure without depending on
@@ -646,7 +691,7 @@ final class ChatViewModel {
         if isBusy {
             queue.append(
                 QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
-            onState?(state)
+            onPending?()
             return
         }
         deliver(text, model: model, effort: effort, attachments: attachments)
@@ -661,6 +706,36 @@ final class ChatViewModel {
     var canRegenerate: Bool { lastSent != nil && !isBusy }
 
     private var sendTask: Task<Void, Never>?
+
+    /// Holds a send on the wire for as long as `TAILSCODE_HOLD_SEND` says, so the states a fast
+    /// server passes through in a frame can be seen and photographed. A screenshot that has to
+    /// win a race is a screenshot nobody takes twice.
+    nonisolated private static func harnessDelay() async throws {
+        #if DEBUG
+            guard
+                let seconds = ProcessInfo.processInfo.environment["TAILSCODE_HOLD_SEND"]
+                    .flatMap(Double.init)
+            else { return }
+            try await Task.sleep(for: .seconds(seconds))
+        #endif
+    }
+
+    /// Makes the send fail, which is the one state a working server will not show you.
+    nonisolated private static var harnessFault: (any Error)? {
+        #if DEBUG
+            guard let reason = ProcessInfo.processInfo.environment["TAILSCODE_FAIL_SEND"] else {
+                return nil
+            }
+            return HarnessFault(reason: reason)
+        #else
+            return nil
+        #endif
+    }
+
+    private struct HarnessFault: LocalizedError {
+        let reason: String
+        var errorDescription: String? { reason }
+    }
 
     private struct SendTimeout: LocalizedError {
         var errorDescription: String? {
@@ -678,23 +753,30 @@ final class ChatViewModel {
     private var sendGeneration = 0
 
     private func deliver(
-        _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment]
+        _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment],
+        reusing row: UUID? = nil
     ) {
         AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
         queueHeldAfterFailure = false
+        queueHold = nil
         sendTask?.cancel()
         sendGeneration += 1
         let generation = sendGeneration
         dismissedFailure = nil
-        let pending = QueuedSend(
+        let outgoing = QueuedSend(
             text: text, model: model, effort: effort, attachments: attachments)
-        lastSent = pending
-        let echo = LocalEcho(
-            text: text, baselineUserCount: state.messages.count { $0.role == .user },
-            attachments: attachments.filter { $0.mime.hasPrefix("image/") && $0.data != nil })
-        localEchoes.append(echo)
+        lastSent = outgoing
+        let userCount = state.messages.count { $0.role == .user }
+        let echoID: UUID
+        if let row, pending.restart(id: row, userMessages: userCount) != nil {
+            echoID = row
+        } else {
+            echoID = pending.begin(
+                text: text, attachments: attachments, model: model ?? selectedModel,
+                effort: effort ?? currentEffort, userMessages: userCount).id
+        }
         optimisticThinking = true
-        onState?(state)
+        onPending?()
         if !activityLive {
             let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
                 ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
@@ -728,6 +810,8 @@ final class ChatViewModel {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     group.addTask { [conversation] in
+                        try await Self.harnessDelay()
+                        if let fault = Self.harnessFault { throw fault }
                         try await conversation.send(
                             text, model: resolvedModel, reasoningEffort: resolvedEffort,
                             attachments: attachments)
@@ -739,25 +823,30 @@ final class ChatViewModel {
                     try await group.next()
                     group.cancelAll()
                 }
+                // The server has it. Which is a different fact from the turn having started, and
+                // the row says so rather than sitting on "sending" until the transcript catches up.
+                if generation == sendGeneration, pending.mark(id: echoID, .accepted) {
+                    onPending?()
+                }
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, generation == sendGeneration else { return }
                 if optimisticThinking, !turnSawRunning {
                     optimisticThinking = false
-                    localEchoes.removeAll { $0.id == echo.id }
                     if activityLive {
                         AppActivityController.shared.end(
                             sessionID: session.id, outcome: .error,
                             statusText: String(localized: "No response"))
                         activityLive = false
                     }
-                    onState?(state)
-                    recoverFailedSend(pending)
+                    recoverFailedSend(
+                        outgoing, row: echoID,
+                        reason: String(localized: "the machine never picked it up"))
                 }
             } catch {
                 let cancelled = error is CancellationError
-                localEchoes.removeAll { $0.id == echo.id }
                 guard generation == sendGeneration else {
-                    onState?(state)
+                    pending.remove(id: echoID)
+                    onPending?()
                     return
                 }
                 optimisticThinking = false
@@ -769,11 +858,12 @@ final class ChatViewModel {
                             : String(localized: "Couldn't send"))
                     activityLive = false
                 }
-                onState?(state)
-                if !cancelled {
+                if cancelled {
+                    pending.remove(id: echoID)
+                    onPending?()
+                } else {
                     AppLogger.chat.error("send failed: \(Self.readable(error))")
-                    onError?(Self.readable(error))
-                    recoverFailedSend(pending)
+                    recoverFailedSend(outgoing, row: echoID, reason: Self.readable(error))
                 }
             }
         }
@@ -786,13 +876,13 @@ final class ChatViewModel {
         if optimisticThinking, !turnSawRunning {
             sendTask?.cancel()
             optimisticThinking = false
-            localEchoes.removeAll()
+            pending.removeAll()
             if activityLive {
                 AppActivityController.shared.end(
                     sessionID: session.id, outcome: .done, statusText: String(localized: "Cancelled"))
                 activityLive = false
             }
-            onState?(state)
+            onPending?()
             if canAbort { Task { try? await conversation.cancelCurrentTurn() } }
             return
         }

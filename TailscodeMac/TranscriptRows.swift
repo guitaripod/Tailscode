@@ -42,6 +42,7 @@ final class TranscriptContext {
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: ((UUID) -> Void)?
+    var pendingAct: ((UUID, PendingSend.Act) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine.
     var resumeInterrupted: (() -> Void)?
     var dismissInterrupted: (() -> Void)?
@@ -139,6 +140,7 @@ struct TranscriptRow: Hashable {
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
         case queuedSend(QueuedSend, position: Int, of: Int)
+        case pendingSend(PendingSend, now: Date)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -383,6 +385,8 @@ struct TranscriptRow: Hashable {
             return stats.spoken
         case .queuedSend(let send, _, _):
             return SendQueueReading.rowTitle(send)
+        case .pendingSend(let send, let now):
+            return PendingSendReading.spoken(send, now: now)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -429,6 +433,8 @@ struct TranscriptRow: Hashable {
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
             return Self.queuedSend(send, position: position, of: total, context: context)
+        case .pendingSend(let send, let now):
+            return Self.pendingSend(send, now: now, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -677,6 +683,84 @@ struct TranscriptRow: Hashable {
         let id = send.id
         column.addGestureRecognizer(RowKit.PressGesture { edit(id) })
         return column
+    }
+
+    /// A message on its way out: the words drawn as the prompt they will become, with a line
+    /// under them saying whether they went.
+    ///
+    /// The rule and the words are the prompt's own, because that is what this is. What is added is
+    /// the one thing the transcript could never say — that the message is not in the server's
+    /// account yet — and, when it never got there, the words stay here and offer the three things
+    /// worth doing about them rather than being dropped back into the composer.
+    @MainActor
+    private static func pendingSend(
+        _ send: PendingSend, now: Date, context: TranscriptContext
+    ) -> NSView {
+        let icon = PendingSendReading.icon(send)
+        let rule = RowKit.Ground(frame: .zero)
+        rule.fill = send.isFailed ? MacTheme.Color.danger : MacTheme.Color.accent
+
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        column.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(
+            RowKit.attributedLabel(
+                MacMarkdown.plainWithLinks(
+                    send.text, font: MacTheme.Ramp.font(.prompt),
+                    color: send.isFailed ? MacTheme.Color.secondaryLabel : MacTheme.Color.label)))
+
+        let status = NSStackView()
+        status.orientation = .horizontal
+        status.alignment = .firstBaseline
+        status.spacing = 5
+        if let symbol = NSImage(
+            systemSymbolName: icon.symbol, accessibilityDescription: nil)
+        {
+            let mark = NSImageView(image: symbol)
+            mark.contentTintColor = icon.tone.color
+            mark.symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: 10, weight: .semibold)
+            status.addArrangedSubview(mark)
+        }
+        status.addArrangedSubview(
+            RowKit.label(
+                PendingSendReading.caption(send, now: now), font: MacTheme.Ramp.font(.hint),
+                color: icon.tone.color))
+        column.addArrangedSubview(status)
+
+        if !send.acts.isEmpty, let act = context.pendingAct {
+            let buttons = NSStackView()
+            buttons.orientation = .horizontal
+            buttons.spacing = MacTheme.Spacing.m
+            let id = send.id
+            for choice in send.acts {
+                buttons.addArrangedSubview(
+                    RowKit.linkButton(PendingSendReading.title(choice)) { act(id, choice) })
+            }
+            column.addArrangedSubview(buttons)
+        }
+
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(rule)
+        row.addSubview(column)
+        NSLayoutConstraint.activate([
+            rule.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            rule.topAnchor.constraint(equalTo: row.topAnchor),
+            rule.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+            rule.widthAnchor.constraint(equalToConstant: 2),
+            column.leadingAnchor.constraint(
+                equalTo: rule.trailingAnchor, constant: MacTheme.Spacing.s + 2),
+            column.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            column.topAnchor.constraint(equalTo: row.topAnchor),
+            column.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+        ])
+        row.setAccessibilityElement(true)
+        row.setAccessibilityRole(.group)
+        row.setAccessibilityLabel(PendingSendReading.spoken(send, now: now))
+        return row
     }
 
     /// What the answer above it took: one quiet strip of symbol-and-number, each figure carrying

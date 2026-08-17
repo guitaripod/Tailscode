@@ -47,7 +47,9 @@ final class ChatPane: @unchecked Sendable {
     /// server that cannot read a repository, which is how the band knows to say nothing at all.
     private var git: GitState?
     private var contextEstimate: Int?
-    private var echoedPrompt: String?
+    /// What this device has written and the server has not echoed back, with what became of
+    /// each. The ledger and every word it wears are Core's; this owns the clock and the sending.
+    private var pending = PendingSendLedger()
     /// Prompts written while a turn was running, held here rather than handed to the server so
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
@@ -446,6 +448,9 @@ final class ChatPane: @unchecked Sendable {
         context.editQueued = { [weak self] id in
             Gtk.onMain { [weak self] in self?.editQueued(id) }
         }
+        context.pendingAct = { [weak self] id, act in
+            Gtk.onMain { [weak self] in self?.actOnPending(id, act) }
+        }
         context.askAgain = { [weak self] words in
             Gtk.onMain { [weak self] in self?.askAgain(words) }
         }
@@ -748,7 +753,7 @@ final class ChatPane: @unchecked Sendable {
         inFlightSubagents = []
         attachments = []
         pastedImageCount = 0
-        echoedPrompt = nil
+        pending.removeAll()
         renderAttachments()
         clearUnseen()
         ActivityInbox.clear(sessionID: entry.session.id)
@@ -833,7 +838,9 @@ final class ChatPane: @unchecked Sendable {
                 let words = queued.send.text
                 Gtk.onMain { [weak self] in
                     guard let self, self.sessionID == sessionID else { return }
-                    self.echoedPrompt = words
+                    self.pending.begin(
+                        text: words,
+                        userMessages: self.lastState?.messages.count { $0.role == .user } ?? 0)
                     if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
                         self.ultracodeInFlight = true
                         self.refreshUltracodeAura()
@@ -1062,16 +1069,19 @@ final class ChatPane: @unchecked Sendable {
         // without it a re-entrant apply appends a second copy and every consumer downstream, which
         // assumes one row per key, tears.
         var rows = rows.filter { !Self.dockedKey($0.key) }
-        if let echoedPrompt {
-            if state.messages.contains(where: {
-                $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
-            }) {
-                self.echoedPrompt = nil
-            } else {
-                if !rows.isEmpty {
-                    rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
-                }
-                rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
+        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        if !pending.isEmpty {
+            let now = Date()
+            if !rows.isEmpty {
+                rows.append(TranscriptRow(key: "pending:break", kind: .turnBreak))
+            }
+            for send in pending.sends {
+                // The key carries the phase so a send that becomes sent, or fails, is a row the
+                // diff rebuilds rather than one it recognises and leaves alone.
+                rows.append(
+                    TranscriptRow(
+                        key: "pending:\(send.id.uuidString):\(Self.phaseKey(send))",
+                        kind: .pendingSend(send, now: now)))
             }
         }
         // A turn the machine cut off is docked at the very end: it is an account of what already
@@ -1149,18 +1159,90 @@ final class ChatPane: @unchecked Sendable {
     /// sending re-applies.
     private var draining = false
 
-    private func deliver(_ send: QueuedSend, through conversation: AgentConversation) {
-        echoedPrompt = send.text
+    private func deliver(
+        _ send: QueuedSend, through conversation: AgentConversation, reusing row: UUID? = nil
+    ) {
+        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
+        let id: UUID
+        if let row, pending.restart(id: row, userMessages: userMessages) != nil {
+            id = row
+        } else {
+            id = pending.begin(
+                text: send.text, attachments: send.attachments, model: send.model,
+                effort: send.effort, userMessages: userMessages).id
+        }
+        redrawPending()
         if Ultracode.invokes(send.text) || send.effort == Ultracode.effortLevel {
             ultracodeInFlight = true
             refreshUltracodeAura()
         }
         // Only prompts are ever queued here: a slash command is answered before the composer
         // reaches the queue, by the server's own grammar.
-        Task {
-            try? await conversation.send(
-                send.text, model: send.model, reasoningEffort: send.effort,
-                attachments: send.attachments)
+        Task { [weak self] in
+            do {
+                try await conversation.send(
+                    send.text, model: send.model, reasoningEffort: send.effort,
+                    attachments: send.attachments)
+                Gtk.onMain { [weak self] in
+                    guard let self, self.pending.mark(id: id, .accepted) else { return }
+                    self.redrawPending()
+                }
+            } catch {
+                // A send that never left is not a silence: the row keeps the words and says so.
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.pending.mark(id: id, .failed(reason: AgentErrorText.readable(error)))
+                    self.redrawPending()
+                }
+            }
+        }
+    }
+
+    /// The part of a phase that has to change for the diff to rebuild the row.
+    private static func phaseKey(_ send: PendingSend) -> String {
+        switch send.phase {
+        case .sending: return "sending"
+        case .accepted: return "accepted"
+        case .failed: return "failed"
+        }
+    }
+
+    /// Redraws what this device is holding without rebuilding the transcript from the server's
+    /// account of the conversation — the account did not move, and walking it again to add one
+    /// row of one's own is the whole reason a long conversation used to swallow a send.
+    private func redrawPending() {
+        guard let state = lastState else { return }
+        apply(state: state, rows: lastFullRows)
+    }
+
+    private func actOnPending(_ id: UUID, _ act: PendingSend.Act) {
+        guard let send = pending.send(id: id), send.isFailed else { return }
+        switch act {
+        case .retry:
+            guard let conversation else { return }
+            deliver(
+                QueuedSend(
+                    text: send.text, model: send.model, effort: send.effort,
+                    attachments: send.attachments),
+                through: conversation, reusing: id)
+        case .edit:
+            pending.remove(id: id)
+            gtk_text_buffer_set_text(
+                gtk_text_view_get_buffer(ptr(entryView)), send.text, -1)
+            vim.reset(to: send.text, cursor: send.text.count, mode: .insert)
+            updateVimBadge()
+            gtk_widget_grab_focus(entryView)
+            if !send.attachments.isEmpty {
+                attachments = send.attachments.map {
+                    PendingAttachment(
+                        name: $0.filename ?? "attachment", mime: $0.mime, data: $0.data ?? Data())
+                }
+                renderAttachments()
+            }
+            redrawPending()
+        case .discard:
+            pending.remove(id: id)
+            redrawPending()
         }
     }
 
@@ -1201,7 +1283,8 @@ final class ChatPane: @unchecked Sendable {
 
     /// Whether a row is one this device docks at the end rather than one the server reported.
     private static func dockedKey(_ key: String) -> Bool {
-        key.hasPrefix("echo:") || key.hasPrefix("queued:") || key.hasPrefix("interrupted")
+        key.hasPrefix("echo:") || key.hasPrefix("pending:") || key.hasPrefix("queued:")
+            || key.hasPrefix("interrupted")
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
@@ -1840,7 +1923,7 @@ final class ChatPane: @unchecked Sendable {
     /// then questions. Rebuilt only when what is pending actually changes.
     private func renderPendingCards(_ state: ConversationState) {
         let compactionKey = state.compaction.map {
-            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(echoedPrompt != nil)"
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(pending.hasInFlight)"
         } ?? ""
         let signature = (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
             .joined(separator: "|") + "|" + compactionKey
@@ -1871,7 +1954,7 @@ final class ChatPane: @unchecked Sendable {
                 gtk_box_append(
                     ptr(pendingBox),
                     PendingCards.compacting(
-                        startedAt: compaction.startedAt, waiting: echoedPrompt != nil
+                        startedAt: compaction.startedAt, waiting: pending.hasInFlight
                     ) { [weak self] label in
                         self?.compactingElapsed = label
                     })
@@ -3555,7 +3638,7 @@ final class ChatPane: @unchecked Sendable {
             state.messages = [before]
             state.status = .running
             state.compaction = CompactionActivity(startedAt: now.addingTimeInterval(-75))
-            echoedPrompt = "and while you are at it, run the tests"
+            pending.begin(text: "and while you are at it, run the tests", userMessages: 1)
         case "failed":
             state.messages = [before]
             state.compaction = CompactionActivity(

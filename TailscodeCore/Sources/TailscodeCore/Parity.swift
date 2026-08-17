@@ -328,8 +328,9 @@ public enum CapabilityRegistry {
             id: .transcriptFind, area: "transcript", title: "Find in conversation",
             spec: "Text search within the open conversation with match count and next/previous."),
         CapabilityDefinition(
-            id: .userEcho, area: "transcript", title: "Sent words appear at once",
-            spec: "A sent message renders immediately as a pending row, reconciled when the server echoes it."),
+            id: .userEcho, area: "transcript", title: "Sent words appear at once, and say what became of them",
+            spec:
+                "A sent message renders immediately as a pending row built from what is in memory — never from a rebuild of the transcript, which is what made a long conversation swallow a send — and the row carries its phase from PendingSend: sending, sent, or not sent with the reason and the words still in it, offering send-again/edit/discard. Retired only when the server's account grows the message it stood in for."),
         CapabilityDefinition(
             id: .vimComposer, area: "composer", title: "Modal composer",
             spec:

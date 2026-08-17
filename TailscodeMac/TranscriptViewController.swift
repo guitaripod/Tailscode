@@ -132,7 +132,9 @@ final class TranscriptViewController: NSViewController {
     private var isAutoScrolling = false
     private var pinScheduled = false
     private var unseenRows = 0
-    private var echoedPrompt: String?
+    /// What this device has written and the server has not echoed back, with what became of
+    /// each. The ledger and every word it wears are Core's; this owns the clock and the sending.
+    private var pending = PendingSendLedger()
     private var pendingFirstMessage:
         (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var pendingSignature = "\u{0}"
@@ -326,7 +328,7 @@ final class TranscriptViewController: NSViewController {
         context.agentFacts = [:]
         inFlightImages = []
         inFlightSubagents = []
-        echoedPrompt = nil
+        pending.removeAll()
         clearUnseen()
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
@@ -629,7 +631,7 @@ final class TranscriptViewController: NSViewController {
         lastStreamedKey = nil
         stopTailRepair()
         abandoned = nil
-        echoedPrompt = nil
+        pending.removeAll()
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         composer.isHidden = true
@@ -776,6 +778,7 @@ final class TranscriptViewController: NSViewController {
         cascade.onFrame = { [weak self] in self?.paintCascade() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         context.editQueued = { [weak self] id in self?.editQueued(id) }
+        context.pendingAct = { [weak self] id, act in self?.actOnPending(id, act) }
         composer.onTakeBackQueued = { [weak self] in self?.takeBackLastQueued() ?? false }
         composer.isEditingQueued = { [weak self] in self?.editingQueued != nil }
         composer.onSubmitPrompt = { [weak self] text, model, effort, attachments in
@@ -956,7 +959,7 @@ final class TranscriptViewController: NSViewController {
 
     private func sendPrompt(
         _ text: String, model: ModelSelection?, effort: String?,
-        attachments: [PromptAttachment]
+        attachments: [PromptAttachment], reusing: UUID? = nil
     ) {
         guard let conversation else { return }
         if let id = editingQueued {
@@ -976,17 +979,27 @@ final class TranscriptViewController: NSViewController {
             return
         }
         MacHaptics.shared.play(.send)
-        echoedPrompt = text
+        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
+        let row: UUID
+        if let reusing, pending.restart(id: reusing, userMessages: userMessages) != nil {
+            row = reusing
+        } else {
+            row = pending.begin(
+                text: text, attachments: attachments, model: model, effort: effort,
+                userMessages: userMessages).id
+        }
         if let state = lastState { apply(state: state, rows: lastFullRows) }
         scrollToBottom()
         Task { [weak self] in
             do {
                 try await conversation.send(
                     text, model: model, reasoningEffort: effort, attachments: attachments)
+                guard let self, self.pending.mark(id: row, .accepted) else { return }
+                self.redrawPending()
             } catch {
                 MacHaptics.shared.play(.error)
                 NSSound.beep()
-                self?.undoEchoedPrompt(text)
+                self?.markSendFailed(row, error: error)
             }
         }
     }
@@ -1034,15 +1047,13 @@ final class TranscriptViewController: NSViewController {
         return true
     }
 
-    /// A send that never reached the server is not a turn. The echo is the only thing on screen
-    /// saying the words were delivered, so it comes off, the sentence goes back where it was
-    /// written, and the failure is said in words — a beep under a prompt that still looks sent is
-    /// the one outcome this path must not leave behind.
-    private func undoEchoedPrompt(_ text: String) {
-        echoedPrompt = nil
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
-        composer.insertText(text)
-        onToast?(Localized.text("That prompt did not reach the server."))
+    /// A send that never reached the server is not a turn, and a beep under a prompt that still
+    /// looks sent is the one outcome this path must not leave behind. The row stays exactly where
+    /// the words were written, says it did not go, and offers to send them again — which is a
+    /// better answer than pushing them back into a composer the reader has to notice.
+    private func markSendFailed(_ row: UUID, error: Error) {
+        pending.mark(id: row, .failed(reason: AgentErrorText.readable(error)))
+        redrawPending()
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an
@@ -1140,13 +1151,7 @@ final class TranscriptViewController: NSViewController {
         confirmed.removeAll { $0.key.hasPrefix("echo:") }
         lastFullRows = confirmed
         if let entry { rememberRows(confirmed, for: entry.session.id) }
-        if let echoedPrompt,
-            state.messages.contains(where: {
-                $0.role == .user && $0.text.contains(echoedPrompt.prefix(80))
-            })
-        {
-            self.echoedPrompt = nil
-        }
+        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         let shown = docked(echoed(confirmed), state: state)
         let appended = max(0, shown.count - lastFullCount)
         lastFullCount = shown.count
@@ -1193,13 +1198,55 @@ final class TranscriptViewController: NSViewController {
     /// resolved against the wrong row and a wrong-slice rebuild. The memo is what the server said;
     /// the echo is added on the way to the screen and nowhere else.
     private func echoed(_ rows: [TranscriptRow]) -> [TranscriptRow] {
-        guard let echoedPrompt else { return rows }
+        guard !pending.isEmpty else { return rows }
         var rows = rows
+        let now = Date()
         if !rows.isEmpty {
             rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
         }
-        rows.append(TranscriptRow(key: "echo:prompt", kind: .userText(echoedPrompt)))
+        for send in pending.sends {
+            // The key carries the phase, so a send that becomes sent, or fails, is a row the diff
+            // rebuilds rather than one it recognises and leaves alone.
+            rows.append(
+                TranscriptRow(
+                    key: "echo:\(send.id.uuidString):\(Self.phaseKey(send))",
+                    kind: .pendingSend(send, now: now)))
+        }
         return rows
+    }
+
+    /// The part of a phase that has to change for the diff to rebuild the row.
+    private static func phaseKey(_ send: PendingSend) -> String {
+        switch send.phase {
+        case .sending: return "sending"
+        case .accepted: return "accepted"
+        case .failed: return "failed"
+        }
+    }
+
+    /// Redraws what this device is holding without rebuilding the transcript from the server's
+    /// account of the conversation — the account did not move, and walking it again to add one
+    /// row of one's own is why a long conversation used to swallow a send.
+    private func redrawPending() {
+        guard let state = lastState else { return }
+        apply(state: state, rows: lastFullRows)
+    }
+
+    private func actOnPending(_ id: UUID, _ act: PendingSend.Act) {
+        guard let send = pending.send(id: id), send.isFailed else { return }
+        switch act {
+        case .retry:
+            sendPrompt(
+                send.text, model: send.model, effort: send.effort,
+                attachments: send.attachments, reusing: id)
+        case .edit:
+            pending.remove(id: id)
+            composer.insertText(send.text)
+            redrawPending()
+        case .discard:
+            pending.remove(id: id)
+            redrawPending()
+        }
     }
 
     /// A turn the machine cut off is docked at the very end: it is an account of what already
@@ -2322,7 +2369,7 @@ final class TranscriptViewController: NSViewController {
     /// streamed token, and cards that flicker under a click swallow the click.
     private func renderPendingCards(_ state: ConversationState) {
         let compactionKey = state.compaction.map {
-            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(echoedPrompt != nil)"
+            $0.failure ?? "compacting:\($0.startedAt.timeIntervalSince1970):\(pending.hasInFlight)"
         } ?? ""
         let signature =
             (state.pendingPermissions.map(\.id) + state.pendingQuestions.map(\.id))
@@ -2349,7 +2396,7 @@ final class TranscriptViewController: NSViewController {
             } else {
                 pendingStack.addArrangedSubview(
                     PendingCards.compacting(
-                        startedAt: compaction.startedAt, waiting: echoedPrompt != nil
+                        startedAt: compaction.startedAt, waiting: pending.hasInFlight
                     ) { [weak self] label in
                         self?.compactingElapsed = label
                     })
