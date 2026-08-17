@@ -439,6 +439,58 @@ struct StreamCascadeTests {
         #expect(Contrast.hex(red: 1, green: 0, blue: 0) == "#ff0000")
     }
 
+    /// Writes a row out until the reveal has caught up with it, and says when that was.
+    private func write(_ live: inout LiveCascade, from time: Double) -> Double {
+        var clock = time
+        for _ in 0..<4000 where !live.isSettled {
+            clock += 1.0 / 120
+            live.advance(to: clock)
+            live.lands(live.revealed, at: clock)
+        }
+        return clock
+    }
+
+    @Test("a row the wave has already written is never written again")
+    func finishedRowIsRefused() {
+        var live = LiveCascade()
+        live.focus("row", length: 120, sealed: false, at: 0)
+        let written = write(&live, from: 0)
+        #expect(live.isSettled)
+        #expect(live.revealed == 120)
+
+        live.focus(nil, rendered: "", sealed: true, at: written)
+        live.focus("row", length: 120, sealed: false, at: written + 0.2)
+        #expect(!live.isActive)
+        #expect(live.revealed == 0)
+    }
+
+    @Test("a row that grew while the wave was off it resumes rather than restarts")
+    func grownRowResumes() {
+        var live = LiveCascade()
+        live.focus("row", length: 120, sealed: false, at: 0)
+        let written = write(&live, from: 0)
+        live.focus(nil, rendered: "", sealed: true, at: written)
+
+        live.focus("row", length: 180, sealed: false, at: written + 0.2)
+        #expect(live.isActive)
+        #expect(live.revealed == 120)
+        #expect(!live.isSettled)
+        _ = write(&live, from: written + 0.2)
+        #expect(live.revealed == 180)
+    }
+
+    @Test("a row given up mid-reveal is whole on screen, so it is not replayed")
+    func abandonedRowIsWhole() {
+        var live = LiveCascade()
+        live.focus("row", length: 200, sealed: false, at: 0)
+        live.advance(to: 0.1)
+        #expect(live.revealed < 200)
+        live.focus(nil, rendered: "", sealed: true, at: 0.1)
+
+        live.focus("row", length: 200, sealed: false, at: 0.3)
+        #expect(!live.isActive)
+    }
+
     @Test("every capability still has a spec")
     func registryIsComplete() {
         #expect(CapabilityRegistry.missingDefinitions.isEmpty)

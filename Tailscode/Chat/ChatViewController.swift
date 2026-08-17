@@ -1382,10 +1382,19 @@ final class ChatViewController: UIViewController {
         let safe = cascade.renderable(
             row: live.id, source, sealed: sealed, markdown: live.streamsMarkdown)
         let row = safe == source ? live : live.held(to: safe)
-        wholeCascadeRow = live
-        rowsByID[row.id] = row
         cascade.focus(
             row.id, length: renderedLength(of: row), sealed: sealed, ultracode: cascadeUltracode)
+        guard cascade.key == row.id else {
+            if rowsByID[live.id] != live {
+                rowsByID[live.id] = live
+                settledCascadeRows.insert(live.id)
+            }
+            wholeCascadeRow = nil
+            if let released, released != live.id { settledCascadeRows.insert(released) }
+            return
+        }
+        wholeCascadeRow = live
+        rowsByID[row.id] = row
         if let released, released != cascade.key { settledCascadeRows.insert(released) }
         settleDrainedCascade()
     }

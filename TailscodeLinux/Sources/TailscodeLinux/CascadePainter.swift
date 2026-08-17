@@ -132,8 +132,12 @@ final class CascadePainter: @unchecked Sendable {
             release()
             return
         }
-        self.markup = bytes
         live.focus(id, length: rendered.unicodeScalars.count, sealed: sealed, at: Self.now)
+        guard live.isActive else {
+            release()
+            return
+        }
+        self.markup = bytes
         start(on: clock)
         watch()
     }

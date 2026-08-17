@@ -172,6 +172,11 @@ final class CascadePainter {
             return
         }
         live.focus(id, length: length, sealed: sealed, at: CACurrentMediaTime())
+        guard live.isActive else {
+            stop()
+            unwatch()
+            return
+        }
         start()
         watch()
     }

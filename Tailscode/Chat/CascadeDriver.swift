@@ -181,6 +181,9 @@ final class CascadeDriver {
     /// Points the wave at the row the stream is writing into, with that row's fully rendered text.
     /// Passing nil lets go of it: a finished paragraph with a glowing tail is a lie about what is
     /// live.
+    ///
+    /// The wave may decline the row — Core refuses one it has already written to that length — so
+    /// the caller reads `key` back afterwards rather than assuming it took.
     func focus(_ id: String?, length: Int, sealed: Bool, ultracode: Bool) {
         self.ultracode = ultracode
         guard Self.motionAllowed, let id else {
@@ -192,6 +195,11 @@ final class CascadeDriver {
             arrival = AuroraArrival()
         }
         live.focus(id, length: length, sealed: sealed, at: CACurrentMediaTime())
+        guard live.isActive else {
+            stop()
+            unwatch()
+            return
+        }
         start()
         watch()
     }

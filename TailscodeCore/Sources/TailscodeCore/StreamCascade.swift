@@ -430,6 +430,8 @@ public struct LiveCascade: Sendable {
     private var handedRow: String?
     private var owedSince: Double?
     private var owedAt = -1
+    private var wrote: [String: Int] = [:]
+    private var wroteOrder: [String] = []
 
     public init(tuning: CadenceTuning = .standard) {
         self.tuning = tuning
@@ -568,6 +570,16 @@ public struct LiveCascade: Sendable {
     /// painted in UTF-16 saturates before the end of the paragraph and leaves the last characters
     /// painted at zero alpha for good, reporting a settled row all the while. The count belongs to
     /// whoever does the indexing.
+    ///
+    /// The wave can refuse the row, and every client has to read `id` back rather than assume it
+    /// took. A row is refused when it has already been written to that length: the last row of a
+    /// finished answer is still the last row of the transcript when the next turn begins, and the
+    /// server's account does not grow until it does, so the pacer is handed a completed paragraph
+    /// and told a turn is running. Writing it out again is a lie about what is being written — the
+    /// reader watches the previous answer typed a second time, and where a send goes busy at the
+    /// keystroke that happens before the new turn has said a word. A row that genuinely grew while
+    /// the wave was off it is taken up and resumes where the reader was left, because what is new
+    /// about it is the tail and only the tail.
     public mutating func focus(_ id: String?, length: Int, sealed: Bool, at time: Double) {
         focus(id, rendered: nil, length: length, sealed: sealed, at: time)
     }
@@ -580,26 +592,27 @@ public struct LiveCascade: Sendable {
         _ id: String?, rendered _: String?, length: Int, sealed: Bool, at time: Double
     ) {
         guard let id else {
-            self.id = nil
-            revealed = 0
-            landed = 0
-            total = 0
-            cadence = StreamCadence(tuning: tuning)
-            owedSince = nil
-            owedAt = -1
+            letGo()
             return
         }
         if id != self.id {
+            let shown = wrote[id] ?? 0
+            guard length > shown else {
+                letGo()
+                return
+            }
+            letGo()
             self.id = id
             total = length
             cadence = StreamCadence(tuning: tuning)
             if total > Self.adoptLimit || sealed {
                 cadence.adopt(total)
             } else {
+                if shown > 0 { cadence.adopt(shown) }
                 cadence.observe(available: total, sealed: sealed)
             }
             revealed = cadence.revealed
-            landed = 0
+            landed = min(shown, revealed)
             phase = StreamCascade.phase(at: time)
             markDebt(at: time)
             return
@@ -610,6 +623,39 @@ public struct LiveCascade: Sendable {
         landed = min(landed, total)
         markDebt(at: time)
     }
+
+    /// Lets go of whatever row is focused, remembering that it was written.
+    ///
+    /// Letting go is the moment a row becomes whole: every client renders the full text the instant
+    /// the wave is off it — that is what settling, handing over and giving up all do — so what the
+    /// reader has seen of that row is its length, not the reveal's last count. Remembering it is
+    /// what makes taking the row up again answerable, and forgetting it is the whole of the
+    /// rewind: a finished answer pointed at a fresh cadence starts from nothing and is written out
+    /// a second time under a reader who already read it.
+    private mutating func letGo() {
+        if let id, total > 0 {
+            let seen = max(total, wrote[id] ?? 0)
+            if wrote.updateValue(seen, forKey: id) == nil {
+                wroteOrder.append(id)
+                if wroteOrder.count > Self.memory {
+                    let dropped = wroteOrder.removeFirst()
+                    wrote.removeValue(forKey: dropped)
+                }
+            }
+        }
+        self.id = nil
+        revealed = 0
+        landed = 0
+        total = 0
+        cadence = StreamCadence(tuning: tuning)
+        owedSince = nil
+        owedAt = -1
+    }
+
+    /// How many rows back the wave remembers having written. A transcript is unbounded and this is
+    /// not a cache of anything — it only has to outlive the few rows at the end of a conversation
+    /// that a new turn can still be pointed at.
+    private static let memory = 64
 
     /// What the client just proved it put on screen, which is the only number the debt is timed
     /// against. A client that painted nothing says nothing, and the clock keeps running.
