@@ -561,10 +561,11 @@ enum Gtk {
 
     /// A button that opens a popover of rows. One shape serves the actions menu, the model picker
     /// and the effort picker; the rows are built lazily on every open so they always reflect
-    /// current state.
+    /// current state. A nil action draws the row insensitive — a rung a model cannot take is
+    /// still listed, just not pressable.
     static func menuButton(
         _ title: String, css: [String] = [],
-        rows: @escaping @Sendable () -> [(title: String, detail: String?, action: @Sendable () -> Void)]
+        rows: @escaping @Sendable () -> [(title: String, detail: String?, action: (@Sendable () -> Void)?)]
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_menu_button_new()!
         gtk_menu_button_set_label(op(button), title)
@@ -592,11 +593,14 @@ enum Gtk {
                     gtk_box_append(ptr(lines), subtitle)
                 }
                 gtk_button_set_child(ptr(item), lines)
-                let action = row.action
-                connect(UnsafeMutableRawPointer(item), "clicked") {
-                    guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
-                    gtk_popover_popdown(ptr(raw))
-                    action()
+                if let action = row.action {
+                    connect(UnsafeMutableRawPointer(item), "clicked") {
+                        guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+                        gtk_popover_popdown(ptr(raw))
+                        action()
+                    }
+                } else {
+                    gtk_widget_set_sensitive(item, 0)
                 }
                 gtk_box_append(ptr(column), item)
             }
@@ -611,7 +615,7 @@ enum Gtk {
     /// anchor must be a widget that outlives the menu, not a row a re-render may remove.
     static func contextMenu(
         on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double,
-        rows: [(title: String, detail: String?, action: @Sendable () -> Void)]
+        rows: [(title: String, detail: String?, action: (@Sendable () -> Void)?)]
     ) {
         guard !rows.isEmpty else { return }
         let popover = gtk_popover_new()!
@@ -632,11 +636,14 @@ enum Gtk {
                 gtk_box_append(ptr(lines), subtitle)
             }
             gtk_button_set_child(ptr(item), lines)
-            let action = row.action
-            connect(UnsafeMutableRawPointer(item), "clicked") {
-                guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
-                gtk_popover_popdown(ptr(raw))
-                action()
+            if let action = row.action {
+                connect(UnsafeMutableRawPointer(item), "clicked") {
+                    guard let raw = UnsafeMutableRawPointer(bitPattern: popoverBits) else { return }
+                    gtk_popover_popdown(ptr(raw))
+                    action()
+                }
+            } else {
+                gtk_widget_set_sensitive(item, 0)
             }
             gtk_box_append(ptr(column), item)
         }

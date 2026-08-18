@@ -157,15 +157,28 @@ final class ChatViewModel {
     var supportsModelSelection: Bool { backend.capabilities.supportsModelSelection }
     var supportsReasoningEffort: Bool { backend.capabilities.supportsReasoningEffort }
 
+    /// The model in play, in the shape a catalog lookup wants: the explicit pick, else the model
+    /// the transcript or the session record names, wearing a "server" door when no real one is
+    /// known. `ModelEffort`/`ModelAbilities` resolve a doorless pick by id.
+    private var effectiveSelection: ModelSelection? {
+        selectedModel ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) }
+    }
+
     /// Effort is a property of the model where the catalog says so (opencode's variants differ
     /// per model); the backend-wide list serves agents whose models all take the same levels. The
     /// rule is Core's, so what this chat offers and what the desktops offer for the same model can
     /// never differ.
     var reasoningEffortOptions: [String] {
         ModelEffort.options(
-            models: knownModels,
-            selection: selectedModel
-                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
+            models: knownModels, selection: effectiveSelection,
+            agentOptions: backend.reasoningEffortOptions)
+    }
+
+    /// The whole ladder the effort sheet draws, with the rungs this model cannot take marked
+    /// rather than absent.
+    var effortScale: [ModelEffort.EffortOption] {
+        ModelEffort.scale(
+            models: knownModels, selection: effectiveSelection,
             agentOptions: backend.reasoningEffortOptions)
     }
 
@@ -223,9 +236,7 @@ final class ChatViewModel {
     var abilities: ModelAbilities {
         ModelAbilities.resolve(
             supportsAttachments: supportsAttachments, models: knownModels,
-            selection: selectedModel
-                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
-            camera: true)
+            selection: effectiveSelection, camera: true)
     }
 
     /// Whether the current model can receive an image attachment.

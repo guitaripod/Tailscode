@@ -502,17 +502,29 @@ final class QuickAskWindow: @unchecked Sendable {
         QuickAskDefaults.recordEffort(nil, forProfileID: profileID)
     }
 
-    private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
+    private func effortRows() -> [(String, String?, (@Sendable () -> Void)?)] {
         let server = targetServer
-        var rows: [(String, String?, @Sendable () -> Void)] = [
+        let scale = ModelEffort.scale(
+            models: ModelCatalogStore.cached(server.id),
+            selection: QuickAskDefaults.model(forProfileID: server.id),
+            agentOptions: agentEfforts[server.id] ?? [])
+        guard !scale.isEmpty else {
+            return [(Localized.text("This model has no effort control"), nil, {})]
+        }
+        var rows: [(String, String?, (@Sendable () -> Void)?)] = [
             (Localized.text("Server default"), Localized.text("Let the machine decide"),
              { Gtk.onMain { QuickAskWindow.open?.setEffort(nil, on: server.id) } })
         ]
-        for option in effortOptions() {
-            let power = option == Ultracode.effortLevel
+        for rung in scale {
+            let power = rung.level == Ultracode.effortLevel
+            let title = power ? "\(rung.level) ✦" : rung.level
+            guard rung.available else {
+                rows.append((title, ModelEffort.unavailableWord, nil))
+                continue
+            }
             rows.append(
-                (power ? "\(option) ✦" : option, power ? Ultracode.menuSubtitle : nil,
-                 { Gtk.onMain { QuickAskWindow.open?.setEffort(option, on: server.id) } }))
+                (title, power ? Ultracode.menuSubtitle : nil,
+                 { Gtk.onMain { QuickAskWindow.open?.setEffort(rung.level, on: server.id) } }))
         }
         return rows
     }

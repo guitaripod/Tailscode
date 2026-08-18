@@ -10,15 +10,17 @@ final class PillsRow: NSView {
         let title: String
         let subtitle: String?
         let checked: Bool
+        let disabled: Bool
         let handler: @MainActor () -> Void
 
         init(
             _ title: String, subtitle: String? = nil, checked: Bool = false,
-            handler: @escaping @MainActor () -> Void = {}
+            disabled: Bool = false, handler: @escaping @MainActor () -> Void = {}
         ) {
             self.title = title
             self.subtitle = subtitle
             self.checked = checked
+            self.disabled = disabled
             self.handler = handler
         }
     }
@@ -250,6 +252,7 @@ final class MenuPill: NSButton {
             let item = ClosureMenuItem(title: row.title, handler: row.handler)
             if let subtitle = row.subtitle { item.subtitle = subtitle }
             item.state = row.checked ? .on : .off
+            item.isEnabled = !row.disabled
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)

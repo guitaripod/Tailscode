@@ -507,16 +507,24 @@ final class QuickAskPanel: NSPanel {
         let server = targetServer
         let options = effortOptions()
         dropUnofferedEffort(on: server.id, options: options)
+        let scale = ModelEffort.scale(
+            models: ModelCatalogStore.cached(server.id),
+            selection: QuickAskDefaults.model(forProfileID: server.id),
+            agentOptions: ServerDirectory.shared.backend(for: server)?.reasoningEffortOptions ?? [])
         effortButton.isHidden = !ModelEffort.isOffered(options: options)
         effortButton.removeAllItems()
         effortButton.addItem(withTitle: Localized.text("Server default"))
-        for option in options {
-            let isPower = option == Ultracode.effortLevel
-            effortButton.addItem(withTitle: isPower ? "\(option) ✦" : option)
+        for rung in scale {
+            let isPower = rung.level == Ultracode.effortLevel
+            let title = isPower ? "\(rung.level) ✦" : rung.level
+            effortButton.addItem(
+                withTitle: rung.available ? title : "\(title) — \(ModelEffort.unavailableWord)")
+            if !rung.available { effortButton.lastItem?.isEnabled = false }
             if isPower { effortButton.lastItem?.toolTip = Ultracode.menuSubtitle }
         }
         let chosen = QuickAskDefaults.effort(forProfileID: server.id)
-        let index = chosen.flatMap { options.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        let index = chosen.flatMap { scale.firstIndex(of: .init(level: $0, available: true)) }
+            .map { $0 + 1 } ?? 0
         effortButton.selectItem(at: min(index, effortButton.numberOfItems - 1))
     }
 
@@ -532,8 +540,18 @@ final class QuickAskPanel: NSPanel {
 
     @objc private func effortChanged() {
         let options = effortOptions()
+        let scale = ModelEffort.scale(
+            models: ModelCatalogStore.cached(targetServer.id),
+            selection: QuickAskDefaults.model(forProfileID: targetServer.id),
+            agentOptions: ServerDirectory.shared.backend(for: targetServer)?.reasoningEffortOptions
+                ?? [])
         let index = effortButton.indexOfSelectedItem - 1
-        let level = options.indices.contains(index) ? options[index] : nil
+        let level = scale.indices.contains(index) ? scale[index].level : nil
+        if let level, !options.contains(level) {
+            QuickAskDefaults.recordEffort(nil, forProfileID: targetServer.id)
+            refreshAim()
+            return
+        }
         QuickAskDefaults.recordEffort(level, forProfileID: targetServer.id)
         refreshAim()
         editor.focus()
