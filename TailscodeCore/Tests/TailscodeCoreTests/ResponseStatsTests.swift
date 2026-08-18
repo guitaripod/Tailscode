@@ -245,4 +245,40 @@ struct ModelEffortTests {
                 agentOptions: ["low", "max"]) == nil,
             "empty variants means the model has none, not the agent's list")
     }
+
+    @Test("A variant the server names but cannot execute is never offered")
+    func advertisedButUnrunnableIsWithdrawn() {
+        let grok = ModelInfo(
+            id: "grok-4.6", name: "Grok 4.6", providerID: "xai",
+            variants: ["low", "medium", "high", "xhigh"])
+        #expect(
+            ModelEffort.options(models: [grok], selection: grok.selection, agentOptions: [])
+                == ["low", "medium", "high"])
+        #expect(
+            ModelEffort.options(models: [grok], modelID: "grok-4.6", agentOptions: [])
+                == ["low", "medium", "high"])
+    }
+
+    @Test("The withdrawal is per provider, not per word")
+    func otherProvidersKeepTheirOwnXhigh() {
+        let claude = ModelInfo(
+            id: "opus", name: "Opus", providerID: "anthropic",
+            variants: ["low", "medium", "high", "xhigh"])
+        #expect(
+            ModelEffort.options(models: [claude], selection: claude.selection, agentOptions: [])
+                == ["low", "medium", "high", "xhigh"])
+    }
+
+    @Test("A picked level the server cannot execute is handed back, not shipped")
+    func strandedUnrunnableFallsBackToServerEffort() {
+        let grok = ModelInfo(
+            id: "grok-4.6", name: "Grok 4.6", providerID: "xai",
+            variants: ["low", "medium", "high", "xhigh"])
+        #expect(
+            ModelEffort.adopt(
+                "xhigh", for: grok.selection, models: [grok], agentOptions: []) == nil)
+        #expect(
+            ModelEffort.adopt(
+                "high", for: grok.selection, models: [grok], agentOptions: []) == "high")
+    }
 }

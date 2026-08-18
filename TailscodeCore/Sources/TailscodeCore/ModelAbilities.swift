@@ -102,6 +102,18 @@ public struct ModelAbilities: Sendable, Equatable {
 /// and a property of the agent otherwise. Every surface that offers a level reads it from here, so
 /// the chat composer, the quick ask and a command can never offer different levels for one aim.
 public enum ModelEffort {
+    /// Variants the server names but cannot execute, per provider. opencode 1.18.18 advertises
+    /// `xhigh` for xAI models, yet the `@ai-sdk/xai` schema it bundles accepts nothing beyond
+    /// none/low/medium/high for `reasoningEffort`, so a send carrying `xhigh` dies locally as
+    /// "invalid xai provider options" before it ever reaches xAI. The catalog is the authority
+    /// everywhere else; these entries fall away the day the server stops lying.
+    private static let unexecutable: [String: Set<String>] = ["xai": ["xhigh"]]
+
+    private static func runworthy(_ variants: [String], on providerID: String) -> [String] {
+        guard let withdrawn = unexecutable[providerID] else { return variants }
+        return variants.filter { !withdrawn.contains($0) }
+    }
+
     public static func options(
         models: [ModelInfo], selection: ModelSelection?, agentOptions: [String]
     ) -> [String] {
@@ -110,9 +122,8 @@ public enum ModelEffort {
                 $0.providerID == selection.providerID && $0.id == selection.modelID
             })
         else { return agentOptions }
-        // nil variants = the catalog did not say → agent list. Empty = this model has none.
         guard let variants = model.variants else { return agentOptions }
-        return variants
+        return runworthy(variants, on: model.providerID)
     }
 
     /// The levels for a model named only by its id — what a chat holds once the server's session
@@ -126,7 +137,7 @@ public enum ModelEffort {
             return agentOptions
         }
         guard let variants = model.variants else { return agentOptions }
-        return variants
+        return runworthy(variants, on: model.providerID)
     }
 
     /// What the control says. A level picked by hand is the word itself; nothing picked is the
