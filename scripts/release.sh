@@ -13,7 +13,10 @@ BUILD=${1:?usage: scripts/release.sh <build-number> [marketing-version]}
 MARKETING=${2:-}
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-KIT=$ROOT/../../swift/CodingAgentKit
+# The Kit the build vendors. Overridable because the host tree may be carrying another
+# session's uncommitted work: a release ships the committed Kit, never whatever is half-written
+# on the machine that happens to be doing the archiving.
+KIT=${KIT:-$ROOT/../../swift/CodingAgentKit}
 STAGE=/tmp/tailscode-release
 SIGNING=$HOME/.config/midgar/signing
 
