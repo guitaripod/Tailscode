@@ -815,6 +815,7 @@ final class ChatPane: @unchecked Sendable {
         SessionSeenStore.markSeen(entry.session.id)
         agents = []
         usage = nil
+        git = nil
         notice = nil
         agentStreamTask?.cancel()
         agentStreamTask = nil
@@ -996,6 +997,27 @@ final class ChatPane: @unchecked Sendable {
         backend: any CodingAgentBackend, directory: String?, sessionID: String
     ) {
         catalogWatchTask?.cancel()
+        // Spend, agents and git are facts about the open chat — asked once the backend is known,
+        // not held until a model catalog or command list happens to land. The backend pointer is
+        // the one just resolved; the property may not have landed on the main context yet.
+        Task { [weak self] in
+            let agents = (try? await backend.subagents(for: sessionID)) ?? []
+            let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
+            let report = (try? await backend.sessionSpend(sessionID)) ?? nil
+            let repository = await Self.readGit(
+                backend: backend, directory: directory, sessionID: sessionID)
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID else { return }
+                self.usage = usage
+                self.lastNetworkFactsAt = Date()
+                self.git = repository.map { GitState(snapshot: $0) }
+                self.lastGitFactsAt = Date()
+                self.spendReading.note(report: report, for: sessionID)
+                self.spendReading.note(
+                    messages: self.lastState?.messages ?? [], for: sessionID)
+                self.applyAgentFacts(agents)
+            }
+        }
         if let profileID = entry?.profileID {
             catalogWatchTask = Task { [weak self] in
                 guard let self else { return }
@@ -1009,7 +1031,6 @@ final class ChatPane: @unchecked Sendable {
                         self.modelsReachable = reading.reachable
                         ModelChooserWindow.updateOpen(sources: self.modelSources())
                         self.refreshPills()
-                        self.refreshTurnFacts()
                     }
                 }
             }
@@ -1020,7 +1041,6 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, self.sessionID == sessionID else { return }
                 self.commands = commands
                 self.refreshPills()
-                self.refreshTurnFacts()
             }
         }
         if let authenticating = backend as? any AuthenticatingBackend {
@@ -2273,9 +2293,15 @@ final class ChatPane: @unchecked Sendable {
     private static func readGit(backend: any CodingAgentBackend, session: AgentSession) async
         -> GitSnapshot?
     {
+        await readGit(backend: backend, directory: session.directory, sessionID: session.id)
+    }
+
+    private static func readGit(
+        backend: any CodingAgentBackend, directory: String?, sessionID: String
+    ) async -> GitSnapshot? {
         guard let observer = backend as? any GitObservingBackend else { return nil }
         let snapshot = try? await observer.gitSnapshot(
-            directory: session.directory, sessionID: session.id)
+            directory: directory, sessionID: sessionID)
         return (snapshot?.repo == true) ? snapshot : nil
     }
 
