@@ -20,6 +20,13 @@ func ptr<T>(_ pointer: UnsafeMutableRawPointer) -> UnsafeMutablePointer<T> {
 }
 
 enum Gtk {
+    /// Whether the shift modifier is held, read from the widget's display's keyboard at signal
+    /// time — a "clicked" handler receives no event, so the state is asked for rather than handed
+    /// over. Range marks ride on this.
+    static func shiftHeld(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        tailscode_shift_held(widget)
+    }
+
     /// Runs `work` on the GLib main context. GTK is not thread-safe and the agent engine runs on
     /// cooperative threads, so every UI touch that starts in a `Task` comes back through here.
     static func onMain(_ work: @escaping @Sendable () -> Void) {

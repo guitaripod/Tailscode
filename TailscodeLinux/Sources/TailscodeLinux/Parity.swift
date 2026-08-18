@@ -13,6 +13,7 @@ enum ParityManifest {
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityPulse")
         case .bulkSelection: return .implemented("SidebarSelectionBar")
+        case .bulkRangeSelection: return .implemented("rangeSelect")
         case .bulkSplit: return .implemented("openMarkedSplit")
         case .splitTabs: return .implemented("unsplitAll")
         case .sessionPinning: return .implemented("pill-pinned")

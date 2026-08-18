@@ -183,7 +183,7 @@ enum SidebarRow {
         _ model: SessionRowModel, focused: Bool, marked: Bool = false,
         vocabulary: ChatListVocabulary = .full,
         onOpen: @escaping @Sendable () -> Void,
-        onMark: @escaping @Sendable () -> Void = {},
+        onMark: @escaping @Sendable (Bool) -> Void = { _ in },
         onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
@@ -260,7 +260,7 @@ enum SidebarRow {
         _ model: SplitTabRow, focused: Bool, marked: Bool = false,
         onOpen: @escaping @Sendable () -> Void,
         onOpenMember: @escaping @Sendable (Int) -> Void,
-        onMark: @escaping @Sendable () -> Void = {},
+        onMark: @escaping @Sendable (Bool) -> Void = { _ in },
         onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
@@ -443,9 +443,11 @@ enum SidebarRow {
 
     /// The mark itself: quiet until the pointer is over the row or the chat is actually marked,
     /// so a list nobody is selecting in does not wear a column of empty boxes. It states which it
-    /// is in its accessible name too — an opacity is not a label a screen reader can read.
+    /// is in its accessible name too — an opacity is not a label a screen reader can read. The
+    /// handler is told whether shift was held, because the same press means two gestures: alone it
+    /// marks the row, shifted it marks the whole span back to the anchored one.
     private static func makeMark(
-        marked: Bool, onMark: @escaping @Sendable () -> Void
+        marked: Bool, onMark: @escaping @Sendable (Bool) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
@@ -456,10 +458,15 @@ enum SidebarRow {
         gtk_button_set_child(ptr(button), glyph)
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
         let label =
-            marked ? Localized.text("Marked — click to unmark") : Localized.text("Mark this chat")
+            marked
+            ? Localized.text("Marked — click to unmark; shift-click marks the span to here")
+            : Localized.text("Mark this chat — shift-click marks every chat back to it")
         gtk_widget_set_tooltip_text(button, label)
         tailscode_set_accessible_label(button, label)
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onMark)
+        let buttonBits = UInt(bitPattern: button)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
+            onMark(Gtk.shiftHeld(UnsafeMutablePointer<GtkWidget>(bitPattern: buttonBits)!))
+        }
         return button
     }
 

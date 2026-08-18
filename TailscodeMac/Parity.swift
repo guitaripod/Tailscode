@@ -18,6 +18,7 @@ enum ParityManifest {
         case .archivedChats: return .implemented("ArchivedChatStore")
         case .deleteSession: return .implemented("deleteSession")
         case .bulkSelection: return .implemented("SidebarBulkBar")
+        case .bulkRangeSelection: return .implemented("rangeSelect")
         case .bulkSplit: return .implemented("openMarkedSplit")
         case .splitTabs: return .implemented("goToSplitMember")
         case .renameSession: return .implemented("renameSession")

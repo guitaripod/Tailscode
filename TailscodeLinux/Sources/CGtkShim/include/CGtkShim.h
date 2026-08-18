@@ -344,3 +344,9 @@ void tailscode_web_free(TailscodeWeb *web);
 /// asks the default display's first monitor, which is the right answer for a dialog with no parent.
 /// Callers use it to bound how tall they may grow; nothing here decides that for them.
 int tailscode_monitor_workarea_height(GtkWidget *near);
+
+/// Whether the shift modifier is held on the widget's display's keyboard, read at signal time so a
+/// click handler that gets no event (a button's "clicked") can still tell a plain mark from a
+/// range mark. A keyboard activation — Enter or Space — reads the same state, which is what it is:
+/// shift-Enter marking a range is the same gesture with another device.
+bool tailscode_shift_held(GtkWidget *near);

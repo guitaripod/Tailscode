@@ -23,6 +23,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case archivedChats
     case deleteSession
     case bulkSelection
+    case bulkRangeSelection
     case bulkSplit
     case splitTabs
     case renameSession
@@ -470,6 +471,10 @@ public enum CapabilityRegistry {
             id: .bulkSelection, area: "chat list", title: "Several chats at once",
             spec:
                 "The chat list can hold a selection and act on all of it: mark rows (space, or the client's own editing mode), mark every row shown or none (⌃a), then delete, archive, save or mark read in one gesture. The set is ChatSelection, keyed on the (profile, session) pair and pruned as the listing moves under it, and the words come from BulkChatCopy so every client names the count the same way. A delete confirms first, naming what goes; rows leave immediately and a partial failure reports what survived — never a silent skip, and never a set that outlives the rows it points at."),
+        CapabilityDefinition(
+            id: .bulkRangeSelection, area: "chat list", title: "Shift-mark selects the span between",
+            spec:
+                "A mark placed with the shift modifier does not join the set — it re-writes it as the contiguous span the list is drawing between the anchored row and the pressed one, inclusive, the way a file manager reads shift-click. The anchor is the row the last plain mark landed on (ChatSelection.anchorKey, the listed item's lead chat so a split row anchors whole); shift-marking again re-measures the span from that same anchor rather than crawling, and anything that ends the gesture — clearing the set, selecting all, a bulk verb spending it — also forgets the anchor, while a listing change that removes the anchor degrades the next shift-mark to a plain mark. A platform whose pointer cannot express a shift modifier answers notApplicable rather than inventing a second tap gesture nobody asked for."),
         CapabilityDefinition(
             id: .bulkSplit, area: "chat list", title: "Marked chats open as one even split",
             spec:

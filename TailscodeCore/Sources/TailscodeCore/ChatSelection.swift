@@ -14,6 +14,13 @@ import Foundation
 public struct ChatSelection: Sendable, Equatable {
     public private(set) var keys: Set<String> = []
 
+    /// The row a range grew from: a plain mark sets it, shift-mark draws the span between it and
+    /// the row under the pointer, and nothing else may move it — clearing the set or selecting
+    /// everything resets it, because a range that outlived its gesture would surprise the next
+    /// shift-press. It is the listed item's lead chat, so the same key works for a plain row and
+    /// for the split standing for several.
+    public private(set) var anchorKey: String?
+
     public init() {}
 
     public init(_ entries: [SessionEntry]) {
@@ -32,9 +39,11 @@ public struct ChatSelection: Sendable, Equatable {
     }
 
     /// Answers whether the chat is now selected, so a client can play the cue for what it did
-    /// rather than re-reading the set to find out.
+    /// rather than re-reading the set to find out. The pressed row becomes the range's anchor:
+    /// a plain mark is where the next shift-mark measures from.
     @discardableResult
     public mutating func toggle(_ entry: SessionEntry) -> Bool {
+        anchorKey = Self.key(entry)
         let id = Self.key(entry)
         if keys.contains(id) {
             keys.remove(id)
@@ -42,6 +51,47 @@ public struct ChatSelection: Sendable, Equatable {
         }
         keys.insert(id)
         return true
+    }
+
+    /// Marks a whole listed item the way its row does: a split is one row, so the mark it wears
+    /// holds every chat in it — all of them or none of them. The item's lead anchors the range.
+    @discardableResult
+    public mutating func toggle(_ item: ChatListItem) -> Bool {
+        let entries = item.entries
+        let held = entries.allSatisfy { keys.contains(Self.key($0)) }
+        for entry in entries {
+            if held {
+                keys.remove(Self.key(entry))
+            } else {
+                keys.insert(Self.key(entry))
+            }
+        }
+        anchorKey = Self.leadKey(item)
+        return !held
+    }
+
+    /// Shift-mark: the selection becomes the span the list is drawing between the anchored row
+    /// and the pressed one, inclusive — the way a file manager reads it. The anchor itself does
+    /// not move, so a second shift-mark from the same row re-measures the span rather than
+    /// crawling. A span whose anchor left the list (a filter changed under it) degrades to a
+    /// plain mark of the pressed row.
+    @discardableResult
+    public mutating func rangeSelect(_ item: ChatListItem, in visible: [ChatListItem]) -> Bool {
+        let target = Self.leadKey(item)
+        guard let anchor = anchorKey, let target,
+            let start = visible.firstIndex(where: { Self.leadKey($0) == anchor }),
+            let end = visible.firstIndex(where: { Self.leadKey($0) == target })
+        else {
+            return toggle(item)
+        }
+        let lower = min(start, end)
+        let upper = max(start, end)
+        keys = Set(visible[lower...upper].flatMap(\.entries).map(Self.key))
+        return keys.contains(target)
+    }
+
+    private static func leadKey(_ item: ChatListItem) -> String? {
+        item.lead.map { Self.key($0.entry) }
     }
 
     public mutating func insert(_ entry: SessionEntry) {
@@ -54,18 +104,22 @@ public struct ChatSelection: Sendable, Equatable {
 
     public mutating func clear() {
         keys.removeAll()
+        anchorKey = nil
     }
 
     /// Selects everything on screen, or clears when everything on screen is already selected —
-    /// one key that means "all of it" and, pressed again, "none of it".
+    /// one key that means "all of it" and, pressed again, "none of it". Either way the gesture
+    /// ends: a range cannot be measured from a selection nobody placed.
     @discardableResult
     public mutating func toggleAll(in visible: [SessionEntry]) -> Bool {
         let all = Set(visible.map(Self.key))
         if !all.isEmpty, all.isSubset(of: keys) {
             keys.subtract(all)
+            anchorKey = nil
             return false
         }
         keys.formUnion(all)
+        anchorKey = nil
         return true
     }
 
@@ -80,6 +134,9 @@ public struct ChatSelection: Sendable, Equatable {
     /// that are no longer anywhere would delete rows the person can no longer see.
     public mutating func prune(to visible: [SessionEntry]) {
         keys.formIntersection(Set(visible.map(Self.key)))
+        if let anchor = anchorKey, !visible.contains(where: { Self.key($0) == anchor }) {
+            anchorKey = nil
+        }
     }
 }
 
@@ -222,6 +279,34 @@ public enum ChatSelectionCheck {
         selection.prune(to: [a])
         expect(selection.count == 1 && selection.contains(a), "pruning drops what left the list")
 
+        let items = [a, b, clash].map { ChatListItem.chat(model($0)) }
+        var range = ChatSelection()
+        expect(range.rangeSelect(items[2], in: items), "a range without an anchor marks the row alone")
+        expect(range.count == 1 && range.contains(clash), "and the unanchored mark holds the pressed row")
+        expect(range.rangeSelect(items[0], in: items), "a shift-mark from the anchor selects the span")
+        expect(range.count == 3, "the span holds everything between the anchor and the press")
+        expect(
+            range.resolve(in: visible).map(\.profileID) == ["one", "one", "two"],
+            "the span resolves in the drawn order")
+        expect(range.rangeSelect(items[1], in: items), "re-measuring from the same anchor works")
+        expect(range.count == 2 && !range.contains(a), "and the span follows the new press")
+        expect(range.toggle(items[0]), "a plain mark re-anchors and adds the pressed row")
+        expect(range.count == 3, "a plain mark toggles into the set rather than replacing it")
+        expect(range.rangeSelect(items[2], in: items), "a span from the new anchor reaches the far row")
+        expect(range.count == 3, "and holds everything in between")
+        range.prune(to: [b, clash])
+        expect(
+            range.count == 2 && range.anchorKey == nil,
+            "an anchor that left the list is forgotten with its row")
+        expect(
+            range.rangeSelect(items[0], in: items), "a range with a forgotten anchor degrades to a mark")
+        expect(range.count == 3 && range.contains(a), "and that mark joins the pressed row to what held")
+
+        selection.insert(a)
+        selection.insert(b)
+        _ = selection.toggleAll(in: visible)
+        expect(selection.anchorKey == nil, "select-all ends the range gesture")
+
         expect(
             BulkChatCopy.title(.delete, count: 1) == Localized.text("Delete this conversation?"),
             "one chat is not counted at it")
@@ -243,5 +328,9 @@ public enum ChatSelectionCheck {
                 id: sessionID, agentType: .claudeCode, title: sessionID, directory: nil,
                 createdAt: Date(timeIntervalSince1970: 0),
                 updatedAt: Date(timeIntervalSince1970: 0)))
+    }
+
+    private static func model(_ entry: SessionEntry) -> SessionRowModel {
+        SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false)
     }
 }

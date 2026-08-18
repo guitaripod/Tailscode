@@ -18,6 +18,7 @@ enum ParityManifest {
         case .archivedChats: return .implemented("ArchivedChatsViewController")
         case .deleteSession: return .implemented("confirmDelete")
         case .bulkSelection: return .implemented("performBulk")
+        case .bulkRangeSelection: return .notApplicable("a phone has no shift modifier; the range gesture is a modifier key's second meaning, and iOS selects in editing mode where each row is one tap")
         case .bulkSplit: return .notApplicable("one conversation fills a phone; a selection has no tiling to be spent on, and the same reason splitPanes is not applicable applies to opening several at once")
         case .splitTabs: return .notApplicable("one conversation fills a phone; with no tiling there is no arrangement of several chats for a row to stand for, the same reason splitPanes and bulkSplit are not applicable")
         case .renameSession: return .implemented("promptRename")

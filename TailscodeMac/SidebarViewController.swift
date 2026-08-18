@@ -343,18 +343,10 @@ final class SidebarViewController: NSViewController {
     }
 
     /// Marking a remembered split holds every chat in it: the row is one row, so the mark it wears
-    /// has to mean the same thing the row does.
+    /// has to mean the same thing the row does. Core's item toggle owns the rule — and the anchor,
+    /// so the next shift-click measures from whichever row this press landed on.
     private func toggleMark(_ item: ChatListItem) {
-        switch item {
-        case .chat(let row):
-            selection.toggle(row.entry)
-        case .tab(let row):
-            let entries = row.members.map(\.entry)
-            let held = entries.allSatisfy(selection.contains)
-            for entry in entries where selection.contains(entry) == held {
-                selection.toggle(entry)
-            }
-        }
+        selection.toggle(item)
     }
 
     func focusFilter() {
@@ -1116,6 +1108,15 @@ final class SidebarViewController: NSViewController {
     @objc private func rowClicked() {
         let index = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard index >= 0, index < rows.count else { return }
+        if index < visible.count,
+            NSApp.currentEvent?.modifierFlags.contains(.shift) == true,
+            rows[index].isChat
+        {
+            selection.rangeSelect(visible[index], in: visible)
+            lastSidebar = nil
+            render()
+            return
+        }
         switch rows[index] {
         case .session(let model, _, _):
             open(model.entry)

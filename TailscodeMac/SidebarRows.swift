@@ -33,6 +33,15 @@ enum SidebarRow: Equatable {
     /// is still answering. Clicking it is the way back to the list.
     case searchHeader(String, Int, Bool)
     case searchResult(TranscriptSearch.Row)
+
+    /// Whether the row stands for a conversation, which is the one kind a range mark can measure
+    /// between — a header or an action row is a place in the list, not a chat.
+    var isChat: Bool {
+        switch self {
+        case .session, .tab: return true
+        default: return false
+        }
+    }
 }
 
 /// Builds and recycles the table's cells, so the view controller stays about data and the cells

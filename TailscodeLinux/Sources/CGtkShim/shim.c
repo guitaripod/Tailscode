@@ -2532,3 +2532,15 @@ int tailscode_monitor_workarea_height(GtkWidget *near) {
     gdk_monitor_get_geometry(monitor, &area);
     return area.height;
 }
+
+bool tailscode_shift_held(GtkWidget *near) {
+    GdkDisplay *display = near != NULL ? gtk_widget_get_display(near) : NULL;
+    if (display == NULL) display = gdk_display_get_default();
+    if (display == NULL) return false;
+    GdkSeat *seat = gdk_display_get_default_seat(display);
+    if (seat == NULL) return false;
+    GdkDevice *keyboard = gdk_seat_get_keyboard(seat);
+    if (keyboard == NULL) return false;
+    GdkModifierType state = gdk_device_get_modifier_state(keyboard);
+    return (state & GDK_SHIFT_MASK) != 0;
+}

@@ -283,10 +283,14 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(Data("ORB \(self.orb.stateLine)\n".utf8))
                 case "mark":
                     if let index = Int(argument), index < self.visible.count {
-                        self.toggleMark(self.visible[index])
+                        self.mark(item: self.visible[index], shifted: false)
                     } else {
                         self.toggleMarkAtCursor()
                     }
+                    FileHandle.standardOutput.write(Data("MARK \(self.marksSummary)\n".utf8))
+                case "markrange":
+                    guard let index = Int(argument), index < self.visible.count else { return }
+                    self.mark(item: self.visible[index], shifted: true)
                     FileHandle.standardOutput.write(Data("MARK \(self.marksSummary)\n".utf8))
                 case "markall":
                     self.toggleMarkAll()
@@ -1456,8 +1460,8 @@ final class MainWindow: @unchecked Sendable {
                 onOpen: { [weak self] in
                     self?.open(row.entry)
                 },
-                onMark: { [weak self] in
-                    Gtk.onMain { [weak self] in self?.toggleMark(row.entry) }
+                onMark: { [weak self] shifted in
+                    Gtk.onMain { [weak self] in self?.mark(item: item, shifted: shifted) }
                 },
                 onMenu: { [weak self] bits, x, y in
                     self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
@@ -1477,8 +1481,8 @@ final class MainWindow: @unchecked Sendable {
                         self.goToMember(row.members[index].entry)
                     }
                 },
-                onMark: { [weak self] in
-                    Gtk.onMain { [weak self] in self?.toggleMark(.tab(row)) }
+                onMark: { [weak self] shifted in
+                    Gtk.onMain { [weak self] in self?.mark(item: item, shifted: shifted) }
                 },
                 onMenu: { [weak self] bits, x, y in
                     self?.presentTabMenu(row, rowBits: bits, x: x, y: y)
@@ -1566,27 +1570,15 @@ final class MainWindow: @unchecked Sendable {
         Gtk.contextMenu(on: sidebarList, x: x + 4, y: offsetY + y, rows: rows)
     }
 
-    /// Marking a remembered split holds every chat in it: the row is one row, so the mark it wears
-    /// has to mean the same thing the row does. Marked when all of them are, so a second press
-    /// lets the whole of it go.
-    private func toggleMark(_ item: ChatListItem) {
-        switch item {
-        case .chat(let row):
-            marks.toggle(row.entry)
-        case .tab(let row):
-            let entries = row.members.map(\.entry)
-            if entries.allSatisfy(marks.contains) {
-                for entry in entries where marks.contains(entry) { marks.toggle(entry) }
-            } else {
-                for entry in entries where !marks.contains(entry) { marks.toggle(entry) }
-            }
+    /// One press, two gestures: a plain press marks the row and anchors the next range; a
+    /// shift-press rewrites the selection as the span the list is drawing between the anchored
+    /// row and this one — the range re-measures from the same anchor on every shift-press.
+    private func mark(item: ChatListItem, shifted: Bool) {
+        if shifted {
+            marks.rangeSelect(item, in: visible)
+        } else {
+            marks.toggle(item)
         }
-        lastSidebar = nil
-        renderSidebar()
-    }
-
-    private func toggleMark(_ entry: SessionEntry) {
-        marks.toggle(entry)
         lastSidebar = nil
         renderSidebar()
     }
@@ -1595,7 +1587,7 @@ final class MainWindow: @unchecked Sendable {
     /// whichever chat a background pane happens to be holding.
     private func toggleMarkAtCursor() {
         guard cursor < visible.count else { return }
-        toggleMark(visible[cursor])
+        mark(item: visible[cursor], shifted: false)
     }
 
     private func toggleMarkAll() {
