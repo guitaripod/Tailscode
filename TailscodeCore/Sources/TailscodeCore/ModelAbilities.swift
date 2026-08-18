@@ -105,14 +105,14 @@ public enum ModelEffort {
     public static func options(
         models: [ModelInfo], selection: ModelSelection?, agentOptions: [String]
     ) -> [String] {
-        if let selection,
-            let variants = models.first(where: {
+        guard let selection,
+            let model = models.first(where: {
                 $0.providerID == selection.providerID && $0.id == selection.modelID
-            })?.variants, !variants.isEmpty
-        {
-            return variants
-        }
-        return agentOptions
+            })
+        else { return agentOptions }
+        // nil variants = the catalog did not say → agent list. Empty = this model has none.
+        guard let variants = model.variants else { return agentOptions }
+        return variants
     }
 
     /// The levels for a model named only by its id — what a chat holds once the server's session
@@ -149,5 +149,21 @@ public enum ModelEffort {
     public static func surviving(_ level: String?, options: [String]) -> String? {
         guard let level, options.contains(level) else { return nil }
         return level
+    }
+
+    /// What effort becomes after a model pick. Keep the level only where the new model offers it;
+    /// otherwise hand it back to the server. Every surface that changes the model runs the level
+    /// through here, so a stranded "max" can never stay named, checked nowhere, and shipped with
+    /// the next prompt.
+    public static func adopt(_ level: String?, for selection: ModelSelection?, models: [ModelInfo],
+        agentOptions: [String]
+    ) -> String? {
+        surviving(level, options: options(models: models, selection: selection, agentOptions: agentOptions))
+    }
+
+    public static func adopt(
+        _ level: String?, modelID: String?, models: [ModelInfo], agentOptions: [String]
+    ) -> String? {
+        surviving(level, options: options(models: models, modelID: modelID, agentOptions: agentOptions))
     }
 }

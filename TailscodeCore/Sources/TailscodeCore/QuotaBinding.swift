@@ -64,64 +64,71 @@ public enum QuotaBinding {
     /// a model billed somewhere else. The exception is the reseller whose caps are account-wide
     /// dollars across every provider it fronts: opencode go bills deepseek, kimi and the rest of
     /// its catalog out of one balance, so its wall holds every hosted model it offers — but only
-    /// those, never a model another house's door actually runs, and never a local one. A quota
-    /// from a provider nobody recognises keeps the old behaviour and governs everything, which is
-    /// the safe reading of a wall whose house we cannot place.
+    /// those, never a model another house's door actually runs, and never a local one.
+    ///
+    /// A folded candidate can list several doors (xAI OAuth and OpenCode Go both offering the same
+    /// Grok). The wall on the row is the wall of the door a pick would take — the primary — never
+    /// "any door that could bill this name". Wearing Go's spent window on a row that would send
+    /// through xAI is exactly the lie that sends someone waiting on a plan they are not using.
+    /// Nested alternates bill their own door. A quota from a provider nobody recognises keeps the
+    /// old behaviour and governs everything, which is the safe reading of a wall whose house we
+    /// cannot place.
     public static func bills(_ quota: UsageQuota, candidate: ModelCandidate) -> Bool {
-        guard let slug = ProviderBrand.slug(quota.providerName) else { return true }
-        switch slug {
-        case "opencode":
-            return billed(by: "opencode", candidate: candidate, familyFallback: !candidate.isLocal)
-        case "claude": return billed(by: "claude", candidate: candidate)
-        case "grok": return billed(by: "grok", candidate: candidate)
-        case "deepseek": return billed(by: "deepseek", candidate: candidate)
-        default: return true
-        }
+        bills(
+            quota, selection: candidate.selection, model: candidate.primary.model.id,
+            named: candidate.name)
+    }
+
+    /// Whether this offer's own door spends against the quota — what a nested alternate wears.
+    public static func bills(_ quota: UsageQuota, offer: ModelOffer, named name: String? = nil)
+        -> Bool
+    {
+        bills(quota, selection: offer.selection, model: offer.model.id, named: name)
     }
 
     /// The same rule for a chat's own model, where the door it runs through is known: the
     /// selection's provider id settles who bills it, and the family is the fallback when the
     /// door is a key nobody recognises. A model nobody can name still hears every account-wide
     /// wall — that chat may be on anything.
+    ///
+    /// An unknown door (`server`, a typed id, a catalog key we have not named) is not assumed to
+    /// be OpenCode Go. Families that have their own house — Claude, Grok, DeepSeek — bill there
+    /// unless the door is explicitly the reseller's; guessing Go is how a Grok OAuth chat ends up
+    /// wearing Go's "Used up" after the plan runs out.
     public static func bills(
         _ quota: UsageQuota, selection: ModelSelection?, model: String? = nil, named name: String? = nil
     ) -> Bool {
         guard let slug = ProviderBrand.slug(quota.providerName) else { return true }
         guard let selection else {
             guard model != nil || name != nil else { return true }
-            let family = ModelFamily.of(name: name ?? "", id: model ?? "")
-            switch slug {
-            case "opencode": return true
-            case "claude": return family.key == "claude"
-            case "grok": return family.key == "grok"
-            case "deepseek": return family.key == "deepseek"
-            default: return true
-            }
+            return house(slug, matchesFamilyOf: name ?? "", id: model ?? "")
         }
         if let door = ProviderIdentity.slug(selection.providerID) {
             return door == slug
         }
-        let family = ModelFamily.of(name: name ?? selection.modelID, id: selection.modelID)
+        return house(
+            slug, matchesFamilyOf: name ?? selection.modelID, id: selection.modelID,
+            local: ProviderIdentity.isLocal(selection.providerID))
+    }
+
+    /// Family-only billing when no door is known. OpenCode Go is never inferred for a family that
+    /// has its own house — those models are only Go's when the selection says `opencode-go`.
+    private static func house(
+        _ slug: String, matchesFamilyOf name: String, id: String, local: Bool = false
+    ) -> Bool {
+        let family = ModelFamily.of(name: name, id: id)
         switch slug {
-        case "opencode": return !ProviderIdentity.isLocal(selection.providerID)
+        case "opencode":
+            if local { return false }
+            switch family.key {
+            case "claude", "grok", "deepseek": return false
+            default: return true
+            }
         case "claude": return family.key == "claude"
         case "grok": return family.key == "grok"
         case "deepseek": return family.key == "deepseek"
         default: return true
         }
-    }
-
-    /// A model is billed by the door that actually runs it: the gateway's own id outranks the
-    /// model's name, because a reseller fronts a family with its own caps and a direct key bills
-    /// a balance of its own — a DeepSeek family reached through opencode go spends from Go's
-    /// caps, one reached through the deepseek door from the prepaid balance. The family is only
-    /// the fallback for a door nobody recognises.
-    private static func billed(
-        by house: String, candidate: ModelCandidate, familyFallback: Bool = true
-    ) -> Bool {
-        let doors = candidate.offers.compactMap { ProviderIdentity.slug($0.providerID) }
-        if !doors.isEmpty { return doors.contains(house) }
-        return familyFallback && candidate.family.key == house
     }
 
     /// A label that carries both reads "window · model", so only the part past the last separator

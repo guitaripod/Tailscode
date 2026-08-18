@@ -161,7 +161,9 @@ final class ChatPane: @unchecked Sendable {
 
     /// What the next turn out of this pane runs on, however it is started — a typed prompt, a
     /// slash command, or a compaction someone opened from the window's own chrome.
-    var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+    var promptChoice: (model: ModelSelection?, effort: String?) {
+        (chosenModel, ModelEffort.surviving(chosenEffort, options: effortOptions()))
+    }
 
     var sessionID: String? { entry?.session.id }
     var auraActive: Bool { editor.auraActive }
@@ -841,7 +843,7 @@ final class ChatPane: @unchecked Sendable {
                 queued.sessionID == entry.session.id
             {
                 let model = self.chosenModel
-                let effort = self.chosenEffort
+                let effort = ModelEffort.surviving(self.chosenEffort, options: self.effortOptions())
                 let words = queued.send.text
                 Gtk.onMain { [weak self] in
                     guard let self, self.sessionID == sessionID else { return }
@@ -2359,9 +2361,13 @@ final class ChatPane: @unchecked Sendable {
     private func effortPillText() -> String? {
         let options = effortOptions()
         guard !options.isEmpty else { return nil }
-        if let chosenEffort { return chosenEffort }
-        if let stored = entry?.session.reasoningEffort, !stored.isEmpty { return stored }
-        if let observed = observedEffort() { return observed }
+        if let kept = ModelEffort.surviving(chosenEffort, options: options) { return kept }
+        if let stored = ModelEffort.surviving(entry?.session.reasoningEffort, options: options) {
+            return stored
+        }
+        if let observed = ModelEffort.surviving(observedEffort(), options: options) {
+            return observed
+        }
         return ModelEffort.label(nil, options: options)
     }
 
@@ -2378,7 +2384,9 @@ final class ChatPane: @unchecked Sendable {
     /// what this offers and what the phone offers for the same model can never differ.
     private func effortOptions() -> [String] {
         ModelEffort.options(
-            models: models, modelID: activeModelID,
+            models: models,
+            selection: chosenModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
             agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
@@ -2478,6 +2486,15 @@ final class ChatPane: @unchecked Sendable {
         if let entry {
             ModelPreferenceStore.recordPick(
                 selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
+        }
+        let kept = ModelEffort.adopt(
+            chosenEffort, for: selection, models: models,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        if kept != chosenEffort {
+            setChosenEffort(kept)
+            return
+        }
+        if let entry {
             SettingsFile.capture()
         }
         refreshPills()
@@ -3050,7 +3067,8 @@ final class ChatPane: @unchecked Sendable {
         attachments = []
         renderAttachments()
         let send = QueuedSend(
-            text: text, model: chosenModel, effort: chosenEffort,
+            text: text, model: chosenModel,
+            effort: ModelEffort.surviving(chosenEffort, options: effortOptions()),
             attachments: outgoing.map(\.prompt))
         // A prompt written while a turn runs is held here, not handed over: a message you can
         // still change is worth more than a message one place further along.
@@ -3628,7 +3646,7 @@ final class ChatPane: @unchecked Sendable {
             guard let conversation else { return false }
             SlashRecents.record(command.name)
             let model = chosenModel
-            let effort = chosenEffort
+            let effort = ModelEffort.surviving(chosenEffort, options: effortOptions())
             Task {
                 try? await conversation.run(
                     command, arguments: arguments, model: model, reasoningEffort: effort)

@@ -64,7 +64,9 @@ final class ComposerView: NSView {
 
     /// What a prompt sent outside the text box should travel with — the same model and effort
     /// the next Enter in this composer would use.
-    var promptChoice: (model: ModelSelection?, effort: String?) { (chosenModel, chosenEffort) }
+    var promptChoice: (model: ModelSelection?, effort: String?) {
+        (chosenModel, ModelEffort.surviving(chosenEffort, options: effortOptions()))
+    }
     var pickedModel: ModelSelection? { chosenModel }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
     var quotasForModels: (() -> [UsageQuota])?
@@ -207,11 +209,12 @@ final class ComposerView: NSView {
         if handleSlashCommand(text) { return }
         attachments = []
         syncChips()
-        if Ultracode.invokes(text) || chosenEffort == Ultracode.effortLevel {
+        let effort = ModelEffort.surviving(chosenEffort, options: effortOptions())
+        if Ultracode.invokes(text) || effort == Ultracode.effortLevel {
             ultracodeInFlight = true
         }
         refreshAura()
-        onSubmitPrompt?(text, chosenModel, chosenEffort, outgoing.map(\.prompt))
+        onSubmitPrompt?(text, chosenModel, effort, outgoing.map(\.prompt))
     }
 
     /// What is in the box, for a caller deciding whether a key means something else.
@@ -500,9 +503,13 @@ final class ComposerView: NSView {
     private func effortPillText() -> String? {
         let options = effortOptions()
         guard !options.isEmpty else { return nil }
-        if let chosenEffort { return chosenEffort }
-        if let stored = entry?.session.reasoningEffort, !stored.isEmpty { return stored }
-        if let observed = observedEffort() { return observed }
+        if let kept = ModelEffort.surviving(chosenEffort, options: options) { return kept }
+        if let stored = ModelEffort.surviving(entry?.session.reasoningEffort, options: options) {
+            return stored
+        }
+        if let observed = ModelEffort.surviving(observedEffort(), options: options) {
+            return observed
+        }
         return ModelEffort.label(nil, options: options)
     }
 
@@ -520,7 +527,9 @@ final class ComposerView: NSView {
     /// the phone offers for the same model can never differ.
     private func effortOptions() -> [String] {
         ModelEffort.options(
-            models: models, modelID: activeModelID,
+            models: models,
+            selection: chosenModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
             agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
@@ -611,8 +620,11 @@ final class ComposerView: NSView {
             ModelPreferenceStore.recordPick(
                 selection, sessionKey: Self.preferenceKey(entry), contextID: entry.profileID)
         }
-        if let chosenEffort, !effortOptions().contains(chosenEffort) {
-            setEffort(nil)
+        let kept = ModelEffort.adopt(
+            chosenEffort, for: selection, models: models,
+            agentOptions: backend?.reasoningEffortOptions ?? [])
+        if kept != chosenEffort {
+            setEffort(kept)
             return
         }
         refreshPills()
@@ -713,7 +725,9 @@ final class ComposerView: NSView {
             return true
         case .run(let command, let arguments):
             SlashRecents.record(command.name)
-            onRunCommand?(command, arguments, chosenModel, chosenEffort)
+            onRunCommand?(
+                command, arguments, chosenModel,
+                ModelEffort.surviving(chosenEffort, options: effortOptions()))
             return true
         case .plainText:
             return false

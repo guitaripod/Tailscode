@@ -223,4 +223,26 @@ struct ModelEffortTests {
         #expect(ModelEffort.surviving("max", options: ["low", "high"]) == nil)
         #expect(ModelEffort.surviving("high", options: ["low", "high"]) == "high")
     }
+
+    @Test("A model pick drops a level the new model cannot run")
+    func adoptOnModelPick() {
+        let maxOnly = ModelInfo(
+            id: "a", name: "A", providerID: "opencode-go", variants: ["low", "medium", "high", "max"])
+        let noMax = ModelInfo(
+            id: "b", name: "B", providerID: "opencode-go", variants: ["low", "high"])
+        let none = ModelInfo(id: "c", name: "C", providerID: "opencode-go", variants: [])
+        #expect(
+            ModelEffort.adopt(
+                "max", for: noMax.selection, models: [maxOnly, noMax, none], agentOptions: [])
+                == nil)
+        #expect(
+            ModelEffort.adopt(
+                "high", for: noMax.selection, models: [maxOnly, noMax, none], agentOptions: [])
+                == "high")
+        #expect(
+            ModelEffort.adopt(
+                "max", for: none.selection, models: [maxOnly, noMax, none],
+                agentOptions: ["low", "max"]) == nil,
+            "empty variants means the model has none, not the agent's list")
+    }
 }

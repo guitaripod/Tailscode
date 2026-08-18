@@ -652,23 +652,36 @@ public struct ModelChooser: Sendable, Equatable {
         guard !quotas.isEmpty else { return [:] }
         var found: [String: QuotaExhaustion] = [:]
         for candidate in candidates {
-            guard let hit = wall(for: candidate, quotas: quotas) else { continue }
-            found[candidate.id] = hit
+            for offer in candidate.offers {
+                let key = offer.selection.rawValue
+                guard found[key] == nil else { continue }
+                guard let hit = wall(for: offer, named: candidate.name, quotas: quotas) else {
+                    continue
+                }
+                found[key] = hit
+            }
         }
         return found
     }
 
     /// The used-up window in front of one model, for the pill's shortlist — the same reading the
     /// full chooser draws, so a menu and the list behind it never disagree about what is spent.
-    /// Only walls whose provider actually bills the model count: a Claude wall is not a fact
-    /// about a DeepSeek row, whatever their fractions.
+    /// Only walls whose provider actually bills the door a pick would take count: a Go wall is
+    /// not a fact about a row that would send through xAI, whatever their fractions.
     public static func wall(
         for candidate: ModelCandidate, quotas: [UsageQuota]
     ) -> QuotaExhaustion? {
-        let billers = quotas.filter { QuotaBinding.bills($0, candidate: candidate) }
+        wall(for: candidate.primary, named: candidate.name, quotas: quotas)
+    }
+
+    /// The wall on one door of a folded model — what a nested alternate wears.
+    public static func wall(
+        for offer: ModelOffer, named name: String?, quotas: [UsageQuota]
+    ) -> QuotaExhaustion? {
+        let billers = quotas.filter { QuotaBinding.bills($0, offer: offer, named: name) }
         guard !billers.isEmpty else { return nil }
         return QuotaSurface.hottestExhausted(
-            in: billers, model: candidate.primary.model.id, named: candidate.name)
+            in: billers, model: offer.model.id, named: name)
     }
 
     public var isEmpty: Bool { candidates.isEmpty }
@@ -727,7 +740,8 @@ public struct ModelChooser: Sendable, Equatable {
         }
         let local = candidates.filter(\.isLocal).count
         if local > 0 { parts.append(Localized.text("%@ on your machine", "\(local)")) }
-        if !walls.isEmpty { parts.append(Localized.text("%@ used up", "\(walls.count)")) }
+        let walled = candidates.filter { walls[$0.selection.rawValue] != nil }.count
+        if walled > 0 { parts.append(Localized.text("%@ used up", "\(walled)")) }
         return parts.joined(separator: " · ")
     }
 
@@ -1110,7 +1124,7 @@ public struct ModelChooser: Sendable, Equatable {
                 facts: offer.isLocal ? [.local] : [],
                 isSelected: !candidate.isElsewhere && selected == offer.selection,
                 isExpanded: false, canExpand: false,
-                isNested: true, wall: walls[candidate.id])
+                isNested: true, wall: walls[offer.selection.rawValue])
         }
         return result
     }
@@ -1128,7 +1142,7 @@ public struct ModelChooser: Sendable, Equatable {
             isSelected: !candidate.isElsewhere && candidate.carries(selected),
             isExpanded: expanded.contains(candidate.id),
             canExpand: candidate.offers.count > 1, isNested: false,
-            wall: walls[candidate.id])
+            wall: walls[candidate.selection.rawValue])
     }
 
     /// Under the name: who runs it, and the id the server actually knows it by — the one string
@@ -1181,7 +1195,9 @@ public struct ModelChooser: Sendable, Equatable {
                 candidates
                 .sorted { lhs, rhs in
                     if lhs.isElsewhere != rhs.isElsewhere { return !lhs.isElsewhere }
-                    let (walledL, walledR) = (walls[lhs.id] != nil, walls[rhs.id] != nil)
+                    let (walledL, walledR) = (
+                        walls[lhs.selection.rawValue] != nil, walls[rhs.selection.rawValue] != nil
+                    )
                     if walledL != walledR { return !walledL }
                     return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
                 }
@@ -1197,7 +1213,9 @@ public struct ModelChooser: Sendable, Equatable {
             .sorted { lhs, rhs in
                 if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
                 if lhs.0.isElsewhere != rhs.0.isElsewhere { return !lhs.0.isElsewhere }
-                let (walledL, walledR) = (walls[lhs.0.id] != nil, walls[rhs.0.id] != nil)
+                let (walledL, walledR) = (
+                    walls[lhs.0.selection.rawValue] != nil, walls[rhs.0.selection.rawValue] != nil
+                )
                 if walledL != walledR { return !walledL }
                 let (a, b) = (rank(lhs.0), rank(rhs.0))
                 if a != b { return a < b }
@@ -1749,11 +1767,23 @@ public enum ModelChooserCheck {
             quotas: [quota("opencode go", [window("5-hour session", 1)])])
         expect(
             goWall.rows.filter { !$0.isAuto }.allSatisfy { row in
-                let hosted = row.title != "Qwen3" && row.title != "Claude Sonnet 4.5"
-                return (row.wall != nil) == hosted
+                // Only the door a pick would take. Dual-door DeepSeek prefers deepseek, so Go's
+                // wall is not on the parent row; Claude and local never are.
+                let goOnly = row.title == "GPT-5.6 Luna" || row.title == "Qwen3 Coder"
+                return (row.wall != nil) == goOnly
             },
-            "a reseller's account-wide wall holds every hosted model it fronts — and never one "
-                + "another house's door runs")
+            "a reseller's wall holds models whose primary door is Go — never a dual-door "
+                + "row that would send through another house, and never local")
+        var goOpened = goWall
+        if let index = goOpened.rows.firstIndex(where: { $0.title == "DeepSeek V4 Flash" }) {
+            _ = goOpened.setExpanded(true, at: index)
+        }
+        expect(
+            goOpened.rows.first { $0.isNested && $0.title == "OpenCode Go" }?.wall != nil,
+            "the Go alternate under a dual-door row still names Go's spent window")
+        expect(
+            goOpened.rows.first { $0.isNested && $0.title == "DeepSeek" }?.wall == nil,
+            "and the direct alternate does not")
 
         let deepWall = ModelChooser(
             models: catalog, selected: nil, recents: [],

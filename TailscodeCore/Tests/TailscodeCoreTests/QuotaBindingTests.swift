@@ -242,12 +242,50 @@ struct QuotaBindingTests {
             quota("Claude", [gauge("5-hour session", 1.0)]),
             quota("opencode go", [gauge("5-hour session", 1.0)]),
             quota("DeepSeek", [gauge("Balance", 1.0)]),
+            quota("Grok", [gauge("5-hour session", 1.0)]),
         ]
         let claude = QuotaSurface.relevantQuotas(for: .claudeCode, among: quotas)
         #expect(claude.map(\.providerName) == ["Claude"])
         let opencode = QuotaSurface.relevantQuotas(for: .openCode, among: quotas)
-        #expect(Set(opencode.map(\.providerName)) == ["opencode go", "DeepSeek"])
-        #expect(QuotaSurface.relevantQuotas(for: nil, among: quotas).count == 3)
+        #expect(Set(opencode.map(\.providerName)) == ["opencode go", "DeepSeek", "Grok"])
+        #expect(QuotaSurface.relevantQuotas(for: nil, among: quotas).count == 4)
+    }
+
+    @Test("A dual-door Grok row wears the wall of the door a pick would take, not Go's")
+    func dualDoorGrok() {
+        let catalog = [
+            ModelInfo(id: "grok-4.5", name: "Grok 4.5", providerID: "xai"),
+            ModelInfo(id: "grok-4.5", name: "Grok 4.5", providerID: "opencode-go"),
+            ModelInfo(id: "kimi-k3", name: "Kimi K3", providerID: "opencode-go"),
+        ]
+        let goSpent = [quota("opencode go", [gauge("5-hour session", 1.0)])]
+        let chooser = ModelChooser(models: catalog, selected: nil, recents: [], quotas: goSpent)
+        let byTitle = Dictionary(
+            uniqueKeysWithValues: chooser.rows.filter { !$0.isAuto }.map { ($0.title, $0) })
+        #expect(
+            byTitle["Grok 4.5"]?.wall == nil,
+            "primary is xAI; Go's spent window is not a fact about that pick")
+        #expect(byTitle["Kimi K3"]?.wall != nil, "a model only Go fronts still wears Go's wall")
+
+        var opened = chooser
+        if let index = opened.rows.firstIndex(where: { $0.title == "Grok 4.5" }) {
+            _ = opened.setExpanded(true, at: index)
+        }
+        let nested = opened.rows.filter(\.isNested)
+        let xaiAlt = nested.first { $0.title == "xAI" }
+        let goAlt = nested.first { $0.title == "OpenCode Go" }
+        #expect(xaiAlt?.wall == nil, "the xAI alternate is free")
+        #expect(goAlt?.wall != nil, "the Go alternate names Go's spent window")
+
+        let viaXai = ModelSelection(providerID: "xai", modelID: "grok-4.5")
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: goSpent, selection: viaXai) == nil,
+            "a chat on the xAI door does not hear Go's wall")
+        let viaGo = ModelSelection(providerID: "opencode-go", modelID: "grok-4.5")
+        #expect(
+            QuotaSurface.resolve(failureMessage: nil, quotas: goSpent, selection: viaGo)?.provider
+                == "opencode go",
+            "a chat on the Go door still does")
     }
 
     @Test("A chat's banner reads the door its model runs through")

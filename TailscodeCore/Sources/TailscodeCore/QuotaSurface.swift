@@ -54,12 +54,14 @@ public enum QuotaSurface {
     }
 
     /// Which provider families a chat on this backend spends against. An opencode chat may send
-    /// with a DeepSeek model billed out of a prepaid DeepSeek balance, so both quotas are in
-    /// play there; a Claude Code chat spends only against Claude's.
+    /// with a DeepSeek model billed out of a prepaid DeepSeek balance, or a Grok model through
+    /// xAI OAuth, so those quotas stay in play there; a Claude Code chat spends only against
+    /// Claude's. Billing then narrows to the door the model actually runs through — Go's wall is
+    /// not news above a chat on the xAI key.
     private static func quotaFamilies(for backend: AgentType?) -> Set<String>? {
         switch backend {
         case .claudeCode: return ["claude"]
-        case .openCode: return ["opencode", "deepseek"]
+        case .openCode: return ["opencode", "deepseek", "grok"]
         default: return nil
         }
     }

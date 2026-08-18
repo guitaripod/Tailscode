@@ -163,7 +163,9 @@ final class ChatViewModel {
     /// never differ.
     var reasoningEffortOptions: [String] {
         ModelEffort.options(
-            models: knownModels, modelID: activeModelID,
+            models: knownModels,
+            selection: selectedModel
+                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
             agentOptions: backend.reasoningEffortOptions)
     }
 
@@ -205,10 +207,13 @@ final class ChatViewModel {
     /// The effort the chip names, and nothing at all where the model takes no effort: a word left
     /// over from the model that answered last is a claim about a control this model does not have.
     var displayedEffort: String? {
-        guard !reasoningEffortOptions.isEmpty else { return nil }
-        if let currentEffort { return currentEffort }
-        if let stored = session.reasoningEffort, !stored.isEmpty { return stored }
-        return lastAssistantEffort
+        let options = reasoningEffortOptions
+        guard !options.isEmpty else { return nil }
+        if let kept = ModelEffort.surviving(currentEffort, options: options) { return kept }
+        if let stored = ModelEffort.surviving(session.reasoningEffort, options: options) {
+            return stored
+        }
+        return ModelEffort.surviving(lastAssistantEffort, options: options)
     }
     var supportsAttachments: Bool { backend.capabilities.supportsAttachments }
 
@@ -809,7 +814,8 @@ final class ChatViewModel {
             turnSawRunning = false
         }
         let resolvedModel = model ?? selectedModel
-        let resolvedEffort = effort ?? currentEffort
+        let resolvedEffort = ModelEffort.surviving(
+            effort ?? currentEffort, options: reasoningEffortOptions)
         if Ultracode.invokes(text) || resolvedEffort == Ultracode.effortLevel {
             ultracodeInFlight = true
             onModelChange?()
@@ -1013,6 +1019,13 @@ final class ChatViewModel {
     func selectModel(_ model: ModelSelection?) {
         selectedModel = model
         ModelPreferenceStore.recordPick(model, sessionKey: persistKey, contextID: contextID)
+        let kept = ModelEffort.adopt(
+            currentEffort, for: model, models: knownModels,
+            agentOptions: backend.reasoningEffortOptions)
+        if kept != currentEffort {
+            currentEffort = kept
+            EffortPreferenceStore.recordPick(kept, sessionKey: persistKey, contextID: contextID)
+        }
         onModelChange?()
     }
 

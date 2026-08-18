@@ -1990,6 +1990,9 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// A pick in the ask lane claims that lane's own memory and leaves the server's exactly as it
     /// was: pointing lookups at something cheap may never re-aim the project chats.
     private func setComposeModel(_ selection: ModelSelection?, for aim: ComposerAim) {
+        let backend = viewModel.backend(forProfileID: aim.profile.id)
+        let models = ModelCatalog.cached(for: aim.profile.id)
+        let agentOptions = backend?.reasoningEffortOptions ?? []
         switch aim.lane {
         case .chat:
             ModelPreferenceStore.recordPick(selection, sessionKey: nil, contextID: aim.profile.id)
@@ -1998,12 +2001,25 @@ extension HomeViewController: HomeComposerBarDelegate {
             } else {
                 var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
                 choice.model = selection
+                let kept = ModelEffort.adopt(
+                    choice.effort, for: selection, models: models, agentOptions: agentOptions)
+                if kept != choice.effort {
+                    choice.effort = kept
+                    EffortPreferenceStore.recordPick(
+                        kept, sessionKey: nil, contextID: aim.profile.id)
+                }
                 modelChoices[aim.memoryKey] = choice
             }
         case .ask:
             QuickAskDefaults.recordModel(selection, forProfileID: aim.profile.id)
             var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
             choice.model = selection
+            let kept = ModelEffort.adopt(
+                choice.effort, for: selection, models: models, agentOptions: agentOptions)
+            if kept != choice.effort {
+                choice.effort = kept
+                QuickAskDefaults.recordEffort(kept, forProfileID: aim.profile.id)
+            }
             modelChoices[aim.memoryKey] = choice
         }
         Theme.Haptics.selection()
