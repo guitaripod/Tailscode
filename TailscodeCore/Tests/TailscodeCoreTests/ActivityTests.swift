@@ -36,6 +36,23 @@ struct ActivityTests {
         #expect(seen == Set(ActivityIcon.sweepCycle))
     }
 
+    @Test("A live workflow agent turns; a finished one holds still")
+    func workflowAgentMark() {
+        let now = Date()
+        let live = WorkflowAgent(
+            id: "a", title: "agent", isActive: true, isCompleted: false, updatedAt: now)
+        let done = WorkflowAgent(
+            id: "b", title: "agent", isActive: false, isCompleted: true, updatedAt: now)
+        #expect(ActivityIcon.workflowAgent(live) == .openWork)
+        #expect(ActivityIcon.workflowAgent(live).motion == .turning)
+        #expect(ActivityIcon.workflowAgent(done) == .finished)
+        #expect(ActivityIcon.workflowAgent(done).motion == .still)
+        #expect(ActivityTuning.frameRate == 30)
+        let start = ActivityMotion.turning.rotation(at: 0)
+        let later = ActivityMotion.turning.rotation(at: ActivityTuning.sweepPeriod / 4)
+        #expect(abs(later - start) > 0.5)
+    }
+
     @Test("Work breathes, attention knocks twice, and everything settled holds still")
     func motionCarriesTheMeaning() {
         #expect(ActivityKind.working.icon.motion == .working)

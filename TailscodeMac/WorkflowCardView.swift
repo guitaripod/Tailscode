@@ -136,16 +136,21 @@ enum WorkflowCardView {
     }
 
     private static func restateAgent(_ row: DisclosureRow, agent: WorkflowAgent, now: Date) -> Bool {
-        guard let header = row.headerView as? NSStackView else { return false }
+        guard let header = row.headerView as? NSStackView,
+            let badge = header.arrangedSubviews.first as? ActivityBadgeView
+        else { return false }
         let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
-        guard head.count == 4 else { return false }
-        setLabel(head[0], text: agentGlyph(agent, now: now), color: agentColor(agent))
+        guard head.count == 3 else { return false }
+        badge.show(
+            ActivityIcon.workflowAgent(agent),
+            spoken: agent.isActive && !agent.isCompleted
+                ? Localized.text("Agent working") : nil)
         let tool = agent.isActive ? agent.currentTool : nil
-        setLabel(head[2], text: tool ?? "")
-        head[2].isHidden = tool == nil
+        setLabel(head[1], text: tool ?? "")
+        head[1].isHidden = tool == nil
         let elapsed = agent.elapsed(at: now)
-        setLabel(head[3], text: elapsed.map(WorkflowRun.duration) ?? "")
-        head[3].isHidden = elapsed == nil
+        setLabel(head[2], text: elapsed.map(WorkflowRun.duration) ?? "")
+        head[2].isHidden = elapsed == nil
         return true
     }
 
@@ -269,10 +274,14 @@ enum WorkflowCardView {
         header.orientation = .horizontal
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
-        header.addArrangedSubview(
-            RowKit.label(
-                agentGlyph(agent, now: now), font: MacTheme.Ramp.font(.toolOutput),
-                color: agentColor(agent)))
+        let badge = ActivityBadgeView(pointSize: 11)
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        badge.setContentHuggingPriority(.required, for: .horizontal)
+        badge.show(
+            ActivityIcon.workflowAgent(agent),
+            spoken: agent.isActive && !agent.isCompleted
+                ? Localized.text("Agent working") : nil)
+        header.addArrangedSubview(badge)
         header.addArrangedSubview(
             ToolRowView.detailLabel(
                 String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120))))
@@ -406,16 +415,6 @@ enum WorkflowCardView {
         case .finished: return MacTheme.Color.tertiaryLabel
         case .failed: return MacTheme.Color.danger
         }
-    }
-
-    private static func agentGlyph(_ agent: WorkflowAgent, now: Date) -> String {
-        if agent.isCompleted { return "✓" }
-        return agent.isActive ? frame(now) : "○"
-    }
-
-    private static func agentColor(_ agent: WorkflowAgent) -> NSColor {
-        if agent.isCompleted { return MacTheme.Color.success }
-        return agent.isActive ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel
     }
 
     /// Writes a label only when the words changed: an equal set still dirties layout, and a tick

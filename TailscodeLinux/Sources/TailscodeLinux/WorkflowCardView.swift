@@ -25,7 +25,9 @@ enum WorkflowCardView {
         let run = context.workflowRuns[call.id]
         let now = context.workflowNow
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(header), Gtk.label(glyph(run, now), css: glyphClass(run), selectable: false))
+        let mark = Gtk.label(glyph(run, now), css: glyphClass(run), selectable: false)
+        if run?.isLive == true { ActivityPulse.apply(.openWork, to: mark) }
+        gtk_box_append(ptr(header), mark)
         gtk_box_append(ptr(header), Gtk.label("▸ workflow", css: "tool-name", selectable: false))
 
         let name = run?.name ?? call.summary.title ?? Localized.text("Workflow")
@@ -73,7 +75,12 @@ enum WorkflowCardView {
         else { return false }
         let head = children(of: header)
         guard head.count == 5 else { return false }
-        setLabel(head[0], text: glyph(run, now))
+        if run?.isLive == true {
+            ActivityPulse.apply(.openWork, to: head[0])
+        } else {
+            ActivityPulse.apply(nil, to: head[0])
+            setLabel(head[0], text: glyph(run, now))
+        }
         setExclusiveClass(head[0], among: Self.glyphClasses, to: glyphClass(run))
         setLabel(head[3], text: run.map { $0.headline(at: now) } ?? "")
         setExclusiveClass(head[3], among: Self.headlineClasses, to: run.map(headlineClass) ?? "dim")
@@ -141,8 +148,14 @@ enum WorkflowCardView {
         else { return false }
         let head = children(of: header)
         guard head.count == 4 else { return false }
-        setLabel(head[0], text: agentGlyph(agent, now: now))
-        setExclusiveClass(head[0], among: Self.glyphClasses, to: agentGlyphClass(agent))
+        let icon = ActivityIcon.workflowAgent(agent)
+        if agent.isActive && !agent.isCompleted {
+            ActivityPulse.apply(.openWork, to: head[0])
+        } else {
+            ActivityPulse.apply(nil, to: head[0])
+            setLabel(head[0], text: icon.glyph)
+        }
+        setExclusiveClass(head[0], among: Self.glyphClasses, to: icon.glyphCSS)
         let tool = agent.isActive ? agent.currentTool : nil
         setLabel(head[2], text: tool ?? "")
         gtk_widget_set_visible(head[2], tool == nil ? 0 : 1)
@@ -260,10 +273,12 @@ enum WorkflowCardView {
         _ agent: WorkflowAgent, run: WorkflowRun, context: TranscriptContext, now: Date
     ) -> UnsafeMutablePointer<GtkWidget> {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(
-            ptr(header),
-            Gtk.label(
-                agentGlyph(agent, now: now), css: agentGlyphClass(agent), selectable: false))
+        let icon = ActivityIcon.workflowAgent(agent)
+        let glyph = Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false)
+        if agent.isActive && !agent.isCompleted {
+            ActivityPulse.apply(.openWork, to: glyph)
+        }
+        gtk_box_append(ptr(header), glyph)
         let title = Gtk.label(
             String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120)),
             css: "tool-detail", selectable: false)
@@ -356,16 +371,10 @@ enum WorkflowCardView {
         return keep.isEmpty ? name : keep.joined(separator: "-")
     }
 
-    private static let spinner = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-
-    private static func frame(_ now: Date) -> String {
-        spinner[Int(now.timeIntervalSince1970) % spinner.count]
-    }
-
     private static func glyph(_ run: WorkflowRun?, _ now: Date) -> String {
         guard let run else { return "○" }
         switch run.state {
-        case .launching, .running: return frame(now)
+        case .launching, .running: return ActivityIcon.openWork.glyph
         case .finished: return "⏺"
         case .failed: return "✗"
         }
@@ -391,16 +400,6 @@ enum WorkflowCardView {
         case .finished: return "dim"
         case .failed: return "glyph-error"
         }
-    }
-
-    private static func agentGlyph(_ agent: WorkflowAgent, now: Date) -> String {
-        if agent.isCompleted { return "✓" }
-        return agent.isActive ? frame(now) : "○"
-    }
-
-    private static func agentGlyphClass(_ agent: WorkflowAgent) -> String {
-        if agent.isCompleted { return "glyph-done" }
-        return agent.isActive ? "glyph-running" : "glyph-pending"
     }
 
     private static func isA(_ widget: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {

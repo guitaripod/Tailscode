@@ -124,6 +124,8 @@ final class ActivityBadgeView: UIView {
     private func start() {
         guard link == nil, motion.isAnimated, window != nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(step))
+        let fps = Float(ActivityTuning.frameRate)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: fps, preferred: fps)
         link.add(to: .main, forMode: .common)
         self.link = link
     }

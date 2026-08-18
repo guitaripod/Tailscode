@@ -92,6 +92,8 @@ final class ActivityPulse {
     private func start() {
         guard link == nil, let view, view.window != nil else { return }
         let link = view.displayLink(target: self, selector: #selector(step))
+        let fps = Float(ActivityTuning.frameRate)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: fps, preferred: fps)
         link.add(to: .current, forMode: .common)
         self.link = link
     }
@@ -176,9 +178,21 @@ final class ActivityBadgeView: NSView {
     var activity: ActivityKind? {
         didSet {
             guard activity != oldValue else { return }
-            apply()
+            show(activity?.icon, spoken: activity?.spoken)
         }
     }
+
+    /// For a surface whose state is an icon rather than a named kind — a workflow agent, which
+    /// turns while it is out and ticks when it is done.
+    func show(_ icon: ActivityIcon?, spoken: String?) {
+        guard icon != self.icon else { return }
+        self.icon = icon
+        self.spoken = spoken
+        apply()
+    }
+
+    private var icon: ActivityIcon?
+    private var spoken: String?
 
     init(pointSize: CGFloat = 11) {
         self.pointSize = pointSize
@@ -212,7 +226,7 @@ final class ActivityBadgeView: NSView {
     }
 
     private func apply() {
-        guard let activity else {
+        guard let icon else {
             imageView.image = nil
             isHidden = true
             holder.frameCenterRotation = 0
@@ -220,7 +234,6 @@ final class ActivityBadgeView: NSView {
             setAccessibilityElement(false)
             return
         }
-        let icon = activity.icon
         isHidden = false
         holder.frameCenterRotation = 0
         let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
@@ -229,7 +242,7 @@ final class ActivityBadgeView: NSView {
         imageView.contentTintColor = icon.tone.color
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel(activity.spoken)
+        setAccessibilityLabel(spoken)
         pulse.apply(icon)
     }
 }

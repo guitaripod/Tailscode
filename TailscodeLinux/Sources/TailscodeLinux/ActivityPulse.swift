@@ -29,7 +29,7 @@ final class ActivityPulse {
     /// A swell measured in seconds needs no more than thirty frames of it a second; stepped at a
     /// fast panel's own rate, every breathing badge redraws the window that often for light no
     /// eye can tell apart. The arithmetic reads absolute time, so a skipped frame skips nothing.
-    private static let frameInterval = 1.0 / 30.0
+    private static let frameInterval = 1.0 / ActivityTuning.frameRate
 
     private init(
         widget: UnsafeMutablePointer<GtkWidget>, icon: ActivityIcon, motion: ActivityMotion,

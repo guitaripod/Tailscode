@@ -36,7 +36,7 @@ final class WorkflowCardCell: UICollectionViewCell {
     /// The mutable pieces of one agent row, kept so a reconfigure writes into them instead of
     /// rebuilding the row — a rebuilt row takes the button out from under a finger mid-tap.
     private struct AgentHandle {
-        let glyph: UIImageView
+        let glyph: ActivityBadgeView
         let title: UILabel
         let live: UILabel
         let time: UILabel
@@ -276,7 +276,7 @@ final class WorkflowCardCell: UICollectionViewCell {
     /// elapsed labels exist from the start and hide while empty, so a reconfigure only ever
     /// changes words — the row, and the button under a finger, are never rebuilt for a tick.
     private func agentRow(_ agent: WorkflowAgent) -> UIView {
-        let glyph = UIImageView()
+        let glyph = ActivityBadgeView(pointSize: 11)
         glyph.setContentHuggingPriority(.required, for: .horizontal)
 
         let title = UILabel()
@@ -317,10 +317,10 @@ final class WorkflowCardCell: UICollectionViewCell {
     }
 
     private func update(_ handle: AgentHandle, with agent: WorkflowAgent, at now: Date) {
-        handle.glyph.image = UIImage(
-            systemName: agent.isCompleted ? "checkmark.circle.fill" : "circle.dotted",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        handle.glyph.tintColor = agent.isCompleted ? Theme.Color.success : Theme.Color.accent
+        handle.glyph.show(
+            ActivityIcon.workflowAgent(agent),
+            spoken: agent.isActive && !agent.isCompleted
+                ? String(localized: "Agent working") : nil)
         handle.title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
         let tool = agent.isActive ? agent.currentTool : nil
         handle.live.text = tool

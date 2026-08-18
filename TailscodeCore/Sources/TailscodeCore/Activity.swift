@@ -13,6 +13,10 @@ public enum ActivityTuning {
     public static let heartbeatPeriod: TimeInterval = 1.6
     public static let heartbeatFloor: Double = 0.42
     public static let sweepPeriod: TimeInterval = 1.05
+    /// A swell or a turn measured in seconds needs no more than this many frames of it a second.
+    /// Every client steps its clock at this rate; a skipped frame skips nothing, because the
+    /// arithmetic reads absolute time.
+    public static let frameRate: Double = 30
     /// How much a breathing badge grows at the top of its swell. Small on purpose: scale is the
     /// second voice of the same fact, and a badge that visibly jumps steals the eye from the row.
     public static let lift: Double = 0.08
@@ -203,6 +207,17 @@ public struct ActivityIcon: Sendable, Equatable {
     /// The mark of nothing happening. A row doing nothing still holds its column, so idle has a
     /// face here rather than each list inventing its own dot.
     public static let idle = ActivityIcon(symbol: "circle", glyph: "·", tone: .quiet, motion: .still)
+
+    /// A workflow agent that has finished its errand. Still, green, the same face a done tool wears.
+    public static let finished = ActivityIcon(
+        symbol: "checkmark.circle.fill", glyph: "✓", tone: .live, motion: .still)
+
+    /// The mark one workflow agent wears: turning while it is out, a tick when it is done, idle
+    /// while it has not started. Authored once so three cards cannot disagree about one agent.
+    public static func workflowAgent(_ agent: WorkflowAgent) -> ActivityIcon {
+        if agent.isCompleted { return .finished }
+        return agent.isActive ? .openWork : .idle
+    }
 }
 
 /// The one-column marks written into prose — a goal met, an agent finished, a thing still being
