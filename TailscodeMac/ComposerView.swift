@@ -631,8 +631,8 @@ final class ComposerView: NSView {
     }
 
     private func effortMenuRows() -> [PillsRow.MenuRow] {
-        let scale = effortScale()
-        guard !scale.isEmpty else {
+        let options = effortOptions()
+        guard !options.isEmpty else {
             return [PillsRow.MenuRow(Localized.text("This model has no effort control"))]
         }
         var rows = [
@@ -642,34 +642,18 @@ final class ComposerView: NSView {
                 self?.setEffort(nil)
             }
         ]
-        for rung in scale {
-            let isPower = rung.level == Ultracode.effortLevel
-            let title = isPower ? "\(rung.level) ✦" : rung.level
-            guard rung.available else {
-                rows.append(
-                    PillsRow.MenuRow(
-                        title, subtitle: ModelEffort.unavailableWord, disabled: true))
-                continue
-            }
+        for option in options {
+            let isPower = option == Ultracode.effortLevel
             rows.append(
                 PillsRow.MenuRow(
-                    title, subtitle: isPower ? Ultracode.menuSubtitle : nil,
-                    checked: chosenEffort == rung.level
+                    isPower ? "\(option) ✦" : option,
+                    subtitle: isPower ? Ultracode.menuSubtitle : nil,
+                    checked: chosenEffort == option
                 ) { [weak self] in
-                    self?.setEffort(rung.level)
+                    self?.setEffort(option)
                 })
         }
         return rows
-    }
-
-    /// The whole ladder the menu draws, with the rungs this model cannot take marked rather than
-    /// absent — the ceiling is a fact a person can see.
-    private func effortScale() -> [ModelEffort.EffortOption] {
-        ModelEffort.scale(
-            models: models,
-            selection: chosenModel
-                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
-            agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
     private func setEffort(_ level: String?) {

@@ -174,14 +174,6 @@ final class ChatViewModel {
             agentOptions: backend.reasoningEffortOptions)
     }
 
-    /// The whole ladder the effort sheet draws, with the rungs this model cannot take marked
-    /// rather than absent.
-    var effortScale: [ModelEffort.EffortOption] {
-        ModelEffort.scale(
-            models: knownModels, selection: effectiveSelection,
-            agentOptions: backend.reasoningEffortOptions)
-    }
-
     private var activeModelID: String? {
         selectedModel?.modelID ?? lastAssistantModelID ?? session.model
     }

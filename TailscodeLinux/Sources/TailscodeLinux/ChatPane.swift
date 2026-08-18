@@ -2509,11 +2509,11 @@ final class ChatPane: @unchecked Sendable {
     /// The pill offers what this person actually works with — the shared shortlist — and hands the
     /// rest to the chooser, which is the only surface that can hold a catalog of two hundred and
     /// still be read. The two are the same list at two lengths.
-    private func modelRows() -> [(String, String?, (@Sendable () -> Void)?)] {
+    private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
         guard !models.isEmpty else {
             return [(Localized.text("This server lists no models"), nil, {})]
         }
-        var rows: [(String, String?, (@Sendable () -> Void)?)] = [
+        var rows: [(String, String?, @Sendable () -> Void)] = [
             (Localized.text("Server default"), nil, { [weak self] in
                 Gtk.onMain { [weak self] in
                     self?.setChosenModel(nil)
@@ -2606,44 +2606,30 @@ final class ChatPane: @unchecked Sendable {
         refreshPills()
     }
 
-    private func effortRows() -> [(String, String?, (@Sendable () -> Void)?)] {
-        let scale = effortScale()
-        guard !scale.isEmpty else {
+    private func effortRows() -> [(String, String?, @Sendable () -> Void)] {
+        let options = effortOptions()
+        guard !options.isEmpty else {
             return [(Localized.text("This model has no effort control"), nil, {})]
         }
-        var rows: [(String, String?, (@Sendable () -> Void)?)] = [
+        var rows: [(String, String?, @Sendable () -> Void)] = [
             (Localized.text("Server default"), nil, { [weak self] in
                 Gtk.onMain { [weak self] in
                     self?.setChosenEffort(nil)
                 }
             })
         ]
-        for rung in scale {
-            let isPower = rung.level == Ultracode.effortLevel
-            let title = isPower ? "\(rung.level) ✦" : rung.level
-            guard rung.available else {
-                rows.append((title, ModelEffort.unavailableWord, nil))
-                continue
-            }
+        for option in options {
+            let isPower = option == Ultracode.effortLevel
             rows.append(
-                (title, isPower ? Ultracode.menuSubtitle : nil,
+                (isPower ? "\(option) ✦" : option,
+                 isPower ? Ultracode.menuSubtitle : nil,
                  { [weak self] in
                      Gtk.onMain { [weak self] in
-                         self?.setChosenEffort(rung.level)
+                         self?.setChosenEffort(option)
                      }
                  }))
         }
         return rows
-    }
-
-    /// The whole ladder the menu draws, with the rungs this model cannot take marked rather than
-    /// absent — the ceiling is a fact a person can see.
-    private func effortScale() -> [ModelEffort.EffortOption] {
-        ModelEffort.scale(
-            models: models,
-            selection: chosenModel
-                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
-            agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
     private func setChosenEffort(_ level: String?) {
@@ -2669,8 +2655,8 @@ final class ChatPane: @unchecked Sendable {
 
     /// On the server first — what this machine will actually resolve — then what the app itself
     /// can do. Picking one drops it into the composer so arguments can follow.
-    private func commandRows() -> [(String, String?, (@Sendable () -> Void)?)] {
-        var rows: [(String, String?, (@Sendable () -> Void)?)] = []
+    private func commandRows() -> [(String, String?, @Sendable () -> Void)] {
+        var rows: [(String, String?, @Sendable () -> Void)] = []
         rows.append(
             ("/compact", Localized.text("Trade the transcript for a summary — with a preflight"),
              { [weak self] in Gtk.onMain { [weak self] in
@@ -2700,10 +2686,10 @@ final class ChatPane: @unchecked Sendable {
         return rows
     }
 
-    func actionRows() -> [(String, String?, (@Sendable () -> Void)?)] {
+    func actionRows() -> [(String, String?, @Sendable () -> Void)] {
         guard let entry else { return [] }
         let capabilities = backend?.capabilities
-        var rows: [(String, String?, (@Sendable () -> Void)?)] = []
+        var rows: [(String, String?, @Sendable () -> Void)] = []
 
         let saved = SavedChatStore.contains(entry)
         rows.append(
@@ -3296,13 +3282,13 @@ final class ChatPane: @unchecked Sendable {
         Task { try? await conversation.dismissInterruptedTurn() }
     }
 
-    private func attachRows() -> [(String, String?, (@Sendable () -> Void)?)] {
+    private func attachRows() -> [(String, String?, @Sendable () -> Void)] {
         let able = abilities
         let supported = backend?.capabilities.supportsAttachments != false
         if let reason = able.unavailableReason(supportsAttachments: supported) {
             return [(reason, nil, {})]
         }
-        var rows: [(String, String?, (@Sendable () -> Void)?)] = [
+        var rows: [(String, String?, @Sendable () -> Void)] = [
             (Localized.text("Attach files…"), Localized.text("Up to 8 MB each"),
              { [weak self] in Gtk.onMain { [weak self] in self?.pickAttachments() } })
         ]

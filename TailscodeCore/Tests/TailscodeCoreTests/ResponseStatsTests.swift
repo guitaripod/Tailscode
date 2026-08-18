@@ -284,7 +284,9 @@ struct ModelEffortTests {
 
     @Test("A pick with no door still finds the model by id")
     func doorlessSelectionResolvesById() {
-        let pro = ModelInfo(id: "deepseek-v4-pro", name: "DeepSeek", providerID: "deepseek", variants: ["high", "max"])
+        let pro = ModelInfo(
+            id: "deepseek-v4-pro", name: "DeepSeek", providerID: "deepseek",
+            variants: ["high", "max"])
         let doorless = ModelSelection(providerID: "server", modelID: "deepseek-v4-pro")
         #expect(
             ModelEffort.options(models: [pro], selection: doorless, agentOptions: [])
@@ -293,46 +295,15 @@ struct ModelEffortTests {
             ModelEffort.adopt("max", for: doorless, models: [pro], agentOptions: []) == "max")
     }
 
-    @Test("The scale keeps the rungs the model cannot take, marked")
-    func scaleMarksUnavailableRungs() {
-        let pro = ModelInfo(id: "deepseek-v4-pro", name: "DeepSeek", providerID: "deepseek", variants: ["high", "max"])
-        let scale = ModelEffort.scale(models: [pro], selection: pro.selection, agentOptions: [])
-        #expect(scale.map(\.level) == ["low", "medium", "high", "xhigh", "max"])
-        #expect(scale == [
-            ModelEffort.EffortOption(level: "low", available: false),
-            ModelEffort.EffortOption(level: "medium", available: false),
-            ModelEffort.EffortOption(level: "high", available: true),
-            ModelEffort.EffortOption(level: "xhigh", available: false),
-            ModelEffort.EffortOption(level: "max", available: true),
-        ])
-        #expect(!ModelEffort.unavailableWord.isEmpty)
-    }
-
-    @Test("A model with no levels has no scale either")
-    func scaleEmptyWithoutControl() {
+    @Test("A menu lists only the levels the picked model can run")
+    func menuHidesWhatTheModelCannotRun() {
+        let pro = ModelInfo(
+            id: "deepseek-v4-pro", name: "DeepSeek", providerID: "deepseek",
+            variants: ["high", "max"])
         #expect(
-            ModelEffort.scale(models: [flat], selection: flat.selection, agentOptions: []).isEmpty)
-    }
-
-    @Test("Ultracode is only ever an agent's own word")
-    func ultracodeFollowsTheAgent() {
-        let lean = ModelEffort.scale(
-            models: [silent], modelID: "mystery", agentOptions: ["low", "max"])
-        #expect(lean.map(\.level) == ["low", "medium", "high", "xhigh", "max"])
-        #expect(
-            lean.map(\.available) == [true, false, false, false, true],
-            "a server that never said ultracode does not get the rung invented for it")
-        let claude = ModelEffort.scale(
-            models: [silent], modelID: "mystery",
-            agentOptions: ["low", "medium", "high", "xhigh", "max", "ultracode"])
-        #expect(claude.last == ModelEffort.EffortOption(level: "ultracode", available: true))
-        let capped = ModelInfo(
-            id: "mystery", name: "Mystery", providerID: "ollama", variants: ["low", "high"])
-        let cappedScale = ModelEffort.scale(
-            models: [capped], selection: capped.selection,
-            agentOptions: ["low", "medium", "high", "xhigh", "max", "ultracode"])
-        #expect(
-            cappedScale.first { $0.level == "ultracode" }?.available == false,
-            "an agent rung the model cannot take is still drawn, marked")
+            ModelEffort.options(
+                models: [pro], selection: pro.selection,
+                agentOptions: ["low", "medium", "high", "xhigh", "max", "ultracode"])
+                == ["high", "max"])
     }
 }

@@ -3674,18 +3674,15 @@ final class ChatViewController: UIViewController {
                 self?.viewModel.setEffort(nil)
                 self?.updateNavControls()
             })
-        for rung in viewModel.effortScale {
-            let selected = viewModel.currentEffort == rung.level
-            let name = rung.level.capitalized
-            let title = rung.available
-                ? (selected ? "\(name) ✓" : name)
-                : "\(name) — \(ModelEffort.unavailableWord)"
-            let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.viewModel.setEffort(rung.level)
-                self?.updateNavControls()
-            }
-            if !rung.available { action.isEnabled = false }
-            sheet.addAction(action)
+        for level in viewModel.reasoningEffortOptions {
+            let selected = viewModel.currentEffort == level
+            sheet.addAction(
+                UIAlertAction(
+                    title: selected ? "\(level.capitalized) ✓" : level.capitalized, style: .default
+                ) { [weak self] _ in
+                    self?.viewModel.setEffort(level)
+                    self?.updateNavControls()
+                })
         }
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = composer

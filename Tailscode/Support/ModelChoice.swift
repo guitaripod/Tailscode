@@ -259,35 +259,25 @@ enum ModelMenu {
                         ) { _ in browseAll() }
                     ]))
         }
-        let scale = ModelEffort.scale(
+        let options = ModelEffort.options(
             models: models, selection: choice.model, agentOptions: efforts)
-        if !scale.isEmpty {
+        if !options.isEmpty {
             var levels: [UIMenuElement] = [
                 UIAction(
                     title: String(localized: "Default"), state: choice.effort == nil ? .on : .off
                 ) { _ in actions.selectEffort(nil) }
             ]
-            levels += scale.map { rung in
-                let isPower = rung.level == Ultracode.effortLevel
-                guard rung.available else {
-                    let name = isPower ? Ultracode.menuTitle : rung.level.capitalized
+            levels += options.map { level in
+                guard level == Ultracode.effortLevel else {
                     return UIAction(
-                        title: "\(name) — \(ModelEffort.unavailableWord)",
-                        subtitle: isPower ? Ultracode.menuSubtitle : nil,
-                        attributes: .disabled
-                    ) { _ in }
-                }
-                guard isPower else {
-                    return UIAction(
-                        title: rung.level.capitalized,
-                        state: choice.effort == rung.level ? .on : .off
-                    ) { _ in actions.selectEffort(rung.level) }
+                        title: level.capitalized, state: choice.effort == level ? .on : .off
+                    ) { _ in actions.selectEffort(level) }
                 }
                 return UIAction(
                     title: Ultracode.menuTitle, subtitle: Ultracode.menuSubtitle,
                     image: UIImage(systemName: "sparkles"),
-                    state: choice.effort == rung.level ? .on : .off
-                ) { _ in actions.selectEffort(rung.level) }
+                    state: choice.effort == level ? .on : .off
+                ) { _ in actions.selectEffort(level) }
             }
             sections.append(
                 UIMenu(

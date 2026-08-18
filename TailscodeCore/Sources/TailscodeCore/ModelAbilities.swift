@@ -162,65 +162,6 @@ public enum ModelEffort {
     /// Whether the control is worth drawing at all.
     public static func isOffered(options: [String]) -> Bool { !options.isEmpty }
 
-    /// One rung of the ladder an effort menu draws. `available` is decided against the picked
-    /// model's own levels, so a menu can list the whole scale and dim the rungs the model cannot
-    /// take — a model's ceiling is a fact a person can see rather than a silent absence.
-    public struct EffortOption: Sendable, Equatable {
-        public let level: String
-        public let available: Bool
-
-        public init(level: String, available: Bool) {
-            self.level = level
-            self.available = available
-        }
-    }
-
-    /// The one wording every client puts beside a rung the picked model cannot take, so three
-    /// desks never explain the same absence three ways.
-    public static let unavailableWord = Localized.text("not offered by this model")
-
-    /// The whole ladder a menu draws: the levels the server can speak — the agent's list, every
-    /// variant the catalog names anywhere, the standing tiers — with each rung marked against the
-    /// picked model. Empty where there is no control at all.
-    public static func scale(
-        models: [ModelInfo], selection: ModelSelection?, agentOptions: [String]
-    ) -> [EffortOption] {
-        ladder(
-            valid: options(models: models, selection: selection, agentOptions: agentOptions),
-            models: models, agentOptions: agentOptions)
-    }
-
-    public static func scale(
-        models: [ModelInfo], modelID: String?, agentOptions: [String]
-    ) -> [EffortOption] {
-        ladder(
-            valid: options(models: models, modelID: modelID, agentOptions: agentOptions),
-            models: models, agentOptions: agentOptions)
-    }
-
-    private static let ladderRank = ["minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4, "max": 5]
-
-    private static func ladder(
-        valid: [String], models: [ModelInfo], agentOptions: [String]
-    ) -> [EffortOption] {
-        guard !valid.isEmpty else { return [] }
-        var all = Set(agentOptions)
-        for model in models {
-            if let variants = model.variants { all.formUnion(variants) }
-        }
-        all.formUnion(ModelTint.effortTiers)
-        // Ultracode is an agent's own word (Claude Code maps it itself), never one to invent for
-        // a server that did not say it.
-        if !agentOptions.contains(Ultracode.effortLevel) { all.remove(Ultracode.effortLevel) }
-        let sorted = all.sorted { a, b in
-            let rankA = ladderRank[a] ?? 6
-            let rankB = ladderRank[b] ?? 6
-            if rankA != rankB { return rankA < rankB }
-            return a < b
-        }
-        return sorted.map { EffortOption(level: $0, available: valid.contains($0)) }
-    }
-
     /// A level the picked model cannot run is handed back to the machine rather than kept as a
     /// word the send would not carry.
     public static func surviving(_ level: String?, options: [String]) -> String? {
