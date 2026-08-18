@@ -152,6 +152,10 @@ final class ChatPane: @unchecked Sendable {
     private var models: [ModelInfo] = []
     private var modelsReachable: Bool?
     private var catalogWatchTask: Task<Void, Never>?
+    private var lastPillsSignature = ""
+    private var lastStatusSignature = ""
+    private var lastNetworkFactsAt: Date?
+    private var lastGitFactsAt: Date?
     private var commands: [AgentCommand] = []
     private lazy var completion = SlashPopover(anchor: composerScroller)
     var completionMatches: [AgentCommand] { completion.matches }
@@ -779,6 +783,8 @@ final class ChatPane: @unchecked Sendable {
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry)
         streamTask?.cancel()
+        tickerTask?.cancel()
+        tickerTask = nil
         if let remembered = host?.rememberedRows(for: entry.session.id) {
             placeholderShown = true
             lastFullRows = remembered
@@ -796,6 +802,12 @@ final class ChatPane: @unchecked Sendable {
         pendingSignature = "\u{0}"
         compactingElapsed = nil
         compactingStartedAt = nil
+        lastPillsSignature = ""
+        lastStatusSignature = ""
+        lastNetworkFactsAt = nil
+        lastGitFactsAt = nil
+        catalogWatchTask?.cancel()
+        catalogWatchTask = nil
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
         refreshPills()
@@ -920,6 +932,8 @@ final class ChatPane: @unchecked Sendable {
         agentStreamSessionID = nil
         tickerTask?.cancel()
         tickerTask = nil
+        catalogWatchTask?.cancel()
+        catalogWatchTask = nil
         entry = nil
         clearComposer()
         backend = nil
@@ -934,6 +948,10 @@ final class ChatPane: @unchecked Sendable {
         pendingSignature = "\u{0}"
         compactingElapsed = nil
         compactingStartedAt = nil
+        lastPillsSignature = ""
+        lastStatusSignature = ""
+        lastNetworkFactsAt = nil
+        lastGitFactsAt = nil
         Gtk.removeChildren(of: pendingBox)
         gtk_widget_set_visible(authBanner, 0)
         showPlaceholder(placeholder)
@@ -961,10 +979,12 @@ final class ChatPane: @unchecked Sendable {
         streamTask?.cancel()
         agentStreamTask?.cancel()
         tickerTask?.cancel()
+        catalogWatchTask?.cancel()
         editor.stopAura()
         streamTask = nil
         agentStreamTask = nil
         tickerTask = nil
+        catalogWatchTask = nil
     }
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open:
@@ -1080,17 +1100,17 @@ final class ChatPane: @unchecked Sendable {
         var rows = rows.filter { !Self.dockedKey($0.key) }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         if !pending.isEmpty {
-            let now = Date()
             if !rows.isEmpty {
                 rows.append(TranscriptRow(key: "pending:break", kind: .turnBreak))
             }
             for send in pending.sends {
                 // The key carries the phase so a send that becomes sent, or fails, is a row the
-                // diff rebuilds rather than one it recognises and leaves alone.
+                // diff rebuilds rather than one it recognises and leaves alone. Caption aging is
+                // the ticker's job — a Date in the row value rebuilt every token for nothing.
                 rows.append(
                     TranscriptRow(
                         key: "pending:\(send.id.uuidString):\(Self.phaseKey(send))",
-                        kind: .pendingSend(send, now: now)))
+                        kind: .pendingSend(send)))
             }
         }
         // A turn the machine cut off is docked at the very end: it is an account of what already
@@ -2004,7 +2024,9 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// The band above the prompt box: what the turn is doing, which agents are out, how much of
-    /// the context is spent, what the goal is — every fact clickable.
+    /// the context is spent, what the goal is — every fact clickable. Segment text is the gate —
+    /// streaming fires many applies a second and the band already paints in place, so an identical
+    /// reading is not walked again.
     private func updateStatus() {
         guard let state = lastState else { return }
         let running = state.status == .running || state.compaction?.isRunning == true
@@ -2023,9 +2045,16 @@ final class ChatPane: @unchecked Sendable {
             refreshIdentity()
         }
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
-        StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: bandNotice) {
-            [weak self] action in
-            Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
+        let signature =
+            facts.segments.map { "\($0.id):\($0.text):\($0.css)" }.joined(separator: "|")
+            + "|\(bandNotice ?? "")|\(running)|\(facts.activity.map { String(describing: $0) } ?? "")"
+        if signature != lastStatusSignature {
+            lastStatusSignature = signature
+            StatusBand.render(into: statusBand, state: bandState, facts: facts, notice: bandNotice)
+            {
+                [weak self] action in
+                Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
+            }
         }
         gtk_button_set_label(
             ptr(sendButton), running ? Localized.text("⏎ queue") : Localized.text("⏎ send"))
@@ -2203,21 +2232,29 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// Subagents and cost are polled rather than streamed: the bridge reports both on request
-    /// only, and a fan-out is worth watching while it runs.
-    private func refreshTurnFacts() {
+    /// only, and a fan-out is worth watching while it runs. Git porcelain is the expensive half
+    /// and moves on its own slower clock — a live workflow does not need a repo re-read every few
+    /// seconds to keep its elapsed reading honest.
+    private func refreshTurnFacts(includeGit: Bool = true) {
         guard let backend, let entry else { return }
         startAgentStreamIfAvailable()
         let sessionID = entry.session.id
         let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
+        let wantGit = includeGit
         Task { [weak self] in
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
-            let repository = await Self.readGit(backend: backend, session: entry.session)
+            let repository =
+                wantGit ? await Self.readGit(backend: backend, session: entry.session) : nil
             Gtk.onMain { [weak self] in
                 guard let self, self.sessionID == sessionID else { return }
                 self.usage = usage
-                self.git = repository.map { GitState(snapshot: $0) }
+                self.lastNetworkFactsAt = Date()
+                if wantGit {
+                    self.git = repository.map { GitState(snapshot: $0) }
+                    self.lastGitFactsAt = Date()
+                }
                 self.spendReading.note(report: report, for: sessionID)
                 self.spendReading.note(
                     messages: self.lastState?.messages ?? [], for: sessionID)
@@ -2242,21 +2279,25 @@ final class ChatPane: @unchecked Sendable {
         return (snapshot?.repo == true) ? snapshot : nil
     }
 
-    /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event.
+    /// A once-a-second nudge while anything on screen still needs a clock: elapsed, pending
+    /// captions, workflow spinners. Network facts and git ride slower cadences so a multi-pane
+    /// window does not re-read porcelain six times a minute per chat.
     private func updateTicker(running: Bool) {
         let running = running || needsTicker
         if running, tickerTask == nil {
+            lastNetworkFactsAt = nil
+            lastGitFactsAt = nil
+            refreshTurnFacts(includeGit: true)
             tickerTask = Task { [weak self] in
-                var tick = 0
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
-                    tick += 1
-                    let facts = tick % 5 == 0
                     Gtk.onMain { [weak self] in
-                        self?.updateStatus()
-                        self?.updateCompactingElapsed()
-                        self?.advanceWorkflowClock()
-                        if facts { self?.refreshTurnFacts() }
+                        guard let self else { return }
+                        self.updateStatus()
+                        self.updateCompactingElapsed()
+                        self.updatePendingCaptions()
+                        self.advanceWorkflowClock()
+                        self.tickTurnFacts()
                     }
                 }
             }
@@ -2264,8 +2305,36 @@ final class ChatPane: @unchecked Sendable {
             if tickerTask != nil {
                 tickerTask?.cancel()
                 tickerTask = nil
-                refreshTurnFacts()
+                refreshTurnFacts(includeGit: true)
             }
+        }
+    }
+
+    private static let networkFactsInterval: TimeInterval = 15
+    private static let gitFactsInterval: TimeInterval = 60
+
+    private func tickTurnFacts() {
+        guard needsTicker else { return }
+        let now = Date()
+        let networkDue =
+            lastNetworkFactsAt.map { now.timeIntervalSince($0) >= Self.networkFactsInterval }
+            ?? true
+        let gitDue =
+            lastGitFactsAt.map { now.timeIntervalSince($0) >= Self.gitFactsInterval } ?? true
+        guard networkDue || gitDue else { return }
+        refreshTurnFacts(includeGit: gitDue)
+    }
+
+    /// Ages every pending-send caption that is still on screen. Phase changes rebuild the row;
+    /// the wait itself must not.
+    private func updatePendingCaptions() {
+        guard !pending.isEmpty else { return }
+        let now = Date()
+        for index in renderedRows.indices {
+            guard case .pendingSend = renderedRows[index].kind, index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            TranscriptRow.agePendingCaption(on: ptr(raw), now: now)
         }
     }
 
@@ -2274,10 +2343,21 @@ final class ChatPane: @unchecked Sendable {
             entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
             entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
         ].compactMap { $0 }.joined(separator: " · ")
+        let model = modelPillText()
+        let effort = effortPillText() ?? ""
+        let tint = modelTintClass() ?? ""
+        let effortTint = effortPillText().flatMap(ModelTint.effortClass) ?? ""
+        let signature =
+            "\(destination)|\(model)|\(effort)|\(tint)|\(effortTint)|\(abilities.attachments)"
+        guard signature != lastPillsSignature else {
+            dropUnsendableAttachments()
+            return
+        }
+        lastPillsSignature = signature
         gtk_label_set_text(op(destinationLabel), destination)
 
         if let modelButton {
-            gtk_menu_button_set_label(op(modelButton), modelPillText())
+            gtk_menu_button_set_label(op(modelButton), model)
             applyTintClass(to: modelButton, from: modelTintClasses, chosen: modelTintClass())
         }
         if let effortButton {
@@ -3370,7 +3450,10 @@ final class ChatPane: @unchecked Sendable {
                 data = try? await backend.attachmentData(reference)
                 if let data { ImageCache.save(data, for: reference) }
             }
-            guard let data else { return }
+            guard let data else {
+                Gtk.onMain { [weak self] in self?.inFlightImages.remove(key) }
+                return
+            }
             let decoded: (bits: UInt, width: Int32, height: Int32) = data.withUnsafeBytes { buffer in
                 guard let base = buffer.baseAddress else { return (0, 0, 0) }
                 var width: Int32 = 0
@@ -3382,9 +3465,13 @@ final class ChatPane: @unchecked Sendable {
                 else { return (0, 0, 0) }
                 return (UInt(bitPattern: texture), width, height)
             }
-            guard decoded.bits != 0 else { return }
+            guard decoded.bits != 0 else {
+                Gtk.onMain { [weak self] in self?.inFlightImages.remove(key) }
+                return
+            }
             Gtk.onMain { [weak self] in
                 guard let self else { return }
+                self.inFlightImages.remove(key)
                 self.adoptImage(decoded, data: data, key: key, from: sessionID)
             }
         }
@@ -3445,11 +3532,20 @@ final class ChatPane: @unchecked Sendable {
         if !rebuilt.isEmpty { replaceRows { rebuilt.contains($0.key) } }
     }
 
-    /// Whether anything on screen still needs a clock: a turn in flight, or a workflow that outlived
-    /// it. A background run keeps four agents working for minutes after the turn that launched it
-    /// ended, and a card whose elapsed reading froze at launch reads as a hang.
+    /// Whether anything on screen still needs a clock: a turn in flight, a workflow that outlived
+    /// it, a compaction counting up, or a pending send whose caption ages. A background run keeps
+    /// four agents working for minutes after the turn that launched it ended, and a card whose
+    /// elapsed reading froze at launch reads as a hang.
     private var needsTicker: Bool {
-        lastState?.status == .running || workflowRuns.contains(where: \.isLive)
+        lastState?.status == .running
+            || lastState?.compaction?.isRunning == true
+            || workflowRuns.contains(where: \.isLive)
+            || pending.sends.contains {
+                switch $0.phase {
+                case .sending, .accepted: return true
+                case .failed: return false
+                }
+            }
     }
 
     /// The clock every live workflow card is drawn against, moved once a second so spinners turn and

@@ -112,7 +112,9 @@ final class MainWindow: @unchecked Sendable {
     private var freshlyCreated: SessionEntry?
     private var refreshTask: Task<Void, Never>?
     private var toastOverlay: UnsafeMutablePointer<GtkWidget>?
-    private var listStreamTasks: [Task<Void, Never>] = []
+    private var listStreamTasks: [String: Task<Void, Never>] = [:]
+    private var lastCatalogWarm: [String: Date] = [:]
+    private var usageStripSignature = ""
 
     private var splitHost: SplitHost!
     /// What each restored pane was showing, until the listing carries the session and the pane
@@ -1024,26 +1026,37 @@ final class MainWindow: @unchecked Sendable {
                 try? await Task.sleep(for: .seconds(10))
             }
         }
-        startListStreams()
     }
 
     /// A proto-2 bridge pushes list changes the moment they happen; the 10-second poll survives
-    /// only as reachability detection and as the whole story for older servers.
-    private func startListStreams() {
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-            for profile in profiles {
+    /// only as reachability detection and as the whole story for older servers. Streams are keyed
+    /// by profile and opened once the directory actually has machines — a cold start with an empty
+    /// list used to start nothing and never try again.
+    private func ensureListStreams(_ profiles: [ConnectionProfile]) {
+        let wanted = Set(profiles.map(\.id))
+        for (id, task) in listStreamTasks where !wanted.contains(id) {
+            task.cancel()
+            listStreamTasks[id] = nil
+        }
+        for profile in profiles {
+            guard listStreamTasks[profile.id] == nil else { continue }
+            let profileID = profile.id
+            listStreamTasks[profileID] = Task { [weak self] in
                 guard let backend = await ServerDirectory.shared.backend(for: profile),
                     let streaming = backend as? SessionListStreaming,
                     let changes = await streaming.sessionListChanges()
-                else { continue }
-                let task = Task { [weak self] in
-                    for await change in changes {
-                        guard let self else { return }
-                        Gtk.onMain { [weak self] in self?.applyListChange(change, profile: profile) }
+                else {
+                    Gtk.onMain { [weak self] in
+                        guard let self, self.listStreamTasks[profileID] != nil else { return }
+                        self.listStreamTasks[profileID] = nil
                     }
+                    return
                 }
-                Gtk.onMain { [weak self] in self?.listStreamTasks.append(task) }
+                for await change in changes {
+                    guard !Task.isCancelled else { return }
+                    Gtk.onMain { [weak self] in self?.applyListChange(change, profile: profile) }
+                }
+                Gtk.onMain { [weak self] in self?.listStreamTasks[profileID] = nil }
             }
         }
     }
@@ -1085,6 +1098,7 @@ final class MainWindow: @unchecked Sendable {
         UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
+            self?.ensureListStreams(profiles)
             self?.warmCatalogs(profiles)
             self?.rememberDividers()
             self?.applyEntries(entries, unreachable: unreachable)
@@ -2132,19 +2146,27 @@ final class MainWindow: @unchecked Sendable {
     /// does not keep the directory itself.
     func fleetProfiles() -> [ConnectionProfile] { knownProfiles }
 
-    /// Asks every server what it runs when the listing lands. The chooser has to be able to name a
-    /// machine's models before anyone has opened a chat on it, and a catalog nobody asked for is
-    /// the difference between a fleet-wide list and a list of wherever you happen to be. Every
-    /// server is asked again rather than only the ones nothing is remembered for: a server gains
-    /// models while nobody is looking, and a remembered catalog that is never re-asked is a list
-    /// that can only ever go out of date.
+    /// Asks servers what they run so the chooser can name a machine before anyone opens a chat on
+    /// it. A cold machine is asked immediately; a catalog already remembered is re-asked on a slow
+    /// cadence rather than every ten-second listing — open chats keep their own watch.
+    private static let catalogWarmInterval: TimeInterval = 15 * 60
+
     private func warmCatalogs(_ profiles: [ConnectionProfile]) {
+        let now = Date()
         for profile in profiles {
+            let remembered = ModelCatalogStore.cached(profile.id)
+            if !remembered.isEmpty,
+                let last = lastCatalogWarm[profile.id],
+                now.timeIntervalSince(last) < Self.catalogWarmInterval
+            {
+                continue
+            }
+            lastCatalogWarm[profile.id] = now
             Task { [weak self] in
                 guard let backend = await ServerDirectory.shared.backend(for: profile) else {
                     return
                 }
-                let known = ModelCatalogStore.cached(profile.id).map(\.id)
+                let known = remembered.map(\.id)
                 let fresh = await ModelCatalogStore.refresh(profileID: profile.id, backend: backend)
                 guard fresh.map(\.id) != known else { return }
                 Gtk.onMain { [weak self] in self?.restateChoosers() }
@@ -3385,6 +3407,12 @@ final class MainWindow: @unchecked Sendable {
         let glance =
             usageDemo
             ?? QuotaGlance.make(from: quotas, answeredAt: quotasAnsweredAt)
+        let signature =
+            "\(usageBarsFit)|" + glance.lines.map {
+                "\($0.kind.rawValue):\($0.text):\($0.trailing):\($0.tone.rawValue):\($0.fraction.map { String(format: "%.3f", $0) } ?? ""):\($0.slug ?? "")"
+            }.joined(separator: "|") + "|\(glance.tooltip)"
+        guard signature != usageStripSignature else { return }
+        usageStripSignature = signature
         UsageStrip.render(glance, into: usageBox, bars: usageBarsFit)
     }
 

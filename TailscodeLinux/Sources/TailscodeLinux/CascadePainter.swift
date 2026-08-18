@@ -145,6 +145,7 @@ final class CascadePainter: @unchecked Sendable {
     func release() {
         live.focus(nil, rendered: "", sealed: true, at: Self.now)
         markup = []
+        watching = false
         stop()
     }
 

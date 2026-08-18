@@ -216,7 +216,7 @@ struct TranscriptRow: Hashable {
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
         case queuedSend(QueuedSend, position: Int, of: Int)
-        case pendingSend(PendingSend, now: Date)
+        case pendingSend(PendingSend)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -513,8 +513,8 @@ struct TranscriptRow: Hashable {
             return stats.spoken
         case .queuedSend(let send, _, _):
             return SendQueueReading.rowTitle(send)
-        case .pendingSend(let send, let now):
-            return PendingSendReading.spoken(send, now: now)
+        case .pendingSend(let send):
+            return PendingSendReading.spoken(send, now: Date())
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -563,8 +563,8 @@ struct TranscriptRow: Hashable {
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
             return Self.queuedSend(send, position: position, of: total, context: context)
-        case .pendingSend(let send, let now):
-            return Self.pendingSend(send, now: now, context: context)
+        case .pendingSend(let send):
+            return Self.pendingSend(send, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -930,9 +930,16 @@ struct TranscriptRow: Hashable {
     /// not in the server's account yet. A send that failed keeps its words right here and offers
     /// the three things worth doing about them, rather than dropping them back into a composer
     /// the reader has to notice.
+    ///
+    /// The caption ages on the cell's own clock: the label pointer is parked on the row so the
+    /// pane's ticker can rewrite the words without tearing the widget down every second.
+    static let pendingCaptionKey = "tailscode-pending-caption"
+    static let pendingSendKey = "tailscode-pending-send"
+
     private static func pendingSend(
-        _ send: PendingSend, now: Date, context: TranscriptContext
+        _ send: PendingSend, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
+        let now = Date()
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
         let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(rule, "prompt-rule")
@@ -951,10 +958,9 @@ struct TranscriptRow: Hashable {
         gtk_widget_set_halign(status, GTK_ALIGN_START)
         gtk_box_append(
             ptr(status), Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false))
-        gtk_box_append(
-            ptr(status),
-            Gtk.label(
-                PendingSendReading.caption(send, now: now), css: "queued-hint", selectable: false))
+        let caption = Gtk.label(
+            PendingSendReading.caption(send, now: now), css: "queued-hint", selectable: false)
+        gtk_box_append(ptr(status), caption)
         gtk_box_append(ptr(lines), status)
 
         if !send.acts.isEmpty, let act = context.pendingAct {
@@ -975,7 +981,34 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), lines)
         gtk_widget_set_tooltip_text(row, PendingSendReading.spoken(send, now: now))
+        g_object_set_data(ptr(row), pendingCaptionKey, UnsafeMutableRawPointer(caption))
+        let sendBox = Unmanaged.passRetained(PendingSendBox(send)).toOpaque()
+        g_object_set_data_full(
+            ptr(row), pendingSendKey, sendBox,
+            { raw in
+                guard let raw else { return }
+                Unmanaged<PendingSendBox>.fromOpaque(raw).release()
+            })
         return row
+    }
+
+    /// Ages the caption under a pending row without rebuilding it. Returns whether the row still
+    /// carries a send that needs the clock.
+    @discardableResult
+    static func agePendingCaption(
+        on row: UnsafeMutablePointer<GtkWidget>, now: Date = Date()
+    ) -> Bool {
+        guard let sendRaw = g_object_get_data(ptr(row), pendingSendKey),
+            let captionRaw = g_object_get_data(ptr(row), pendingCaptionKey)
+        else { return false }
+        let send = Unmanaged<PendingSendBox>.fromOpaque(sendRaw).takeUnretainedValue().send
+        let caption: UnsafeMutablePointer<GtkWidget> = ptr(captionRaw)
+        gtk_label_set_text(op(caption), PendingSendReading.caption(send, now: now))
+        gtk_widget_set_tooltip_text(row, PendingSendReading.spoken(send, now: now))
+        switch send.phase {
+        case .failed: return false
+        case .sending, .accepted: return true
+        }
     }
 
     /// What the answer above it took: one quiet strip of glyph-and-number, tooltipped with the
@@ -1157,4 +1190,10 @@ struct TranscriptRow: Hashable {
         gtk_box_append(ptr(card), buttons)
         return card
     }
+}
+
+/// Holds a ``PendingSend`` on a GTK widget without asking the value type to be a class.
+private final class PendingSendBox: @unchecked Sendable {
+    let send: PendingSend
+    init(_ send: PendingSend) { self.send = send }
 }
