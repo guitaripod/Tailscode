@@ -759,12 +759,35 @@ final class HomeViewController: UIViewController {
             return
         }
         guard !scheduledSnapshot else { return }
+        if collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
+        {
+            deferredWhileTouching = true
+            return
+        }
         scheduledSnapshot = true
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scheduledSnapshot else { return }
             self.scheduledSnapshot = false
             self.renderSnapshot()
         }
+    }
+
+    /// The list may reorder itself, but never while a finger is on it: the row pressed must be the
+    /// row opened. Everything that arrived during the touch applies the moment it ends.
+    private var deferredWhileTouching = false
+
+    private func releaseDeferredSnapshotIfNeeded() {
+        guard deferredWhileTouching else { return }
+        deferredWhileTouching = false
+        applySnapshot()
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { releaseDeferredSnapshotIfNeeded() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        releaseDeferredSnapshotIfNeeded()
     }
 
     private func renderSnapshot() {
@@ -1070,7 +1093,14 @@ final class HomeViewController: UIViewController {
         guard let nav = navigationController else { return nil }
         if let top = nav.topViewController as? ChatViewController, top.sessionID == entry.session.id
         {
-            if let question { top.deliver(question.send, attachments: question.attachments) }
+            AppLogger.session.info(
+                "openChat dedupe session=\(entry.session.id) title=\(entry.session.title)")
+            if let question {
+                top.deliver(question.send, attachments: question.attachments)
+            } else {
+                Theme.Haptics.tap()
+                top.announceIdentity()
+            }
             return nil
         }
         if nav.transitionCoordinator != nil {
@@ -1081,9 +1111,11 @@ final class HomeViewController: UIViewController {
         }
         guard let backend = viewModel.backend(for: entry) else { return nil }
         SessionSeenStore.markSeen(entry.session.id)
-        let chatViewModel =
+        let reused =
             SessionActivity.shared.retainedViewModel(
                 for: entry.session.id, contextID: entry.profileID)
+        let chatViewModel =
+            reused
             ?? ChatViewModel(
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
@@ -1091,8 +1123,11 @@ final class HomeViewController: UIViewController {
         /// A sheet still over the stack is the one animation this movement gets: the chat is
         /// pushed behind it and revealed as it slides away, rather than the two of them taking
         /// turns for the better part of a second.
+        let previousTop = (nav.topViewController as? ChatViewController)?.sessionID ?? "-"
         let chat = ChatViewController(viewModel: chatViewModel)
         nav.pushViewController(chat, animated: presentedViewController == nil)
+        AppLogger.session.info(
+            "openChat push session=\(entry.session.id) title=\(entry.session.title) top=\(previousTop) reused=\(reused != nil)")
         if let question { chat.deliver(question.send, attachments: question.attachments) }
         return chatViewModel
     }
@@ -2663,6 +2698,7 @@ extension HomeViewController: UIDropInteractionDelegate {
 extension HomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
+        releaseDeferredSnapshotIfNeeded()
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
         case .alert:

@@ -326,9 +326,70 @@ final class ChatViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        AppLogger.chat.info(
+            "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
+        if !announcedIdentity {
+            announcedIdentity = true
+            announceIdentity()
+        }
         if !composer.isEditing { becomeFirstResponder() }
         refreshSpend()
         refreshGit()
+    }
+
+    private var announcedIdentity = false
+    private var identityOverlay: UIView?
+
+    /// A chat says which conversation it is when it arrives, once, because the failure a wrong
+    /// open has is being quiet about it: a title already sitting in the chrome reads as wallpaper.
+    /// Reduced motion keeps the message and drops the movement.
+    func announceIdentity() {
+        identityOverlay?.removeFromSuperview()
+        let pill = UIView()
+        pill.backgroundColor = Theme.Color.label.withAlphaComponent(0.92)
+        pill.layer.cornerRadius = Theme.Radius.card
+        pill.clipsToBounds = true
+        let label = UILabel()
+        label.text = viewModel.displayTitle
+        label.font = Theme.Ramp.font(.paneIdentity)
+        label.textColor = Theme.Color.background
+        label.lineBreakMode = .byTruncatingTail
+        pill.addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: pill.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -8),
+            label.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 16),
+            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -16),
+        ])
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pill)
+        NSLayoutConstraint.activate([
+            pill.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.m),
+            pill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pill.widthAnchor.constraint(
+                lessThanOrEqualTo: view.widthAnchor, constant: -2 * Theme.Spacing.l),
+        ])
+        identityOverlay = pill
+        if UIAccessibility.isReduceMotionEnabled {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1.6))
+                self?.identityOverlay?.removeFromSuperview()
+                self?.identityOverlay = nil
+            }
+            return
+        }
+        pill.alpha = 0
+        UIView.animate(withDuration: 0.18) { pill.alpha = 1 }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard let self, let pill = self.identityOverlay else { return }
+            UIView.animate(withDuration: 0.25, animations: { pill.alpha = 0 }) { _ in
+                pill.removeFromSuperview()
+            }
+            self.identityOverlay = nil
+        }
     }
 
     override var canBecomeFirstResponder: Bool { true }

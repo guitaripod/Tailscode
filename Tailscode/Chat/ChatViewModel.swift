@@ -426,12 +426,12 @@ final class ChatViewModel {
         let vmTag = String(UInt(bitPattern: ObjectIdentifier(self).hashValue) & 0xffff, radix: 16)
         guard streamTask == nil else {
             AppLogger.chat.info(
-                "start reuse vm=\(vmTag) queued=\(queue.count) echoes=\(pending.count)")
+                "start reuse vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)")
             onState?(state)
             return
         }
         AppLogger.chat.info(
-            "start fresh vm=\(vmTag) queued=\(queue.count) echoes=\(pending.count)")
+            "start fresh vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)")
         streamGeneration += 1
         let generation = streamGeneration
         streamTask = Task { [weak self] in
@@ -707,6 +707,8 @@ final class ChatViewModel {
         attachments: [PromptAttachment] = []
     ) {
         if isBusy {
+            AppLogger.chat.info(
+                "send queued session=\(session.id) queue=\(queue.count + 1)")
             queue.append(
                 QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
             onPending?()
@@ -774,7 +776,8 @@ final class ChatViewModel {
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment],
         reusing row: UUID? = nil
     ) {
-        AppLogger.chat.info("send (\(text.count) chars, \(attachments.count) attachments)")
+        AppLogger.chat.info(
+            "send session=\(session.id) chars=\(text.count) attachments=\(attachments.count)")
         queueHeldAfterFailure = false
         queueHold = nil
         sendTask?.cancel()
