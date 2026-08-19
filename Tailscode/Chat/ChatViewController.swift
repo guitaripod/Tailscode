@@ -220,6 +220,9 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(responseStatsDidChange),
             name: ResponseStatsSetting.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(linkEmbedsDidChange),
+            name: LinkEmbedsSetting.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.willResignActiveNotification,
             UIApplication.didEnterBackgroundNotification,
@@ -2664,6 +2667,13 @@ final class ChatViewController: UIViewController {
     /// so the rows are built again rather than reconfigured — a chat left open behind the settings
     /// screen must not have to wait for the next turn to answer the switch that was just flipped.
     @objc private func responseStatsDidChange() {
+        render(viewModel.state)
+    }
+
+    /// The cards are part of what the transcript is made of, so flipping the switch rebuilds the
+    /// rows — a chat left open behind the settings screen answers the switch at once, not on its
+    /// next turn.
+    @objc private func linkEmbedsDidChange() {
         render(viewModel.state)
     }
 

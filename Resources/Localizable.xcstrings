@@ -54938,6 +54938,28 @@
           }
         }
       }
+    },
+    "Link preview cards": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link preview cards"
+          }
+        }
+      }
+    },
+    "An address the agent mentions gets a small card under it — the page's title and icon, tapped to open. Turn off for plain links.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An address the agent mentions gets a small card under it — the page's title and icon, tapped to open. Turn off for plain links."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

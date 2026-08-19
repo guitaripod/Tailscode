@@ -227,6 +227,7 @@ enum ChatRowBuilder {
     private static let embedLimit = 3
 
     static func embedURLs(in text: String) -> [String] {
+        guard LinkEmbedsSetting.isEnabled else { return [] }
         var seen = Set<String>()
         var urls: [String] = []
         for span in Autolink.spans(in: text) {
