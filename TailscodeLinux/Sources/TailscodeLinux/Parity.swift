@@ -122,6 +122,7 @@ enum ParityManifest {
         case .quickAsk: return .implemented("QuickAskWindow")
         case .summonAnywhere: return .implemented("Summon")
         case .designBoards: return .implemented("DesignBoardWindow")
+        case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes a GTK widget and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")
         }
     }
 }

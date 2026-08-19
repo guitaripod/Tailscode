@@ -418,7 +418,7 @@ public enum DemoWorld {
                 output: "Applied 1 edit",
                 title: "Edit Tests/PulseTests/ReconnectTests.swift"))))),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t2c", kind: .text("")))),
-            step(.partTextDelta(messageID: "c1a1", partID: "t2c", delta: "The suite now pins the factor to 1.0, so the assertion measures the backoff and not the dice. Running it.")),
+            step(.partTextDelta(messageID: "c1a1", partID: "t2c", delta: "The suite now pins the factor to 1.0, so the assertion measures the backoff and not the dice. Running it. The upstream discussion of this exact race is at https://github.com/swiftlang/swift")),
             step(.partUpserted(messageID: "c1a1", MessagePart(id: "t3", kind: .tool(ToolCall(
                 id: "c1t2", name: "Bash", status: .running,
                 input: .object([

@@ -54905,6 +54905,39 @@
           }
         }
       }
+    },
+    "Open Link": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Link"
+          }
+        }
+      }
+    },
+    "Link preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link preview"
+          }
+        }
+      }
+    },
+    "Opens the link": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the link"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -536,6 +536,8 @@ final class ChatViewController: UIViewController {
             InterruptedTurnCell.self, forCellWithReuseIdentifier: InterruptedTurnCell.reuseID)
         collectionView.register(
             DesignBoardCell.self, forCellWithReuseIdentifier: DesignBoardCell.reuseID)
+        collectionView.register(
+            LinkEmbedCell.self, forCellWithReuseIdentifier: LinkEmbedCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1323,6 +1325,13 @@ final class ChatViewController: UIViewController {
                     as! ResponseStatsCell
                 cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(stats)
+                return cell
+            case .webEmbed(let embed):
+                let cell = collectionView.dequeueReusableCell(
+                    withReuseIdentifier: LinkEmbedCell.reuseID, for: indexPath)
+                    as! LinkEmbedCell
+                cell.turnInset = self.turnGap(at: indexPath)
+                cell.configure(embed) { [weak self] url in self?.openWebLink(url) }
                 return cell
             }
         }
@@ -3797,6 +3806,8 @@ final class ChatViewController: UIViewController {
                 body = "_\(reading.title) — \(reading.detail)_"
             case .responseStats, .timestamp, .error:
                 continue
+            case .webEmbed:
+                continue
             }
             out.append("**\(who):** \(body)")
         }
@@ -4736,6 +4747,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return "\(reading.title) — \(reading.detail)"
         case .responseStats(let stats):
             return stats.line
+        case .webEmbed(let embed):
+            return embed.url
         case .timestamp, .error:
             return nil
         }

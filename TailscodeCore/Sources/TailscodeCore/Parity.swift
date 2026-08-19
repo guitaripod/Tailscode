@@ -127,6 +127,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case summonAnywhere
     case updateCenter
     case designBoards
+    case linkEmbeds
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -302,6 +303,10 @@ public enum CapabilityRegistry {
             id: .designBoards, area: "transcript", title: "A design is looked at, not described",
             spec:
                 "A change to a surface is argued about in pictures, so /design opens a preflight (DesignPreflight) that composes one brief — what to design, where it is now, what it must respect, how many alternatives — and sends it as an ordinary turn: the agent writes one self-contained HTML mock per alternative into .tailscode/design/<slug>/ plus a board.json naming each one, and changes no source. The brief states the convention rather than a command name, so it works on every agent this app talks to, and the word is answered by the app rather than by the server's catalog (SlashDispatch.designPreflight, CommandCatalogStore.designCommand) because what comes back is a surface this client renders. The board announces itself by that manifest being written — DesignReading watches the path, not the tool's name, since every agent calls its writer something different — and docks as a card at the call that wrote it, never a line of blue text. Opening it reads the manifest and each mock over the file route and renders them in the platform's own engine (WKWebView, WebKitGTK): one artboard at a time, full-bleed, its letter and name over it, its rationale and the annotations the agent stuck on it beside it, arrows or 1-9 to switch. Three verbs and no more: change this one (rewrites that mock in place), one more (appends an artboard), build this (the implement prompt, which says outright that the mock is a picture of the result rather than code to paste, and carries any last instruction). Every word is DesignBoardState's and every prompt is DesignFollowUp's, so a client decides only how a mock is framed. A board whose manifest cannot be read says so and offers the reread; a design skill that published to a link instead of to files is surfaced as that link rather than swallowed."),
+        CapabilityDefinition(
+            id: .linkEmbeds, area: "transcript", title: "An address wears its face",
+            spec:
+                "A link in the transcript is more than blue text: it gets a small preview card right below the prose that wrote it, one per address, capped, so a list of references reads as a shelf of cards rather than a paragraph of URLs. The card is a promise kept small — an icon slot, one line of title, one line of host — and states itself honestly at every stage: a quiet placeholder while the page's title is still unknown, the page's own title and favicon once they are fetched, and the host alone when the fetch fails, never a spinner forever. It is metadata only: the fetch reads the page's head for a title and an icon, never the conversation's context, and it is debounced and cached so a link re-rendered on every streamed arrival costs one request, not one per arrival, and a streamed address still growing never fires one at all. Tapping the card opens the address exactly the way the link itself opens — the reader's own browser, never an embed of the page — and long-press offers to copy the address. Failure of the fetch is not failure of the link: the card stays tappable with the host as its face, because what the transcript promised is the address, not the page."),
         CapabilityDefinition(
             id: .compactionSeam, area: "transcript", title: "Compaction is a seam",
             spec:

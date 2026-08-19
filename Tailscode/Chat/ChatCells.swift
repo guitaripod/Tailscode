@@ -33,7 +33,14 @@ struct ChatRow: Hashable {
         case answerless(AnswerlessTurn)
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
+        /// A tiny preview card for an address the transcript mentioned, docked under the prose
+        /// that wrote it.
+        case webEmbed(WebEmbed)
     }
+}
+
+struct WebEmbed: Hashable {
+    let url: String
 }
 
 enum ActivityStep: Hashable {

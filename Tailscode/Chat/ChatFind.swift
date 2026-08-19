@@ -46,6 +46,8 @@ enum ChatFind {
             return "\(turn.title) \(turn.detail)"
         case .responseStats(let stats):
             return stats.spoken
+        case .webEmbed(let embed):
+            return embed.url
         }
     }
 
