@@ -52,6 +52,16 @@ final class SessionListViewModel {
         }
     }
 
+    /// Puts a freshly minted conversation at the top of the list without ever letting it be
+    /// there twice. Every mint awaits the server before it inserts, and a listing that landed
+    /// during that await already carries the new session — a second copy is not a cosmetic
+    /// duplicate but a duplicate identifier, which is a hard trap in every diffable list built
+    /// from this array.
+    private func adopt(_ entry: SessionEntry) {
+        entries.removeAll { $0 == entry }
+        entries.insert(entry, at: 0)
+    }
+
     private func apply(_ change: SessionListChange, profile: ConnectionProfile) {
         switch change {
         case .upsert(let session):
@@ -124,7 +134,7 @@ final class SessionListViewModel {
             let new = SessionEntry(
                 profileID: entry.profileID, profileName: entry.profileName,
                 host: entry.host, backendType: entry.backendType, session: forked)
-            entries.insert(new, at: 0)
+            adopt(new)
             onChange?()
             Task { await load() }
             return new
@@ -270,7 +280,9 @@ final class SessionListViewModel {
         for id in candidates where !down.contains(id) { healthilySlow.insert(id) }
         let verdicts = candidates.filter { down.contains($0) || !healthilySlow.contains($0) }
         let changed = collected.count != entries.count || verdicts != unreachable
-        entries = collected.sorted { $0.session.updatedAt > $1.session.updatedAt }
+        var seen = Set<SessionEntry>()
+        entries = collected.filter { seen.insert($0).inserted }
+            .sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = verdicts
         SessionListCache.scheduleSave(entries)
         SavedChatStore.reconcile(with: entries)
@@ -331,7 +343,7 @@ final class SessionListViewModel {
             profileID: source.profile.id, profileName: source.profile.name,
             host: source.profile.baseURL.host ?? source.profile.name,
             backendType: source.profile.backend, session: session)
-        entries.insert(entry, at: 0)
+        adopt(entry)
         onChange?()
         Task { await load() }
         return .success(entry)
@@ -345,7 +357,7 @@ final class SessionListViewModel {
                 profileID: source.profile.id, profileName: source.profile.name,
                 host: source.profile.baseURL.host ?? source.profile.name,
                 backendType: source.profile.backend, session: session)
-            entries.insert(entry, at: 0)
+            adopt(entry)
             onChange?()
             Task { await load() }
             return entry
