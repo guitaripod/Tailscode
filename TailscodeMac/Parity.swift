@@ -135,6 +135,7 @@ enum ParityManifest {
                     "every server is asked, classified by Core and installed end to end through its own restart, and the app's own row reads the checkout it was built from — but nothing here installs the app itself: rebuilding the .app takes xcodegen and a multi-minute xcodebuild whose product is the very bundle the process is executing out of, so the row states that obstacle and hands over the exact build command instead, and Update everything covers the servers only")
         case .designBoards: return .implemented("DesignBoardWindowController")
         case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes an AppKit cell and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")
+        case .reviewPrompt: return .gap("the policy is Core's and already shared, and macOS has the same SKStoreReviewController to ask with — what this client owes is a MacReviewPrompt coordinator wired to its own turn-completion and MacGameCenter trophy paths, the two signals iOS now hooks")
         }
     }
 }

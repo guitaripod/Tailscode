@@ -74,6 +74,9 @@ extension DeviceStores {
             #expect(RecentModelsStore.storageKey == "tailscode.recentModels")
             #expect(EffortPreferenceStore.storagePrefix == "tailscode.effort.")
             #expect(PresenceOrbSetting.defaultsKey == "tailscode.presenceOrb")
+            #expect(ReviewPromptPolicy.installedAtKey == "tailscode.review.installedAt")
+            #expect(ReviewPromptPolicy.turnsKey == "tailscode.review.successfulTurns")
+            #expect(ReviewPromptPolicy.lastAskedKey == "tailscode.review.lastAsked")
         }
 
         @Test("A model badge reads the same as it did in the app target")

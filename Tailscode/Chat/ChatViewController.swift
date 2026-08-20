@@ -2000,6 +2000,7 @@ final class ChatViewController: UIViewController {
                 Theme.Haptics.warning()
             } else {
                 Theme.Haptics.received()
+                ReviewPromptCoordinator.shared.turnCompleted()
             }
             refreshSpend()
             refreshGit()
