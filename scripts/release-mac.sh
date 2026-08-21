@@ -15,8 +15,8 @@
 # Usage: scripts/release-mac.sh [build-number] [marketing-version] [--no-upload]
 set -euo pipefail
 
-BUILD=100
-MARKETING=1.0
+BUILD=101
+MARKETING=1.22
 NO_UPLOAD=
 ARGN=0
 while [ $# -gt 0 ]; do
