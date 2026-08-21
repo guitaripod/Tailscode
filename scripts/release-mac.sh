@@ -49,6 +49,18 @@ PROFILE=$SIGNING/tailscode-mac-appstore-2026.provisionprofile
 # Store 2026" (MAC_APP_STORE, bundleId Z8A63L9289); re-mint it into the vault if it is gone.
 [ -f "$PROFILE" ] || { echo "no Mac App Store profile at $PROFILE — mint one (MAC_APP_STORE, bundleId Z8A63L9289, cert WXA29XJHK2) into the vault first" >&2; exit 1; }
 
+# The guest, before anything is staged. buildvm brings it up itself, but it does that AFTER this
+# script has spent minutes rsyncing a repo and a vendored Kit into /tmp — so a VM that will not
+# come up costs ten minutes to find out. Ask first, and say the one command that fixes it.
+if ! "$HOME/Dev/buildvm/bin/buildvm" ssh true >/dev/null 2>&1; then
+  echo "== waking the build VM"
+  "$HOME/Dev/buildvm/bin/buildvm" up >/dev/null 2>&1 || true
+  "$HOME/Dev/buildvm/bin/buildvm" ssh true >/dev/null 2>&1 || {
+    echo "the build VM is not answering — run 'buildvm up' and wait for it, or 'buildvm provision'" >&2
+    exit 1
+  }
+fi
+
 # A build number that was uploaded once is spent forever, and ASC only says so
 # after the staging, the archive and the upload have all been paid for. Ask first.
 python3 - "$BUILD" <<'PY' || exit 1
