@@ -778,6 +778,8 @@ private class ProviderCard: UIView {
     }
 
     private func build() {
+        gaugeStack.axis = .vertical
+        gaugeStack.spacing = Theme.Spacing.m
         let container = card(
             [header(), gaugeStack, fold()], spacing: Theme.Spacing.l)
         container.translatesAutoresizingMaskIntoConstraints = false

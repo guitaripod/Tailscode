@@ -801,6 +801,11 @@ final class MainWindowController: NSWindowController {
                     self.focusedPaneChanged()
                     return
                 }
+                if self.pendingBindings.values.contains(where: { $0.sessionID == entry.session.id }
+                ) {
+                    self.resolvePendingBindings()
+                    return
+                }
                 self.splitPanes.collapse(to: self.splitPanes.active)
             }
             self.handleOpen(entry, backend: backend)

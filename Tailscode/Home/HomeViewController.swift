@@ -468,9 +468,22 @@ final class HomeViewController: UIViewController {
     private func updateLeftBarItems() {
         settingsButton.apply(UpdateLedger.rollup())
         var items = [settingsItem]
-        if ConnectionController.shared.isDemoMode { items.append(demoBadge()) }
+        if ConnectionController.shared.isDemoMode, !Self.demoBadgeHidden {
+            items.append(demoBadge())
+        }
         navigationItem.leftBarButtonItems = items
     }
+
+    /// The marketing set is shot in the demo world, and a badge that honestly brands every
+    /// screenshot as fake would defeat the set's whole purpose — so the screenshot pipeline may
+    /// hide it, and only in DEBUG builds.
+    private static let demoBadgeHidden: Bool = {
+        #if DEBUG
+            return ProcessInfo.processInfo.environment["TAILSCODE_HIDE_DEMO_BADGE"] != nil
+        #else
+            return false
+        #endif
+    }()
 
     @objc private func updatesDidChange() {
         settingsButton.apply(UpdateLedger.rollup())
