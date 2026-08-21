@@ -845,14 +845,17 @@ final class HomeViewController: UIViewController {
             if !down.isEmpty {
                 snapshot.appendSections([.alerts])
                 snapshot.appendItems(
-                    down.map { .alert(ServerAlertCard(profileID: $0.id, name: $0.name)) },
+                    uniqued(
+                        down.map { .alert(ServerAlertCard(profileID: $0.id, name: $0.name)) },
+                        in: .alerts),
                     toSection: .alerts)
             }
         }
         let missed = ActivityInbox.ordered(limit: 4).shown
         if !missed.isEmpty {
             snapshot.appendSections([.missed])
-            snapshot.appendItems(missed.map(HomeItem.missed), toSection: .missed)
+            snapshot.appendItems(
+                uniqued(missed.map(HomeItem.missed), in: .missed), toSection: .missed)
         }
         let live = viewModel.entries.filter(isLive)
             .sorted { lhs, rhs in
@@ -865,13 +868,14 @@ final class HomeViewController: UIViewController {
         if !live.isEmpty {
             snapshot.appendSections([.live])
             snapshot.appendItems(
-                live.map {
-                    .live(
-                        LiveCard(
-                            entry: $0, presence: presence(for: $0),
-                            activity: SessionActivity.shared.liveDetail(for: $0.session.id),
-                            clock: self.hostClock(for: $0)))
-                },
+                uniqued(
+                    live.map {
+                        .live(
+                            LiveCard(
+                                entry: $0, presence: presence(for: $0),
+                                activity: SessionActivity.shared.liveDetail(for: $0.session.id),
+                                clock: self.hostClock(for: $0)))
+                    }, in: .live),
                 toSection: .live)
         }
         let isUnread = SessionSeenStore.unreadEvaluator()
@@ -886,12 +890,14 @@ final class HomeViewController: UIViewController {
                 .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
         if !savedCards.isEmpty {
             snapshot.appendSections([.saved])
-            snapshot.appendItems(savedCards.map(HomeItem.saved), toSection: .saved)
+            snapshot.appendItems(
+                uniqued(savedCards.map(HomeItem.saved), in: .saved), toSection: .saved)
         }
         let projects = projectCards()
         if !projects.isEmpty {
             snapshot.appendSections([.projects])
-            snapshot.appendItems(projects.map(HomeItem.project), toSection: .projects)
+            snapshot.appendItems(
+                uniqued(projects.map(HomeItem.project), in: .projects), toSection: .projects)
         }
         let shown = liveIDs.union(savedCards.map(\.chat.sessionID))
         let archived = ArchivedChatStore.all()
@@ -902,9 +908,13 @@ final class HomeViewController: UIViewController {
         if !recent.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems(
-                recent.map {
-                    .recent(RecentCard(entry: $0, unread: isUnread($0.session.id, $0.session.updatedAt)))
-                }, toSection: .recent)
+                uniqued(
+                    recent.map {
+                        .recent(
+                            RecentCard(
+                                entry: $0, unread: isUnread($0.session.id, $0.session.updatedAt)))
+                    }, in: .recent),
+                toSection: .recent)
         } else if !hasLoadedOnce, !viewModel.servers.isEmpty {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
@@ -913,7 +923,8 @@ final class HomeViewController: UIViewController {
         let reserved = reservedUsageCards
         if !usageCards.isEmpty || reserved > 0 {
             snapshot.appendSections([.usage])
-            snapshot.appendItems(usageCards.map(HomeItem.usage), toSection: .usage)
+            snapshot.appendItems(
+                uniqued(usageCards.map(HomeItem.usage), in: .usage), toSection: .usage)
             snapshot.appendItems((0..<reserved).map(HomeItem.usagePlaceholder), toSection: .usage)
         }
         let previous = dataSource.snapshot()
@@ -982,6 +993,24 @@ final class HomeViewController: UIViewController {
         let backends = Set(viewModel.servers.map(\.backend))
         let live = isFetchingLiveQuotas && quotas.isEmpty && backends.contains(.claudeCode)
         return live ? 1 : 0
+    }
+
+    /// What a section may be handed. A diffable snapshot given the same identifier twice does not
+    /// draw the row twice — it raises, and the app is gone before the row it was drawing appears.
+    /// Every list on this screen is derived from something a server said, so a duplicate is a
+    /// server's account of itself changing under a poll rather than a mistake anybody can see
+    /// coming; the row is dropped, and the drop is written down with the section that produced it
+    /// so the next one names its own cause instead of arriving as a stack trace.
+    private func uniqued(_ items: [HomeItem], in section: HomeSection) -> [HomeItem] {
+        var seen = Set<HomeItem>()
+        var kept: [HomeItem] = []
+        for item in items where seen.insert(item).inserted { kept.append(item) }
+        if kept.count != items.count {
+            AppLogger.ui.error(
+                "home: \(items.count - kept.count) duplicate row(s) dropped from \(String(describing: section))"
+            )
+        }
+        return kept
     }
 
     private func projectCards() -> [ProjectCard] {

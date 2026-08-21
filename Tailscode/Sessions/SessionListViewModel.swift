@@ -61,8 +61,14 @@ final class SessionListViewModel {
     /// during that await already carries the new session — a second copy is not a cosmetic
     /// duplicate but a duplicate identifier, which is a hard trap in every diffable list built
     /// from this array.
+    ///
+    /// A conversation is its server and its id, never its whole value: the copy a listing carries
+    /// has already moved on — one more message, a title the server minted, a later `updatedAt` —
+    /// so matching on equality finds nothing and leaves both. That is the identity every other
+    /// mutation here uses, and using a different one in the one place that inserts is what let a
+    /// session be in this array twice.
     private func adopt(_ entry: SessionEntry) {
-        entries.removeAll { $0 == entry }
+        entries.removeAll { $0.profileID == entry.profileID && $0.session.id == entry.session.id }
         entries.insert(entry, at: 0)
     }
 
