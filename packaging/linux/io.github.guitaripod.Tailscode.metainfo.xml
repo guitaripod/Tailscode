@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.22" date="2026-08-21">
+      <description>
+        <p>A machine that stops answering stops its clocks. A conversation's age counted on whether or not the server holding it was still reachable, so a turn that ended hours ago kept ageing on a laptop that had been asleep since. The column now freezes at the moment that machine was last heard from, and a live card over a server that has gone quiet says so instead of claiming the turn is still running.</p>
+        <p>A running turn's clock actually runs. The time beside a live conversation only moved when the list was refetched, so it sat still and then jumped. It now counts second by second, without asking any server anything, and holds still the moment there is nothing to count.</p>
+      </description>
+    </release>
     <release version="1.21" date="2026-08-14">
       <description>
         <p>New models turn up on their own. A server that had been running for days was still offering the model list it resolved the day it started, so a model your plan gained this week was out of reach until somebody restarted it by hand. The opencode setup command now leaves a check on that machine which notices and restarts it — never in the middle of a turn — and the picker takes the newer list without waiting for a relaunch.</p>
