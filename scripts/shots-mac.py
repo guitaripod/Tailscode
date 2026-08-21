@@ -100,10 +100,10 @@ SHOTS = [
         "drive": [
             ("key", 'click menu item "Split Right" of menu "View" of menu bar item "View" of menu bar 1'),
             ("wait", 3),
-            ("click", (1195, 445)),
-            ("wait", 3),
-            ("click", (1190, 383)),
-            ("wait", 6),
+            ("click", (830, 312)),
+            ("wait", 2),
+            ("click", (1062, 365)),
+            ("wait", 8),
         ],
     },
     {
@@ -131,7 +131,7 @@ SHOTS = [
         "name": "06-quickask",
         "env": {},
         "args": ["--demo", "--open", "quickask"],
-        "settle": 14,
+        "settle": 6,
         "drive": [],
     },
 ]
