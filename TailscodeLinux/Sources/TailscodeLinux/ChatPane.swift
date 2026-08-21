@@ -1898,16 +1898,16 @@ final class ChatPane: @unchecked Sendable {
             lastFullRows.last(where: { $0.key == key })
             ?? rows.last(where: { $0.key == key })
             ?? renderedRows[index]
-        guard let markup = Self.cascadeMarkup(for: row) else { return false }
+        guard let markup = Self.settleMarkup(for: row) else { return false }
         return cascade.settle(label, markup: markup)
     }
 
-    /// What the shim should parse for this row. Prose already carries its markup; a code block is
-    /// its own body, escaped, so the one reveal path serves both.
+    /// What the shim should parse for this row while the wave is on it. Prose already carries its
+    /// markup; a code block is its own body, escaped, so the one reveal path serves both.
     ///
-    /// GtkLabel resolves `<a href>` itself and never hands it to Pango, but a live row is painted
-    /// through Pango's own parser — so a link is dressed as what the label would have made of it,
-    /// and becomes a real link again the moment the row settles and is rendered the ordinary way.
+    /// The painter parses markup with Pango's own parser, and Pango has no anchor of its own —
+    /// GtkLabel resolves `<a href>` before Pango ever sees it. So a link is dressed as the span
+    /// the label would have made of it: same ink, same underline, no semantics. A frame needs none.
     /// Prose that carries no link is handed back exactly as it came, because the dressing below
     /// rewrites a string the size of the whole answer and most answers have nothing in them to
     /// rewrite. Returning the markup itself costs nothing at all; building an identical copy of it
@@ -1930,6 +1930,20 @@ final class ChatPane: @unchecked Sendable {
             return PangoMarkdown.escape(body)
         default:
             return nil
+        }
+    }
+
+    /// What a row is handed back whole with. Settling writes through `gtk_label_set_markup`, which
+    /// is GtkLabel's own road — the one that turns `<a href>` into a link a click can follow. The
+    /// painter's dressed markup must never reach it: a span carries the link's ink but not its
+    /// address, so a row settled in what the frames were painted with would spend the rest of the
+    /// chat looking touchable and doing nothing. The undressed markup is the row's own, exactly
+    /// what a rebuild would have set; a code block still rides escaped, as it always did.
+    static func settleMarkup(for row: TranscriptRow) -> String? {
+        switch row.kind {
+        case .agentProse(_, let markup): return markup
+        case .codeBlock(_, let body): return PangoMarkdown.escape(body)
+        default: return nil
         }
     }
 

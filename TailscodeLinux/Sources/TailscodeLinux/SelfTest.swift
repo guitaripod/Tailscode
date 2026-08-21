@@ -1640,7 +1640,28 @@ public enum SelfTest {
         try expect(
             gtk_label_get_text(op(label)).map { String(cString: $0) } == emojiText,
             "a settled row must be holding every character of its sentence")
-        return 9
+
+        // A streamed row is painted through Pango's parser, which has no anchor, so the painter
+        // dresses a link as the span it looks like. Settling writes through GtkLabel's own road,
+        // and only `<a href>` becomes something a click can follow there. One markup fed both
+        // paths once, and every answer carrying an address spent the rest of the chat looking
+        // touchable and doing nothing.
+        let linked =
+            "Read it at https://example.com/warranty and the rest of the answer."
+        let linkMarkup = PangoMarkdown.render(
+            linked, dim: palette.textDim, code: palette.info, accent: palette.accent, cache: false)
+        try expect(
+            linkMarkup.contains("<a href=\"https://example.com/warranty\">"),
+            "the markdown renderer must lift a bare address into an anchor")
+        let linkRow = TranscriptRow(
+            key: "row:links", kind: .agentProse(text: linked, markup: linkMarkup))
+        try expect(
+            ChatPane.cascadeMarkup(for: linkRow)?.contains("<a href=\"") == false,
+            "the painter's markup carries a link's ink, never its anchor")
+        try expect(
+            ChatPane.settleMarkup(for: linkRow)?.contains("<a href=\"") == true,
+            "the markup a row settles with must keep the anchor GtkLabel turns into a link")
+        return 12
     }
 
     /// GtkLabel resolves `<a href>` itself and never hands it to Pango, so the check makes the
