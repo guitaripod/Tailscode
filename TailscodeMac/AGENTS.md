@@ -53,7 +53,6 @@ layout, the shortcut engine, and current-chat state (`currentEntry`, `currentBac
 | `MainMenu.swift` | the whole menu bar; every ⌘ equivalent lives here, one action per item |
 | `MainWindowController.swift` | window, toolbar, split (sidebar / content column with the terminal under the transcript / files inspector), pane toggles + persistence (`tailscode.pane.*`), divider persistence (`tailscode.divider.*`), pane focus + Tab cycle, shortcut dispatch (`MacKeys.chord` → `ShortcutSet.resolve` → `perform(KeyAction)`), open/close of chats, new-chat creation, the servers/settings windows |
 | `SidebarViewController.swift`, `SidebarRows.swift` | the chat list, full Linux parity |
-| `FileTreePane.swift` | the files inspector: the server's tree via `FileBrowsingBackend.listFiles`, rooted at the open conversation's directory, lazy per-directory expansion, click-to-composer `@path` |
 | `TerminalPane.swift` | the bottom terminal pane: `$SHELL -lc` one command at a time in the conversation's directory, ↑/↓ history, honest notice line, `ownsFocus` feeding the `.terminal` key context |
 | `ServerDirectory.swift` | profiles + backends (+ `delete(id:)`, `entries()` with unreachable) |
 | `TranscriptViewController.swift`, `TranscriptRows.swift`, `MacMarkdown.swift`, `ToolRowViews.swift`, `PendingCardViews.swift`, `ImageStore.swift`, `FindBar.swift` | the conversation |

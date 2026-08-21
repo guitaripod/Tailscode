@@ -9,6 +9,11 @@ import TailscodeCore
 /// file, not in the executable-keyed defaults store a reinstall abandons.
 SettingsFile.load()
 
+/// The keys for panes this client no longer contains. The registry is Core's and every client
+/// answers it, so a chord left bound to a pane that was removed is a key that does nothing and a
+/// cheat sheet that documents it.
+ShortcutSet.unavailable = ["focus.files", "pane.files"]
+
 /// Read after the file and before anything opens a composer, in that order: the store adopts what
 /// 1.9 left in the defaults, and only then is the settings file told to stop carrying keys that
 /// have moved out of it into the store's own.

@@ -129,7 +129,9 @@ enum ParityManifest {
                     "GitPanelViewController", missing: "a claude-bridge conversation reads its repository exactly as it always did, over GET /git; an opencode one does not, because that road runs git on this Mac through LocalGit.Shell and a container may not spawn it — so on those chats the chip and the panel go quiet, which the git doctrine already reads as this server cannot say rather than as a clean tree"),
                 because:
                     "The Kit is a package and cannot be told which copy of the app it was linked into, so the local shell is compiled either way; inside the sandbox it simply comes back with nothing, which is the one degradation this surface was written to survive.")
-        case .fileBrowser: return .implemented("FileTreePane")
+        case .fileBrowser:
+            return .notApplicable(
+                "the inspector is gone: a tree of the server's files beside a conversation is a second way to say something the composer already says better with @, and nobody reached for it on either desk")
         case .terminalPane:
             return .varies(
                 direct: .implemented("TerminalPane"),

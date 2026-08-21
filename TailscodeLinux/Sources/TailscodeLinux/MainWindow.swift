@@ -20,7 +20,6 @@ final class MainWindow: @unchecked Sendable {
     private let sidebarList = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let sidebarBanner = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let titleLabel = Gtk.label("", css: "mono", selectable: false)
-    private let fileTree = FileTree()
     private let terminal = TerminalPane()
 
     private let searchEntry = gtk_search_entry_new()!
@@ -40,7 +39,6 @@ final class MainWindow: @unchecked Sendable {
     private var usageTask: Task<Void, Never>?
 
     private var splitWidget: UnsafeMutablePointer<GtkWidget>?
-    private var projectPaned: UnsafeMutablePointer<GtkWidget>?
     private var terminalPaned: UnsafeMutablePointer<GtkWidget>?
     private var sidebarPane: UnsafeMutablePointer<GtkWidget>?
     private var sidebarTitle: UnsafeMutablePointer<GtkWidget>?
@@ -187,9 +185,6 @@ final class MainWindow: @unchecked Sendable {
         adw_application_window_set_content(ptr(window), overlay)
         gtk_window_present(ptr(window))
 
-        fileTree.onOpen = { [weak self] path in
-            self?.activePane.insertIntoComposer("@\(path) ")
-        }
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
         installPressRouting(on: window)
@@ -387,8 +382,6 @@ final class MainWindow: @unchecked Sendable {
                     _ = self.activePane.handleComposerKey(keyval: Keymap.tab, state: 0)
                     FileHandle.standardOutput.write(
                         Data("COMPOSER \"\(self.activePane.composerText())\"\n".utf8))
-                case "files":
-                    _ = self.perform(.toggleFiles)
                 case "term":
                     _ = self.perform(.toggleTerminal)
                     Gtk.after(300) { [weak self] in
@@ -810,28 +803,11 @@ final class MainWindow: @unchecked Sendable {
         adw_header_bar_pack_end(op(header), makeActionsButton())
         adw_header_bar_pack_end(
             op(header),
-            Gtk.button("▥", css: ["flat"]) { [weak self] in self?.togglePane(.files) })
-        adw_header_bar_pack_end(
-            op(header),
             Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
-        let panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL)!
-        gtk_paned_set_start_child(op(panes), splitHost.container)
-        gtk_paned_set_end_child(op(panes), makeProjectColumn())
-        gtk_paned_set_position(op(panes), Preferences.divider(.project) ?? 800)
-        gtk_paned_set_resize_start_child(op(panes), 1)
-        gtk_paned_set_shrink_start_child(op(panes), 1)
-        gtk_paned_set_shrink_end_child(op(panes), 1)
-        projectPaned = panes
-
-        adw_toolbar_view_set_content(op(toolbar), panes)
+        adw_toolbar_view_set_content(op(toolbar), splitHost.container)
         return toolbar
-    }
-
-    private func makeProjectColumn() -> UnsafeMutablePointer<GtkWidget> {
-        gtk_widget_set_size_request(fileTree.widget, 180, -1)
-        return fileTree.widget
     }
 
     private func makeActionsButton() -> UnsafeMutablePointer<GtkWidget> {
@@ -991,7 +967,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private var regionTargets: [(UnsafeMutablePointer<GtkWidget>?, Pane)] {
-        [(sidebarColumn, .chats), (fileTree.widget, .files), (terminal.widget, .terminal)]
+        [(sidebarColumn, .chats), (terminal.widget, .terminal)]
     }
 
     private func refreshChromeForActivePane() {
@@ -1017,9 +993,6 @@ final class MainWindow: @unchecked Sendable {
 
     private func workspaceSync(_ pane: ChatPane) {
         terminal.setDirectory(pane.entry?.session.directory)
-        if let backend = pane.backend, let entry = pane.entry {
-            fileTree.show(directory: entry.session.directory, on: backend)
-        }
     }
 
     private func startRefreshing() {
@@ -2986,7 +2959,7 @@ final class MainWindow: @unchecked Sendable {
         case .zoomOut: UIScale.step(-0.1)
         case .zoomReset: UIScale.reset()
         case .toggleSidebar: togglePane(.sidebar)
-        case .toggleFiles: togglePane(.files)
+        case .toggleFiles: return false
         case .toggleTerminal: togglePane(.terminal)
         case .commandPalette: activePane.popupCommandPalette()
         case .archiveSelected:
@@ -3162,7 +3135,7 @@ final class MainWindow: @unchecked Sendable {
             gtk_widget_grab_focus(sidebarList)
             revealCursorRow()
         case .transcript: activePane.focusTranscript()
-        case .files: gtk_widget_grab_focus(fileTree.widget)
+        case .files: return
         case .terminal: terminal.takeFocus()
         }
     }
@@ -3210,8 +3183,6 @@ final class MainWindow: @unchecked Sendable {
         case .sidebar:
             guard let sidebarPane else { return }
             gtk_widget_set_visible(sidebarPane, shown ? 1 : 0)
-        case .files:
-            gtk_widget_set_visible(fileTree.widget, shown ? 1 : 0)
         case .terminal:
             gtk_widget_set_visible(terminal.widget, shown ? 1 : 0)
         }
@@ -3227,9 +3198,6 @@ final class MainWindow: @unchecked Sendable {
     private func applyLayoutPreferences() {
         if let splitWidget {
             gtk_paned_set_position(op(splitWidget), Preferences.divider(.sidebar) ?? 300)
-        }
-        if let projectPaned {
-            gtk_paned_set_position(op(projectPaned), Preferences.divider(.project) ?? 800)
         }
         if let terminalPaned {
             gtk_paned_set_position(op(terminalPaned), Preferences.divider(.terminal) ?? 600)
@@ -3271,7 +3239,7 @@ final class MainWindow: @unchecked Sendable {
     /// leave nothing for the other pane on a narrow one, so every divider is pulled back inside
     /// the window it is actually in before it is saved.
     private func clampDividers() {
-        for paned in [splitWidget, projectPaned].compactMap({ $0 }) {
+        for paned in [splitWidget].compactMap({ $0 }) {
             let width = gtk_widget_get_width(paned)
             guard width > 400 else { continue }
             let position = gtk_paned_get_position(op(paned))
@@ -3304,9 +3272,6 @@ final class MainWindow: @unchecked Sendable {
         Preferences.setLastSession(activePane.sessionID)
         if let splitWidget, gtk_widget_get_visible(sidebarPane ?? splitWidget) != 0 {
             Preferences.setDivider(.sidebar, position: gtk_paned_get_position(op(splitWidget)))
-        }
-        if let projectPaned, gtk_widget_get_visible(fileTree.widget) != 0 {
-            Preferences.setDivider(.project, position: gtk_paned_get_position(op(projectPaned)))
         }
         if let terminalPaned, gtk_widget_get_visible(terminal.widget) != 0 {
             Preferences.setDivider(.terminal, position: gtk_paned_get_position(op(terminalPaned)))

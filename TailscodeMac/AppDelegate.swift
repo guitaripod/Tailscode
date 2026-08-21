@@ -11,9 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        Self.forgetTheKeysForPanesThisCopyLacks()
         #if TAILSCODE_MAS
             Self.keepShortcutsWhereTheContainerCanReachThem()
-            Self.forgetTheKeysForPanesThisCopyLacks()
         #endif
         SessionSeenStore.bootstrapIfNeeded()
         DraftStore.warm()
@@ -51,14 +51,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ).first
         }
 
-        /// The keys for panes this build does not contain. The registry is Core's and a package
-        /// never sees this target's compilation conditions, so the sheet would otherwise document
-        /// a terminal and a browser the App Store copy cannot open — and bind two chords to
-        /// nothing at all.
-        private static func forgetTheKeysForPanesThisCopyLacks() {
-            ShortcutSet.unavailable = ["focus.terminal", "pane.terminal"]
-        }
     #endif
+
+    /// The keys for panes this client does not contain. The registry is Core's and a package never
+    /// sees an app target's compilation conditions, so the sheet would otherwise document panes
+    /// that cannot be opened — and bind chords to nothing at all. The file tree is gone from both
+    /// Mac builds; the terminal only from the sandboxed one.
+    private static func forgetTheKeysForPanesThisCopyLacks() {
+        var gone: Set<String> = ["focus.files", "pane.files"]
+        #if TAILSCODE_MAS
+            gone.formUnion(["focus.terminal", "pane.terminal"])
+        #endif
+        ShortcutSet.unavailable = gone
+    }
 
     /// `TAILSCODE_OPEN_SESSION=<id>` — the same headless hook the iOS harness has: land the
     /// window on one named chat once the listing exists, so a `--shot` can look at a

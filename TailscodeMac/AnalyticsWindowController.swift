@@ -23,6 +23,7 @@ final class AnalyticsWindowController: NSWindowController {
 
     private static let chartHeight: CGFloat = 100
     private static let weekdayHeight: CGFloat = 56
+    private static let weekdayBarWidth: CGFloat = 30
     private static let hourHeight: CGFloat = 32
 
     init(fetch: @escaping () async -> UsageAnalytics?) {
@@ -243,34 +244,57 @@ final class AnalyticsWindowController: NSWindowController {
         return card(views: [heading(Localized.text("Day by day")), bars, annotation])
     }
 
+    /// Two charts, not one heap. The week and the clock answer different questions — which day the
+    /// work lands on, and what hour of it — so each gets its own caption instead of sharing a single
+    /// line that could only ever describe the second.
+    ///
+    /// Both rows pin their own height. A bar chart is read along its baseline, and a row left to its
+    /// intrinsic height lets every column settle where its own bar puts it: the tallest day sat high,
+    /// the quietest sat low, and no two bars could be compared by eye. The hours row always had this
+    /// constraint and read correctly; the weekday row did not.
     private func rhythmSection(_ analytics: UsageAnalytics) -> NSView {
         var views: [NSView] = [heading(Localized.text("Rhythm"))]
         if !analytics.weekdays.isEmpty {
-            let week = NSStackView()
-            week.orientation = .horizontal
-            week.alignment = .bottom
-            week.distribution = .fillEqually
-            week.spacing = MacTheme.Spacing.s
+            views.append(chartLabel(Localized.text("The week")))
+            let bars = NSStackView()
+            bars.orientation = .horizontal
+            bars.alignment = .bottom
+            bars.distribution = .fill
+            bars.spacing = MacTheme.Spacing.m
+            let labels = NSStackView()
+            labels.orientation = .horizontal
+            labels.distribution = .fill
+            labels.spacing = MacTheme.Spacing.m
             for day in analytics.weekdays {
                 let bar = AnalyticsBar(fill: MacTheme.Color.info)
                 bar.speak("\(day.label) · \(day.money)")
+                bar.toolTip = day.money
                 NSLayoutConstraint.activate([
-                    bar.widthAnchor.constraint(equalToConstant: 26),
+                    bar.widthAnchor.constraint(equalToConstant: Self.weekdayBarWidth),
                     bar.heightAnchor.constraint(
                         equalToConstant: max(2, Self.weekdayHeight * day.share)),
                 ])
+                bars.addArrangedSubview(bar)
                 let label = RowKit.label(
-                    day.label, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
-                let dayColumn = NSStackView(views: [bar, label])
-                dayColumn.orientation = .vertical
-                dayColumn.alignment = .centerX
-                dayColumn.spacing = 3
-                dayColumn.toolTip = day.money
-                week.addArrangedSubview(dayColumn)
+                    day.label, font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel)
+                label.alignment = .center
+                label.widthAnchor.constraint(equalToConstant: Self.weekdayBarWidth).isActive = true
+                labels.addArrangedSubview(label)
             }
-            views.append(week)
+            bars.addArrangedSubview(RowKit.spacer())
+            labels.addArrangedSubview(RowKit.spacer())
+            bars.heightAnchor.constraint(equalToConstant: Self.weekdayHeight).isActive = true
+            views.append(bars)
+            views.append(labels)
+            if let busiest = analytics.weekdays.max(by: { $0.share < $1.share }),
+                let money = busiest.money
+            {
+                views.append(caption(Localized.text("Busiest on %@ · %@", busiest.label, money)))
+            }
         }
         if !analytics.hours.isEmpty {
+            views.append(chartLabel(Localized.text("The day")))
             let hours = NSStackView()
             hours.orientation = .horizontal
             hours.alignment = .bottom
@@ -291,13 +315,24 @@ final class AnalyticsWindowController: NSWindowController {
             hours.addArrangedSubview(RowKit.spacer())
             hours.heightAnchor.constraint(equalToConstant: Self.hourHeight).isActive = true
             views.append(hours)
-        }
-        if let clock = analytics.clockLine {
-            views.append(
-                RowKit.label(
-                    clock, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
+            if let clock = analytics.clockLine { views.append(caption(clock)) }
         }
         return card(views: views)
+    }
+
+    /// The name of one chart inside a card that holds two of them: small, quiet, and above the
+    /// thing it names rather than under it.
+    private func chartLabel(_ text: String) -> NSView {
+        let label = RowKit.label(
+            text, font: MacTheme.Ramp.font(.sectionLabel), color: MacTheme.Color.secondaryLabel)
+        let row = NSStackView(views: [label, RowKit.spacer()])
+        row.orientation = .horizontal
+        return row
+    }
+
+    private func caption(_ text: String) -> NSView {
+        RowKit.label(
+            text, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
     }
 
     private func meterSection(

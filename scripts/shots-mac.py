@@ -108,7 +108,7 @@ SHOTS = [
         "name": "04-analytics",
         "env": {},
         "args": ["--demo", "--open", "analytics"],
-        "settle": 16,
+        "settle": 26,
         "drive": [],
     },
     {
@@ -322,7 +322,7 @@ def frame_main():
         osa(script)
         time.sleep(1.2)
         hub = main_window()
-        if hub and (hub["w"], hub["h"], hub["x"], hub["y"]) == (WIDTH, HEIGHT, 0, 38):
+        if hub and (hub["w"], hub["h"]) == (WIDTH, HEIGHT) and hub["x"] == 0 and abs(hub["y"] - 38) <= 2:
             return hub
     sys.exit("could not frame the window at 1440x900")
 

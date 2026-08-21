@@ -18,7 +18,7 @@ final class GameCenterCoordinator: NSObject {
         case unknown
         case ready
         case needsSignIn
-        case unavailable(String)
+        case unavailable(GameCenterReading)
     }
 
     private(set) var standing: Standing = .unknown
@@ -76,9 +76,19 @@ final class GameCenterCoordinator: NSObject {
         }
     }
 
+    /// GameKit's refusal, turned into one of the four states Core has words for. The error's own
+    /// text is kept for the log and never for the screen.
+    private static func reading(for error: Error?) -> GameCenterReading {
+        guard let error = error as NSError? else {
+            return GameCenterReading.read(domain: nil, code: 0, description: "")
+        }
+        return GameCenterReading.read(
+            domain: error.domain, code: error.code, description: error.localizedDescription)
+    }
+
     var unavailableLine: String? {
-        guard case .unavailable(let reason) = standing else { return nil }
-        return String(localized: "Game Center is unavailable: \(reason)")
+        guard case .unavailable(let reading) = standing else { return nil }
+        return reading.line
     }
 
     private func authenticated(viewController: UIViewController?, error: Error?) {
@@ -94,8 +104,7 @@ final class GameCenterCoordinator: NSObject {
             }
         } else {
             signInSheet = nil
-            standing = .unavailable(
-                error?.localizedDescription ?? String(localized: "not signed in"))
+            standing = .unavailable(Self.reading(for: error))
         }
         AppLogger.session.info("gamecenter: standing \(String(describing: self.standing))")
         NotificationCenter.default.post(name: Self.standingChanged, object: nil)

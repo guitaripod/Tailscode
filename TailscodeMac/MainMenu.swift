@@ -104,7 +104,6 @@ final class MainMenu: NSObject {
         let menu = NSMenu(title: Localized.text("View"))
         menu.addItem(
             item(Localized.text("Toggle Sidebar"), #selector(toggleSidebar), "s", [.command, .control]))
-        menu.addItem(item(Localized.text("Files"), #selector(toggleFiles), "f", [.command, .option]))
         #if !TAILSCODE_MAS
             menu.addItem(
                 item(
@@ -235,7 +234,6 @@ final class MainMenu: NSObject {
     @objc private func toggleMarked() { hub.perform(.toggleMarked) }
     @objc private func markAll() { hub.perform(.toggleMarkAll) }
     @objc private func toggleSidebar() { hub.perform(.toggleSidebar) }
-    @objc private func toggleFiles() { hub.perform(.toggleFiles) }
     #if !TAILSCODE_MAS
         @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
     #endif

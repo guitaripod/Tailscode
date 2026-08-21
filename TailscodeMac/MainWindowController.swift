@@ -11,7 +11,6 @@ import TailscodeCore
 final class MainWindowController: NSWindowController {
     let sidebar = SidebarViewController()
     let splitPanes = SplitPaneHost()
-    let filesPane = FileTreePane()
     #if !TAILSCODE_MAS
         let terminalPane = TerminalPane()
     #endif
@@ -25,7 +24,6 @@ final class MainWindowController: NSWindowController {
     private let split = NSSplitViewController()
     private let contentSplit = NSSplitViewController()
     private var sidebarItem: NSSplitViewItem?
-    private var filesItem: NSSplitViewItem?
     private var terminalItem: NSSplitViewItem?
     private var dividerSavingEnabled = false
     private var shortcuts = ShortcutSet.load()
@@ -183,9 +181,6 @@ final class MainWindowController: NSWindowController {
             ? Localized.text("New conversation") : entry.session.title
         window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
         retargetTerminal(to: entry.session.directory)
-        if let backend = pane.currentBackend {
-            filesPane.show(directory: entry.session.directory, on: backend)
-        }
     }
 
     /// The marked chats opened all at once as one even tiling: the tree replaces what the window
@@ -289,6 +284,8 @@ final class MainWindowController: NSWindowController {
         switch action {
         case .focus(let pane):
             return focus(pane)
+        case .toggleFiles:
+            return false
         case .cycleForward:
             cycle(1)
         case .cycleBackward:
@@ -349,8 +346,6 @@ final class MainWindowController: NSWindowController {
             copyToPasteboard(directory)
         case .toggleSidebar:
             togglePane(.sidebar)
-        case .toggleFiles:
-            togglePane(.files)
         case .toggleTerminal:
             #if !TAILSCODE_MAS
                 togglePane(.terminal)
@@ -864,9 +859,6 @@ final class MainWindowController: NSWindowController {
             self?.restateChoosers()
             self?.resolvePendingBindings()
         }
-        filesPane.onOpen = { [weak self] path in
-            self?.transcript.composer.insertText("@\(path) ")
-        }
     }
 
     /// Every pane is wired at birth: its state feeds the notifier with its own session, its
@@ -1118,7 +1110,6 @@ final class MainWindowController: NSWindowController {
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
-        filesPane.show(directory: entry.session.directory, on: backend)
         retargetTerminal(to: entry.session.directory)
         window?.title =
             entry.session.hasPlaceholderTitle
@@ -1192,12 +1183,6 @@ final class MainWindowController: NSWindowController {
         content.minimumThickness = CGFloat(PaneDropTarget.minimumPaneExtent)
         split.addSplitViewItem(content)
 
-        let files = NSSplitViewItem(inspectorWithViewController: filesPane)
-        files.canCollapse = true
-        files.isCollapsed = !paneShown(.files)
-        split.addSplitViewItem(files)
-        filesItem = files
-
         applyPaneThickness()
         window?.contentViewController = split
     }
@@ -1210,8 +1195,6 @@ final class MainWindowController: NSWindowController {
         let scale = MacTheme.UIScale.factor
         sidebarItem?.minimumThickness = 240 * scale
         sidebarItem?.maximumThickness = 400 * scale
-        filesItem?.minimumThickness = 220 * scale
-        filesItem?.maximumThickness = 400 * scale
     }
 
     private func configureToolbar() {
@@ -1260,8 +1243,6 @@ final class MainWindowController: NSWindowController {
         }
         if contains(sidebar, point) {
             regionPressed(.chats)
-        } else if filesItem?.isCollapsed == false, contains(filesPane, point) {
-            regionPressed(.files)
         } else if terminalPressed(point) {
             regionPressed(.terminal)
         }
@@ -1497,10 +1478,6 @@ final class MainWindowController: NSWindowController {
         case .transcript:
             focused = .transcript
             window?.makeFirstResponder(nil)
-        case .files:
-            guard filesItem?.isCollapsed == false else { return false }
-            focused = .files
-            filesPane.takeFocus()
         case .terminal:
             #if TAILSCODE_MAS
                 return false
@@ -1509,6 +1486,8 @@ final class MainWindowController: NSWindowController {
                 focused = .terminal
                 terminalPane.takeFocus()
             #endif
+        case .files:
+            return false
         }
         return true
     }
@@ -1519,13 +1498,11 @@ final class MainWindowController: NSWindowController {
         case chats
         case transcript
         case composer
-        case files
         case terminal
     }
 
     private func currentStop() -> CycleStop {
         if terminalHasFocus { return .terminal }
-        if filesPane.ownsFocus(in: window) { return .files }
         if transcript.composer.editorHasFocus { return .composer }
         return focused == .chats ? .chats : .transcript
     }
@@ -1537,7 +1514,6 @@ final class MainWindowController: NSWindowController {
         if sidebarItem?.isCollapsed == false { stops.append(.chats) }
         stops.append(.transcript)
         stops.append(.composer)
-        if filesItem?.isCollapsed == false { stops.append(.files) }
         if terminalItem?.isCollapsed == false { stops.append(.terminal) }
         let index = (stops.firstIndex(of: currentStop()) ?? 0) + delta
         let count = stops.count
@@ -1549,8 +1525,6 @@ final class MainWindowController: NSWindowController {
         case .composer:
             focused = .transcript
             transcript.focusComposer()
-        case .files:
-            focus(.files)
         case .terminal:
             focus(.terminal)
         }
@@ -1577,8 +1551,8 @@ final class MainWindowController: NSWindowController {
         let item: NSSplitViewItem?
         switch pane {
         case .sidebar: item = sidebarItem
-        case .files: item = filesItem
         case .terminal: item = terminalItem
+        case .files: item = nil
         }
         guard let item else { return }
         NSAnimationContext.runAnimationGroup(
@@ -1611,9 +1585,6 @@ final class MainWindowController: NSWindowController {
         if paneShown(.sidebar), let position = storedDivider(.sidebar) {
             split.splitView.setPosition(position, ofDividerAt: 0)
         }
-        if paneShown(.files), let position = storedDivider(.project) {
-            split.splitView.setPosition(position, ofDividerAt: 1)
-        }
         if paneShown(.terminal), let position = storedDivider(.terminal) {
             contentSplit.splitView.setPosition(position, ofDividerAt: 0)
         }
@@ -1638,14 +1609,6 @@ final class MainWindowController: NSWindowController {
             let width = sidebarItem.viewController.view.frame.width
             if width >= sidebarItem.minimumThickness {
                 defaults.set(Double(width), forKey: DividerKey.sidebar.key)
-            }
-        }
-        if let filesItem, !filesItem.isCollapsed {
-            let width = filesItem.viewController.view.frame.width
-            if width >= filesItem.minimumThickness {
-                let position = split.splitView.bounds.width - width
-                    - split.splitView.dividerThickness
-                defaults.set(Double(position), forKey: DividerKey.project.key)
             }
         }
         if let terminalItem, !terminalItem.isCollapsed {
@@ -1873,7 +1836,6 @@ extension MainWindowController: NSToolbarDelegate {
         static let sidebar = NSToolbarItem.Identifier("tailscode.toolbar.sidebar")
         static let newChat = NSToolbarItem.Identifier("tailscode.toolbar.newchat")
         static let actions = NSToolbarItem.Identifier("tailscode.toolbar.actions")
-        static let files = NSToolbarItem.Identifier("tailscode.toolbar.files")
         static let terminal = NSToolbarItem.Identifier("tailscode.toolbar.terminal")
         static let usage = NSToolbarItem.Identifier("tailscode.toolbar.usage")
         static let servers = NSToolbarItem.Identifier("tailscode.toolbar.servers")
@@ -1883,7 +1845,7 @@ extension MainWindowController: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
-            ToolbarID.actions, ToolbarID.files,
+            ToolbarID.actions,
         ] + terminalToolbarItems + [ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
     }
 
@@ -1922,11 +1884,6 @@ extension MainWindowController: NSToolbarDelegate {
             menu.delegate = self
             item.menu = menu
             return item
-        case ToolbarID.files:
-            return makeToolbarItem(
-                itemIdentifier, symbol: "sidebar.trailing", label: Localized.text("Files"),
-                tip: Localized.text("Show or hide the files pane"),
-                action: #selector(toolbarToggleFiles))
         #if !TAILSCODE_MAS
             case ToolbarID.terminal:
                 return makeToolbarItem(
@@ -2012,9 +1969,6 @@ extension MainWindowController: NSToolbarDelegate {
         perform(.toggleSidebar)
     }
 
-    @objc private func toolbarToggleFiles() {
-        perform(.toggleFiles)
-    }
 
     #if !TAILSCODE_MAS
         @objc private func toolbarToggleTerminal() {
