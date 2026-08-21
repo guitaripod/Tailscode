@@ -3180,6 +3180,8 @@ final class MainWindow: @unchecked Sendable {
     private func applyPane(_ pane: ClosablePane) {
         let shown = paneShown(pane)
         switch pane {
+        case .files:
+            return
         case .sidebar:
             guard let sidebarPane else { return }
             gtk_widget_set_visible(sidebarPane, shown ? 1 : 0)
