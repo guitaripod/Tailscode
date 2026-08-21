@@ -69,8 +69,11 @@ final class TranscriptViewController: NSViewController {
     private var streamTask: Task<Void, Never>?
     private var backend: (any CodingAgentBackend)?
     private var entry: SessionEntry?
-    /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
-    private var video: VideoSlotView?
+    #if !TAILSCODE_MAS
+        /// What this pane is watching instead of talking, when it is a video slot rather than a
+        /// chat.
+        private var video: VideoSlotView?
+    #endif
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private var page: WebSlotView?
 
@@ -456,10 +459,12 @@ final class TranscriptViewController: NSViewController {
     /// window and starts notifying behind a player that still covers the pane edge to edge — live
     /// and invisible, with no way back short of closing the pane — so the slot goes first.
     private func clearSlot() {
-        guard video != nil || page != nil else { return }
-        video?.shutdown()
-        video?.removeFromSuperview()
-        video = nil
+        guard isWatching || page != nil else { return }
+        #if !TAILSCODE_MAS
+            video?.shutdown()
+            video?.removeFromSuperview()
+            video = nil
+        #endif
         page?.shutdown()
         page?.removeFromSuperview()
         page = nil
@@ -468,34 +473,36 @@ final class TranscriptViewController: NSViewController {
         onVideoChanged?()
     }
 
-    /// Turns this pane into a video slot, or points the one it already is at something else. The
-    /// chat furniture is hidden rather than destroyed, so a slot is a state of a pane and not a
-    /// second kind of object the tiling would have to learn.
-    func showVideo(_ target: VideoTarget?) {
-        chooser = nil
-        chooserView.isHidden = true
-        if video == nil {
-            let slot = VideoSlotView(target: target)
-            slot.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
-            NSLayoutConstraint.activate([
-                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                slot.topAnchor.constraint(equalTo: view.topAnchor),
-                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
-            video = slot
-            slot.onChange = { [weak self] in
-                self?.refreshIdentity()
-                self?.onVideoChanged?()
+    #if !TAILSCODE_MAS
+        /// Turns this pane into a video slot, or points the one it already is at something else.
+        /// The chat furniture is hidden rather than destroyed, so a slot is a state of a pane and
+        /// not a second kind of object the tiling would have to learn.
+        func showVideo(_ target: VideoTarget?) {
+            chooser = nil
+            chooserView.isHidden = true
+            if video == nil {
+                let slot = VideoSlotView(target: target)
+                slot.translatesAutoresizingMaskIntoConstraints = false
+                view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
+                NSLayoutConstraint.activate([
+                    slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                    slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                    slot.topAnchor.constraint(equalTo: view.topAnchor),
+                    slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                ])
+                video = slot
+                slot.onChange = { [weak self] in
+                    self?.refreshIdentity()
+                    self?.onVideoChanged?()
+                }
+                setChatFurnitureVisible(false)
+            } else if let target {
+                video?.point(at: target)
             }
-            setChatFurnitureVisible(false)
-        } else if let target {
-            video?.point(at: target)
+            if target == nil { video?.focusPrompt() }
+            refreshIdentity()
         }
-        if target == nil { video?.focusPrompt() }
-        refreshIdentity()
-    }
+    #endif
 
     /// Turns this pane into a browser slot, or points the one it already is at another address.
     func showWeb(_ target: WebTarget?) {
@@ -539,30 +546,43 @@ final class TranscriptViewController: NSViewController {
         return true
     }
 
-    var isWatching: Bool { video != nil }
-    var videoTarget: VideoTarget? { video?.target }
-    var videoSummary: String? { video?.summary }
+    #if TAILSCODE_MAS
+        let isWatching = false
+    #else
+        var isWatching: Bool { video != nil }
+        var videoTarget: VideoTarget? { video?.target }
+        var videoSummary: String? { video?.summary }
 
-    /// True while a slot is still asking what to watch. The board that asks lives under a text
-    /// field, so its keys arrive in the insert context and the window has to offer them anyway.
-    var isChoosingStream: Bool { video?.isAsking == true }
+        /// True while a slot is still asking what to watch. The board that asks lives under a text
+        /// field, so its keys arrive in the insert context and the window has to offer them anyway.
+        var isChoosingStream: Bool { video?.isAsking == true }
 
-    /// A slot answers its own keys while it is focused; everything it does not claim goes on to
-    /// the shortcut table, so the chat panes lose nothing to a slot in the grid. While it is still
-    /// asking, the keys belong to the board rather than to the player it does not have yet.
-    func handleVideoChord(_ chord: KeyChord) -> Bool {
-        guard let video else { return false }
-        guard !video.isAsking else { return video.handleBoard(chord) }
-        guard let command = VideoCommand.command(for: chord) else { return false }
-        video.handle(command)
-        return true
-    }
+        /// A slot answers its own keys while it is focused; everything it does not claim goes on
+        /// to the shortcut table, so the chat panes lose nothing to a slot in the grid. While it
+        /// is still asking, the keys belong to the board rather than to the player it does not
+        /// have yet.
+        func handleVideoChord(_ chord: KeyChord) -> Bool {
+            guard let video else { return false }
+            guard !video.isAsking else { return video.handleBoard(chord) }
+            guard let command = VideoCommand.command(for: chord) else { return false }
+            video.handle(command)
+            return true
+        }
+    #endif
 
     /// Everything the pane draws for a conversation, out of the way while it holds a stream —
     /// walked rather than named so a new piece of chat chrome cannot forget to hide itself, and
     /// remembered rather than re-derived on the way back, because what was hidden is not what is
     /// wanted: unhiding the whole list shows an empty completion popover and a find bar nobody
     /// opened.
+    private func isVideoSlot(_ subview: NSView) -> Bool {
+        #if TAILSCODE_MAS
+            return false
+        #else
+            return subview === video
+        #endif
+    }
+
     private func setChatFurnitureVisible(_ visible: Bool) {
         guard !visible else {
             furnitureHidden.forEach { $0.isHidden = false }
@@ -570,8 +590,9 @@ final class TranscriptViewController: NSViewController {
             return
         }
         guard furnitureHidden.isEmpty else { return }
-        furnitureHidden = view.subviews.filter {
-            $0 !== identityGlass && $0 !== video && $0 !== page && !$0.isHidden
+        furnitureHidden = view.subviews.filter { subview in
+            subview !== identityGlass && subview !== page && !subview.isHidden
+                && !isVideoSlot(subview)
         }
         furnitureHidden.forEach { $0.isHidden = true }
     }
@@ -581,10 +602,12 @@ final class TranscriptViewController: NSViewController {
             identityLabel.stringValue = "\(page.slot.title) · \(page.slot.subtitle)"
             return
         }
-        if let video {
-            identityLabel.stringValue = "\(video.slot.title) · \(video.slot.subtitle)"
-            return
-        }
+        #if !TAILSCODE_MAS
+            if let video {
+                identityLabel.stringValue = "\(video.slot.title) · \(video.slot.subtitle)"
+                return
+            }
+        #endif
         guard let entry else {
             identityLabel.stringValue = Localized.text("No conversation")
             return
@@ -612,7 +635,9 @@ final class TranscriptViewController: NSViewController {
         stopTailRepair()
         forgetHeldRows()
         page?.shutdown()
-        video?.shutdown()
+        #if !TAILSCODE_MAS
+            video?.shutdown()
+        #endif
         streamTask?.cancel()
         streamTask = nil
         tickerTask?.cancel()

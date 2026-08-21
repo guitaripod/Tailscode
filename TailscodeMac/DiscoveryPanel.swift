@@ -27,38 +27,49 @@ struct DiscoverySurvey: Sendable {
     var scannable: [TailscaleDevice] { TailnetScanner.scannableDevices(peers) }
 
     static func read() -> DiscoverySurvey {
-        guard let binary = executable() else {
-            return DiscoverySurvey(reading: .notInstalled, foundCLI: false, peers: [])
-        }
-        guard let data = run(binary),
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return DiscoverySurvey(
-                reading: TailscaleReading.read(
-                    found: true, sandboxed: false, backendState: nil, address: nil),
-                foundCLI: true, peers: [])
-        }
-        let node = root["Self"] as? [String: Any]
-        let address = (node?["TailscaleIPs"] as? [String])?.first { !$0.contains(":") }
-        let reading = TailscaleReading.read(
-            found: true, sandboxed: false, backendState: root["BackendState"] as? String,
-            address: address)
-        let raw = Array((root["Peer"] as? [String: Any] ?? [:]).values)
-        let peers: [TailscaleDevice] = raw.compactMap { value in
-            guard let peer = value as? [String: Any],
-                (peer["Online"] as? Bool) == true,
-                let name = (peer["HostName"] as? String) ?? (peer["DNSName"] as? String),
-                let ip = (peer["TailscaleIPs"] as? [String])?.first(where: { !$0.contains(":") })
-            else { return nil }
-            var dns = (peer["DNSName"] as? String) ?? ""
-            while dns.hasSuffix(".") { dns.removeLast() }
-            return TailscaleDevice(
-                id: ip, name: dns.isEmpty ? nil : dns, hostname: name, addresses: [ip],
-                os: (peer["OS"] as? String) ?? "", lastSeen: nil)
-        }
-        return DiscoverySurvey(
-            reading: reading, foundCLI: true, peers: peers.sorted { $0.hostname < $1.hostname })
+        #if TAILSCODE_MAS
+            return DiscoverySurvey(reading: .sandboxed, foundCLI: false, peers: [])
+        #else
+            return survey()
+        #endif
     }
+
+    #if !TAILSCODE_MAS
+        private static func survey() -> DiscoverySurvey {
+            guard let binary = executable() else {
+                return DiscoverySurvey(reading: .notInstalled, foundCLI: false, peers: [])
+            }
+            guard let data = run(binary),
+                let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                return DiscoverySurvey(
+                    reading: TailscaleReading.read(
+                        found: true, sandboxed: false, backendState: nil, address: nil),
+                    foundCLI: true, peers: [])
+            }
+            let node = root["Self"] as? [String: Any]
+            let address = (node?["TailscaleIPs"] as? [String])?.first { !$0.contains(":") }
+            let reading = TailscaleReading.read(
+                found: true, sandboxed: false, backendState: root["BackendState"] as? String,
+                address: address)
+            let raw = Array((root["Peer"] as? [String: Any] ?? [:]).values)
+            let peers: [TailscaleDevice] = raw.compactMap { value in
+                guard let peer = value as? [String: Any],
+                    (peer["Online"] as? Bool) == true,
+                    let name = (peer["HostName"] as? String) ?? (peer["DNSName"] as? String),
+                    let ip = (peer["TailscaleIPs"] as? [String])?
+                        .first(where: { !$0.contains(":") })
+                else { return nil }
+                var dns = (peer["DNSName"] as? String) ?? ""
+                while dns.hasSuffix(".") { dns.removeLast() }
+                return TailscaleDevice(
+                    id: ip, name: dns.isEmpty ? nil : dns, hostname: name, addresses: [ip],
+                    os: (peer["OS"] as? String) ?? "", lastSeen: nil)
+            }
+            return DiscoverySurvey(
+                reading: reading, foundCLI: true, peers: peers.sorted { $0.hostname < $1.hostname })
+        }
+    #endif
 
     /// A scan that never comes back is a spinner with extra steps: a peer that has gone to sleep
     /// mid-sweep neither accepts nor refuses, so the whole sweep is given a deadline and reports
@@ -78,29 +89,32 @@ struct DiscoverySurvey: Sendable {
         }
     }
 
-    /// Tailscale lands in four places on a Mac depending on how it was installed, and the App
-    /// Store build ships its command line inside the app bundle rather than on the PATH.
-    private static func executable() -> String? {
-        [
-            "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale", "/usr/bin/tailscale",
-            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-        ].first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
+    #if !TAILSCODE_MAS
+        /// Tailscale lands in four places on a Mac depending on how it was installed, and the App
+        /// Store build ships its command line inside the app bundle rather than on the PATH.
+        private static func executable() -> String? {
+            [
+                "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale", "/usr/bin/tailscale",
+                "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+            ].first { FileManager.default.isExecutableFile(atPath: $0) }
+        }
 
-    /// The exit status is deliberately not consulted: a signed-out daemon answers with JSON *and*
-    /// a non-zero status, and that JSON is the only place `BackendState` says which state it is.
-    private static func run(_ binary: String) -> Data? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["status", "--json"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return data.isEmpty ? nil : data
-    }
+        /// The exit status is deliberately not consulted: a signed-out daemon answers with JSON
+        /// *and* a non-zero status, and that JSON is the only place `BackendState` says which state
+        /// it is.
+        private static func run(_ binary: String) -> Data? {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: binary)
+            process.arguments = ["status", "--json"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return data.isEmpty ? nil : data
+        }
+    #endif
 }
 
 /// The dial, rasterised. Every number in it is Core's — where the arm is, how bright each machine

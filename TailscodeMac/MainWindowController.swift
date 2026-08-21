@@ -12,7 +12,9 @@ final class MainWindowController: NSWindowController {
     let sidebar = SidebarViewController()
     let splitPanes = SplitPaneHost()
     let filesPane = FileTreePane()
-    let terminalPane = TerminalPane()
+    #if !TAILSCODE_MAS
+        let terminalPane = TerminalPane()
+    #endif
 
     /// The focused pane's conversation — every single-chat verb in the app lands here, so the
     /// tiling tree changes what "the transcript" means without changing who asks for it.
@@ -180,7 +182,7 @@ final class MainWindowController: NSWindowController {
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-        terminalPane.setDirectory(entry.session.directory)
+        retargetTerminal(to: entry.session.directory)
         if let backend = pane.currentBackend {
             filesPane.show(directory: entry.session.directory, on: backend)
         }
@@ -350,7 +352,9 @@ final class MainWindowController: NSWindowController {
         case .toggleFiles:
             togglePane(.files)
         case .toggleTerminal:
-            togglePane(.terminal)
+            #if !TAILSCODE_MAS
+                togglePane(.terminal)
+            #endif
         case .toggleHelp:
             toggleCheatsheet()
         case .newChat:
@@ -583,6 +587,9 @@ final class MainWindowController: NSWindowController {
         var chooser = PaneChooser(
             servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
         chooser.watchSummary = watchSummary
+        #if TAILSCODE_MAS
+            chooser.offersWatching = false
+        #endif
         pane.showChooser(chooser)
         refreshWatchFeed()
     }
@@ -597,22 +604,24 @@ final class MainWindowController: NSWindowController {
     }
 
     private func refreshWatchFeed() {
-        guard watchLoad == nil else { return }
-        if let watchCheckedAt, Date().timeIntervalSince(watchCheckedAt) < 60 { return }
-        let channels = WatchStore.watchlist()
-        guard !channels.isEmpty || WatchAccounts.rows().contains(where: \.isSignedIn) else {
-            return
-        }
-        watchCheckedAt = Date()
-        watchLoad = Task { [weak self] in
-            let feed = await Task.detached(priority: .utility) {
-                await MediaFollowing().live(local: channels)
-            }.value
-            guard let self else { return }
-            self.watchLoad = nil
-            self.watchFeed = feed
-            self.restateChoosers()
-        }
+        #if !TAILSCODE_MAS
+            guard watchLoad == nil else { return }
+            if let watchCheckedAt, Date().timeIntervalSince(watchCheckedAt) < 60 { return }
+            let channels = WatchStore.watchlist()
+            guard !channels.isEmpty || WatchAccounts.rows().contains(where: \.isSignedIn) else {
+                return
+            }
+            watchCheckedAt = Date()
+            watchLoad = Task { [weak self] in
+                let feed = await Task.detached(priority: .utility) {
+                    await MediaFollowing().live(local: channels)
+                }.value
+                guard let self else { return }
+                self.watchLoad = nil
+                self.watchFeed = feed
+                self.restateChoosers()
+            }
+        #endif
     }
 
     private var chooserServers: [PaneChooserServer] {
@@ -652,9 +661,11 @@ final class MainWindowController: NSWindowController {
         case .addServer:
             presentServers()
         case .watch:
-            splitPanes.focus(pane, grabKeyboard: false)
-            pane.showVideo(nil)
-            splitPanes.persist()
+            #if !TAILSCODE_MAS
+                splitPanes.focus(pane, grabKeyboard: false)
+                pane.showVideo(nil)
+                splitPanes.persist()
+            #endif
         case .browse:
             splitPanes.focus(pane, grabKeyboard: false)
             pane.showWeb(nil)
@@ -996,8 +1007,10 @@ final class MainWindowController: NSWindowController {
     /// can tell, and an empty answer is left alone precisely so the stored one can age into CACHED
     /// rather than into nothing.
     private func publishWidgetSnapshot() {
-        guard !lastQuotas.isEmpty else { return }
-        UsageWidgetStore.writeLive(lastQuotas.map(\.1))
+        #if !TAILSCODE_MAS
+            guard !lastQuotas.isEmpty else { return }
+            UsageWidgetStore.writeLive(lastQuotas.map(\.1))
+        #endif
     }
 
     /// The numbers move on the poll's cadence; the words about them move on their own, so a reset
@@ -1098,7 +1111,7 @@ final class MainWindowController: NSWindowController {
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
         filesPane.show(directory: entry.session.directory, on: backend)
-        terminalPane.setDirectory(entry.session.directory)
+        retargetTerminal(to: entry.session.directory)
         window?.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
@@ -1158,13 +1171,15 @@ final class MainWindowController: NSWindowController {
         let transcriptItem = NSSplitViewItem(viewController: splitPanes)
         transcriptItem.minimumThickness = 240
         contentSplit.addSplitViewItem(transcriptItem)
-        let terminal = NSSplitViewItem(viewController: terminalPane)
-        terminal.minimumThickness = 120
-        terminal.canCollapse = true
-        terminal.holdingPriority = NSLayoutConstraint.Priority(261)
-        terminal.isCollapsed = !paneShown(.terminal)
-        contentSplit.addSplitViewItem(terminal)
-        terminalItem = terminal
+        #if !TAILSCODE_MAS
+            let terminal = NSSplitViewItem(viewController: terminalPane)
+            terminal.minimumThickness = 120
+            terminal.canCollapse = true
+            terminal.holdingPriority = NSLayoutConstraint.Priority(261)
+            terminal.isCollapsed = !paneShown(.terminal)
+            contentSplit.addSplitViewItem(terminal)
+            terminalItem = terminal
+        #endif
         let content = NSSplitViewItem(viewController: contentSplit)
         content.minimumThickness = CGFloat(PaneDropTarget.minimumPaneExtent)
         split.addSplitViewItem(content)
@@ -1239,7 +1254,7 @@ final class MainWindowController: NSWindowController {
             regionPressed(.chats)
         } else if filesItem?.isCollapsed == false, contains(filesPane, point) {
             regionPressed(.files)
-        } else if terminalItem?.isCollapsed == false, contains(terminalPane, point) {
+        } else if terminalPressed(point) {
             regionPressed(.terminal)
         }
     }
@@ -1261,6 +1276,31 @@ final class MainWindowController: NSWindowController {
         return NSMouseInRect(local, controller.view.bounds, controller.view.isFlipped)
     }
 
+    /// The shell pane is a subprocess this Mac's own directories are open to, which a sandboxed
+    /// copy has neither the right nor the reach to run — so the store build has no such pane, and
+    /// every question about one is answered rather than asked.
+    private func retargetTerminal(to directory: String?) {
+        #if !TAILSCODE_MAS
+            terminalPane.setDirectory(directory)
+        #endif
+    }
+
+    private func terminalPressed(_ windowPoint: NSPoint) -> Bool {
+        #if TAILSCODE_MAS
+            return false
+        #else
+            return terminalItem?.isCollapsed == false && contains(terminalPane, windowPoint)
+        #endif
+    }
+
+    private var terminalHasFocus: Bool {
+        #if TAILSCODE_MAS
+            return false
+        #else
+            return terminalPane.ownsFocus(in: window)
+        #endif
+    }
+
     private func handle(_ event: NSEvent) -> NSEvent? {
         if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
@@ -1270,12 +1310,14 @@ final class MainWindowController: NSWindowController {
         {
             return nil
         }
-        if focused == .transcript, pendingChords.isEmpty,
-            context == .normal || transcript.isChoosingStream,
-            transcript.handleVideoChord(chord)
-        {
-            return nil
-        }
+        #if !TAILSCODE_MAS
+            if focused == .transcript, pendingChords.isEmpty,
+                context == .normal || transcript.isChoosingStream,
+                transcript.handleVideoChord(chord)
+            {
+                return nil
+            }
+        #endif
         if focused == .transcript, pendingChords.isEmpty, transcript.handleWebChord(chord) {
             return nil
         }
@@ -1432,7 +1474,7 @@ final class MainWindowController: NSWindowController {
     /// own Ctrl+B or Ctrl+E is not the app's to take, so while its field or output holds focus
     /// only Ctrl+Shift moves and zoom resolve, exactly like Linux.
     private func keyContext() -> KeyContext {
-        if terminalPane.ownsFocus(in: window) { return .terminal }
+        if terminalHasFocus { return .terminal }
         guard let responder = window?.firstResponder else { return .normal }
         return responder is NSText ? .insert : .normal
     }
@@ -1452,9 +1494,13 @@ final class MainWindowController: NSWindowController {
             focused = .files
             filesPane.takeFocus()
         case .terminal:
-            guard terminalItem?.isCollapsed == false else { return false }
-            focused = .terminal
-            terminalPane.takeFocus()
+            #if TAILSCODE_MAS
+                return false
+            #else
+                guard terminalItem?.isCollapsed == false else { return false }
+                focused = .terminal
+                terminalPane.takeFocus()
+            #endif
         }
         return true
     }
@@ -1470,7 +1516,7 @@ final class MainWindowController: NSWindowController {
     }
 
     private func currentStop() -> CycleStop {
-        if terminalPane.ownsFocus(in: window) { return .terminal }
+        if terminalHasFocus { return .terminal }
         if filesPane.ownsFocus(in: window) { return .files }
         if transcript.composer.editorHasFocus { return .composer }
         return focused == .chats ? .chats : .transcript
@@ -1829,9 +1875,16 @@ extension MainWindowController: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
-            ToolbarID.actions, ToolbarID.files, ToolbarID.terminal, ToolbarID.usage,
-            ToolbarID.servers, ToolbarID.settings,
-        ]
+            ToolbarID.actions, ToolbarID.files,
+        ] + terminalToolbarItems + [ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
+    }
+
+    private var terminalToolbarItems: [NSToolbarItem.Identifier] {
+        #if TAILSCODE_MAS
+            return []
+        #else
+            return [ToolbarID.terminal]
+        #endif
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -1866,11 +1919,13 @@ extension MainWindowController: NSToolbarDelegate {
                 itemIdentifier, symbol: "sidebar.trailing", label: Localized.text("Files"),
                 tip: Localized.text("Show or hide the files pane"),
                 action: #selector(toolbarToggleFiles))
-        case ToolbarID.terminal:
-            return makeToolbarItem(
-                itemIdentifier, symbol: "terminal", label: Localized.text("Terminal"),
-                tip: Localized.text("Show or hide the terminal pane"),
-                action: #selector(toolbarToggleTerminal))
+        #if !TAILSCODE_MAS
+            case ToolbarID.terminal:
+                return makeToolbarItem(
+                    itemIdentifier, symbol: "terminal", label: Localized.text("Terminal"),
+                    tip: Localized.text("Show or hide the terminal pane"),
+                    action: #selector(toolbarToggleTerminal))
+        #endif
         case ToolbarID.usage:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = Localized.text("Usage")
@@ -1953,9 +2008,11 @@ extension MainWindowController: NSToolbarDelegate {
         perform(.toggleFiles)
     }
 
-    @objc private func toolbarToggleTerminal() {
-        perform(.toggleTerminal)
-    }
+    #if !TAILSCODE_MAS
+        @objc private func toolbarToggleTerminal() {
+            perform(.toggleTerminal)
+        }
+    #endif
 
     @objc private func toolbarUsage(_ sender: NSButton) {
         presentUsagePopover(from: sender)

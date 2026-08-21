@@ -18,9 +18,17 @@ One product, three clients: **Tailscode** (iOS UIKit), **TailscodeLinux** (GTK4)
   `.notApplicable(reason)`. The switches are exhaustive and have no `default:` — a new
   capability refuses to compile all three clients until each decides what it does about it.
 
+The Mac client ships two ways — `TailscodeMac` (ad-hoc, what `scripts/install-macapp.sh` installs)
+and `TailscodeMacStore` (sandboxed, Mac App Store, built with `TAILSCODE_MAS`) — so its manifest may
+answer `.varies(direct:appStore:because:)` and the matrix has four columns: `iOS`, `linux`, `mac`,
+`mac-store`. Only the Mac may use `.varies`; a varies in a client that ships one way is rejected.
+
 `scripts/parity.sh` prints the matrix and greps every anchor against that client's own tree
 (manifest excluded), so a stale anchor fails; `--check` is the quiet gating mode the repo's
-Stop hook runs. The Linux and Mac selftests also walk the manifest (`checkParity`).
+Stop hook runs. The anchor grep runs through `scripts/lib/gating.awk`, which resolves
+`#if TAILSCODE_MAS` frames, so the `mac-store` column cannot claim an anchor the store build
+compiles out. The Linux and Mac selftests also walk the manifest (`checkParity`), and the Mac one
+additionally runs `MacParity.audit()`.
 
 ## The iron rule
 

@@ -7,6 +7,28 @@ public enum ParityClient: String, CaseIterable, Sendable {
     case iOS = "Tailscode"
     case linux = "TailscodeLinux/Sources/TailscodeLinux"
     case mac = "TailscodeMac"
+
+    /// The ways this client's code actually reaches somebody. A client can ship more than one, and
+    /// the ways do not agree: a copy the App Store installs is sealed in a container that may not
+    /// run the machine's own programs, and a copy built here is not. So a distribution is part of
+    /// the question a capability is asked rather than a footnote on the answer, and a client that
+    /// ships two ways owes two answers wherever they part.
+    public var distributions: [ParityDistribution] {
+        switch self {
+        case .iOS: return [.appStore]
+        case .linux: return [.direct]
+        case .mac: return [.direct, .appStore]
+        }
+    }
+}
+
+/// How a copy of a client got onto the machine running it, which is the only thing that decides
+/// what it is allowed to do. `direct` is a build somebody installed themselves — ad-hoc signed,
+/// unsandboxed, holding whatever rights the person holding the machine holds. `appStore` is a copy
+/// the store installed and the store replaces, inside a sandbox.
+public enum ParityDistribution: String, CaseIterable, Sendable {
+    case direct
+    case appStore
 }
 
 /// Every user-facing capability the product has, in one enum. This is the parity system's forcing
@@ -136,11 +158,34 @@ public enum AppCapability: String, CaseIterable, Sendable {
 /// it, so a stale anchor is a build-gate failure, not a quiet lie. `partial` is wired but owes
 /// named work; `gap` is work the client owes whole; `notApplicable` is a considered decision that
 /// the platform makes the capability meaningless there — never a euphemism for "later".
+/// `varies` is the answer a client that ships two ways owes when the two ways part. It carries
+/// both halves whole rather than one half with a caveat, because the store copy is not always the
+/// poorer one — it is the copy the store keeps current, so the update surface owes it *less* — and
+/// because a `#if` inside a case body would state only the truth of whichever copy was compiled,
+/// which is exactly the half a static reader of this file could never see.
 public enum ParityEvidence: Sendable {
     case implemented(String)
     case partial(String, missing: String)
     case gap(String)
     case notApplicable(String)
+    indirect case varies(direct: ParityEvidence, appStore: ParityEvidence, because: String)
+
+    /// What one copy of the client actually answers. A singular answer is every copy's answer, so
+    /// it is handed back untouched.
+    public func resolved(for distribution: ParityDistribution) -> ParityEvidence {
+        guard case .varies(let direct, let appStore, _) = self else { return self }
+        switch distribution {
+        case .direct: return direct.resolved(for: distribution)
+        case .appStore: return appStore.resolved(for: distribution)
+        }
+    }
+
+    /// Whether this is one answer rather than two — what a reader needs before quoting it as the
+    /// client's answer, and what a half of a `varies` must be so no answer nests inside another.
+    public var isSingular: Bool {
+        if case .varies = self { return false }
+        return true
+    }
 }
 
 /// What a capability means, stated toolkit-free so an agent porting it reads semantics, not one

@@ -105,7 +105,12 @@ final class MainMenu: NSObject {
         menu.addItem(
             item(Localized.text("Toggle Sidebar"), #selector(toggleSidebar), "s", [.command, .control]))
         menu.addItem(item(Localized.text("Files"), #selector(toggleFiles), "f", [.command, .option]))
-        menu.addItem(item(Localized.text("Terminal"), #selector(toggleTerminal), "t", [.command, .option]))
+        #if !TAILSCODE_MAS
+            menu.addItem(
+                item(
+                    Localized.text("Terminal"), #selector(toggleTerminal), "t",
+                    [.command, .option]))
+        #endif
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
         menu.addItem(.separator())
@@ -231,7 +236,9 @@ final class MainMenu: NSObject {
     @objc private func markAll() { hub.perform(.toggleMarkAll) }
     @objc private func toggleSidebar() { hub.perform(.toggleSidebar) }
     @objc private func toggleFiles() { hub.perform(.toggleFiles) }
-    @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
+    #if !TAILSCODE_MAS
+        @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
+    #endif
     @objc private func toggleArchiveView() { hub.perform(.toggleArchiveView) }
     @objc private func zoomIn() { hub.perform(.zoomIn) }
     @objc private func zoomOut() { hub.perform(.zoomOut) }

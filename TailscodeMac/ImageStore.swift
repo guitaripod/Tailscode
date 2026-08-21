@@ -424,6 +424,9 @@ final class ImageViewer: NSObject {
         scrollView.magnify(toFit: imageView.frame)
     }
 
+    /// The person's own Downloads folder, asked of the file manager rather than built out of a home
+    /// path: inside a container the home directory *is* the container, so a hand-built path writes
+    /// the picture where nobody will ever look for it under a toast naming a folder it is not in.
     private func save() {
         let item = items[index]
         guard let entry = ImageStore.shared.entry(forKey: item.key) else {
@@ -431,11 +434,13 @@ final class ImageViewer: NSObject {
             return
         }
         let filename = ImageBytes.exportFilename(item.name, data: entry.data)
-        let target = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads", isDirectory: true)
-            .appendingPathComponent(filename)
-        try? FileManager.default.createDirectory(
-            at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let downloads = FileManager.default.urls(
+            for: .downloadsDirectory, in: .userDomainMask
+        ).first else {
+            toast?(Localized.text("This Mac has no Downloads folder to write to."))
+            return
+        }
+        let target = downloads.appendingPathComponent(filename)
         let wrote = (try? entry.data.write(to: target)) != nil
         toast?(
             wrote

@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        #if TAILSCODE_MAS
+            Self.keepShortcutsWhereTheContainerCanReachThem()
+        #endif
         SessionSeenStore.bootstrapIfNeeded()
         DraftStore.warm()
         ThemeSelection.fallbackID = ThemeSelection.systemID
@@ -35,6 +38,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openRequestedSurface()
         MacShot.schedule()
     }
+
+    #if TAILSCODE_MAS
+        /// The rebinding file, moved to where a sandboxed copy can both write it and be shown it.
+        /// `~/.config/tailscode` is outside this app's container, so the store build keeps the same
+        /// file in the Application Support folder the container does hold — set before anything
+        /// loads a shortcut, which is the one moment the override is read.
+        private static func keepShortcutsWhereTheContainerCanReachThem() {
+            ShortcutSet.configDirectoryOverride = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first
+        }
+    #endif
 
     /// `TAILSCODE_OPEN_SESSION=<id>` — the same headless hook the iOS harness has: land the
     /// window on one named chat once the listing exists, so a `--shot` can look at a

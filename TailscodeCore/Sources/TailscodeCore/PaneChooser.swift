@@ -104,6 +104,10 @@ public struct PaneChooser: Sendable, Equatable {
     /// Set from outside because the check is a network round trip and the chooser is a value type;
     /// nil simply leaves the watch row saying what it always said.
     public var watchSummary: WatchSummary?
+    /// Whether this client can actually open a stream in a pane. A chooser offers what pressing it
+    /// would do, so a build without a player must not draw the row at all — a row that is pressed
+    /// and answers with nothing is worse than one that was never offered.
+    public var offersWatching = true
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -173,7 +177,7 @@ public struct PaneChooser: Sendable, Equatable {
                     action: .back, title: Localized.text("Another server…"),
                     detail: Localized.text("%@ configured", "\(servers.count)")))
         }
-        rows.append(watchRow)
+        if offersWatching { rows.append(watchRow) }
         rows.append(Self.browseRow)
         return rows
     }
@@ -217,7 +221,7 @@ public struct PaneChooser: Sendable, Equatable {
                 action: .chooseServer(server.profileID), title: server.title,
                 detail: [server.address, Localized.text("%@ chats", "\(count)")].joined(
                     separator: " · "), badge: badge)
-        } + [watchRow, Self.browseRow]
+        } + (offersWatching ? [watchRow] : []) + [Self.browseRow]
     }
 
     private func chats(on profileID: String) -> [SessionEntry] {

@@ -50,29 +50,36 @@ final class NewChatSheet: NSObject {
     /// This machine answering its own tailnet address is still this machine — read once, off the
     /// main actor, because `tailscale ip` is a subprocess and the answer does not change within a
     /// run.
+    ///
+    /// The interface walk is the floor under the CLI and answers the same question: the address a
+    /// `utun` is carrying is this Mac's tailnet address whether or not there is a command here to
+    /// ask.
     nonisolated static let localAddresses: Set<String> = {
         var hosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
         var name = [CChar](repeating: 0, count: 256)
         if gethostname(&name, 255) == 0 { hosts.insert(String(cString: name).lowercased()) }
-        for binary in [
-            "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale",
-            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-        ] where FileManager.default.isExecutableFile(atPath: binary) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: binary)
-            process.arguments = ["ip"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-            guard (try? process.run()) != nil else { continue }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
-                let address = line.trimmingCharacters(in: .whitespaces)
-                if !address.isEmpty { hosts.insert(address.lowercased()) }
+        if let address = TailnetStatusMac.localAddress() { hosts.insert(address.lowercased()) }
+        #if !TAILSCODE_MAS
+            for binary in [
+                "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale",
+                "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+            ] where FileManager.default.isExecutableFile(atPath: binary) {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: binary)
+                process.arguments = ["ip"]
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = Pipe()
+                guard (try? process.run()) != nil else { continue }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+                    let address = line.trimmingCharacters(in: .whitespaces)
+                    if !address.isEmpty { hosts.insert(address.lowercased()) }
+                }
+                break
             }
-            break
-        }
+        #endif
         return hosts
     }()
 

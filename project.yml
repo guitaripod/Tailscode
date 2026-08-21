@@ -10,6 +10,54 @@ packages:
     path: ../../swift/CodingAgentKit
   TailscodeCore:
     path: TailscodeCore
+targetTemplates:
+  MacApp:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: TailscodeMac
+        excludes:
+          - Resources/AppIcon.icns
+          - AGENTS.md
+      - path: Tailscode/Usage/UsageWidgetStore.swift
+      - path: Tailscode/Usage/UsageWidgetWriter.swift
+      - path: Tailscode/Usage/UsagePushPayload.swift
+    dependencies:
+      - package: CodingAgentKit
+        product: CodingAgentKit
+      - package: CodingAgentKit
+        product: CodingAgentKitApple
+      - package: TailscodeCore
+        product: TailscodeCore
+    info:
+      path: TailscodeMac/Info.plist
+      properties:
+        CFBundleDisplayName: Tailscode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSHumanReadableCopyright: "GPL-3.0"
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.guitaripod.tailscode
+            CFBundleURLSchemes: [tailscode]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
+        MARKETING_VERSION: "1.22"
+        CURRENT_PROJECT_VERSION: "52"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_DEBUG_DYLIB: NO
 targets:
   Tailscode:
     type: application
@@ -266,52 +314,31 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
 
   TailscodeMac:
-    type: application
-    platform: macOS
-    deploymentTarget: "26.0"
-    sources:
-      - path: TailscodeMac
-      - path: Tailscode/Usage/UsageWidgetStore.swift
-      - path: Tailscode/Usage/UsageWidgetWriter.swift
-      - path: Tailscode/Usage/UsagePushPayload.swift
-      - path: TailscodeMac/Resources/AppIcon.icns
-        buildPhase: resources
+    templates: [MacApp]
     dependencies:
-      - package: CodingAgentKit
-        product: CodingAgentKit
-      - package: CodingAgentKit
-        product: CodingAgentKitApple
-      - package: TailscodeCore
-        product: TailscodeCore
       - target: TailscodeMacWidget
-    info:
-      path: TailscodeMac/Info.plist
-      properties:
-        CFBundleDisplayName: Tailscode
-        CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
-        NSHumanReadableCopyright: "GPL-3.0"
-        CFBundleIconFile: AppIcon
-        CFBundleURLTypes:
-          - CFBundleURLName: com.guitaripod.tailscode
-            CFBundleURLSchemes: [tailscode]
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
-        NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.22"
-        CURRENT_PROJECT_VERSION: "52"
-        SWIFT_VERSION: "6.0"
-        SWIFT_STRICT_CONCURRENCY: complete
-        SWIFT_EMIT_LOC_STRINGS: YES
-        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
+        PRODUCT_NAME: TailscodeMac
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
+        ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
-        ENABLE_DEBUG_DYLIB: NO
+
+  TailscodeMacStore:
+    templates: [MacApp]
+    settings:
+      base:
+        PRODUCT_NAME: Tailscode
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "100"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
+        CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        DEVELOPMENT_TEAM: P4DQK6SRKR
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
 
 schemes:
   Tailscode:
@@ -327,6 +354,14 @@ schemes:
     build:
       targets:
         TailscodeMac: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  TailscodeMacStore:
+    build:
+      targets:
+        TailscodeMacStore: all
     run:
       config: Debug
     archive:

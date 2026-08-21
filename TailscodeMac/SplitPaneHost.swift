@@ -225,11 +225,15 @@ final class SplitPaneHost: NSViewController {
             installDropTarget(on: pane)
             if let target = snapshot.page(for: id) {
                 pane.showWeb(target)
-            } else if let target = snapshot.video(for: id) {
-                pane.showVideo(target)
-            } else if let session = snapshot.session(for: id) {
-                bindings[id] = session
+                continue
             }
+            #if !TAILSCODE_MAS
+                if let target = snapshot.video(for: id) {
+                    pane.showVideo(target)
+                    continue
+                }
+            #endif
+            if let session = snapshot.session(for: id) { bindings[id] = session }
         }
         rebuild()
         return bindings
@@ -319,10 +323,12 @@ final class SplitPaneHost: NSViewController {
                 pages[id.raw] = target.address
                 continue
             }
-            if let target = pane.videoTarget {
-                videos[id.raw] = target.address
-                continue
-            }
+            #if !TAILSCODE_MAS
+                if let target = pane.videoTarget {
+                    videos[id.raw] = target.address
+                    continue
+                }
+            #endif
             guard let entry = pane.currentEntry else { continue }
             sessions[id.raw] = SplitPaneSession(
                 profileID: entry.profileID, sessionID: entry.session.id)

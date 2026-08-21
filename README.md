@@ -52,17 +52,23 @@ Adding a capability in Core is therefore a **compile error in all three clients*
 | `.partial("Anchor", missing: "…")` | Shipped, with named work still owed |
 | `.gap("…")` | Not done, and the reason says what is actually in the way |
 | `.notApplicable("…")` | A considered decision that the capability is meaningless on this platform |
+| `.varies(direct:appStore:because:)` | The client ships two ways and the two answers differ — Mac only |
 
-`scripts/parity.sh` re-derives the case list from Core, rejects any `default:`, rejects grouped cases, demands an answer for every case, refuses an empty reason on any non-`implemented` answer, and greps each claimed anchor inside **that client's own directory only** — shared code existing in the Kit proves nothing about who wired it. A renamed type fails the gate. `scripts/parity-hook.sh` runs it as a Claude Code Stop hook, so an agent cannot end a turn on an invalid manifest, and the two desktop clients assert the same invariants at runtime under `--selftest`.
+The Mac client ships twice: the ad-hoc build a person installs themselves, and the sandboxed one the App Store hands out, which is a smaller app on purpose. So the matrix has **four columns** — `iOS`, `linux`, `mac`, `mac-store` — and the last two read the same manifest, resolving a `.varies` to their own half. A capability may be better in the store column (`.updateCenter` is what installs the app there) as easily as worse.
+
+`scripts/parity.sh` re-derives the case list from Core, rejects any `default:`, rejects grouped cases, demands an answer for every case, refuses an empty reason on any non-`implemented` answer, rejects a `.varies` in a client that ships one way, and greps each claimed anchor inside **that client's own directory only** — shared code existing in the Kit proves nothing about who wired it. A renamed type fails the gate. The anchor grep is distribution-aware: `scripts/lib/gating.awk` reads the source the way the compiler does, honouring `#if TAILSCODE_MAS` frames, so an anchor the store build compiles out cannot be claimed by the store column. `scripts/parity-hook.sh` runs it as a Claude Code Stop hook, so an agent cannot end a turn on an invalid manifest, and the two desktop clients assert the same invariants at runtime under `--selftest`.
 
 ```
 $ ./scripts/parity.sh
+capability                 iOS         linux       mac         mac-store
+----------                 ---         -----       ---         ---------
+sessionSections            ok          ok          ok          ok
 ...
-312/339 implemented, 5 partial, 2 gaps, 20 n/a
+411/460 implemented, 13 partial, 12 gaps, 24 n/a
 PARITY_OK
 ```
 
-**312 of 339 capabilities are identical on all three clients.** Of the 27 that differ:
+Of the capabilities that differ:
 
 - **20 are `notApplicable`**, each with a written argument. Fifteen are the desktop tiling/terminal/browser/video family that a phone screen has nowhere to put (`splitPanes`, `terminalPane`, `browserSlot`, `videoSlot`, `chatDragToPane`, `summonAnywhere`, `vimComposer`, `newPaneChooser`, `watchDirectory`, …). Linux opts out of `hapticFeedback` ("nothing under a desktop vibrates"), `usageWidgets` ("no Home screen, no lock screen accessory, no Control Center"), `homeQuickActions` and `gameCenter` ("Game Center is Apple's account system, and this client cannot sign into it"). macOS opts out of `homeQuickActions` alone.
 - **5 are `partial`**, four of them on the Mac: `deepseekBalance` does not yet grey out spent rows in the model chooser; `hapticFeedback` has three canned trackpad patterns instead of composed cues; `gameCenter` renders but cannot authenticate, because the dev build is ad-hoc signed without the Game Center entitlement; `updateCenter` updates servers but cannot rebuild the running `.app`, so it prints the build command instead. On iOS, `tailscaleReadiness` collapses four daemon states into present-or-absent, because iOS cannot see whether the daemon is signed out or stopped.
@@ -238,7 +244,8 @@ The manifests use CodingAgentKit from a sibling checkout when there is one and f
 
 | Script | What |
 |---|---|
-| `scripts/parity.sh` | Capability matrix + anchor greps across all three clients. `--check` is the gate |
+| `scripts/parity.sh` | Capability matrix + anchor greps across all four columns (three clients, two Mac distributions). `--check` is the gate |
+| `scripts/lib/gating.awk` | Reads a source file the way the compiler does, honouring `#if TAILSCODE_MAS`, so the store column cannot claim an anchor it compiles out |
 | `scripts/parity-hook.sh` | The same gate, wired as a Claude Code Stop hook |
 | `scripts/package-linux.sh` | Linux build / install tree / release tarball |
 | `scripts/install-linuxapp.sh`, `scripts/dev-linuxapp.sh` | Linux dev loop: rebuild against a sibling Kit and restart; headless harness display |

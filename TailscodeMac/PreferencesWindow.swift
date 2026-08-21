@@ -45,11 +45,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.center()
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
-        accountsWatch = NotificationCenter.default.addObserver(
-            forName: MediaAccounts.didChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.renderWatchAccounts() }
-        }
+        #if !TAILSCODE_MAS
+            accountsWatch = NotificationCenter.default.addObserver(
+                forName: MediaAccounts.didChange, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.renderWatchAccounts() }
+            }
+        #endif
         summonWatch = NotificationCenter.default.addObserver(
             forName: MacSummon.didChange, object: nil, queue: .main
         ) { [weak self] _ in
@@ -239,15 +241,17 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 value: MacHaptics.strength, valueLabel: hapticLabel,
                 action: #selector(hapticStrengthChanged)))
 
-        column.addArrangedSubview(spacer(MacTheme.Spacing.m))
-        column.addArrangedSubview(MacDialogs.sectionHeader(WatchAccounts.heading))
-        column.addArrangedSubview(
-            indented(MacDialogs.detailLabel(WatchAccounts.description, wraps: true), by: 0))
-        watchAccounts.orientation = .vertical
-        watchAccounts.alignment = .leading
-        watchAccounts.spacing = MacTheme.Spacing.s
-        column.addArrangedSubview(watchAccounts)
-        renderWatchAccounts()
+        #if !TAILSCODE_MAS
+            column.addArrangedSubview(spacer(MacTheme.Spacing.m))
+            column.addArrangedSubview(MacDialogs.sectionHeader(WatchAccounts.heading))
+            column.addArrangedSubview(
+                indented(MacDialogs.detailLabel(WatchAccounts.description, wraps: true), by: 0))
+            watchAccounts.orientation = .vertical
+            watchAccounts.alignment = .leading
+            watchAccounts.spacing = MacTheme.Spacing.s
+            column.addArrangedSubview(watchAccounts)
+            renderWatchAccounts()
+        #endif
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Usage")))
@@ -380,35 +384,44 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         MacNotifier.shared.sendTest()
     }
 
+    /// The file is revealed rather than opened where the app is sandboxed: handing a path inside
+    /// this app's own container to another program is a door the container does not have, and a
+    /// button that quietly opens nothing is worse than one that shows where the file is.
     @objc private func editShortcuts() {
         ShortcutSet.ensureConfigFile()
-        NSWorkspace.shared.open(ShortcutSet.configURL)
+        #if TAILSCODE_MAS
+            NSWorkspace.shared.activateFileViewerSelecting([ShortcutSet.configURL])
+        #else
+            NSWorkspace.shared.open(ShortcutSet.configURL)
+        #endif
     }
 
     @objc private func reloadShortcuts() {
         onReloadShortcuts()
     }
 
-    /// The two video accounts, drawn and redrawn in place. Signing in or out rewrites everything a
-    /// row says while the window stands open, and the content is only made again at the next
-    /// presentation — so the section empties and refills itself in place instead. The width
-    /// constraint `makeContent` applies runs exactly once, over the column's own children, and
-    /// never sees a row made later: each one is given the same constraint as it is made.
-    private func renderWatchAccounts() {
-        for view in watchAccounts.arrangedSubviews { view.removeFromSuperview() }
-        for row in WatchAccounts.rows() {
-            let button = NSButton(
-                title: row.actionTitle, target: self, action: #selector(watchAccountPressed))
-            button.identifier = NSUserInterfaceItemIdentifier(row.id)
-            let view = buttonRow(title: row.title, subtitle: row.detail, button: button)
-            watchAccounts.addArrangedSubview(view)
-            view.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
-            guard let note = row.note else { continue }
-            let caption = MacDialogs.detailLabel(note, wraps: true)
-            watchAccounts.addArrangedSubview(caption)
-            caption.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+    #if !TAILSCODE_MAS
+        /// The two video accounts, drawn and redrawn in place. Signing in or out rewrites everything a
+        /// row says while the window stands open, and the content is only made again at the next
+        /// presentation — so the section empties and refills itself in place instead. The width
+        /// constraint `makeContent` applies runs exactly once, over the column's own children, and
+        /// never sees a row made later: each one is given the same constraint as it is made.
+        private func renderWatchAccounts() {
+            for view in watchAccounts.arrangedSubviews { view.removeFromSuperview() }
+            for row in WatchAccounts.rows() {
+                let button = NSButton(
+                    title: row.actionTitle, target: self, action: #selector(watchAccountPressed))
+                button.identifier = NSUserInterfaceItemIdentifier(row.id)
+                let view = buttonRow(title: row.title, subtitle: row.detail, button: button)
+                watchAccounts.addArrangedSubview(view)
+                view.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+                guard let note = row.note else { continue }
+                let caption = MacDialogs.detailLabel(note, wraps: true)
+                watchAccounts.addArrangedSubview(caption)
+                caption.widthAnchor.constraint(equalTo: watchAccounts.widthAnchor).isActive = true
+            }
         }
-    }
+    #endif
 
     /// The optional DeepSeek key, stated as the fact it is: set, or not. The row is drawn again in
     /// place after the editor closes, because whether a key exists is exactly what the editor
@@ -433,98 +446,100 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The row is read again at the moment it is pressed rather than captured when it was drawn:
-    /// an account can land or expire while the window sits open, and the button must mean what the
-    /// row says now.
-    @objc private func watchAccountPressed(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue,
-            let row = WatchAccounts.rows().first(where: { $0.id == id })
-        else { return }
-        switch row.action {
-        case .signIn(let source):
-            guard let window else { return }
-            WatchSignInSheet.present(on: window, source: source) { [weak self] in
-                self?.renderWatchAccounts()
+    #if !TAILSCODE_MAS
+        /// The row is read again at the moment it is pressed rather than captured when it was drawn:
+        /// an account can land or expire while the window sits open, and the button must mean what the
+        /// row says now.
+        @objc private func watchAccountPressed(_ sender: NSButton) {
+            guard let id = sender.identifier?.rawValue,
+                let row = WatchAccounts.rows().first(where: { $0.id == id })
+            else { return }
+            switch row.action {
+            case .signIn(let source):
+                guard let window else { return }
+                WatchSignInSheet.present(on: window, source: source) { [weak self] in
+                    self?.renderWatchAccounts()
+                }
+            case .signOut(let source):
+                MediaAccounts.signOut(source)
+                renderWatchAccounts()
+            case .configure:
+                explainWatchAccount(row)
             }
-        case .signOut(let source):
-            MediaAccounts.signOut(source)
-            renderWatchAccounts()
-        case .configure:
-            explainWatchAccount(row)
         }
-    }
 
-    /// The one step of this feature that happens somewhere else. Google will only run its device
-    /// flow for an application registered to somebody, so the alert states why, links the console,
-    /// and takes the client id and secret right there — a requirement explained but not actionable
-    /// is a dead end wearing a button.
-    private func explainWatchAccount(_ row: WatchAccountRow) {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = YouTubeSetup.heading
-        alert.informativeText =
-            ([YouTubeSetup.why] + YouTubeSetup.steps.enumerated().map { "\($0.offset + 1). \($0.element)" })
-            .joined(separator: "\n\n")
+        /// The one step of this feature that happens somewhere else. Google will only run its device
+        /// flow for an application registered to somebody, so the alert states why, links the console,
+        /// and takes the client id and secret right there — a requirement explained but not actionable
+        /// is a dead end wearing a button.
+        private func explainWatchAccount(_ row: WatchAccountRow) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = YouTubeSetup.heading
+            alert.informativeText =
+                ([YouTubeSetup.why] + YouTubeSetup.steps.enumerated().map { "\($0.offset + 1). \($0.element)" })
+                .joined(separator: "\n\n")
 
-        let current = MediaClientConfig.youtube
-        let identity = NSTextField(string: current?.id ?? "")
-        identity.placeholderString = YouTubeSetup.idPrompt
-        identity.font = MacTheme.Ramp.font(.toolOutput)
-        let secret = NSSecureTextField(string: current?.secret ?? "")
-        secret.placeholderString = YouTubeSetup.secretPrompt
-        secret.font = MacTheme.Ramp.font(.toolOutput)
-        let fields = NSStackView(views: [identity, secret])
-        fields.orientation = .vertical
-        fields.alignment = .leading
-        fields.spacing = MacTheme.Spacing.xs
-        fields.frame = NSRect(x: 0, y: 0, width: 320, height: 56)
-        identity.widthAnchor.constraint(equalToConstant: 320).isActive = true
-        secret.widthAnchor.constraint(equalToConstant: 320).isActive = true
-        alert.accessoryView = fields
-        alert.window.initialFirstResponder = identity
+            let current = MediaClientConfig.youtube
+            let identity = NSTextField(string: current?.id ?? "")
+            identity.placeholderString = YouTubeSetup.idPrompt
+            identity.font = MacTheme.Ramp.font(.toolOutput)
+            let secret = NSSecureTextField(string: current?.secret ?? "")
+            secret.placeholderString = YouTubeSetup.secretPrompt
+            secret.font = MacTheme.Ramp.font(.toolOutput)
+            let fields = NSStackView(views: [identity, secret])
+            fields.orientation = .vertical
+            fields.alignment = .leading
+            fields.spacing = MacTheme.Spacing.xs
+            fields.frame = NSRect(x: 0, y: 0, width: 320, height: 56)
+            identity.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            secret.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            alert.accessoryView = fields
+            alert.window.initialFirstResponder = identity
 
-        alert.addButton(withTitle: Localized.text("Save"))
-        alert.addButton(withTitle: Localized.text("Open the console"))
-        alert.addButton(withTitle: Localized.text("Close"))
-        let finish: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            switch response {
-            case .alertFirstButtonReturn:
-                let typedID = identity.stringValue
-                let typedSecret = secret.stringValue
-                guard YouTubeSetup.looksValid(id: typedID, secret: typedSecret) else {
-                    self?.rejectWatchClient()
+            alert.addButton(withTitle: Localized.text("Save"))
+            alert.addButton(withTitle: Localized.text("Open the console"))
+            alert.addButton(withTitle: Localized.text("Close"))
+            let finish: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self] response in
+                switch response {
+                case .alertFirstButtonReturn:
+                    let typedID = identity.stringValue
+                    let typedSecret = secret.stringValue
+                    guard YouTubeSetup.looksValid(id: typedID, secret: typedSecret) else {
+                        self?.rejectWatchClient()
+                        return
+                    }
+                    MediaClientConfig.setYouTube(id: typedID, secret: typedSecret)
+                    self?.renderWatchAccounts()
+                case .alertSecondButtonReturn:
+                    if let url = URL(string: YouTubeSetup.consoleURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                default:
                     return
                 }
-                MediaClientConfig.setYouTube(id: typedID, secret: typedSecret)
-                self?.renderWatchAccounts()
-            case .alertSecondButtonReturn:
-                if let url = URL(string: YouTubeSetup.consoleURL) {
-                    NSWorkspace.shared.open(url)
-                }
-            default:
+            }
+            guard let window else {
+                finish(alert.runModal())
                 return
             }
+            alert.beginSheetModal(for: window, completionHandler: finish)
         }
-        guard let window else {
-            finish(alert.runModal())
-            return
-        }
-        alert.beginSheetModal(for: window, completionHandler: finish)
-    }
 
-    /// A pasted mistake is caught here rather than at the end of a sign-in that would fail for a
-    /// reason nobody could connect back to this box.
-    private func rejectWatchClient() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = YouTubeSetup.rejection
-        alert.addButton(withTitle: Localized.text("Close"))
-        guard let window else {
-            alert.runModal()
-            return
+        /// A pasted mistake is caught here rather than at the end of a sign-in that would fail for a
+        /// reason nobody could connect back to this box.
+        private func rejectWatchClient() {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = YouTubeSetup.rejection
+            alert.addButton(withTitle: Localized.text("Close"))
+            guard let window else {
+                alert.runModal()
+                return
+            }
+            alert.beginSheetModal(for: window, completionHandler: nil)
         }
-        alert.beginSheetModal(for: window, completionHandler: nil)
-    }
+    #endif
 
     /// The catalog with the platform's own answer at its head — "System" is not a theme, it is the
     /// choice to have none, and on a Mac whose materials Apple drew that is a real answer.

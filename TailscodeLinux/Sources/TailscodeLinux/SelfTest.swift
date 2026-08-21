@@ -949,6 +949,8 @@ public enum SelfTest {
                     "\(capability.rawValue) names its anchor and its debt")
             case .gap(let reason), .notApplicable(let reason):
                 try expect(!reason.isEmpty, "\(capability.rawValue) states its reason")
+            case .varies:
+                try expect(false, "\(capability.rawValue) resolves to one answer for this copy")
             }
         }
         return checks

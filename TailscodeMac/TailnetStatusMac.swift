@@ -23,16 +23,21 @@ struct TailnetStatusMac: Sendable {
     /// installed the open-source daemon has it wherever its package manager puts binaries.
     private static let appPaths = [
         "/Applications/Tailscale.app",
-        NSHomeDirectory() + "/Applications/Tailscale.app",
+        userHome + "/Applications/Tailscale.app",
     ]
 
     private static let cliPaths = [
         "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-        NSHomeDirectory() + "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+        userHome + "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
         "/usr/local/bin/tailscale",
         "/opt/homebrew/bin/tailscale",
         "/usr/bin/tailscale",
     ]
+
+    /// The person's own home folder rather than the process's. Inside a container `NSHomeDirectory`
+    /// answers with the sandbox, so a per-user candidate built from it names a path that could not
+    /// hold an application and the check silently stops asking the real question.
+    private static let userHome = NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
 
     /// The Mac's own download page. Core names the Linux one because Core has no platform, and a
     /// remedy is the client's door to wire.
@@ -98,13 +103,21 @@ struct TailnetStatusMac: Sendable {
             return .page(downloadPage)
         case .signIn, .start, .grantHostAccess:
             if let appURL { return .app(appURL) }
-            guard let cliPath else { return .page(downloadPage) }
-            return .command(path: cliPath, arguments: ["up"])
+            #if TAILSCODE_MAS
+                return .page(downloadPage)
+            #else
+                guard let cliPath else { return .page(downloadPage) }
+                return .command(path: cliPath, arguments: ["up"])
+            #endif
         }
     }
 
     private static var isSandboxed: Bool {
-        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        #if TAILSCODE_MAS
+            return true
+        #else
+            return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        #endif
     }
 
     /// - Returns: whether the CLI ran at all, and what it printed. The two are separate facts: a
@@ -114,19 +127,29 @@ struct TailnetStatusMac: Sendable {
     ///   A signed-out daemon answers with JSON *and* a non-zero status, and that JSON is the only
     ///   place `BackendState` says so — dropping it would collapse "signed out" into "not here".
     private static func runTailscale() -> (ran: Bool, output: Data?) {
-        guard let cliPath else { return (false, nil) }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cliPath)
-        process.arguments = ["status", "--json"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return (false, nil) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return (true, data.isEmpty ? nil : data) }
-        return (true, data)
+        #if TAILSCODE_MAS
+            return (false, nil)
+        #else
+            return runTailscaleCLI()
+        #endif
     }
+
+    #if !TAILSCODE_MAS
+        private static func runTailscaleCLI() -> (ran: Bool, output: Data?) {
+            guard let cliPath else { return (false, nil) }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: cliPath)
+            process.arguments = ["status", "--json"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return (false, nil) }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return (true, data.isEmpty ? nil : data) }
+            return (true, data)
+        }
+    #endif
 
     private static func numericHost(of addr: UnsafeMutablePointer<sockaddr>) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
@@ -153,13 +176,17 @@ struct TailnetStatusMac: Sendable {
 enum TailnetDoor: Sendable, Equatable {
     case page(String)
     case app(URL)
-    case command(path: String, arguments: [String])
+    #if !TAILSCODE_MAS
+        case command(path: String, arguments: [String])
+    #endif
 
     var title: String {
         switch self {
         case .page: return Localized.text("Get Tailscale")
         case .app: return Localized.text("Open Tailscale")
-        case .command: return Localized.text("Sign in to Tailscale")
+        #if !TAILSCODE_MAS
+            case .command: return Localized.text("Sign in to Tailscale")
+        #endif
         }
     }
 
@@ -167,8 +194,12 @@ enum TailnetDoor: Sendable, Equatable {
     /// as a copy beside the button rather than as an instruction: a press that cannot reach the
     /// daemon has to leave something behind, and a terminal is the floor, never the advice.
     var command: String? {
-        guard case .command(let path, let arguments) = self else { return nil }
-        return ([path] + arguments).joined(separator: " ")
+        #if TAILSCODE_MAS
+            return nil
+        #else
+            guard case .command(let path, let arguments) = self else { return nil }
+            return ([path] + arguments).joined(separator: " ")
+        #endif
     }
 }
 
@@ -250,8 +281,10 @@ final class TailnetRemedyView: NSView {
             NSWorkspace.shared.open(url)
         case .app(let url):
             NSWorkspace.shared.open(url)
-        case .command(let path, let arguments):
-            run(path, arguments)
+        #if !TAILSCODE_MAS
+            case .command(let path, let arguments):
+                run(path, arguments)
+        #endif
         }
     }
 
@@ -262,40 +295,44 @@ final class TailnetRemedyView: NSView {
     /// `tailscale up` answers by printing a login URL and waiting, so the output is watched and the
     /// URL opened as it appears. A command this Mac will not run says so and leaves the copyable
     /// line, which is the honest floor rather than a silent failure.
-    private func run(_ path: String, _ arguments: [String]) {
-        let command = ([path] + arguments).joined(separator: " ")
-        narrate(Localized.text("Running %@…", command))
-        Task.detached(priority: .utility) { [weak self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: path)
-            process.arguments = arguments
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            guard (try? process.run()) != nil else {
-                await MainActor.run {
-                    self?.narrate(
-                        Localized.text(
-                            "This Mac would not run %@. Copy it and run it yourself, then this "
-                                + "step turns green on its own.", command))
+    #if !TAILSCODE_MAS
+        private func run(_ path: String, _ arguments: [String]) {
+            let command = ([path] + arguments).joined(separator: " ")
+            narrate(Localized.text("Running %@…", command))
+            Task.detached(priority: .utility) { [weak self] in
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+                guard (try? process.run()) != nil else {
+                    await MainActor.run {
+                        self?.narrate(
+                            Localized.text(
+                                "This Mac would not run %@. Copy it and run it yourself, then this "
+                                    + "step turns green on its own.", command))
+                    }
+                    return
                 }
-                return
+                var seen = ""
+                while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096),
+                    !chunk.isEmpty
+                {
+                    seen += String(decoding: chunk, as: UTF8.self)
+                    let text = seen
+                    if let url = Self.loginURL(in: text) {
+                        seen = ""
+                        await MainActor.run { NSWorkspace.shared.open(url) }
+                    }
+                    await MainActor.run {
+                        self?.narrate(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+                process.waitUntilExit()
             }
-            var seen = ""
-            while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
-                seen += String(decoding: chunk, as: UTF8.self)
-                let text = seen
-                if let url = Self.loginURL(in: text) {
-                    seen = ""
-                    await MainActor.run { NSWorkspace.shared.open(url) }
-                }
-                await MainActor.run {
-                    self?.narrate(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            }
-            process.waitUntilExit()
         }
-    }
+    #endif
 
     private func narrate(_ text: String) {
         narration = text.isEmpty ? nil : text
