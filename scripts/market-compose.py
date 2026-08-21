@@ -48,7 +48,7 @@ IPHONE = [
 
 MAC = [
     ("01-conversation", "01-native-on-mac", "Your coding agents, native on the Mac", "Claude Code and opencode over your own tailnet — no browser, no terminal."),
-    ("02-split", "02-two-machines", "Two machines, side by side", "Split panes across servers; every pane keeps its own conversation."),
+    ("02-split", "02-two-machines", "Two machines, side by side", "Split the window and point the new pane at any server's conversations."),
     ("03-git", "03-repo-truth", "The repo, read — never operated", "Branch, staged, changed, and the real diffs, from the machine that owns them."),
     ("04-analytics", "04-month-in-numbers", "The month in numbers", "Every transcript priced turn by turn, merged across every server."),
     ("05-spend", "05-priced-turns", "A price on the whole conversation", "Where the money went: answers, cache, fresh input — turn by turn."),

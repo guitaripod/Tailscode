@@ -21,14 +21,17 @@ import asc  # noqa: E402
 
 VERSION = "23e8cf30-6f9c-4020-ad92-ed9a0aec85e3"
 DISPLAY_TYPE = "APP_DESKTOP"
-FOLDER = os.environ.get("TAILSCODE_SHOTS_OUT", "/tmp/tailscode-shots-out")
+FOLDER = os.environ.get(
+    "TAILSCODE_SHOTS_OUT",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "marketing/appstore/panels/mac"))
 ORDER = [
-    "01-conversation.png",
-    "02-question.png",
-    "03-git.png",
-    "04-analytics.png",
-    "05-commands.png",
-    "06-quickask.png",
+    "01-native-on-mac.png",
+    "02-two-machines.png",
+    "03-repo-truth.png",
+    "04-month-in-numbers.png",
+    "05-priced-turns.png",
+    "06-one-chord-away.png",
 ]
 
 

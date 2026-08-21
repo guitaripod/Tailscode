@@ -22,15 +22,17 @@ import asc  # noqa: E402
 
 APP = "6791660932"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Ten is the ASC maximum for a set, and the order is the story the landing page
-# tells: a live turn, the board it came from, the two places it asks you something,
-# then the depth. 06-render lost its slot to the compaction seam.
+# Ten is the ASC maximum for a set. The set is the composed panels — each raw
+# capture framed under its own claim by scripts/market-compose.py — ordered as
+# the pitch reads: what it is, the board, the two places it asks you something,
+# the work, then the depth.
 ORDER = [
-    "01-live.png", "07-home.png", "03-approval.png", "04-question.png",
-    "05-subagents.png", "02-work.png", "11-compaction.png", "09-chats.png",
-    "08-usage.png", "setup.png",
+    "01-agents-anywhere.png", "02-one-board.png", "03-approve-remote.png",
+    "04-answer-blockers.png", "05-real-work.png", "06-agent-fanout.png",
+    "07-repo-truth.png", "08-month-in-numbers.png", "09-compaction-seam.png",
+    "10-verified-setup.png",
 ]
-IPHONE_SET = ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/iphone"))
+IPHONE_SET = ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/panels/iphone"))
 STALE_SETS = ["APP_IPAD_PRO_3GEN_129"]
 
 
