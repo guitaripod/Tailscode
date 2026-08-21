@@ -51,11 +51,28 @@ final class AnalyticsWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The window opens at the size the surface was drawn for. Its content is a scroll view pinned
+    /// to every edge and so has no height of its own to fit to, which leaves a window left to size
+    /// itself sitting at `contentMinSize` — the hero fills it and the month's shape, which is the
+    /// whole reason to open this, starts below the fold.
     func present() {
+        if let window, !window.isVisible, let screen = window.screen ?? NSScreen.main {
+            let room = screen.visibleFrame
+            let size = NSSize(
+                width: min(Self.openingSize.width, room.width - 80),
+                height: min(Self.openingSize.height, room.height - 80))
+            window.setFrame(
+                NSRect(
+                    x: room.midX - size.width / 2, y: room.midY - size.height / 2,
+                    width: size.width, height: size.height),
+                display: false)
+        }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         reload()
     }
+
+    private static let openingSize = NSSize(width: 760, height: 980)
 
     private func makeContent() -> NSView {
         column.spacing = MacTheme.Spacing.m

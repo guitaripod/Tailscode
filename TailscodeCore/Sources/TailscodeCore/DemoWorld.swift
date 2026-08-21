@@ -711,11 +711,11 @@ public enum DemoWorld {
                                 label: "Web checkout",
                                 description: "Highest traffic — fastest read on significance"),
                             QuestionRequest.Option(
-                                label: "iOS paywall",
+                                label: "In-app paywall",
                                 description: "Native sheet; needs an app release to change copy"),
                             QuestionRequest.Option(
-                                label: "Android paywall",
-                                description: "Play billing; mirrors the iOS variant"),
+                                label: "Renewal reminder",
+                                description: "Sent the week before; mirrors the checkout variant"),
                             QuestionRequest.Option(
                                 label: "Email upgrade nudge",
                                 description: "Lower volume, but attributes cleanly"),
