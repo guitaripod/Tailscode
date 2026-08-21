@@ -100,6 +100,11 @@ final class ServerDirectory {
     /// own timeout while the machine beside it already had the answer. `knownDirectories`
     /// seed the per-project walk: a chat the list already knows lives in a place worth asking
     /// about even when the server does not report a project for it.
+    /// When each server was last heard from, keyed the way a row names it. A row whose server has
+    /// stopped answering measures its age against this rather than against now, so the column
+    /// freezes at the last reading instead of ageing a turn nobody can see any more.
+    private(set) var lastHeard: [String: Date] = [:]
+
     func entries(knownDirectories: [String] = []) async -> (entries: [SessionEntry], unreachable: [String]) {
         var asked: [(profile: ConnectionProfile, backend: any CodingAgentBackend)] = []
         var silent: Set<String> = []
@@ -125,6 +130,7 @@ final class ServerDirectory {
                     silent.insert(profile.id)
                     continue
                 }
+                lastHeard[ServerLabel.display(profile)] = Date()
                 collected += sessions.map {
                     SessionEntry(
                         profileID: profile.id, profileName: profile.name,

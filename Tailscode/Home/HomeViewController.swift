@@ -562,6 +562,7 @@ final class HomeViewController: UIViewController {
     private var isEnriching = false
     private var loadTask: Task<Void, Never>?
     private var liveRefreshTask: Task<Void, Never>?
+    private var clockTickTask: Task<Void, Never>?
 
     /// The last numbers the app landed anywhere — background refresh, silent
     /// push, widget — shared on disk. Painting them first means the usage
@@ -579,7 +580,51 @@ final class HomeViewController: UIViewController {
     /// anything is live, slow when the board is quiet, and stopped outright when
     /// the screen is off or the app is inactive so nothing polls in the
     /// background.
+    /// The board's durations move on their own clock, not on the data poll.
+    ///
+    /// A card's age is baked into its diffable content, so without something driving a redraw a
+    /// running turn's elapsed sat frozen for the ten seconds between listings and then jumped. This
+    /// ticks once a second, costs no network, and — because `contentSignature` gates the
+    /// reconfigure — repaints only the cards whose text actually changed. It runs only while a card
+    /// is genuinely counting: an unreachable host's frozen age has nothing to say every second, and
+    /// a board of idle chats has no reason to wake the CPU at all.
+    private func startClockTick() {
+        guard clockTickTask == nil, viewIfLoaded?.window != nil,
+            UIApplication.shared.applicationState == .active
+        else { return }
+        clockTickTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, self.viewIfLoaded?.window != nil else { return }
+                guard self.hasTickingCard else { continue }
+                self.applySnapshot()
+            }
+        }
+    }
+
+    private func stopClockTick() {
+        clockTickTask?.cancel()
+        clockTickTask = nil
+    }
+
+    /// Whether any card on the board is measuring against `now` rather than against a host that
+    /// stopped answering. Only these move, so only these are worth a repaint.
+    private var hasTickingCard: Bool {
+        viewModel.entries.contains {
+            isLive($0) && !viewModel.unreachable.contains($0.profileID)
+        }
+    }
+
+    /// The clock a card drawn from `entry` must measure against: this device's `now` while that
+    /// entry's server is answering, and the moment it was last heard from once it is not.
+    private func hostClock(for entry: SessionEntry) -> HostClock {
+        HostClock(
+            isLive: !viewModel.unreachable.contains(entry.profileID),
+            observedAt: viewModel.observedAt[entry.profileID])
+    }
+
     private func startLiveRefresh() {
+        startClockTick()
         guard liveRefreshTask == nil, viewIfLoaded?.window != nil,
             UIApplication.shared.applicationState == .active
         else { return }
@@ -594,6 +639,7 @@ final class HomeViewController: UIViewController {
     }
 
     private func stopLiveRefresh() {
+        stopClockTick()
         liveRefreshTask?.cancel()
         liveRefreshTask = nil
     }
@@ -823,7 +869,8 @@ final class HomeViewController: UIViewController {
                     .live(
                         LiveCard(
                             entry: $0, presence: presence(for: $0),
-                            activity: SessionActivity.shared.liveDetail(for: $0.session.id)))
+                            activity: SessionActivity.shared.liveDetail(for: $0.session.id),
+                            clock: self.hostClock(for: $0)))
                 },
                 toSection: .live)
         }

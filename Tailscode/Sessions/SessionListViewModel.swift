@@ -15,6 +15,10 @@ final class SessionListViewModel {
     private var sourcesRevision: Int
     private(set) var entries: [SessionEntry] = []
     private(set) var unreachable: [String] = []
+    /// When each server was last heard from, by this device's clock. Cards measure their durations
+    /// against this rather than against `now`, so a machine that stopped answering stops its clocks
+    /// instead of ageing a turn nobody can see any more.
+    private(set) var observedAt: [String: Date] = [:]
 
     var onChange: (() -> Void)?
     var onError: ((String) -> Void)?
@@ -65,6 +69,7 @@ final class SessionListViewModel {
     private func apply(_ change: SessionListChange, profile: ConnectionProfile) {
         switch change {
         case .upsert(let session):
+            observedAt[profile.id] = Date()
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,
@@ -75,6 +80,7 @@ final class SessionListViewModel {
             SessionListCache.scheduleSave(entries)
             onChange?()
         case .remove(let id):
+            observedAt[profile.id] = Date()
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
             onChange?()
         case .invalidated:
@@ -206,6 +212,7 @@ final class SessionListViewModel {
                 switch result {
                 case .success(let list):
                     failureStreaks[source.profile.id] = 0
+                    observedAt[source.profile.id] = Date()
                     healthilySlow.remove(source.profile.id)
                     fresh[source.profile.id] = list.map {
                         SessionEntry(

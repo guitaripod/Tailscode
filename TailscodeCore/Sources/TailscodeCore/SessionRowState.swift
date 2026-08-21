@@ -142,9 +142,13 @@ public struct SessionRowModel: Equatable, Sendable {
     ///   listing in both directions: a turn running here is live before the server's sweep agrees,
     ///   and a server that missed a listing cannot make a conversation this device is streaming
     ///   look offline.
+    /// - Parameter observedAt: when this row's server was last heard from. An age is a claim about
+    ///   a machine this device is not on, so once that machine stops answering the claim stops
+    ///   growing: the column freezes at the last reading rather than ageing a turn nobody can see.
+    ///   Nil leaves the row on this device's clock, which is right for a server that is answering.
     public init(
         entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool = false,
-        presence: SessionPresence = .unobserved
+        presence: SessionPresence = .unobserved, observedAt: Date? = nil
     ) {
         self.entry = entry
         self.unread = unread
@@ -156,7 +160,9 @@ public struct SessionRowModel: Equatable, Sendable {
         self.project = entry.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent }
         self.serverName = entry.profileName
         self.backendName = ServerLabel.agent(entry.backendType)
-        self.age = Self.age(of: entry.session.updatedAt)
+        self.age = Self.age(
+            of: entry.session.updatedAt,
+            asOf: unreachable ? (observedAt ?? Date()) : Date())
         self.detail = [
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
@@ -202,8 +208,14 @@ public struct SessionRowModel: Equatable, Sendable {
     }
 
     /// Compact and monospace-friendly, so a column of them lines up: seconds, minutes, hours, days.
-    public static func age(of date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+    public static func age(of date: Date) -> String { age(of: date, asOf: Date()) }
+
+    /// `reference` is the instant the age is measured against — this device's now while the row's
+    /// server is answering, and the moment it was last heard from once it is not. Skew clamps at
+    /// zero: a session stamped into this device's future is two clocks disagreeing, not a negative
+    /// age.
+    public static func age(of date: Date, asOf reference: Date) -> String {
+        let seconds = max(0, Int(reference.timeIntervalSince(date)))
         switch seconds {
         case ..<60: return "\(seconds)s"
         case ..<3600: return "\(seconds / 60)m"

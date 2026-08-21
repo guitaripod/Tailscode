@@ -614,7 +614,9 @@ final class SidebarViewController: NSViewController {
                 saved: saved.contains($0.session.id),
                 pinned: SessionPinStore.contains(
                     profileID: $0.profileID, sessionID: $0.session.id),
-                presence: presence[ChatSelection.key($0)] ?? .unobserved)
+                presence: presence[ChatSelection.key($0)] ?? .unobserved,
+                observedAt: ServerDirectory.shared.lastHeard[
+                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)])
         }
         models += Self.orphanedSavedRows(savedChats, listed: entries)
         known = models

@@ -134,6 +134,11 @@ public actor ServerDirectory {
     /// merge over `previous`, not a wholesale replacement, so one missed fetch (or a project
     /// dropped from the server's own list between refreshes) cannot erase the sidebar's memory
     /// of chats it has shown before.
+    /// When each server was last heard from, keyed the way a row names it. A row whose server has
+    /// stopped answering measures its age against this rather than against now, so the column
+    /// freezes at the last reading instead of ageing a turn nobody can see any more.
+    public private(set) var lastHeard: [String: Date] = [:]
+
     public func entries(
         knownDirectories: [String] = [], previous: [SessionEntry] = []
     ) async -> (entries: [SessionEntry], unreachable: [String]) {
@@ -147,6 +152,7 @@ public actor ServerDirectory {
             }
             do {
                 let sessions = try await backend.listAllSessions(knownDirectories: knownDirectories)
+                lastHeard[ServerLabel.display(profile)] = Date()
                 collected += sessions.map {
                     SessionEntry(
                         profileID: profile.id, profileName: profile.name,

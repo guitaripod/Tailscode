@@ -932,7 +932,8 @@ final class SessionListViewController: UIViewController {
             saved: saved.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
             pinned: SessionPinStore.contains(
                 profileID: entry.profileID, sessionID: entry.session.id),
-            presence: presence(for: entry))
+            presence: presence(for: entry),
+            observedAt: viewModel.observedAt[entry.profileID])
     }
 
     /// The listing as the shared `groupIntoSections` groups it — PINNED, LIVE NOW, SAVED, RECENT,

@@ -41,6 +41,7 @@ extension HomeItem {
             hasher.combine(card.title)
             hasher.combine(card.detail)
             hasher.combine(card.age)
+            hasher.combine(card.isStale)
             hasher.combine(card.presence)
             hasher.combine(card.chip?.name)
             hasher.combine(card.chip?.effort)
@@ -175,9 +176,44 @@ struct SavedCard: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(chat) }
 }
 
+/// When a card's host was last heard from, and whether it is still answering.
+///
+/// Every duration a card draws is a claim about a machine this device is not on, so the claim has
+/// to carry its own confidence. A host that stopped answering freezes at its last reading rather
+/// than counting on: nobody knows whether that turn is still running or ended an hour ago, and a
+/// card reading "4h" about a turn that finished before breakfast is the specific lie this prevents.
+struct HostClock: Hashable {
+    let isLive: Bool
+    let observedAt: Date?
+
+    /// For a card whose host answered this pass, or one drawn where the question does not arise.
+    static let live = HostClock(isLive: true, observedAt: nil)
+
+    /// The instant this card's durations are measured against.
+    func reference(now: Date = Date()) -> Date { isLive ? now : (observedAt ?? now) }
+}
+
 struct LiveCard: Hashable {
+    /// A card's state has one face: the badge's motion and the word above it are the same fact,
+    /// so they are read from the presence rather than decided twice at the call site.
     enum Presence {
         case working, needsInput, syncing
+
+        var activity: ActivityKind {
+            switch self {
+            case .needsInput: .needsApproval
+            case .working: .working
+            case .syncing: .connecting
+            }
+        }
+
+        var word: String {
+            switch self {
+            case .needsInput: String(localized: "NEEDS YOU")
+            case .working: String(localized: "LIVE")
+            case .syncing: String(localized: "SYNCING")
+            }
+        }
     }
 
     let entry: SessionEntry
@@ -187,20 +223,25 @@ struct LiveCard: Hashable {
     let age: String
     let presence: Presence
     let chip: ModelChip?
+    let clock: HostClock
+
+    /// The age shown is a last reading, not a stopwatch — the host is not answering.
+    var isStale: Bool { !clock.isLive }
 
     /// `activity` is what the agent is doing this second, known only for turns
     /// this device is streaming; it wears the accent and displaces the static
     /// model/server line because "Running Edit" is the more useful thing to see
     /// on a live card. An idle line leads with the project a step up from the
     /// server, the same read the chat list gives.
-    init(entry: SessionEntry, presence: Presence, activity: String?) {
+    init(entry: SessionEntry, presence: Presence, activity: String?, clock: HostClock = .live) {
         self.entry = entry
         self.presence = presence
+        self.clock = clock
         let trimmed = entry.session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title =
             AgentSession.isPlaceholderTitle(trimmed)
             ? String(localized: "New conversation") : trimmed
-        self.age = compactAge(entry.session.updatedAt)
+        self.age = compactAge(entry.session.updatedAt, asOf: clock.reference())
         let project = entry.session.directory.map { ($0 as NSString).lastPathComponent }
         var pieces: [(text: String, color: UIColor)] = []
         if let project { pieces.append((project, Theme.Color.secondaryLabel)) }
@@ -236,8 +277,11 @@ struct LiveCard: Hashable {
 
 /// A live card's heartbeat: how long ago the session last moved, short enough
 /// to sit beside the state pill.
-private func compactAge(_ date: Date) -> String {
-    let seconds = max(0, Int(Date().timeIntervalSince(date)))
+/// `reference` is the instant to measure against, which is `now` only while the card's host is
+/// answering. Skew clamps at zero: a session stamped a second into this device's future is a clock
+/// disagreement, not a negative age.
+private func compactAge(_ date: Date, asOf reference: Date) -> String {
+    let seconds = max(0, Int(reference.timeIntervalSince(date)))
     if seconds < 60 { return "\(seconds)s" }
     if seconds < 3600 { return "\(seconds / 60)m" }
     if seconds < 86400 { return "\(seconds / 3600)h" }
@@ -425,18 +469,10 @@ final class LiveSessionCell: GlassCardCell {
             chip: card.chip, pieces: card.pieces,
             size: Theme.Ramp.font(.panelFootnote).pointSize)
         ageLabel.text = card.age
-        let activity: ActivityKind =
-            switch card.presence {
-            case .needsInput: .needsApproval
-            case .working: .working
-            case .syncing: .connecting
-            }
+        ageLabel.textColor = card.isStale ? Theme.Color.tertiaryLabel.withAlphaComponent(0.6) : Theme.Color.tertiaryLabel
+        let activity: ActivityKind = card.isStale ? .offline : card.presence.activity
         let state: String =
-            switch card.presence {
-            case .needsInput: String(localized: "NEEDS YOU")
-            case .working: String(localized: "LIVE")
-            case .syncing: String(localized: "SYNCING")
-            }
+            card.isStale ? String(localized: "NO SIGNAL") : card.presence.word
         dot.activity = activity
         applyPresence(
             color: activity.icon.tone.color, state: state,

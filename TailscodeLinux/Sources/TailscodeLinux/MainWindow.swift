@@ -81,6 +81,9 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarReveal: String?
     private var visible: [ChatListItem] = []
     private var unreachable: [String] = []
+    /// When each server was last heard from, keyed as `unreachable` is. A frozen row's age is read
+    /// from here, so a machine that stopped answering stops its clocks instead of ageing a turn.
+    private var lastHeard: [String: Date] = [:]
     private var watchSummary: WatchSummary?
     private var watchCheckedAt: Date?
     private var watchCheck: Task<Void, Never>?
@@ -1094,6 +1097,7 @@ final class MainWindow: @unchecked Sendable {
         known.formUnion(SessionListCache.load().compactMap(\.session.directory))
         let (entries, unreachable) = await ServerDirectory.shared.entries(
             knownDirectories: Array(known), previous: self.entries)
+        let heard = await ServerDirectory.shared.lastHeard
         if !entries.isEmpty { SessionListCache.save(entries) }
         UpdateWatch.keep(profiles)
         Gtk.onMain { [weak self] in
@@ -1101,7 +1105,7 @@ final class MainWindow: @unchecked Sendable {
             self?.ensureListStreams(profiles)
             self?.warmCatalogs(profiles)
             self?.rememberDividers()
-            self?.applyEntries(entries, unreachable: unreachable)
+            self?.applyEntries(entries, unreachable: unreachable, lastHeard: heard)
             SettingsFile.capture()
         }
     }
@@ -1109,10 +1113,12 @@ final class MainWindow: @unchecked Sendable {
     /// Opens the conversation that was open last, not merely the newest one — and resolves every
     /// restored pane's remembered session as soon as the listing carries it.
     private func applyEntries(
-        _ entries: [SessionEntry], unreachable: [String], fromNetwork: Bool = true
+        _ entries: [SessionEntry], unreachable: [String], lastHeard: [String: Date] = [:],
+        fromNetwork: Bool = true
     ) {
         self.entries = entries
         self.unreachable = unreachable
+        if !lastHeard.isEmpty { self.lastHeard = lastHeard }
         if fromNetwork { listedFromNetwork = true }
         if let fresh = freshlyCreated {
             if entries.contains(where: { $0.session.id == fresh.session.id }) {
@@ -1190,7 +1196,9 @@ final class MainWindow: @unchecked Sendable {
                 pinned: SessionPinStore.contains(
                     profileID: $0.profileID, sessionID: $0.session.id),
                 presence: presence[SessionPinStore.key($0.profileID, $0.session.id)]
-                    ?? .unobserved)
+                    ?? .unobserved,
+                observedAt: lastHeard[
+                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)])
         }
         rows += Self.orphanedSavedRows(savedChats, listed: entries)
         orbTarget =
