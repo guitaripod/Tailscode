@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.install()
         self.menu = menu
         MacGameCenter.shared.start()
+        MacProStore.shared.start()
         MacSummon.shared.start { [weak controller] in controller?.summonQuickAsk() }
         MacNotifier.shared.activate()
         MacNotifier.shared.onOpen = { [weak controller] sessionID in

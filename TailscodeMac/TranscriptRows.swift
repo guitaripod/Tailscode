@@ -1268,7 +1268,7 @@ enum RowKit {
 
     /// A target-action shim so a row built in a static function can hand a closure to AppKit.
     final class ActionButton: NSButton {
-        private let handler: () -> Void
+        private var handler: () -> Void
 
         init(title: String, action: @escaping () -> Void) {
             handler = action
@@ -1281,6 +1281,12 @@ enum RowKit {
 
         @available(*, unavailable)
         required init?(coder: NSCoder) { fatalError() }
+
+        /// What the button does, changed after it was made — a purchase button learns its product
+        /// only once the App Store answers, and the window is built before that.
+        func setAction(_ action: @escaping () -> Void) {
+            handler = action
+        }
 
         @objc private func fire() {
             handler()

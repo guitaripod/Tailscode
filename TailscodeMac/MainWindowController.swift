@@ -51,6 +51,7 @@ final class MainWindowController: NSWindowController {
     private var preferencesWindow: PreferencesWindow?
     private var analyticsWindow: AnalyticsWindowController?
     private var updateWindow: UpdateWindowController?
+    private var proWindow: ProWindowController?
     /// The settings toolbar item's button, which carries the standing mark. Weak because the
     /// toolbar owns its item's view, and this is only the handle that repaints the dot.
     private weak var updateMark: UpdateMarkButton?
@@ -545,6 +546,7 @@ final class MainWindowController: NSWindowController {
                 MacUpdateWatch.shared.noteProfilesChanged()
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
+            serversWindow?.onNeedsPro = { [weak self] in self?.presentPro() }
         }
         serversWindow?.present()
     }
@@ -557,6 +559,12 @@ final class MainWindowController: NSWindowController {
             updateWindow = UpdateWindowController()
         }
         updateWindow?.present()
+    }
+
+    /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.
+    func presentPro() {
+        if proWindow == nil { proWindow = ProWindowController() }
+        proWindow?.present()
     }
 
     func presentPreferences() {

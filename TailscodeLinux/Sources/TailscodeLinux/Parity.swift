@@ -125,6 +125,9 @@ enum ParityManifest {
         case .summonAnywhere: return .implemented("Summon")
         case .designBoards: return .implemented("DesignBoardWindow")
         case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes a GTK widget and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")
+        case .proUnlock:
+            return .notApplicable(
+                "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")
         }
     }

@@ -78,8 +78,23 @@ final class ServerDirectory {
         reload()
     }
 
+    /// The one gate in the app, and it is a price rather than a refusal: the free copy holds one
+    /// server, and the machine after that is what Pro is for. A profile already saved is always
+    /// editable — the limit is on adding, never on keeping what somebody already has.
+    struct ProRequired: LocalizedError {
+        var errorDescription: String? { ProOffer.requirement }
+    }
+
     func save(_ profile: ConnectionProfile, password: String?) throws {
         guard let store else { throw AgentError.unsupported("no profile store") }
+        let existing = (try? store.profiles()) ?? []
+        let isNew = !existing.contains { $0.id == profile.id }
+        let real = existing.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+        if isNew, MacProStore.shared.sellsPro,
+            !ProOffer.allowsAnotherServer(existing: real.count, isPro: MacProStore.shared.isPro)
+        {
+            throw ProRequired()
+        }
         try store.save(profile, password: password)
         if isDemoMode { leaveDemoMode() } else { reload() }
     }

@@ -33,6 +33,9 @@ final class MainMenu: NSObject {
             withTitle: Localized.text("About Tailscode"),
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         menu.addItem(item(Localized.text("Software…"), #selector(software), ""))
+        if MacProStore.shared.sellsPro {
+            menu.addItem(item(ProOffer.title + "…", #selector(pro), ""))
+        }
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Settings…"), #selector(settings), ","))
         menu.addItem(.separator())
@@ -218,6 +221,7 @@ final class MainMenu: NSObject {
     }
 
     @objc private func settings() { hub.presentPreferences() }
+    @objc private func pro() { hub.presentPro() }
     @objc private func software() { hub.presentUpdates() }
     @objc private func newChat() { hub.perform(.newChat) }
     @objc private func find() { hub.perform(.findInConversation) }

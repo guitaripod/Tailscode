@@ -151,6 +151,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case designBoards
     case linkEmbeds
     case reviewPrompt
+    case proUnlock
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -663,6 +664,10 @@ public enum CapabilityRegistry {
             id: .reviewPrompt, area: "settings", title: "An App Store review is asked for, never nagged",
             spec:
                 "The only moment the app asks for a review is the moment value just landed, and the policy that decides whether to ask is Core's, not a client's: ReviewPromptPolicy counts successful turns, anchors an install date on first use, and answers due only past both gates — enough completed turns and enough days since install — with one ask per cooldown window so a review is never nagged for. What counts as a successful turn is the ordinary reading: the turn finished, produced content, and failed at nothing. A trophy earned waives the turn count, because that moment is the deepest signal the person already has, but never the age gate. The ask itself is the platform's own store-review call (SKStoreReviewController) — nothing renders a custom prompt, so a dismissal the system never reports back is not something the policy pretends to know; the system's own annual cap is the last word on how often anyone is asked. A platform without a store to review answers notApplicable, and the policy is never told to ask there. The ask is debounced behind the turn's end so it lands on the person reading the answer, not on the frame the answer arrived."),
+        CapabilityDefinition(
+            id: .proUnlock, area: "settings", title: "The unlock, and the one gate it answers",
+            spec:
+                "Tailscode is GPL-3.0 and every screen is in the free app, so the purchase is a convenience and a way to fund the work rather than a wall: ProOffer in Core holds the whole policy and every word of it — the product identifiers, what the free copy holds (one server, ProOffer.freeServerLimit), what Pro adds, the sentence said at the gate, and the tip jar that unlocks nothing at all. The store record is shared across the Apple clients and so are the product ids, so one purchase covers iPhone and Mac on the same Apple Account and each client only has to ask StoreKit what it already knows. The gate is on ADDING a server past the free limit, never on keeping one already configured, and it never refuses without opening the window that answers it. Nothing asks on launch, nothing asks on a timer, and no surface is hidden behind the unlock. A client with no store to buy from, or a build with no receipt to verify, is simply unlocked rather than pretending to sell something it cannot deliver."),
     ]
 
     public static func definition(for id: AppCapability) -> CapabilityDefinition {

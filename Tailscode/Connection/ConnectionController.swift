@@ -34,9 +34,7 @@ final class ConnectionController {
     }
 
     struct ProRequired: LocalizedError {
-        var errorDescription: String? {
-            String(localized: "Connecting more than one server requires Tailscode Pro.")
-        }
+        var errorDescription: String? { ProOffer.requirement }
     }
 
     init() {
@@ -163,7 +161,9 @@ final class ConnectionController {
         }
         let isNew = !existing.contains { $0.id == profile.id }
         let isDebugSeed = profile.id.hasPrefix("debug")
-        if isNew, !existing.isEmpty, !isDebugSeed, !ProStore.shared.isPro {
+        if isNew, !isDebugSeed,
+            !ProOffer.allowsAnotherServer(existing: existing.count, isPro: ProStore.shared.isPro)
+        {
             throw ProRequired()
         }
         try store.save(profile, password: password)

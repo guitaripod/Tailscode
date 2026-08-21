@@ -222,6 +222,13 @@ enum ParityManifest {
                     "The whole of the debt on a self-built copy is that nothing here can replace the app. A copy the App Store installed is a copy the App Store replaces, so that job is not this window's to owe: the servers are handled identically, and the app's own row states what this copy is rather than a version it has no store record to check.")
         case .designBoards: return .implemented("DesignBoardWindowController")
         case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes an AppKit cell and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")
+        case .proUnlock:
+            return .varies(
+                direct: .notApplicable(
+                    "a build somebody installed themselves has no receipt and never will, so this copy sells nothing and gates nothing"),
+                appStore: .implemented("MacProStore"),
+                because:
+                    "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
         case .reviewPrompt: return .gap("the policy is Core's and already shared, and macOS has the same SKStoreReviewController to ask with — what this client owes is a MacReviewPrompt coordinator wired to its own turn-completion and MacGameCenter trophy paths, the two signals iOS now hooks")
         }
     }

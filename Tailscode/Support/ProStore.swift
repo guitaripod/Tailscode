@@ -1,5 +1,6 @@
 import Foundation
 import StoreKit
+import TailscodeCore
 
 /// StoreKit 2 entitlements for the one-time Pro unlock and the tip jar.
 /// The app is open source — Pro is a convenience-and-support purchase, so
@@ -8,12 +9,8 @@ import StoreKit
 final class ProStore {
     static let shared = ProStore()
 
-    static let proID = "com.guitaripod.tailscode.pro"
-    static let tipIDs = [
-        "com.guitaripod.tailscode.tip.small",
-        "com.guitaripod.tailscode.tip.medium",
-        "com.guitaripod.tailscode.tip.large",
-    ]
+    static var proID: String { ProOffer.productID }
+    static var tipIDs: [String] { ProOffer.tipIDs }
 
     static let didChange = Notification.Name("ProStore.didChange")
 

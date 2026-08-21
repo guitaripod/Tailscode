@@ -43,6 +43,8 @@ final class ServersWindow: NSWindowController {
     static let installCommand = BridgeInstall.installCommand
 
     private let onChanged: @MainActor () -> Void
+    /// What to open when somebody reaches past the free copy's one server.
+    var onNeedsPro: (@MainActor () -> Void)?
     private let listColumn = FillingStack()
     private let listHeader = MacDialogs.sectionHeader(Localized.text("CONFIGURED"))
     private let tailnetHeader = MacDialogs.sectionHeader(Localized.text("THIS MAC"))
@@ -423,6 +425,9 @@ final class ServersWindow: NSWindowController {
                     self.addressField.stringValue = ""
                     self.nameField.stringValue = ""
                     self.passwordField.stringValue = ""
+                } catch is ServerDirectory.ProRequired {
+                    self.setStatus(ProOffer.requirement)
+                    self.offerPro()
                 } catch {
                     self.setStatus(
                         Localized.text(
@@ -654,6 +659,12 @@ final class ServersWindow: NSWindowController {
             return Localized.text(
                 "“%@” does not resolve — is MagicDNS on, or use the 100.x address.", host)
         }
+    }
+
+    /// The gate does not just refuse — it opens the one window that answers it. A price stated
+    /// with no way to pay it is a dead end, and this is the only place in the app that asks.
+    private func offerPro() {
+        onNeedsPro?()
     }
 
     private func setStatus(_ text: String) {
