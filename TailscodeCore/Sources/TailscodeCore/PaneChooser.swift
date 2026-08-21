@@ -286,6 +286,11 @@ public struct PaneChooser: Sendable, Equatable {
     public func restated(servers: [PaneChooserServer], entries: [SessionEntry]) -> PaneChooser {
         var next = PaneChooser(servers: servers, entries: entries, preferredServer: serverID)
         next.watchSummary = watchSummary
+        // What a client can open is a fact about the client, not about the listing that just
+        // landed. Rebuilding from a fresh listing and taking the defaults put back rows the build
+        // has no slot for — a second after the question was asked, and only sometimes.
+        next.offersWatching = offersWatching
+        next.offersBrowsing = offersBrowsing
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }

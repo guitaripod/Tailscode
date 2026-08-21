@@ -65,8 +65,14 @@ SPLIT_SEED = {
     "videos": {}, "pages": {},
 }
 
+# The appearance a marketing set is shot in, written for every shot rather than inherited. Without
+# it the app follows the Mac's own light/dark setting and the six pictures come out however the
+# machine happened to be that afternoon — which is how a set ends up half light and half dark.
+BASE_SEED = {"tailscode.appearance": "dark"}
+
 # A drive step is ("click", (x, y)) in window points, ("scroll", (x, y, lines)),
-# ("key", "<System Events phrase>") or ("wait", seconds).
+# ("key", "<System Events phrase>"), ("wait", seconds), or ("panel", (title-prefix, w, h)) to
+# resize a floating window — a panel larger than the 1440x900 bed is composited clipped.
 SHOTS = [
     {
         "name": "01-conversation",
@@ -88,14 +94,17 @@ SHOTS = [
     },
     {
         "name": "02-split",
-        "env": {},
+        "env": {"TAILSCODE_OPEN_SESSION": "demo-c2"},
         "args": ["--demo"],
-        "settle": 5,
-        "seed": {
-            "tailscode.layout.tree": json.dumps(SPLIT_SEED),
-            "tailscode.lastSession": "demo-c2",
-        },
-        "drive": [],
+        "settle": 16,
+        "drive": [
+            ("key", 'click menu item "Split Right" of menu "View" of menu bar item "View" of menu bar 1'),
+            ("wait", 3),
+            ("click", (1195, 445)),
+            ("wait", 3),
+            ("click", (1190, 383)),
+            ("wait", 6),
+        ],
     },
     {
         "name": "03-git",
@@ -109,7 +118,7 @@ SHOTS = [
         "env": {},
         "args": ["--demo", "--open", "analytics"],
         "settle": 26,
-        "drive": [],
+        "drive": [("panel", ("The month in numbers", 760, 760))],
     },
     {
         "name": "05-spend",
@@ -299,31 +308,42 @@ def main_window():
 
 
 def frame_main():
-    """1440x900pt on the main display, retried because the split layout, the file tree and the
-    panels all re-lay the window out well after it first appears. The window is picked by area
-    rather than by title, because a panel's accessibility title and its window title differ."""
-    script = f'''
-        tell application "System Events" to tell process "Tailscode"
-            set best to 0
-            set widest to -1
-            repeat with index from 1 to (count of windows)
-                set {{w, h}} to size of window index
-                if w * h > widest then
-                    set widest to w * h
-                    set best to index
-                end if
-            end repeat
-            if best > 0 then
-                set position of window best to {{0, 38}}
-                set size of window best to {{{WIDTH}, {HEIGHT}}}
-            end if
-        end tell'''
+    """1440x900pt on the main display, retried because the split layout and the panels all re-lay
+    the window out well after it first appears.
+
+    The hub is picked by window id — the app's first window, and window numbers only climb — and
+    then named to System Events, because area is not identity: a panel that opens larger than a
+    half-empty hub used to be the one that got resized, and the shot came out framing the wrong
+    window entirely.
+    """
     for _ in range(10):
+        hub = main_window()
+        if not hub:
+            time.sleep(1.2)
+            continue
+        if (hub["w"], hub["h"]) == (WIDTH, HEIGHT) and hub["x"] == 0 and abs(hub["y"] - 38) <= 2:
+            return hub
+        target = hub["name"].replace("\\", "\\\\").replace('"', '\\"')
+        if target:
+            script = f'''
+                tell application "System Events" to tell process "Tailscode"
+                    repeat with w in windows
+                        if name of w starts with "{target}" then
+                            set position of w to {{0, 38}}
+                            set size of w to {{{WIDTH}, {HEIGHT}}}
+                        end if
+                    end repeat
+                end tell'''
+        else:
+            script = f'''
+                tell application "System Events" to tell process "Tailscode"
+                    if (count of windows) > 0 then
+                        set position of window 1 to {{0, 38}}
+                        set size of window 1 to {{{WIDTH}, {HEIGHT}}}
+                    end if
+                end tell'''
         osa(script)
         time.sleep(1.2)
-        hub = main_window()
-        if hub and (hub["w"], hub["h"]) == (WIDTH, HEIGHT) and hub["x"] == 0 and abs(hub["y"] - 38) <= 2:
-            return hub
     sys.exit("could not frame the window at 1440x900")
 
 
@@ -361,7 +381,7 @@ def verify(path):
 def shoot(app, shot):
     kill_app()
     wipe_state()
-    seed(shot.get("seed", {}))
+    seed(dict(BASE_SEED, **shot.get("seed", {})))
     environment = dict(os.environ, **shot["env"])
     subprocess.Popen([os.path.join(app, "Contents/MacOS/Tailscode")] + shot["args"],
                      env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -381,6 +401,17 @@ def shoot(app, shot):
         elif kind == "scroll":
             scroll(*value)
             time.sleep(0.8)
+        elif kind == "panel":
+            title, width, height = value
+            osa(f'''
+                tell application "System Events" to tell process "Tailscode"
+                    repeat with w in windows
+                        if name of w starts with "{title}" then
+                            set size of w to {{{width}, {height}}}
+                        end if
+                    end repeat
+                end tell''')
+            time.sleep(1.0)
         else:
             osa(f'tell application "System Events" to tell process "Tailscode" to {value}')
             LAST_SYNTHETIC[0] = time.time()

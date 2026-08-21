@@ -242,3 +242,39 @@ struct VideoSlotTests {
         #expect(chooser.activate(.browse) == .browse)
     }
 }
+
+@Suite("Pane chooser capabilities")
+struct PaneChooserCapabilityTests {
+    private var servers: [PaneChooserServer] {
+        [
+            PaneChooserServer(
+                profileID: "a", name: "studio", backend: .claudeCode, address: "studio:4098"),
+            PaneChooserServer(
+                profileID: "b", name: "homelab", backend: .openCode, address: "homelab:4096"),
+        ]
+    }
+
+    @Test("A client that cannot open a slot is never offered one, at either step")
+    func hidesRowsItCannotOpen() {
+        var chooser = PaneChooser(servers: servers, entries: [])
+        chooser.offersWatching = false
+        chooser.offersBrowsing = false
+        #expect(!chooser.rows.contains { $0.action == .watch })
+        #expect(!chooser.rows.contains { $0.action == .browse })
+        _ = chooser.activate(.chooseServer("a"))
+        #expect(!chooser.rows.contains { $0.action == .watch })
+        #expect(!chooser.rows.contains { $0.action == .browse })
+    }
+
+    @Test("A fresh listing does not put back a row the client has no slot for")
+    func restateKeepsCapabilities() {
+        var chooser = PaneChooser(servers: servers, entries: [])
+        chooser.offersWatching = false
+        chooser.offersBrowsing = false
+        let next = chooser.restated(servers: servers, entries: [])
+        #expect(!next.offersWatching)
+        #expect(!next.offersBrowsing)
+        #expect(!next.rows.contains { $0.action == .watch })
+        #expect(!next.rows.contains { $0.action == .browse })
+    }
+}
