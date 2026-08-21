@@ -435,6 +435,12 @@ public struct ShortcutSet: Sendable {
     /// is editable in the Files app. Set once at launch, before anything loads.
     nonisolated(unsafe) public static var configDirectoryOverride: URL?
 
+    /// Shortcut ids this build did not compile the feature for. A key is a promise that something
+    /// happens when it is pressed, and a sheet that lists one for a pane the binary does not
+    /// contain is documenting a feature nobody can reach — so the ids are dropped from the
+    /// bindings and from the sheet alike. Set once at launch, before anything loads.
+    nonisolated(unsafe) public static var unavailable: Set<String> = []
+
     public static var configURL: URL {
         if let configDirectoryOverride {
             return configDirectoryOverride.appendingPathComponent("keybindings.json")
@@ -488,7 +494,7 @@ public struct ShortcutSet: Sendable {
         var effective: [String: [String]] = [:]
         var issues: [String] = []
 
-        for definition in ShortcutRegistry.all {
+        for definition in ShortcutRegistry.all where !Self.unavailable.contains(definition.id) {
             let specs = overrides[definition.id] ?? definition.defaults
             var bound: [String] = []
             for spec in specs {
@@ -565,7 +571,8 @@ public struct ShortcutSet: Sendable {
         var sections: [(title: String, rows: [(keys: String, what: String)])] = []
         for category in ShortcutCategory.allCases {
             var rows: [(keys: String, what: String)] = []
-            for definition in ShortcutRegistry.all where definition.category == category {
+            for definition in ShortcutRegistry.all
+            where definition.category == category && !Self.unavailable.contains(definition.id) {
                 let keys = effective[definition.id] ?? []
                 guard !keys.isEmpty else { continue }
                 rows.append((keys: keys.joined(separator: " / "), what: definition.title))

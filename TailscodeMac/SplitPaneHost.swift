@@ -223,10 +223,12 @@ final class SplitPaneHost: NSViewController {
             let pane = makePane()
             panes[id] = pane
             installDropTarget(on: pane)
-            if let target = snapshot.page(for: id) {
-                pane.showWeb(target)
-                continue
-            }
+            #if !TAILSCODE_MAS
+                if let target = snapshot.page(for: id) {
+                    pane.showWeb(target)
+                    continue
+                }
+            #endif
             #if !TAILSCODE_MAS
                 if let target = snapshot.video(for: id) {
                     pane.showVideo(target)

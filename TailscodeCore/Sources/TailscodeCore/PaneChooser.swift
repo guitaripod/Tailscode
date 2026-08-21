@@ -108,6 +108,9 @@ public struct PaneChooser: Sendable, Equatable {
     /// would do, so a build without a player must not draw the row at all — a row that is pressed
     /// and answers with nothing is worse than one that was never offered.
     public var offersWatching = true
+    /// Whether this client can actually open a page in a pane. Same rule as ``offersWatching``:
+    /// a chooser offers what pressing it would do, and the sandboxed build ships no browser.
+    public var offersBrowsing = true
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -178,7 +181,7 @@ public struct PaneChooser: Sendable, Equatable {
                     detail: Localized.text("%@ configured", "\(servers.count)")))
         }
         if offersWatching { rows.append(watchRow) }
-        rows.append(Self.browseRow)
+        if offersBrowsing { rows.append(Self.browseRow) }
         return rows
     }
 
@@ -221,7 +224,7 @@ public struct PaneChooser: Sendable, Equatable {
                 action: .chooseServer(server.profileID), title: server.title,
                 detail: [server.address, Localized.text("%@ chats", "\(count)")].joined(
                     separator: " · "), badge: badge)
-        } + (offersWatching ? [watchRow] : []) + [Self.browseRow]
+        } + (offersWatching ? [watchRow] : []) + (offersBrowsing ? [Self.browseRow] : [])
     }
 
     private func chats(on profileID: String) -> [SessionEntry] {

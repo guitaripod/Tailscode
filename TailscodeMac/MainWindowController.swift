@@ -589,6 +589,7 @@ final class MainWindowController: NSWindowController {
         chooser.watchSummary = watchSummary
         #if TAILSCODE_MAS
             chooser.offersWatching = false
+            chooser.offersBrowsing = false
         #endif
         pane.showChooser(chooser)
         refreshWatchFeed()
@@ -649,10 +650,15 @@ final class MainWindowController: NSWindowController {
     private func pane(_ pane: TranscriptViewController, chose action: PaneChooserAction) {
         switch action {
         case .openChat(_, let sessionID):
-            guard let entry = sidebar.allEntries.first(where: { $0.session.id == sessionID })
+            guard let entry = sidebar.allEntries.first(where: { $0.session.id == sessionID }),
+                let profile = ServerDirectory.shared.profiles.first(where: {
+                    $0.id == entry.profileID
+                }),
+                let backend = ServerDirectory.shared.backend(for: profile)
             else { return }
+            SessionSeenStore.markSeen(entry.session.id)
             splitPanes.focus(pane, grabKeyboard: false)
-            sidebar.open(entry)
+            handleOpen(entry, backend: backend)
         case .newChat(let profileID):
             guard let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
             else { return }
@@ -667,9 +673,11 @@ final class MainWindowController: NSWindowController {
                 splitPanes.persist()
             #endif
         case .browse:
-            splitPanes.focus(pane, grabKeyboard: false)
-            pane.showWeb(nil)
-            splitPanes.persist()
+            #if !TAILSCODE_MAS
+                splitPanes.focus(pane, grabKeyboard: false)
+                pane.showWeb(nil)
+                splitPanes.persist()
+            #endif
         case .chooseServer, .allChats, .back:
             break
         }

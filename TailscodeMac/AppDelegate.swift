@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         #if TAILSCODE_MAS
             Self.keepShortcutsWhereTheContainerCanReachThem()
+            Self.forgetTheKeysForPanesThisCopyLacks()
         #endif
         SessionSeenStore.bootstrapIfNeeded()
         DraftStore.warm()
@@ -48,6 +49,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ShortcutSet.configDirectoryOverride = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
             ).first
+        }
+
+        /// The keys for panes this build does not contain. The registry is Core's and a package
+        /// never sees this target's compilation conditions, so the sheet would otherwise document
+        /// a terminal and a browser the App Store copy cannot open — and bind two chords to
+        /// nothing at all.
+        private static func forgetTheKeysForPanesThisCopyLacks() {
+            ShortcutSet.unavailable = ["focus.terminal", "pane.terminal"]
         }
     #endif
 

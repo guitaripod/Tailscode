@@ -159,14 +159,14 @@ enum ParityManifest {
                     "the sheet is not compiled and the settings section that states each site as a fact is absent, so there is nowhere in this copy to sign in, to sign out, or to read that an account is held"),
                 because:
                     "Nothing in the device flow needs a subprocess — it is a request, a short code confirmed in the person's own browser, and the Keychain — so signing in left with the board it feeds rather than with anything the sandbox forbids.")
-        case .browserSlot: return .implemented("WebSlotView")
-        case .newPaneChooser:
+        case .browserSlot:
             return .varies(
-                direct: .implemented("showChooser"),
-                appStore: .partial(
-                    "showChooser", missing: "the servers, their recent chats, the keys and the browser row are all whole, but Core draws the Watch something… row in every chooser and this copy has no video slot for it to open — so that one row is pressed and nothing happens, and it owes a hide rather than a silence"),
+                direct: .implemented("WebSlotView"),
+                appStore: .notApplicable(
+                    "no chooser row offers a page, no layout restores one, and there is no other way in, so this copy holds no browser at all"),
                 because:
-                    "The chooser lists what a pane could become, and one of those things does not exist in a sandboxed copy.")
+                    "WebTarget takes any address, a bare host, or words to look up, which is the whole of what the age rating means by unrestricted web access — and the person who asked for this build says he has never opened a page in a pane on either desktop. A feature nobody uses is not worth re-rating a shared record over, so the store copy simply does not have one.")
+        case .newPaneChooser: return .implemented("showChooser")
         case .chatDragToPane: return .implemented("onChatDropped")
         case .clickToActivate: return .implemented("pressLanded")
         case .uiScale: return .implemented("UIScale")
