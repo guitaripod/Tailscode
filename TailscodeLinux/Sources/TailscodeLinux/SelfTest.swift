@@ -208,6 +208,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let forgeFailures = ForgeBoardCheck.run()
+        if forgeFailures.isEmpty {
+            report("video forge: the graph, the frames, the job's walk and the board all hold")
+        } else {
+            report("video forge: \(forgeFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         let accountFailures = WatchAccountsCheck.run()
         if accountFailures.isEmpty {
             report("watch accounts: rows state a fact first, and the flow shows one code")

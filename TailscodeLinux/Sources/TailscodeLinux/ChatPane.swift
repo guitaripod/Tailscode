@@ -149,6 +149,8 @@ final class ChatPane: @unchecked Sendable {
     private(set) var video: VideoPane?
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private(set) var page: WebPane?
+    /// What this pane is making instead of talking, when it is the video forge rather than a chat.
+    private(set) var forge: ForgePane?
     private(set) var backend: (any CodingAgentBackend)?
     private var inFlightDesignBoards: Set<String> = []
     private(set) var conversation: AgentConversation?
@@ -548,6 +550,50 @@ final class ChatPane: @unchecked Sendable {
         refreshIdentity()
     }
 
+    /// Turns this pane into the video forge. Like the other two slots it is a state of a pane
+    /// rather than a second kind of object: the chat furniture goes out of sight, the board takes
+    /// the pane, and the split tree keeps counting one pane.
+    func showForge() {
+        chooser = nil
+        if forge == nil {
+            let pane = ForgePane(parent: host?.windowWidget)
+            forge = pane
+            gtk_box_append(ptr(root), pane.root)
+            setChatFurnitureVisible(false)
+            pane.onChange = { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.refreshIdentity()
+                    self.host?.videoSlotChanged()
+                }
+            }
+        }
+        forge?.focusPrompt()
+        refreshIdentity()
+    }
+
+    var isForging: Bool { forge != nil }
+    var forgeSummary: String? { forge?.summary }
+
+    /// The forge's own keys, offered in every key context. The prompt holds the keyboard while the
+    /// board is up, so a board that waited for the transcript to be the focused region would never
+    /// see an arrow, an Enter or a deliberate control chord.
+    func handleForgeChord(_ chord: KeyChord) -> Bool {
+        guard let forge else { return false }
+        return forge.handleChord(chord)
+    }
+
+    /// Types into the forge's prompt from the driver, the same path a keystroke takes.
+    func driveForgePrompt(_ text: String) {
+        forge?.describe(text)
+    }
+
+    /// Puts the forge into one of its states without a renderer to reach it, so the states between
+    /// pressing render and holding a file are provable in a build loop.
+    func driveForgeState(_ name: String) {
+        forge?.demonstrate(name)
+    }
+
     var isBrowsing: Bool { page != nil }
     var webTarget: WebTarget? {
         page.flatMap { pane in pane.currentAddress.map(WebTarget.page) ?? pane.target }
@@ -611,7 +657,9 @@ final class ChatPane: @unchecked Sendable {
         var child = gtk_widget_get_first_child(root)
         while let current = child {
             let next = gtk_widget_get_next_sibling(current)
-            if current != identityLabel, current != video?.root, current != page?.root {
+            if current != identityLabel, current != video?.root, current != page?.root,
+                current != forge?.root
+            {
                 gtk_widget_set_visible(current, visible ? 1 : 0)
             }
             child = next
@@ -628,6 +676,10 @@ final class ChatPane: @unchecked Sendable {
         }
         if let video {
             setIdentity("\(video.slot.title) · \(video.slot.subtitle)", activity: nil)
+            return
+        }
+        if let forge {
+            setIdentity("\(forge.board.heading) · \(forge.board.job.subtitle)", activity: nil)
             return
         }
         guard let entry else {
@@ -993,6 +1045,8 @@ final class ChatPane: @unchecked Sendable {
         video = nil
         page?.shutdown()
         page = nil
+        forge?.shutdown()
+        forge = nil
         stashDraft()
         streamTask?.cancel()
         agentStreamTask?.cancel()
@@ -1571,7 +1625,9 @@ final class ChatPane: @unchecked Sendable {
 
     /// A pane holding an unanswered question or a slot is not an empty pane looking for a chat:
     /// the listing may refresh under it, but nothing may fill it except the person who opened it.
-    var isAnswering: Bool { chooser != nil || video != nil || page != nil }
+    var isAnswering: Bool {
+        chooser != nil || video != nil || page != nil || forge != nil
+    }
 
     /// One line describing the chooser, for the headless driver: the question, then the rows with
     /// the cursor marked.

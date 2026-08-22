@@ -483,6 +483,43 @@ final class MainWindow: @unchecked Sendable {
                     pane.showWeb(WebTarget.classify(argument))
                     FileHandle.standardOutput.write(
                         Data("BROWSE \(pane.webSummary ?? "-")\n".utf8))
+                case "forge":
+                    let pane = self.presentForge()
+                    if !argument.isEmpty { pane.driveForgeState(argument) }
+                    FileHandle.standardOutput.write(
+                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                case "fstate":
+                    let pane = self.activePane
+                    pane.driveForgeState(argument)
+                    FileHandle.standardOutput.write(
+                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                case "ftype":
+                    let pane = self.activePane
+                    pane.driveForgePrompt(argument)
+                    FileHandle.standardOutput.write(
+                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                case "fkey":
+                    let keyval: UInt32
+                    var state: UInt32 = 0
+                    switch argument {
+                    case "up": keyval = Keymap.up
+                    case "down": keyval = Keymap.down
+                    case "enter": keyval = Keymap.enter
+                    case "tab": keyval = Keymap.tab
+                    case "esc": keyval = Keymap.escape
+                    case "render": keyval = 0x67; state = KeyChord.controlMask
+                    case "stop": keyval = 0x63; state = KeyChord.controlMask
+                    case "reroll": keyval = 0x72; state = KeyChord.controlMask
+                    default: keyval = argument.unicodeScalars.first.map { UInt32($0.value) } ?? 0
+                    }
+                    var handled = false
+                    if let chord = KeyChord.canonical(keyval: keyval, state: state) {
+                        handled = self.activePane.handleForgeChord(chord)
+                    }
+                    FileHandle.standardOutput.write(
+                        Data(
+                            "FKEY \(argument) handled=\(handled) \(self.activePane.forgeSummary ?? "-")\n"
+                                .utf8))
                 case "web":
                     let described = self.splitHost.orderedPanes.enumerated().map {
                         index, pane in "\(index):\(pane.webSummary ?? "chat")"
@@ -664,7 +701,12 @@ final class MainWindow: @unchecked Sendable {
                 let about: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in AboutWindow.present(parent: self?.window) }
                 }
+                let forge: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in _ = self?.presentForge() }
+                }
+                let board = ForgeBoard()
                 return [
+                    (Localized.text("%@…", board.heading), board.notice, forge),
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
@@ -2244,6 +2286,25 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// The forge, opened where somebody can watch it work. A render is minutes of another
+    /// machine's card, so it never takes a pane that is holding a conversation: an empty pane
+    /// becomes the forge, a pane with a chat in it splits and the forge takes the new half, and a
+    /// forge already open is raised rather than made a second time.
+    @discardableResult
+    func presentForge() -> ChatPane {
+        if let open = splitHost.orderedPanes.first(where: { $0.isForging }) {
+            splitHost.focus(open, grabKeyboard: false)
+            open.showForge()
+            return open
+        }
+        let pane = activePane
+        let target = pane.entry == nil ? pane : (splitHost.split(pane, edge: .right) ?? pane)
+        target.showForge()
+        splitHost.focus(target, grabKeyboard: false)
+        splitHost.persist()
+        return target
+    }
+
     /// A slot that started, stopped, or learned the stream's own title. The layout is written back
     /// so a restart reopens what was playing, exactly as it reopens a conversation.
     func videoSlotChanged() {
@@ -2858,6 +2919,9 @@ final class MainWindow: @unchecked Sendable {
                 return true
             }
             if self.pendingChords.isEmpty, self.activePane.handleWatchChord(chord) {
+                return true
+            }
+            if self.pendingChords.isEmpty, self.activePane.handleForgeChord(chord) {
                 return true
             }
             if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,

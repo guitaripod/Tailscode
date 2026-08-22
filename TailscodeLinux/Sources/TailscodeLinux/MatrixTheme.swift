@@ -719,6 +719,42 @@ enum MatrixTheme {
         .watch-step { color: \(accent); \(t(.statusLine)) font-weight: 700; }
         .watch-code { color: \(accent); \(t(.pairingCode)) }
         .pill-source { color: \(info); border: 1px solid alpha(\(info), 0.5); }
+        .forge-pane { background-color: \(canvas); }
+        .forge-call {
+            \(t(.control))
+            min-height: 0;
+            padding: 3px 14px;
+            border: none;
+            border-radius: 999px;
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            background-image: none;
+            box-shadow: none;
+        }
+        .forge-call:hover { background-color: \(accentDim); }
+        .forge-render-row {
+            background-color: alpha(\(accent), 0.07);
+            border: 1px solid alpha(\(accent), 0.28);
+        }
+        .forge-render-row:hover { background-color: alpha(\(accent), 0.13); }
+        .row-focused.forge-render-row { background-color: alpha(\(accent), 0.18); }
+        .forge-state { color: \(text); \(t(.cardBody)) }
+        .forge-row-spent { opacity: 0.5; }
+        .forge-bar trough {
+            min-height: 4px;
+            background-color: \(rule);
+            border: none;
+            border-radius: 2px;
+        }
+        .forge-bar progress {
+            min-height: 4px;
+            background-color: \(accent);
+            border: none;
+            border-radius: 2px;
+        }
+        .forge-reason { \(t(.note)) padding: 0 2px; }
+        .forge-working { color: \(textDim); }
+        .forge-refusal { color: \(danger); }
         .pane-focused { border: 1px solid alpha(\(accent), 0.55); }
         .pane-identity {
             color: \(textDim);
