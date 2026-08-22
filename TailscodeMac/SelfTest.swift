@@ -104,6 +104,22 @@ enum SelfTest {
             }
         #endif
 
+        let forgeFailures = ForgeBoardCheck.run()
+        if forgeFailures.isEmpty {
+            report("video forge: the graph, the frames, the job's walk and the board all hold")
+        } else {
+            report("video forge: \(forgeFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkForgeSurface()
+            report("forge surface: \(checks) claims hold across \(ForgeDemo.states.count) states")
+        } catch {
+            report("forge surface: \(error)")
+            failures += 1
+        }
+
         do {
             let checks = try checkBrowserSlot()
             report("browser slot: \(checks) answers, engine WKWebView")
@@ -1121,6 +1137,177 @@ enum SelfTest {
             return checks
         }
     #endif
+
+    /// The forge as this window draws it, state by state. A render is minutes of another machine's
+    /// card, so the states between pressing the button and holding a file cannot be reached in a
+    /// build loop — and they are exactly the ones worth checking, because each of them is a
+    /// different sentence and each of them draws a different row. Every value asserted here is
+    /// Core's: what this proves is that the pane can be put into the state and that the row it
+    /// builds carries the words, the badge, the bar and the reach the board handed it.
+    private static func checkForgeSurface() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("forge surface: \(label)") }
+            checks += 1
+        }
+        func jobRow(_ board: ForgeBoard) throws -> ForgeRow {
+            guard let row = board.rows.first(where: { $0.kind == .job }) else {
+                throw SelfTestFailure("forge surface: the render has no row")
+            }
+            return row
+        }
+        func section(_ board: ForgeBoard, _ id: String) throws -> ForgeSection {
+            guard let section = board.sections.first(where: { $0.id == id }) else {
+                throw SelfTestFailure("forge surface: no \(id) section")
+            }
+            return section
+        }
+
+        for name in ForgeDemo.states {
+            let board = ForgeDemo.board(name)
+            try expect(
+                board.sections.map(\.id).starts(
+                    with: [ForgeBoard.rendererID, ForgeBoard.renderID, ForgeBoard.settingsID]),
+                "\(name) draws the renderer, the render and the settings, in that order")
+            try expect(!board.notice.isEmpty, "\(name) still says where a render happens")
+        }
+
+        var unset = ForgeDemo.board("unset")
+        try expect(
+            unset.renderCall == Localized.text("Set up the renderer"),
+            "with no machine, the button says it would go and get one")
+        try expect(unset.begin() == .configure, "and pressing it asks for the address")
+        try expect(
+            unset.value(of: .endpoint) == Localized.text("Not set up yet"),
+            "while the row says there is none")
+
+        let checking = ForgeDemo.board("checking")
+        try expect(checking.isChecking, "a machine being asked is a state of its own")
+        try expect(try section(checking, ForgeBoard.rendererID).phase == .checking, "and its section says so")
+        try expect(try section(checking, ForgeBoard.rendererID).rows.first?.badge == nil,
+            "a machine mid-question wears no word yet")
+
+        let down = ForgeDemo.board("down")
+        try expect(
+            try section(down, ForgeBoard.rendererID).rows.first?.detail
+                == ForgeEndpoint.sentence(for: .timedOut, host: ForgeDemo.host),
+            "a machine that did not answer says so in Core's own sentence")
+        try expect(
+            try section(down, ForgeBoard.rendererID).rows.first?.badge == Localized.text("down"),
+            "and wears the word for it")
+
+        var ready = ForgeDemo.board("ready")
+        try expect(try jobRow(ready).detail == Localized.text("Ready to render"), "a described draft is ready")
+        try expect(ready.renderCall == Localized.text("Render"), "and the button says what it would do")
+        try expect(ready.canRender, "and it can")
+        try expect(ready.begin() == .render(ready.recipe), "on exactly what is on the board")
+
+        let waking = ForgeDemo.board("waking")
+        try expect(try jobRow(waking).badge == Localized.text("waking"), "the twelve-second wake has a word")
+        try expect(try jobRow(waking).fraction == nil, "and no bar, because there is nothing honest to fill")
+
+        let queued = ForgeDemo.board("queued")
+        try expect(try jobRow(queued).badge == Localized.text("queued"), "a queued render says so")
+        try expect(
+            try jobRow(queued).detail == Localized.text("%@ ahead in the queue", "2"),
+            "and how many are ahead of it")
+        try expect(try jobRow(queued).fraction == nil, "still with no bar")
+
+        var running = ForgeDemo.board("running")
+        try expect(try jobRow(running).fraction == 0.5, "a running render carries the node census as its bar")
+        try expect(try jobRow(running).badge == Localized.text("50%"), "and the same number in the corner")
+        try expect(
+            try jobRow(running).note?.contains(Localized.text("step %@ of %@", "3", "4")) == true,
+            "the sampler's own step is said in words, never as the bar")
+        try expect(running.renderCall == Localized.text("Stop"), "and the button stops it")
+        try expect(running.begin() == .cancel, "which is what pressing it does")
+        try expect(
+            running.rows.first(where: { $0.kind == .field(.size) })?.isActivatable == false,
+            "the settings the render already consumed are out of reach")
+
+        let collecting = ForgeDemo.board("collecting")
+        try expect(
+            try jobRow(collecting).detail == Localized.text("Saving the file…"),
+            "a full bar with no file yet is a state with its own words")
+        try expect(try jobRow(collecting).badge == Localized.text("saving"), "and its own word")
+
+        var done = ForgeDemo.board("done")
+        try expect(try jobRow(done).badge == Localized.text("ready"), "a delivered render says it is ready")
+        try expect(done.renderCall == Localized.text("Play"), "and the button plays it")
+        try expect(done.begin() == .play(ForgeDemo.asset), "on the file that came back")
+
+        let failed = ForgeDemo.board("failed")
+        try expect(
+            try jobRow(failed).detail == "UNETLoader failed: CUDA out of memory",
+            "a render that failed says why rather than going quiet")
+        try expect(try jobRow(failed).badge == Localized.text("failed"), "with a word in the corner")
+        try expect(try section(failed, ForgeBoard.renderID).phase == .failed("UNETLoader failed: CUDA out of memory"),
+            "and the whole section wears the failure")
+
+        let stopped = ForgeDemo.board("stopped")
+        try expect(try jobRow(stopped).detail == Localized.text("Stopped"), "a cancelled render says only that")
+        try expect(try jobRow(stopped).badge == Localized.text("stopped"), "and holds still")
+
+        var empty = ForgeDemo.board("empty")
+        guard let note = empty.rows.firstIndex(where: { $0.kind == .note }) else {
+            throw SelfTestFailure("forge surface: an empty history drew nothing at all")
+        }
+        try expect(
+            empty.rows[note].title == Localized.text("Nothing rendered yet"),
+            "an empty history says it is empty rather than vanishing")
+        empty.focus(note)
+        try expect(empty.cursor != note, "and the cursor does not stop on it")
+
+        let history = ForgeDemo.board("history")
+        let kept = try section(history, ForgeBoard.historyID)
+        try expect(kept.rows.count == ForgeBoard.compactLimit + 1, "a long history compacts")
+        try expect(kept.hidden == 3, "and says how many it is holding back")
+        guard let lost = history.rows.first(where: { $0.entry?.isPlayable == false }) else {
+            throw SelfTestFailure("forge surface: the history lost its unplayable row")
+        }
+        try expect(lost.badge == Localized.text("failed"), "a clip that never arrived says so")
+        try expect(lost.detail == ForgeFailure.noOutput(ForgeDemo.host).description, "and keeps the reason")
+
+        let row = ForgeRowView()
+        row.configure(
+            try jobRow(running), phase: .checking, focused: true, activity: .working, aside: nil)
+        try expect(row.accessibilityRole() == .button, "a row the board would act on is a button")
+        try expect(
+            row.accessibilityLabel()?.contains(Localized.text("50%")) == true,
+            "and reads out the word in its corner")
+        try expect(row.alphaValue == 1, "a row within reach is drawn at full strength")
+
+        let spent = ForgeRowView()
+        guard let size = running.rows.first(where: { $0.kind == .field(.size) }) else {
+            throw SelfTestFailure("forge surface: the frame size is not a row")
+        }
+        spent.configure(size, phase: .ready, focused: false, activity: nil, aside: nil)
+        try expect(spent.accessibilityRole() == .staticText, "a setting out of reach is not a button")
+        try expect(spent.alphaValue < 1, "and is drawn as out of reach rather than as ordinary")
+
+        let gone = ForgeRowView()
+        let sentence = ForgeFailure.missingFile(ForgeDemo.host).description
+        gone.configure(lost, phase: .ready, focused: false, activity: nil, aside: sentence)
+        try expect(
+            gone.accessibilityLabel()?.contains(sentence) == true,
+            "a kept clip whose file is gone carries that sentence into what is read out")
+
+        let stage = ForgeRowView()
+        stage.configure(try jobRow(done), phase: .ready, focused: false, activity: nil, aside: nil)
+        try expect(!stage.holdsClip, "a finished render with no file located yet draws no player")
+        stage.showClip(URL(fileURLWithPath: "/tmp/tailscode-forge-selftest.mp4"), failure: nil)
+        try expect(stage.holdsClip, "and one the machine confirmed plays where it was made")
+        stage.showClip(nil, failure: nil)
+        try expect(!stage.holdsClip, "a render that started again takes the last one's player away")
+
+        let bar = ForgeBarView()
+        bar.fraction = 0.5
+        try expect(bar.intrinsicContentSize.height > 0, "the bar has a height to draw itself into")
+        try expect(
+            bar.intrinsicContentSize.width == NSView.noIntrinsicMetric,
+            "and takes the width of whatever row it is in")
+        return checks
+    }
 
     /// A page is a pane, so what it holds has to read back the same after a restart, and a browsing
     /// pane must leave the keyboard to the page except for the chords a browser owns.

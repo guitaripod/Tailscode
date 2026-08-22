@@ -518,7 +518,8 @@ final class MainWindowController: NSWindowController {
     /// person reaches with a menu item or a keystroke; nothing is reachable this way that is not
     /// reachable that way.
     func openSurface(named name: String) {
-        switch name {
+        let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
+        switch parts.first ?? name {
         case "servers": presentServers()
         case "updates": presentUpdates()
         case "preferences", "prefs": presentPreferences()
@@ -530,12 +531,37 @@ final class MainWindowController: NSWindowController {
         case "chooser": presentChooser(in: transcript)
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
+        case "forge", "video":
+            let pane = presentForge()
+            if parts.count > 1 { pane.driveForgeState(parts[1]) }
         default:
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
-                        + "quickask, cheatsheet, commands, chooser, spend, git\n").utf8))
+                        + "quickask, cheatsheet, commands, chooser, spend, git, "
+                        + "forge[:state]\n").utf8))
         }
+    }
+
+    /// The forge, opened where somebody can watch it work. A render is minutes of another machine's
+    /// card, so it never takes a pane that is holding a conversation: an empty pane becomes the
+    /// forge, a pane with a chat in it splits and the forge takes the new half, and a forge already
+    /// open is raised rather than made a second time.
+    @discardableResult
+    func presentForge() -> TranscriptViewController {
+        if let open = splitPanes.orderedPanes.first(where: { $0.isForging }) {
+            splitPanes.focus(open, grabKeyboard: false)
+            open.showForge()
+            focused = .transcript
+            return open
+        }
+        let pane = transcript
+        let target = pane.currentEntry == nil ? pane : (splitPanes.split(pane, edge: .right) ?? pane)
+        target.showForge()
+        splitPanes.focus(target, grabKeyboard: false)
+        focused = .transcript
+        splitPanes.persist()
+        return target
     }
 
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
@@ -1310,6 +1336,9 @@ final class MainWindowController: NSWindowController {
         if context == .normal, focused == .transcript, pendingChords.isEmpty,
             transcript.handleChooserChord(chord)
         {
+            return nil
+        }
+        if focused == .transcript, pendingChords.isEmpty, transcript.handleForgeChord(chord) {
             return nil
         }
         #if !TAILSCODE_MAS

@@ -76,6 +76,10 @@ final class TranscriptViewController: NSViewController {
     #endif
     /// What this pane is reading instead of talking, when it is a browser slot rather than a chat.
     private var page: WebSlotView?
+    /// What this pane is making instead of talking, when it is the video forge rather than a chat.
+    /// Not a store build's loss: the render happens on the tailnet, and a sandbox has no bearing on
+    /// an outbound HTTP call.
+    private var forge: ForgeSlotView?
 
     /// Told to the hub when a slot starts, stops, or learns its stream's title, so the layout is
     /// written back exactly as an opened conversation writes it back.
@@ -472,7 +476,7 @@ final class TranscriptViewController: NSViewController {
     /// window and starts notifying behind a player that still covers the pane edge to edge — live
     /// and invisible, with no way back short of closing the pane — so the slot goes first.
     private func clearSlot() {
-        guard isWatching || page != nil else { return }
+        guard isWatching || page != nil || forge != nil else { return }
         #if !TAILSCODE_MAS
             video?.shutdown()
             video?.removeFromSuperview()
@@ -481,6 +485,9 @@ final class TranscriptViewController: NSViewController {
         page?.shutdown()
         page?.removeFromSuperview()
         page = nil
+        forge?.shutdown()
+        forge?.removeFromSuperview()
+        forge = nil
         setChatFurnitureVisible(true)
         refreshIdentity()
         onVideoChanged?()
@@ -544,6 +551,55 @@ final class TranscriptViewController: NSViewController {
         refreshIdentity()
     }
 
+    /// Turns this pane into the video forge, or raises the one it already is. Like the other two
+    /// slots it is a state of a pane rather than a second kind of object: the chat furniture goes
+    /// out of sight, the board takes the pane, and the split tree keeps counting one pane.
+    func showForge() {
+        chooser = nil
+        chooserView.isHidden = true
+        if forge == nil {
+            let slot = ForgeSlotView()
+            slot.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(slot, positioned: .below, relativeTo: identityGlass)
+            NSLayoutConstraint.activate([
+                slot.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                slot.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                slot.topAnchor.constraint(equalTo: view.topAnchor),
+                slot.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            forge = slot
+            slot.onChange = { [weak self] in
+                self?.refreshIdentity()
+                self?.onVideoChanged?()
+            }
+            setChatFurnitureVisible(false)
+        }
+        forge?.focusPrompt()
+        refreshIdentity()
+    }
+
+    var isForging: Bool { forge != nil }
+    var forgeSummary: String? { forge?.summary }
+
+    /// The forge's own keys, offered in every key context. The prompt holds the keyboard while the
+    /// board is up, so a board that waited for the transcript to be the focused region would never
+    /// see an arrow, an Enter or a deliberate control chord.
+    func handleForgeChord(_ chord: KeyChord) -> Bool {
+        guard let forge else { return false }
+        return forge.handleChord(chord)
+    }
+
+    /// Types into the forge's prompt from the driver, the same path a keystroke takes.
+    func driveForgePrompt(_ text: String) {
+        forge?.describe(text)
+    }
+
+    /// Puts the forge into one of its states without a renderer to reach it, so the states between
+    /// pressing render and holding a file are provable in a build loop.
+    func driveForgeState(_ name: String) {
+        forge?.demonstrate(name)
+    }
+
     var isBrowsing: Bool { page != nil }
     var webTarget: WebTarget? {
         page.flatMap { slot in slot.currentAddress.map(WebTarget.page) ?? slot.target }
@@ -604,13 +660,17 @@ final class TranscriptViewController: NSViewController {
         }
         guard furnitureHidden.isEmpty else { return }
         furnitureHidden = view.subviews.filter { subview in
-            subview !== identityGlass && subview !== page && !subview.isHidden
-                && !isVideoSlot(subview)
+            subview !== identityGlass && subview !== page && subview !== forge
+                && !subview.isHidden && !isVideoSlot(subview)
         }
         furnitureHidden.forEach { $0.isHidden = true }
     }
 
     private func refreshIdentity() {
+        if let forge {
+            identityLabel.stringValue = forge.identity
+            return
+        }
         if let page {
             identityLabel.stringValue = "\(page.slot.title) · \(page.slot.subtitle)"
             return
@@ -648,6 +708,7 @@ final class TranscriptViewController: NSViewController {
         stopTailRepair()
         forgetHeldRows()
         page?.shutdown()
+        forge?.shutdown()
         #if !TAILSCODE_MAS
             video?.shutdown()
         #endif

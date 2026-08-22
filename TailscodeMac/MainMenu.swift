@@ -115,6 +115,7 @@ final class MainMenu: NSObject {
         #endif
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
+        menu.addItem(videoForgeItem())
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Split Right"), #selector(splitRight), "d", [.command, .shift]))
         menu.addItem(
@@ -183,6 +184,16 @@ final class MainMenu: NSObject {
         return holder(menu)
     }
 
+    /// The forge's own item, named and explained by the board rather than by this menu: what the
+    /// surface is called and what a render actually costs are Core's words on every desk.
+    private func videoForgeItem() -> NSMenuItem {
+        let board = ForgeBoard()
+        let entry = item(
+            Localized.text("%@…", board.heading), #selector(videoForge), "v", [.command, .option])
+        entry.toolTip = board.notice
+        return entry
+    }
+
     /// Which items need their words or their reach re-derived from the open chat when the menu
     /// drops down.
     private enum Tag: Int {
@@ -242,6 +253,7 @@ final class MainMenu: NSObject {
         @objc private func toggleTerminal() { hub.perform(.toggleTerminal) }
     #endif
     @objc private func toggleArchiveView() { hub.perform(.toggleArchiveView) }
+    @objc private func videoForge() { hub.presentForge() }
     @objc private func zoomIn() { hub.perform(.zoomIn) }
     @objc private func zoomOut() { hub.perform(.zoomOut) }
     @objc private func zoomReset() { hub.perform(.zoomReset) }
