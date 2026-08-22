@@ -204,12 +204,22 @@ public struct ForgeClient: Sendable {
     /// stops when the stream ends can never be left showing a bar that will not move.
     public func render(_ recipe: ForgeRecipe) -> AsyncStream<ForgeJob> {
         let (stream, continuation) = AsyncStream<ForgeJob>.makeStream()
-        let work = Task { await drive(recipe, into: continuation) }
+        let held = HeldSocket()
+        let work = Task {
+            await withTaskCancellationHandler {
+                await drive(recipe, into: continuation, held: held)
+            } onCancel: {
+                held.close()
+            }
+        }
         continuation.onTermination = { _ in work.cancel() }
         return stream
     }
 
-    private func drive(_ recipe: ForgeRecipe, into continuation: AsyncStream<ForgeJob>.Continuation) async {
+    private func drive(
+        _ recipe: ForgeRecipe, into continuation: AsyncStream<ForgeJob>.Continuation,
+        held: HeldSocket
+    ) async {
         var job = ForgeJob(recipe: recipe)
         job.submitting()
         continuation.yield(job)
@@ -224,8 +234,9 @@ public struct ForgeClient: Sendable {
         }
 
         let socket = URLSession.shared.webSocketTask(with: socketURL)
+        held.hold(socket)
         socket.resume()
-        defer { socket.cancel(with: .goingAway, reason: nil) }
+        defer { held.close() }
 
         let promptID: String
         do {
@@ -326,5 +337,32 @@ public struct ForgeClient: Sendable {
             if let text = payload["exception_message"] as? String, !text.isEmpty { return text }
         }
         return Localized.text("The render failed and said nothing about why")
+    }
+}
+
+/// The render's websocket, held where a cancellation handler can reach it.
+///
+/// `URLSessionWebSocketTask.receive()` is the completion-handler form bridged into async, and it
+/// installs no cancellation handler of its own: cancelling the task that awaits it only sets a
+/// flag, and the await stays parked until a frame happens to arrive. A render stopped while the
+/// server has gone quiet would therefore never tear its socket down and never reach the cancelled
+/// snapshot the screen is waiting for. Closing the socket from outside is what makes `receive()`
+/// return, so the socket has to outlive the scope that created it.
+final class HeldSocket: @unchecked Sendable {
+    private let lock = NSLock()
+    private var socket: URLSessionWebSocketTask?
+
+    func hold(_ task: URLSessionWebSocketTask) {
+        lock.lock()
+        defer { lock.unlock() }
+        socket = task
+    }
+
+    func close() {
+        lock.lock()
+        let task = socket
+        socket = nil
+        lock.unlock()
+        task?.cancel(with: .goingAway, reason: nil)
     }
 }

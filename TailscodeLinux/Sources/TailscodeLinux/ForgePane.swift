@@ -336,10 +336,16 @@ final class ForgePane: @unchecked Sendable {
         render()
     }
 
-    /// Stops the render on the machine that is doing it. The interrupt is what ends the job, not
-    /// this pane letting go: the socket answers with the frame that says it stopped, and the board
-    /// draws that rather than this client's guess about it.
+    /// Stops the render on the machine doing it, and stops watching for it here.
+    ///
+    /// The interrupt alone is not enough. A job still queued behind another has nothing running to
+    /// interrupt, and a machine that has gone quiet answers no frame at all — in both cases a pane
+    /// that only fired the POST would sit on a bar that never moves. Cancelling the stream is what
+    /// ends the watch; ``ForgeClient`` yields the stopped snapshot on its way out, so the board
+    /// still draws the server's account of it rather than this client's guess.
     private func stop() {
+        renderTask?.cancel()
+        renderTask = nil
         guard let client = renderer() else { return }
         Task { await client.cancel() }
     }
