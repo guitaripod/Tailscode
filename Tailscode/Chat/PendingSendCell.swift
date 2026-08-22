@@ -4,6 +4,9 @@ import UIKit
 @MainActor
 protocol PendingSendCellDelegate: AnyObject {
     func pendingSend(_ id: UUID, act: PendingSend.Act)
+    /// A message being held for a provider's window, acted on: sent into it now anyway, opened
+    /// for rewriting, or let out of the wait.
+    func pendingSend(_ id: UUID, resume act: ResumeReading.Act)
 }
 
 /// A message on its way out: the words in the bubble they will keep, with a line under them
@@ -32,6 +35,10 @@ final class PendingSendCell: UICollectionViewCell {
     private let statusStrip = UIStackView()
     private let acts = UIStackView()
     private var send: PendingSend?
+    /// The wait this row is under, when it is under one. It replaces the caption, the badge and
+    /// the verbs — a message waiting on a window is not a failure to be retried by hand, it is a
+    /// message with an appointment.
+    private var plan: ResumePlan?
     private var clock: Timer?
     private var bubbleTop: NSLayoutConstraint!
 
@@ -118,6 +125,7 @@ final class PendingSendCell: UICollectionViewCell {
         badge.prepareForReuse()
         stopClock()
         send = nil
+        plan = nil
     }
 
     override func didMoveToWindow() {
@@ -125,8 +133,11 @@ final class PendingSendCell: UICollectionViewCell {
         window == nil ? stopClock() : startClockIfNeeded()
     }
 
-    func configure(_ send: PendingSend, delegate: PendingSendCellDelegate?) {
+    func configure(
+        _ send: PendingSend, plan: ResumePlan? = nil, delegate: PendingSendCellDelegate?
+    ) {
         self.send = send
+        self.plan = plan
         self.delegate = delegate
         let failed = send.isFailed
         caption.numberOfLines = failed ? 0 : 1
@@ -135,17 +146,45 @@ final class PendingSendCell: UICollectionViewCell {
         label.attributedText = NSAttributedString(
             string: send.text,
             attributes: Theme.Ramp.attributes(.prompt, color: Theme.Color.onAccent))
-        let icon = PendingSendReading.icon(send)
+        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         badge.show(icon, spoken: nil)
-        rebuildActs(for: send)
+        rebuildActs(for: send, plan: plan)
         paintCaption()
         isAccessibilityElement = true
-        accessibilityTraits = failed ? .staticText : .updatesFrequently
+        accessibilityTraits = failed && plan == nil ? .staticText : .updatesFrequently
         startClockIfNeeded()
     }
 
-    private func rebuildActs(for send: PendingSend) {
+    private func rebuildActs(for send: PendingSend, plan: ResumePlan?) {
         for view in acts.arrangedSubviews { view.removeFromSuperview() }
+        guard plan == nil else {
+            acts.isHidden = false
+            let id = send.id
+            for act in ResumeReading.acts {
+                let quiet = act == .stopWaiting
+                var configuration = UIButton.Configuration.plain()
+                configuration.image = UIImage(systemName: ResumeReading.symbol(act))
+                configuration.imagePadding = Theme.Spacing.xs
+                configuration.contentInsets = NSDirectionalEdgeInsets(
+                    top: 4, leading: Theme.Spacing.xs, bottom: 4, trailing: Theme.Spacing.xs)
+                configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+                    pointSize: 11, weight: .semibold)
+                let ink = quiet ? Theme.Color.tertiaryLabel : Theme.Color.accent
+                configuration.baseForegroundColor = ink
+                configuration.attributedTitle = AttributedString(
+                    NSAttributedString(
+                        string: ResumeReading.title(act),
+                        attributes: Theme.Ramp.attributes(.control, color: ink)))
+                let button = UIButton(
+                    configuration: configuration,
+                    primaryAction: UIAction { [weak self] _ in
+                        self?.delegate?.pendingSend(id, resume: act)
+                    })
+                button.accessibilityLabel = ResumeReading.title(act)
+                acts.addArrangedSubview(button)
+            }
+            return
+        }
         acts.isHidden = send.acts.isEmpty
         for act in send.acts {
             var configuration = UIButton.Configuration.plain()
@@ -178,17 +217,20 @@ final class PendingSendCell: UICollectionViewCell {
     private func paintCaption() {
         guard let send else { return }
         let now = Date()
-        let icon = PendingSendReading.icon(send)
+        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         caption.attributedText = NSAttributedString(
-            string: PendingSendReading.caption(send, now: now),
+            string: plan.map { ResumeReading.caption($0, now: now) }
+                ?? PendingSendReading.caption(send, now: now),
             attributes: Theme.Ramp.attributes(.rowStamp, color: icon.tone.color))
-        accessibilityLabel = PendingSendReading.spoken(send, now: now)
+        accessibilityLabel = plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
+            ?? PendingSendReading.spoken(send, now: now)
     }
 
     /// A caption that ages needs a clock, and only while it is still ageing: a failure says the
     /// same thing forever, so it keeps none.
     private func startClockIfNeeded() {
-        guard clock == nil, window != nil, let send, !send.isFailed else { return }
+        guard clock == nil, window != nil, let send else { return }
+        guard plan != nil || !send.isFailed else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.paintCaption() }
         }

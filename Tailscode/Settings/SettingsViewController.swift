@@ -32,6 +32,7 @@ final class SettingsViewController: UIViewController {
     private enum Toggle: Hashable {
         case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity, responseStats
         case linkEmbeds
+        case autoResume
         case notifyTurnComplete, notifyApprovals, notifyUsage, serverPush, liveActivities
         case presenceOrb
 
@@ -42,6 +43,7 @@ final class SettingsViewController: UIViewController {
             case .promptEnhancement: return String(localized: "Enhance prompts")
             case .compactActivity: return String(localized: "Compact agent steps")
             case .responseStats: return ResponseStatsSetting.title
+            case .autoResume: return AutoResumeSetting.title
             case .linkEmbeds: return LinkEmbedsSetting.title
             case .notifyTurnComplete: return String(localized: "Turn finished")
             case .notifyApprovals: return String(localized: "Approvals and questions")
@@ -64,6 +66,7 @@ final class SettingsViewController: UIViewController {
                 return String(
                     localized: "Agent steps collapse to a slim line — tap to unfold the details")
             case .responseStats: return ResponseStatsSetting.explanation
+            case .autoResume: return AutoResumeSetting.explanation
             case .linkEmbeds: return LinkEmbedsSetting.explanation
             case .notifyTurnComplete:
                 return String(localized: "When an agent this device is watching goes idle")
@@ -92,6 +95,7 @@ final class SettingsViewController: UIViewController {
             case .promptEnhancement: return "sparkles"
             case .compactActivity: return "rectangle.compress.vertical"
             case .responseStats: return "gauge.with.dots.needle.67percent"
+            case .autoResume: return ResumeReading.symbol
             case .linkEmbeds: return "globe"
             case .notifyTurnComplete: return "checkmark.bubble"
             case .notifyApprovals: return "hand.raised"
@@ -109,6 +113,7 @@ final class SettingsViewController: UIViewController {
             case .promptEnhancement: return Theme.Color.accent
             case .compactActivity: return ThemePalette.color(\.info, system: .systemOrange)
             case .responseStats: return Theme.Color.info
+            case .autoResume: return Theme.Color.warning
             case .linkEmbeds: return Theme.Color.accent
             case .notifyTurnComplete: return Theme.Color.success
             case .notifyApprovals: return Theme.Color.warning
@@ -126,6 +131,7 @@ final class SettingsViewController: UIViewController {
             case .promptEnhancement: return AppPreferences.promptEnhancement
             case .compactActivity: return AppPreferences.compactActivity
             case .responseStats: return ResponseStatsSetting.isEnabled
+            case .autoResume: return AutoResumeSetting.isEnabled
             case .linkEmbeds: return LinkEmbedsSetting.isEnabled
             case .notifyTurnComplete: return AppPreferences.notifyTurnComplete
             case .notifyApprovals: return AppPreferences.notifyApprovals
@@ -144,6 +150,7 @@ final class SettingsViewController: UIViewController {
             case .promptEnhancement: AppPreferences.promptEnhancement = value
             case .compactActivity: AppPreferences.compactActivity = value
             case .responseStats: ResponseStatsSetting.setEnabled(value)
+            case .autoResume: AutoResumeSetting.setEnabled(value)
             case .linkEmbeds: LinkEmbedsSetting.setEnabled(value)
             case .notifyTurnComplete: AppPreferences.notifyTurnComplete = value
             case .notifyApprovals: AppPreferences.notifyApprovals = value
@@ -880,7 +887,7 @@ final class SettingsViewController: UIViewController {
                     .toggle(.promptEnhancement), .toggle(.autoExpandThinking),
                     .streamRenderer, .haptics,
                     .toggle(.compactActivity), .toggle(.responseStats), .toggle(.linkEmbeds),
-                    .toggle(.sendOnReturn),
+                    .toggle(.sendOnReturn), .toggle(.autoResume),
                     .keyboardShortcuts,
                 ]
             ),

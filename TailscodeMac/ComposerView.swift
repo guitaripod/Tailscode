@@ -68,6 +68,8 @@ final class ComposerView: NSView {
         (chosenModel, ModelEffort.surviving(chosenEffort, options: effortOptions()))
     }
     var pickedModel: ModelSelection? { chosenModel }
+    /// The effort a send from this composer would carry, surviving what the model actually offers.
+    var activeEffort: String? { ModelEffort.surviving(chosenEffort, options: effortOptions()) }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
     var quotasForModels: (() -> [UsageQuota])?
 

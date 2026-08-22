@@ -50,6 +50,9 @@ final class TranscriptContext {
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: ((UUID) -> Void)?
     var pendingAct: ((UUID, PendingSend.Act) -> Void)?
+    /// A message being held for a provider's window: sent into it now anyway, opened for
+    /// rewriting, or let out of the wait.
+    var resumeAct: ((UUID, ResumeReading.Act) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine.
     var resumeInterrupted: (() -> Void)?
     var dismissInterrupted: (() -> Void)?
@@ -150,7 +153,7 @@ struct TranscriptRow: Hashable {
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
         case queuedSend(QueuedSend, position: Int, of: Int)
-        case pendingSend(PendingSend, now: Date)
+        case pendingSend(PendingSend, ResumePlan?, now: Date)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -402,8 +405,9 @@ struct TranscriptRow: Hashable {
             return stats.spoken
         case .queuedSend(let send, _, _):
             return SendQueueReading.rowTitle(send)
-        case .pendingSend(let send, let now):
-            return PendingSendReading.spoken(send, now: now)
+        case .pendingSend(let send, let plan, let now):
+            guard let plan else { return PendingSendReading.spoken(send, now: now) }
+            return ResumeReading.spoken(plan, words: send.text, now: now)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -452,8 +456,8 @@ struct TranscriptRow: Hashable {
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
             return Self.queuedSend(send, position: position, of: total, context: context)
-        case .pendingSend(let send, let now):
-            return Self.pendingSend(send, now: now, context: context)
+        case .pendingSend(let send, let plan, let now):
+            return Self.pendingSend(send, plan: plan, now: now, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -713,11 +717,14 @@ struct TranscriptRow: Hashable {
     /// worth doing about them rather than being dropped back into the composer.
     @MainActor
     private static func pendingSend(
-        _ send: PendingSend, now: Date, context: TranscriptContext
+        _ send: PendingSend, plan: ResumePlan?, now: Date, context: TranscriptContext
     ) -> NSView {
-        let icon = PendingSendReading.icon(send)
+        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         let rule = RowKit.Ground(frame: .zero)
-        rule.fill = send.isFailed ? MacTheme.Color.danger : MacTheme.Color.accent
+        rule.fill =
+            plan != nil
+            ? MacTheme.Color.warning
+            : (send.isFailed ? MacTheme.Color.danger : MacTheme.Color.accent)
 
         let column = NSStackView()
         column.orientation = .vertical
@@ -745,11 +752,22 @@ struct TranscriptRow: Hashable {
         }
         status.addArrangedSubview(
             RowKit.label(
-                PendingSendReading.caption(send, now: now), font: MacTheme.Ramp.font(.hint),
-                color: icon.tone.color))
+                plan.map { ResumeReading.caption($0, now: now) }
+                    ?? PendingSendReading.caption(send, now: now),
+                font: MacTheme.Ramp.font(.hint), color: icon.tone.color))
         column.addArrangedSubview(status)
 
-        if !send.acts.isEmpty, let act = context.pendingAct {
+        if let plan, let act = context.resumeAct {
+            let buttons = NSStackView()
+            buttons.orientation = .horizontal
+            buttons.spacing = MacTheme.Spacing.m
+            let id = plan.id
+            for choice in ResumeReading.acts {
+                buttons.addArrangedSubview(
+                    RowKit.linkButton(ResumeReading.title(choice)) { act(id, choice) })
+            }
+            column.addArrangedSubview(buttons)
+        } else if !send.acts.isEmpty, let act = context.pendingAct {
             let buttons = NSStackView()
             buttons.orientation = .horizontal
             buttons.spacing = MacTheme.Spacing.m
@@ -778,7 +796,9 @@ struct TranscriptRow: Hashable {
         ])
         row.setAccessibilityElement(true)
         row.setAccessibilityRole(.group)
-        row.setAccessibilityLabel(PendingSendReading.spoken(send, now: now))
+        row.setAccessibilityLabel(
+            plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
+                ?? PendingSendReading.spoken(send, now: now))
         return row
     }
 

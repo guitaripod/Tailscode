@@ -198,7 +198,7 @@ public enum QuotaSurface {
         return QuotaExhaustion(
             provider: hint ?? Localized.text("Provider"),
             window: windowHint(in: message) ?? Localized.text("Usage"),
-            fraction: 1, resetsAt: parsedReset(in: message), trustedReset: false,
+            fraction: 1, resetsAt: parsedReset(in: message, now: now), trustedReset: false,
             source: .failure)
     }
 

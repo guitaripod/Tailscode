@@ -134,6 +134,7 @@ enum ParityManifest {
                 + "least work and gets it soonest — but nothing here opens ForgeBoard yet. What is "
                 + "owed is a GTK pane over its rows plus playback of ForgeAsset.url(on:), which the "
                 + "video slot already knows how to do by handing an address to mpv")
+        case .autoResume: return .implemented("armResume")
         case .forgeHistory:
             return .gap(
                 "ForgeStore holds the receipts and ForgeBoard compacts them into a section; this "

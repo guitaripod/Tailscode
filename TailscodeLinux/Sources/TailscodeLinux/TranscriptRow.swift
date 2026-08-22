@@ -58,6 +58,10 @@ final class TranscriptContext: @unchecked Sendable {
     /// a transcript that has not happened yet, so it is the one row a press means something on.
     var editQueued: (@Sendable (UUID) -> Void)?
     var pendingAct: (@Sendable (UUID, PendingSend.Act) -> Void)?
+    /// A message being held for a provider's window: sent into it now anyway, opened for
+    /// rewriting, or let out of the wait. The pane owns all three because only it knows what the
+    /// conversation is sending with.
+    var resumeAct: (@Sendable (UUID, ResumeReading.Act) -> Void)?
     /// A turn the server's machine cut off, picked back up or let go on that machine. Both go
     /// through the pane, which is the one place that knows which conversation is being looked at.
     var resumeInterrupted: (@Sendable () -> Void)?
@@ -216,7 +220,7 @@ struct TranscriptRow: Hashable {
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
         case queuedSend(QueuedSend, position: Int, of: Int)
-        case pendingSend(PendingSend)
+        case pendingSend(PendingSend, ResumePlan?)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
         case turnBreak
@@ -513,8 +517,9 @@ struct TranscriptRow: Hashable {
             return stats.spoken
         case .queuedSend(let send, _, _):
             return SendQueueReading.rowTitle(send)
-        case .pendingSend(let send):
-            return PendingSendReading.spoken(send, now: Date())
+        case .pendingSend(let send, let plan):
+            guard let plan else { return PendingSendReading.spoken(send, now: Date()) }
+            return ResumeReading.spoken(plan, words: send.text)
         case .interruptedTurn(let turn):
             return "\(turn.title) \(turn.prompt)"
         case .interruption:
@@ -563,8 +568,8 @@ struct TranscriptRow: Hashable {
             return Self.responseStats(stats)
         case .queuedSend(let send, let position, let total):
             return Self.queuedSend(send, position: position, of: total, context: context)
-        case .pendingSend(let send):
-            return Self.pendingSend(send, context: context)
+        case .pendingSend(let send, let plan):
+            return Self.pendingSend(send, plan: plan, context: context)
         case .interruptedTurn(let turn):
             return Self.interruptedTurn(turn, context: context)
         case .turnBreak:
@@ -937,7 +942,7 @@ struct TranscriptRow: Hashable {
     static let pendingSendKey = "tailscode-pending-send"
 
     private static func pendingSend(
-        _ send: PendingSend, context: TranscriptContext
+        _ send: PendingSend, plan: ResumePlan?, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
         let now = Date()
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
@@ -953,17 +958,31 @@ struct TranscriptRow: Hashable {
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(lines), label)
 
-        let icon = PendingSendReading.icon(send)
+        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         let status = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         gtk_widget_set_halign(status, GTK_ALIGN_START)
         gtk_box_append(
             ptr(status), Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false))
         let caption = Gtk.label(
-            PendingSendReading.caption(send, now: now), css: "queued-hint", selectable: false)
+            plan.map { ResumeReading.caption($0, now: now) }
+                ?? PendingSendReading.caption(send, now: now),
+            css: "queued-hint", selectable: false)
         gtk_box_append(ptr(status), caption)
         gtk_box_append(ptr(lines), status)
 
-        if !send.acts.isEmpty, let act = context.pendingAct {
+        if let plan, let act = context.resumeAct {
+            let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+            gtk_widget_set_halign(buttons, GTK_ALIGN_START)
+            let id = plan.id
+            for choice in ResumeReading.acts {
+                gtk_box_append(
+                    ptr(buttons),
+                    Gtk.button(ResumeReading.title(choice), css: ["flat", "seam-read"]) {
+                        act(id, choice)
+                    })
+            }
+            gtk_box_append(ptr(lines), buttons)
+        } else if !send.acts.isEmpty, let act = context.pendingAct {
             let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
             gtk_widget_set_halign(buttons, GTK_ALIGN_START)
             let id = send.id
@@ -980,9 +999,12 @@ struct TranscriptRow: Hashable {
         gtk_widget_set_hexpand(lines, 1)
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), lines)
-        gtk_widget_set_tooltip_text(row, PendingSendReading.spoken(send, now: now))
+        gtk_widget_set_tooltip_text(
+            row,
+            plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
+                ?? PendingSendReading.spoken(send, now: now))
         g_object_set_data(ptr(row), pendingCaptionKey, UnsafeMutableRawPointer(caption))
-        let sendBox = Unmanaged.passRetained(PendingSendBox(send)).toOpaque()
+        let sendBox = Unmanaged.passRetained(PendingSendBox(send, plan: plan)).toOpaque()
         g_object_set_data_full(
             ptr(row), pendingSendKey, sendBox,
             { raw in
@@ -1001,8 +1023,15 @@ struct TranscriptRow: Hashable {
         guard let sendRaw = g_object_get_data(ptr(row), pendingSendKey),
             let captionRaw = g_object_get_data(ptr(row), pendingCaptionKey)
         else { return false }
-        let send = Unmanaged<PendingSendBox>.fromOpaque(sendRaw).takeUnretainedValue().send
+        let box = Unmanaged<PendingSendBox>.fromOpaque(sendRaw).takeUnretainedValue()
+        let send = box.send
         let caption: UnsafeMutablePointer<GtkWidget> = ptr(captionRaw)
+        if let plan = box.plan {
+            gtk_label_set_text(op(caption), ResumeReading.caption(plan, now: now))
+            gtk_widget_set_tooltip_text(
+                row, ResumeReading.spoken(plan, words: send.text, now: now))
+            return true
+        }
         gtk_label_set_text(op(caption), PendingSendReading.caption(send, now: now))
         gtk_widget_set_tooltip_text(row, PendingSendReading.spoken(send, now: now))
         switch send.phase {
@@ -1195,5 +1224,11 @@ struct TranscriptRow: Hashable {
 /// Holds a ``PendingSend`` on a GTK widget without asking the value type to be a class.
 private final class PendingSendBox: @unchecked Sendable {
     let send: PendingSend
-    init(_ send: PendingSend) { self.send = send }
+    /// The wait this row is under, when it is under one — carried on the widget so the countdown
+    /// ages in place rather than rebuilding a row every second for a clock.
+    let plan: ResumePlan?
+    init(_ send: PendingSend, plan: ResumePlan? = nil) {
+        self.send = send
+        self.plan = plan
+    }
 }

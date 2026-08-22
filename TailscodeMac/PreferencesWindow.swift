@@ -196,6 +196,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 subtitle: ResponseStatsSetting.explanation,
                 value: ResponseStatsSetting.isEnabled, action: #selector(responseStatsChanged)))
         column.addArrangedSubview(
+            switchRow(
+                title: AutoResumeSetting.title,
+                subtitle: AutoResumeSetting.explanation,
+                value: AutoResumeSetting.isEnabled, action: #selector(autoResumeChanged)))
+        column.addArrangedSubview(
             stepperRow(
                 title: Localized.text("Rows kept on screen"),
                 subtitle: Localized.text(
@@ -347,6 +352,10 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @objc private func responseStatsChanged(_ sender: NSButton) {
         ResponseStatsSetting.setEnabled(sender.state == .on)
         onTranscriptChanged()
+    }
+
+    @objc private func autoResumeChanged(_ sender: NSButton) {
+        AutoResumeSetting.setEnabled(sender.state == .on)
     }
 
     @objc private func windowChanged(_ sender: NSStepper) {

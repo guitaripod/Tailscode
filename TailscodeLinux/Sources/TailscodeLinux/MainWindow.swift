@@ -255,6 +255,10 @@ final class MainWindow: @unchecked Sendable {
                     }
                 case "workflowdemo":
                     self.activePane.driverWorkflowDemo()
+                case "resumedemo":
+                    self.activePane.driverResumeDemo(argument.isEmpty ? "waiting" : argument)
+                case "resumestate":
+                    self.activePane.reportResumeState()
                 case "cutoffdemo":
                     self.activePane.driverInterruptedDemo(
                         argument.isEmpty ? "busy" : argument)

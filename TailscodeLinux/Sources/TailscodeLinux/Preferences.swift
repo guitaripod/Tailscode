@@ -122,6 +122,19 @@ enum Preferences {
         write(value ? true : nil, forKey: PresenceOrbSetting.defaultsKey)
     }
 
+    /// Whether a message a spent window stopped is sent again when the window reopens. The choice
+    /// is Core's (`AutoResumeSetting`, one key on every client); this end makes the write durable
+    /// on a desktop whose defaults are keyed to the executable path.
+    static var autoResume: Bool {
+        if let raw = ProcessInfo.processInfo.environment["TAILSCODE_RESUME"] { return raw == "1" }
+        return AutoResumeSetting.isEnabled
+    }
+
+    static func setAutoResume(_ value: Bool) {
+        AutoResumeSetting.setEnabled(value)
+        write(value ? nil : false, forKey: AutoResumeSetting.defaultsKey)
+    }
+
     static var sendOnReturn: Bool {
         defaults.object(forKey: "tailscode.sendOnReturn") as? Bool ?? true
     }
@@ -394,6 +407,15 @@ enum SettingsDialog {
             ) { value in
                 Preferences.setResponseStats(value)
                 onLayoutChanged()
+            })
+        adw_preferences_group_add(
+            ptr(transcript),
+            switchRow(
+                title: AutoResumeSetting.title,
+                subtitle: AutoResumeSetting.explanation,
+                value: Preferences.autoResume
+            ) { value in
+                Preferences.setAutoResume(value)
             })
         adw_preferences_group_add(
             ptr(transcript),

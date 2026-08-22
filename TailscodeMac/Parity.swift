@@ -237,6 +237,7 @@ enum ParityManifest {
                 + "on ForgeAsset.url(on:); neither copy of this client is closer to it than the "
                 + "other, since the render happens on the tailnet and a sandbox has no bearing on "
                 + "an outbound HTTP call")
+        case .autoResume: return .implemented("armResume")
         case .forgeHistory:
             return .gap(
                 "ForgeStore keeps the receipts and ForgeBoard compacts them; this client draws no "

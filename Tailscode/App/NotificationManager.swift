@@ -232,6 +232,42 @@ enum NotificationManager {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Puts a notice on the moment a spent window reopens.
+    ///
+    /// Scheduled ahead rather than raised when it happens, because the whole point of the wait is
+    /// that nobody is watching: a phone the system never wakes still tells its owner the window
+    /// opened and what the app is doing about it. Withdrawn the instant the plan is — a
+    /// notification for a wait somebody ended is the app talking about a decision it no longer
+    /// holds.
+    static func scheduleResumeNotice(_ plan: ResumePlan) {
+        let identifier = resumeIdentifier(plan.id)
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        let seconds = plan.remaining()
+        guard seconds > 1 else { return }
+        let content = UNMutableNotificationContent()
+        content.title = ResumeReading.notificationTitle(plan)
+        content.body = ResumeReading.notificationBody(plan)
+        content.sound = .default
+        content.categoryIdentifier = AlertFace.usage.category.rawValue
+        content.threadIdentifier = plan.sessionID
+        content.userInfo = ["sessionID": plan.sessionID, "profileID": plan.profileID]
+        center.add(
+            UNNotificationRequest(
+                identifier: identifier, content: content,
+                trigger: UNTimeIntervalNotificationTrigger(
+                    timeInterval: seconds, repeats: false)))
+    }
+
+    static func withdrawResumeNotice(_ row: UUID) {
+        let identifier = resumeIdentifier(row)
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    private static func resumeIdentifier(_ row: UUID) -> String { "resume:\(row.uuidString)" }
+
     /// The kind's face as a thumbnail, so a glance at a stack of banners separates the finished
     /// from the waiting before a word is read. Written fresh per notification because the system
     /// takes ownership of the file it is handed.

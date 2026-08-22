@@ -54,6 +54,16 @@ final class ChatPane: @unchecked Sendable {
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
     private var queue = SendQueue()
+    /// Messages a spent provider window stopped, and the moment each goes again. The policy and
+    /// every word are Core's; this owns the one clock that fires them and the ledger's copy on
+    /// disk, so a window that opens after the app was closed is still explained rather than lost.
+    var resume = ResumeLedger()
+    var resumeTask: Task<Void, Never>?
+    /// How many times this conversation has already been sent into the wall and bounced. A plan
+    /// that fires and dies produces a *fresh* failure, and reading each fresh failure as a first
+    /// attempt is how a bounded retry becomes an unbounded one — so the count lives here, beside
+    /// the conversation, and only a turn that is not in a failed state clears it.
+    private var resumeAttempts = 0
     /// Which waiting message the composer is rewriting. A message taken back and sent again would
     /// land at the end of the queue, which is not editing but deleting and re-adding, and it
     /// silently reorders what somebody wrote.
@@ -458,6 +468,9 @@ final class ChatPane: @unchecked Sendable {
         context.pendingAct = { [weak self] id, act in
             Gtk.onMain { [weak self] in self?.actOnPending(id, act) }
         }
+        context.resumeAct = { [weak self] id, act in
+            Gtk.onMain { [weak self] in self?.actOnResume(id, act) }
+        }
         context.askAgain = { [weak self] words in
             Gtk.onMain { [weak self] in self?.askAgain(words) }
         }
@@ -767,6 +780,9 @@ final class ChatPane: @unchecked Sendable {
         attachments = []
         pastedImageCount = 0
         pending.removeAll()
+        resume.removeAll()
+        resumeTask?.cancel()
+        resumeTask = nil
         renderAttachments()
         clearUnseen()
         ActivityInbox.clear(sessionID: entry.session.id)
@@ -782,6 +798,7 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_visible(earlierButton, 0)
         if gtk_widget_get_visible(findBar) != 0 { setFindShown(false) }
         restoreDraft(for: entry)
+        restoreHeldMessages()
         streamTask?.cancel()
         tickerTask?.cancel()
         tickerTask = nil
@@ -1119,6 +1136,7 @@ final class ChatPane: @unchecked Sendable {
         // assumes one row per key, tears.
         var rows = rows.filter { !Self.dockedKey($0.key) }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        armResumeForWalledTurn(state)
         if !pending.isEmpty {
             if !rows.isEmpty {
                 rows.append(TranscriptRow(key: "pending:break", kind: .turnBreak))
@@ -1127,10 +1145,12 @@ final class ChatPane: @unchecked Sendable {
                 // The key carries the phase so a send that becomes sent, or fails, is a row the
                 // diff rebuilds rather than one it recognises and leaves alone. Caption aging is
                 // the ticker's job — a Date in the row value rebuilt every token for nothing.
+                let plan = resume.plan(for: send.id)
                 rows.append(
                     TranscriptRow(
-                        key: "pending:\(send.id.uuidString):\(Self.phaseKey(send))",
-                        kind: .pendingSend(send)))
+                        key: "pending:\(send.id.uuidString):\(Self.phaseKey(send))"
+                            + (plan.map { ":wait\($0.attempt)" } ?? ""),
+                        kind: .pendingSend(send, plan)))
             }
         }
         // A turn the machine cut off is docked at the very end: it is an account of what already
@@ -1240,7 +1260,9 @@ final class ChatPane: @unchecked Sendable {
                 // A send that never left is not a silence: the row keeps the words and says so.
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
-                    self.pending.mark(id: id, .failed(reason: AgentErrorText.readable(error)))
+                    let reason = AgentErrorText.readable(error)
+                    self.pending.mark(id: id, .failed(reason: reason))
+                    self.armResume(row: id, reason: reason)
                     self.redrawPending()
                 }
             }
@@ -1293,6 +1315,207 @@ final class ChatPane: @unchecked Sendable {
             pending.remove(id: id)
             redrawPending()
         }
+    }
+
+    /// Whether this pane waits out a spent window on the person's behalf.
+    private var resumeEnabled: Bool {
+        Preferences.autoResume
+    }
+
+    /// The windows that stand in front of what this chat would send with — the same reading the
+    /// band and the model picker use, so a wall never means one thing in one place and another
+    /// somewhere else.
+    private func resumeQuotas() -> [UsageQuota] {
+        QuotaSurface.relevantQuotas(
+            for: backend?.agentType, among: host?.quotasForStatus() ?? [])
+    }
+
+    /// A send a wall stopped is held rather than left as a failure nobody will come back to.
+    /// Anything that is not a wall keeps its own sentence and never reaches this.
+    private func armResume(row: UUID, reason: String) {
+        guard let entry, let send = pending.send(id: row) else { return }
+        let verdict = AutoResume.decide(
+            row: row, profileID: entry.profileID, sessionID: entry.session.id, trigger: .refused,
+            failure: reason, quotas: resumeQuotas(), model: activeModelID,
+            selection: chosenModel, enabled: resumeEnabled, attempt: resumeAttempts)
+        adopt(verdict, text: send.text, attachments: send.attachments, model: send.model,
+            effort: send.effort)
+    }
+
+    /// A turn that reached the server, ran into the wall and produced nothing is the commonest
+    /// shape of this on a Claude machine: the prompt is already in the transcript, so the words
+    /// come from there rather than from a send this device happens to remember.
+    private func armResumeForWalledTurn(_ state: ConversationState) {
+        guard let entry, let failure = state.lastFailure else {
+            resumeAttempts = 0
+            return
+        }
+        guard !resume.plans.values.contains(where: { $0.trigger == .answerless }) else { return }
+        guard let asked = state.messages.last(where: { $0.role == .user }) else { return }
+        let words = asked.parts.compactMap(\.text).joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        let answer = state.messages.last { $0.role == .assistant && $0.createdAt >= asked.createdAt }
+        guard answer == nil || AutoResume.mayAskAgain(answer) else {
+            if QuotaSurface.isQuotaFailure(failure.message) {
+                setNotice(ResumeReading.obstacle(.turnHadStarted))
+            }
+            return
+        }
+        let verdict = AutoResume.decide(
+            row: UUID(), profileID: entry.profileID, sessionID: entry.session.id,
+            trigger: .answerless, failure: failure.message, quotas: resumeQuotas(),
+            model: activeModelID, selection: chosenModel, enabled: resumeEnabled,
+            attempt: resumeAttempts)
+        adopt(verdict, text: words, attachments: [], model: chosenModel, effort: chosenEffort)
+    }
+
+    /// Takes a verdict and does the one thing it asks for: hold the words and start the clock, or
+    /// say out loud why nothing is being waited for.
+    private func adopt(
+        _ verdict: ResumeVerdict, text: String, attachments: [PromptAttachment],
+        model: ModelSelection?, effort: String?
+    ) {
+        switch verdict {
+        case .notAWall:
+            return
+        case .cannot(let obstacle):
+            setNotice(ResumeReading.obstacle(obstacle))
+        case .resume(let plan):
+            resume.hold(plan)
+            ResumeStore.hold(
+                ResumeRecord(
+                    plan: plan, text: text, attachments: attachments, model: model,
+                    effort: effort))
+            startResumeClock()
+            redrawPending()
+        }
+    }
+
+    /// One clock for the whole pane. A countdown written in minutes needs nothing finer than this,
+    /// and the grace this policy adds to every reset is three times the slop — so a wait measured
+    /// in hours costs a quarter-minute wakeup that touches one label, rather than a per-second
+    /// tick dragging the status band and its network facts along behind it.
+    private func startResumeClock() {
+        guard resumeTask == nil, !resume.isEmpty else { return }
+        resumeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.resumeTickSeconds))
+                guard !Task.isCancelled else { break }
+                Gtk.onMain { [weak self] in self?.serviceResume() }
+            }
+        }
+    }
+
+    private static let resumeTickSeconds: TimeInterval = 15
+
+    /// The moment a plan is due: look at the gauges rather than assume, then send, wait again, or
+    /// stop and say why.
+    private func serviceResume() {
+        guard !resume.isEmpty else {
+            resumeTask?.cancel()
+            resumeTask = nil
+            return
+        }
+        for plan in resume.stale() {
+            resume.drop(plan.id)
+            ResumeStore.release(plan.id)
+            setNotice(ResumeReading.missed(plan))
+        }
+        for plan in resume.due() {
+            switch AutoResume.recheck(
+                plan, quotas: resumeQuotas(), model: activeModelID, selection: chosenModel,
+                enabled: resumeEnabled)
+            {
+            case .send:
+                setNotice(ResumeReading.firing(plan))
+                fireResume(plan)
+            case .wait(let next):
+                resume.hold(next)
+                ResumeStore.replan(next)
+            case .cancel(let obstacle):
+                resume.drop(plan.id)
+                ResumeStore.release(plan.id)
+                setNotice(ResumeReading.obstacle(obstacle))
+            }
+        }
+        updatePendingCaptions()
+        redrawPending()
+        if resume.isEmpty {
+            resumeTask?.cancel()
+            resumeTask = nil
+        }
+    }
+
+    /// Sends what a plan was holding, through the pane's own send so a resumed message is a
+    /// message like any other rather than a second road into the backend.
+    private func fireResume(_ plan: ResumePlan) {
+        guard let conversation else { return }
+        resumeAttempts = plan.attempt + 1
+        let record = ResumeStore.release(plan.id)
+        resume.drop(plan.id)
+        let held = pending.send(id: plan.id)
+        let text = held?.text ?? record?.text ?? ""
+        guard !text.isEmpty else { return }
+        let outgoing = QueuedSend(
+            text: text, model: held?.model ?? record?.model,
+            effort: held?.effort ?? record?.effort,
+            attachments: held?.attachments ?? record?.attachments ?? [])
+        if held != nil {
+            deliver(outgoing, through: conversation, reusing: plan.id)
+        } else {
+            deliver(outgoing, through: conversation)
+        }
+    }
+
+    private func actOnResume(_ id: UUID, _ act: ResumeReading.Act) {
+        guard let plan = resume.plan(for: id) else { return }
+        switch act {
+        case .sendNow:
+            fireResume(plan)
+        case .edit:
+            resume.drop(id)
+            ResumeStore.release(id)
+            actOnPending(id, .edit)
+        case .stopWaiting:
+            resume.drop(id)
+            ResumeStore.release(id)
+            setNotice(ResumeReading.stopped(plan))
+            redrawPending()
+        }
+        if resume.isEmpty {
+            resumeTask?.cancel()
+            resumeTask = nil
+        }
+    }
+
+    /// Picks back up what this device was holding for this conversation when it was last running.
+    /// A plan whose window opened while nothing was awake is reported rather than fired.
+    private func restoreHeldMessages() {
+        guard let entry else { return }
+        let records = ResumeStore.records(
+            profileID: entry.profileID, sessionID: entry.session.id)
+        guard !records.isEmpty else { return }
+        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
+        for record in records {
+            if record.plan.isStale() {
+                ResumeStore.release(record.id)
+                setNotice(ResumeReading.missed(record.plan))
+                continue
+            }
+            let restored = pending.begin(
+                text: record.text, attachments: record.attachments, model: record.model,
+                effort: record.effort, userMessages: userMessages, now: record.plan.plannedAt,
+                id: record.id)
+            pending.mark(
+                id: restored.id,
+                .failed(
+                    reason: Localized.text(
+                        "%@ %@ is used up", record.plan.provider, record.plan.window)))
+            resume.hold(record.plan)
+        }
+        startResumeClock()
+        redrawPending()
     }
 
     /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
@@ -2112,6 +2335,11 @@ final class ChatPane: @unchecked Sendable {
     /// chat's own provider family speaks here, and only the wall standing in front of the model
     /// this chat would send with; every other wall is worn where a model is picked.
     private func quotaNotice(state: ConversationState, quotas: [UsageQuota]) -> String? {
+        if let waiting = resume.plans.values.filter({ !$0.isStale() })
+            .min(by: { $0.resumesAt < $1.resumesAt })
+        {
+            return ResumeReading.short(waiting)
+        }
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
         return QuotaSurface.hottestExhausted(
@@ -2368,7 +2596,7 @@ final class ChatPane: @unchecked Sendable {
     /// Ages every pending-send caption that is still on screen. Phase changes rebuild the row;
     /// the wait itself must not.
     private func updatePendingCaptions() {
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty || !resume.isEmpty else { return }
         let now = Date()
         for index in renderedRows.indices {
             guard case .pendingSend = renderedRows[index].kind, index < rowWidgets.count,
@@ -3888,6 +4116,49 @@ final class ChatPane: @unchecked Sendable {
     /// Seeds the composer for the headless driver, through the same paths a keystroke takes.
     /// A synthetic conversation carrying one live workflow and one finished one, so the card can be
     /// driven and photographed headlessly without waiting three minutes on a real fan-out.
+    /// A conversation whose last send a spent window stopped, so the wait can be driven and
+    /// photographed without an account that is actually out of quota. `stale` is the one nobody
+    /// was awake for; anything else is a live wait.
+    func driverResumeDemo(_ mode: String) {
+        let now = Date()
+        let asked = ChatMessage(
+            id: "demo-resume-user", role: .user, agentType: .claudeCode,
+            parts: [MessagePart(id: "t", kind: .text("Refactor the settings store."))],
+            createdAt: now.addingTimeInterval(-900))
+        var state = ConversationState()
+        state.hasLoadedTranscript = true
+        state.status = .idle
+        state.messages = [asked]
+        pending.removeAll()
+        resume.removeAll()
+        let row = pending.begin(
+            text: "and while you are at it, run the tests", userMessages: 1, now: now)
+        pending.mark(id: row.id, .failed(reason: "Claude usage limit reached"))
+        let fires = mode == "stale" ? -(AutoResume.staleAfter + 120) : 2 * 3600 + 45
+        resume.hold(
+            ResumePlan(
+                id: row.id, profileID: entry?.profileID ?? "demo",
+                sessionID: entry?.session.id ?? "demo", provider: "Claude", window: "Session",
+                resumesAt: now.addingTimeInterval(fires), trustedReset: true, trigger: .refused,
+                attempt: mode == "again" ? 2 : 0, plannedAt: now))
+        startResumeClock()
+        apply(state: state, rows: rowBuilder.rows(for: state.messages))
+        reportResumeState()
+    }
+
+    /// What the pane is holding, for the headless driver: the rows, the plans, and the line the
+    /// first one is wearing.
+    func reportResumeState() {
+        let now = Date()
+        let plan = resume.plans.values.min { $0.resumesAt < $1.resumesAt }
+        FileHandle.standardOutput.write(
+            Data(
+                ("RESUME pending=\(pending.count) plans=\(resume.count) "
+                    + (plan.map { ResumeReading.caption($0, now: now) }
+                        ?? pending.sends.first.map { PendingSendReading.caption($0, now: now) }
+                        ?? "none") + "\n").utf8))
+    }
+
     func driverWorkflowDemo() {
         let now = Date()
         let script = """

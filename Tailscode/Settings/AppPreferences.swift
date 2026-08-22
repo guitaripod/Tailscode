@@ -70,6 +70,16 @@ enum AppPreferences {
         set { defaults.set(HapticStrength.clamped(newValue), forKey: "pref.hapticIntensity") }
     }
 
+    /// Whether a message a spent window stopped is sent again when the window reopens. The choice
+    /// itself is Core's (`AutoResumeSetting`, one key on every client).
+    static var autoResume: Bool {
+        AutoResumeSetting.isEnabled
+    }
+
+    static func setAutoResume(_ value: Bool) {
+        AutoResumeSetting.setEnabled(value)
+    }
+
     static var sendOnReturn: Bool {
         get { defaults.bool(forKey: "pref.sendOnReturn") }
         set { defaults.set(newValue, forKey: "pref.sendOnReturn") }

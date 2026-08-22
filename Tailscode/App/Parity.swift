@@ -139,6 +139,7 @@ enum ParityManifest {
                 + "for the renderer's address read through ForgeEndpoint.read, a prompt box, the "
                 + "settings rows walked by tapping, a progress bar driven by ForgeRow.fraction, and "
                 + "an AVPlayer on ForgeAsset.url(on:) for the clip that comes back")
+        case .autoResume: return .implemented("armResume")
         case .forgeHistory:
             return .gap(
                 "ForgeStore keeps the receipts and ForgeBoard already lists them compacted, but no "

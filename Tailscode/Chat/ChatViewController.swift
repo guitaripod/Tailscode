@@ -239,6 +239,7 @@ final class ChatViewController: UIViewController {
         }
         bind()
         viewModel.start()
+        viewModel.restoreHeldMessages()
         #if DEBUG
             if let auto = ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"] {
                 Task { [weak self] in
@@ -1126,6 +1127,7 @@ final class ChatViewController: UIViewController {
     @objc private func sceneDidActivate() {
         suppressBannerUntil = Date().addingTimeInterval(3)
         viewModel.resync()
+        viewModel.serviceResume()
     }
 
     @objc private func bannerTapped() {
@@ -1214,7 +1216,8 @@ final class ChatViewController: UIViewController {
                     withReuseIdentifier: PendingSendCell.reuseID, for: indexPath)
                     as! PendingSendCell
                 cell.turnInset = self.turnGap(at: indexPath)
-                cell.configure(send, delegate: self)
+                cell.configure(
+                    send, plan: self.viewModel.resumePlan(for: send.id), delegate: self)
                 return cell
             }
             if id == Self.interruptedRowID, let turn = self.interrupted {
@@ -1756,6 +1759,17 @@ final class ChatViewController: UIViewController {
             self.render(self.viewModel.state)
         }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
+        viewModel.onResumeChange = { [weak self] plan in
+            guard let self else { return }
+            if let plan {
+                NotificationManager.scheduleResumeNotice(plan)
+            } else {
+                for row in self.viewModel.pendingSends.map(\.id) {
+                    NotificationManager.withdrawResumeNotice(row)
+                }
+            }
+            self.updateBanner(for: self.viewModel.state)
+        }
         viewModel.onTitleChange = { [weak self] in
             guard let self else { return }
             self.title = self.navDisplayTitle
@@ -2181,6 +2195,12 @@ final class ChatViewController: UIViewController {
     @discardableResult
     private func applyQuotaExhaustion(for state: ConversationState) -> Bool {
         guard Date() > suppressBannerUntil, state.status != .running else { return false }
+        if let waiting = viewModel.soonestResume {
+            banner.show(
+                ResumeReading.short(waiting), color: Theme.Color.warning,
+                symbol: ResumeReading.symbol)
+            return true
+        }
         let quotas = QuotaSurface.relevantQuotas(
             for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas())
         let selection = viewModel.displayedModel
@@ -4348,6 +4368,34 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         case .discard:
             announcedFailedSends.remove(id)
             viewModel.discardPending(id: id)
+            Theme.Haptics.tap()
+        }
+    }
+
+    /// What a message being held for a window offers. Sending now is the ordinary send; editing
+    /// hands the words back to the composer and takes the row away; not waiting leaves the words
+    /// exactly where they are as the ordinary not-sent row they were before the wait.
+    func pendingSend(_ id: UUID, resume act: ResumeReading.Act) {
+        switch act {
+        case .sendNow:
+            Theme.Haptics.tap()
+            announcedFailedSends.remove(id)
+            userScrolledUp = false
+            _ = viewModel.actOnResume(id, .sendNow)
+        case .edit:
+            guard let taken = viewModel.actOnResume(id, .edit) else { return }
+            announcedFailedSends.remove(id)
+            composer.setDraft(taken.text)
+            composer.becomeFirstResponder()
+            DraftStore.record(taken.text, for: draftScope)
+            if !taken.attachments.isEmpty {
+                pendingAttachments = taken.attachments
+                composer.showsAttach = canAttachAnything
+                updateAttachmentStrip()
+            }
+            Theme.Haptics.selection()
+        case .stopWaiting:
+            _ = viewModel.actOnResume(id, .stopWaiting)
             Theme.Haptics.tap()
         }
     }
