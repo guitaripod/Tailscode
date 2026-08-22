@@ -128,6 +128,16 @@ enum ParityManifest {
         case .proUnlock:
             return .notApplicable(
                 "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")
+        case .videoForge:
+            return .gap(
+                "the box with the card is this machine, so this client is the one that owes it "
+                + "least work and gets it soonest — but nothing here opens ForgeBoard yet. What is "
+                + "owed is a GTK pane over its rows plus playback of ForgeAsset.url(on:), which the "
+                + "video slot already knows how to do by handing an address to mpv")
+        case .forgeHistory:
+            return .gap(
+                "ForgeStore holds the receipts and ForgeBoard compacts them into a section; this "
+                + "client draws neither yet, so a clip rendered yesterday has nowhere to be listed")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")
         }
     }

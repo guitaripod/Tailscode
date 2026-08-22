@@ -229,6 +229,18 @@ enum ParityManifest {
                 appStore: .implemented("MacProStore"),
                 because:
                     "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
+        case .videoForge:
+            return .gap(
+                "nothing on this desk opens ForgeBoard yet. The work is an AppKit window over its "
+                + "four sections — the renderer's address read through ForgeEndpoint.read, the "
+                + "prompt, the settings rows, a bar driven by ForgeRow.fraction — and an AVPlayer "
+                + "on ForgeAsset.url(on:); neither copy of this client is closer to it than the "
+                + "other, since the render happens on the tailnet and a sandbox has no bearing on "
+                + "an outbound HTTP call")
+        case .forgeHistory:
+            return .gap(
+                "ForgeStore keeps the receipts and ForgeBoard compacts them; this client draws no "
+                + "video surface at all yet, so there is nowhere for that section to appear")
         case .reviewPrompt: return .gap("the policy is Core's and already shared, and macOS has the same SKStoreReviewController to ask with — what this client owes is a MacReviewPrompt coordinator wired to its own turn-completion and MacGameCenter trophy paths, the two signals iOS now hooks")
         }
     }
