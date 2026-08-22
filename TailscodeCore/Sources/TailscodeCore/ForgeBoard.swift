@@ -825,6 +825,10 @@ public enum ForgeBoardCheck {
         expect(ForgeFailure.unreachable("arch").description == Localized.text("%@ did not answer", "arch"), "an unreachable box names itself")
         expect(ForgeFailure.rejected("arch", "no such model").description == "no such model", "a refusal is the server's own words")
         expect(ForgeFailure.noOutput("arch").description == Localized.text("%@ finished but saved no video", "arch"), "a render that saved nothing says so")
+        expect(
+            ForgeFailure.missingFile("arch").description
+                == Localized.text("%@ no longer has that clip", "arch"),
+            "a kept clip whose file was cleaned up is gone rather than unreachable")
         expect(ForgeFailure.unconfigured.host.isEmpty, "a forge with no machine names none")
         expect(
             ForgeClient.reason(Stranger(), host: "arch") == ForgeFailure.unreachable("arch").description,

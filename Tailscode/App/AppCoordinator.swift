@@ -67,6 +67,12 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--analytics") {
                 openAnalyticsForDebug()
             }
+            if CommandLine.arguments.contains("--video") {
+                openVideoForDebug(staging: nil)
+            }
+            if let state = ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_STATE"] {
+                openVideoForDebug(staging: state)
+            }
             if let slug = ProcessInfo.processInfo.environment["TAILSCODE_SETTINGS_SECTION"] {
                 openSettingsForDebug(slug: slug)
             }
@@ -99,6 +105,20 @@ final class AppCoordinator: NSObject {
             guard let nav = window.rootViewController as? UINavigationController else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 nav.pushViewController(UsageViewController(), animated: false)
+            }
+        }
+
+        /// Opens the video surface with the board put into one named state, so every face it has
+        /// — no renderer, a machine that did not answer, a render queued, running, saved, failed —
+        /// can be photographed on a simulator with nothing on the other end. Naming `home` as the
+        /// landing stages the render and stays put, which is how the mark Home wears while a
+        /// render is out gets photographed.
+        private func openVideoForDebug(staging state: String?) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                if let state { ForgeRunner.shared.stage(state) }
+                guard ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_SCROLL"] != "home"
+                else { return }
+                self?.home?.pushVideo()
             }
         }
 
@@ -231,6 +251,15 @@ final class AppCoordinator: NSObject {
         }
         if url.host() == "connect" {
             handleConnectLink(url)
+            return
+        }
+        if url.host() == "video" {
+            guard let home else {
+                pendingSessionLink = (url, Date())
+                return
+            }
+            pendingSessionLink = nil
+            home.pushVideo()
             return
         }
         if url.host() == "usage" {

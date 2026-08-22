@@ -131,20 +131,9 @@ enum ParityManifest {
         case .linkEmbeds: return .implemented("LinkEmbedCell")
         case .proUnlock: return .implemented("ProStore")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
-        case .videoForge:
-            return .gap(
-                "Core carries the whole renderer — ForgeBoard's four sections, ForgeGraph's "
-                + "two-pass LTX-2.5 graph, ForgeClient's socket and salvage loop — and nothing on "
-                + "the phone opens it. What is owed here is a pane over ForgeBoard's rows: a field "
-                + "for the renderer's address read through ForgeEndpoint.read, a prompt box, the "
-                + "settings rows walked by tapping, a progress bar driven by ForgeRow.fraction, and "
-                + "an AVPlayer on ForgeAsset.url(on:) for the clip that comes back")
+        case .videoForge: return .implemented("VideoForgeViewController")
         case .autoResume: return .implemented("armResume")
-        case .forgeHistory:
-            return .gap(
-                "ForgeStore keeps the receipts and ForgeBoard already lists them compacted, but no "
-                + "screen on the phone draws that section, so a finished clip would be reachable "
-                + "only while its own render is still on screen")
+        case .forgeHistory: return .implemented("ForgeClipCell")
         }
     }
 }

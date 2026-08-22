@@ -47,6 +47,8 @@ final class HomeViewController: UIViewController {
     private var composerRidesKeyboard: NSLayoutConstraint!
     private let settingsButton = UpdateMarkButton()
     private lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
+    private let videoButton = VideoMarkButton()
+    private lazy var videoItem = UIBarButtonItem(customView: videoButton)
     private let orbView = PresenceOrbView()
     private var orbTarget: SessionEntry?
     private var quotas: [UsageQuota] = []
@@ -102,6 +104,8 @@ final class HomeViewController: UIViewController {
         navigationItem.largeTitleDisplayMode = .always
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        videoButton.addTarget(self, action: #selector(openVideo), for: .touchUpInside)
+        updateVideoMark()
         updateLeftBarItems()
         updateComposeButton()
         configureCollectionView()
@@ -404,6 +408,9 @@ final class HomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(updatesDidChange),
             name: UpdateLedger.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(updateVideoMark),
+            name: ForgeRunner.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.didEnterBackgroundNotification,
             UIApplication.willTerminateNotification,
@@ -568,7 +575,7 @@ final class HomeViewController: UIViewController {
                 })
         }
         composeItem.accessibilityLabel = String(localized: "New chat")
-        navigationItem.rightBarButtonItems = [composeItem]
+        navigationItem.rightBarButtonItems = [composeItem, videoItem]
     }
 
     private var lastEnrichment: Date?
@@ -1353,6 +1360,24 @@ final class HomeViewController: UIViewController {
         updateComposer()
         updateSuggestions()
         updateCommandPalette(for: composerBar.currentText)
+    }
+
+    /// A render is minutes long and happens on another machine, so the mark on the way in says
+    /// one thing only: that something is being made right now. It clears itself when the render
+    /// stops, which is why it needs no acknowledgement of its own.
+    @objc private func updateVideoMark() {
+        videoButton.apply(
+            rendering: ForgeRunner.shared.isRendering,
+            spoken: ForgeRunner.shared.board.job.subtitle)
+    }
+
+    @objc func openVideo() {
+        Theme.Haptics.tap()
+        pushVideo()
+    }
+
+    func pushVideo() {
+        navigationController?.pushViewController(VideoForgeViewController(), animated: true)
     }
 
     func pushUsage() {

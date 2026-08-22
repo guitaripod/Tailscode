@@ -41,6 +41,36 @@ enum ForgeFetch {
         return object
     }
 
+    /// The first byte of a file, which is the cheapest question that distinguishes a clip that is
+    /// still there from one that has been cleaned up. A range is asked for rather than a HEAD
+    /// because every server answers a range and not every server routes a HEAD.
+    static func peek(_ url: URL, host: String) async throws -> Int {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode ?? 0
+        } catch {
+            throw ForgeFailure.unreachable(host)
+        }
+    }
+
+    static func bytes(_ url: URL, host: String) async throws -> Data {
+        var request = URLRequest(url: url, timeoutInterval: coldTimeout)
+        request.httpMethod = "GET"
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+            if status == 404 || status == 410 { throw ForgeFailure.missingFile(host) }
+            guard status < 400, !data.isEmpty else { throw ForgeFailure.unreachable(host) }
+            return data
+        } catch let failure as ForgeFailure {
+            throw failure
+        } catch {
+            throw ForgeFailure.unreachable(host)
+        }
+    }
+
     /// A call whose answer nobody reads — cancelling. It either landed or the render was already
     /// over, and neither is worth a sentence on a screen.
     static func fire(_ url: URL?) async {
@@ -128,6 +158,30 @@ public struct ForgeClient: Sendable {
 
     public func cancel() async {
         await ForgeFetch.fire(endpoint.url("/interrupt"))
+    }
+
+    /// Where to point a player, confirmed before it is pointed there. A kept clip is a receipt for
+    /// a file on somebody else's disk, and `/view` answers a file that has been cleaned up with a
+    /// 404 — which a video player reports in its own words, none of which are about this machine
+    /// or tell anybody whether to wait. Asking first is what lets the clip say it is gone.
+    public func locate(_ asset: ForgeAsset) async throws -> URL {
+        guard let url = asset.url(on: endpoint) else {
+            throw ForgeFailure.unreachable(endpoint.host)
+        }
+        let status = try await ForgeFetch.peek(url, host: endpoint.host)
+        if status == 404 || status == 410 { throw ForgeFailure.missingFile(endpoint.host) }
+        guard status < 400 else { throw ForgeFailure.unreachable(endpoint.host) }
+        return url
+    }
+
+    /// The clip itself, for the places a URL is not enough — the photo library, a share sheet.
+    /// The bytes are the file the renderer wrote, fetched by the same three fields a player uses,
+    /// so what gets saved is never a re-encode of what a preview happened to decode.
+    public func fetch(_ asset: ForgeAsset) async throws -> Data {
+        guard let url = asset.url(on: endpoint) else {
+            throw ForgeFailure.unreachable(endpoint.host)
+        }
+        return try await ForgeFetch.bytes(url, host: endpoint.host)
     }
 
     /// The file a finished job left behind, or nothing if history does not have it yet. Nothing is

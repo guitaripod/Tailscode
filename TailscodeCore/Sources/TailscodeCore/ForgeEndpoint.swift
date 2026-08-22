@@ -132,12 +132,18 @@ public enum ForgeFailure: Error, CustomStringConvertible, Sendable, Equatable {
     /// nothing — a real failure that the success frames do not describe.
     case noOutput(String)
     case renderFailed(String, String)
+    /// The file a kept clip points at is not on the machine any more. A receipt outlives the file
+    /// it names — the renderer's output folder is somebody else's to empty — and gone is a
+    /// different fact from unreachable: one is a reason to stop waiting, the other is a reason to
+    /// wait a little longer.
+    case missingFile(String)
 
     public var host: String {
         switch self {
         case .unconfigured: return ""
         case .unreachable(let host), .rejected(let host, _), .refused(let host, _),
-            .disconnected(let host), .noOutput(let host), .renderFailed(let host, _):
+            .disconnected(let host), .noOutput(let host), .renderFailed(let host, _),
+            .missingFile(let host):
             return host
         }
     }
@@ -158,6 +164,8 @@ public enum ForgeFailure: Error, CustomStringConvertible, Sendable, Equatable {
             return Localized.text("%@ finished but saved no video", host)
         case .renderFailed(_, let reason):
             return reason
+        case .missingFile(let host):
+            return Localized.text("%@ no longer has that clip", host)
         }
     }
 }
