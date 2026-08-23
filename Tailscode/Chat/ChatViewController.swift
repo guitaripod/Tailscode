@@ -38,6 +38,10 @@ final class ChatViewController: UIViewController {
     /// A turn this session's server was stopped in the middle of, waiting to be picked back up or
     /// let go. It survives a reconnect and a relaunch because the server holds it, not this device.
     private var interrupted: InterruptedTurn?
+    /// The card as it was last drawn, so a card that changed without the transcript moving — a
+    /// press taken, a refusal that corrected it — is repainted rather than recognised by row id
+    /// and left exactly as it was.
+    private var lastInterrupted: InterruptedTurn?
     private static let interruptedRowID = "interrupted"
     /// The compaction happening right now, or the one that was just refused. Finished ones are
     /// rows in the transcript and need no state here.
@@ -1759,6 +1763,13 @@ final class ChatViewController: UIViewController {
             self.render(self.viewModel.state)
         }
         viewModel.onError = { [weak self] message in self?.presentError(message) }
+        viewModel.onInterruptionChange = { [weak self] in
+            guard let self else { return }
+            self.render(self.viewModel.state)
+        }
+        viewModel.onInterruptionRefused = { [weak self] said in
+            self?.presentToast(said, duration: 5.0)
+        }
         viewModel.onResumeChange = { [weak self] plan in
             guard let self else { return }
             if let plan {
@@ -1895,9 +1906,7 @@ final class ChatViewController: UIViewController {
         {
             ids.append("thinking")
         }
-        // A turn the machine cut off is docked at the very end, below anything still open: it is
-        // an account of what already happened, and it must not push a live question off screen.
-        interrupted = InterruptedTurnReading.read(state.interruption)
+        interrupted = interruptedCard(state)
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
@@ -1948,6 +1957,10 @@ final class ChatViewController: UIViewController {
         if let liveCompaction, liveCompaction != previousCompaction {
             changed.append(liveCompaction.id)
         }
+        if interrupted != lastInterrupted, !changed.contains(Self.interruptedRowID) {
+            changed.append(Self.interruptedRowID)
+        }
+        lastInterrupted = interrupted
         for id in settledCascadeRows where rowsByID[id] != nil && !changed.contains(id) {
             changed.append(id)
         }
@@ -2142,6 +2155,19 @@ final class ChatViewController: UIViewController {
                 content.transform = .identity
             }
         }
+    }
+
+    /// The cut-off turn's card, docked at the very end of the transcript — below anything still
+    /// open, because it is an account of what already happened and must not push a live question
+    /// off screen.
+    ///
+    /// It is the server's record wearing a press this device is still waiting on an answer to. The
+    /// press is dropped the moment the server's own account says anything, which is what stops a
+    /// button sitting in flight after the thing it asked for has happened.
+    private func interruptedCard(_ state: ConversationState) -> InterruptedTurn? {
+        guard let card = InterruptedTurnReading.read(state.interruption) else { return nil }
+        guard let press = viewModel.interruptionPress, card.acceptsPress else { return card }
+        return InterruptedTurnReading.pressed(card, press)
     }
 
     private func updateBanner(for state: ConversationState) {
@@ -3927,9 +3953,9 @@ final class ChatViewController: UIViewController {
         present(sheet, animated: true)
     }
 
-    private func presentToast(_ message: String) {
+    private func presentToast(_ message: String, duration: TimeInterval = 2.0) {
         let toast = ToastView(message: message)
-        toast.flash(in: view, above: composer.topAnchor)
+        toast.flash(in: view, above: composer.topAnchor, duration: duration)
     }
 
     /// One chip carries both the model and the effort, and names them: which

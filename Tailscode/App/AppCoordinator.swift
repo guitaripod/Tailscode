@@ -46,6 +46,11 @@ final class AppCoordinator: NSObject {
                 window.makeKeyAndVisible()
                 return
             }
+            if CommandLine.arguments.contains("--interrupted-preview") {
+                window.rootViewController = InterruptedTurnPreviewViewController()
+                window.makeKeyAndVisible()
+                return
+            }
         #endif
         if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
             ConnectionController.shared.enterDemoMode()

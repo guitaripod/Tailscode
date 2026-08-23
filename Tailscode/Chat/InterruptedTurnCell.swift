@@ -3,7 +3,11 @@ import UIKit
 
 /// The face of a turn the machine was pulled out from under. A card at the end of the transcript,
 /// not a bubble: nothing was said, and the point of it is the account of what the work had already
-/// done. It holds perfectly still — nothing is running — and offers exactly two things to do.
+/// done. It holds perfectly still — nothing is running — and while it is undecided it offers
+/// exactly two things to do.
+///
+/// It also says what leaving it undecided costs, because it costs something: the server will not
+/// carry the session on by itself while the card stands, and nothing else anywhere says so.
 final class InterruptedTurnCell: UICollectionViewCell {
     static let reuseID = "InterruptedTurnCell"
 
@@ -14,9 +18,11 @@ final class InterruptedTurnCell: UICollectionViewCell {
     private let promptLabel = UILabel()
     private let progressStack = UIStackView()
     private let queuedLabel = UILabel()
+    private let costLabel = UILabel()
     private let resume = UIButton(type: .system)
     private let dismiss = UIButton(type: .system)
     private let actions = UIStackView()
+    private var turn: InterruptedTurn?
     private var onResume: (() -> Void)?
     private var onDismiss: (() -> Void)?
 
@@ -72,6 +78,11 @@ final class InterruptedTurnCell: UICollectionViewCell {
         queuedLabel.textColor = Theme.Color.secondaryLabel
         queuedLabel.numberOfLines = 0
 
+        costLabel.font = Theme.Ramp.font(.rowNote)
+        costLabel.adjustsFontForContentSizeCategory = true
+        costLabel.textColor = InterruptedTurn.tone.color
+        costLabel.numberOfLines = 0
+
         var resumeConfig = Theme.Glass.buttonConfiguration()
         resumeConfig.cornerStyle = .capsule
         resumeConfig.buttonSize = .small
@@ -92,12 +103,14 @@ final class InterruptedTurnCell: UICollectionViewCell {
         actions.addArrangedSubview(dismiss)
 
         let stack = UIStackView(arrangedSubviews: [
-            header, promptLabel, detailLabel, progressStack, queuedLabel, actions,
+            header, promptLabel, detailLabel, progressStack, queuedLabel, costLabel, actions,
         ])
         stack.axis = .vertical
         stack.alignment = .leading
         stack.spacing = Theme.Spacing.xs
-        stack.setCustomSpacing(Theme.Spacing.s, after: queuedLabel)
+        for last in [progressStack, queuedLabel, costLabel] as [UIView] {
+            stack.setCustomSpacing(Theme.Spacing.s, after: last)
+        }
         stack.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(stack)
 
@@ -120,6 +133,7 @@ final class InterruptedTurnCell: UICollectionViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        turn = nil
         onResume = nil
         onDismiss = nil
     }
@@ -127,18 +141,34 @@ final class InterruptedTurnCell: UICollectionViewCell {
     func configure(_ turn: InterruptedTurn, onResume: (() -> Void)?, onDismiss: (() -> Void)?) {
         self.onResume = onResume
         self.onDismiss = onDismiss
+        draw(turn)
+    }
+
+    /// The one place the card becomes pixels, so what a press draws and what an answer draws
+    /// cannot drift apart. Every word on it is Core's; this decides only what is on screen.
+    ///
+    /// A card the server has picked back up offers nothing: the work is going again, so "let it
+    /// go" would mean forgetting the record rather than stopping anything, and a button that
+    /// cannot do what its words say is worse than no button. A press still in flight keeps both,
+    /// disabled, because seeing what was asked for is the point of the acknowledgement.
+    private func draw(_ turn: InterruptedTurn) {
+        self.turn = turn
         titleLabel.text = turn.title
         promptLabel.text = turn.prompt
         promptLabel.isHidden = turn.prompt.isEmpty
         detailLabel.text = turn.detail
         for view in progressStack.arrangedSubviews { view.removeFromSuperview() }
         for line in turn.progress { progressStack.addArrangedSubview(Self.line(line)) }
-        queuedLabel.text = Self.queuedText(turn.queued)
-        queuedLabel.isHidden = turn.queued.isEmpty
+        queuedLabel.text = turn.queuedLine
+        queuedLabel.isHidden = turn.queuedLine == nil
+        costLabel.text = turn.cost
+        costLabel.isHidden = turn.cost == nil
         resume.configuration?.title = turn.resumeTitle
         resume.isHidden = turn.isResumed || onResume == nil
+        resume.isEnabled = turn.acceptsPress
         dismiss.configuration?.title = turn.dismissTitle
-        dismiss.isHidden = onDismiss == nil
+        dismiss.isHidden = turn.isResumed || onDismiss == nil
+        dismiss.isEnabled = turn.acceptsPress
         actions.isHidden = resume.isHidden && dismiss.isHidden
         card.layer.borderColor = InterruptedTurn.tone.color.withAlphaComponent(0.35).cgColor
         isAccessibilityElement = true
@@ -156,21 +186,27 @@ final class InterruptedTurnCell: UICollectionViewCell {
         return label
     }
 
-    private static func queuedText(_ queued: [String]) -> String? {
-        guard !queued.isEmpty else { return nil }
-        return queued.count == 1
-            ? String(localized: "One prompt was waiting behind it and never ran.")
-            : String(
-                localized:
-                    "\(queued.count) prompts were waiting behind it and never ran.")
+    /// Answers the press on the card itself, before the network can.
+    ///
+    /// The server's word is a second or two away over a tailnet and may never arrive at all. A
+    /// button that looks exactly as it did before that answer lands tells the person their press
+    /// did nothing, so the card is redrawn at once in Core's own in-flight state: the button
+    /// renames itself, both stop taking a second press, and the server's answer only ever replaces
+    /// what is already on screen.
+    private func acknowledge(_ press: InterruptedTurnPress) -> Bool {
+        guard let turn, turn.acceptsPress else { return false }
+        draw(InterruptedTurnReading.pressed(turn, press))
+        return true
     }
 
     private func pickUp() {
+        guard acknowledge(.pickUp) else { return }
         Theme.Haptics.send()
         onResume?()
     }
 
     private func letGo() {
+        guard acknowledge(.letGo) else { return }
         Theme.Haptics.selection()
         onDismiss?()
     }

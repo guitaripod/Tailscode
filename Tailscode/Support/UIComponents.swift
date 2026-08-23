@@ -362,7 +362,7 @@ final class ToastView: UIView {
         label.font = Theme.Ramp.font(.panelLabel)
         label.textColor = Theme.Color.onGlass
         label.textAlignment = .center
-        label.numberOfLines = 2
+        label.numberOfLines = 4
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
@@ -387,6 +387,9 @@ final class ToastView: UIView {
         NSLayoutConstraint.activate([
             centerXAnchor.constraint(equalTo: parent.safeAreaLayoutGuide.centerXAnchor),
             bottomAnchor.constraint(equalTo: anchor, constant: -Theme.Spacing.m),
+            widthAnchor.constraint(
+                lessThanOrEqualTo: parent.safeAreaLayoutGuide.widthAnchor,
+                constant: -2 * Theme.Spacing.l),
         ])
         alpha = 0
         transform = CGAffineTransform(translationX: 0, y: 10)

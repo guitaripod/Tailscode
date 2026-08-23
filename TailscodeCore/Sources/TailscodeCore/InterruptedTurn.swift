@@ -169,6 +169,35 @@ public enum InterruptedTurnReading {
         InterruptedTurnConflict(code: value(of: InterruptedTurnConflict.key, in: body))
     }
 
+    /// What to say about a press that failed, whatever came back.
+    ///
+    /// Only a conflict is a refusal this side has already acted on — the record is re-read before
+    /// one is rethrown, so the card has corrected itself or come down by the time anybody reads
+    /// this — and only a conflict may therefore carry the promise that it has. A machine that
+    /// could not be reached refused nothing, and is reported in the words the failure arrived
+    /// with. Deciding which of the two happened is exactly the kind of rule three clients would
+    /// otherwise each write once and each get slightly differently, so it is decided here.
+    public static func refusal(for error: Error) -> String {
+        guard case AgentError.http(let status, let body) = error, refused(status, body) else {
+            return AgentErrorText.readable(error)
+        }
+        return refusal(body: body)
+    }
+
+    /// Whether the server itself refused the press.
+    ///
+    /// A conflict says so outright. A 404 is two answers wearing one status — a bridge too old to
+    /// have the route at all, and this bridge saying it no longer knows the session — told apart
+    /// by whether the body names a reason, because only the second was written by code that knew
+    /// what had been asked of it.
+    private static func refused(_ status: Int, _ body: String) -> Bool {
+        switch status {
+        case 409: return true
+        case 404: return conflict(body: body) != .unstated
+        default: return false
+        }
+    }
+
     /// The half of a refusal that is a promise rather than a report.
     public static var refreshedNote: String {
         Localized.text("The card has been refreshed to what the server actually has.")
@@ -428,6 +457,38 @@ public enum InterruptedTurnCheck {
         expect(
             InterruptedTurnReading.refusal(said: nil, reason: .unstated).contains("did not say why"),
             "and an unexplained refusal admits that it is unexplained")
+
+        let conflicted = AgentError.http(
+            status: 409,
+            body:
+                "{\"error\":\"That turn is already being picked back up.\",\"reason\":\"already_resumed\"}"
+        )
+        expect(
+            InterruptedTurnReading.refusal(for: conflicted)
+                .contains("That turn is already being picked back up."),
+            "a conflict is reported in the server's own sentence")
+        expect(
+            InterruptedTurnReading.refusal(for: conflicted).contains(
+                InterruptedTurnReading.refreshedNote),
+            "and only a conflict promises the card was corrected")
+        expect(
+            InterruptedTurnReading.refusal(
+                for: AgentError.http(
+                    status: 404, body: "{\"error\":\"not found\",\"reason\":\"unknown_session\"}")
+            ).contains(InterruptedTurnReading.refreshedNote),
+            "a 404 that names a reason is the server refusing, not a route it lacks")
+        expect(
+            !InterruptedTurnReading.refusal(for: AgentError.http(status: 404, body: ""))
+                .contains(InterruptedTurnReading.refreshedNote),
+            "a bare 404 is a route this bridge lacks and promises nothing")
+        expect(
+            !InterruptedTurnReading.refusal(for: AgentError.connection("nothing answered"))
+                .contains(InterruptedTurnReading.refreshedNote),
+            "a machine that could not be reached refused nothing")
+        expect(
+            InterruptedTurnReading.refusal(for: AgentError.connection("nothing answered"))
+                == AgentErrorText.readable(AgentError.connection("nothing answered")),
+            "and is reported in the words it arrived with")
 
         let untouched = TurnInterruption(
             turnID: "t2", prompt: "hello", startedAt: started, detectedAt: detected)

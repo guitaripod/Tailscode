@@ -36,6 +36,17 @@ final class ChatViewModel {
     var onModelChange: (() -> Void)?
     var onError: ((String) -> Void)?
     var onQuestionFailed: ((String) -> Void)?
+    /// A press on the cut-off card began or ended. It changes only that one row, and it changes it
+    /// on this device's news rather than the server's, so it is its own signal.
+    var onInterruptionChange: (() -> Void)?
+    /// What the server said when it would not take a press on the cut-off card.
+    ///
+    /// Separate from `onError` because it is not an error to hold somebody up with: the card has
+    /// already corrected itself to what the server really has, and this is the sentence saying
+    /// why — a report, not a wall.
+    var onInterruptionRefused: ((String) -> Void)?
+    /// A press this device has made on the cut-off card and has no answer to yet.
+    private(set) var interruptionPress: InterruptedTurnPress?
 
     init(
         backend: any CodingAgentBackend, session: AgentSession, contextID: String = "default",
@@ -1192,27 +1203,55 @@ final class ChatViewModel {
 
     /// Continues a turn the server's machine cut off. The work happens on that machine — this is
     /// not a resend — so the card comes down when the server says it took it, not on the press.
+    ///
+    /// A refusal is never a dead end: the Kit re-reads the record before it rethrows one, so the
+    /// card corrects itself or comes down, and what is reported is the server's own sentence about
+    /// why rather than a substitute this client wrote.
     func resumeInterruptedTurn() {
         AppLogger.chat.info("interrupted turn resumed")
-        Task {
-            do {
-                try await conversation.resumeInterruptedTurn()
-            } catch {
-                onError?(Self.readable(error))
-            }
+        runPress(.pickUp) { [weak self] in
+            guard let self else { return }
+            try await self.conversation.resumeInterruptedTurn()
         }
     }
 
     /// Lets the interrupted turn go. Nothing in the transcript changes; only the offer stops.
     func dismissInterruptedTurn() {
         AppLogger.chat.info("interrupted turn dismissed")
+        runPress(.letGo) { [weak self] in
+            guard let self else { return }
+            try await self.conversation.dismissInterruptedTurn()
+        }
+    }
+
+    /// Runs one press on the cut-off card and keeps this device's account of it honest from the
+    /// tap to the answer.
+    ///
+    /// The press is recorded before the request leaves so every redraw in between draws a card
+    /// that says what was asked of it, and it is dropped the instant anything comes back — an
+    /// acknowledgement that outlives its request is a button stuck mid-press. A failure is put
+    /// through Core, which is the only thing that decides whether the server refused the press or
+    /// the machine simply could not be reached.
+    private func runPress(
+        _ press: InterruptedTurnPress, _ work: @escaping () async throws -> Void
+    ) {
+        interruptionPress = press
+        onInterruptionChange?()
         Task {
             do {
-                try await conversation.dismissInterruptedTurn()
+                try await work()
+                finishInterruptionPress(nil)
             } catch {
-                onError?(Self.readable(error))
+                AppLogger.chat.error("interrupted turn press failed: \(Self.readable(error))")
+                finishInterruptionPress(InterruptedTurnReading.refusal(for: error))
             }
         }
+    }
+
+    private func finishInterruptionPress(_ refusal: String?) {
+        interruptionPress = nil
+        onInterruptionChange?()
+        if let refusal { onInterruptionRefused?(refusal) }
     }
 
     func rejectQuestion(_ question: QuestionRequest) {
