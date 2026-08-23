@@ -37,6 +37,12 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         }
     }
 
+    /// The renderer is not a value to type into the board — it is a machine to find, to check and
+    /// to remember, which is a surface of its own (`ForgeSetup`). Pressing it opens that surface
+    /// rather than a text field, which is the difference between setting something up and editing
+    /// a string.
+    public var opensSetup: Bool { self == .endpoint }
+
     /// Whether the board can change this by itself. Words are typed and an address is dictated, so
     /// those go back to the client as something to open; the rest are short lists the board walks,
     /// which is why pressing one of them is a step rather than an outcome.
@@ -211,7 +217,11 @@ public struct ForgeBoard: Sendable, Equatable {
         return rows[cursor]
     }
 
-    public var heading: String { Localized.text("Video") }
+    /// The name of the whole surface, said statically so a control that only wants the word does
+    /// not have to build a board to read it.
+    public static var heading: String { Localized.text("Video") }
+
+    public var heading: String { Self.heading }
 
     public var prompt: String { Localized.text("Describe the video") }
 
@@ -221,9 +231,11 @@ public struct ForgeBoard: Sendable, Equatable {
 
     /// The line the board carries under everything: what a render actually costs, said before
     /// somebody spends four minutes of somebody else's card on it.
-    public var notice: String {
+    public static var notice: String {
         Localized.text("Rendering happens on the machine with the card, not on this one")
     }
+
+    public var notice: String { Self.notice }
 
     public var canRender: Bool { endpoint != nil && recipe.isRenderable && !job.isBusy }
 
@@ -322,6 +334,7 @@ public struct ForgeBoard: Sendable, Equatable {
         case .job:
             return begin()
         case .field(let field):
+            if field.opensSetup { return .configure }
             guard field.isCyclable else { return .edit(field) }
             cycle(field)
             return nil
@@ -493,15 +506,22 @@ public struct ForgeBoard: Sendable, Equatable {
             sectionID: Self.rendererID, kind: .field(.endpoint), title: value(of: .endpoint),
             detail: rendererLine, badge: endpoint == nil ? nil : reachBadge)
         return ForgeSection(
-            id: Self.rendererID, title: ForgeField.endpoint.label, detail: "", phase: reach,
-            rows: [row], hidden: 0)
+            id: Self.rendererID, title: ForgeField.endpoint.label, detail: rendererCall,
+            phase: reach, rows: [row], hidden: 0)
+    }
+
+    /// What the renderer section offers before there is a renderer. A section that says nothing
+    /// where the whole feature is blocked is a dead end; this is the one line that names both ways
+    /// out, and the row under it opens the surface that does either.
+    private var rendererCall: String {
+        endpoint == nil ? Localized.text("Find it on your tailnet, or type its address") : ""
     }
 
     private var rendererLine: String {
         switch reach {
         case .failed(let reason): return reason
         case .checking: return Localized.text("Checking…")
-        case .ready: return Localized.text("Answering on %@", "\(ForgeEndpoint.defaultPort)")
+        case .ready: return Localized.text("Answering on %@", "\(endpoint?.port ?? ForgeEndpoint.defaultPort)")
         case .idle:
             return endpoint == nil
                 ? Localized.text("Point this at the machine with the card")
@@ -531,7 +551,7 @@ public struct ForgeBoard: Sendable, Equatable {
     public var renderCall: String {
         if job.isBusy { return Localized.text("Stop") }
         if job.asset != nil { return Localized.text("Play") }
-        if endpoint == nil { return Localized.text("Set up the renderer") }
+        if endpoint == nil { return ForgeSetup.title }
         return Localized.text("Render")
     }
 
@@ -646,7 +666,7 @@ extension ForgeBoard {
 /// than as an empty progress bar on three platforms.
 public enum ForgeBoardCheck {
     public static func run() -> [String] {
-        var failures: [String] = []
+        var failures = ForgeSetupCheck.run()
         func expect(_ condition: Bool, _ label: String) {
             if !condition { failures.append(label) }
         }
@@ -839,7 +859,22 @@ public enum ForgeBoardCheck {
             board.sections.map(\.id) == [ForgeBoard.rendererID, ForgeBoard.renderID, ForgeBoard.settingsID],
             "a fresh board is the renderer, the render and the settings")
         expect(board.begin() == .configure, "with nothing to render on, the board asks for a machine")
-        expect(board.renderCall == Localized.text("Set up the renderer"), "and says that is what the button does")
+        expect(board.renderCall == ForgeSetup.title, "and says that is what the button does")
+        expect(
+            board.sections.first?.detail == Localized.text("Find it on your tailnet, or type its address"),
+            "a forge with no renderer names both ways to get one rather than sitting blank")
+        if let index = board.rows.firstIndex(where: { $0.kind == .field(.endpoint) }) {
+            board.focus(index)
+            expect(
+                board.activate() == .configure,
+                "and pressing the renderer row opens the setup rather than a text field")
+        } else {
+            failures.append("the renderer is a row")
+        }
+        expect(ForgeField.endpoint.opensSetup, "which is the one field that is a surface")
+        expect(
+            ForgeField.allCases.filter(\.opensSetup) == [.endpoint],
+            "and the only one")
         board.point(at: arch)
         expect(board.begin() == .edit(.prompt), "with a machine but no words, it asks for words")
         board.describe("a cat asleep on a warm roof")
@@ -853,6 +888,7 @@ public enum ForgeBoardCheck {
             "a machine that did not answer says so on its own row")
         board.reached(.listening)
         expect(board.rows.first?.badge == Localized.text("up"), "and one that did wears a word")
+        expect(board.sections.first?.detail.isEmpty == true, "a renderer that exists needs no invitation")
 
         if let index = board.rows.firstIndex(where: { $0.kind == .field(.size) }) {
             board.focus(index)

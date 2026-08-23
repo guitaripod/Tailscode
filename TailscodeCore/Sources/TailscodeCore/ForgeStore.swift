@@ -62,11 +62,17 @@ public enum ForgeStore {
     static let endpointKey = "tailscode.forge.endpoint"
     static let recipeKey = "tailscode.forge.recipe"
     static let historyKey = "tailscode.forge.history"
+    static let renderersKey = "tailscode.forge.renderers"
     public static let didChange = Notification.Name("tailscode.forge.didChange")
 
     /// Enough history to be a history and not a filesystem. The files are on the other machine and
     /// this list is only the way back to them.
     private static let historyCapacity = 40
+
+    /// How many machines are worth offering back. Nobody has eight graphics cards; the list exists
+    /// so a person who has a desktop and a laptop that both render never types either address a
+    /// second time.
+    private static let rendererCapacity = 8
 
     public static func endpoint() -> ForgeEndpoint? {
         guard let data = defaults.data(forKey: endpointKey) else { return nil }
@@ -81,7 +87,54 @@ public enum ForgeStore {
         }
         guard let data = try? JSONEncoder().encode(endpoint) else { return }
         defaults.set(data, forKey: endpointKey)
+        file(ForgeRenderer(endpoint: endpoint))
         NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// Points renders at a machine and files it among the ones this device has used, which is the
+    /// whole of what "remembered" means here — the second time costs a tap rather than an address
+    /// somebody has to go and look up again.
+    public static func remember(_ renderer: ForgeRenderer) {
+        guard let data = try? JSONEncoder().encode(renderer.endpoint) else { return }
+        defaults.set(data, forKey: endpointKey)
+        file(renderer)
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// Every renderer this device has pointed at, most recently used first.
+    public static func renderers() -> [ForgeRenderer] {
+        guard let data = defaults.data(forKey: renderersKey) else { return [] }
+        return (try? JSONDecoder().decode([ForgeRenderer].self, from: data)) ?? []
+    }
+
+    /// Drops one from the list. The machine renders currently go to is dropped with it, because a
+    /// renderer nobody wants offered is not one to keep sending work to either.
+    public static func forgetRenderer(_ id: String) {
+        writeRenderers(renderers().filter { $0.id != id })
+        if endpoint()?.displayHost == id {
+            defaults.removeObject(forKey: endpointKey)
+        }
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
+
+    /// A machine used again moves to the front rather than appearing twice, and a name learned on
+    /// the second visit — from a scan, say, after the address was first typed blind — replaces the
+    /// blank one rather than being thrown away.
+    private static func file(_ renderer: ForgeRenderer) {
+        var list = renderers()
+        let previous = list.first { $0.id == renderer.id }
+        list.removeAll { $0.id == renderer.id }
+        list.insert(
+            ForgeRenderer(
+                endpoint: renderer.endpoint, name: renderer.name ?? previous?.name,
+                usedAt: renderer.usedAt),
+            at: 0)
+        writeRenderers(Array(list.prefix(rendererCapacity)))
+    }
+
+    private static func writeRenderers(_ list: [ForgeRenderer]) {
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        defaults.set(data, forKey: renderersKey)
     }
 
     /// What the next draft starts as. The prompt is deliberately dropped — a person opening the
