@@ -23,12 +23,22 @@ final class PillsRow: NSView {
         }
     }
 
+    /// A lane was pressed. Chat is the pane this row already sits in, so only the other two leave.
+    var onLane: ((QuickAskLane) -> Void)?
+
     var modelRows: (() -> [MenuRow])?
     var effortRows: (() -> [MenuRow])?
     var commandRows: (() -> [MenuRow])?
     var attachRows: (() -> [MenuRow])?
     var onStop: (() -> Void)?
 
+    /// The composer's three lanes, worn as the segmented control a Mac walks modes with. On a
+    /// desk each lane is a surface — chat is this pane, ask is the summoned question window,
+    /// video is the forge sheet — so a press is a door, and the selection springs back to chat
+    /// because this row never stops being a conversation's.
+    private let laneControl = NSSegmentedControl(
+        labels: QuickAskLane.order.map(\.word), trackingMode: .momentary, target: nil,
+        action: nil)
     private let vimBadge = NSTextField(labelWithString: "")
     private let vimBadgeWrap = NSView()
     private let destinationLabel = NSTextField(labelWithString: "")
@@ -100,8 +110,18 @@ final class PillsRow: NSView {
         attachButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         stopButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
+        laneControl.controlSize = .small
+        laneControl.target = self
+        laneControl.action = #selector(laneTapped)
+        laneControl.setContentCompressionResistancePriority(.required, for: .horizontal)
+        laneControl.translatesAutoresizingMaskIntoConstraints = false
+        for (index, lane) in QuickAskLane.order.enumerated() {
+            laneControl.setToolTip(lane.spoken, forSegment: index)
+        }
+
         let row = NSStackView(views: [
-            vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill, RowKit.spacer(),
+            laneControl, vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill,
+            RowKit.spacer(),
             attachButton, stopButton,
         ])
         row.orientation = .horizontal
@@ -137,6 +157,12 @@ final class PillsRow: NSView {
 
     @objc private func themeChanged() {
         restyle()
+    }
+
+    @objc private func laneTapped() {
+        let lanes = QuickAskLane.order
+        guard lanes.indices.contains(laneControl.selectedSegment) else { return }
+        onLane?(lanes[laneControl.selectedSegment])
     }
 
     /// Alongside the badge the caret itself says which mode this is, so the badge carries the

@@ -339,6 +339,37 @@ final class ChatPane: @unchecked Sendable {
         return row
     }
 
+    /// The composer's three lanes, worn as buttons because a desk has a pointer rather than a
+    /// swipe. The lanes are Core's (`QuickAskLane.order`), and on a desk each lane is a surface:
+    /// chat is this pane, ask is the question window the summon chord opens, video is the forge —
+    /// so a press is a door, the words in this box stay this conversation's, and the pill that is
+    /// already this pane's lane wears the accent and does nothing but say so.
+    private func makeLaneRow() -> UnsafeMutablePointer<GtkWidget> {
+        let lanes = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
+        Gtk.addClass(lanes, "lane-row")
+        for lane in QuickAskLane.order {
+            let button = Gtk.button(lane.word.lowercased(), css: ["flat", "lane-pill"]) {
+                [weak self] in
+                Gtk.onMain { [weak self] in self?.enterLane(lane) }
+            }
+            if lane == .chat { Gtk.addClass(button, "lane-pill-on") }
+            gtk_widget_set_tooltip_text(button, lane.spoken)
+            gtk_box_append(ptr(lanes), button)
+        }
+        return lanes
+    }
+
+    private func enterLane(_ lane: QuickAskLane) {
+        switch lane {
+        case .chat:
+            focusComposer()
+        case .ask:
+            host?.summonQuickAsk()
+        case .video:
+            _ = host?.presentForge()
+        }
+    }
+
     /// The transcript's own search, over what the rows say rather than what the server indexes:
     /// it works offline, on a saved copy, and mid-turn.
     private func makeFindBar() -> UnsafeMutablePointer<GtkWidget> {
@@ -377,6 +408,8 @@ final class ChatPane: @unchecked Sendable {
     private func makePillRow() -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.addClass(row, "pill-row")
+
+        gtk_box_append(ptr(row), makeLaneRow())
 
         gtk_widget_set_visible(vimBadge, 0)
         gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)

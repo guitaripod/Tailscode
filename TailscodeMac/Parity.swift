@@ -234,9 +234,7 @@ enum ParityManifest {
         case .forgeSetup: return .implemented("ForgeSetupSheet")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
-        case .videoLane:
-            return .notApplicable(
-                "a Mac has no swipe to give a composer and no front-door prompt box to give lanes — its chat composer lives in each pane, and video is already one press away as the toolbar's own first-class control (forgeEntry) and its chord, which is this desk's button-shaped road to the same surface")
+        case .videoLane: return .implemented("laneControl")
         case .reviewPrompt: return .gap("the policy is Core's and already shared, and macOS has the same SKStoreReviewController to ask with — what this client owes is a MacReviewPrompt coordinator wired to its own turn-completion and MacGameCenter trophy paths, the two signals iOS now hooks")
         }
     }

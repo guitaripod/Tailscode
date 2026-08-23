@@ -721,6 +721,28 @@ enum MatrixTheme {
         .watch-step { color: \(accent); \(t(.statusLine)) font-weight: 700; }
         .watch-code { color: \(accent); \(t(.pairingCode)) }
         .pill-source { color: \(info); border: 1px solid alpha(\(info), 0.5); }
+        .lane-row {
+            background-color: alpha(\(text), 0.05);
+            border: 1px solid \(rule);
+            border-radius: 999px;
+            padding: 1px;
+        }
+        .lane-pill {
+            \(t(.hint))
+            min-height: 0;
+            min-width: 0;
+            padding: 1px 9px;
+            border-radius: 999px;
+            color: \(textDim);
+            background-image: none;
+            box-shadow: none;
+        }
+        .lane-pill:hover { background-color: alpha(\(text), 0.10); }
+        .lane-pill-on {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+        }
+        .lane-pill-on:hover { background-color: \(accentDim); }
         .forge-pane { background-color: \(canvas); }
         .forge-call {
             \(t(.control))

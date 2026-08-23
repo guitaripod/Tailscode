@@ -13,6 +13,7 @@ final class ComposerView: NSView {
     var onCompactRequested: ((String) -> Void)?
     var onDesignRequested: ((String) -> Void)?
     var onStop: (() -> Void)?
+    var onLane: ((QuickAskLane) -> Void)?
     /// ↑ from an empty box: the pane takes its last waiting message back for rewriting, and says
     /// whether it did — the key belongs to the text view otherwise.
     var onTakeBackQueued: (() -> Bool)?
@@ -409,6 +410,7 @@ final class ComposerView: NSView {
         pills.commandRows = { [weak self] in self?.commandMenuRows() ?? [] }
         pills.attachRows = { [weak self] in self?.attachMenuRows() ?? [] }
         pills.onStop = { [weak self] in self?.onStop?() }
+        pills.onLane = { [weak self] lane in self?.onLane?(lane) }
     }
 
     /// Everything worth knowing about the session besides its transcript, fetched once per open

@@ -847,6 +847,16 @@ final class TranscriptViewController: NSViewController {
             self?.presentDesignPreflight(request: request)
         }
         composer.onStop = { [weak self] in self?.stopTurn() }
+        composer.onLane = { [weak self] lane in
+            guard let self,
+                let host = self.view.window?.windowController as? MainWindowController
+            else { return }
+            switch lane {
+            case .chat: self.composer.takeFocus()
+            case .ask: host.summonQuickAsk()
+            case .video: host.presentForge()
+            }
+        }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
         composer.onBrowseCommands = { [weak self] in self?.presentCommandCatalog() }
