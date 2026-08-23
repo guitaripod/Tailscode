@@ -409,8 +409,6 @@ final class ChatPane: @unchecked Sendable {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.addClass(row, "pill-row")
 
-        gtk_box_append(ptr(row), makeLaneRow())
-
         gtk_widget_set_visible(vimBadge, 0)
         gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(row), vimBadge)
@@ -437,6 +435,8 @@ final class ChatPane: @unchecked Sendable {
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_hexpand(spacer, 1)
         gtk_box_append(ptr(row), spacer)
+
+        gtk_box_append(ptr(row), makeLaneRow())
 
         let attach = Gtk.menuButton("📎") { [weak self] in
             self?.attachRows() ?? []

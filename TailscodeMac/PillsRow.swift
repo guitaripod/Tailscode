@@ -120,9 +120,9 @@ final class PillsRow: NSView {
         }
 
         let row = NSStackView(views: [
-            laneControl, vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill,
+            vimBadgeWrap, destinationLabel, modelPill, effortPill, commandPill,
             RowKit.spacer(),
-            attachButton, stopButton,
+            laneControl, attachButton, stopButton,
         ])
         row.orientation = .horizontal
         row.alignment = .centerY
