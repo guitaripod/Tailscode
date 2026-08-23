@@ -3857,8 +3857,7 @@ final class ChatPane: @unchecked Sendable {
     /// transcript for a spinner frame is a flicker.
     private func refreshWorkflowRuns() {
         guard let state = lastState else { return }
-        let runs = WorkflowRunAssembly.runs(
-            messages: state.messages, agents: agents, now: context.workflowNow)
+        let runs = WorkflowRunAssembly.runs(messages: state.messages, agents: agents)
         if runs != workflowRuns {
             var byCall: [String: WorkflowRun] = [:]
             for run in runs { byCall[run.id] = run }
@@ -4296,7 +4295,7 @@ final class ChatPane: @unchecked Sendable {
                 isActive: true, isCompleted: false, startedAt: now.addingTimeInterval(-41),
                 toolCount: 2, currentTool: "Bash"),
         ]
-        if call.background != nil { agents = agents.map(Self.settled) }
+        if call.background?.status == .completed { agents = agents.map(Self.settled) }
         var state = ConversationState()
         state.messages = [prompt, launch]
         state.hasLoadedTranscript = true
@@ -4330,8 +4329,13 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
-    /// An agent as it stands once the run it belongs to is over: nothing is still out on a machine
-    /// after the report that ended the run has landed.
+    /// An agent as a run that ran to completion leaves it: every sidecar reported finishing, so
+    /// every record says so.
+    ///
+    /// Only that ending. A run the harness died holding leaves its sidecars claiming to be active
+    /// for as long as their reporting window lasts, and settling them here by hand would build the
+    /// one shape the card is never asked to draw — an ended run holding agents that still say they
+    /// are working, which is what the fan-out actually delivers on a stop or a fault.
     private static func settled(_ agent: SubagentSummary) -> SubagentSummary {
         SubagentSummary(
             id: agent.id, title: agent.title, agentType: agent.agentType,
@@ -4350,7 +4354,9 @@ final class ChatPane: @unchecked Sendable {
             let state = context.workflowRuns[call.id].map { "\($0.state)" } ?? "none"
             FileHandle.standardOutput.write(
                 Data(
-                    "WORKFLOW state=\(state) \(WorkflowCardView.markReading(of: ptr(raw)))\n".utf8))
+                    ("WORKFLOW state=\(state) \(WorkflowCardView.markReading(of: ptr(raw))) "
+                        + WorkflowCardView.phaseReading(of: ptr(raw)) + " "
+                        + WorkflowCardView.agentReading(of: ptr(raw)) + "\n").utf8))
         }
     }
 

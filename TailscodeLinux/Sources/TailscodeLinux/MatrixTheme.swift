@@ -635,9 +635,10 @@ enum MatrixTheme {
         .workflow-elapsed { color: \(textDim); \(t(.workflowModel)) }
         .workflow-meter { color: \(accentDim); \(t(.workflowMeter)) }
         .workflow-meter-live { color: \(accent); \(t(.workflowMeter)) }
-        .workflow-phase, .workflow-phase-done { \(t(.workflowStep)) }
+        .workflow-phase, .workflow-phase-done, .workflow-phase-unfinished { \(t(.workflowStep)) }
         .workflow-phase { color: \(textDim); }
         .workflow-phase-done { color: \(accent); }
+        .workflow-phase-unfinished { color: \(textDim); }
         .workflow-phase-title { color: \(text); \(t(.workflowStep)) }
         .workflow-model { color: \(special); \(t(.workflowModel)) }
         .workflow-answer { color: \(text); \(t(.cardBody)) }

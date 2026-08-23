@@ -2257,8 +2257,7 @@ public enum SelfTest {
                     isActive: index > 0, isCompleted: index == 0,
                     startedAt: now.addingTimeInterval(offset)))
         }
-        let live = WorkflowRunAssembly.runs(
-            messages: [launch], agents: agents, now: now.addingTimeInterval(90))
+        let live = WorkflowRunAssembly.runs(messages: [launch], agents: agents)
         guard let run = live.first, live.count == 1 else {
             throw SelfTestFailure("one launch is not one run")
         }
@@ -2312,8 +2311,7 @@ public enum SelfTest {
                         "<task-notification><task-id>task-1</task-id><result>\"# The answer\"</result></task-notification>"
                     ))
             ], createdAt: now.addingTimeInterval(120))
-        let done = WorkflowRunAssembly.runs(
-            messages: [launch, notification], agents: agents, now: now.addingTimeInterval(130))
+        let done = WorkflowRunAssembly.runs(messages: [launch, notification], agents: agents)
         guard let finished = done.first, done.count == 1 else {
             throw SelfTestFailure("the finished run vanished")
         }
@@ -2323,11 +2321,18 @@ public enum SelfTest {
         guard finished.result == "# The answer" else {
             throw SelfTestFailure("answer not folded in: \(finished.result ?? "nil")")
         }
+        guard finished.headline(at: now) == finished.headline(at: now.addingTimeInterval(604_800))
+        else {
+            throw SelfTestFailure(
+                "a run settled by prose alone measures itself against whoever is reading: "
+                    + finished.headline(at: now.addingTimeInterval(604_800)))
+        }
 
-        return 25 + marks
+        return 26 + marks
     }
 
-    /// The card's own mark, read off the widget rather than off the vocabulary.
+    /// Everything the card says about a run's ending, read off the widget rather than off the
+    /// vocabulary: the header's mark, every agent row's mark, and the phase rail.
     ///
     /// A run reaching an ending is only half of a mark that stops. The label also has to come off
     /// the frame clock and be left showing the ending's own glyph — otherwise the card keeps
@@ -2335,6 +2340,12 @@ public enum SelfTest {
     /// of work still going. Both roads a pane takes are walked here, because the fault lived in the
     /// seam rather than in either end: a stop or a fault is restated into the card already on
     /// screen, while an answer arriving changes the card's shape and earns a rebuild.
+    ///
+    /// The rows and the rail are walked on the same trip because a header that settled while the
+    /// card under it went on sweeping and claiming finished phases is the same lie one view lower.
+    /// The agents this is handed are deliberately left claiming to be active, which is exactly what
+    /// a fan-out delivers for half an hour after the harness that held it died — a check that
+    /// settled them by hand would never once build the shape the fault lives in.
     private static func checkWorkflowCardMark(
         call: ToolCall, live: WorkflowRun, launch: ChatMessage, agents: [SubagentSummary], now: Date
     ) throws -> Int {
@@ -2342,13 +2353,23 @@ public enum SelfTest {
         let context = TranscriptContext()
         context.workflowNow = now
         context.workflowRuns[call.id] = live
+        context.expanded.set("wf", open: true)
         var card = WorkflowCardView.make(call, key: "wf", context: context)
         guard WorkflowCardView.markReading(of: card).contains("moving=1") else {
             throw SelfTestFailure(
                 "a live card's mark holds still: \(WorkflowCardView.markReading(of: card))")
         }
+        let planned = WorkflowCardView.phaseReading(of: card)
+        guard planned == rail(live) else {
+            throw SelfTestFailure("a live card's rail is not the plan: \(planned)")
+        }
+        guard WorkflowCardView.agentReading(of: card).contains(":moving") else {
+            throw SelfTestFailure(
+                "no agent is out on a live card: \(WorkflowCardView.agentReading(of: card))")
+        }
 
-        var claims = 1
+        var claims = 3
+        var rails: [String: String] = [:]
         for status in [BackgroundOutcome.Status.stopped, .failed, .completed] {
             let ended = try reported(
                 status, on: call, launch: launch, agents: agents, now: now)
@@ -2360,9 +2381,41 @@ public enum SelfTest {
             guard reading == "mark=\(ended.activityIcon.glyph) moving=0" else {
                 throw SelfTestFailure("a \(status.rawValue) card's mark: \(reading)")
             }
-            claims += 1
+            let rows = WorkflowCardView.agentReading(of: card)
+            guard rows == settledRows(of: ended) else {
+                throw SelfTestFailure("a \(status.rawValue) card's agent rows: \(rows)")
+            }
+            let drawn = WorkflowCardView.phaseReading(of: card)
+            guard drawn == rail(ended) else {
+                throw SelfTestFailure("a \(status.rawValue) card's rail: \(drawn)")
+            }
+            rails[status.rawValue] = drawn
+            claims += 3
         }
-        return claims
+        guard rails["stopped"] != rails["completed"], rails["failed"] != rails["completed"],
+            rails["stopped"] != planned
+        else {
+            throw SelfTestFailure(
+                "a killed run's rail reads as a finished one: \(rails["stopped"] ?? "none")")
+        }
+        return claims + 1
+    }
+
+    /// The rail this run may honestly draw, spelled the way the widget spells it, from the standing
+    /// the vocabulary hands back rather than from a second reading of the run invented here.
+    private static func rail(_ run: WorkflowRun) -> String {
+        let standing = run.phaseStanding
+        return "phases="
+            + run.phases.map { _ in "\(standing.glyph):\(standing.css)" }.joined(separator: ",")
+    }
+
+    /// Every agent row of an ended run, which is every row holding perfectly still: the one that
+    /// reported finishing keeps its tick and the ones the harness died holding wear the ended mark,
+    /// whatever their own records still claim.
+    private static func settledRows(of run: WorkflowRun) -> String {
+        "agents="
+            + run.agents.map { "\(ActivityIcon.workflowAgent($0, in: run).glyph):still" }
+            .joined(separator: ",")
     }
 
     /// The same launch, ended the way the harness ends one: its report seated back on the call that
@@ -2383,8 +2436,7 @@ public enum SelfTest {
         let message = ChatMessage(
             id: launch.id, role: .assistant, agentType: .claudeCode,
             parts: [MessagePart(id: "p1", kind: .tool(ended))], createdAt: launch.createdAt)
-        let runs = WorkflowRunAssembly.runs(
-            messages: [message], agents: agents, now: now.addingTimeInterval(9_000))
+        let runs = WorkflowRunAssembly.runs(messages: [message], agents: agents)
         guard let run = runs.first, runs.count == 1 else {
             throw SelfTestFailure("one ended launch is not one run")
         }

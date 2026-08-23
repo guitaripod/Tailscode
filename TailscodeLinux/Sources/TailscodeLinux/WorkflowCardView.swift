@@ -111,13 +111,12 @@ enum WorkflowCardView {
         if let phases {
             let rows = children(of: phases)
             guard rows.count == run.phases.count else { return false }
-            let done = !run.isLive
+            let standing = run.phaseStanding
             for (row, phase) in zip(rows, run.phases) {
                 guard let marker = gtk_widget_get_first_child(row) else { return false }
-                setLabel(marker, text: phaseMark(phase, of: run.phases.count, done: done))
-                setExclusiveClass(
-                    marker, among: ["workflow-phase-done", "workflow-phase"],
-                    to: done ? "workflow-phase-done" : "workflow-phase")
+                setLabel(marker, text: phaseMark(phase, of: run.phases.count, standing: standing))
+                setExclusiveClass(marker, among: Self.phaseClasses, to: standing.css)
+                gtk_widget_set_tooltip_text(marker, standing.spoken)
             }
         }
 
@@ -127,7 +126,7 @@ enum WorkflowCardView {
             let rows = children(of: agents)
             guard rows.count == run.agents.count else { return false }
             for (row, agent) in zip(rows, run.agents) {
-                guard restateAgent(row, agent: agent, now: now) else { return false }
+                guard restateAgent(row, agent: agent, in: run, now: now) else { return false }
             }
         }
 
@@ -137,7 +136,7 @@ enum WorkflowCardView {
     }
 
     private static func restateAgent(
-        _ row: UnsafeMutablePointer<GtkWidget>, agent: WorkflowAgent, now: Date
+        _ row: UnsafeMutablePointer<GtkWidget>, agent: WorkflowAgent, in run: WorkflowRun, now: Date
     ) -> Bool {
         guard let button = gtk_widget_get_first_child(row),
             isA(button, gtk_button_get_type()),
@@ -145,10 +144,10 @@ enum WorkflowCardView {
         else { return false }
         let head = children(of: header)
         guard head.count == 4 else { return false }
-        let icon = ActivityIcon.workflowAgent(agent)
+        let icon = ActivityIcon.workflowAgent(agent, in: run)
         applyMark(icon, to: head[0])
         setExclusiveClass(head[0], among: Self.glyphClasses, to: icon.glyphCSS)
-        let tool = agent.isActive ? agent.currentTool : nil
+        let tool = liveTool(agent, wearing: icon)
         setLabel(head[2], text: tool ?? "")
         gtk_widget_set_visible(head[2], tool == nil ? 0 : 1)
         let elapsed = agent.elapsed(at: now)
@@ -214,18 +213,22 @@ enum WorkflowCardView {
     /// The phases the script declares, as the plan it is. Which phase an agent belongs to is only
     /// recorded by a finished run, so a live card never points at one — claiming a position the
     /// data cannot support is worse than showing the plan and the agents separately.
+    ///
+    /// Whether the plan may be claimed to have happened is ``WorkflowRun/phaseStanding``'s to say,
+    /// never this card's: a run being over is not a run having got through its phases, and a
+    /// four-phase script killed inside phase one drawn as four filled phases is completed work the
+    /// transcript never recorded.
     private static func phaseRail(_ run: WorkflowRun) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
         Gtk.addClass(column, "workflow-phases")
-        let done = !run.isLive
+        let standing = run.phaseStanding
         for phase in run.phases {
             let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-            gtk_box_append(
-                ptr(row),
-                Gtk.label(
-                    phaseMark(phase, of: run.phases.count, done: done),
-                    css: done ? "workflow-phase-done" : "workflow-phase",
-                    selectable: false))
+            let marker = Gtk.label(
+                phaseMark(phase, of: run.phases.count, standing: standing),
+                css: standing.css, selectable: false)
+            gtk_widget_set_tooltip_text(marker, standing.spoken)
+            gtk_box_append(ptr(row), marker)
             gtk_box_append(ptr(row), Gtk.label(phase.title, css: "workflow-phase-title", selectable: false))
             if let detail = phase.detail {
                 let label = Gtk.label(detail, css: "dim", selectable: false)
@@ -244,8 +247,10 @@ enum WorkflowCardView {
         return column
     }
 
-    private static func phaseMark(_ phase: WorkflowPhase, of count: Int, done: Bool) -> String {
-        "\(phase.index == count - 1 ? "└" : "├") \(done ? "▰" : "▱")"
+    private static func phaseMark(
+        _ phase: WorkflowPhase, of count: Int, standing: WorkflowPhaseStanding
+    ) -> String {
+        "\(phase.index == count - 1 ? "└" : "├") \(standing.glyph)"
     }
 
     private static func agentList(_ run: WorkflowRun, context: TranscriptContext, now: Date)
@@ -265,7 +270,7 @@ enum WorkflowCardView {
         _ agent: WorkflowAgent, run: WorkflowRun, context: TranscriptContext, now: Date
     ) -> UnsafeMutablePointer<GtkWidget> {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let icon = ActivityIcon.workflowAgent(agent)
+        let icon = ActivityIcon.workflowAgent(agent, in: run)
         let glyph = Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false)
         applyMark(icon, to: glyph)
         gtk_box_append(ptr(header), glyph)
@@ -276,9 +281,9 @@ enum WorkflowCardView {
         gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
         gtk_box_append(ptr(header), title)
-        let liveTool = agent.isActive ? agent.currentTool : nil
-        let tool = Gtk.label(liveTool ?? "", css: "agent-live", selectable: false)
-        gtk_widget_set_visible(tool, liveTool == nil ? 0 : 1)
+        let working = liveTool(agent, wearing: icon)
+        let tool = Gtk.label(working ?? "", css: "agent-live", selectable: false)
+        gtk_widget_set_visible(tool, working == nil ? 0 : 1)
         gtk_box_append(ptr(header), tool)
         let elapsed = Gtk.label(
             agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
@@ -351,6 +356,18 @@ enum WorkflowCardView {
         return column
     }
 
+    /// The tool an agent is holding right now, which is the mark's answer rather than a second
+    /// one this card works out for itself.
+    ///
+    /// A sidecar goes on naming the tool it was last seen on for as long as its reporting window
+    /// lasts, which outlives the run by up to half an hour — so a row read from the agent alone
+    /// would keep "WebFetch" lit beside a settled mark under a header that says the run is over.
+    /// ``ActivityIcon/workflowAgent(_:in:)`` has already weighed the agent against its run: only
+    /// the mark it hands back for an agent genuinely still out names a tool.
+    private static func liveTool(_ agent: WorkflowAgent, wearing icon: ActivityIcon) -> String? {
+        icon == .openWork ? agent.currentTool : nil
+    }
+
     /// A phase's model as a badge: the family, without the vendor prefix or the dated build that
     /// makes every badge the same width and none of them readable.
     private static func shortModel(_ model: String) -> String {
@@ -392,7 +409,49 @@ enum WorkflowCardView {
         return "mark=\(glyph) " + ActivityPulse.reading(of: label)
     }
 
+    /// One reading of the phase rail, for a harness that has to prove a run that was killed draws
+    /// a different rail from one that got all the way through: every marker's glyph and the
+    /// standing it is wearing, in the order the plan declares them.
+    static func phaseReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card),
+            let body = gtk_widget_get_next_sibling(button),
+            let phases = children(of: body).first(where: {
+                gtk_widget_has_css_class($0, "workflow-phases") != 0
+            })
+        else { return "phases=none" }
+        let marks = children(of: phases).compactMap { row -> String? in
+            guard let marker = gtk_widget_get_first_child(row) else { return nil }
+            let text = gtk_label_get_text(op(marker)).map { String(cString: $0) } ?? ""
+            let standing = Self.phaseClasses.first { gtk_widget_has_css_class(marker, $0) != 0 }
+            return "\(text.split(separator: " ").last ?? "?"):\(standing ?? "none")"
+        }
+        return "phases=\(marks.joined(separator: ","))"
+    }
+
+    /// One reading of the agent rows, for a harness that has to prove a row under a run that
+    /// ended holds still however active the agent's own record still claims to be: each row's
+    /// glyph and whether it is on the clock.
+    static func agentReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card),
+            let body = gtk_widget_get_next_sibling(button),
+            let agents = children(of: body).first(where: {
+                gtk_widget_has_css_class($0, "workflow-agents") != 0
+            })
+        else { return "agents=none" }
+        let marks = children(of: agents).compactMap { row -> String? in
+            guard let disclosure = gtk_widget_get_first_child(row),
+                let header = Gtk.disclosureHeader(disclosure),
+                let glyph = children(of: header).first
+            else { return nil }
+            let text = gtk_label_get_text(op(glyph)).map { String(cString: $0) } ?? ""
+            let moving = ActivityPulse.reading(of: glyph).hasPrefix("moving=1")
+            return "\(text):\(moving ? "moving" : "still")"
+        }
+        return "agents=\(marks.joined(separator: ","))"
+    }
+
     private static let glyphClasses = ActivityTone.allCases.map(\.glyphCSS)
+    private static let phaseClasses = WorkflowPhaseStanding.allCases.map(\.css)
     private static let headlineClasses = ["agent-live", "dim", "glyph-error"]
 
     private static func headlineClass(_ run: WorkflowRun) -> String {
