@@ -23,7 +23,7 @@ import TailscodeCore
         private let codeRow = NSStackView()
         private let copyButton = NSButton(title: "", target: nil, action: nil)
         private let actionButton = NSButton(title: "", target: nil, action: nil)
-        private let spinner = NSProgressIndicator()
+        private let waiting = ActivityBadgeView(pointSize: 12)
         private var flow: WatchSignIn
         private var running: Task<Void, Never>?
         /// Whether the caller has been told the account landed. The flow reports `granted` once, but a
@@ -49,7 +49,10 @@ import TailscodeCore
             sheet.begin()
         }
 
-        private init(source: MediaSource, onFinished: @escaping @MainActor () -> Void) {
+        /// Builds the sheet without asking the site anything — the flow starts in ``begin``, which
+        /// ``present`` calls once the sheet is up. Reachable from the harness for exactly that
+        /// reason: this window can be drawn and read with no network anywhere near it.
+        init(source: MediaSource, onFinished: @escaping @MainActor () -> Void) {
             self.source = source
             self.onFinished = onFinished
             flow = WatchSignIn(source: source)
@@ -80,10 +83,8 @@ import TailscodeCore
             codeRow.addArrangedSubview(copyButton)
             codeRow.addArrangedSubview(Self.spacer())
 
-            spinner.style = .spinning
-            spinner.controlSize = .small
-            spinner.isDisplayedWhenStopped = false
-            spinner.setContentHuggingPriority(.required, for: .horizontal)
+            waiting.translatesAutoresizingMaskIntoConstraints = false
+            waiting.setContentHuggingPriority(.required, for: .horizontal)
 
             let close = NSButton(
                 title: Localized.text("Close"), target: self, action: #selector(closeSheet))
@@ -92,7 +93,7 @@ import TailscodeCore
             actionButton.keyEquivalent = "\r"
             actionButton.target = self
             actionButton.action = #selector(actPressed)
-            let buttons = NSStackView(views: [spinner, Self.spacer(), close, actionButton])
+            let buttons = NSStackView(views: [waiting, Self.spacer(), close, actionButton])
             buttons.orientation = .horizontal
             buttons.alignment = .centerY
             buttons.spacing = MacTheme.Spacing.s
@@ -137,17 +138,34 @@ import TailscodeCore
             codeRow.isHidden = flow.code == nil
             actionButton.title = flow.actionTitle
             actionButton.isEnabled = canAct
-            if flow.isFinished {
-                spinner.stopAnimation(nil)
-            } else {
-                spinner.startAnimation(nil)
-            }
+            wear(flow)
             if case .granted = flow.step, !reported {
                 reported = true
                 onFinished()
             }
             sheet.setContentSize(column.fittingSize)
         }
+
+        /// The mark that says the site has not answered yet, which is this client's own rather than
+        /// AppKit's indeterminate indicator.
+        ///
+        /// `NSProgressIndicator` is drawn by the system at a rate this app has no say in and cannot
+        /// read — one more tempo in a window where every other mark keeps the vocabulary's, and the
+        /// longest look anybody gets at one, since this sheet waits as long as the code lives.
+        /// So the transcript's own open-work mark turns here instead, on the pulse every other mark
+        /// in this client is stepped by. A finished flow takes it down rather than freezing it: a
+        /// still mark over a granted account reads as one more thing left to happen.
+        private func wear(_ flow: WatchSignIn) {
+            let working = !flow.isFinished
+            waiting.show(
+                working ? .openWork : nil,
+                spoken: working ? Localized.text("Waiting for %@", source.label) : nil)
+        }
+
+        /// What this window is drawn into, for the harness that has to read what is in it. A rate
+        /// cannot be seen in a picture, so the claim that nothing here moves at a tempo this
+        /// app did not set is proved off the views themselves.
+        var contentView: NSView? { sheet.contentView }
 
         /// The button has nothing to do until the site has answered with a code, so while the sheet is
         /// still asking it stays titled and inert rather than absent — a control that appears mid-flow

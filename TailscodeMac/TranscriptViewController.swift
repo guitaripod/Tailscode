@@ -1803,10 +1803,14 @@ final class TranscriptViewController: NSViewController {
 
     /// This conversation's workflow runs, rebuilt from the transcript and the live fan-out. Only
     /// the cards whose run actually changed are replaced.
+    ///
+    /// The fold is handed no clock, so it cannot reach for one: every fact a run carries is a fact
+    /// the transcript recorded, and the same conversation folds to the same runs whenever it is
+    /// read. The clock belongs to the cards, which are drawn against the context's own
+    /// ``TranscriptContext/workflowNow``.
     private func refreshWorkflowRuns() {
         guard let state = lastState else { return }
-        let runs = WorkflowRunAssembly.runs(
-            messages: state.messages, agents: agents, now: context.workflowNow)
+        let runs = WorkflowRunAssembly.runs(messages: state.messages, agents: agents)
         if runs != workflowRuns {
             var byCall: [String: WorkflowRun] = [:]
             for run in runs { byCall[run.id] = run }

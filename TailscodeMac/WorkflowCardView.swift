@@ -108,14 +108,12 @@ enum WorkflowCardView {
         if let phases {
             let rows = phases.arrangedSubviews.compactMap { $0 as? NSStackView }
             guard rows.count == run.phases.count else { return false }
-            let done = !run.isLive
             for (phaseRow, phase) in zip(rows, run.phases) {
-                guard let marker = phaseRow.arrangedSubviews.first as? NSTextField else {
-                    return false
-                }
-                setLabel(
-                    marker, text: phaseMark(phase, of: run.phases.count, done: done),
-                    color: done ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel)
+                let labels = phaseRow.arrangedSubviews.compactMap { $0 as? NSTextField }
+                guard labels.count >= 2 else { return false }
+                wear(
+                    run.phaseStanding, on: labels[0], title: labels[1], phase: phase,
+                    of: run.phases.count)
             }
         }
 
@@ -125,7 +123,7 @@ enum WorkflowCardView {
             let rows = agents.arrangedSubviews.compactMap { $0 as? DisclosureRow }
             guard rows.count == run.agents.count else { return false }
             for (agentRow, agent) in zip(rows, run.agents) {
-                guard restateAgent(agentRow, agent: agent, now: now) else { return false }
+                guard restateAgent(agentRow, agent: agent, in: run, now: now) else { return false }
             }
         }
 
@@ -134,16 +132,22 @@ enum WorkflowCardView {
         return true
     }
 
-    private static func restateAgent(_ row: DisclosureRow, agent: WorkflowAgent, now: Date) -> Bool {
+    /// One agent row restated. The mark is read against the run rather than against the agent's own
+    /// record: a sidecar goes on calling itself active for up to half an hour after the run around
+    /// it ended, and the per-second restate that would ever re-ask is itself gated on the run being
+    /// live — so a card left to the record alone sweeps its agents forever under a header that says
+    /// the work stopped. The sentence follows the mark for the same reason: only an agent the mark
+    /// shows as out is one VoiceOver may call working.
+    private static func restateAgent(
+        _ row: DisclosureRow, agent: WorkflowAgent, in run: WorkflowRun, now: Date
+    ) -> Bool {
         guard let header = row.headerView as? NSStackView,
             let badge = header.arrangedSubviews.first as? ActivityBadgeView
         else { return false }
         let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
         guard head.count == 3 else { return false }
-        badge.show(
-            ActivityIcon.workflowAgent(agent),
-            spoken: agent.isActive && !agent.isCompleted
-                ? Localized.text("Agent working") : nil)
+        let icon = ActivityIcon.workflowAgent(agent, in: run)
+        badge.show(icon, spoken: icon == .openWork ? Localized.text("Agent working") : nil)
         let tool = agent.isActive ? agent.currentTool : nil
         setLabel(head[1], text: tool ?? "")
         head[1].isHidden = tool == nil
@@ -238,13 +242,13 @@ enum WorkflowCardView {
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
-        let done = !run.isLive
-        row.addArrangedSubview(
-            RowKit.label(
-                phaseMark(phase, of: run.phases.count, done: done), font: MacTheme.Ramp.font(.toolOutput),
-                color: done ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel))
-        row.addArrangedSubview(
-            RowKit.label(phase.title, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label))
+        let marker = RowKit.label(
+            "", font: MacTheme.Ramp.font(.toolOutput), color: MacTheme.Color.tertiaryLabel)
+        let title = RowKit.label(
+            phase.title, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.label)
+        wear(run.phaseStanding, on: marker, title: title, phase: phase, of: run.phases.count)
+        row.addArrangedSubview(marker)
+        row.addArrangedSubview(title)
         if let detail = phase.detail {
             row.addArrangedSubview(
                 RowKit.label(
@@ -260,8 +264,31 @@ enum WorkflowCardView {
         return row
     }
 
-    private static func phaseMark(_ phase: WorkflowPhase, of count: Int, done: Bool) -> String {
-        "\(phase.index == count - 1 ? "└" : "├") \(done ? "▰" : "▱")"
+    /// How much of the plan one phase row may claim, in the mark it wears and the word it is read
+    /// with.
+    ///
+    /// An ending is not an achievement. Nothing anywhere records which phase was current when a run
+    /// was stopped or when it broke, so a rail filled on `!isLive` drew four finished phases for a
+    /// four-phase script killed inside the first — a claim the transcript never made. Core decides
+    /// which of the three readings a run has earned and what each looks like, so three cards cannot
+    /// disagree about one plan. A filled block and a hollow one are the same silence to a screen
+    /// reader, so the standing is spoken over the phase it belongs to rather than by the rule
+    /// beside it, which has nothing of its own to say and would only cost the reader a stop.
+    private static func wear(
+        _ standing: WorkflowPhaseStanding, on marker: NSTextField, title: NSTextField,
+        phase: WorkflowPhase, of count: Int
+    ) {
+        setLabel(
+            marker, text: phaseMark(phase, of: count, standing: standing),
+            color: standing.tone.color)
+        marker.setAccessibilityElement(false)
+        title.setAccessibilityLabel("\(phase.title), \(standing.spoken)")
+    }
+
+    private static func phaseMark(
+        _ phase: WorkflowPhase, of count: Int, standing: WorkflowPhaseStanding
+    ) -> String {
+        "\(phase.index == count - 1 ? "└" : "├") \(standing.glyph)"
     }
 
     /// One agent, openable in place: its own sidecar transcript is fetched on demand and rendered
@@ -276,10 +303,8 @@ enum WorkflowCardView {
         let badge = ActivityBadgeView(pointSize: 11)
         badge.translatesAutoresizingMaskIntoConstraints = false
         badge.setContentHuggingPriority(.required, for: .horizontal)
-        badge.show(
-            ActivityIcon.workflowAgent(agent),
-            spoken: agent.isActive && !agent.isCompleted
-                ? Localized.text("Agent working") : nil)
+        let icon = ActivityIcon.workflowAgent(agent, in: run)
+        badge.show(icon, spoken: icon == .openWork ? Localized.text("Agent working") : nil)
         header.addArrangedSubview(badge)
         header.addArrangedSubview(
             ToolRowView.detailLabel(

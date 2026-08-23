@@ -79,7 +79,9 @@ enum SelfTest {
 
         do {
             let checks = try checkWorkflowCard()
-            report("workflow card: \(checks) claims hold — the mark is the run's, endings hold still")
+            report(
+                "workflow card: \(checks) claims hold — the mark is the run's, no phase is claimed"
+            )
         } catch {
             report("workflow card: \(error)")
             failures += 1
@@ -828,7 +830,106 @@ enum SelfTest {
         try expect(
             markLabel(in: card)?.icon == .finished,
             "and the ending reaches the mark without a rebuild")
+
+        let plan = (0..<4).map { WorkflowPhase(index: $0, title: "phase \($0)") }
+        let sweeping = WorkflowAgent(
+            id: "a", title: "hunt", isActive: true, isCompleted: false,
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        context.expanded.set("wf", open: true)
+        func drawn(_ state: WorkflowRun.State) -> NSView {
+            context.workflowRuns = [
+                call.id: WorkflowRun(
+                    id: call.id, name: "kaytetty-best", phases: plan, agents: [sweeping],
+                    state: state)
+            ]
+            return WorkflowCardView.make(call, key: "wf", context: context)
+        }
+        func rail(_ state: WorkflowRun.State) throws -> [NSTextField] {
+            let marks = phaseMarks(in: drawn(state))
+            guard marks.count == plan.count else {
+                throw SelfTestFailure(
+                    "workflow card case failed: the rail draws every phase the script declares")
+            }
+            return marks
+        }
+        func reads(_ reading: WorkflowPhaseStanding, on marks: [NSTextField]) -> Bool {
+            marks.allSatisfy {
+                $0.stringValue.hasSuffix(reading.glyph)
+                    && light(of: $0.textColor) == light(of: reading.tone.color)
+            }
+        }
+
+        try expect(
+            reads(.planned, on: try rail(.running)),
+            "a live run's rail is the plan it is, because where it has got to is recorded nowhere")
+        try expect(
+            reads(.done, on: try rail(.finished)),
+            "only a run that reported a completion has its declared phases behind it")
+        for ending in [WorkflowRun.State.stopped("stopped"), .failed("broke")] {
+            try expect(
+                reads(.unfinished, on: try rail(ending)),
+                "and a run that was killed or broke draws the plan as the plan it stayed")
+        }
+        try expect(
+            try rail(.stopped("stopped")).allSatisfy {
+                !$0.stringValue.hasSuffix(WorkflowPhaseStanding.done.glyph)
+                    && light(of: $0.textColor) != light(of: WorkflowPhaseStanding.done.tone.color)
+            },
+            "claiming neither the mark nor the colour of a run that got all the way through")
+
+        func agentMark(_ state: WorkflowRun.State) throws -> ActivityBadgeView {
+            guard let badge = agentBadge(in: drawn(state)) else {
+                throw SelfTestFailure(
+                    "workflow card case failed: a run draws a mark for every agent under it")
+            }
+            return badge
+        }
+        try expect(
+            try agentMark(.running).icon == .openWork, "an agent out on its errand turns")
+        for ending in [WorkflowRun.State.finished, .stopped("stopped"), .failed("broke")] {
+            try expect(
+                try agentMark(ending).icon?.motion == .still,
+                "and settles the moment the run is over, whatever its own record still claims")
+        }
         return checks
+    }
+
+    /// What a colour actually resolves to, because a themed token is minted on every read: a
+    /// dynamic `NSColor` answers a question rather than holding an answer, and two of them are
+    /// never equal to one another. A claim about a colour is therefore made about the light it
+    /// comes out as under the appearance being drawn in.
+    private static func light(of color: NSColor?) -> [CGFloat] {
+        guard let sRGB = color?.usingColorSpace(.sRGB) else { return [] }
+        return [sRGB.redComponent, sRGB.greenComponent, sRGB.blueComponent, sRGB.alphaComponent]
+    }
+
+    /// Every phase marker in a card: the rule-and-block labels the rail is drawn out of, found by
+    /// the rule they open with rather than by reaching into the card's private shape.
+    private static func phaseMarks(in view: NSView) -> [NSTextField] {
+        var found: [NSTextField] = []
+        if let label = view as? NSTextField,
+            label.stringValue.hasPrefix("├") || label.stringValue.hasPrefix("└")
+        {
+            found.append(label)
+        }
+        for child in view.subviews { found += phaseMarks(in: child) }
+        return found
+    }
+
+    private static func agentBadge(in view: NSView) -> ActivityBadgeView? {
+        if let badge = view as? ActivityBadgeView { return badge }
+        for child in view.subviews {
+            if let found = agentBadge(in: child) { return found }
+        }
+        return nil
+    }
+
+    private static func systemIndicator(in view: NSView) -> NSProgressIndicator? {
+        if let indicator = view as? NSProgressIndicator { return indicator }
+        for child in view.subviews {
+            if let found = systemIndicator(in: child) { return found }
+        }
+        return nil
     }
 
     /// Every clock in this client that moves on its own, read for the one property a picture of the
@@ -1399,6 +1500,23 @@ enum SelfTest {
             try expect(refused.isFinished, "with no polling left running behind it")
             try expect(
                 refused.actionTitle == Localized.text("Try again"), "and one button that asks again")
+
+            let sheet = WatchSignInSheet(source: .twitch, onFinished: {})
+            guard let content = sheet.contentView else {
+                throw SelfTestFailure("watch accounts: the sign-in sheet draws a window")
+            }
+            try expect(
+                systemIndicator(in: content) == nil,
+                "and waits without an indicator AppKit spins at a rate this app cannot read")
+            guard let waiting = agentBadge(in: content) else {
+                throw SelfTestFailure("watch accounts: the sheet wears a mark while it waits")
+            }
+            try expect(
+                waiting.icon == .openWork,
+                "it wears the same open-work mark a transcript wears while a site has not answered")
+            try expect(
+                waiting.icon?.motion == .turning,
+                "which turns at the one tempo everything else in this window keeps")
             return checks
         }
     #endif

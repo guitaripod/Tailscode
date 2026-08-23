@@ -235,7 +235,10 @@ final class ActivityBadgeView: NSView {
         apply()
     }
 
-    private var icon: ActivityIcon?
+    /// The state this badge is wearing, readable for the same reason ``ActivityMarkLabel``'s is:
+    /// whether a mark moves, and at whose tempo, is the one thing a picture of the window cannot
+    /// carry, so a harness proves it off the badge rather than by watching it.
+    private(set) var icon: ActivityIcon?
     private var spoken: String?
 
     init(pointSize: CGFloat = 11) {
