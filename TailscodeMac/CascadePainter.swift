@@ -248,6 +248,12 @@ final class CascadePainter {
             spark: CascadeTint.spark(for: edge))
     }
 
+    /// The one clock in this client that is deliberately not the vocabulary's tempo.
+    ///
+    /// A mark says a fact and thirty frames a second is plenty to say it with; this is a renderer,
+    /// writing an answer out glyph by glyph under the reader's eye, and text revealed at thirty
+    /// reads as a hand that stutters rather than one that writes. It asks for the panel's own rate
+    /// on purpose — `ActivityTuning` governs marks, not the cascade.
     private func start() {
         guard link == nil, let host else { return }
         let link = host.displayLink(target: self, selector: #selector(tick))

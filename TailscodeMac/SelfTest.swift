@@ -79,9 +79,17 @@ enum SelfTest {
 
         do {
             let checks = try checkWorkflowCard()
-            report("workflow card: \(checks) claims hold — the mark is the run's, at one tempo")
+            report("workflow card: \(checks) claims hold — the mark is the run's, endings hold still")
         } catch {
             report("workflow card: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkActivityTempo()
+            report("activity tempo: \(checks) claims hold — nothing moves at a rate of its own")
+        } catch {
+            report("activity tempo: \(error)")
             failures += 1
         }
 
@@ -820,12 +828,79 @@ enum SelfTest {
         try expect(
             markLabel(in: card)?.icon == .finished,
             "and the ending reaches the mark without a rebuild")
+        return checks
+    }
+
+    /// Every clock in this client that moves on its own, read for the one property a picture of the
+    /// window cannot carry: the rate.
+    ///
+    /// A mark drawn at a hundred and twenty and the same mark drawn at thirty are the same
+    /// screenshot, so the tempo is proved off the objects themselves — the range every clock this
+    /// app drives by hand asks its display for, the two laps the render server keeps for the aura,
+    /// the shader the orb is drawn by, and the transcript's one indeterminate bar, which is this
+    /// client's own rather than AppKit's exactly so that there is a rate to read at all.
+    private static func checkActivityTempo() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("activity tempo case failed: \(label)") }
+            checks += 1
+        }
+        let tempo = CAFrameRateRange.activityTempo
+        try expect(
+            tempo.preferred == Float(ActivityTuning.frameRate)
+                && tempo.maximum == Float(ActivityTuning.frameRate)
+                && tempo.minimum == Float(ActivityTuning.minimumFrameRate),
+            "the tempo is the vocabulary's rate and floor, never a number this client chose")
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 220),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let moving = ActivityPulse.motionAllowed
+
+        let bar = ActivitySweepBar(tint: MacTheme.Color.accent)
+        bar.frame = NSRect(x: 0, y: 0, width: 320, height: 4)
+        window.contentView?.addSubview(bar)
+        try expect(
+            (bar.travel != nil) == moving,
+            "the transcript's one bar travels, and holds perfectly still under reduced motion")
+        try expect(
+            bar.travel.map { $0.preferredFrameRateRange == tempo } ?? true,
+            "at the tempo, rather than at whatever AppKit draws its own indeterminate bar at")
+        bar.removeFromSuperview()
+
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 44))
+        window.contentView?.addSubview(host)
+        let aura = UltracodeAura(around: host, cornerRadius: 10)
+        aura.setActive(true)
+        try expect(
+            aura.laps.count == (moving ? 2 : 0),
+            "the aura turns and breathes while the power is on, and does neither when motion is off")
+        try expect(
+            aura.laps.allSatisfy { $0.preferredFrameRateRange == tempo },
+            "both laps at the tempo, because a lap the render server keeps is still this app moving")
+        aura.setActive(false)
 
         try expect(
-            CADisplayLink.activityTempo.preferred == Float(ActivityTuning.frameRate)
-                && CADisplayLink.activityTempo.minimum == Float(ActivityTuning.minimumFrameRate),
-            "every clock this client drives by hand asks for the vocabulary's tempo")
+            PresenceOrbView().frameRate == Int(ActivityTuning.frameRate),
+            "and the creature at the foot of the sidebar is drawn at it, not at the panel's rate")
+
+        let card = PendingCards.compacting(startedAt: Date(), waiting: false) { _ in }
+        guard let carried = sweepBar(in: card) else {
+            throw SelfTestFailure(
+                "activity tempo case failed: the compacting card carries this client's own bar")
+        }
+        try expect(
+            carried.intrinsicContentSize.height > 0,
+            "the compacting card's bar is a body rather than a line nobody can see")
         return checks
+    }
+
+    private static func sweepBar(in view: NSView) -> ActivitySweepBar? {
+        if let bar = view as? ActivitySweepBar { return bar }
+        for child in view.subviews {
+            if let found = sweepBar(in: child) { return found }
+        }
+        return nil
     }
 
     private static func markLabel(in view: NSView) -> ActivityMarkLabel? {

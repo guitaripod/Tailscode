@@ -13,25 +13,43 @@ extension ActivityTone {
     }
 }
 
-extension CADisplayLink {
-    /// The one range every clock this client drives by hand asks its display for, named once so a
-    /// harness can read the same numbers a link is given without a window to watch them in.
+extension CAFrameRateRange {
+    /// The one range everything in this window that keeps moving asks its display for.
+    ///
+    /// Both the rate and the floor come from `ActivityTuning`, because a client that names its own
+    /// is a client that can disagree with the other two desks about how fast a live thing looks
+    /// live. It is written once here rather than built at each clock, so a link this app steps by
+    /// hand and an animation the render server steps for it cannot end up keeping two tempos — and
+    /// a harness can read the same numbers a clock is given without a window to watch them in.
     static var activityTempo: CAFrameRateRange {
         let rate = Float(ActivityTuning.frameRate)
         return CAFrameRateRange(
             minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
     }
+}
 
+extension CADisplayLink {
     /// Pins a clock this client drives by hand to the one tempo every mark in the app moves at.
     ///
     /// A mark's arithmetic reads absolute time, so the compositor is free to hand it fewer frames
     /// under load and it stays in phase — but a link left at the panel's own rate redraws a swell
     /// measured in seconds up to a hundred and twenty times a second for light no eye can tell
-    /// apart, and two marks in one window would keep two different tempos. Both the rate and the
-    /// floor come from `ActivityTuning`, because a client that names its own is a client that can
-    /// disagree with the other two desks about how fast a live thing looks live.
+    /// apart, and two marks in one window would keep two different tempos.
     func runAtActivityTempo() {
-        preferredFrameRateRange = Self.activityTempo
+        preferredFrameRateRange = .activityTempo
+    }
+}
+
+extension CAAnimation {
+    /// Pins motion the render server keeps on this client's behalf to that same tempo.
+    ///
+    /// A repeating layer animation is handed over once and then drawn at whatever the panel offers
+    /// for as long as it lasts, which on a display this desk drives is up to a hundred and twenty
+    /// frames a second of a swell measured in seconds — beside marks that are drawing thirty. Only
+    /// motion that never ends on its own asks for this: a transition is over before an eye could
+    /// read a rate off it, and holding one back would cost it its smoothness and buy nothing.
+    func runAtActivityTempo() {
+        preferredFrameRateRange = .activityTempo
     }
 }
 
@@ -270,5 +288,123 @@ final class ActivityBadgeView: NSView {
         setAccessibilityRole(.image)
         setAccessibilityLabel(spoken)
         pulse.apply(icon)
+    }
+}
+
+/// The one bar a transcript is allowed: a step with no progress to report, sweeping at the tempo
+/// every other mark in the window keeps.
+///
+/// AppKit's own indeterminate `NSProgressIndicator` is drawn by the system at a rate this app has
+/// no say in — one more tempo in a transcript that already has one, two rows from a badge counting
+/// thirty. The sweep is therefore this client's: a fill travelling the track on a repeating layer
+/// animation pinned to `ActivityTuning.frameRate`, so a compaction that runs for two minutes moves
+/// at the speed the mark beside it breathes at. Nothing here changes a size layout depends on; the
+/// travel is a transform, which the compositor applies without a pass.
+///
+/// Reduced motion drops the travel and fills the track instead, because the bar's whole job is to
+/// say the step is still running and an empty track would read as a step that never started.
+@MainActor
+final class ActivitySweepBar: NSView {
+    private let fill = CALayer()
+    private let tint: NSColor
+    private var laidOutWidth: CGFloat = 0
+
+    /// The travel this bar was handed, for a harness that has to prove the claim rather than watch
+    /// it: whether it is moving at all, and at what tempo. A screenshot cannot tell thirty frames a
+    /// second from sixty, and the rate a repeating animation was given is exactly the fact that
+    /// went missing everywhere a client drew motion the vocabulary had not set.
+    var travel: CAAnimation? { fill.animation(forKey: Self.key) }
+
+    private static let key = "sweep"
+    private static let thickness: CGFloat = 4
+    private static let lap: TimeInterval = 1.4
+    /// How much of the track the fill covers. Wide enough to read as a body moving rather than a
+    /// dot, narrow enough that the track it leaves behind still says the length is unknown.
+    private static let share: CGFloat = 0.3
+
+    init(tint: NSColor) {
+        self.tint = tint
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        fill.cornerRadius = Self.thickness / 2
+        layer?.addSublayer(fill)
+        ink()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: Self.thickness)
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = min(bounds.height, Self.thickness) / 2
+        guard needsTravel else { return }
+        laidOutWidth = bounds.width
+        apply()
+    }
+
+    /// Whether this layout pass has to lay the travel on again: an animation is measured against
+    /// the width it was written for, and one that went missing while the card was off screen would
+    /// leave the bar sitting still over a step that is still running.
+    private var needsTravel: Bool {
+        bounds.width != laidOutWidth || (travel == nil && ActivityPulse.motionAllowed)
+    }
+
+    /// A card scrolled out of the transcript takes its clock with it, and one built before it is
+    /// added to anything picks the travel up when it lands.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        ink()
+        apply()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        ink()
+    }
+
+    /// Retakes the still-or-travelling decision when the desk changes its mind mid-step, because
+    /// dropping the movement is the whole of what reduced motion asks for and a bar that read the
+    /// setting once would keep sweeping until the card it sits on was rebuilt.
+    @objc private func motionPreferenceChanged() {
+        apply()
+    }
+
+    /// A `CGColor` is a resolved colour rather than a dynamic one, so both inks are taken inside
+    /// this view's own drawing appearance and taken again whenever that changes — a track mixed
+    /// against the wrong side of light and dark would otherwise sit there until the card was built
+    /// again.
+    private func ink() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = MacTheme.Color.separator.cgColor
+            fill.backgroundColor = tint.cgColor
+        }
+    }
+
+    private func apply() {
+        fill.removeAnimation(forKey: Self.key)
+        guard window != nil, bounds.width > 0 else { return }
+        let travelling = ActivityPulse.motionAllowed
+        let width = travelling ? max(bounds.width * Self.share, 1) : bounds.width
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fill.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+        CATransaction.commit()
+        guard travelling else { return }
+        let slide = CABasicAnimation(keyPath: "transform.translation.x")
+        slide.fromValue = -width
+        slide.toValue = bounds.width
+        slide.duration = Self.lap
+        slide.repeatCount = .infinity
+        slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        slide.runAtActivityTempo()
+        fill.add(slide, forKey: Self.key)
     }
 }

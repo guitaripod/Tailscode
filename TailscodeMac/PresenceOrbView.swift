@@ -58,6 +58,7 @@ final class PresenceOrbView: NSView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func configureMetal() {
+        metalView.preferredFramesPerSecond = Self.tempo
         guard let device = MTLCreateSystemDefaultDevice(),
             let library = device.makeDefaultLibrary(),
             let vertex = library.makeFunction(name: "orb_vertex"),
@@ -87,7 +88,6 @@ final class PresenceOrbView: NSView {
         metalView.layer?.isOpaque = false
         metalView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         metalView.framebufferOnly = true
-        metalView.preferredFramesPerSecond = 60
         metalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(metalView)
         NSLayoutConstraint.activate([
@@ -98,6 +98,23 @@ final class PresenceOrbView: NSView {
         ])
         isAvailable = true
     }
+
+    /// How often the body is redrawn: the vocabulary's own tempo, because the creature is a mark
+    /// rather than a renderer.
+    ///
+    /// Every parameter of the frame eases in seconds and the field reads absolute time, so a frame
+    /// this view does not ask for costs a frame and never the phase — while drawing it at whatever
+    /// a 120Hz panel offers spends four times the GPU on motion no eye can tell from thirty, beside
+    /// badges in the same sidebar counting thirty. The two clocks in this app that really are
+    /// renderers — the answer cascade and its painter — keep their own full rate on purpose; this
+    /// is not one of them.
+    private static var tempo: Int { Int(ActivityTuning.frameRate) }
+
+    /// The rate the creature is really drawn at, for a harness that has to prove it rather than
+    /// watch it: a shader asked for a hundred and twenty looks exactly like one asked for thirty in
+    /// any picture of it, and the difference is four times the GPU for a body that breathes in
+    /// seconds. Set before the shader is built, so a desk with no Metal still answers honestly.
+    var frameRate: Int { metalView.preferredFramesPerSecond }
 
     /// The sidebar is glass, so the orb paints no background of its own and its inks stay the
     /// system semantic colours the activity badges already wear — resolved against this view's

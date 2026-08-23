@@ -20,6 +20,15 @@ final class UltracodeAura {
     private var restoredBorderColor: CGColor?
     private(set) var isActive = false
 
+    /// The two laps this ring keeps while the power is on, for a harness that has to prove they run
+    /// at the vocabulary's tempo rather than look at them. Neither ends on its own, and a repeating
+    /// animation handed to the render server without a rate is the one kind of motion no picture of
+    /// the window can catch running too fast.
+    var laps: [CAAnimation] {
+        [gradient.animation(forKey: "spin"), container.animation(forKey: "breathe")]
+            .compactMap { $0 }
+    }
+
     init(around host: NSView, cornerRadius: CGFloat) {
         self.host = host
         self.cornerRadius = cornerRadius
@@ -106,12 +115,17 @@ final class UltracodeAura {
         turn.toValue = 2 * Double.pi
         turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
+        turn.runAtActivityTempo()
         gradient.add(turn, forKey: "spin")
     }
 
     /// The turn says a power is on; the breath says it is still on. Both run on the shared
     /// periods, which are deliberately not multiples of each other — two cycles that divide evenly
     /// lock into a beat, and the aura starts reading as a machine counting rather than light.
+    ///
+    /// Neither ever ends on its own, so both are pinned to the vocabulary's tempo: a lap measured
+    /// in seconds handed to the render server unqualified is redrawn at whatever the panel offers,
+    /// which around a pane that is already breathing at thirty is a second tempo for the same fact.
     private func breathe() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
@@ -120,6 +134,7 @@ final class UltracodeAura {
         pulse.duration = Ultracode.auraBreathSeconds
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
+        pulse.runAtActivityTempo()
         container.add(pulse, forKey: "breathe")
     }
 }

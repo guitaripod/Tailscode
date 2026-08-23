@@ -130,19 +130,20 @@ enum PendingCards {
     /// The minutes-long summarize as a card docked where the turn would be: the symbol says work,
     /// the words say what and for how long. The elapsed line is handed back so the transcript's
     /// own one-second clock can keep it honest without rebuilding the card.
+    ///
+    /// The bar is indeterminate because compaction reports no progress, and it is this client's
+    /// own rather than AppKit's, which draws its sweep at a rate the app has no say in — a step
+    /// that runs for two minutes must not keep a second tempo two rows from a badge keeping the
+    /// vocabulary's.
     static func compacting(
         startedAt: Date, waiting: Bool, elapsedLabel: (NSTextField) -> Void
     ) -> NSView {
         let story = CompactionStory.running(startedAt: startedAt, waiting: waiting)
         let card = RowKit.compactionCard(story, tint: MacTheme.Color.accent)
-        let spinner = NSProgressIndicator()
-        spinner.style = .bar
-        spinner.isIndeterminate = true
-        spinner.controlSize = .small
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.startAnimation(nil)
-        card.addArrangedSubview(spinner)
-        spinner.widthAnchor.constraint(
+        let sweep = ActivitySweepBar(tint: MacTheme.Color.accent)
+        sweep.translatesAutoresizingMaskIntoConstraints = false
+        card.addArrangedSubview(sweep)
+        sweep.widthAnchor.constraint(
             equalTo: card.widthAnchor, constant: -2 * MacTheme.Spacing.m
         ).isActive = true
         if let footnote = story.footnote {
