@@ -36,17 +36,24 @@ struct ActivityTests {
         #expect(seen == Set(ActivityIcon.sweepCycle))
     }
 
-    @Test("A live workflow agent turns; a finished one holds still")
+    @Test("A live workflow agent turns; a finished one, and any agent of an ended run, holds still")
     func workflowAgentMark() {
         let now = Date()
         let live = WorkflowAgent(
             id: "a", title: "agent", isActive: true, isCompleted: false, updatedAt: now)
         let done = WorkflowAgent(
             id: "b", title: "agent", isActive: false, isCompleted: true, updatedAt: now)
-        #expect(ActivityIcon.workflowAgent(live) == .openWork)
-        #expect(ActivityIcon.workflowAgent(live).motion == .turning)
-        #expect(ActivityIcon.workflowAgent(done) == .finished)
-        #expect(ActivityIcon.workflowAgent(done).motion == .still)
+        let running = WorkflowRun(id: "r", name: "n", agents: [live, done], state: .running)
+        #expect(ActivityIcon.workflowAgent(live, in: running) == .openWork)
+        #expect(ActivityIcon.workflowAgent(live, in: running).motion == .turning)
+        #expect(ActivityIcon.workflowAgent(done, in: running) == .finished)
+        #expect(ActivityIcon.workflowAgent(done, in: running).motion == .still)
+        for state: WorkflowRun.State in [.finished, .stopped("gone"), .failed("threw")] {
+            let over = WorkflowRun(id: "r", name: "n", agents: [live, done], state: state)
+            #expect(ActivityIcon.workflowAgent(live, in: over) == .stopped)
+            #expect(ActivityIcon.workflowAgent(live, in: over).motion == .still)
+            #expect(ActivityIcon.workflowAgent(done, in: over) == .finished)
+        }
         #expect(ActivityTuning.frameRate == 30)
         let start = ActivityMotion.turning.rotation(at: 0)
         let later = ActivityMotion.turning.rotation(at: ActivityTuning.sweepPeriod / 4)

@@ -83,8 +83,7 @@ struct WorkflowRunTests {
                 Self.agent("a", at: at.addingTimeInterval(2), active: false, completed: true),
                 Self.agent("b", at: at.addingTimeInterval(5), active: true, completed: false),
                 Self.agent("c", at: at.addingTimeInterval(6), active: true, completed: false),
-            ],
-            now: at.addingTimeInterval(30))
+            ])
 
         #expect(runs.count == 1)
         #expect(runs[0].name == "kaytetty-best")
@@ -108,8 +107,7 @@ struct WorkflowRunTests {
                 SubagentSummary(
                     id: "task", title: "Explore", agentType: "general-purpose",
                     updatedAt: at.addingTimeInterval(2), isActive: true),
-            ],
-            now: at.addingTimeInterval(10))
+            ])
 
         #expect(runs[0].agents.map(\.id) == ["a"])
     }
@@ -127,8 +125,7 @@ struct WorkflowRunTests {
                 Self.agent("early", at: at.addingTimeInterval(5), active: true, completed: false),
                 Self.agent(
                     "late", at: second.addingTimeInterval(5), active: true, completed: false),
-            ],
-            now: second.addingTimeInterval(10))
+            ])
 
         #expect(runs[0].agents.map(\.id) == ["early"])
         #expect(runs[1].agents.map(\.id) == ["late"])
@@ -140,8 +137,7 @@ struct WorkflowRunTests {
         let runs = WorkflowRunAssembly.runs(
             launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: at)],
             agents: [Self.agent("a", at: at.addingTimeInterval(4), active: false, completed: true)],
-            completions: ["wuzrihlvy": "# Pokémon Blue — used market"],
-            now: at.addingTimeInterval(60))
+            completions: ["wuzrihlvy": "# Pokémon Blue — used market"])
 
         #expect(runs[0].state == .finished)
         #expect(runs[0].isLive == false)
@@ -155,8 +151,7 @@ struct WorkflowRunTests {
         call.status = .error
         call.output = "Workflow script failed to parse\nat line 3"
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: Date())], agents: [],
-            now: Date())
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Date())], agents: [])
 
         #expect(runs[0].state == .failed("Workflow script failed to parse"))
         #expect(runs[0].isLive == false)
@@ -168,7 +163,7 @@ struct WorkflowRunTests {
             id: "t", name: "Workflow", status: .running,
             input: .object(["name": .string("hinta-best")]))
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: Date())], agents: [], now: Date())
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Date())], agents: [])
 
         #expect(runs[0].name == "hinta-best")
         #expect(runs[0].phases.isEmpty)
@@ -224,8 +219,7 @@ struct WorkflowRunTests {
             summary: #"Dynamic workflow "kaytetty-best" completed"#,
             result: "**60 EUR** — Espoo", reportedAt: Self.reportedAt)
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
-            now: Self.startedAt.addingTimeInterval(9_000))
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [])
 
         #expect(runs[0].state == .finished)
         #expect(runs[0].isLive == false)
@@ -242,8 +236,7 @@ struct WorkflowRunTests {
         call.status = .completed
         let runs = WorkflowRunAssembly.runs(
             launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)],
-            agents: [Self.agent("a", at: Self.startedAt, active: true, completed: false)],
-            now: Self.startedAt.addingTimeInterval(9_000))
+            agents: [Self.agent("a", at: Self.startedAt, active: true, completed: false)])
 
         #expect(runs[0].state == .running)
         #expect(runs[0].isLive)
@@ -260,8 +253,7 @@ struct WorkflowRunTests {
             summary: "No completion record was found for this run.\nIt may have been stopped.",
             reportedAt: Self.reportedAt)
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
-            now: Self.reportedAt)
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [])
 
         #expect(runs[0].state == .stopped("No completion record was found for this run."))
         #expect(runs[0].isLive == false)
@@ -279,8 +271,7 @@ struct WorkflowRunTests {
             taskID: "wuzrihlvy", status: .failed, summary: "Script threw at phase 2",
             reportedAt: Self.reportedAt)
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
-            now: Self.reportedAt)
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [])
 
         #expect(runs[0].state == .failed("Script threw at phase 2"))
         #expect(runs[0].activityIcon.tone == .danger)
@@ -304,11 +295,119 @@ struct WorkflowRunTests {
             parts: [MessagePart(id: "call-1", kind: .tool(Self.call()))],
             createdAt: Self.startedAt)
 
-        let runs = WorkflowRunAssembly.runs(
-            messages: [launch, notification], agents: [], now: Self.reportedAt)
+        let runs = WorkflowRunAssembly.runs(messages: [launch, notification], agents: [])
 
         #expect(runs[0].state == .finished)
         #expect(runs[0].result == "done")
+    }
+
+    @Test("An agent whose sidecar still claims it is working stops when its run does")
+    func anEndedRunSettlesItsAgents() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .stopped,
+            summary: "No completion record was found for this run.", reportedAt: Self.reportedAt)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)],
+            agents: [
+                Self.agent("a", at: Self.reportedAt, active: true, completed: false),
+                Self.agent("b", at: Self.reportedAt, active: false, completed: true),
+            ])
+        let run = runs[0]
+
+        #expect(ActivityIcon.workflowAgent(run.agents[0], in: run) == .stopped)
+        #expect(ActivityIcon.workflowAgent(run.agents[0], in: run).motion == .still)
+        #expect(ActivityIcon.workflowAgent(run.agents[1], in: run) == .finished)
+    }
+
+    @Test("The same agent turns while the run it belongs to is still going")
+    func aLiveRunLetsItsAgentsTurn() {
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: Self.startedAt)],
+            agents: [Self.agent("a", at: Self.reportedAt, active: true, completed: false)])
+        let run = runs[0]
+
+        #expect(run.isLive)
+        #expect(ActivityIcon.workflowAgent(run.agents[0], in: run) == .openWork)
+        #expect(ActivityIcon.workflowAgent(run.agents[0], in: run).motion == .turning)
+    }
+
+    @Test("An ending nobody timed reads the same however long afterwards it is opened")
+    func anUntimedEndingBorrowsNobodysClock() {
+        let notification = ChatMessage(
+            id: "m2", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "text",
+                    kind: .text(
+                        "<task-notification>\n<task-id>wuzrihlvy</task-id>\n"
+                            + "<result>\"done\"</result>\n</task-notification>"))
+            ],
+            createdAt: Self.reportedAt)
+        let launch = ChatMessage(
+            id: "m1", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "call-1", kind: .tool(Self.call()))],
+            createdAt: Self.startedAt)
+
+        let run = WorkflowRunAssembly.runs(messages: [launch, notification], agents: [])[0]
+        let aWeekLater = Self.reportedAt.addingTimeInterval(604_800)
+
+        #expect(run.state == .finished)
+        #expect(run.finishedAt == nil)
+        #expect(run.elapsed(at: aWeekLater) == nil)
+        #expect(run.headline(at: aWeekLater) == run.headline(at: Self.reportedAt))
+        #expect(run.headline(at: aWeekLater) == "0 agents")
+    }
+
+    @Test("An ending with no time of its own falls back to the last thing that moved")
+    func anUntimedEndingUsesTheLastAgentReport() {
+        let run = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: Self.startedAt)],
+            agents: [Self.agent("a", at: Self.reportedAt, active: false, completed: true)],
+            completions: ["wuzrihlvy": "done"])[0]
+
+        #expect(run.finishedAt == Self.reportedAt)
+        #expect(run.elapsed(at: Self.startedAt.addingTimeInterval(604_800)) == 252)
+    }
+
+    @Test("A run that was killed never claims the phases it never recorded running")
+    func aKilledRunFillsNoPhase() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .stopped, summary: "Stopped during phase 1",
+            reportedAt: Self.reportedAt)
+        let killed = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [])[0]
+
+        #expect(killed.phases.count == 3)
+        #expect(killed.isLive == false)
+        #expect(killed.phaseStanding == .unfinished)
+        #expect(
+            killed.phaseStanding
+                != WorkflowRun(id: "r", name: "n", state: .finished).phaseStanding)
+        #expect(killed.phaseStanding.tone == .quiet)
+        #expect(killed.phaseStanding.glyph != WorkflowPhaseStanding.done.glyph)
+        #expect(killed.phaseStanding.symbol != WorkflowPhaseStanding.done.symbol)
+        #expect(killed.phaseStanding.css != WorkflowPhaseStanding.done.css)
+    }
+
+    @Test("The three phase readings are three distinct marks a card cannot conflate")
+    func everyPhaseStandingIsItsOwnMark() {
+        let all = WorkflowPhaseStanding.allCases
+
+        #expect(Set(all.map(\.glyph)).count == all.count)
+        #expect(Set(all.map(\.symbol)).count == all.count)
+        #expect(Set(all.map(\.css)).count == all.count)
+        #expect(Set(all.map(\.spoken)).count == all.count)
+        #expect(all.allSatisfy { $0.glyph.count == 1 })
+        #expect(WorkflowPhaseStanding.done.tone == .live)
+        #expect(WorkflowRun(id: "r", name: "n", state: .launching).phaseStanding == .planned)
+        #expect(WorkflowRun(id: "r", name: "n", state: .running).phaseStanding == .planned)
+        #expect(WorkflowRun(id: "r", name: "n", state: .finished).phaseStanding == .done)
+        #expect(
+            WorkflowRun(id: "r", name: "n", state: .failed("threw")).phaseStanding == .unfinished)
     }
 
     @Test("The headless check every client runs finds nothing wrong")

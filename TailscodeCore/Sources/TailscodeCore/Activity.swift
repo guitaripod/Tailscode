@@ -247,10 +247,20 @@ public struct ActivityIcon: Sendable, Equatable {
     public static let stopped = ActivityIcon(
         symbol: "stop.circle", glyph: "■", tone: .quiet, motion: .still)
 
-    /// The mark one workflow agent wears: turning while it is out, a tick when it is done, idle
-    /// while it has not started. Authored once so three cards cannot disagree about one agent.
-    public static func workflowAgent(_ agent: WorkflowAgent) -> ActivityIcon {
+    /// The mark one workflow agent wears, read against the run it belongs to rather than against
+    /// its own record alone: turning while it is out, a tick when it is done, idle before it
+    /// starts, and settled the moment the run around it is over.
+    ///
+    /// An agent's record goes on claiming it is active for as long as its sidecar's window lasts,
+    /// which outlives the run by up to half an hour. Nothing corrects it afterwards, because the
+    /// per-second restate that would re-ask is itself gated on the run being live — so an ended
+    /// card would sweep a row of agents under a header that says the work stopped, forever. The
+    /// run outranks the agent: work cannot still be in flight inside a run that is over. An agent
+    /// that never reported finishing wears the ended mark, which is neither a tick it did not earn
+    /// nor a fault nobody pinned on it.
+    public static func workflowAgent(_ agent: WorkflowAgent, in run: WorkflowRun) -> ActivityIcon {
         if agent.isCompleted { return .finished }
+        guard run.isLive else { return .stopped }
         return agent.isActive ? .openWork : .idle
     }
 

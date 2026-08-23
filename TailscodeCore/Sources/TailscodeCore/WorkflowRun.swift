@@ -226,6 +226,69 @@ public struct WorkflowAgent: Sendable, Hashable, Identifiable {
     }
 }
 
+/// How much of a run's declared plan may honestly be claimed to have happened.
+///
+/// A script's phases are a plan, and only a run that reported a completion earns the claim that the
+/// plan ran. Nothing anywhere records which phase was current when a run was stopped or when it
+/// broke, so a rail that fills on any ending invents completed work — a four-phase script killed
+/// inside phase one would show four phases finished. Three readings, because still coming, ran, and
+/// never reported running are three different facts and the last two are the ones a card confuses.
+public enum WorkflowPhaseStanding: Sendable, Hashable, CaseIterable {
+    /// The run is still going. Where it has got to is not recorded, so the plan reads as a plan.
+    case planned
+    /// The run reported a completion, so the phases it declared are behind it.
+    case done
+    /// The run is over without a completion. Which phases ran is recorded nowhere, so none of them
+    /// may be claimed — the plan is drawn as the plan it stayed.
+    case unfinished
+
+    /// The symbol an Apple client draws: an empty slot, a filled one, and one whose outline was
+    /// drawn but never closed.
+    public var symbol: String {
+        switch self {
+        case .planned: return "circle"
+        case .done: return "circle.fill"
+        case .unfinished: return "circle.dashed"
+        }
+    }
+
+    /// The same reading one column wide, for a client that draws text.
+    public var glyph: String {
+        switch self {
+        case .planned: return "\u{25B1}"
+        case .done: return "\u{25B0}"
+        case .unfinished: return "\u{25A8}"
+        }
+    }
+
+    /// A plan is not an achievement: only a phase a completion vouched for takes the live tone.
+    public var tone: ActivityTone {
+        switch self {
+        case .planned, .unfinished: return .quiet
+        case .done: return .live
+        }
+    }
+
+    /// The class the phase rail wears on the GTK client.
+    public var css: String {
+        switch self {
+        case .planned: return "workflow-phase"
+        case .done: return "workflow-phase-done"
+        case .unfinished: return "workflow-phase-unfinished"
+        }
+    }
+
+    /// A filled dot and a hollow one are the same silence to a screen reader, so the standing
+    /// carries its own word.
+    public var spoken: String {
+        switch self {
+        case .planned: return Localized.text("Planned")
+        case .done: return Localized.text("Done")
+        case .unfinished: return Localized.text("Unfinished")
+        }
+    }
+}
+
 /// A workflow run as the conversation can know it. The Workflow tool returns the moment the run is
 /// handed to the background, so the tool call's own status says only that it launched; the run's
 /// real progress is its agents arriving, working and finishing, and its ending arrives long
@@ -295,9 +358,26 @@ public struct WorkflowRun: Sendable, Hashable, Identifiable {
         return Double(doneCount) / Double(agents.count)
     }
 
+    /// How long the run has been going, or how long it took.
+    ///
+    /// A run that ended without anything stamping when reports no length at all, rather than one
+    /// measured to the reader's own clock: a four-minute run whose ending nobody timed would
+    /// otherwise read as seven days the week after, and grow every time the transcript is reopened.
     public func elapsed(at now: Date) -> TimeInterval? {
         guard let startedAt else { return nil }
-        return max(0, (finishedAt ?? now).timeIntervalSince(startedAt))
+        if let finishedAt { return max(0, finishedAt.timeIntervalSince(startedAt)) }
+        guard isLive else { return nil }
+        return max(0, now.timeIntervalSince(startedAt))
+    }
+
+    /// How much of the plan this run's rail may claim, from the one vocabulary all three cards
+    /// read, so a card cannot paint a run that was killed as a run that got all the way through.
+    public var phaseStanding: WorkflowPhaseStanding {
+        switch state {
+        case .launching, .running: return .planned
+        case .finished: return .done
+        case .stopped, .failed: return .unfinished
+        }
     }
 
     /// The one line a collapsed card wears: what the run is doing, in the run's own terms.
@@ -367,18 +447,18 @@ public enum WorkflowRunAssembly {
 
     /// The runs a whole conversation knows about: its launches, the agents fanned out under them,
     /// and the notifications that reported the answers back. One call is the client's whole job.
-    public static func runs(messages: [ChatMessage], agents: [SubagentSummary], now: Date)
-        -> [WorkflowRun]
-    {
+    ///
+    /// Nothing here is told what time it is, and that is the point: every fact a run carries is a
+    /// fact the transcript recorded, so folding the same conversation twice a week apart yields
+    /// exactly the same runs. A clock belongs to the card that draws them, never to the fold.
+    public static func runs(messages: [ChatMessage], agents: [SubagentSummary]) -> [WorkflowRun] {
         let launches = launches(in: messages)
         guard !launches.isEmpty else { return [] }
-        return runs(
-            launches: launches, agents: agents, completions: completions(in: messages), now: now)
+        return runs(launches: launches, agents: agents, completions: completions(in: messages))
     }
 
     public static func runs(
-        launches: [Launch], agents: [SubagentSummary], completions: [String: String] = [:],
-        now: Date
+        launches: [Launch], agents: [SubagentSummary], completions: [String: String] = [:]
     ) -> [WorkflowRun] {
         let ordered = launches.sorted { ($0.at ?? .distantPast) < ($1.at ?? .distantPast) }
         let workflowAgents = agents
@@ -390,7 +470,7 @@ public enum WorkflowRunAssembly {
             seated[owner, default: []].append(WorkflowAgent(agent))
         }
         return ordered.map { launch in
-            run(launch, agents: seated[launch.call.id] ?? [], completions: completions, now: now)
+            run(launch, agents: seated[launch.call.id] ?? [], completions: completions)
         }
     }
 
@@ -401,7 +481,7 @@ public enum WorkflowRunAssembly {
     }
 
     private static func run(
-        _ launch: Launch, agents: [WorkflowAgent], completions: [String: String], now: Date
+        _ launch: Launch, agents: [WorkflowAgent], completions: [String: String]
     ) -> WorkflowRun {
         let call = launch.call
         let script = string(call.input, "script")
@@ -413,7 +493,7 @@ public enum WorkflowRunAssembly {
         let launchIDs = WorkflowLaunch.parse(output: output)
         let ending = ending(
             of: call, output: output, launchIDs: launchIDs, completions: completions,
-            agents: agents, now: now)
+            agents: agents)
         return WorkflowRun(
             id: call.id, name: name, summary: meta?.summary, phases: meta?.phases ?? [],
             launch: launchIDs, agents: agents, state: ending.state, startedAt: launch.at,
@@ -429,22 +509,32 @@ public enum WorkflowRunAssembly {
     /// `completions`, which is why both roads are read here rather than in three cards.
     private static func ending(
         of call: ToolCall, output: String, launchIDs: WorkflowLaunch,
-        completions: [String: String], agents: [WorkflowAgent], now: Date
+        completions: [String: String], agents: [WorkflowAgent]
     ) -> (state: WorkflowRun.State, finishedAt: Date?, result: String?) {
         if call.status == .error {
             return (.failed(firstLine(output) ?? Localized.text("Workflow failed")), nil, nil)
         }
         if let reported = call.background {
             return (
-                state(of: reported), reported.reportedAt ?? agents.map(\.updatedAt).max() ?? now,
+                state(of: reported), reported.reportedAt ?? lastMovement(of: agents),
                 reported.isSuccess ? reported.answer : nil
             )
         }
         if let answer = launchIDs.taskID.flatMap({ completions[$0] }) {
-            return (.finished, agents.map(\.updatedAt).max() ?? now, answer)
+            return (.finished, lastMovement(of: agents), answer)
         }
         if launchIDs.isEmpty, call.status == .running { return (.launching, nil, nil) }
         return (.running, nil, nil)
+    }
+
+    /// The last moment anything inside the run was seen to move — the closest thing to an ending a
+    /// report that carried no time of its own still leaves behind.
+    ///
+    /// Nil when the run fanned out no agents, which is the honest answer: an ending nobody stamped
+    /// has no time, and reaching for the reader's clock instead would make the run end whenever it
+    /// was last looked at rather than when the work stopped.
+    private static func lastMovement(of agents: [WorkflowAgent]) -> Date? {
+        agents.map(\.updatedAt).max()
     }
 
     private static func state(of reported: BackgroundOutcome) -> WorkflowRun.State {
@@ -587,6 +677,70 @@ public enum WorkflowRunCheck {
             },
             "no ending moves")
 
+        let sweeping = WorkflowAgent(
+            id: "a", title: "hunt", isActive: true, isCompleted: false, updatedAt: reported)
+        let ran = WorkflowAgent(
+            id: "b", title: "scope", isActive: false, isCompleted: true, updatedAt: reported)
+        let liveRun = WorkflowRun(id: "r", name: "n", agents: [sweeping], state: .running)
+        expect(
+            ActivityIcon.workflowAgent(sweeping, in: liveRun).motion == .turning,
+            "an agent out on its errand turns")
+        expect(
+            everyEnding.allSatisfy {
+                let over = WorkflowRun(id: "r", name: "n", agents: [sweeping], state: $0)
+                return ActivityIcon.workflowAgent(sweeping, in: over).motion == .still
+            },
+            "and stops the moment the run around it is over, whatever its own record still claims")
+        expect(
+            everyEnding.allSatisfy {
+                let over = WorkflowRun(id: "r", name: "n", agents: [sweeping], state: $0)
+                return ActivityIcon.workflowAgent(sweeping, in: over) == ActivityIcon.stopped
+            },
+            "wearing the ended mark, neither a tick it never earned nor a fault nobody proved")
+        expect(
+            everyEnding.allSatisfy {
+                let over = WorkflowRun(id: "r", name: "n", agents: [ran], state: $0)
+                return ActivityIcon.workflowAgent(ran, in: over) == ActivityIcon.finished
+            },
+            "while an agent that did report finishing keeps its tick")
+
+        expect(liveRun.phaseStanding == .planned, "a live run's plan is a plan")
+        expect(
+            WorkflowRun(id: "r", name: "n", state: .launching).phaseStanding == .planned,
+            "and so is one that has only just launched")
+        expect(done.phaseStanding == .done, "a completion is what earns a filled rail")
+        expect(
+            stopped.phaseStanding == .unfinished && broke.phaseStanding == .unfinished,
+            "a run that was killed or broke claims no phase it never recorded running")
+        expect(
+            stopped.phaseStanding.tone == .quiet && done.phaseStanding.tone == .live,
+            "so a stopped rail cannot wear the colour of a run that got all the way through")
+        expect(
+            Set(WorkflowPhaseStanding.allCases.map(\.glyph)).count
+                == WorkflowPhaseStanding.allCases.count,
+            "and the three readings are three marks, not two")
+
+        let untimed = folded(
+            reporting: nil,
+            completions: ["task-1": "the answer"])
+        expect(untimed.state == .finished, "a run settled by prose alone is finished")
+        expect(untimed.finishedAt == nil, "with no ending time, because nothing stamped one")
+        expect(untimed.elapsed(at: now) == nil, "so it claims no length rather than the reader's")
+        expect(
+            untimed.headline(at: now) == untimed.headline(at: now.addingTimeInterval(604_800)),
+            "and reads the same a week later as it did the moment it ended")
+
+        let timed = folded(
+            reporting: nil, completions: ["task-1": "the answer"],
+            agents: [
+                WorkflowAgent(
+                    id: "a", title: "hunt", isActive: false, isCompleted: true, updatedAt: reported)
+            ])
+        expect(
+            timed.finishedAt == reported,
+            "an ending nobody stamped falls back to the last thing that moved, never to now")
+        expect(timed.elapsed(at: now) == 252, "which is the run's own length")
+
         expect(framesDrawn(atHz: 60) == 30, "a 60Hz panel draws the tempo, not two thirds of it")
         expect(framesDrawn(atHz: 120) == 30, "and so does a 120Hz one")
         expect(
@@ -600,18 +754,32 @@ public enum WorkflowRunCheck {
         .finished, .stopped("stopped"), .failed("failed"),
     ]
 
-    /// One launch, folded the way a client folds it, with whatever the harness reported back.
-    private static func folded(reporting outcome: BackgroundOutcome?) -> WorkflowRun {
+    /// One launch, folded the way a client folds it, with whatever the harness reported back —
+    /// through the call's own background report, or through the prose road a plainer backend
+    /// leaves as the only way an ending arrives.
+    private static func folded(
+        reporting outcome: BackgroundOutcome?, completions: [String: String] = [:],
+        agents: [WorkflowAgent] = []
+    ) -> WorkflowRun {
         let started = Date(timeIntervalSince1970: 1_700_000_000)
         var call = ToolCall(
             id: "call-1", name: "Workflow", status: .completed,
             input: .object(["name": .string("kaytetty-best")]),
             output: "Workflow launched in background. Task ID: task-1\nRun ID: wf_abc")
         call.background = outcome
+        let launch = WorkflowRunAssembly.Launch(call: call, at: started)
         let runs = WorkflowRunAssembly.runs(
-            launches: [WorkflowRunAssembly.Launch(call: call, at: started)], agents: [],
-            now: started.addingTimeInterval(9_000))
+            launches: [launch], agents: agents.map(Self.summary), completions: completions)
         return runs[0]
+    }
+
+    /// The shape the assembly seats agents from, so the check folds them the way a transcript
+    /// delivers them rather than handing the run a list it built by hand.
+    private static func summary(_ agent: WorkflowAgent) -> SubagentSummary {
+        SubagentSummary(
+            id: agent.id, title: agent.title, agentType: WorkflowRunAssembly.agentType,
+            updatedAt: agent.updatedAt, isActive: agent.isActive, isCompleted: agent.isCompleted,
+            startedAt: agent.startedAt)
     }
 
     /// How many frames one second of a panel's own ticks is allowed to draw. The clock a frame
