@@ -13,6 +13,28 @@ extension ActivityTone {
     }
 }
 
+extension CADisplayLink {
+    /// The one range every clock this client drives by hand asks its display for, named once so a
+    /// harness can read the same numbers a link is given without a window to watch them in.
+    static var activityTempo: CAFrameRateRange {
+        let rate = Float(ActivityTuning.frameRate)
+        return CAFrameRateRange(
+            minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
+    }
+
+    /// Pins a clock this client drives by hand to the one tempo every mark in the app moves at.
+    ///
+    /// A mark's arithmetic reads absolute time, so the compositor is free to hand it fewer frames
+    /// under load and it stays in phase — but a link left at the panel's own rate redraws a swell
+    /// measured in seconds up to a hundred and twenty times a second for light no eye can tell
+    /// apart, and two marks in one window would keep two different tempos. Both the rate and the
+    /// floor come from `ActivityTuning`, because a client that names its own is a client that can
+    /// disagree with the other two desks about how fast a live thing looks live.
+    func runAtActivityTempo() {
+        preferredFrameRateRange = Self.activityTempo
+    }
+}
+
 /// A hand on any view: it holds the state's motion and applies it to whatever the view shows.
 ///
 /// The clock is `CADisplayLink` on the view's own display, and the phase is read from that clock
@@ -92,8 +114,7 @@ final class ActivityPulse {
     private func start() {
         guard link == nil, let view, view.window != nil else { return }
         let link = view.displayLink(target: self, selector: #selector(step))
-        let fps = Float(ActivityTuning.frameRate)
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: fps, preferred: fps)
+        link.runAtActivityTempo()
         link.add(to: .current, forMode: .common)
         self.link = link
     }
@@ -131,6 +152,10 @@ final class ActivityMarkLabel: NSTextField {
     private lazy var pulse = ActivityPulse(view: self) { [weak self] frame in
         self?.stringValue = frame
     }
+    /// The state this mark is wearing, for a harness that has to prove a claim about it rather than
+    /// watch it: whether a settled state is actually still is the one thing no screenshot can tell
+    /// from a sweep caught mid-frame, and it is exactly what a card that never stopped got wrong.
+    private(set) var icon: ActivityIcon?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -146,6 +171,7 @@ final class ActivityMarkLabel: NSTextField {
     required init?(coder: NSCoder) { fatalError() }
 
     func mark(_ icon: ActivityIcon?) {
+        self.icon = icon
         pulse.apply(icon)
     }
 

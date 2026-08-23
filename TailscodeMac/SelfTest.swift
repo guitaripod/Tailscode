@@ -69,6 +69,22 @@ enum SelfTest {
             failures += 1
         }
 
+        let runFailures = WorkflowRunCheck.run()
+        if runFailures.isEmpty {
+            report("workflow run: every ending settles the run, stops its clock and holds still")
+        } else {
+            report("workflow run: \(runFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkWorkflowCard()
+            report("workflow card: \(checks) claims hold — the mark is the run's, at one tempo")
+        } catch {
+            report("workflow card: \(error)")
+            failures += 1
+        }
+
         let cutOffFailures = InterruptedTurnCheck.run()
         if cutOffFailures.isEmpty {
             report("cut-off turn: the words, the cost, the press and the refusal all hold")
@@ -754,6 +770,68 @@ enum SelfTest {
         context.expanded.set("run:m1:p1", open: false)
         try expect(!context.isExpanded("run:m1:p1"), "and closing it closes it")
         return checks
+    }
+
+    /// The workflow card's own mark, which is the whole of what a reader saw go wrong: a ring still
+    /// turning over a run that ended long ago. Proved without a window, because what a mark is doing
+    /// is a state it wears rather than an animation to watch — and a screenshot could never tell a
+    /// settled ring from a sweep caught mid-frame anyway.
+    private static func checkWorkflowCard() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("workflow card case failed: \(label)") }
+            checks += 1
+        }
+        let call = ToolCall(
+            id: "call-1", name: "Workflow", status: .completed,
+            output: "Workflow launched in background. Task ID: task-1")
+        let context = TranscriptContext()
+        func mark(of state: WorkflowRun.State?) throws -> ActivityMarkLabel {
+            context.workflowRuns = state.map {
+                [call.id: WorkflowRun(id: call.id, name: "kaytetty-best", state: $0)]
+            } ?? [:]
+            let view = WorkflowCardView.make(call, key: "wf", context: context)
+            guard let label = markLabel(in: view) else {
+                throw SelfTestFailure("workflow card case failed: the header wears a live mark")
+            }
+            return label
+        }
+
+        try expect(try mark(of: .running).icon?.motion == .turning, "a live run turns")
+        try expect(try mark(of: .launching).icon == .openWork, "and so does one still launching")
+        for ending in [WorkflowRun.State.finished, .stopped("stopped"), .failed("broke")] {
+            try expect(
+                try mark(of: ending).icon?.motion == .still, "an ending holds perfectly still")
+        }
+        try expect(
+            try mark(of: .finished).stringValue == ActivityIcon.finished.glyph,
+            "and shows the ending's own glyph rather than the frame the sweep died on")
+        try expect(
+            try mark(of: .stopped("stopped")).icon?.tone == .quiet,
+            "a run that was stopped is not blamed for a fault")
+        try expect(try mark(of: nil).icon == .idle, "a call whose run has not landed has not started")
+
+        context.workflowRuns = [call.id: WorkflowRun(id: call.id, name: "n", state: .running)]
+        let card = WorkflowCardView.make(call, key: "wf", context: context)
+        context.workflowRuns = [call.id: WorkflowRun(id: call.id, name: "n", state: .finished)]
+        try expect(
+            WorkflowCardView.restate(card, call: call, context: context),
+            "the once-a-second tick restates the card in place")
+        try expect(
+            markLabel(in: card)?.icon == .finished,
+            "and the ending reaches the mark without a rebuild")
+
+        try expect(
+            CADisplayLink.activityTempo.preferred == Float(ActivityTuning.frameRate)
+                && CADisplayLink.activityTempo.minimum == Float(ActivityTuning.minimumFrameRate),
+            "every clock this client drives by hand asks for the vocabulary's tempo")
+        return checks
+    }
+
+    private static func markLabel(in view: NSView) -> ActivityMarkLabel? {
+        if let label = view as? ActivityMarkLabel { return label }
+        guard let row = view as? DisclosureRow, let header = row.headerView else { return nil }
+        return header.subviews.compactMap { $0 as? ActivityMarkLabel }.first
     }
 
     /// The card a cut-off turn draws, built as the transcript builds it, in every state it has.

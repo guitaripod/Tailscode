@@ -145,9 +145,10 @@ struct DiscoverySurvey: Sendable {
 /// sits — so this Mac draws the same scan at the same speed as the GTK desk rather than an
 /// animation that merely resembles it.
 ///
-/// The clock is the display's own, and it stops the moment Core says the frame is settled: a scan
-/// that has finished is a result, and repainting a result sixty times a second is a fan spinning
-/// for nothing. Angle zero is straight up and the sweep turns the way a clock does, because that
+/// The clock is the display's own, run at the vocabulary's tempo rather than at whatever the panel
+/// offers — a sweep is a sweep at the same speed as every other mark in the app — and it stops the
+/// moment Core says the frame is settled: a scan that has finished is a result, and repainting a
+/// result is a fan spinning for nothing. Angle zero is straight up and the sweep turns the way a clock does, because that
 /// is the only radar anybody has ever seen.
 @MainActor
 final class TailnetRadarView: NSView {
@@ -210,6 +211,7 @@ final class TailnetRadarView: NSView {
     private func start() {
         guard link == nil, window != nil else { return }
         let made = displayLink(target: self, selector: #selector(step))
+        made.runAtActivityTempo()
         made.add(to: .current, forMode: .common)
         link = made
     }

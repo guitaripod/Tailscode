@@ -31,8 +31,7 @@ enum WorkflowCardView {
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
         let expanded = context.isExpanded(key)
-        header.addArrangedSubview(
-            RowKit.label(glyph(run, now), font: MacTheme.Ramp.font(.code), color: glyphColor(run)))
+        header.addArrangedSubview(markLabel(run))
         let word = RowKit.label(
             "\(ToolRowView.disclosureGlyph(expanded)) \(Localized.text("workflow"))", font: MacTheme.Ramp.font(.code),
             color: MacTheme.Color.label)
@@ -67,7 +66,7 @@ enum WorkflowCardView {
         }
     }
 
-    /// The card restated in place from the run it already shows: spinner frame, headline, elapsed
+    /// The card restated in place from the run it already shows: the run's mark, headline, elapsed
     /// readings, meter fill, phase marks, each agent's glyph and current tool. False the moment the
     /// view's structure no longer matches the run — a new agent, the result arriving, a card built
     /// before its run existed — which is the caller's cue to rebuild this one card whole.
@@ -78,8 +77,8 @@ enum WorkflowCardView {
         let run = context.workflowRuns[call.id]
         let now = context.workflowNow
         let head = header.arrangedSubviews.compactMap { $0 as? NSTextField }
-        guard head.count == 5 else { return false }
-        setLabel(head[0], text: glyph(run, now), color: glyphColor(run))
+        guard head.count == 5, let mark = head[0] as? ActivityMarkLabel else { return false }
+        wear(icon(run), on: mark)
         setLabel(head[2], text: name(run, call))
         setLabel(
             head[3], text: run.map { $0.headline(at: now) } ?? "",
@@ -381,40 +380,43 @@ enum WorkflowCardView {
         run?.name ?? call.summary.title ?? Localized.text("Workflow")
     }
 
-    private static let spinner = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+    /// The mark this card wears, which is the run's own — never a face invented here. A card that
+    /// spelled an ending its own way could disagree with the agent rows under it and with the same
+    /// card on a phone, and the ending is the whole thing a reader is looking for. A call whose run
+    /// has not been assembled yet has not started, and idle is what not started looks like.
+    private static func icon(_ run: WorkflowRun?) -> ActivityIcon { run?.activityIcon ?? .idle }
 
-    /// A desk that asked for less motion keeps the glyph and loses the turning, the way every other
-    /// mark in the app does — this one is written by the card's own tick rather than by a pulse, so
-    /// it has to ask.
-    private static func frame(_ now: Date) -> String {
-        guard ActivityPulse.motionAllowed else { return spinner[0] }
-        return spinner[Int(now.timeIntervalSince1970) % spinner.count]
+    /// The header's mark, on its own clock rather than on the card's once-a-second tick. A sweep
+    /// stepped by that tick was one frame a second — a rate no eye reads as turning — and it was
+    /// pinned to the launching call, which answers in milliseconds and never speaks again.
+    private static func markLabel(_ run: WorkflowRun?) -> ActivityMarkLabel {
+        let label = ActivityMarkLabel(frame: .zero)
+        label.font = MacTheme.Ramp.font(.code)
+        label.stringValue = icon(run).glyph
+        wear(icon(run), on: label)
+        return label
     }
 
-    private static func glyph(_ run: WorkflowRun?, _ now: Date) -> String {
-        guard let run else { return "○" }
-        switch run.state {
-        case .launching, .running: return frame(now)
-        case .finished: return "⏺"
-        case .failed: return "✗"
+    /// Points a mark at its state and leaves it showing that state's own glyph and tone.
+    ///
+    /// A settled state does not animate, and ``ActivityPulse`` stops a mark without putting words
+    /// back — so the still glyph is written here, or a run that ended would keep whichever frame of
+    /// the sweep it was on when the report landed, which is the moving record this card exists not
+    /// to be. A live mark is left alone: the pulse owns those glyphs, and writing one from the
+    /// card's own tick would stutter the turn once a second.
+    private static func wear(_ icon: ActivityIcon, on label: ActivityMarkLabel) {
+        label.mark(icon)
+        if label.textColor != icon.tone.color { label.textColor = icon.tone.color }
+        guard !icon.motion.honoring(reduceMotion: !ActivityPulse.motionAllowed).isAnimated else {
+            return
         }
-    }
-
-    private static func glyphColor(_ run: WorkflowRun?) -> NSColor {
-        guard let run else { return MacTheme.Color.tertiaryLabel }
-        switch run.state {
-        case .launching, .running: return MacTheme.Color.accent
-        case .finished: return MacTheme.Color.success
-        case .failed: return MacTheme.Color.danger
-        }
+        setLabel(label, text: icon.glyph)
     }
 
     private static func headlineColor(_ run: WorkflowRun) -> NSColor {
-        switch run.state {
-        case .launching, .running: return MacTheme.Color.accent
-        case .finished: return MacTheme.Color.tertiaryLabel
-        case .failed: return MacTheme.Color.danger
-        }
+        if run.isLive { return MacTheme.Color.accent }
+        return run.activityIcon.tone == .danger
+            ? MacTheme.Color.danger : MacTheme.Color.tertiaryLabel
     }
 
     /// Writes a label only when the words changed: an equal set still dirties layout, and a tick
