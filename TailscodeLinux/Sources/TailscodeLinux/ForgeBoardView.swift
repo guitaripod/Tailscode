@@ -36,6 +36,37 @@ enum ForgeBoardView {
         return button
     }
 
+    static func model(
+        _ board: ForgeBoard, onPick: @escaping @Sendable (String) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let choices = board.choices(of: .model)
+        let button = Gtk.menuButton("", css: ["flat", "forge-model"]) {
+            choices.map { choice in
+                (
+                    choice.menuTitle,
+                    choice.detail.isEmpty ? nil : choice.detail,
+                    { onPick(choice.id) }
+                )
+            }
+        }
+        gtk_widget_set_hexpand(button, 1)
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(line, top: 8, bottom: 8, leading: 10, trailing: 10)
+        let name = Gtk.label(ForgeField.model.label, css: "forge-chip-label", selectable: false)
+        let value = Gtk.label(board.value(of: .model), css: "forge-chip-value", selectable: false)
+        gtk_widget_set_hexpand(value, 1)
+        gtk_label_set_xalign(op(value), 1)
+        let mark = Gtk.label(ForgeField.model.affordanceGlyph, css: "forge-affordance", selectable: false)
+        gtk_box_append(ptr(line), name)
+        gtk_box_append(ptr(line), value)
+        gtk_box_append(ptr(line), mark)
+        gtk_menu_button_set_child(op(button), line)
+        gtk_menu_button_set_always_show_arrow(op(button), 0)
+        gtk_widget_set_tooltip_text(button, board.recipe.model.detail)
+        gtk_widget_set_sensitive(button, board.isBusy ? 0 : 1)
+        return button
+    }
+
     static func chips(
         _ board: ForgeBoard, onPick: @escaping @Sendable (ForgeField, String) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {

@@ -782,12 +782,12 @@ enum MatrixTheme {
             color: \(text);
             \(t(.composer))
         }
-        .forge-renderer {
+        .forge-renderer, .forge-model {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
             border-radius: 10px;
         }
-        .forge-renderer:hover { background-color: alpha(\(accent), 0.10); }
+        .forge-renderer:hover, .forge-model:hover { background-color: alpha(\(accent), 0.10); }
         .forge-chip {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);

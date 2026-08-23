@@ -26,6 +26,7 @@ final class ForgePane: @unchecked Sendable {
     private let statusLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
     private let filmHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let rendererHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let modelHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let chipsHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let promptView = gtk_text_view_new()!
     private let avoidEntry = gtk_entry_new()!
@@ -141,6 +142,8 @@ final class ForgePane: @unchecked Sendable {
         }
         gtk_box_append(ptr(column), avoidEntry)
 
+        gtk_widget_set_hexpand(modelHolder, 1)
+        gtk_box_append(ptr(column), modelHolder)
         gtk_widget_set_hexpand(chipsHolder, 1)
         gtk_box_append(ptr(column), chipsHolder)
         gtk_box_append(ptr(column), reasonLabel)
@@ -484,6 +487,12 @@ final class ForgePane: @unchecked Sendable {
             ptr(rendererHolder),
             ForgeBoardView.renderer(board) { [weak self] in
                 Gtk.onMain { [weak self] in self?.openSetup() }
+            })
+        Gtk.removeChildren(of: modelHolder)
+        gtk_box_append(
+            ptr(modelHolder),
+            ForgeBoardView.model(board) { [weak self] id in
+                Gtk.onMain { [weak self] in self?.runner.pick(.model, id: id) }
             })
         Gtk.removeChildren(of: chipsHolder)
         gtk_box_append(

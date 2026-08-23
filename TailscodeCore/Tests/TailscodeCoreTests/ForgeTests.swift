@@ -626,8 +626,9 @@ struct ForgeSetupTests {
         #expect(ForgeSurface.preferredWidth > ForgeSurface.minimumWidth)
         #expect(ForgeSurface.preferredHeight > ForgeSurface.minimumHeight)
         #expect(ForgeSurface.preferredWidth > ForgeSurface.preferredHeight)
-        #expect(ForgeStudio.chips == QuickAskLane.videoChips)
+        #expect(!ForgeStudio.chips.contains(.model))
         #expect(!ForgeStudio.chips.contains(.prompt))
+        #expect(QuickAskLane.videoChips.contains(.model))
     }
 
     @Test("The renderer row is the setup, not a text field")

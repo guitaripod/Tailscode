@@ -274,6 +274,9 @@ final class VideoForgeViewController: UIViewController {
         if let prompt = board.rows.first(where: { $0.kind == .field(.prompt) }) {
             items.append(.row(prompt.id))
         }
+        if let model = board.rows.first(where: { $0.kind == .field(.model) }) {
+            items.append(.row(model.id))
+        }
         items.append(.chips)
         if let avoid = board.rows.first(where: { $0.kind == .field(.negative) }) {
             items.append(.row(avoid.id))
