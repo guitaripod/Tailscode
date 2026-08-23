@@ -130,12 +130,23 @@ enum MacShot {
         if let text = caption(view) { facts.append("\"\(text)\"") }
         lines.append(indent + facts.joined(separator: " "))
         if wantsConstraints, view is NSStackView || view.hasAmbiguousLayout {
-            for constraint in view.constraintsAffectingLayout(for: .horizontal) {
-                lines.append(indent + "  ↔ \(constraint)")
-            }
+            describeConstraints(on: view, into: &lines, indent: indent)
         }
         for child in view.subviews {
             describe(child, into: &lines, depth: depth + 1, root: root)
+        }
+    }
+
+    /// Both axes for a view Auto Layout calls ambiguous, and the horizontal one for a stack.
+    /// Ambiguity has no axis in `hasAmbiguousLayout`, so dumping one axis answers half the question
+    /// and leaves the other half looking like a mystery.
+    private static func describeConstraints(on view: NSView, into lines: inout [String], indent: String) {
+        for constraint in view.constraintsAffectingLayout(for: .horizontal) {
+            lines.append(indent + "  ↔ \(constraint)")
+        }
+        guard view.hasAmbiguousLayout else { return }
+        for constraint in view.constraintsAffectingLayout(for: .vertical) {
+            lines.append(indent + "  ↕ \(constraint)")
         }
     }
 

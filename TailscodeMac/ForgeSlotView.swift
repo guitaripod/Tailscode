@@ -3,22 +3,25 @@ import AVKit
 import AppKit
 import TailscodeCore
 
-/// A video being asked for, made, and watched — inside the split tree, as a pane like any other.
+/// A video being asked for, made, and watched — the whole of what the forge sheet holds.
 ///
 /// The whole of what this shows is `ForgeBoard`'s: which machine renders and whether it answered,
 /// the render in hand with its bar and its stage, the settings the next one is made from, and the
-/// clips already kept. This owns the four things a board cannot — the prompt box, the reachability
-/// probe, the render stream, and the players — and hands every answer straight back into the board,
-/// so the words on screen are Core's in every state this surface has.
+/// clips already kept. The board, the connection and the render's own task are not this view's:
+/// they live in ``ForgeRunner`` above it, so the sheet can be dismissed without cancelling four
+/// minutes of somebody else's card. What this owns is the drawing — the prompt box, the players,
+/// and the lookups a press needs — and every answer goes straight back into the runner, so the
+/// words on screen are Core's in every state this surface has.
 ///
 /// The board is content on the opaque canvas; the prompt and the one button under it are the
 /// floating control layer, the same arrangement the transcript keeps under its composer. A clip
 /// plays twice over: small, in the row that made it, so a finished render is watched where it
-/// happened — and, on a press, over the whole pane, which Escape hands back with the recipe that
+/// happened — and, on a press, over the whole surface, which Escape hands back with the recipe that
 /// made it still in the boxes.
 @MainActor
 final class ForgeSlotView: NSView, NSTextFieldDelegate {
-    private(set) var board: ForgeBoard
+    private let runner = ForgeRunner.shared
+    private var board: ForgeBoard { runner.board }
     private let boardView = ForgeBoardView()
     private let field = NSTextField()
     private let call = NSButton()
@@ -27,9 +30,6 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private var dockGroup: NSView?
     private let theatre = AVPlayerView()
 
-    private var client: ForgeClient?
-    private var renderTask: Task<Void, Never>?
-    private var reachTask: Task<Void, Never>?
     private var openTask: Task<Void, Never>?
     private var stageTask: Task<Void, Never>?
     /// The render in hand's own file, once the machine has confirmed it still has it. Asked once
@@ -41,32 +41,23 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private var theatrePlayer: AVPlayer?
     private var muted = false
     private var paused = false
-    /// Clips the renderer no longer has. Asked once, when somebody tries to play one, and kept so
-    /// the row can say the file is gone rather than failing the same way on every press.
-    private var missing: Set<String> = []
     /// Why the last thing somebody pressed did not happen — a machine that would not answer, a file
     /// that is gone, a player that would not decode. Never a render's own failure: that one is the
     /// job's, and the board says it on the render row where it happened.
     private var reason: String?
-    /// What the pane itself is waiting on, as opposed to what the renderer is. Only the lookup
+    /// What this surface itself is waiting on, as opposed to what the renderer is. Only the lookup
     /// before a clip opens lands here, and it says so rather than leaving a pressed row silent.
     private var working: String?
     private var typing = false
 
-    /// Told to the pane whenever the slot changes what it says about itself, so the identity strip
-    /// follows the render rather than lagging a state behind it.
+    /// Told to whoever is holding this whenever the slot changes what it says about itself, so the
+    /// sheet's own footer follows the render rather than lagging a state behind it.
     var onChange: (() -> Void)?
 
-    /// The height the pane's identity strip takes when the window is split, so the first section is
-    /// never born underneath it. A lone pane hides that strip and reads the space as breathing room.
-    private static let stripClearance: CGFloat = 30
-
     init() {
-        board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
         super.init(frame: .zero)
         build()
-        board.filled(history: ForgeStore.history())
-        probe()
+        runner.watch(self) { [weak self] in self?.render() }
         render()
     }
 
@@ -167,16 +158,12 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         let bottom =
             (dockGroup?.frame.height ?? 0) + MacTheme.Spacing.m + MacTheme.Spacing.l
         boardView.insets = NSEdgeInsets(
-            top: safeAreaInsets.top + MacTheme.Spacing.s + Self.stripClearance, left: 0,
-            bottom: bottom, right: 0)
+            top: safeAreaInsets.top + MacTheme.Spacing.s, left: 0, bottom: bottom, right: 0)
     }
 
     var isPlaying: Bool { playing != nil }
 
     var isBusy: Bool { board.isBusy }
-
-    /// What the pane's identity strip says this slot is holding: what it is, then what it is doing.
-    var identity: String { "\(board.heading) · \(board.job.subtitle)" }
 
     /// One line for the headless driver: where the renderer is, where the render is, what the
     /// button under it would do, how the board is grouped, and what is playing.
@@ -229,11 +216,12 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         typed()
     }
 
+    /// The surface is going away. Everything this view started is let go of — the players and the
+    /// lookups behind them — and nothing the runner started is touched, because a sheet closing is a
+    /// sheet closing rather than a render being cancelled.
     func shutdown() {
-        renderTask?.cancel()
-        renderTask = nil
-        reachTask?.cancel()
-        reachTask = nil
+        runner.unwatch(self)
+        runner.rememberRecipe()
         openTask?.cancel()
         openTask = nil
         stageTask?.cancel()
@@ -263,13 +251,9 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             }
         }
         guard let command = ForgeBoard.command(for: chord) else { return false }
-        let (handled, action) = board.handle(command)
+        let (handled, action) = runner.handle(command)
         guard handled else { return false }
-        guard let action else {
-            ForgeStore.remember(board.recipe)
-            render()
-            return true
-        }
+        guard let action else { return true }
         perform(action)
         return true
     }
@@ -283,27 +267,22 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
 
     private func typed() {
         guard !typing else { return }
-        board.describe(field.stringValue)
-        render()
+        runner.describe(field.stringValue)
     }
 
     @objc private func promptSubmitted() {
-        perform(board.begin())
+        perform(runner.begin())
     }
 
     @objc private func callPressed() {
-        perform(board.begin())
+        perform(runner.begin())
     }
 
     /// A press on a row is the same act as walking to it and pressing enter, so it goes through the
     /// cursor rather than around it — the board keeps one idea of where somebody is.
     private func pressed(section: String, offset: Int) {
-        board.focus(section: section, offset: offset)
-        guard let action = board.activate() else {
-            ForgeStore.remember(board.recipe)
-            render()
-            return
-        }
+        runner.focus(section: section, offset: offset)
+        guard let action = runner.activate() else { return }
         perform(action)
     }
 
@@ -318,7 +297,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         case .render(let recipe):
             start(recipe)
         case .cancel:
-            stop()
+            runner.stop()
         case .play(let asset):
             play(asset, entryID: nil)
         case .edit(let field):
@@ -341,17 +320,18 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         }
     }
 
-    /// Where the renderer lives, asked for in the one place a person can answer it. The reading is
-    /// Core's and so is every refusal, so a typed address that cannot be reached is explained in
-    /// the same sentence on every client.
+    /// Where the renderer lives, which is a machine to find rather than a string to type — so it
+    /// opens the setup, the same flow adding a server opens, and every word and rule in it is
+    /// `ForgeSetup`'s.
+    func openRenderer() {
+        askForRenderer()
+    }
+
     private func askForRenderer() {
-        MacDialogs.prompt(
-            on: window, title: ForgeField.endpoint.label,
-            body: ForgeFailure.unconfigured.description,
-            placeholder: board.value(of: .endpoint),
-            initial: board.endpoint?.displayHost ?? "", confirmLabel: Localized.text("Save")
-        ) { [weak self] text in
-            self?.point(at: text)
+        guard let window else { return }
+        ForgeSetupSheet.present(on: window) { [weak self] in
+            self?.reason = nil
+            ForgeRunner.shared.pointAtStoredRenderer()
         }
     }
 
@@ -361,104 +341,19 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             placeholder: board.value(of: .negative), initial: board.recipe.negative,
             confirmLabel: Localized.text("Save")
         ) { [weak self] text in
-            guard let self else { return }
-            self.board.avoid(text)
-            ForgeStore.remember(self.board.recipe)
-            self.render()
+            self?.runner.avoid(text)
         }
     }
 
-    private func point(at raw: String) {
-        let reading = ForgeEndpoint.read(raw)
-        switch reading {
-        case .endpoint(let endpoint):
-            reason = nil
-            ForgeStore.remember(endpoint)
-            board.point(at: endpoint)
-            client = nil
-            probe()
-        case .empty:
-            reason = nil
-            ForgeStore.remember(nil)
-            board.point(at: nil)
-            client = nil
-            render()
-        case .bindAll, .unsupportedScheme, .invalid:
-            reason = ForgeEndpoint.complaint(reading)
-            render()
-        }
-    }
-
-    /// Whether anything is listening, asked the cheap way. The box is socket-activated, so this
-    /// says the port answers and nothing more — which is exactly what the row it feeds claims.
-    private func probe() {
-        guard let endpoint = board.endpoint else {
-            render()
-            return
-        }
-        board.checking()
-        reachTask?.cancel()
-        reachTask = Task { [weak self] in
-            let verdict = await endpoint.reach()
-            guard !Task.isCancelled, let self else { return }
-            self.board.reached(verdict)
-            self.render()
-        }
-        render()
-    }
-
-    /// One render, watched. Every snapshot the stream yields goes straight into the board, and the
-    /// last one is always terminal — so a bar that stops moving is a render that stopped, never a
-    /// client that stopped listening.
+    /// One render, handed to the runner because it has to outlive this view. Everything this view
+    /// does about it is get out of the way: the box gives the keyboard back and the last clip's
+    /// lookup is dropped.
     private func start(_ recipe: ForgeRecipe) {
-        guard let renderer = renderer() else { return }
-        ForgeStore.remember(recipe)
         reason = nil
         working = nil
         forgetStageClip()
         releaseField()
-        renderTask?.cancel()
-        renderTask = Task { [weak self] in
-            for await job in renderer.render(recipe) {
-                guard let self else { return }
-                self.saw(job)
-            }
-            self?.renderTask = nil
-        }
-        render()
-    }
-
-    private func saw(_ job: ForgeJob) {
-        board.saw(job)
-        if job.isFinished, ForgeStore.record(job) != nil {
-            board.filled(history: ForgeStore.history())
-        }
-        render()
-    }
-
-    /// Stops the render on the machine that is doing it, and here. The interrupt is fired rather
-    /// than awaited — it either landed or the render was already over — and the job is put into its
-    /// stopped state so the surface says so even if the socket never answers again.
-    private func stop() {
-        guard board.isBusy else { return }
-        let renderer = self.renderer()
-        Task { await renderer?.cancel() }
-        renderTask?.cancel()
-        renderTask = nil
-        var job = board.job
-        job.cancelled()
-        board.saw(job)
-        render()
-    }
-
-    /// The client for whatever machine is configured right now, kept so a cancel and a lookup use
-    /// the same one the render did rather than minting a connection per press.
-    private func renderer() -> ForgeClient? {
-        if let client, client.endpoint == board.endpoint { return client }
-        guard let endpoint = board.endpoint else { return nil }
-        let fresh = ForgeClient(endpoint: endpoint)
-        client = fresh
-        return fresh
+        runner.start(recipe)
     }
 
     /// A clip, asked for before it is opened. The file is on the other machine and `/view` answers
@@ -466,7 +361,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     /// them about this machine — so Core is asked where the file is first, and its sentence is what
     /// a clip that is gone says.
     private func play(_ asset: ForgeAsset, entryID: String?) {
-        guard let renderer = renderer() else {
+        guard let renderer = runner.renderer(for: asset) else {
             refuse(ForgeFailure.unconfigured.description)
             return
         }
@@ -476,15 +371,11 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         openTask?.cancel()
         openTask = Task { [weak self] in
             do {
-                let url = try await renderer.locate(asset)
+                let url = try await ForgeRunner.shared.locate(asset, entryID: entryID)
                 guard !Task.isCancelled, let self else { return }
-                if let entryID { self.missing.remove(entryID) }
                 self.openTheatre(asset, at: url)
             } catch {
                 guard !Task.isCancelled, let self else { return }
-                if case ForgeFailure.missingFile = error, let entryID {
-                    self.missing.insert(entryID)
-                }
                 self.refuse(ForgeClient.reason(error, host: renderer.endpoint.host))
             }
         }
@@ -570,27 +461,21 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         }
         let reuse = ClosureMenuItem(title: Localized.text("Use these settings")) { [weak self] in
             guard let self else { return }
-            self.board.reuse(entry)
+            self.runner.reuse(entry)
             self.describe(entry.recipe.prompt)
-            ForgeStore.remember(self.board.recipe)
-            self.render()
         }
         reuse.subtitle = entry.recipe.summary
         menu.addItem(reuse)
         menu.addItem(.separator())
         menu.addItem(
             ClosureMenuItem(title: Localized.text("Remove")) { [weak self] in
-                guard let self else { return }
-                ForgeStore.remove(entry.id)
-                self.missing.remove(entry.id)
-                self.board.filled(history: ForgeStore.history())
-                self.render()
+                self?.runner.forget(entry)
             })
         menu.popUp(positioning: nil, at: point, in: view)
     }
 
     private func goneWords(for entry: ForgeEntry) -> String? {
-        guard missing.contains(entry.id), let host = board.endpoint?.host else { return nil }
+        guard runner.isMissing(entry), let host = board.endpoint?.host else { return nil }
         return ForgeFailure.missingFile(host).description
     }
 
@@ -666,10 +551,10 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         stageTask?.cancel()
         stageAsking = asset
         stageFailure = nil
-        guard let renderer = renderer() else { return }
+        guard let renderer = runner.renderer(for: asset) else { return }
         stageTask = Task { [weak self] in
             do {
-                let url = try await renderer.locate(asset)
+                let url = try await ForgeRunner.shared.locate(asset)
                 guard !Task.isCancelled, let self else { return }
                 self.stageClip = (asset, url)
             } catch {
@@ -700,7 +585,7 @@ extension ForgeSlotView {
     /// words this client made up.
     func demonstrate(_ name: String) {
         quiet()
-        board = ForgeDemo.board(name)
+        runner.demonstrate(name)
         typing = true
         field.stringValue = board.recipe.prompt
         typing = false
@@ -710,15 +595,11 @@ extension ForgeSlotView {
         render()
     }
 
-    /// Everything already in flight, let go of before a state is put on screen by hand — the probe
-    /// and the render both answer on their own clock, and a snapshot landing a second later would
-    /// quietly rewrite the state somebody asked to look at.
+    /// Everything this view has in flight, let go of before a state is put on screen by hand — a
+    /// lookup landing a second later would quietly rewrite the state somebody asked to look at. What
+    /// the runner has in flight is its own to drop, and `demonstrate` drops it.
     private func quiet() {
         showBoard()
-        reachTask?.cancel()
-        reachTask = nil
-        renderTask?.cancel()
-        renderTask = nil
         openTask?.cancel()
         openTask = nil
         stageTask?.cancel()

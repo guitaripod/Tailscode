@@ -111,9 +111,6 @@ final class ForgeBoardView: NSView {
                 rowViews[row.id] = view
                 stack.addArrangedSubview(view)
             }
-            if section.id == ForgeBoard.rendererID {
-                stack.addArrangedSubview(Self.standingFact(board.notice))
-            }
             groups.addArrangedSubview(stack)
         }
     }
@@ -202,15 +199,6 @@ final class ForgeBoardView: NSView {
     /// The line the board carries under the renderer: what a render actually costs, said before
     /// somebody spends four minutes of somebody else's card on it. It belongs to no row, so it is
     /// the one thing on this board that is not one.
-    private static func standingFact(_ text: String) -> NSView {
-        let label = RowKit.wrapping(
-            text, font: MacTheme.Ramp.font(.note), color: MacTheme.Color.tertiaryLabel)
-        label.isSelectable = false
-        let holder = FillingStack(views: [label])
-        holder.edgeInsets = NSEdgeInsets(
-            top: 2, left: MacTheme.Spacing.s, bottom: 0, right: MacTheme.Spacing.s)
-        return holder
-    }
 }
 
 /// One row of the board: what it is, what it says, the word in its corner, how far it has got, and

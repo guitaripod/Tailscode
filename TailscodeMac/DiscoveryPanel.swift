@@ -21,14 +21,27 @@ struct DiscoverySurvey: Sendable {
     /// The peers that are awake. A sleeping machine holds its port open and answers nothing, so
     /// probing one costs the scan a full timeout for a result that was never coming.
     let peers: [TailscaleDevice]
+    /// This Mac, as one more machine on its own tailnet. Not a peer — `tailscale status` keeps it
+    /// out of the peer list on purpose — and not wanted by every scan, but wanted by some.
+    let me: TailscaleDevice?
 
-    /// The peers worth asking, in the scanner's own shape — which also drops the phones and TVs
+    /// The machines worth asking, in the scanner's own shape — which also drops the phones and TVs
     /// that could never run an agent.
-    var scannable: [TailscaleDevice] { TailnetScanner.scannableDevices(peers) }
+    ///
+    /// - Parameter includingThisMachine: whether the machine doing the scanning is one of the
+    ///   answers. False for an agent scan, which is looking for the *other* computer; true for a
+    ///   service like the renderer, which may perfectly well be this one — the desk somebody codes
+    ///   at is the likeliest machine on the whole tailnet to be holding the graphics card, and a
+    ///   sweep that only asked peers could never find the renderer it is running on.
+    func scannable(includingThisMachine: Bool = false) -> [TailscaleDevice] {
+        var devices = peers
+        if includingThisMachine, let me { devices.insert(me, at: 0) }
+        return TailnetScanner.scannableDevices(devices)
+    }
 
     static func read() -> DiscoverySurvey {
         #if TAILSCODE_MAS
-            return DiscoverySurvey(reading: .sandboxed, foundCLI: false, peers: [])
+            return DiscoverySurvey(reading: .sandboxed, foundCLI: false, peers: [], me: nil)
         #else
             return survey()
         #endif
@@ -37,7 +50,8 @@ struct DiscoverySurvey: Sendable {
     #if !TAILSCODE_MAS
         private static func survey() -> DiscoverySurvey {
             guard let binary = executable() else {
-                return DiscoverySurvey(reading: .notInstalled, foundCLI: false, peers: [])
+                return DiscoverySurvey(
+                    reading: .notInstalled, foundCLI: false, peers: [], me: nil)
             }
             guard let data = run(binary),
                 let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -45,7 +59,7 @@ struct DiscoverySurvey: Sendable {
                 return DiscoverySurvey(
                     reading: TailscaleReading.read(
                         found: true, sandboxed: false, backendState: nil, address: nil),
-                    foundCLI: true, peers: [])
+                    foundCLI: true, peers: [], me: nil)
             }
             let node = root["Self"] as? [String: Any]
             let address = (node?["TailscaleIPs"] as? [String])?.first { !$0.contains(":") }
@@ -55,19 +69,29 @@ struct DiscoverySurvey: Sendable {
             let raw = Array((root["Peer"] as? [String: Any] ?? [:]).values)
             let peers: [TailscaleDevice] = raw.compactMap { value in
                 guard let peer = value as? [String: Any],
-                    (peer["Online"] as? Bool) == true,
-                    let name = (peer["HostName"] as? String) ?? (peer["DNSName"] as? String),
-                    let ip = (peer["TailscaleIPs"] as? [String])?
-                        .first(where: { !$0.contains(":") })
+                    (peer["Online"] as? Bool) == true
                 else { return nil }
-                var dns = (peer["DNSName"] as? String) ?? ""
-                while dns.hasSuffix(".") { dns.removeLast() }
-                return TailscaleDevice(
-                    id: ip, name: dns.isEmpty ? nil : dns, hostname: name, addresses: [ip],
-                    os: (peer["OS"] as? String) ?? "", lastSeen: nil)
+                return device(peer)
             }
             return DiscoverySurvey(
-                reading: reading, foundCLI: true, peers: peers.sorted { $0.hostname < $1.hostname })
+                reading: reading, foundCLI: true,
+                peers: peers.sorted { $0.hostname < $1.hostname }, me: node.flatMap(device))
+        }
+    #endif
+
+    /// One node of `tailscale status --json`, in the scanner's shape. `Self` and every entry under
+    /// `Peer` carry the same four fields, so this reads both — the only difference between them is
+    /// that a peer has to be awake to be worth asking and this Mac is awake by definition.
+    #if !TAILSCODE_MAS
+        private static func device(_ node: [String: Any]) -> TailscaleDevice? {
+            guard let name = (node["HostName"] as? String) ?? (node["DNSName"] as? String),
+                let ip = (node["TailscaleIPs"] as? [String])?.first(where: { !$0.contains(":") })
+            else { return nil }
+            var dns = (node["DNSName"] as? String) ?? ""
+            while dns.hasSuffix(".") { dns.removeLast() }
+            return TailscaleDevice(
+                id: ip, name: dns.isEmpty ? nil : dns, hostname: name, addresses: [ip],
+                os: (node["OS"] as? String) ?? "", lastSeen: nil)
         }
     #endif
 
@@ -493,7 +517,7 @@ final class DiscoveryPanel {
                 DiscoverySurvey.read()
             }.value
             guard let self, self.scanID == id else { return }
-            let devices = survey.scannable
+            let devices = survey.scannable()
             self.peerCount = devices.count
             guard !devices.isEmpty else {
                 let blocked = Self.blocked(survey)

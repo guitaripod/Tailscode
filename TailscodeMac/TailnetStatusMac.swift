@@ -274,7 +274,19 @@ final class TailnetRemedyView: NSView {
         column.addArrangedSubview(actions)
     }
 
-    private func enter(_ door: TailnetDoor) {
+    /// The door this reading offers, walked from somewhere else. A diagnosis on another surface names
+    /// the same remedy — `ConnectDiagnosis.Fix.openTailscale` is one sentence on every screen that
+    /// probes anything — and it has to land on this press rather than on a second copy of it.
+    func enterDoor() {
+        guard let reading = shown, let door = TailnetStatusMac.door(for: reading) else { return }
+        enter(door)
+    }
+
+    /// One door, walked. Internal rather than private because a surface can be blocked by a reading
+    /// that is not the one this view is showing — a scan needs Tailscale's command line, which a Mac
+    /// whose tunnel is up can perfectly well be without — and that press has to land on this walker
+    /// rather than on a second copy of it.
+    func enter(_ door: TailnetDoor) {
         switch door {
         case .page(let address):
             guard let url = URL(string: address) else { return }

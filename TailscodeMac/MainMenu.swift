@@ -184,13 +184,13 @@ final class MainMenu: NSObject {
         return holder(menu)
     }
 
-    /// The forge's own item, named and explained by the board rather than by this menu: what the
-    /// surface is called and what a render actually costs are Core's words on every desk.
+    /// The forge's keyboard route, which stays alongside the toolbar control rather than being the
+    /// only way in. Named by `ForgeEntryPoint` rather than by this menu, and explained by the one
+    /// sentence that cannot go stale: the menu bar is built once at launch, so the tooltip that
+    /// changes when a renderer is set up belongs on the control that redraws itself, not here.
     private func videoForgeItem() -> NSMenuItem {
-        let board = ForgeBoard()
-        let entry = item(
-            Localized.text("%@…", board.heading), #selector(videoForge), "v", [.command, .option])
-        entry.toolTip = board.notice
+        let entry = item(ForgeEntryPoint.menuTitle, #selector(videoForge), "v", [.command, .option])
+        entry.toolTip = ForgeSurface.subtitle
         return entry
     }
 

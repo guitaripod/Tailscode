@@ -55,6 +55,10 @@ final class MainWindowController: NSWindowController {
     /// The settings toolbar item's button, which carries the standing mark. Weak because the
     /// toolbar owns its item's view, and this is only the handle that repaints the dot.
     private weak var updateMark: UpdateMarkButton?
+    /// The toolbar's video control, kept so the mark it wears can follow a render this window is not
+    /// showing — the sheet closes, the other machine keeps working, and the control is where that is
+    /// still legible.
+    private weak var videoMark: ForgeMarkButton?
     private var watchFeed: MediaFeed?
     private var watchCheckedAt: Date?
     private var watchLoad: Task<Void, Never>?
@@ -511,6 +515,7 @@ final class MainWindowController: NSWindowController {
         splitPanes.eachPane { $0.applyPaneColours() }
         splitPanes.applyFocusStyling()
         updateMark?.render()
+        videoMark?.render()
     }
 
     /// One named surface, opened from the command line, so a window nobody is sitting in front of
@@ -532,36 +537,27 @@ final class MainWindowController: NSWindowController {
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
         case "forge", "video":
-            let pane = presentForge()
-            if parts.count > 1 { pane.driveForgeState(parts[1]) }
+            let sheet = presentForge()
+            if parts.count > 1 { sheet?.demonstrate(parts[1]) }
+        case "renderer", "forgesetup":
+            presentForge()?.openRenderer()
         default:
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
                         + "quickask, cheatsheet, commands, chooser, spend, git, "
-                        + "forge[:state]\n").utf8))
+                        + "forge[:state], renderer\n").utf8))
         }
     }
 
-    /// The forge, opened where somebody can watch it work. A render is minutes of another machine's
-    /// card, so it never takes a pane that is holding a conversation: an empty pane becomes the
-    /// forge, a pane with a chat in it splits and the forge takes the new half, and a forge already
-    /// open is raised rather than made a second time.
+    /// The forge, opened over the work rather than beside it. A render is a task somebody starts,
+    /// watches and collects — not a place they work — so it is a sheet on top of this window and the
+    /// conversation behind it is left exactly as it was. One already open is raised rather than made
+    /// a second time, and closing it never touches a render, which lives in `ForgeRunner`.
     @discardableResult
-    func presentForge() -> TranscriptViewController {
-        if let open = splitPanes.orderedPanes.first(where: { $0.isForging }) {
-            splitPanes.focus(open, grabKeyboard: false)
-            open.showForge()
-            focused = .transcript
-            return open
-        }
-        let pane = transcript
-        let target = pane.currentEntry == nil ? pane : (splitPanes.split(pane, edge: .right) ?? pane)
-        target.showForge()
-        splitPanes.focus(target, grabKeyboard: false)
-        focused = .transcript
-        splitPanes.persist()
-        return target
+    func presentForge() -> ForgeSheet? {
+        guard let window else { return nil }
+        return ForgeSheet.present(on: window)
     }
 
     /// The servers window, one per app: add, probe, update, sign in or remove a server, with the
@@ -1338,9 +1334,6 @@ final class MainWindowController: NSWindowController {
         {
             return nil
         }
-        if focused == .transcript, pendingChords.isEmpty, transcript.handleForgeChord(chord) {
-            return nil
-        }
         #if !TAILSCODE_MAS
             if focused == .transcript, pendingChords.isEmpty,
                 context == .normal || transcript.isChoosingStream,
@@ -1879,6 +1872,7 @@ extension MainWindowController: NSToolbarDelegate {
         static let newChat = NSToolbarItem.Identifier("tailscode.toolbar.newchat")
         static let actions = NSToolbarItem.Identifier("tailscode.toolbar.actions")
         static let terminal = NSToolbarItem.Identifier("tailscode.toolbar.terminal")
+        static let video = NSToolbarItem.Identifier("tailscode.toolbar.video")
         static let usage = NSToolbarItem.Identifier("tailscode.toolbar.usage")
         static let servers = NSToolbarItem.Identifier("tailscode.toolbar.servers")
         static let settings = NSToolbarItem.Identifier("tailscode.toolbar.settings")
@@ -1888,7 +1882,8 @@ extension MainWindowController: NSToolbarDelegate {
         [
             ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
             ToolbarID.actions,
-        ] + terminalToolbarItems + [ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
+        ] + terminalToolbarItems
+            + [ToolbarID.video, ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
     }
 
     private var terminalToolbarItems: [NSToolbarItem.Identifier] {
@@ -1957,6 +1952,8 @@ extension MainWindowController: NSToolbarDelegate {
                 itemIdentifier, symbol: "square.and.pencil", label: Localized.text("New Chat"),
                 tip: Localized.text("Start a conversation on one of your servers"),
                 action: #selector(toolbarNewChat))
+        case ToolbarID.video:
+            return makeVideoItem(itemIdentifier)
         case ToolbarID.servers:
             return makeToolbarItem(
                 itemIdentifier, symbol: "server.rack", label: Localized.text("Servers"),
@@ -2024,6 +2021,30 @@ extension MainWindowController: NSToolbarDelegate {
 
     @objc private func toolbarNewChat() {
         presentNewChat()
+    }
+
+    /// Video's own control, carrying the weight the window gives its other primary actions: it sits
+    /// in the toolbar beside servers and settings rather than only inside a menu, which is where a
+    /// preference lives and not where an action does. It promises something different before a
+    /// renderer exists than after, and it wears the render's own mark while the other machine is
+    /// working — so somebody who closed the sheet can still see it is out.
+    private func makeVideoItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = ForgeEntryPoint.title
+        item.paletteLabel = ForgeEntryPoint.title
+        let button = ForgeMarkButton(target: self, action: #selector(toolbarVideo))
+        button.render()
+        item.view = button
+        item.toolTip = button.toolTip
+        item.menuFormRepresentation = ClosureMenuItem(title: ForgeEntryPoint.menuTitle) {
+            [weak self] in self?.presentForge()
+        }
+        videoMark = button
+        return item
+    }
+
+    @objc private func toolbarVideo() {
+        presentForge()
     }
 
     @objc private func toolbarServers() {

@@ -230,6 +230,8 @@ enum ParityManifest {
                 because:
                     "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
         case .videoForge: return .implemented("ForgeSlotView")
+        case .forgeEntry: return .implemented("ForgeSheet")
+        case .forgeSetup: return .implemented("ForgeSetupSheet")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
         case .reviewPrompt: return .gap("the policy is Core's and already shared, and macOS has the same SKStoreReviewController to ask with — what this client owes is a MacReviewPrompt coordinator wired to its own turn-completion and MacGameCenter trophy paths, the two signals iOS now hooks")

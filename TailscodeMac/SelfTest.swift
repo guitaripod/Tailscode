@@ -1418,6 +1418,34 @@ enum SelfTest {
         try expect(
             bar.intrinsicContentSize.width == NSView.noIntrinsicMetric,
             "and takes the width of whatever row it is in")
+
+        let mark = ForgeMarkButton(target: nil, action: #selector(NSApplication.terminate(_:)))
+        mark.render()
+        try expect(
+            mark.image != nil, "the toolbar's way in wears the symbol every client wears for it")
+        try expect(
+            mark.toolTip == ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil),
+            "and promises what Core says it promises")
+        try expect(
+            mark.accessibilityLabel() == ForgeEntryPoint.accessibilityLabel(rendering: false),
+            "reading out the same words a tooltip nobody hears would have said")
+        try expect(
+            ForgeEntryPoint.activity(rendering: false) == nil,
+            "an idle control wears no badge, because a mark on nothing is decoration")
+        try expect(
+            ForgeEntryPoint.activity(rendering: true) == .working,
+            "and a render out wears the state that breathes")
+
+        try expect(
+            ForgeSurface.preferredWidth >= ForgeSurface.minimumWidth
+                && ForgeSurface.preferredHeight >= ForgeSurface.minimumHeight,
+            "the modal opens no smaller than it is allowed to be shrunk to")
+        try expect(
+            ForgeSurface.dismissNote(rendering: false) == nil,
+            "closing over nothing needs no reassurance")
+        try expect(
+            ForgeSurface.dismissNote(rendering: true) != nil,
+            "and closing over a render says the render keeps going")
         return checks
     }
 
