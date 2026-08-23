@@ -1161,6 +1161,11 @@ struct TranscriptRow: Hashable {
     /// A turn the machine was pulled out from under. The account of what the work had already done
     /// is the substance of it — a person decides between continuing and starting over on whether
     /// anything on that machine changed — so it is drawn as lines rather than as a sentence.
+    ///
+    /// Every word is Core's, including the one nobody used to be told: an undecided card stops the
+    /// server carrying this session on by itself, which is a price being paid for not answering.
+    /// The buttons take their titles and their sensitivity from the card's own state, so a press
+    /// already in flight is visibly in flight and cannot be pressed a second time.
     private static func interruptedTurn(
         _ turn: InterruptedTurn, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
@@ -1194,27 +1199,29 @@ struct TranscriptRow: Hashable {
             gtk_box_append(ptr(card), row)
         }
 
-        if !turn.queued.isEmpty {
-            let waiting = Gtk.label(
-                turn.queued.count == 1
-                    ? Localized.text("One prompt was waiting behind it and never ran.")
-                    : Localized.text(
-                        "%@ prompts were waiting behind it and never ran.", "\(turn.queued.count)"),
-                css: "row-note", wrap: true, selectable: false)
-            gtk_widget_set_halign(waiting, GTK_ALIGN_START)
-            gtk_box_append(ptr(card), waiting)
+        if let waiting = turn.queuedLine {
+            let line = Gtk.label(waiting, css: "row-note", wrap: true, selectable: false)
+            gtk_widget_set_halign(line, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), line)
+        }
+
+        if let cost = turn.cost {
+            let price = Gtk.label(cost, css: "row-note", wrap: true, selectable: false)
+            gtk_widget_set_halign(price, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), price)
         }
 
         let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_widget_set_halign(buttons, GTK_ALIGN_START)
         if !turn.isResumed, let resume = context.resumeInterrupted {
-            gtk_box_append(
-                ptr(buttons),
-                Gtk.button(turn.resumeTitle, css: ["flat", "seam-read"]) { resume() })
+            let button = Gtk.button(turn.resumeTitle, css: ["flat", "seam-read"]) { resume() }
+            gtk_widget_set_sensitive(button, turn.acceptsPress ? 1 : 0)
+            gtk_box_append(ptr(buttons), button)
         }
         if let dismiss = context.dismissInterrupted {
-            gtk_box_append(
-                ptr(buttons), Gtk.button(turn.dismissTitle, css: ["flat"]) { dismiss() })
+            let button = Gtk.button(turn.dismissTitle, css: ["flat"]) { dismiss() }
+            gtk_widget_set_sensitive(button, turn.acceptsPress ? 1 : 0)
+            gtk_box_append(ptr(buttons), button)
         }
         gtk_box_append(ptr(card), buttons)
         return card

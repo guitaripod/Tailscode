@@ -143,6 +143,13 @@ final class ChatPane: @unchecked Sendable {
     private var inFlightImages: Set<String> = []
     private var inFlightSubagents: Set<String> = []
     private var lastRecordedDraft = ""
+    /// A press on the cut-off card this device is still waiting on an answer to.
+    ///
+    /// It is held here rather than folded into the record because it is this device's news and not
+    /// the server's: between the press and the server's word the card must already say what was
+    /// asked of it, and the moment the server's own account moves — resumed, gone, or refused and
+    /// re-read — this is dropped and the card goes back to reporting only what the server said.
+    private var interruptedPress: InterruptedTurnPress?
 
     private(set) var entry: SessionEntry?
     /// What this pane is watching instead of talking, when it is a video slot rather than a chat.
@@ -810,6 +817,7 @@ final class ChatPane: @unchecked Sendable {
         conversation = nil
         backend = nil
         lastState = nil
+        interruptedPress = nil
         models = []
         commands = []
         chosenModel = ModelPreferenceStore.initialModel(
@@ -1009,6 +1017,7 @@ final class ChatPane: @unchecked Sendable {
         backend = nil
         conversation = nil
         lastState = nil
+        interruptedPress = nil
         lastFullRows = []
         lastFullCount = 0
         lastStreamedKey = nil
@@ -1209,11 +1218,14 @@ final class ChatPane: @unchecked Sendable {
         }
         // A turn the machine cut off is docked at the very end: it is an account of what already
         // happened, and it belongs below everything that did.
-        if let cutOff = InterruptedTurnReading.read(state.interruption) {
+        if let cutOff = interruptedCard(state) {
             if !rows.isEmpty {
                 rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
             }
-            rows.append(TranscriptRow(key: "interrupted", kind: .interruptedTurn(cutOff)))
+            rows.append(
+                TranscriptRow(
+                    key: "interrupted:\(Self.cardKey(cutOff.state))",
+                    kind: .interruptedTurn(cutOff)))
         }
         // What has been written and not sent sits at the very end, in the order it will go.
         for (index, waiting) in queue.items.enumerated() {
@@ -3562,22 +3574,99 @@ final class ChatPane: @unchecked Sendable {
 
     /// Continues a turn the server's machine stopped in the middle of. The work resumes on that
     /// machine, so nothing is sent from here and the card comes down on the server's answer.
+    ///
+    /// The press is worn by the card before the request goes out, and a refusal is reported in the
+    /// server's own sentence rather than a substitute — the Kit has already re-read the record by
+    /// then, so the card either corrects itself or comes down in the same redraw.
     private func resumeInterruptedTurn() {
         guard let conversation else { return }
+        beginInterruptedPress(.pickUp)
         Task {
             do {
                 try await conversation.resumeInterruptedTurn()
+                Gtk.onMain { [weak self] in self?.endInterruptedPress() }
             } catch {
+                let said = Self.refusalText(error)
                 Gtk.onMain { [weak self] in
-                    self?.setNotice(Localized.text("The server could not pick that turn back up."))
+                    self?.endInterruptedPress()
+                    self?.setNotice(said)
                 }
             }
         }
     }
 
+    /// Sets the cut-off turn aside. A server that no longer holds the record has nothing to refuse:
+    /// the press asked for it gone and it is gone, so the card comes down without a word.
     private func dismissInterruptedTurn() {
         guard let conversation else { return }
-        Task { try? await conversation.dismissInterruptedTurn() }
+        beginInterruptedPress(.letGo)
+        Task {
+            do {
+                try await conversation.dismissInterruptedTurn()
+                Gtk.onMain { [weak self] in self?.endInterruptedPress() }
+            } catch {
+                let said = Self.refusalText(error)
+                Gtk.onMain { [weak self] in
+                    self?.endInterruptedPress()
+                    self?.setNotice(said)
+                }
+            }
+        }
+    }
+
+    /// The card as this device must draw it: the server's record, wearing a press this device is
+    /// still waiting on the answer to. The press is dropped the instant the server's own account
+    /// says something — which is what stops a button sitting in flight forever.
+    private func interruptedCard(_ state: ConversationState) -> InterruptedTurn? {
+        guard let card = InterruptedTurnReading.read(state.interruption) else {
+            interruptedPress = nil
+            return nil
+        }
+        guard let press = interruptedPress, !card.isResumed else {
+            interruptedPress = nil
+            return card
+        }
+        return InterruptedTurnReading.pressed(card, press)
+    }
+
+    /// Acknowledges a press where it happened. The card is redrawn from what this device holds
+    /// before the request leaves, so nobody presses twice wondering whether the first one landed.
+    private func beginInterruptedPress(_ press: InterruptedTurnPress) {
+        interruptedPress = press
+        redrawPending()
+    }
+
+    private func endInterruptedPress() {
+        interruptedPress = nil
+        redrawPending()
+    }
+
+    /// The row key carries the card's state so a press is a row the diff rebuilds rather than one
+    /// it recognises by key and leaves exactly as it was.
+    private static func cardKey(_ state: InterruptedTurn.State) -> String {
+        switch state {
+        case .waiting: return "waiting"
+        case .pickingUp: return "pickingup"
+        case .lettingGo: return "lettinggo"
+        case .resumed: return "resumed"
+        }
+    }
+
+    /// What to say about a press the server would not take.
+    ///
+    /// A conflict is the only refusal this side has already acted on — the record was re-read and
+    /// the card redrawn — so it is the only one that may carry Core's promise that the card is now
+    /// right. Every other failure is reported in the words it arrived with, which are the server's
+    /// or the transport's; this client writes neither.
+    private static func refusalText(_ error: Error) -> String {
+        guard case AgentError.http(let status, let body) = error else {
+            return (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+        }
+        let named = InterruptedTurnReading.conflict(body: body) != .unstated
+        guard status == 409 || (status == 404 && named) else {
+            return (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+        }
+        return InterruptedTurnReading.refusal(body: body)
     }
 
     private func attachRows() -> [(String, String?, @Sendable () -> Void)] {

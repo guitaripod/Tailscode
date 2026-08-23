@@ -94,6 +94,7 @@ enum StatusBand {
             let label: UnsafeMutablePointer<GtkWidget> = ptr(raw)
             gtk_label_set_text(op(label), notice ?? "")
             gtk_widget_set_visible(label, (notice?.isEmpty == false) ? 1 : 0)
+            gtk_widget_set_tooltip_text(label, notice)
         }
     }
 
