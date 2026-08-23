@@ -271,6 +271,7 @@ final class ImageBubbleCell: UICollectionViewCell {
         slide.toValue = [1.0, 1.5, 2.0]
         slide.duration = 1.1
         slide.repeatCount = .infinity
+        slide.runAtActivityTempo()
         shimmer.locations = [0.0, 0.5, 1.0]
         shimmer.add(slide, forKey: "shimmer")
         ratio?.isActive = false

@@ -1333,11 +1333,17 @@ extension UIFont {
 
 /// The "agent is working" placeholder shown before any assistant content
 /// arrives for the current turn: three softly pulsing dots in a bubble.
+///
+/// The dots say what every other live mark in a transcript says, so they say it in the same words:
+/// the swell is `ActivityMotion.working`, read from the display clock at the vocabulary's tempo,
+/// and the row goes still when the reader has asked for less motion.
 final class ThinkingCell: UICollectionViewCell {
     static let reuseID = "ThinkingCell"
 
     private let bubble = UIView()
     private let dots = (0..<3).map { _ in UIView() }
+    private var link: CADisplayLink?
+    private var motion: ActivityMotion = .still
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1377,8 +1383,8 @@ final class ThinkingCell: UICollectionViewCell {
         ])
 
         NotificationCenter.default.addObserver(
-            self, selector: #selector(restartPulsing),
-            name: UIApplication.willEnterForegroundNotification, object: nil)
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -1390,29 +1396,55 @@ final class ThinkingCell: UICollectionViewCell {
         contentView.transform = .identity
     }
 
+    /// A row that has left the window stops its clock: a transcript would otherwise keep one
+    /// running for a bubble nobody is looking at. A display link needs no help across a trip
+    /// through the background — it is paused and resumed with the app, where a repeating layer
+    /// animation is stripped off a cell that never moved and has to be laid on again.
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil { startPulsing() }
+        window == nil ? stop() : start()
     }
 
-    /// Backgrounding strips repeating CAAnimations while the cell stays in the
-    /// window, so didMoveToWindow never refires; restart on foreground instead.
-    @objc private func restartPulsing() {
-        if window != nil { startPulsing() }
+    /// Reads the reader's mind again when they change it mid-turn, because dropping the movement is
+    /// the whole of what reduced motion asks for and a row that only asks once keeps swelling until
+    /// it happens to leave the window. A cell that is not on screen is left alone: it reads the
+    /// setting for itself the moment it comes back.
+    @objc private func retune() {
+        guard window != nil else { return }
+        start()
     }
 
-    private func startPulsing() {
-        for (index, dot) in dots.enumerated() {
-            dot.layer.removeAnimation(forKey: "pulse")
-            let pulse = CABasicAnimation(keyPath: "opacity")
-            pulse.fromValue = 0.25
-            pulse.toValue = 1.0
-            pulse.duration = 0.55
-            pulse.autoreverses = true
-            pulse.repeatCount = .infinity
-            pulse.timeOffset = Double(index) * 0.18
-            dot.layer.add(pulse, forKey: "pulse")
+    private func start() {
+        motion = ActivityMotion.working.honoring(
+            reduceMotion: UIAccessibility.isReduceMotionEnabled)
+        guard motion.isAnimated else {
+            stop()
+            for dot in dots { dot.alpha = 1 }
+            return
         }
+        guard link == nil else { return }
+        let made = CADisplayLink(target: self, selector: #selector(step))
+        made.runAtActivityTempo()
+        made.add(to: .main, forMode: .common)
+        link = made
+    }
+
+    private func stop() {
+        link?.invalidate()
+        link = nil
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        for (index, dot) in dots.enumerated() {
+            dot.alpha = motion.intensity(at: link.timestamp - Self.lag(of: index, in: dots.count))
+        }
+    }
+
+    /// How far behind the swell one dot sits: a whole period spread evenly over the dots, so the
+    /// light crosses the row as one wave rather than three marks blinking together. The spacing is
+    /// the vocabulary's own period divided by what is on screen, never a duration this cell chose.
+    private static func lag(of index: Int, in count: Int) -> TimeInterval {
+        ActivityTuning.breathPeriod * Double(index) / Double(max(1, count))
     }
 }
 

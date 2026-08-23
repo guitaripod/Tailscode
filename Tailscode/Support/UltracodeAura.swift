@@ -99,6 +99,7 @@ final class UltracodeAura {
         turn.toValue = 2 * Double.pi
         turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
+        turn.runAtActivityTempo()
         gradient.add(turn, forKey: "spin")
     }
 
@@ -110,6 +111,7 @@ final class UltracodeAura {
         pulse.duration = Ultracode.auraBreathSeconds
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
+        pulse.runAtActivityTempo()
         container.add(pulse, forKey: "breathe")
     }
 }

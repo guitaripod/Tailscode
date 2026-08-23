@@ -787,6 +787,7 @@ class ShimmerCardCell: GlassCardCell {
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
         pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.runAtActivityTempo()
         contentView.layer.add(pulse, forKey: "shimmer")
     }
 }

@@ -223,6 +223,7 @@ final class ShimmerView: UIView {
         animation.toValue = [1.0, 1.25, 1.5]
         animation.duration = 1.25
         animation.repeatCount = .infinity
+        animation.runAtActivityTempo()
         gradient.add(animation, forKey: "shimmer")
     }
 

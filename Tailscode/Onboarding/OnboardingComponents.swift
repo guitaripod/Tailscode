@@ -177,6 +177,7 @@ final class TailnetLinkView: UIView {
         dash.toValue = -8
         dash.duration = 0.7
         dash.repeatCount = .infinity
+        dash.runAtActivityTempo()
         lineLayer.add(dash, forKey: "dash")
 
         let travel = CAKeyframeAnimation(keyPath: "position")
@@ -186,6 +187,7 @@ final class TailnetLinkView: UIView {
         travel.path = path.cgPath
         travel.duration = 1.9
         travel.repeatCount = .infinity
+        travel.runAtActivityTempo()
         travel.calculationMode = .paced
 
         let fade = CAKeyframeAnimation(keyPath: "opacity")
@@ -193,6 +195,7 @@ final class TailnetLinkView: UIView {
         fade.keyTimes = [0, 0.15, 0.85, 1]
         fade.duration = 1.9
         fade.repeatCount = .infinity
+        fade.runAtActivityTempo()
 
         dotLayer.add(travel, forKey: "travel")
         dotLayer.add(fade, forKey: "fade")

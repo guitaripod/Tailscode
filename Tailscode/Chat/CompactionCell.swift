@@ -248,6 +248,7 @@ final class CompactionCell: UICollectionViewCell {
         slide.duration = 1.4
         slide.repeatCount = .infinity
         slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        slide.runAtActivityTempo()
         fill.layer.add(slide, forKey: "sweep")
     }
 

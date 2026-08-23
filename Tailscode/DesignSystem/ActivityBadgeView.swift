@@ -15,30 +15,55 @@ extension ActivityTone {
     }
 }
 
+extension CAFrameRateRange {
+    /// The one range everything in this app that keeps moving asks its display for.
+    ///
+    /// Both the rate and the floor come from `ActivityTuning`, because a client that names its own
+    /// is a client that can disagree with the other two desks about how fast a live thing looks
+    /// live. It is written once here rather than built at each clock, so a link the app steps by
+    /// hand and an animation the render server steps for it cannot end up keeping two tempos.
+    static var activityTempo: CAFrameRateRange {
+        let rate = Float(ActivityTuning.frameRate)
+        return CAFrameRateRange(
+            minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
+    }
+}
+
 extension CADisplayLink {
     /// Pins a clock this client runs by hand to the one tempo every mark in the app moves at.
     ///
     /// A mark's arithmetic reads absolute time, so the compositor is free to hand it fewer frames
     /// under load and it stays in phase — but a link left at the panel's own rate redraws a swell
     /// measured in seconds up to a hundred and twenty times a second for light no eye can tell
-    /// apart, and two marks on one screen would keep two different tempos. Both the rate and the
-    /// floor come from `ActivityTuning`, because a client that names its own is a client that can
-    /// disagree with the other two desks about how fast a live thing looks live.
+    /// apart, and two marks on one screen would keep two different tempos.
     func runAtActivityTempo() {
-        let rate = Float(ActivityTuning.frameRate)
-        preferredFrameRateRange = CAFrameRateRange(
-            minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
+        preferredFrameRateRange = .activityTempo
+    }
+}
+
+extension CAAnimation {
+    /// Pins motion the render server keeps on this client's behalf to that same tempo.
+    ///
+    /// A repeating layer animation is handed over once and then drawn at whatever the panel
+    /// offers for as long as it lasts, which on this phone is a hundred and twenty frames a second
+    /// of a swell measured in seconds — beside marks that are drawing thirty. Only motion that
+    /// never ends on its own asks for this: a transition is over before an eye could read a rate
+    /// off it, and holding one back would cost it its smoothness and buy nothing.
+    func runAtActivityTempo() {
+        preferredFrameRateRange = .activityTempo
     }
 }
 
 /// The one moving thing a busy surface is allowed: the state's own symbol, breathing, knocking or
 /// sweeping the way that state means.
 ///
-/// Frames come from `CADisplayLink` — the display's own clock, up to 120Hz — and the phase is read
-/// from that clock rather than counted, so every badge on screen swells together and one that
-/// scrolls back into view arrives already in time with the rest. Nothing here changes a size that
-/// layout depends on: the swell is opacity and a transform, both of which the compositor applies
-/// without a pass.
+/// Frames come from `CADisplayLink`, asked for the vocabulary's own tempo rather than the panel's,
+/// and the phase is read from that clock rather than counted, so every badge on screen swells
+/// together and one that scrolls back into view arrives already in time with the rest — and a
+/// badge that is handed fewer frames under load loses frames, never its place in the swell. It
+/// draws at the rate the desks draw at, not the rate this screen could. Nothing here changes a
+/// size that layout depends on: the swell is opacity and a transform, both of which the
+/// compositor applies without a pass.
 ///
 /// A badge that leaves the window stops its link. A list of forty rows would otherwise keep forty
 /// clocks running for the three the reader can see.
