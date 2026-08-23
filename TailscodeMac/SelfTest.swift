@@ -833,7 +833,7 @@ enum SelfTest {
 
         let plan = (0..<4).map { WorkflowPhase(index: $0, title: "phase \($0)") }
         let sweeping = WorkflowAgent(
-            id: "a", title: "hunt", isActive: true, isCompleted: false,
+            id: "a", title: "hunt", isActive: true, isCompleted: false, currentTool: "WebFetch",
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000))
         context.expanded.set("wf", open: true)
         func drawn(_ state: WorkflowRun.State) -> NSView {
@@ -891,6 +891,21 @@ enum SelfTest {
                 try agentMark(ending).icon?.motion == .still,
                 "and settles the moment the run is over, whatever its own record still claims")
         }
+
+        func agentRow(_ state: WorkflowRun.State) -> String {
+            WorkflowCardView.agentReading(of: drawn(state))
+        }
+        try expect(
+            agentRow(.running).hasSuffix(":\(sweeping.currentTool ?? "")"),
+            "an agent the mark shows as out names the tool it is holding")
+        for ending in [WorkflowRun.State.finished, .stopped("stopped"), .failed("broke")] {
+            try expect(
+                agentRow(ending).hasSuffix(":still:"),
+                "and the caption goes with the mark, so a row under an ended run names no tool")
+        }
+        try expect(
+            systemIndicator(in: drawn(.running)) == nil,
+            "with nothing on the card AppKit spins at a rate this app cannot read")
         return checks
     }
 
@@ -993,6 +1008,9 @@ enum SelfTest {
         try expect(
             carried.intrinsicContentSize.height > 0,
             "the compacting card's bar is a body rather than a line nobody can see")
+        try expect(
+            systemIndicator(in: card) == nil,
+            "and is the only bar on it, because AppKit's own is drawn at a tempo nothing can read")
         return checks
     }
 

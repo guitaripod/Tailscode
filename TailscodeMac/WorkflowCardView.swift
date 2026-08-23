@@ -136,8 +136,8 @@ enum WorkflowCardView {
     /// record: a sidecar goes on calling itself active for up to half an hour after the run around
     /// it ended, and the per-second restate that would ever re-ask is itself gated on the run being
     /// live — so a card left to the record alone sweeps its agents forever under a header that says
-    /// the work stopped. The sentence follows the mark for the same reason: only an agent the mark
-    /// shows as out is one VoiceOver may call working.
+    /// the work stopped. The caption and the sentence follow the mark for the same reason: only an
+    /// agent the mark shows as out is holding a tool, or is one VoiceOver may call working.
     private static func restateAgent(
         _ row: DisclosureRow, agent: WorkflowAgent, in run: WorkflowRun, now: Date
     ) -> Bool {
@@ -148,7 +148,7 @@ enum WorkflowCardView {
         guard head.count == 3 else { return false }
         let icon = ActivityIcon.workflowAgent(agent, in: run)
         badge.show(icon, spoken: icon == .openWork ? Localized.text("Agent working") : nil)
-        let tool = agent.isActive ? agent.currentTool : nil
+        let tool = liveTool(agent, wearing: icon)
         setLabel(head[1], text: tool ?? "")
         head[1].isHidden = tool == nil
         let elapsed = agent.elapsed(at: now)
@@ -309,10 +309,10 @@ enum WorkflowCardView {
         header.addArrangedSubview(
             ToolRowView.detailLabel(
                 String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120))))
-        let liveTool = agent.isActive ? agent.currentTool : nil
+        let working = liveTool(agent, wearing: icon)
         let tool = RowKit.label(
-            liveTool ?? "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.accent)
-        tool.isHidden = liveTool == nil
+            working ?? "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.accent)
+        tool.isHidden = working == nil
         header.addArrangedSubview(tool)
         let elapsed = RowKit.label(
             agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
@@ -388,6 +388,18 @@ enum WorkflowCardView {
         return column
     }
 
+    /// The tool an agent is holding right now, which is the mark's answer rather than a second
+    /// one this card works out for itself.
+    ///
+    /// A sidecar goes on naming the tool it was last seen on for as long as its reporting window
+    /// lasts, which outlives the run by up to half an hour — so a row read from the agent alone
+    /// would keep "WebFetch" lit beside a settled mark under a header that says the run is over.
+    /// ``ActivityIcon/workflowAgent(_:in:)`` has already weighed the agent against its run: only
+    /// the mark it hands back for an agent genuinely still out names a tool.
+    private static func liveTool(_ agent: WorkflowAgent, wearing icon: ActivityIcon) -> String? {
+        icon == .openWork ? agent.currentTool : nil
+    }
+
     /// A phase's model as a badge: the family, without the vendor prefix or the dated build that
     /// makes every badge the same width and none of them readable.
     private static func shortModel(_ model: String) -> String {
@@ -436,6 +448,24 @@ enum WorkflowCardView {
             return
         }
         setLabel(label, text: icon.glyph)
+    }
+
+    /// One reading of the agent rows, for a harness that has to prove a row under a run that ended
+    /// holds still and names nothing, however active the agent's own record still claims to be:
+    /// each row's glyph, whether it is on the clock, and the tool it is putting a reader's name to.
+    static func agentReading(of card: NSView) -> String {
+        guard let agents = find(agentsID, in: card) as? NSStackView else { return "agents=none" }
+        let rows = agents.arrangedSubviews.compactMap { row -> String? in
+            guard let header = (row as? DisclosureRow)?.headerView as? NSStackView,
+                let badge = header.arrangedSubviews.first as? ActivityBadgeView,
+                let icon = badge.icon
+            else { return nil }
+            let labels = header.arrangedSubviews.compactMap { $0 as? NSTextField }
+            let tool = labels.count == 3 && !labels[1].isHidden ? labels[1].stringValue : ""
+            let moving = icon.motion.honoring(reduceMotion: !ActivityPulse.motionAllowed).isAnimated
+            return "\(icon.glyph):\(moving ? "moving" : "still"):\(tool)"
+        }
+        return "agents=" + rows.joined(separator: ",")
     }
 
     private static func headlineColor(_ run: WorkflowRun) -> NSColor {
