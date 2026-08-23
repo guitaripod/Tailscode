@@ -134,9 +134,118 @@ struct AnswerlessTurnTests {
 
 @Suite("A turn the machine cut off")
 struct InterruptedTurnTests {
+    private let started = Date(timeIntervalSince1970: 1_000_000)
+
+    private func cutOff(queued: [String] = ["and then the mac"], resumed: Bool = false)
+        -> TurnInterruption
+    {
+        let detected = started.addingTimeInterval(340)
+        return TurnInterruption(
+            turnID: "t1", prompt: "port the toggles", startedAt: started, detectedAt: detected,
+            progress: TurnInterruption.Progress(toolCount: 2),
+            queued: queued, resumedAt: resumed ? detected.addingTimeInterval(10) : nil)
+    }
+
+    private func card(queued: [String] = ["and then the mac"], resumed: Bool = false)
+        -> InterruptedTurn
+    {
+        InterruptedTurnReading.read(
+            cutOff(queued: queued, resumed: resumed),
+            now: started.addingTimeInterval(460))!
+    }
+
     @Test("Self-check of the interrupted-turn card stays clean")
     func selfCheck() {
         let issues = InterruptedTurnCheck.run()
         #expect(issues.isEmpty, "InterruptedTurnCheck: \(issues)")
+    }
+
+    @Test("The card says what leaving it undecided costs, in these words")
+    func costOfStanding() {
+        #expect(
+            card().cost
+                == "Until this is answered, the server will not carry this session on by itself — picking it up or letting it go both end that."
+        )
+        #expect(card(resumed: true).cost == nil)
+        #expect(InterruptedTurnReading.pressed(card(), .pickUp).cost == nil)
+    }
+
+    @Test("What never ran is one sentence, owned here")
+    func queuedLine() {
+        #expect(card().queuedLine == "One prompt was waiting behind it and never ran.")
+        #expect(
+            card(queued: ["a", "b", "c"]).queuedLine
+                == "3 prompts were waiting behind it and never ran.")
+        #expect(card(queued: []).queuedLine == nil)
+    }
+
+    @Test("A press changes the card at once, in these words")
+    func pressInFlight() {
+        let pickingUp = InterruptedTurnReading.pressed(card(), .pickUp)
+        #expect(InterruptedTurn.pickingUpTitle == "Picking it back up…")
+        #expect(InterruptedTurn.lettingGoTitle == "Letting it go…")
+        #expect(pickingUp.resumeTitle == "Picking it back up…")
+        #expect(pickingUp.title == "Picking the turn back up")
+        #expect(
+            pickingUp.detail == "Asked the server to pick this back up — waiting for it to say it has."
+        )
+        #expect(!pickingUp.acceptsPress)
+        #expect(!pickingUp.isResumed)
+
+        let lettingGo = InterruptedTurnReading.pressed(card(), .letGo)
+        #expect(lettingGo.dismissTitle == "Letting it go…")
+        #expect(lettingGo.title == "Letting the turn go")
+        #expect(
+            lettingGo.detail == "Asked the server to set this aside — waiting for it to say it has.")
+        #expect(!lettingGo.acceptsPress)
+    }
+
+    @Test("A refused press shows the server's own sentence and promises a corrected card")
+    func refusalKeepsTheServersWords() {
+        let body =
+            "{\"error\":\"Nothing to pick up — no turn in this session was interrupted.\",\"reason\":\"nothing_interrupted\",\"interruption\":null}"
+        #expect(
+            InterruptedTurnReading.refusal(body: body)
+                == "Nothing to pick up — no turn in this session was interrupted. The card has been refreshed to what the server actually has."
+        )
+        #expect(
+            InterruptedTurnReading.refreshedNote
+                == "The card has been refreshed to what the server actually has.")
+        #expect(InterruptedTurnReading.conflict(body: body) == .nothingInterrupted)
+    }
+
+    @Test("A silent server gets one sentence per reason, never a paraphrase")
+    func refusalFallbacks() {
+        #expect(
+            InterruptedTurnReading.refusal(said: nil, reason: .nothingInterrupted)
+                .hasPrefix("The server has no interrupted turn in this session any more."))
+        #expect(
+            InterruptedTurnReading.refusal(said: "   ", reason: .alreadyResumed)
+                .hasPrefix("That turn is already being picked back up."))
+        #expect(
+            InterruptedTurnReading.refusal(said: nil, reason: .unknownSession)
+                .hasPrefix("The server does not know this session any more."))
+        #expect(
+            InterruptedTurnReading.refusal(said: nil, reason: .unstated)
+                .hasPrefix("The server would not pick that turn back up, and did not say why."))
+    }
+
+    @Test("The reason codes are the ones the bridge writes")
+    func conflictCodes() {
+        #expect(InterruptedTurnConflict.key == "reason")
+        #expect(InterruptedTurnConflict.nothingInterrupted.code == "nothing_interrupted")
+        #expect(InterruptedTurnConflict.alreadyResumed.code == "already_resumed")
+        #expect(InterruptedTurnConflict.unknownSession.code == "unknown_session")
+        #expect(InterruptedTurnConflict.unstated.code == nil)
+        #expect(InterruptedTurnConflict(code: "already_resumed") == .alreadyResumed)
+        #expect(InterruptedTurnConflict(code: "something new") == .unstated)
+        #expect(InterruptedTurnConflict(code: nil) == .unstated)
+    }
+
+    @Test("Everything the card says, a screen reader hears")
+    func spokenCarriesTheNewLines() {
+        let reading = card()
+        #expect(reading.spoken.contains(reading.queuedLine ?? "—"))
+        #expect(reading.spoken.contains(reading.cost ?? "—"))
     }
 }

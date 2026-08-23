@@ -13,6 +13,19 @@ import Foundation
 /// never says what caused the stop, because nobody knows: a bridge that was updated, a machine
 /// that slept and a process that was killed all leave the same evidence.
 public struct InterruptedTurn: Sendable, Hashable {
+    /// Where the card stands.
+    ///
+    /// A press is a state of its own because its answer travels over a network: between the tap
+    /// and the server's word there is a second or two in which a card that looks exactly as it did
+    /// before tells the person their tap did nothing. `resumed` is the server's word; `pickingUp`
+    /// and `lettingGo` are this device's, and are never mistaken for it.
+    public enum State: Sendable, Hashable {
+        case waiting
+        case pickingUp
+        case lettingGo
+        case resumed
+    }
+
     /// What was asked, as the person wrote it.
     public let prompt: String
     public let title: String
@@ -23,15 +36,36 @@ public struct InterruptedTurn: Sendable, Hashable {
     public let progress: [String]
     /// Prompts that were waiting behind the interrupted turn and never ran.
     public let queued: [String]
+    /// The same fact as one sentence, or `nil` when nothing was waiting. Every client draws this
+    /// line and no client writes it.
+    public let queuedLine: String?
+    /// What leaving the card standing costs, or `nil` once a decision has been made.
+    ///
+    /// While an interruption is unresolved the server will not carry the session on by itself —
+    /// the whole unattended-continuation feature is off for as long as the card is undecided. That
+    /// is a price the person is paying without being told, so the card tells them.
+    public let cost: String?
     /// The whole thing as one sentence, for a screen reader.
     public let spoken: String
-    /// Whether the work has already been picked back up — the card stays, saying so, until the
-    /// resumed turn produces something, because a card that vanishes on the press leaves a person
-    /// with no idea whether it worked.
-    public let isResumed: Bool
+    public let state: State
 
-    public var resumeTitle: String { Localized.text("Pick it back up") }
-    public var dismissTitle: String { Localized.text("Let it go") }
+    /// Whether the server itself has said the work is going again — the card stays, saying so,
+    /// until the resumed turn produces something, because a card that vanishes on the press leaves
+    /// a person with no idea whether it worked.
+    public var isResumed: Bool { state == .resumed }
+    /// Whether a button may still be pressed. A press already in flight is not a second press.
+    public var acceptsPress: Bool { state == .waiting }
+
+    public var resumeTitle: String {
+        state == .pickingUp ? Self.pickingUpTitle : Localized.text("Pick it back up")
+    }
+    public var dismissTitle: String {
+        state == .lettingGo ? Self.lettingGoTitle : Localized.text("Let it go")
+    }
+
+    /// What each button says from the instant it is pressed until the server answers.
+    public static var pickingUpTitle: String { Localized.text("Picking it back up…") }
+    public static var lettingGoTitle: String { Localized.text("Letting it go…") }
 
     /// The face, in the same two alphabets every state in this app is drawn in. A cut-off turn is
     /// settled — nothing is running — so it holds perfectly still, and it wears the attention tone
@@ -41,33 +75,191 @@ public struct InterruptedTurn: Sendable, Hashable {
     public static let tone = ActivityTone.attention
 }
 
+/// Which button was pressed. The two actions have always existed; what is new is that a client can
+/// say one of them is in flight.
+public enum InterruptedTurnPress: Sendable, Hashable {
+    case pickUp
+    case letGo
+
+    var state: InterruptedTurn.State { self == .pickUp ? .pickingUp : .lettingGo }
+}
+
+/// Why the server refused a press, as a code rather than a sentence.
+///
+/// A conflict is the one answer that proves the card is out of date, and the two reasons for it
+/// want different things done: nothing interrupted means the card must go, whereas already resumed
+/// means the card must stay and start saying so. A client that can only read the sentence has to
+/// guess between them, so the server names the reason and this reads the name.
+public enum InterruptedTurnConflict: Sendable, Hashable {
+    case nothingInterrupted
+    case alreadyResumed
+    case unknownSession
+    case unstated
+
+    /// The key the server answers under.
+    public static let key = "reason"
+
+    public init(code: String?) {
+        switch code {
+        case "nothing_interrupted": self = .nothingInterrupted
+        case "already_resumed": self = .alreadyResumed
+        case "unknown_session": self = .unknownSession
+        default: self = .unstated
+        }
+    }
+
+    public var code: String? {
+        switch self {
+        case .nothingInterrupted: return "nothing_interrupted"
+        case .alreadyResumed: return "already_resumed"
+        case .unknownSession: return "unknown_session"
+        case .unstated: return nil
+        }
+    }
+}
+
 public enum InterruptedTurnReading {
     /// Reads what the server reported into the card, or `nil` when there is nothing to say.
     public static func read(_ cutOff: TurnInterruption?, now: Date = Date()) -> InterruptedTurn? {
         guard let cutOff else { return nil }
-        let ran = span(from: cutOff.startedAt, to: cutOff.detectedAt)
-        let ago = elapsed(from: cutOff.detectedAt, to: now)
-        let title =
-            cutOff.resumedAt != nil
-            ? Localized.text("Picking the turn back up")
-            : Localized.text("The server stopped mid-answer")
-        let detail =
-            cutOff.resumedAt != nil
-            ? Localized.text(
-                "The work is being continued from where it stopped. Everything above is still this same conversation.")
-            : Localized.text(
-                "This turn had been running %@ when the machine running it stopped. It was noticed %@, when the server came back — nothing was wrong with what you asked.",
-                ran, ago)
-        let lines = progressLines(cutOff.progress)
-        let card = InterruptedTurn(
+        let state: InterruptedTurn.State = cutOff.resumedAt != nil ? .resumed : .waiting
+        return compose(
             prompt: cutOff.prompt,
+            detail: detail(for: state)
+                ?? Localized.text(
+                    "This turn had been running %@ when the machine running it stopped. It was noticed %@, when the server came back — nothing was wrong with what you asked.",
+                    span(from: cutOff.startedAt, to: cutOff.detectedAt),
+                    elapsed(from: cutOff.detectedAt, to: now)),
+            progress: progressLines(cutOff.progress),
+            queued: cutOff.queued,
+            state: state)
+    }
+
+    /// The card as it must be drawn the instant a button is pressed, before the server has said
+    /// anything. The press is acknowledged where it happened — on the card — rather than left to a
+    /// status line that may never come.
+    public static func pressed(_ turn: InterruptedTurn, _ press: InterruptedTurnPress)
+        -> InterruptedTurn
+    {
+        compose(
+            prompt: turn.prompt,
+            detail: detail(for: press.state) ?? turn.detail,
+            progress: turn.progress,
+            queued: turn.queued,
+            state: press.state)
+    }
+
+    /// What to say when the server refused a press, given the body it refused with.
+    ///
+    /// The server's own sentence is the answer whenever it sent one — it knows why and this does
+    /// not — and the second half is the promise the client must then keep: the card is out of date
+    /// and is being replaced with whatever the server actually has, so pressing again is never the
+    /// person's job.
+    public static func refusal(body: String?) -> String {
+        refusal(said: value(of: "error", in: body), reason: conflict(body: body))
+    }
+
+    public static func refusal(said: String?, reason: InterruptedTurnConflict) -> String {
+        let given = (said ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return (given.isEmpty ? fallback(reason) : given) + " " + refreshedNote
+    }
+
+    /// The reason a refusal names, or `unstated` when the server named none.
+    public static func conflict(body: String?) -> InterruptedTurnConflict {
+        InterruptedTurnConflict(code: value(of: InterruptedTurnConflict.key, in: body))
+    }
+
+    /// The half of a refusal that is a promise rather than a report.
+    public static var refreshedNote: String {
+        Localized.text("The card has been refreshed to what the server actually has.")
+    }
+
+    /// The sentence for a refusal the server did not explain — a fallback, never a paraphrase of
+    /// something it did say.
+    private static func fallback(_ reason: InterruptedTurnConflict) -> String {
+        switch reason {
+        case .nothingInterrupted:
+            return Localized.text("The server has no interrupted turn in this session any more.")
+        case .alreadyResumed:
+            return Localized.text("That turn is already being picked back up.")
+        case .unknownSession:
+            return Localized.text("The server does not know this session any more.")
+        case .unstated:
+            return Localized.text(
+                "The server would not pick that turn back up, and did not say why.")
+        }
+    }
+
+    /// One string out of a JSON object, without asking a client to parse the body three times over.
+    private static func value(of key: String, in body: String?) -> String? {
+        guard let body, let data = body.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let found = object[key] as? String
+        else { return nil }
+        return found
+    }
+
+    /// Everything a card carries that is derived rather than reported, in one place, so the read
+    /// and the press cannot drift apart.
+    private static func compose(
+        prompt: String, detail: String, progress: [String], queued: [String],
+        state: InterruptedTurn.State
+    ) -> InterruptedTurn {
+        let line = queuedLine(queued)
+        let price = cost(for: state)
+        let title = title(for: state)
+        return InterruptedTurn(
+            prompt: prompt,
             title: title,
             detail: detail,
-            progress: lines,
-            queued: cutOff.queued,
-            spoken: spoken(title: title, detail: detail, progress: lines, queued: cutOff.queued),
-            isResumed: cutOff.resumedAt != nil)
-        return card
+            progress: progress,
+            queued: queued,
+            queuedLine: line,
+            cost: price,
+            spoken: ([title, detail] + progress + [line, price].compactMap { $0 })
+                .joined(separator: " "),
+            state: state)
+    }
+
+    private static func title(for state: InterruptedTurn.State) -> String {
+        switch state {
+        case .waiting: return Localized.text("The server stopped mid-answer")
+        case .pickingUp, .resumed: return Localized.text("Picking the turn back up")
+        case .lettingGo: return Localized.text("Letting the turn go")
+        }
+    }
+
+    /// The sentence under the title for every state whose story does not depend on the clock;
+    /// `nil` for the one that does, which the reader writes from the record's own dates.
+    private static func detail(for state: InterruptedTurn.State) -> String? {
+        switch state {
+        case .waiting:
+            return nil
+        case .pickingUp:
+            return Localized.text(
+                "Asked the server to pick this back up — waiting for it to say it has.")
+        case .lettingGo:
+            return Localized.text(
+                "Asked the server to set this aside — waiting for it to say it has.")
+        case .resumed:
+            return Localized.text(
+                "The work is being continued from where it stopped. Everything above is still this same conversation.")
+        }
+    }
+
+    /// The price of leaving the card standing, which only an undecided card pays.
+    private static func cost(for state: InterruptedTurn.State) -> String? {
+        guard state == .waiting else { return nil }
+        return Localized.text(
+            "Until this is answered, the server will not carry this session on by itself — picking it up or letting it go both end that.")
+    }
+
+    /// What never ran behind the cut-off turn, as one sentence.
+    static func queuedLine(_ queued: [String]) -> String? {
+        guard !queued.isEmpty else { return nil }
+        return queued.count == 1
+            ? Localized.text("One prompt was waiting behind it and never ran.")
+            : Localized.text("%@ prompts were waiting behind it and never ran.", "\(queued.count)")
     }
 
     /// What the turn had actually done. Counted rather than characterised: a client shows the
@@ -98,21 +290,6 @@ public enum InterruptedTurnReading {
             lines.append(Localized.text("Had started answering: “%@”", partial))
         }
         return lines
-    }
-
-    private static func spoken(
-        title: String, detail: String, progress: [String], queued: [String]
-    ) -> String {
-        var parts = [title, detail]
-        parts.append(contentsOf: progress)
-        if !queued.isEmpty {
-            parts.append(
-                queued.count == 1
-                    ? Localized.text("One prompt was waiting behind it and never ran.")
-                    : Localized.text(
-                        "%@ prompts were waiting behind it and never ran.", "\(queued.count)"))
-        }
-        return parts.joined(separator: " ")
     }
 
     /// At most three, named, with the rest counted — a list that runs off the card tells nobody
@@ -178,6 +355,8 @@ public enum InterruptedTurnCheck {
         }
         expect(card.prompt == "port the toggles", "the card carries what was asked")
         expect(!card.isResumed, "and knows it has not been picked up")
+        expect(card.state == .waiting, "an undecided card says it is undecided")
+        expect(card.acceptsPress, "and takes a press")
         expect(card.detail.contains("6m"), "it says how long the turn had been running")
         expect(card.detail.contains("2m ago"), "and when it was noticed")
         expect(card.progress.contains { $0.contains("7") }, "the tools are counted")
@@ -185,21 +364,87 @@ public enum InterruptedTurnCheck {
             card.progress.contains { $0.contains("Theme.swift") && !$0.contains("/a/b") },
             "files are named, not pathed")
         expect(card.queued == ["and then the mac"], "and what never ran is kept")
+        expect(
+            card.queuedLine == Localized.text("One prompt was waiting behind it and never ran."),
+            "what never ran gets its own sentence, from here, not from a client")
         expect(card.spoken.contains("One prompt was waiting"), "read out whole")
+
+        expect(
+            card.cost?.contains("will not carry this session on by itself") == true,
+            "an undecided card says the session will not continue on its own until it is answered")
+        expect(
+            card.cost?.contains("picking it up or letting it go both end that") == true,
+            "and says what ends that")
+        expect(card.spoken.contains("will not carry this session"), "the cost is read out too")
+
+        let pickingUp = InterruptedTurnReading.pressed(card, .pickUp)
+        expect(pickingUp.state == .pickingUp, "a press is a state of its own")
+        expect(!pickingUp.acceptsPress, "a press in flight takes no second press")
+        expect(!pickingUp.isResumed, "and is never mistaken for the server's word")
+        expect(
+            pickingUp.resumeTitle == InterruptedTurn.pickingUpTitle
+                && pickingUp.resumeTitle != card.resumeTitle,
+            "the button visibly changes the instant it is pressed")
+        expect(
+            pickingUp.detail.contains("waiting for it to say it has"),
+            "and the card says what it is waiting on")
+        expect(pickingUp.cost == nil, "a decided card charges nothing for standing")
+        expect(pickingUp.queuedLine == card.queuedLine, "a press keeps what the card already said")
+
+        let lettingGo = InterruptedTurnReading.pressed(card, .letGo)
+        expect(lettingGo.state == .lettingGo, "letting go is in flight too")
+        expect(
+            lettingGo.dismissTitle == InterruptedTurn.lettingGoTitle
+                && lettingGo.dismissTitle != card.dismissTitle,
+            "and its button changes on the press as well")
+        expect(!lettingGo.acceptsPress, "one press at a time")
+
+        let refused = InterruptedTurnReading.refusal(
+            body:
+                "{\"error\":\"Nothing to pick up — no turn in this session was interrupted.\",\"reason\":\"nothing_interrupted\",\"interruption\":null}"
+        )
+        expect(
+            refused.contains("Nothing to pick up — no turn in this session was interrupted."),
+            "the server said why, so the server's words are what is shown")
+        expect(
+            refused.contains(InterruptedTurnReading.refreshedNote),
+            "and a refusal always promises the card is being corrected")
+        expect(
+            InterruptedTurnReading.conflict(
+                body: "{\"error\":\"x\",\"reason\":\"already_resumed\"}") == .alreadyResumed,
+            "already resumed is told apart from nothing interrupted")
+        expect(
+            InterruptedTurnReading.conflict(body: "{\"error\":\"x\"}") == .unstated,
+            "a server that names no reason is not guessed at")
+        expect(InterruptedTurnReading.conflict(body: nil) == .unstated, "nor is no body at all")
+        expect(
+            InterruptedTurnConflict(code: InterruptedTurnConflict.alreadyResumed.code)
+                == .alreadyResumed,
+            "the codes are the ones the bridge writes")
+        expect(
+            InterruptedTurnReading.refusal(said: "  ", reason: .alreadyResumed)
+                .hasPrefix(Localized.text("That turn is already being picked back up.")),
+            "a silent server gets this side's sentence, one per reason")
+        expect(
+            InterruptedTurnReading.refusal(said: nil, reason: .unstated).contains("did not say why"),
+            "and an unexplained refusal admits that it is unexplained")
 
         let untouched = TurnInterruption(
             turnID: "t2", prompt: "hello", startedAt: started, detectedAt: detected)
+        let quiet = InterruptedTurnReading.read(untouched, now: now)
         expect(
-            InterruptedTurnReading.read(untouched, now: now)?.progress.first?.contains("nothing")
-                == true,
+            quiet?.progress.first?.contains("nothing") == true,
             "a turn that did nothing says so rather than listing nothing")
+        expect(quiet?.queuedLine == nil, "and nothing waiting behind it says nothing at all")
 
         let resumed = TurnInterruption(
             turnID: "t3", prompt: "hello", startedAt: started, detectedAt: detected,
             resumedAt: now)
-        expect(
-            InterruptedTurnReading.read(resumed, now: now)?.isResumed == true,
-            "a resumed turn still shows, saying so")
+        let going = InterruptedTurnReading.read(resumed, now: now)
+        expect(going?.isResumed == true, "a resumed turn still shows, saying so")
+        expect(going?.state == .resumed, "in the state the server put it in")
+        expect(going?.acceptsPress == false, "which takes no further press")
+        expect(going?.cost == nil, "and no longer charges for standing")
 
         expect(
             InterruptedTurnReading.list(["a", "b", "c", "d"]).contains("1 more"),
