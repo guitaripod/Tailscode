@@ -55,6 +55,9 @@ final class CompactionCell: UICollectionViewCell {
         NotificationCenter.default.addObserver(
             self, selector: #selector(restartSweeping),
             name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retuneSweep),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
 
         rule.backgroundColor = Theme.Color.separator
         rule.translatesAutoresizingMaskIntoConstraints = false
@@ -240,31 +243,47 @@ final class CompactionCell: UICollectionViewCell {
     private func startSweeping() {
         setFill(0.3)
         layoutIfNeeded()
-        guard track.bounds.width > 0 else { return }
         fill.layer.removeAllAnimations()
+        sweep()
+    }
+
+    /// The bar's own movement, laid on apart from the shape it moves in, so a reader who changes
+    /// their mind while the summarize is still running re-decides the movement and the bar itself
+    /// stays exactly where it is. Whether it moves at all is the vocabulary's to say, and a
+    /// compaction is the app's one literal case of `ActivityMotion.turning`: something being
+    /// turned over, reporting nothing while it is.
+    private func sweep() {
+        guard track.bounds.width > 0 else { return }
         let slide = CABasicAnimation(keyPath: "transform.translation.x")
         slide.fromValue = -track.bounds.width * 0.3
         slide.toValue = track.bounds.width
         slide.duration = 1.4
         slide.repeatCount = .infinity
         slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        slide.runAtActivityTempo()
-        fill.layer.add(slide, forKey: "sweep")
+        fill.layer.setRepeatingMotion(slide, forKey: "sweep", meaning: .turning)
     }
 
     /// Restarts the sweep once the track has a real width, and after a trip through the background
-    /// strips the repeating animation off a cell that never left the window.
+    /// strips the repeating animation off a cell that never left the window. Only the movement is
+    /// re-laid here: the bar's width is the running state's, and setting it from inside a layout
+    /// pass would ask for another one.
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard startedAt != nil, track.bounds.width > 0,
-            fill.layer.animation(forKey: "sweep") == nil
-        else { return }
-        startSweeping()
+        guard startedAt != nil, fill.layer.animation(forKey: "sweep") == nil else { return }
+        sweep()
     }
 
     @objc private func restartSweeping() {
         guard window != nil, startedAt != nil else { return }
         startSweeping()
+    }
+
+    /// Reads the reader's mind again when they change it mid-summarize. A compaction runs for
+    /// minutes, so a bar that asked only at the moment it appeared would go on sweeping under a
+    /// preference already changed; a card with nothing running has no wait to draw.
+    @objc private func retuneSweep() {
+        guard startedAt != nil else { return }
+        sweep()
     }
 
     @objc private func cardTapped() {

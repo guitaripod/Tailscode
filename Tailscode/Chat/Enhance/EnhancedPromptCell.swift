@@ -192,7 +192,9 @@ final class EnhanceMessageCell: UICollectionViewCell {
     }
 }
 
-/// A lightweight left-to-right shimmer, static under Reduce Motion.
+/// A lightweight left-to-right shimmer standing in for a prompt still being written, and perfectly
+/// still whenever the reader has asked for less movement — including when they ask for it while
+/// the wait is still on the screen.
 @MainActor
 final class ShimmerView: UIView {
     private let gradient = CAGradientLayer()
@@ -210,21 +212,34 @@ final class ShimmerView: UIView {
         gradient.endPoint = CGPoint(x: 1, y: 0.5)
         gradient.locations = [0, 0.25, 0.5]
         layer.addSublayer(gradient)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func startAnimating() {
-        guard !UIAccessibility.isReduceMotionEnabled,
-            gradient.animation(forKey: "shimmer") == nil
-        else { return }
+        guard gradient.animation(forKey: "shimmer") == nil else { return }
+        slide()
+    }
+
+    /// The wait's own movement. Whether it moves at all is the vocabulary's to say — asked on
+    /// every pass rather than once where the animation is handed over, because an enhancement is
+    /// a round trip to another machine and the setting can change while this band is on screen.
+    private func slide() {
         let animation = CABasicAnimation(keyPath: "locations")
         animation.fromValue = [-0.5, -0.25, 0]
         animation.toValue = [1.0, 1.25, 1.5]
         animation.duration = 1.25
         animation.repeatCount = .infinity
-        animation.runAtActivityTempo()
-        gradient.add(animation, forKey: "shimmer")
+        gradient.setRepeatingMotion(animation, forKey: "shimmer")
+    }
+
+    /// Reads the reader's mind again when they change it mid-wait. Reduced motion leaves the band
+    /// exactly where it is, fully lit, still saying the prompt has not come back yet.
+    @objc private func retune() {
+        slide()
     }
 
     override func layoutSubviews() {

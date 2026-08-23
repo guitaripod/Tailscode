@@ -55,25 +55,33 @@ extension CAAnimation {
 }
 
 extension CALayer {
-    /// Lays a placeholder's own repeating motion on this layer, or leaves the layer perfectly
-    /// still when the reader has asked for less movement.
+    /// Lays a repeating animation on this layer, or leaves the layer perfectly still when the
+    /// reader has asked for less movement. Every motion in this client that never ends on its own
+    /// takes this road, and nothing else may add one.
     ///
-    /// A stand-in for content that has not arrived is up for exactly as long as the wait, which
-    /// makes it the thing on the screen a reader ends up watching longest — so it is the last
-    /// place motion may go on running under a setting that asks for none. The answer is the
-    /// vocabulary's rather than this client's: a wait means `ActivityMotion.working`, and
-    /// `honoring(reduceMotion:)` is where reduced motion is already decided for every mark in the
-    /// app, so a placeholder cannot end up disagreeing with the badge in the row beside it.
-    /// Reduced motion drops the movement and nothing else — the blocked-out shape stays exactly
-    /// where it is, fully lit, still saying the row has not been filled in yet.
+    /// Motion that never ends is up for exactly as long as the thing it stands for — a wait, a
+    /// summarize that runs for minutes, a power that is switched on — which makes it the thing on
+    /// the screen a reader ends up watching longest, and so the last place movement may go on
+    /// running under a setting that asks for none. A guard read once where the animation is
+    /// handed over cannot answer that: nothing takes the movement off again, and a reader who
+    /// changes their mind is left watching the thing they turned off. So the decision is one
+    /// call, made every time the motion is laid on and again whenever the preference changes.
+    ///
+    /// What it means is the vocabulary's to say rather than this client's: `meaning` is the
+    /// `ActivityMotion` the movement stands for — a wait breathes, something being turned over
+    /// sweeps — and `honoring(reduceMotion:)` is where reduced motion is already decided for
+    /// every mark in the app, so nothing here can end up disagreeing with the badge in the row
+    /// beside it. Reduced motion drops the movement and nothing else: the shape stays exactly
+    /// where it is, fully lit, still saying what it was saying.
     ///
     /// The old animation always comes off first, so a cell that returns to the window or a reader
     /// who changes their mind mid-wait lays one swell on rather than a second on top of it.
-    @MainActor func setPlaceholderMotion(_ animation: CAAnimation, forKey key: String) {
+    @MainActor func setRepeatingMotion(
+        _ animation: CAAnimation, forKey key: String, meaning: ActivityMotion = .working
+    ) {
         removeAnimation(forKey: key)
-        let motion = ActivityMotion.working.honoring(
-            reduceMotion: UIAccessibility.isReduceMotionEnabled)
-        guard motion.isAnimated else { return }
+        guard meaning.honoring(reduceMotion: UIAccessibility.isReduceMotionEnabled).isAnimated
+        else { return }
         animation.runAtActivityTempo()
         add(animation, forKey: key)
     }

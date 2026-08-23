@@ -4144,25 +4144,35 @@ final class ChatViewController: UIViewController {
     /// is remembered rather than worked out again, because working it out again is what let two
     /// cards swap chairs.
     private var spawnSeats: [String: String] = [:]
+    /// The moment this draw reads its agent rows at, and how the call that spawned each one holds
+    /// it. Both belong to the pass rather than to the card: a snapshot whose clocks keep running
+    /// is not a snapshot, and two cards in one transcript may not disagree about what time it is.
+    private var agentReadAt = Date()
+    private var holds: [String: AgentHold] = [:]
 
     private func subagentPlacement(for messages: [ChatMessage]) -> SubagentPlacement {
         guard viewModel.supportsSubagents, !viewModel.trackedSubagents.isEmpty else {
             return SubagentPlacement()
         }
-        let spawnIDs = messages.flatMap { message in
-            message.parts.compactMap { part -> String? in
+        agentReadAt = Date()
+        let spawns = messages.flatMap { message in
+            message.parts.compactMap { part -> ToolCall? in
                 guard case .tool(let call) = part.kind, call.spawnsSubagent else { return nil }
-                return call.id
+                return call
             }
         }
+        let spawnIDs = spawns.map(\.id)
         let known = Set(spawnIDs)
+        holds = Dictionary(spawns.map { ($0.id, AgentHold($0)) }, uniquingKeysWith: { first, _ in
+            first
+        })
         var placement = SubagentPlacement(expandedGroups: expandedAgentGroups)
         var unmatched: [SubagentSummary] = []
         for agent in Self.inPlacementOrder(viewModel.trackedSubagents) {
             noteArrival(of: agent.id)
             if let toolUseID = agent.toolUseID, known.contains(toolUseID) {
                 if placement.byToolUse[toolUseID] == nil {
-                    placement.byToolUse[toolUseID] = subagentCard(for: agent)
+                    placement.byToolUse[toolUseID] = subagentCard(for: agent, at: toolUseID)
                 }
             } else {
                 unmatched.append(agent)
@@ -4170,6 +4180,15 @@ final class ChatViewController: UIViewController {
         }
         seat(unmatched, spawns: spawnIDs, known: known, into: &placement)
         return placement
+    }
+
+    /// How the call that spawned each agent holds it, read once per draw off the transcript this
+    /// placement walked. An agent seated in a chair nobody named — a backend that never resolved
+    /// the spawning call — is held by the turn instead, which is the same answer the status band
+    /// gives: nothing is refreshing a subagent's record while this device is idle.
+    private func hold(at toolUseID: String?) -> AgentHold {
+        if let toolUseID, let hold = holds[toolUseID] { return hold }
+        return viewModel.state.status == .running ? .going : .over(at: nil)
     }
 
     /// Seats the cards whose spawning call the server never named, and remembers where each one sat.
@@ -4197,17 +4216,17 @@ final class ChatViewController: UIViewController {
                 continue
             }
             taken.insert(slot)
-            placement.byToolUse[slot] = subagentCard(for: agent)
+            placement.byToolUse[slot] = subagentCard(for: agent, at: slot)
         }
         var free = spawns.filter { !taken.contains($0) }[...]
         for agent in displaced {
             guard let slot = free.first else {
-                placement.unattached.append(subagentCard(for: agent))
+                placement.unattached.append(subagentCard(for: agent, at: nil))
                 continue
             }
             free = free.dropFirst()
             spawnSeats[agent.id] = slot
-            placement.byToolUse[slot] = subagentCard(for: agent)
+            placement.byToolUse[slot] = subagentCard(for: agent, at: slot)
         }
     }
 
@@ -4232,7 +4251,7 @@ final class ChatViewController: UIViewController {
         agents.sorted { ($0.updatedAt, $0.id) < ($1.updatedAt, $1.id) }
     }
 
-    private func subagentCard(for agent: SubagentSummary) -> SubagentCard {
+    private func subagentCard(for agent: SubagentSummary, at toolUseID: String?) -> SubagentCard {
         let digest = ChatRowBuilder.digest(viewModel.subagentTranscripts[agent.id])
         return SubagentCard(
             agentID: agent.id,
@@ -4245,11 +4264,10 @@ final class ChatViewController: UIViewController {
             isLoading: viewModel.loadingSubagents.contains(agent.id),
             steps: digest.steps,
             report: digest.report,
-            progress: ChatRowBuilder.liveProgress(agent))
+            progress: ChatRowBuilder.liveProgress(
+                agent, at: agentReadAt, under: hold(at: toolUseID)))
     }
 
-    /// One line saying what a live agent is doing: its todo position when it keeps a list,
-    /// otherwise its tool trail — count, the current tool, and elapsed time.
     /// A subagent transcript reads as a run of work plus one answer: its thoughts
     /// and tool calls become steps, and its final message is what it reported to
     /// the conversation that spawned it.

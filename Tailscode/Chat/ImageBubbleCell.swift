@@ -286,7 +286,7 @@ final class ImageBubbleCell: UICollectionViewCell {
         slide.duration = 1.1
         slide.repeatCount = .infinity
         shimmer.locations = [0.0, 0.5, 1.0]
-        shimmer.setPlaceholderMotion(slide, forKey: "shimmer")
+        shimmer.setRepeatingMotion(slide, forKey: "shimmer")
     }
 
     /// Reads the reader's mind again when they change it mid-download. A bubble whose picture has

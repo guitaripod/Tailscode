@@ -8,7 +8,7 @@ import UIKit
 /// rounded rect, masked over a shared conic gradient of
 /// ``Ultracode/rainbowStops`` so the effect reads as light, not paint.
 @MainActor
-final class UltracodeAura {
+final class UltracodeAura: NSObject {
     private weak var host: UIView?
     private let cornerRadius: CGFloat
     private let container = CALayer()
@@ -21,6 +21,10 @@ final class UltracodeAura {
     init(around host: UIView, cornerRadius: CGFloat) {
         self.host = host
         self.cornerRadius = cornerRadius
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
         gradient.type = .conic
         gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
@@ -92,26 +96,34 @@ final class UltracodeAura {
         CATransaction.commit()
     }
 
+    /// Reads the reader's mind again when they change it while the power is on. A tier stays
+    /// picked for as long as the conversation lasts, so an aura that asked only at the moment it
+    /// lit would go on turning under a preference already changed — and an aura that asked only
+    /// then would also never start turning again for the reader who allowed movement back.
+    /// Reduced motion keeps the ring lit and stops it moving: a power being on is a fact, not a
+    /// flourish.
+    @objc private func retune() {
+        guard isActive else { return }
+        spin()
+        breathe()
+    }
+
     private func spin() {
-        guard !UIAccessibility.isReduceMotionEnabled else { return }
         let turn = CABasicAnimation(keyPath: "transform.rotation.z")
         turn.fromValue = 0
         turn.toValue = 2 * Double.pi
         turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
-        turn.runAtActivityTempo()
-        gradient.add(turn, forKey: "spin")
+        gradient.setRepeatingMotion(turn, forKey: "spin", meaning: .turning)
     }
 
     private func breathe() {
-        guard !UIAccessibility.isReduceMotionEnabled else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1.0
         pulse.toValue = Ultracode.auraBreathFloor
         pulse.duration = Ultracode.auraBreathSeconds
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
-        pulse.runAtActivityTempo()
-        container.add(pulse, forKey: "breathe")
+        container.setRepeatingMotion(pulse, forKey: "breathe")
     }
 }

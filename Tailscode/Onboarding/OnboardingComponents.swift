@@ -89,6 +89,9 @@ final class TailnetLinkView: UIView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(rearm), name: UIApplication.didBecomeActiveNotification,
             object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
         isAccessibilityElement = true
         accessibilityTraits = .staticText
         setBackend(.openCode)
@@ -166,19 +169,27 @@ final class TailnetLinkView: UIView {
         setNeedsLayout()
     }
 
+    /// Reads the reader's mind again when they change it while this screen is up. First run is a
+    /// checklist somebody may leave to go and install Tailscale and come back to, so a crawl that
+    /// asked only when the link first came up would go on travelling under a preference already
+    /// changed. The line, its lock and its address say the same thing at rest; only the packet
+    /// goes.
+    @objc private func retune() {
+        applyState()
+    }
+
     private func animate(from: CGPoint, to: CGPoint) {
         lineLayer.removeAllAnimations()
         dotLayer.removeAllAnimations()
         dotLayer.position = from
-        guard window != nil, !UIAccessibility.isReduceMotionEnabled, case .linked = state else { return }
+        guard window != nil, case .linked = state else { return }
 
         let dash = CABasicAnimation(keyPath: "lineDashPhase")
         dash.fromValue = 0
         dash.toValue = -8
         dash.duration = 0.7
         dash.repeatCount = .infinity
-        dash.runAtActivityTempo()
-        lineLayer.add(dash, forKey: "dash")
+        lineLayer.setRepeatingMotion(dash, forKey: "dash")
 
         let travel = CAKeyframeAnimation(keyPath: "position")
         let path = UIBezierPath()
@@ -187,7 +198,6 @@ final class TailnetLinkView: UIView {
         travel.path = path.cgPath
         travel.duration = 1.9
         travel.repeatCount = .infinity
-        travel.runAtActivityTempo()
         travel.calculationMode = .paced
 
         let fade = CAKeyframeAnimation(keyPath: "opacity")
@@ -195,10 +205,9 @@ final class TailnetLinkView: UIView {
         fade.keyTimes = [0, 0.15, 0.85, 1]
         fade.duration = 1.9
         fade.repeatCount = .infinity
-        fade.runAtActivityTempo()
 
-        dotLayer.add(travel, forKey: "travel")
-        dotLayer.add(fade, forKey: "fade")
+        dotLayer.setRepeatingMotion(travel, forKey: "travel")
+        dotLayer.setRepeatingMotion(fade, forKey: "fade")
     }
 
     override func didMoveToWindow() {

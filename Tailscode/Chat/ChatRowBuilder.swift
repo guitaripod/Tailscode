@@ -290,26 +290,20 @@ enum ChatRowBuilder {
         return expanded ? [header] + cards.map(card) : [header]
     }
 
-    static func liveProgress(_ agent: SubagentSummary) -> String? {
+    /// One line saying what a live agent is doing — the shared vocabulary's line, not this
+    /// client's own copy of it, and read at a stated moment against the work that holds the agent.
+    ///
+    /// A sidecar goes on claiming it is working for as long as its window lasts and nothing
+    /// corrects it afterwards, so a clock read off the agent's record and the reader's wall clock
+    /// never stops: a four-minute errand under a Task call that ended last week reads as seven
+    /// days, and grows again every time the transcript is drawn. The call that spawned it is what
+    /// says when the work stopped, which is what `AgentHold` and `StatusFacts.liveDetail` decide
+    /// once for all three clients.
+    static func liveProgress(_ agent: SubagentSummary, at now: Date, under hold: AgentHold)
+        -> String?
+    {
         guard agent.isActive else { return nil }
-        var parts: [String] = []
-        if let done = agent.todosDone, let total = agent.todosTotal, total > 0 {
-            parts.append("\(done)/\(total)")
-            if let current = agent.currentTodo, !current.isEmpty {
-                parts.append(String(current.prefix(40)))
-            }
-        } else if let current = agent.currentTool, !current.isEmpty {
-            if let count = agent.toolCount {
-                parts.append(String(localized: "\(count) tools"))
-            }
-            parts.append(String(current.prefix(40)))
-        }
-        guard !parts.isEmpty else { return nil }
-        if let started = agent.startedAt {
-            let seconds = Int(max(0, Date().timeIntervalSince(started)))
-            parts.append(seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s")
-        }
-        return parts.joined(separator: " · ")
+        return StatusFacts.liveDetail(agent, at: now, under: hold)
     }
 
     static func digest(_ messages: [ChatMessage]?) -> (steps: [ActivityStep], report: String?) {

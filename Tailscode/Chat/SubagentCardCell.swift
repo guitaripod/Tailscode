@@ -33,10 +33,7 @@ struct SubagentCard: Hashable {
     }
 
     var statusText: String {
-        if isActive {
-            if let progress, !progress.isEmpty { return progress }
-            return String(localized: "Working")
-        }
+        if isActive { return progress ?? String(localized: "Working") }
         if isCompleted {
             return String(
                 localized: "Finished \(updatedAt.formatted(.relative(presentation: .named)))")
