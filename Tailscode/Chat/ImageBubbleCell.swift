@@ -137,6 +137,9 @@ final class ImageBubbleCell: UICollectionViewCell {
         let drag = UIDragInteraction(delegate: self)
         drag.isEnabled = true
         imageView.addInteraction(drag)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retuneShimmer),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -266,18 +269,31 @@ final class ImageBubbleCell: UICollectionViewCell {
 
     private func startShimmer() {
         shimmer.isHidden = false
+        slideShimmer()
+        ratio?.isActive = false
+        ratio = imageView.widthAnchor.constraint(equalTo: imageView.heightAnchor, multiplier: 1.4)
+        ratio?.priority = UILayoutPriority(998)
+        ratio?.isActive = true
+    }
+
+    /// The wait's own motion, laid on apart from the shape it waits in, so a reader who changes
+    /// their mind about movement while the bytes are still coming re-decides the motion and leaves
+    /// the bubble's size exactly where it was. Whether it moves at all is the vocabulary's to say.
+    private func slideShimmer() {
         let slide = CABasicAnimation(keyPath: "locations")
         slide.fromValue = [-1.0, -0.5, 0.0]
         slide.toValue = [1.0, 1.5, 2.0]
         slide.duration = 1.1
         slide.repeatCount = .infinity
-        slide.runAtActivityTempo()
         shimmer.locations = [0.0, 0.5, 1.0]
-        shimmer.add(slide, forKey: "shimmer")
-        ratio?.isActive = false
-        ratio = imageView.widthAnchor.constraint(equalTo: imageView.heightAnchor, multiplier: 1.4)
-        ratio?.priority = UILayoutPriority(998)
-        ratio?.isActive = true
+        shimmer.setPlaceholderMotion(slide, forKey: "shimmer")
+    }
+
+    /// Reads the reader's mind again when they change it mid-download. A bubble whose picture has
+    /// already landed is left alone: there is no wait left to draw.
+    @objc private func retuneShimmer() {
+        guard !shimmer.isHidden else { return }
+        slideShimmer()
     }
 
     private func stopShimmer() {

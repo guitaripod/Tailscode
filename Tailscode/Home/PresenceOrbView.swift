@@ -92,7 +92,7 @@ final class PresenceOrbView: UIView {
         metalView.backgroundColor = .clear
         metalView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         metalView.framebufferOnly = true
-        metalView.preferredFramesPerSecond = 60
+        metalView.preferredFramesPerSecond = Self.tempo
         metalView.isUserInteractionEnabled = false
         metalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(metalView)
@@ -103,6 +103,18 @@ final class PresenceOrbView: UIView {
             metalView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
     }
+
+    /// How often the creature is redrawn: the vocabulary's own tempo, because the orb is a mark
+    /// rather than a renderer.
+    ///
+    /// Every parameter of a frame eases in seconds and the field reads absolute time, so a frame
+    /// this view does not ask for costs a frame and never the phase — while the sixty this client
+    /// had chosen for itself is twice the GPU spent on motion no eye can tell from thirty, beside
+    /// badges on the same screen counting thirty. The two clocks in this app that really are
+    /// renderers — the answer cascade and its shader preview — keep their own full rate on
+    /// purpose; this is not one of them, and the other two desks already read their orb's rate
+    /// from here.
+    private static var tempo: Int { Int(ActivityTuning.frameRate) }
 
     /// The palette's own tone slots, and nothing private — under System, the platform's colours,
     /// resolved against this view's own traits so the orb flips with the appearance it sits in.

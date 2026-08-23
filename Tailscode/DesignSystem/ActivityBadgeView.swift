@@ -54,6 +54,31 @@ extension CAAnimation {
     }
 }
 
+extension CALayer {
+    /// Lays a placeholder's own repeating motion on this layer, or leaves the layer perfectly
+    /// still when the reader has asked for less movement.
+    ///
+    /// A stand-in for content that has not arrived is up for exactly as long as the wait, which
+    /// makes it the thing on the screen a reader ends up watching longest — so it is the last
+    /// place motion may go on running under a setting that asks for none. The answer is the
+    /// vocabulary's rather than this client's: a wait means `ActivityMotion.working`, and
+    /// `honoring(reduceMotion:)` is where reduced motion is already decided for every mark in the
+    /// app, so a placeholder cannot end up disagreeing with the badge in the row beside it.
+    /// Reduced motion drops the movement and nothing else — the blocked-out shape stays exactly
+    /// where it is, fully lit, still saying the row has not been filled in yet.
+    ///
+    /// The old animation always comes off first, so a cell that returns to the window or a reader
+    /// who changes their mind mid-wait lays one swell on rather than a second on top of it.
+    @MainActor func setPlaceholderMotion(_ animation: CAAnimation, forKey key: String) {
+        removeAnimation(forKey: key)
+        let motion = ActivityMotion.working.honoring(
+            reduceMotion: UIAccessibility.isReduceMotionEnabled)
+        guard motion.isAnimated else { return }
+        animation.runAtActivityTempo()
+        add(animation, forKey: key)
+    }
+}
+
 /// The one moving thing a busy surface is allowed: the state's own symbol, breathing, knocking or
 /// sweeping the way that state means.
 ///

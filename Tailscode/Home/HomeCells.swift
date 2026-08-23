@@ -766,6 +766,13 @@ final class RecentSessionCell: GlassCardCell {
 /// blocked out and pulsing. Reserving the space up front is what keeps arriving
 /// data from shoving the list around.
 class ShimmerCardCell: GlassCardCell {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+    }
+
     /// A blocked-out stand-in for one piece of the real card's content.
     func block(cornerRadius: CGFloat) -> UIView {
         let view = UIView()
@@ -779,7 +786,21 @@ class ShimmerCardCell: GlassCardCell {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return }
-        contentView.layer.removeAnimation(forKey: "shimmer")
+        pulse()
+    }
+
+    /// Reads the reader's mind again when they change it mid-wait, because a placeholder stands
+    /// for exactly as long as the wait does and one that only asked at the moment it appeared
+    /// would go on pulsing under a setting that has already changed. A card that is not on screen
+    /// is left alone: it asks for itself the moment it comes back.
+    @objc private func retune() {
+        guard window != nil else { return }
+        pulse()
+    }
+
+    /// The stand-in's own breath, so a card that is waiting reads as waiting rather than as one
+    /// that arrived empty. Whether it moves at all is the vocabulary's to say.
+    private func pulse() {
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1.0
         pulse.toValue = 0.45
@@ -787,8 +808,7 @@ class ShimmerCardCell: GlassCardCell {
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
         pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        pulse.runAtActivityTempo()
-        contentView.layer.add(pulse, forKey: "shimmer")
+        contentView.layer.setPlaceholderMotion(pulse, forKey: "shimmer")
     }
 }
 

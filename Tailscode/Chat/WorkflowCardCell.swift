@@ -353,7 +353,9 @@ final class WorkflowCardCell: UICollectionViewCell {
     /// run being live — so a card left to the record alone sweeps its agents forever under a
     /// header that says the work stopped. The sentence and the caption follow the mark for the
     /// same reason: only an agent the mark shows as out is one VoiceOver may call working, or one
-    /// this row may name a tool for.
+    /// this row may name a tool for. The clock is read against the run for the same reason and by
+    /// the same road — an agent that never reported finishing has no ending of its own, so a row
+    /// timed to its record alone counts a four-minute errand as however long ago the run was.
     private func update(
         _ handle: AgentHandle, with agent: WorkflowAgent, in run: WorkflowRun, at now: Date
     ) {
@@ -364,7 +366,7 @@ final class WorkflowCardCell: UICollectionViewCell {
         let tool = Self.liveTool(agent, wearing: icon)
         handle.live.text = tool
         handle.live.isHidden = tool == nil
-        let elapsed = agent.elapsed(at: now)
+        let elapsed = agent.elapsed(at: now, in: run)
         handle.time.text = elapsed.map(WorkflowRun.duration)
         handle.time.isHidden = elapsed == nil
     }
