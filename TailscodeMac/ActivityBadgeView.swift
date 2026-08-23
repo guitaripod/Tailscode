@@ -53,6 +53,44 @@ extension CAAnimation {
     }
 }
 
+extension CALayer {
+    /// Lays a repeating animation on this layer, or leaves the layer perfectly still when the desk
+    /// has asked for less movement. Every motion in this client that never ends on its own takes
+    /// this road, and nothing else may add one.
+    ///
+    /// Motion that never ends is up for exactly as long as the thing it stands for — a step with no
+    /// progress to report, a power that is switched on — which makes it the thing on the screen a
+    /// reader ends up watching longest, and so the last place movement may go on running under a
+    /// setting that asks for none. A guard read once where the animation is handed over cannot
+    /// answer that question, because the question stays open for as long as the lap does: a desk
+    /// that asks for less motion halfway through a conversation keeps the ring it just switched
+    /// off, and one that allows movement back is never given it. So the decision is one call, made
+    /// every time the motion is laid on and again whenever
+    /// `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification` says the answer may have
+    /// changed — every caller pairs this with that observer, and the pairing is what makes the
+    /// answer current rather than remembered.
+    ///
+    /// What the movement means is the vocabulary's to say rather than this client's: `meaning` is
+    /// the `ActivityMotion` it stands for — work breathes, something being turned over sweeps — and
+    /// `honoring(reduceMotion:)` is where reduced motion is already decided for every mark in the
+    /// window, so nothing here can end up disagreeing with the badge in the row beside it. Reduced
+    /// motion drops the movement and nothing else: the shape stays exactly where it is, fully lit,
+    /// still saying what it was saying.
+    ///
+    /// The old lap always comes off first, so a view that returns to the window or a desk that
+    /// changes its mind mid-wait lays one on rather than a second on top of it.
+    @MainActor func setRepeatingMotion(
+        _ animation: CAAnimation, forKey key: String, meaning: ActivityMotion = .working
+    ) {
+        removeAnimation(forKey: key)
+        guard meaning.honoring(reduceMotion: !ActivityPulse.motionAllowed).isAnimated else {
+            return
+        }
+        animation.runAtActivityTempo()
+        add(animation, forKey: key)
+    }
+}
+
 /// A hand on any view: it holds the state's motion and applies it to whatever the view shows.
 ///
 /// The clock is `CADisplayLink` on the view's own display, and the phase is read from that clock
@@ -394,20 +432,29 @@ final class ActivitySweepBar: NSView {
     private func apply() {
         fill.removeAnimation(forKey: Self.key)
         guard window != nil, bounds.width > 0 else { return }
-        let travelling = ActivityPulse.motionAllowed
-        let width = travelling ? max(bounds.width * Self.share, 1) : bounds.width
+        let width = ActivityPulse.motionAllowed ? max(bounds.width * Self.share, 1) : bounds.width
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fill.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
         CATransaction.commit()
-        guard travelling else { return }
+        travel(across: width)
+    }
+
+    /// The travel itself, laid on apart from the shape it moves in, so what a desk that asked for
+    /// less motion is left with is the filled track rather than a short stripe sitting still on an
+    /// empty one.
+    ///
+    /// Whether it moves at all is `setRepeatingMotion`'s to answer rather than this bar's: a step
+    /// reporting no progress is this window's literal case of `ActivityMotion.turning`, something
+    /// being turned over while it says nothing about how far it has got. The answer is taken again
+    /// every time the desk changes its mind, never once where the lap happens to be written.
+    private func travel(across width: CGFloat) {
         let slide = CABasicAnimation(keyPath: "transform.translation.x")
         slide.fromValue = -width
         slide.toValue = bounds.width
         slide.duration = Self.lap
         slide.repeatCount = .infinity
         slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        slide.runAtActivityTempo()
-        fill.add(slide, forKey: Self.key)
+        fill.setRepeatingMotion(slide, forKey: Self.key, meaning: .turning)
     }
 }

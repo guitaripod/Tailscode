@@ -9,7 +9,7 @@ import TailscodeCore
 /// so the effect reads as light, not paint. The host's own border is dimmed
 /// while the aura owns the edge and restored when it lets go.
 @MainActor
-final class UltracodeAura {
+final class UltracodeAura: NSObject {
     private weak var host: NSView?
     private let cornerRadius: CGFloat
     private let container = CALayer()
@@ -32,6 +32,10 @@ final class UltracodeAura {
     init(around host: NSView, cornerRadius: CGFloat) {
         self.host = host
         self.cornerRadius = cornerRadius
+        super.init()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         host.wantsLayer = true
         gradient.type = .conic
         gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
@@ -108,33 +112,46 @@ final class UltracodeAura {
         CATransaction.commit()
     }
 
+    /// Reads the desk's mind again when it changes while the power is on.
+    ///
+    /// A tier stays picked for as long as the conversation lasts, so an aura that asked only at the
+    /// moment it lit would keep turning for the rest of that conversation under a preference
+    /// already changed — and would never start again for a desk that allowed movement back.
+    /// Reduced motion keeps the ring lit and stops it moving: a power being on is a fact, and the
+    /// fact is the edge rather than the travel around it. An aura whose power is off has no fact to
+    /// draw, so it stays dark through the change.
+    @objc private func motionPreferenceChanged() {
+        guard isActive else { return }
+        spin()
+        breathe()
+    }
+
     private func spin() {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let turn = CABasicAnimation(keyPath: "transform.rotation.z")
         turn.fromValue = 0
         turn.toValue = 2 * Double.pi
         turn.duration = Ultracode.auraTurnSeconds
         turn.repeatCount = .infinity
-        turn.runAtActivityTempo()
-        gradient.add(turn, forKey: "spin")
+        gradient.setRepeatingMotion(turn, forKey: "spin", meaning: .turning)
     }
 
     /// The turn says a power is on; the breath says it is still on. Both run on the shared
     /// periods, which are deliberately not multiples of each other — two cycles that divide evenly
     /// lock into a beat, and the aura starts reading as a machine counting rather than light.
     ///
-    /// Neither ever ends on its own, so both are pinned to the vocabulary's tempo: a lap measured
-    /// in seconds handed to the render server unqualified is redrawn at whatever the panel offers,
-    /// which around a pane that is already breathing at thirty is a second tempo for the same fact.
+    /// Neither ever ends on its own, which is why both are laid on through `setRepeatingMotion`
+    /// rather than by hand. That is the one road in this client where a never-ending lap is pinned
+    /// to the vocabulary's tempo — a lap measured in seconds handed to the render server
+    /// unqualified is redrawn at whatever the panel offers, which around a pane already breathing
+    /// at thirty is a second tempo for the same fact — and it is also where the desk is asked,
+    /// every time, whether it wants the movement at all.
     private func breathe() {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1.0
         pulse.toValue = Ultracode.auraBreathFloor
         pulse.duration = Ultracode.auraBreathSeconds
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
-        pulse.runAtActivityTempo()
-        container.add(pulse, forKey: "breathe")
+        container.setRepeatingMotion(pulse, forKey: "breathe")
     }
 }

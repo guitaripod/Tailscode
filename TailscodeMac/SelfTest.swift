@@ -103,6 +103,15 @@ enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkRepeatingMotion()
+            report(
+                "repeating motion: \(checks) claims hold — every never-ending lap asks again")
+        } catch {
+            report("repeating motion: \(error)")
+            failures += 1
+        }
+
         let cutOffFailures = InterruptedTurnCheck.run()
         if cutOffFailures.isEmpty {
             report("cut-off turn: the words, the cost, the press and the refusal all hold")
@@ -1106,6 +1115,136 @@ enum SelfTest {
             systemIndicator(in: card) == nil,
             "and is the only bar on it, because AppKit's own is drawn at a tempo nothing can read")
         return checks
+    }
+
+    /// Every motion in this client that never ends on its own, proved to ask the desk again rather
+    /// than only once.
+    ///
+    /// A guard read where an animation is created answers the question at that instant and never
+    /// afterwards, and the question stays open for exactly as long as the lap does — which is the
+    /// whole defect: a ring lit when a tier was picked turns for the rest of the conversation under
+    /// a preference changed a minute later, and a desk that allows movement back is never given it.
+    /// So the claim is made the only way a running app can make it. The laps are stripped off the
+    /// layers by hand, `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification` is posted,
+    /// and nothing but an observer could have put them back.
+    ///
+    /// The road itself is proved first, because two callers agreeing means nothing if what they
+    /// agree through is wrong: `setRepeatingMotion` lays a lap on exactly when the desk allows
+    /// movement, at the vocabulary's tempo, never stacks a second on the first, and refuses a
+    /// meaning the vocabulary calls still whatever the desk allows.
+    private static func checkRepeatingMotion() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else {
+                throw SelfTestFailure("repeating motion case failed: \(label)")
+            }
+            checks += 1
+        }
+        let moving = ActivityPulse.motionAllowed
+        let tempo = CAFrameRateRange.activityTempo
+        func mindChanged() {
+            NSWorkspace.shared.notificationCenter.post(
+                name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        }
+        func lap() -> CABasicAnimation {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = 1
+            animation.toValue = 0.4
+            animation.duration = 1
+            animation.repeatCount = .infinity
+            return animation
+        }
+
+        let layer = CALayer()
+        layer.setRepeatingMotion(lap(), forKey: "lap")
+        try expect(
+            (layer.animation(forKey: "lap") != nil) == moving,
+            "the road lays a lap on when the desk allows movement, and none when it does not")
+        try expect(
+            layer.animation(forKey: "lap").map { $0.preferredFrameRateRange == tempo } ?? true,
+            "at the vocabulary's tempo rather than at whatever the panel happens to offer")
+        layer.setRepeatingMotion(lap(), forKey: "lap")
+        try expect(
+            (layer.animationKeys() ?? []).filter { $0 == "lap" }.count == (moving ? 1 : 0),
+            "and asked twice it replaces the lap rather than stacking a second on top of it")
+        layer.setRepeatingMotion(lap(), forKey: "lap", meaning: .still)
+        try expect(
+            layer.animation(forKey: "lap") == nil,
+            "a meaning the vocabulary calls still never moves, whatever the desk allows")
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 220),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 44))
+        window.contentView?.addSubview(host)
+        let aura = UltracodeAura(around: host, cornerRadius: 10)
+        aura.setActive(true)
+        try expect(
+            aura.laps.count == (moving ? 2 : 0),
+            "the aura's two laps are on while the power is, and off while the desk asks for less")
+        stripLaps(from: host)
+        try expect(aura.laps.isEmpty, "stripped by hand there is nothing left turning")
+        mindChanged()
+        try expect(
+            aura.laps.count == (moving ? 2 : 0),
+            "and a desk changing its mind lays them again — the ring asks for a whole conversation")
+        aura.setActive(false)
+        stripLaps(from: host)
+        mindChanged()
+        try expect(
+            aura.laps.isEmpty,
+            "an aura whose power is off stays dark through the change, having no fact to draw")
+        host.removeFromSuperview()
+
+        let bar = ActivitySweepBar(tint: MacTheme.Color.accent)
+        bar.frame = NSRect(x: 0, y: 0, width: 320, height: 4)
+        window.contentView?.addSubview(bar)
+        try expect(
+            (bar.travel != nil) == moving,
+            "the transcript's one bar travels while the step it sits under is still running")
+        stripLaps(from: bar)
+        try expect(bar.travel == nil, "stripped by hand it holds perfectly still")
+        mindChanged()
+        try expect(
+            (bar.travel != nil) == moving,
+            "and the same change lays the travel again over a summarize that has minutes to go")
+        bar.removeFromSuperview()
+
+        let orb = PresenceOrbView()
+        orb.frame = NSRect(x: 0, y: 0, width: 44, height: 44)
+        window.contentView?.addSubview(orb)
+        orb.setEnabled(false)
+        orb.isHidden = false
+        try expect(
+            !orb.isDrawing,
+            "a creature standing in the sidebar with its clock stopped is exactly what a settled"
+                + " frame under reduced motion leaves behind")
+        mindChanged()
+        try expect(
+            orb.isDrawing,
+            "and a desk changing its mind starts it again, so allowing movement back gets a body"
+                + " that breathes rather than one frozen mid-breath")
+        orb.setEnabled(false)
+        mindChanged()
+        try expect(
+            !orb.isDrawing,
+            "while the same change never wakes a creature the setting itself switched off")
+        orb.removeFromSuperview()
+        return checks
+    }
+
+    /// Takes every lap off a view's whole layer tree, mask included, so that a claim about
+    /// something putting one back is a claim about the road that lays it rather than about the lap
+    /// that was already there. Nothing in the app removes an animation from outside the view that
+    /// owns it; this is the harness taking the picture apart to prove it can be rebuilt.
+    private static func stripLaps(from view: NSView) {
+        func strip(_ layer: CALayer) {
+            layer.removeAllAnimations()
+            if let mask = layer.mask { strip(mask) }
+            for sublayer in layer.sublayers ?? [] { strip(sublayer) }
+        }
+        if let layer = view.layer { strip(layer) }
+        for child in view.subviews { stripLaps(from: child) }
     }
 
     private static func sweepBar(in view: NSView) -> ActivitySweepBar? {

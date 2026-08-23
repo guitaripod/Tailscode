@@ -53,6 +53,9 @@ final class PresenceOrbView: NSView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint,
             object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -116,6 +119,11 @@ final class PresenceOrbView: NSView {
     /// seconds. Set before the shader is built, so a desk with no Metal still answers honestly.
     var frameRate: Int { metalView.preferredFramesPerSecond }
 
+    /// Whether the creature's clock is running at all, for the same harness. A body breathing and a
+    /// body that stopped are the same picture in any single frame, and a clock left turning over a
+    /// settled body is the whole cost the pausing exists to avoid.
+    var isDrawing: Bool { !metalView.isPaused }
+
     /// The sidebar is glass, so the orb paints no background of its own and its inks stay the
     /// system semantic colours the activity badges already wear — resolved against this view's
     /// own appearance so the creature flips with the material it floats on.
@@ -172,6 +180,17 @@ final class PresenceOrbView: NSView {
 
     @objc private func themeChanged() {
         field.set(colors: inks())
+        wake()
+    }
+
+    /// Retakes the still-or-moving decision when the desk changes its mind.
+    ///
+    /// Every frame already asks — a creature told to stop moving settles, and a settled frame
+    /// stops the clock — but a stopped clock asks nothing more, so a desk that allowed movement
+    /// back would be left with a body frozen mid-breath for as long as the sidebar stood. Waking is
+    /// the whole of the answer: the next frame reads the preference again and settles straight back
+    /// if it has not changed, and a creature the setting switched off is not woken by it at all.
+    @objc private func motionPreferenceChanged() {
         wake()
     }
 
