@@ -1020,6 +1020,9 @@ public enum ForgeSetupCheck {
             "the desktop is a landscape studio, not a tall form")
         expect(ForgeStudio.chips.contains(.size) && ForgeStudio.chips.contains(.seed), "the chips are the walkable settings")
         expect(!ForgeStudio.chips.contains(.model), "the model is a picker, not a chip")
+        expect(
+            ForgeModel.allCases.allSatisfy { $0.label.contains(ForgeModel.family) },
+            "the picker names the transformer, not a nickname")
         expect(!ForgeStudio.chips.contains(.prompt), "the prompt is the composer, not a chip")
         expect(!ForgeStudio.chips.contains(.endpoint), "the renderer is a status, not a chip")
         expect(ForgeStudio.stageShare > 0.5 && ForgeStudio.stageShare < 0.75, "the stage is the room")

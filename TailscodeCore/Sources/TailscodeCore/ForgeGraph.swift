@@ -16,10 +16,12 @@ public enum ForgeModel: String, Sendable, Codable, Hashable, CaseIterable {
         }
     }
 
+    public static var family: String { "LTX-2.5" }
+
     public var label: String {
         switch self {
-        case .distilled: return Localized.text("Fast")
-        case .dev: return Localized.text("Fine")
+        case .distilled: return Localized.text("%@ Fast", Self.family)
+        case .dev: return Localized.text("%@ Fine", Self.family)
         }
     }
 

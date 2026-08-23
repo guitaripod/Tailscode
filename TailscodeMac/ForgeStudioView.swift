@@ -110,7 +110,7 @@ final class ForgeStudioView: NSView {
                 focused: row.id == board.focused?.id)
         }
         model.render(
-            title: board.value(of: .model), detail: ForgeField.model.label, badge: nil,
+            title: board.value(of: .model), detail: "", badge: nil,
             focused: board.focused?.kind == .field(.model))
         model.toolTip = board.recipe.model.detail
         model.isEnabled = !board.isBusy
@@ -355,7 +355,9 @@ final class ForgeChipButton: NSButton {
 
     func render(title: String, detail: String, badge: String?, focused: Bool) {
         name.stringValue = detail
+        name.isHidden = detail.isEmpty
         value.stringValue = title
+        value.lineBreakMode = .byClipping
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor =
                 focused
