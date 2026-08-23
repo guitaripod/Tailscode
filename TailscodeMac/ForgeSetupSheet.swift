@@ -142,8 +142,8 @@ final class ForgeSetupSheet: NSObject {
         column.spacing = MacTheme.Spacing.m
         for view in [
             heading, subtitle, tailnetLine, tailnetRemedy,
-            knownHeader, knownColumn,
             sweepHeader, dialHolder(), sweepTitle, sweepDetail, sweepActions, foundColumn,
+            knownHeader, knownColumn,
             addressHeader, addressField, hintLabel, nameField,
             statusTitle, statusDetail, statusActions, copiedLabel, noteLabel, buttonRow,
         ] as [NSView] {

@@ -31,7 +31,7 @@ enum ForgeBoardView {
             position += 1
             for (offset, row) in section.rows.enumerated() {
                 let isFocused = row.id == model.focused?.id
-                let widget = make(row, phase: section.phase, focused: isFocused) {
+                let widget = make(row, phase: section.phase, focused: isFocused, job: model.job) {
                     onActivate(section.id, offset)
                 }
                 if isFocused { cursorAt = position }
@@ -56,16 +56,12 @@ enum ForgeBoardView {
         let title = Gtk.label(section.title, css: "section-header", selectable: false)
         gtk_widget_set_hexpand(title, 1)
         gtk_box_append(ptr(line), title)
-        guard section.detail.isEmpty == false else {
-            Gtk.margins(line, trailing: 8)
-            return line
-        }
         if let call {
             let button = Gtk.button(section.detail, css: ["forge-call"], onClick: call)
             gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), button)
-        } else {
-            let detail = Gtk.label(section.detail, css: "watch-section-detail", selectable: false)
+        } else if let spoken = ForgeBoard.headerDetail(of: section) {
+            let detail = Gtk.label(spoken, css: "watch-section-detail", selectable: false)
             gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), detail)
         }
@@ -74,17 +70,17 @@ enum ForgeBoardView {
     }
 
     private static func make(
-        _ row: ForgeRow, phase: ForgePhase, focused: Bool,
+        _ row: ForgeRow, phase: ForgePhase, focused: Bool, job: ForgeJob,
         onActivate: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         if case .note = row.kind { return note(row) }
-        guard row.isActivatable else { return spent(row, phase: phase) }
+        guard row.isActivatable else { return spent(row, phase: phase, job: job) }
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "session-row")
         if focused { Gtk.addClass(button, "row-focused") }
         if row.isPrimary { Gtk.addClass(button, "forge-render-row") }
-        gtk_button_set_child(ptr(button), lines(row, phase: phase))
+        gtk_button_set_child(ptr(button), lines(row, phase: phase, job: job))
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onActivate)
         return button
     }
@@ -104,22 +100,25 @@ enum ForgeBoardView {
     /// loses only the ability to be pressed, which is the honest thing for a row whose value the
     /// other machine is already working from.
     private static func spent(
-        _ row: ForgeRow, phase: ForgePhase
+        _ row: ForgeRow, phase: ForgePhase, job: ForgeJob
     ) -> UnsafeMutablePointer<GtkWidget> {
         let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(holder, "forge-row-spent")
         Gtk.margins(holder, top: 4, bottom: 4, leading: 4, trailing: 6)
-        gtk_box_append(ptr(holder), lines(row, phase: phase))
+        gtk_box_append(ptr(holder), lines(row, phase: phase, job: job))
         return holder
     }
 
     private static func lines(
-        _ row: ForgeRow, phase: ForgePhase
+        _ row: ForgeRow, phase: ForgePhase, job: ForgeJob
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         Gtk.margins(column, top: 4, bottom: 4, leading: 4, trailing: 6)
         gtk_widget_set_hexpand(column, 1)
 
+        if case .job = row.kind {
+            gtk_box_append(ptr(column), stage(job))
+        }
         let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let title = Gtk.label(
             row.title, css: row.isPrimary ? "row-title-unread" : "row-title", selectable: false)
@@ -130,6 +129,11 @@ enum ForgeBoardView {
             Gtk.addClass(pill, tone(for: row, phase: phase))
             gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(titleRow), pill)
+        }
+        if case .field(let field) = row.kind, row.isActivatable {
+            let mark = Gtk.label(field.affordanceGlyph, css: "forge-affordance", selectable: false)
+            gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(titleRow), mark)
         }
         gtk_box_append(ptr(column), titleRow)
 
@@ -148,6 +152,30 @@ enum ForgeBoardView {
                 ptr(column), Gtk.label(note, css: "watch-meta", selectable: false))
         }
         return column
+    }
+
+    /// The stage: the recessed frame the clip will land in, present in every state rather than
+    /// only when there is a picture — a card that appears when a clip lands and is absent before
+    /// it is a card that reads as broken for the four minutes that matter most. The face is the
+    /// phase's own from Core: work wears the activity's motionless glyph column here, and a
+    /// settled state holds one still glyph with the stage's own caption under it.
+    private static func stage(_ job: ForgeJob) -> UnsafeMutablePointer<GtkWidget> {
+        let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.addClass(frame, "forge-stage")
+        gtk_widget_set_hexpand(frame, 1)
+        let glyph = Gtk.label(job.phase.stageGlyph, css: "forge-stage-glyph", selectable: false)
+        Gtk.addClass(glyph, job.phase.tone.glyphCSS)
+        gtk_widget_set_valign(glyph, GTK_ALIGN_END)
+        gtk_widget_set_vexpand(glyph, 1)
+        gtk_box_append(ptr(frame), glyph)
+        let words = job.isBusy ? job.stageName : nil
+        let caption = Gtk.label(words ?? "", css: "forge-stage-caption", selectable: false)
+        gtk_widget_set_valign(caption, GTK_ALIGN_START)
+        gtk_widget_set_vexpand(caption, 1)
+        gtk_widget_set_visible(caption, words == nil ? 0 : 1)
+        gtk_box_append(ptr(frame), caption)
+        Gtk.margins(frame, bottom: 6)
+        return frame
     }
 
     /// The render's own bar, drawn only where the board handed one over. Submitting and queueing

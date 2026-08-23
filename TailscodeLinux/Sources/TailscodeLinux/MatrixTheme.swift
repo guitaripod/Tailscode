@@ -741,6 +741,16 @@ enum MatrixTheme {
         .forge-render-row:hover { background-color: alpha(\(accent), 0.13); }
         .row-focused.forge-render-row { background-color: alpha(\(accent), 0.18); }
         .forge-state { color: \(text); \(t(.cardBody)) }
+        .forge-stage {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 8px;
+            min-height: 116px;
+            padding: 10px;
+        }
+        .forge-stage-glyph { color: \(textDim); \(t(.paneHeadline)) font-size: 200%; }
+        .forge-stage-caption { color: \(textDim); \(t(.hint)) }
+        .forge-affordance { color: \(textDim); \(t(.hint)) opacity: 0.7; }
         .forge-row-spent { opacity: 0.5; }
         .forge-bar trough {
             min-height: 4px;

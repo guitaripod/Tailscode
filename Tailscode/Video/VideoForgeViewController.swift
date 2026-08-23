@@ -234,14 +234,9 @@ final class VideoForgeViewController: UIViewController {
         }
     }
 
-    /// A section's own detail, minus the two the rest of this screen already says. The render's
-    /// detail is the button at the bottom, and the settings' is the line under the stage; printing
-    /// either twice would make a reader look for a difference that is not there.
+    /// A section's own detail, said or suppressed by Core's one rule for all three clients.
     private func headerDetail(of section: ForgeSection) -> String? {
-        guard section.id != ForgeBoard.renderID, section.id != ForgeBoard.settingsID else {
-            return nil
-        }
-        return section.detail.isEmpty ? nil : section.detail
+        ForgeBoard.headerDetail(of: section)
     }
 
     private func row(for item: Item) -> ForgeRow? {

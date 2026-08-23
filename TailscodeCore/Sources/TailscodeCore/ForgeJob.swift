@@ -319,3 +319,52 @@ public struct ForgeJob: Sendable, Equatable {
         }
     }
 }
+
+extension ForgeJobPhase {
+    /// The phase in the vocabulary every other surface in this app is drawn in. A phase that is
+    /// doing something gets the activity's own motion — the wake sweeps, the queue holds still
+    /// because waiting is settled, the card breathes while it works — and a phase that has stopped
+    /// gets none at all, because stillness is how a reader tells a finished render from a slow one.
+    public var activity: ActivityKind? {
+        switch self {
+        case .drafting, .done, .cancelled: return nil
+        case .submitting: return .connecting
+        case .queued(let ahead): return .queued(ahead)
+        case .running: return .working
+        case .failed: return .failed
+        }
+    }
+
+    /// What colour the phase's word is worn in. Four meanings, none of them shared: work and a
+    /// finished clip are the accent, a failure is the danger slot, and anything settled or waiting
+    /// is quiet.
+    public var tone: ActivityTone {
+        switch self {
+        case .drafting, .cancelled: return .quiet
+        case .submitting, .queued: return .quiet
+        case .running, .done: return .live
+        case .failed: return .danger
+        }
+    }
+
+    /// The face a stage with no picture in it shows — a symbol for the Apple clients, one glyph
+    /// for the text ones. A render that never produced a frame still has a face: it is the
+    /// difference between a card that failed and a card that is blank.
+    public var stageSymbol: String {
+        switch self {
+        case .drafting, .submitting, .queued, .running: return "film"
+        case .done: return "play.rectangle"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .cancelled: return "stop.circle"
+        }
+    }
+
+    public var stageGlyph: String {
+        switch self {
+        case .drafting, .submitting, .queued, .running: return "▭"
+        case .done: return "▶"
+        case .failed: return "✕"
+        case .cancelled: return "■"
+        }
+    }
+}

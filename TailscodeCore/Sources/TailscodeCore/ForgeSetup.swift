@@ -449,6 +449,23 @@ public struct ForgeSetupButton: Sendable, Equatable {
     }
 }
 
+/// The setup surface's own shape: which parts it has and the order a reader meets them in.
+///
+/// Three clients drew the same five parts in three different orders — the Mac put the machines
+/// already used above the scan, the Linux window led with an empty list and buried the form below
+/// the fold — so the walk a person takes was a different walk on every desk. The order is therefore
+/// a fact of Core's, in the order the decision is actually made: what this surface is and whether
+/// this machine can even ask (intro), the way in that is not typing (find), the machines that have
+/// already answered (known), the address as typed (address), and what became of it with the one
+/// press that settles it (outcome).
+public enum ForgeSetupArea: String, Sendable, Equatable, CaseIterable {
+    case intro
+    case find
+    case known
+    case address
+    case outcome
+}
+
 /// Setting up the renderer, held to the standard adding a server is held to.
 ///
 /// A server is not typed blind: the flow states what this machine's own tailnet address is, offers
@@ -462,6 +479,9 @@ public struct ForgeSetupButton: Sendable, Equatable {
 /// fifteen idle minutes, so silence from a box that is genuinely the renderer is the ordinary case
 /// rather than a mistake — the setup therefore offers to save it anyway, and says why.
 public struct ForgeSetup: Sendable, Equatable {
+    /// The parts of the surface in the order a reader meets them, which no client may reorder.
+    public static var order: [ForgeSetupArea] { ForgeSetupArea.allCases }
+
     public static var title: String { Localized.text("Set up the renderer") }
 
     public static var detail: String {
@@ -973,6 +993,28 @@ public enum ForgeSetupCheck {
         expect(ForgeSurface.preferredHeight >= ForgeSurface.minimumHeight, "in both directions")
         expect(ForgeSetup.startCommand.contains("--listen"), "the command handed over binds where the tailnet can reach it")
         expect(ForgeSetup.startCommand.contains("\(ForgeSweep.port)"), "on the port everything else asks")
+
+        expect(
+            ForgeSetup.order == [.intro, .find, .known, .address, .outcome],
+            "the setup is met in one order on every desk: what this is, the way in that is not typing, the machines that already answered, the address as typed, and what became of it")
+        expect(ForgeSetup.order == ForgeSetupArea.allCases, "and no area is left undrawn")
+
+        for field in ForgeField.allCases {
+            expect(
+                field.isCyclable
+                    ? (field.affordanceGlyph == "⇅" && field.affordanceSymbol == "chevron.up.chevron.down")
+                    : (field.affordanceGlyph == "›" && field.affordanceSymbol == "chevron.right"),
+                "a row that cycles and a row that opens wear different marks (\(field.rawValue))")
+        }
+
+        expect(ForgeJobPhase.running(0.5).activity == .working, "a render that is working breathes")
+        expect(ForgeJobPhase.queued(2).activity == .queued(2), "a queued one waits with its count")
+        expect(ForgeJobPhase.done(ForgeAsset(filename: "x.mp4")).activity == nil, "and a settled one holds still")
+        expect(ForgeJobPhase.failed("x").tone == .danger, "a failure wears the danger slot")
+        expect(ForgeJobPhase.failed("x").stageGlyph == "✕", "and its stage says so in one column")
+        expect(
+            ForgeJobPhase.done(ForgeAsset(filename: "x.mp4")).stageSymbol == "play.rectangle",
+            "a finished stage offers the play it promises")
         return failures
     }
 }

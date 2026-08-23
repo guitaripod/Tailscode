@@ -1,47 +1,6 @@
 import TailscodeCore
 import UIKit
 
-extension ForgeJobPhase {
-    /// The render, said in the vocabulary every other surface in this app is already drawn in. A
-    /// phase that is doing something gets the activity's own motion — the wake sweeps, the queue
-    /// holds still because waiting is settled, the card breathes while it works — and a phase that
-    /// has stopped gets none at all, because stillness is how a reader tells a finished render from
-    /// a slow one.
-    var activity: ActivityKind? {
-        switch self {
-        case .drafting, .done, .cancelled: return nil
-        case .submitting: return .connecting
-        case .queued(let ahead): return .queued(ahead)
-        case .running: return .working
-        case .failed: return .failed
-        }
-    }
-
-    /// What colour the phase's word is worn in. Four meanings, none of them shared: work and a
-    /// finished clip are the accent, a failure is the danger slot, and anything settled or waiting
-    /// is quiet.
-    var tone: ActivityTone {
-        switch self {
-        case .drafting, .cancelled: return .quiet
-        case .submitting, .queued: return .quiet
-        case .running, .done: return .live
-        case .failed: return .danger
-        }
-    }
-
-    /// The glyph a stage with no picture in it shows. A render that never produced a frame still
-    /// has a face — it is the difference between a card that failed and a card that is blank.
-    var stageSymbol: String {
-        switch self {
-        case .drafting: return "film"
-        case .submitting, .queued, .running: return "film"
-        case .done: return "play.rectangle"
-        case .failed: return "exclamationmark.triangle.fill"
-        case .cancelled: return "stop.circle"
-        }
-    }
-}
-
 extension ForgeField {
     /// One symbol per decision, so a settings list is read down its left edge rather than word by
     /// word. The client owes the drawing; the words are all Core's.
@@ -501,7 +460,7 @@ final class ForgeValueCell: UICollectionViewListCell {
         working.activity = activity
         pill.apply(row.badge, tone: tone)
         mark.image = UIImage(
-            systemName: field.isCyclable ? "chevron.up.chevron.down" : "chevron.right",
+            systemName: field.affordanceSymbol,
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
         contentView.alpha = live ? 1 : 0.4
         isUserInteractionEnabled = live

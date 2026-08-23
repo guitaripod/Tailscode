@@ -140,19 +140,15 @@ final class ForgeBoardView: NSView {
         return gone(entry)
     }
 
-    /// The one row that can be mid-question. A machine being asked whether it is there is work, and
-    /// work in this app has a face that moves rather than a label that sits still; a render that is
-    /// actually running breathes, and every settled state — queued, failed, stopped — holds still.
+    /// The one row that can be mid-question, and the render's own row — both read from Core's one
+    /// mapping of a phase to a face, so work breathes and everything settled holds still on every
+    /// desk for the same reason.
     private static func activity(of row: ForgeRow, board: ForgeBoard) -> ActivityKind? {
         if row.sectionID == ForgeBoard.rendererID {
             return board.isChecking ? .connecting : nil
         }
         guard case .job = row.kind else { return nil }
-        switch board.job.phase {
-        case .submitting: return .connecting
-        case .running: return .working
-        case .drafting, .queued, .done, .failed, .cancelled: return nil
-        }
+        return board.job.phase.activity
     }
 
     /// A section's heading. The render's own detail is the caption of the button in the dock and
@@ -190,10 +186,7 @@ final class ForgeBoardView: NSView {
     }
 
     private static func spoken(of section: ForgeSection) -> String {
-        guard section.id != ForgeBoard.renderID, section.id != ForgeBoard.settingsID else {
-            return ""
-        }
-        return section.detail
+        ForgeBoard.headerDetail(of: section) ?? ""
     }
 
     /// The line the board carries under the renderer: what a render actually costs, said before
@@ -212,6 +205,10 @@ final class ForgeRowView: NSView {
     private let aside = NSTextField(wrappingLabelWithString: "")
     private let badge = NSTextField(labelWithString: "")
     private let badgeCapsule = NSView()
+    /// The mark at a field row's end that says what pressing it does — cycles or opens — worn on
+    /// every desk because a row that changes a value under the pointer and a row that opens a
+    /// surface are different promises.
+    private let affordance = NSImageView()
     private let activityBadge = ActivityBadgeView(pointSize: 11)
     /// The mark's column, held open whether or not this row has a mark to put in it. A badge that
     /// came and went with the phase would walk every title two characters left and back again on
@@ -419,21 +416,33 @@ final class ForgeRowView: NSView {
         needsDisplay = true
     }
 
-    /// The word in the row's corner, put into the stack's trailing area or taken out of it. Hiding
-    /// it instead would leave a view in a horizontal stack with nothing deciding its width, which
-    /// is an ambiguous frame rather than an invisible one.
+    /// The row's trailing marks, put into the stack's trailing area or taken out of it. Hiding
+    /// them instead would leave views in a horizontal stack with nothing deciding their width,
+    /// which is an ambiguous frame rather than an invisible one. The badge leads and the
+    /// affordance sits at the very edge, the way every list in this app ends.
     private func applyBadge(_ row: ForgeRow, phase: ForgePhase) {
-        guard let text = row.badge, !text.isEmpty else {
-            titleRow.setViews([], in: .trailing)
-            return
+        var trailing: [NSView] = []
+        if let text = row.badge, !text.isEmpty {
+            trailing.append(badgeCapsule)
+            badge.stringValue = text
+            let tint = Self.tone(for: row, phase: phase)
+            badge.textColor = tint
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                badgeCapsule.layer?.backgroundColor = tint.withAlphaComponent(0.16).cgColor
+            }
         }
-        titleRow.setViews([badgeCapsule], in: .trailing)
-        badge.stringValue = text
-        let tint = Self.tone(for: row, phase: phase)
-        badge.textColor = tint
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            badgeCapsule.layer?.backgroundColor = tint.withAlphaComponent(0.16).cgColor
+        if case .field(let field) = row.kind, row.isActivatable {
+            affordance.image = NSImage(
+                systemSymbolName: field.affordanceSymbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(
+                        pointSize: 9 * MacTheme.UIScale.factor, weight: .semibold))
+            affordance.contentTintColor = MacTheme.Color.tertiaryLabel
+            affordance.setContentHuggingPriority(.required, for: .horizontal)
+            affordance.setAccessibilityElement(false)
+            trailing.append(affordance)
         }
+        titleRow.setViews(trailing, in: .trailing)
     }
 
     private func applyGround(focused: Bool, row: ForgeRow) {

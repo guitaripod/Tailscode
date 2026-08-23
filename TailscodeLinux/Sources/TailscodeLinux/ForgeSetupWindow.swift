@@ -40,10 +40,14 @@ final class ForgeSetupWindow: @unchecked Sendable {
     private var setup: ForgeSetup
     private var sweep = ForgeSweepReading()
 
+    private let introGroup = adw_preferences_group_new()!
     private let knownGroup = adw_preferences_group_new()!
     private let sweepGroup = adw_preferences_group_new()!
     private let addGroup = adw_preferences_group_new()!
     private let radar = RadarView()
+    /// The dial's own row, shown only while a scan is out or has answered. A dial nobody has spun
+    /// is dead space above the form, and the rest state already says what spinning it would do.
+    private var radarRow: UnsafeMutablePointer<GtkWidget>?
     private let addressEntry = gtk_entry_new()!
     private let hintLabel: UnsafeMutablePointer<GtkWidget>
     private let nameRow = adw_entry_row_new()!
@@ -86,8 +90,9 @@ final class ForgeSetupWindow: @unchecked Sendable {
         }
         let page = adw_preferences_page_new()!
         adw_preferences_window_add(ptr(window), ptr(page))
-        adw_preferences_page_add(ptr(page), ptr(knownGroup))
+        adw_preferences_page_add(ptr(page), ptr(introGroup))
         adw_preferences_page_add(ptr(page), ptr(sweepGroup))
+        adw_preferences_page_add(ptr(page), ptr(knownGroup))
         adw_preferences_page_add(ptr(page), ptr(addGroup))
 
         buildKnownGroup()
@@ -111,7 +116,9 @@ final class ForgeSetupWindow: @unchecked Sendable {
     /// that finding a server has, because it is the same question asked of the same tailnet.
     private func buildSweepGroup() {
         adw_preferences_group_set_title(ptr(sweepGroup), setup.discovery.title)
-        adw_preferences_group_add(ptr(sweepGroup), ptr(radar.preferencesRow()))
+        let dial = radar.preferencesRow()
+        radarRow = dial
+        adw_preferences_group_add(ptr(sweepGroup), ptr(dial))
         adw_preferences_row_set_use_markup(ptr(sweepRow), 0)
         adw_action_row_set_subtitle_lines(ptr(sweepRow), 0)
         gtk_widget_set_valign(sweepActions, GTK_ALIGN_CENTER)
@@ -120,8 +127,8 @@ final class ForgeSetupWindow: @unchecked Sendable {
     }
 
     private func buildAddGroup() {
-        adw_preferences_group_set_title(ptr(addGroup), ForgeSetup.title)
-        adw_preferences_group_set_description(ptr(addGroup), ForgeSetup.detail)
+        adw_preferences_group_set_title(ptr(addGroup), ForgeSetup.addressLabel)
+        adw_preferences_group_set_description(ptr(addGroup), ForgeSetup.addressHelp)
 
         gtk_entry_set_placeholder_text(ptr(addressEntry), ForgeSetup.addressPlaceholder)
         gtk_widget_set_tooltip_text(addressEntry, ForgeSetup.addressHelp)
@@ -412,9 +419,20 @@ final class ForgeSetupWindow: @unchecked Sendable {
     }
 
     private func render() {
-        renderKnown()
+        renderIntro()
         renderSweep()
+        renderKnown()
         renderAdd()
+    }
+
+    /// Two facts, in the order they matter: what a renderer is, and whether this machine is on the
+    /// tailnet at all — because a probe from a machine that is not fails identically however right
+    /// the address is. Both sentences are Core's; only the line between them is this window's.
+    private func renderIntro() {
+        let line = setup.tailnetLine
+        adw_preferences_group_set_description(
+            ptr(introGroup),
+            line.isEmpty ? ForgeSetup.detail : "\(ForgeSetup.detail)\n\(line)")
     }
 
     private func renderKnown() {
@@ -474,8 +492,17 @@ final class ForgeSetupWindow: @unchecked Sendable {
         for row in candidateRows { adw_preferences_group_remove(ptr(sweepGroup), ptr(row)) }
         candidateRows = []
         radar.blips = sweep.blips
-        adw_preferences_row_set_title(ptr(sweepRow), sweep.title)
-        adw_action_row_set_subtitle(ptr(sweepRow), sweep.detail)
+        if let radarRow {
+            let spinning = sweep.isScanning || !sweep.blips.isEmpty
+            gtk_widget_set_visible(radarRow, spinning ? 1 : 0)
+        }
+        if case .rest = sweep.stage {
+            adw_preferences_row_set_title(ptr(sweepRow), sweep.detail)
+            adw_action_row_set_subtitle(ptr(sweepRow), "")
+        } else {
+            adw_preferences_row_set_title(ptr(sweepRow), sweep.title)
+            adw_action_row_set_subtitle(ptr(sweepRow), sweep.detail)
+        }
         Gtk.setTone(sweepRow, Self.tone(sweep.tone), from: Self.tones)
         Gtk.removeChildren(of: sweepActions)
         if let title = sweep.actionTitle {
@@ -532,7 +559,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
     }
 
     private func renderAdd() {
-        adw_preferences_group_set_description(ptr(addGroup), describeAddGroup())
         let status = setup.status
         let hint = Self.hint(setup.hint, beside: status)
         gtk_label_set_text(op(hintLabel), hint ?? "")
@@ -601,14 +627,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
     private static func hint(_ hint: String?, beside status: ForgeSetupReading) -> String? {
         guard let hint, hint != status.detail else { return nil }
         return hint
-    }
-
-    /// Two facts, in the order they matter: what a renderer is, and whether this machine is on the
-    /// tailnet at all — because a probe from a machine that is not fails identically however right
-    /// the address is. Both sentences are Core's; only the line between them is this window's.
-    private func describeAddGroup() -> String {
-        let line = setup.tailnetLine
-        return line.isEmpty ? ForgeSetup.detail : "\(ForgeSetup.detail)\n\(line)"
     }
 
     private func toast(_ text: String) {

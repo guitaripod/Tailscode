@@ -52,6 +52,16 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
         case .endpoint, .prompt, .negative: return false
         }
     }
+
+    /// The mark a row wears at its end, so what pressing it does is read before it is pressed: a
+    /// setting the board walks by itself cycles, and one the client opens discloses. One symbol for
+    /// the Apple clients and one glyph for the text ones, so a Mac cannot promise a different act
+    /// than a phone for the same row.
+    public var affordanceSymbol: String {
+        isCyclable ? "chevron.up.chevron.down" : "chevron.right"
+    }
+
+    public var affordanceGlyph: String { isCyclable ? "⇅" : "›" }
 }
 
 /// What a row is, underneath what it says. Every client draws all five the same way — a title, a
@@ -648,6 +658,16 @@ public struct ForgeBoard: Sendable, Equatable {
 }
 
 extension ForgeBoard {
+    /// A section's heading detail, minus the two the rest of every surface already says: the
+    /// render's detail is the caption of the call button and the settings' summary is readable off
+    /// the rows beneath it, so printing either in a heading makes a reader look for a difference
+    /// that is not there. Two clients each carried this rule and the third missed it, which is why
+    /// it lives here.
+    public static func headerDetail(of section: ForgeSection) -> String? {
+        guard section.id != renderID, section.id != settingsID else { return nil }
+        return section.detail.isEmpty ? nil : section.detail
+    }
+
     /// A row addressed by section and index, which is how a client that draws sections rather than
     /// one flat list reports a click.
     public mutating func focus(section id: String, offset: Int) {
@@ -889,6 +909,15 @@ public enum ForgeBoardCheck {
         board.reached(.listening)
         expect(board.rows.first?.badge == Localized.text("up"), "and one that did wears a word")
         expect(board.sections.first?.detail.isEmpty == true, "a renderer that exists needs no invitation")
+        for section in board.sections {
+            let spoken = ForgeBoard.headerDetail(of: section)
+            switch section.id {
+            case ForgeBoard.renderID, ForgeBoard.settingsID:
+                expect(spoken == nil, "a heading never repeats what the button or the rows under it already say (\(section.id))")
+            default:
+                expect(spoken == (section.detail.isEmpty ? nil : section.detail), "and every other heading speaks its own detail (\(section.id))")
+            }
+        }
 
         if let index = board.rows.firstIndex(where: { $0.kind == .field(.size) }) {
             board.focus(index)
