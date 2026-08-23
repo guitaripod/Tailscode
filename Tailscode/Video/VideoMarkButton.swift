@@ -18,9 +18,9 @@ final class VideoMarkButton: UIButton {
         super.init(frame: .zero)
         setImage(
             UIImage(
-                systemName: "film",
+                systemName: ForgeEntryPoint.symbol,
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body)), for: .normal)
-        accessibilityLabel = ForgeRunner.shared.board.heading
+        accessibilityLabel = ForgeEntryPoint.accessibilityLabel(rendering: false)
         mark.isUserInteractionEnabled = false
         mark.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mark)
@@ -36,8 +36,10 @@ final class VideoMarkButton: UIButton {
         CGSize(width: Self.side, height: Self.side)
     }
 
-    func apply(rendering: Bool, spoken: String?) {
-        mark.activity = rendering ? .working : nil
+    func apply(rendering: Bool, configured: Bool, spoken: String?) {
+        mark.activity = ForgeEntryPoint.activity(rendering: rendering)
+        accessibilityLabel = ForgeEntryPoint.accessibilityLabel(rendering: rendering)
+        accessibilityHint = ForgeEntryPoint.tooltip(configured: configured)
         accessibilityValue = rendering ? spoken : nil
     }
 }

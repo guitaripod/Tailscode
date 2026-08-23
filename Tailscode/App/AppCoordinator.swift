@@ -119,11 +119,14 @@ final class AppCoordinator: NSObject {
         /// landing stages the render and stays put, which is how the mark Home wears while a
         /// render is out gets photographed.
         private func openVideoForDebug(staging state: String?) {
+            if let seed = ProcessInfo.processInfo.environment["TAILSCODE_FORGE_SEED"] {
+                ForgeRunner.shared.seedRenderers(seed)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 if let state { ForgeRunner.shared.stage(state) }
                 guard ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_SCROLL"] != "home"
                 else { return }
-                self?.home?.pushVideo()
+                self?.home?.presentVideo()
             }
         }
 
@@ -264,7 +267,7 @@ final class AppCoordinator: NSObject {
                 return
             }
             pendingSessionLink = nil
-            home.pushVideo()
+            home.presentVideo()
             return
         }
         if url.host() == "usage" {

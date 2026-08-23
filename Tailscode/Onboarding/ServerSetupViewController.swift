@@ -824,11 +824,22 @@ final class ServerSetupViewController: UIViewController {
             probeNow(userInitiated: true)
         case .revealPassword:
             showPasswordField(focus: true)
+        case .copyCommand(let command):
+            copy(command)
         case .seePro:
             ProUpgradeViewController.present(from: self)
         case .none:
             break
         }
+    }
+
+    /// A fix that lives on the other machine is handed over as a line to run there rather than as
+    /// an instruction to go and read something, so the clipboard is the whole of the action and the
+    /// command itself is the confirmation.
+    private func copy(_ command: String) {
+        UIPasteboard.general.string = command
+        Theme.Haptics.success()
+        ToastView(message: command).flash(in: view, above: footer.topAnchor, duration: 3)
     }
 
     private func connect(agent: AgentType, url: URL) {

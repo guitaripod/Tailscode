@@ -1368,16 +1368,28 @@ final class HomeViewController: UIViewController {
     @objc private func updateVideoMark() {
         videoButton.apply(
             rendering: ForgeRunner.shared.isRendering,
+            configured: ForgeRunner.shared.endpoint != nil,
             spoken: ForgeRunner.shared.board.job.subtitle)
     }
 
     @objc func openVideo() {
         Theme.Haptics.tap()
-        pushVideo()
+        presentVideo()
     }
 
-    func pushVideo() {
-        navigationController?.pushViewController(VideoForgeViewController(), animated: true)
+    /// A render is a task you start, watch and collect — not a place you work — so the forge opens
+    /// over whatever is on screen and closes back to it, with the conversation behind it untouched.
+    /// Closing it never stops the render: the job lives in `ForgeRunner`, above every surface that
+    /// draws it.
+    func presentVideo() {
+        let host: UIViewController = navigationController ?? self
+        guard host.presentedViewController == nil else {
+            host.dismiss(animated: true) { [weak self] in self?.presentVideo() }
+            return
+        }
+        let forge = UINavigationController(rootViewController: VideoForgeViewController())
+        forge.navigationBar.prefersLargeTitles = true
+        host.present(forge, animated: true)
     }
 
     func pushUsage() {

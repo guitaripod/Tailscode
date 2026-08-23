@@ -1,6 +1,7 @@
 import CodingAgentKitApple
 import Darwin
 import Foundation
+import TailscodeCore
 import UIKit
 
 /// The Tailscale API access token, in the Keychain. Discovery and Settings both
@@ -81,6 +82,20 @@ enum TailnetStatus {
     }
 
     static var isConnected: Bool { localAddress() != nil }
+
+    /// The same fact in the shared vocabulary, for the Core surfaces that take a
+    /// ``TailscaleReading`` rather than an address.
+    ///
+    /// A phone can only see whether a tailnet address exists here: it cannot ask whether the
+    /// daemon is stopped or the account signed out, because on iOS Tailscale is another app with
+    /// its own sandbox. So the absent case is only ever read for `isUp` and handed to
+    /// ``ConnectDiagnosis``, which words it as this device not being on the tailnet and offers the
+    /// one door a phone has — none of the four states' own sentences is ever shown here, since
+    /// three of them would be claims this device is in no position to make.
+    static var reading: TailscaleReading {
+        guard let address = localAddress() else { return .daemonDown }
+        return .up(address: address)
+    }
 
     private static func numericHost(of addr: UnsafeMutablePointer<sockaddr>) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))

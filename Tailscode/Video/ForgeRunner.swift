@@ -28,6 +28,17 @@ final class ForgeRunner {
     /// like it hung.
     private let clientID = UUID().uuidString
     private var renderTask: Task<Void, Never>?
+    /// The machine the render on the board was submitted to, held for as long as that render is the
+    /// one being shown. The address is a setting somebody can change while a card is busy, and an
+    /// interrupt sent to whatever the board points at now stops a stranger's work while this render
+    /// carries on unwatched — so the client that submitted is the one that stops it, and the one the
+    /// file it made is asked for.
+    private var renderClient: ForgeClient?
+    /// Which render is the current one. A task that ends after another has begun must not fold a
+    /// stale snapshot into the board, clear a handle it no longer owns, or file a receipt for a
+    /// render nobody is watching — and a task cannot compare itself against that handle from the
+    /// inside, so each one carries the number its start claimed.
+    private var renderTicket = 0
     private var probeTask: Task<Void, Never>?
     /// Whether the board was put into a named state by hand rather than by a machine. A staged
     /// board is a photograph of a state, and a real probe landing on top of it would replace the
@@ -65,6 +76,25 @@ final class ForgeRunner {
         probe()
     }
 
+    /// Points renders at a machine the setup settled on, and files it among the ones this device
+    /// has used so the second time is a tap rather than an address somebody has to look up again.
+    func use(_ renderer: ForgeRenderer) {
+        ForgeStore.remember(renderer)
+        board.point(at: renderer.endpoint)
+        announce()
+        probe()
+    }
+
+    /// Drops a machine from the list this device offers back. Core drops the endpoint with it when
+    /// it was the one in use, so the board is re-pointed at whatever the store still holds rather
+    /// than at an address nobody wants offered.
+    func forgetRenderer(_ id: String) {
+        ForgeStore.forgetRenderer(id)
+        board.point(at: ForgeStore.endpoint())
+        announce()
+        probe()
+    }
+
     /// Asks the port whether anything is there. Deliberately a TCP connect rather than a request:
     /// the box is socket-activated, so "listening" is the only thing that can be known cheaply and
     /// "ready" is a different question that the first render pays for either way.
@@ -90,25 +120,30 @@ final class ForgeRunner {
         guard renderTask == nil, let client else { return }
         ForgeStore.remember(recipe)
         AppLogger.ui.info("forge render \(recipe.size.label) \(recipe.seconds)s seed=\(recipe.seed)")
+        renderClient = client
+        renderTicket += 1
+        let ticket = renderTicket
         renderTask = Task { [weak self] in
             for await job in client.render(recipe) {
-                guard let self else { return }
+                guard let self, self.renderTicket == ticket else { return }
                 self.board.saw(job)
                 self.announce()
             }
-            self?.settle()
+            self?.settle(ticket)
         }
     }
 
-    /// Stops what is running, on the machine and on this device. The interrupt is fired rather
-    /// than awaited — it either landed or the render was already over — and the job is put into
-    /// its stopped state here so the surface says so even if the socket never answers again.
+    /// Stops what is running, on the machine that is running it and on this device. The interrupt
+    /// goes to the render's own renderer rather than to whatever the setting names now, is fired
+    /// rather than awaited — it either landed or the render was already over — and the job is put
+    /// into its stopped state here so the surface says so even if the socket never answers again.
     func stop() {
         guard board.isBusy else { return }
-        let renderer = client
+        let renderer = renderClient
         Task { await renderer?.cancel() }
         renderTask?.cancel()
         renderTask = nil
+        renderTicket += 1
         var job = board.job
         job.cancelled()
         board.saw(job)
@@ -118,7 +153,8 @@ final class ForgeRunner {
 
     /// Files the receipt and says how it went. A cancelled job files nothing — `ForgeEntry` refuses
     /// to make history out of a render nobody finished.
-    private func settle() {
+    private func settle(_ ticket: Int) {
+        guard renderTicket == ticket else { return }
         renderTask = nil
         if ForgeStore.record(board.job) != nil {
             board.filled(history: ForgeStore.history())
@@ -140,9 +176,9 @@ final class ForgeRunner {
         #if DEBUG
             if let stagedClip { return stagedClip }
         #endif
-        guard let client else { throw ForgeFailure.unconfigured }
+        guard let renderer = host(for: asset) else { throw ForgeFailure.unconfigured }
         do {
-            let url = try await client.locate(asset)
+            let url = try await renderer.locate(asset)
             if let entryID, missingClips.remove(entryID) != nil { announce() }
             return url
         } catch ForgeFailure.missingFile(let host) {
@@ -154,8 +190,17 @@ final class ForgeRunner {
     /// The bytes the renderer wrote, for the places a URL is not enough — the photo library, a
     /// share sheet. Never a re-encode of what a preview happened to decode.
     func fetch(_ asset: ForgeAsset) async throws -> Data {
-        guard let client else { throw ForgeFailure.unconfigured }
-        return try await client.fetch(asset)
+        guard let renderer = host(for: asset) else { throw ForgeFailure.unconfigured }
+        return try await renderer.fetch(asset)
+    }
+
+    /// Which machine to ask for a file. A clip belongs to the machine that wrote it, so the one the
+    /// render on the board just delivered is asked of that render's own renderer even when the
+    /// setting has since been pointed somewhere else; everything else is asked of the machine in
+    /// force, which is where this device's history was made.
+    private func host(for asset: ForgeAsset) -> ForgeClient? {
+        guard board.job.asset == asset, let renderClient else { return client }
+        return renderClient
     }
 
     func isMissing(_ entry: ForgeEntry) -> Bool { missingClips.contains(entry.id) }
@@ -280,6 +325,20 @@ final class ForgeRunner {
                 board.reached(.listening)
             }
             announce()
+        }
+
+        /// Files machines as though this device had used them, so the setup screen's list — which
+        /// is the whole of what remembering a renderer buys — and every face a check can land on
+        /// can be photographed without setting a real machine up first. The value is a
+        /// comma-separated list of addresses; `known` is the two-machine tailnet the shots use.
+        func seedRenderers(_ spec: String) {
+            let addresses =
+                spec == "known"
+                ? ["studio", "arch"] : spec.split(separator: ",").map(String.init)
+            for address in addresses {
+                guard case .endpoint(let endpoint) = ForgeEndpoint.read(address) else { continue }
+                ForgeStore.remember(ForgeRenderer(endpoint: endpoint, name: endpoint.host))
+            }
         }
 
         /// The finished state is the only one with a file to look at, and a staged board has no

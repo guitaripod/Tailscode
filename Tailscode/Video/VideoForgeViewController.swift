@@ -19,6 +19,9 @@ final class VideoForgeViewController: UIViewController {
         /// The standing fact under the renderer: where a render actually happens. It is the board's
         /// sentence, but it belongs to no row, so it is the one item this screen adds.
         case notice
+        /// What closing this does not do, said only while a render is out. A surface that can be
+        /// dismissed over four minutes of somebody else's card owes the reader that sentence.
+        case dismissNote
     }
 
     private let runner = ForgeRunner.shared
@@ -43,8 +46,11 @@ final class VideoForgeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = board.heading
+        title = ForgeSurface.title
         view.backgroundColor = Theme.Color.groupedBackground
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: ForgeSurface.dismissTitle,
+            primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         configureCollectionView()
         configureDock()
         configureDataSource()
@@ -166,6 +172,10 @@ final class VideoForgeViewController: UIViewController {
             switch item {
             case .notice:
                 cell.apply(self.board.notice, tone: .quiet)
+            case .dismissNote:
+                guard let words = ForgeSurface.dismissNote(rendering: self.runner.isRendering)
+                else { return }
+                cell.apply(words, tone: .quiet)
             case .row:
                 guard let row = self.row(for: item) else { return }
                 cell.apply(row.title, tone: self.tone(of: row))
@@ -274,6 +284,7 @@ final class VideoForgeViewController: UIViewController {
             snapshot.appendSections([section.id])
             var items = section.rows.map { Item.row($0.id) }
             if section.id == ForgeBoard.rendererID { items.append(.notice) }
+            if section.id == ForgeBoard.renderID, runner.isRendering { items.append(.dismissNote) }
             snapshot.appendItems(items, toSection: section.id)
         }
         let previous = dataSource.snapshot()
@@ -304,6 +315,8 @@ final class VideoForgeViewController: UIViewController {
         switch item {
         case .notice:
             hasher.combine(board.notice)
+        case .dismissNote:
+            hasher.combine(runner.isRendering)
         case .row(let id):
             guard let row = index[id] else { break }
             hasher.combine(row.title)
@@ -388,8 +401,9 @@ final class VideoForgeViewController: UIViewController {
 
     private func openRenderer() {
         Theme.Haptics.tap()
-        let editor = ForgeEndpointViewController()
-        let nav = UINavigationController(rootViewController: editor)
+        let setup = ForgeSetupViewController()
+        let nav = UINavigationController(rootViewController: setup)
+        nav.navigationBar.prefersLargeTitles = true
         present(nav, animated: true)
     }
 
@@ -494,7 +508,8 @@ final class VideoForgeViewController: UIViewController {
         /// own screen when asked — so every part of this surface can be photographed without a
         /// finger driving it.
         private func scrollForVerification() {
-            if ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_OPEN"] == "renderer" {
+            let opening = ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_OPEN"]
+            if opening == "renderer" || opening == "sweep" || opening == "check" {
                 openRenderer()
             }
             guard let id = ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_SCROLL"],
