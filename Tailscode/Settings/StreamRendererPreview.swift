@@ -65,7 +65,7 @@ final class StreamRendererPreview: UIView {
             (view: StreamRendererPreview, _) in
             view.height.constant = view.measured()
             view.textView.font = Theme.Ramp.font(.answer)
-            view.rest()
+            view.redraw()
         }
     }
 
@@ -90,6 +90,37 @@ final class StreamRendererPreview: UIView {
         arrival = AuroraArrival()
         lastCycle = .greatestFiniteMagnitude
         textView.attributedText = nil
+    }
+
+    /// The sentence whole, still, and fully lit — this hand's work for a reader who has asked not
+    /// to watch it being made.
+    ///
+    /// Reduced motion drops the movement and nothing else, so the card may not empty itself: a
+    /// preview with no words in it reads as a hand that writes nothing rather than as one whose
+    /// reveal was switched off, and the choice would be made by reading the summary after all. It
+    /// is the same answer the transcript gives under that setting — the cascade never takes the
+    /// row, and every word is handed over at once — drawn here through the settled painter, with
+    /// no wave and no alpha renderer over it.
+    func settle() {
+        aurora.release()
+        live = LiveCascade()
+        arrival = AuroraArrival()
+        lastCycle = .greatestFiniteMagnitude
+        textView.attributedText = TextBubbleCell.rendered(
+            StreamRendererDemo.text, color: Theme.Color.label)
+    }
+
+    /// Draws the card again after something invalidated what is on it — a new type size, say.
+    ///
+    /// A hand that is writing is repainted by the next frame, so it is put down and picked up at
+    /// the start of the sentence. A hand held still for a reader who asked for less movement has
+    /// no frame coming, so it is handed the sentence again rather than left holding a blank card.
+    private func redraw() {
+        if UIAccessibility.isReduceMotionEnabled {
+            settle()
+        } else {
+            rest()
+        }
     }
 
     func advance(to time: CFTimeInterval, since began: CFTimeInterval) {

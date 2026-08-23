@@ -27,6 +27,20 @@ extension CAFrameRateRange {
         return CAFrameRateRange(
             minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
     }
+
+    /// The one range everything in this app that *writes* asks its display for, and the one clock
+    /// here that is deliberately not the vocabulary's tempo.
+    ///
+    /// A mark states a fact and thirty frames a second is plenty to state it with. A cascade is a
+    /// renderer, putting an answer on screen glyph by glyph under the reader's eye, and text
+    /// revealed at thirty reads as a hand that stutters rather than one that writes — so it asks
+    /// the panel for everything it has. `ActivityTuning` governs marks, not the cascade. It is
+    /// named once here for the same reason the tempo is: the transcript's own reveal and the
+    /// preview a reader picks a hand by are the same hand, and a rate typed out at each clock is a
+    /// rate each surface chose for itself.
+    static var cascadeTempo: CAFrameRateRange {
+        CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+    }
 }
 
 extension CADisplayLink {

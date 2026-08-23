@@ -53,6 +53,9 @@ final class StreamRendererViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         build()
         syncSelection()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(retune),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -188,14 +191,38 @@ final class StreamRendererViewController: UIViewController {
 
     /// One clock for both previews. Two hands writing the same sentence are only comparable if they
     /// are writing it at the same moment, and two display links drifting a frame apart would put
-    /// the difference between them in the wrong place.
+    /// the difference between them in the wrong place. The rate is the one every cascade in this
+    /// client runs at (`CAFrameRateRange.cascadeTempo`) rather than a number this screen picked,
+    /// because a preview that wrote at a different rate from the transcript would be a picture of
+    /// a hand nobody's answers are written by.
+    ///
+    /// A reader who has asked for less movement is handed the sentence whole instead of a blank
+    /// card: reduced motion drops the movement and nothing else, and the words standing still are
+    /// exactly what the transcript gives them under the same setting.
     private func start() {
-        guard link == nil, !UIAccessibility.isReduceMotionEnabled else { return }
+        guard link == nil else { return }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            for card in cards { card.settle() }
+            return
+        }
         began = CACurrentMediaTime()
         let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.preferredFrameRateRange = .cascadeTempo
         link.add(to: .main, forMode: .common)
         self.link = link
+    }
+
+    /// Reads the reader's mind again when they change it while this screen is up.
+    ///
+    /// These two previews loop for as long as the screen is open, which makes them among the
+    /// longest-running motion in the app, and a decision taken once when the screen appeared would
+    /// leave both hands writing under a preference already changed — or leave a reader who allowed
+    /// movement back looking at two cards that never move again. A screen nobody is on has no
+    /// clock to re-decide; it decides on its way in.
+    @objc private func retune() {
+        guard view.window != nil else { return }
+        stop()
+        start()
     }
 
     private func stop() {
@@ -319,6 +346,8 @@ final class StreamRendererCard: UIControl {
     }
 
     func rest() { preview.rest() }
+
+    func settle() { preview.settle() }
 
     @objc private func picked() { onPick?() }
 }
