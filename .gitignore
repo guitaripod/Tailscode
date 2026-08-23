@@ -18,6 +18,7 @@ __pycache__/
 TailscodeMac/Info.plist
 build-mac/
 build-tsmac/
+build-tsmacstore/
 build-macrel/
 build-macstore/
 build-dev/
