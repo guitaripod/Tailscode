@@ -1001,6 +1001,19 @@ public enum ForgeSetupCheck {
         expect(ForgeRenderer(endpoint: arch, name: "   ").name == nil, "and whitespace is no name at all")
         expect(renderer.title == "arch" && renderer.detail == "arch:8188", "a row says the machine and the address")
         expect(ForgeRenderer(endpoint: arch).title == "arch", "an address typed blind still names itself")
+        expect(
+            ForgeEndpoint(host: "arch.taila1a09.ts.net").shortName == "arch",
+            "a MagicDNS name is the machine, not the tailnet")
+        expect(ForgeEndpoint(host: "arch").shortName == "arch", "and a bare name is already the machine")
+        expect(
+            ForgeBoard(endpoint: ForgeEndpoint(host: "arch.taila1a09.ts.net")).value(of: .endpoint)
+                == "arch",
+            "the chip wears the machine")
+        expect(
+            ForgeBoard(
+                endpoint: ForgeEndpoint(host: "100.64.0.3"), rendererName: "studio"
+            ).value(of: .endpoint) == "studio",
+            "a name this device filed outranks the address")
         expect(ForgeRenderer.badge(current: true) != nil, "the machine in use wears a word")
         expect(ForgeRenderer.badge(current: false) == nil, "and the others do not")
 

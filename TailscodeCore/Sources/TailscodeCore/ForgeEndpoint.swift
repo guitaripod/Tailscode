@@ -56,6 +56,18 @@ public struct ForgeEndpoint: Sendable, Codable, Hashable {
 
     public var displayHost: String { "\(host):\(port)" }
 
+    /// The machine, not the address. A MagicDNS name is a hostname plus a tailnet plus a TLD, and
+    /// putting the whole thing on a chip is how a renderer reads as a URL. The first label is what
+    /// the tailnet calls the box.
+    public var shortName: String {
+        if host.hasSuffix(".ts.net") || host.hasSuffix(".tailscale.net"),
+            let first = host.split(separator: ".").first
+        {
+            return String(first)
+        }
+        return host
+    }
+
     public var baseURL: URL {
         var components = URLComponents()
         components.scheme = "http"

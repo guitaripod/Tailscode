@@ -51,9 +51,13 @@ final class ForgeRunner {
     #endif
 
     private init() {
-        board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
+        board = ForgeBoard(
+            recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
+            rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
-        if let endpoint = ForgeStore.endpoint() { board.point(at: endpoint) }
+        if let endpoint = ForgeStore.endpoint() {
+            board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
+        }
     }
 
     var endpoint: ForgeEndpoint? { board.endpoint }
@@ -71,7 +75,7 @@ final class ForgeRunner {
 
     func point(at endpoint: ForgeEndpoint?) {
         ForgeStore.remember(endpoint)
-        board.point(at: endpoint)
+        board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         announce()
         probe()
     }
@@ -80,7 +84,7 @@ final class ForgeRunner {
     /// has used so the second time is a tap rather than an address somebody has to look up again.
     func use(_ renderer: ForgeRenderer) {
         ForgeStore.remember(renderer)
-        board.point(at: renderer.endpoint)
+        board.point(at: renderer.endpoint, named: renderer.name ?? renderer.endpoint.shortName)
         announce()
         probe()
     }
@@ -90,7 +94,7 @@ final class ForgeRunner {
     /// than at an address nobody wants offered.
     func forgetRenderer(_ id: String) {
         ForgeStore.forgetRenderer(id)
-        board.point(at: ForgeStore.endpoint())
+        board.point(at: ForgeStore.endpoint(), named: ForgeStore.label(for: ForgeStore.endpoint()))
         announce()
         probe()
     }

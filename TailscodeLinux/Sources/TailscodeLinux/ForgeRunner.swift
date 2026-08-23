@@ -29,7 +29,9 @@ final class ForgeRunner: @unchecked Sendable {
     private var watchers: [ObjectIdentifier: @Sendable () -> Void] = [:]
 
     private init() {
-        board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
+        board = ForgeBoard(
+            recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
+            rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
     }
 
@@ -65,7 +67,7 @@ final class ForgeRunner: @unchecked Sendable {
     /// second ago must not read as unchecked because a window was reopened over it.
     private func adopt(_ endpoint: ForgeEndpoint?) {
         guard endpoint != board.endpoint else { return }
-        board.point(at: endpoint)
+        board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         probe()
     }
 
@@ -121,7 +123,7 @@ final class ForgeRunner: @unchecked Sendable {
     /// the authority — the setup wrote it there — so this reads it back rather than being handed a
     /// second copy of the same decision.
     func pointAtStoredRenderer() {
-        board.point(at: ForgeStore.endpoint())
+        board.point(at: ForgeStore.endpoint(), named: ForgeStore.label(for: ForgeStore.endpoint()))
         SettingsFile.capture()
         probe()
         changed()

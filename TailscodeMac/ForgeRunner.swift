@@ -57,7 +57,9 @@ final class ForgeRunner {
     }
 
     private init() {
-        board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
+        board = ForgeBoard(
+            recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint(),
+            rendererName: ForgeStore.label(for: ForgeStore.endpoint()))
         board.filled(history: ForgeStore.history())
     }
 
@@ -109,7 +111,7 @@ final class ForgeRunner {
     /// must not read as unchecked because a sheet was reopened over it.
     private func adopt(_ endpoint: ForgeEndpoint?) {
         guard endpoint != board.endpoint else { return }
-        board.point(at: endpoint)
+        board.point(at: endpoint, named: ForgeStore.label(for: endpoint))
         client = nil
         probe()
     }
@@ -119,7 +121,7 @@ final class ForgeRunner {
     /// second copy of the same decision.
     func pointAtStoredRenderer() {
         isStaged = false
-        board.point(at: ForgeStore.endpoint())
+        board.point(at: ForgeStore.endpoint(), named: ForgeStore.label(for: ForgeStore.endpoint()))
         client = nil
         probe()
         changed()

@@ -74,6 +74,21 @@ public enum ForgeStore {
     /// second time.
     private static let rendererCapacity = 8
 
+    /// The machine renders currently go to, with the name this device last filed for it. Nil when
+    /// nobody has pointed at one yet.
+    public static func currentRenderer() -> ForgeRenderer? {
+        guard let endpoint = endpoint() else { return nil }
+        return renderers().first { $0.endpoint == endpoint }
+            ?? ForgeRenderer(endpoint: endpoint)
+    }
+
+    /// The word a chip should wear for this address: a name this device filed, else the machine
+    /// itself, never the MagicDNS string.
+    public static func label(for endpoint: ForgeEndpoint?) -> String? {
+        guard let endpoint else { return nil }
+        return renderers().first { $0.endpoint == endpoint }?.name ?? endpoint.shortName
+    }
+
     public static func endpoint() -> ForgeEndpoint? {
         guard let data = defaults.data(forKey: endpointKey) else { return nil }
         return try? JSONDecoder().decode(ForgeEndpoint.self, from: data)

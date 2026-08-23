@@ -231,6 +231,9 @@ public struct ForgeBoard: Sendable, Equatable {
     public private(set) var recipe: ForgeRecipe
     public private(set) var job: ForgeJob
     public private(set) var endpoint: ForgeEndpoint?
+    /// What this device calls the machine, when a scan or a typed name said so. The address stays
+    /// on the endpoint; this is only the word the chip wears.
+    public private(set) var rendererName: String?
     public private(set) var history: [ForgeEntry]
     public private(set) var cursor = 0
     public private(set) var expanded: Set<String> = []
@@ -249,10 +252,11 @@ public struct ForgeBoard: Sendable, Equatable {
 
     public init(
         recipe: ForgeRecipe = ForgeRecipe(), endpoint: ForgeEndpoint? = nil,
-        history: [ForgeEntry] = []
+        rendererName: String? = nil, history: [ForgeEntry] = []
     ) {
         self.recipe = recipe
         self.endpoint = endpoint
+        self.rendererName = rendererName.flatMap { $0.isEmpty ? nil : $0 }
         self.history = history
         job = ForgeJob(recipe: recipe)
         rebuild()
@@ -290,8 +294,9 @@ public struct ForgeBoard: Sendable, Equatable {
     /// True while the renderer's address has been given but nothing has come back from it yet.
     public var isChecking: Bool { reach == .checking }
 
-    public mutating func point(at endpoint: ForgeEndpoint?) {
+    public mutating func point(at endpoint: ForgeEndpoint?, named name: String? = nil) {
         self.endpoint = endpoint
+        rendererName = name.flatMap { $0.isEmpty ? nil : $0 }
         reach = endpoint == nil ? .idle : .checking
         rebuild()
     }
@@ -546,7 +551,8 @@ public struct ForgeBoard: Sendable, Equatable {
     public func value(of field: ForgeField) -> String {
         switch field {
         case .endpoint:
-            return endpoint?.displayHost ?? Localized.text("Not set up yet")
+            guard let endpoint else { return Localized.text("Not set up yet") }
+            return rendererName ?? endpoint.shortName
         case .prompt:
             let trimmed = recipe.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? Localized.text("Describe the video") : trimmed
