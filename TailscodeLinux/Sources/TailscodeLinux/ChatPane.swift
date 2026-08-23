@@ -1681,6 +1681,7 @@ final class ChatPane: @unchecked Sendable {
     /// arrival, so a build that produces one says so where it is produced rather than being
     /// diagnosed later from the flicker.
     private func applyRows(_ rows: [TranscriptRow], appended: Int = 0) {
+        stampLiveClock()
         assert(
             Set(rows.map(\.key)).count == rows.count,
             "transcript rows share a key: "
@@ -1881,6 +1882,11 @@ final class ChatPane: @unchecked Sendable {
     /// changed and whose identity did not: it keeps its place in the box, its neighbours are not
     /// touched, and a fade it was still in the middle of is carried across rather than restarted or
     /// left running on the widget being thrown away.
+    /// The moment this pass reads its live rows at. It belongs to the pass rather than to the row:
+    /// a row that read the wall clock as it was built would time an agent against whoever is
+    /// looking, which is exactly the reading `AgentHold` exists to refuse.
+    private func stampLiveClock() { context.liveNow = Date() }
+
     private func rebuildRow(at index: Int) {
         guard index < rowWidgets.count, index < renderedRows.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
@@ -2214,6 +2220,7 @@ final class ChatPane: @unchecked Sendable {
     /// it belongs to, in place. It is not new content — the unseen counter never moves.
     private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
         guard !placeholderShown else { return }
+        stampLiveClock()
         for index in renderedRows.indices where predicate(renderedRows[index]) {
             rebuildRow(at: index)
         }
@@ -2578,7 +2585,7 @@ final class ChatPane: @unchecked Sendable {
                         self.updateStatus()
                         self.updateCompactingElapsed()
                         self.updatePendingCaptions()
-                        self.advanceWorkflowClock()
+                        self.advanceLiveClock()
                         self.tickTurnFacts()
                     }
                 }
@@ -3906,11 +3913,13 @@ final class ChatPane: @unchecked Sendable {
             }
     }
 
-    /// The clock every live workflow card is drawn against, moved once a second so spinners turn and
-    /// elapsed readings climb without a state event.
-    private func advanceWorkflowClock() {
+    /// The clock every live reading in this transcript is drawn against, moved once a second so
+    /// spinners turn and elapsed readings climb without a state event. Only a live workflow is
+    /// restated for it: everything else on the clock is redrawn by the pass that changed it, and
+    /// rebuilding a transcript once a second to age one label is a frame nobody asked for.
+    private func advanceLiveClock() {
+        stampLiveClock()
         guard workflowRuns.contains(where: \.isLive) else { return }
-        context.workflowNow = Date()
         let live = Set(workflowRuns.filter(\.isLive).map(\.id))
         refreshWorkflowRuns()
         refreshWorkflowCards(live)

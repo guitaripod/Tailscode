@@ -28,9 +28,11 @@ final class TranscriptContext: @unchecked Sendable {
     /// outlives its tool call by minutes, so the card reads its state from here rather than from a
     /// call that has said all it will say.
     var workflowRuns: [String: WorkflowRun] = [:]
-    /// The clock the live parts of a workflow card are drawn against, moved by the pane's ticker so
-    /// every spinner and elapsed reading in one frame agrees.
-    var workflowNow: Date = Date()
+    /// The one moment every live reading in this transcript is drawn against — a workflow card's
+    /// spinners and elapsed, a subagent row's clock — stamped when a pass begins and moved by the
+    /// pane's ticker. A draw whose clocks each read the wall separately is not a draw of one
+    /// moment: two cards in the same frame would disagree about what time it is.
+    var liveNow: Date = Date()
     var onToggle: (@Sendable (String, Bool) -> Void)?
     /// Called with a just-opened disclosure's widget bits: the pane scrolls the minimum needed to
     /// show the opened body, never past the point where the clicked header would leave the top.

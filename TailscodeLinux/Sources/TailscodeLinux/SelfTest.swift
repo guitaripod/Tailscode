@@ -97,6 +97,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkSubagentCard()
+            report("subagent card: \(checks) claims hold — the line reads the errand, not the week")
+        } catch {
+            report("subagent card: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkStatusBand()
             report("status band: \(checks) states say the right thing")
         } catch {
@@ -2117,25 +2125,36 @@ public enum SelfTest {
             facts.segments.map(\.text).joined(separator: " | ")
         }
 
+        let read = Date()
         let todoAgent = SubagentSummary(
-            id: "a", title: "port the renderer", updatedAt: Date(), isActive: true,
-            startedAt: Date().addingTimeInterval(-95), toolCount: 4,
+            id: "a", title: "port the renderer", updatedAt: read, isActive: true,
+            startedAt: read.addingTimeInterval(-95), toolCount: 4,
             currentTool: "Bash swift build", todosDone: 2, todosTotal: 5,
             currentTodo: "port the disclosure rows")
-        let todoLine = StatusFacts.liveDetail(todoAgent)
-        guard todoLine.hasPrefix("2/5 · port the disclosure rows") else {
+        let todoLine = StatusFacts.liveDetail(todoAgent, at: read, under: .going)
+        guard todoLine.hasPrefix("2/5 · port the disclosure rows"), todoLine.hasSuffix("1m 35s")
+        else {
             throw SelfTestFailure("todo agent line: \(todoLine)")
         }
         let toolAgent = SubagentSummary(
-            id: "b", title: "sweep the band", updatedAt: Date(), isActive: true,
+            id: "b", title: "sweep the band", updatedAt: read, isActive: true,
             toolCount: 7, currentTool: "Edit StatusBand.swift")
-        let toolLine = StatusFacts.liveDetail(toolAgent)
+        let toolLine = StatusFacts.liveDetail(toolAgent, at: read, under: .going)
         guard toolLine.contains("7"), toolLine.contains("Edit StatusBand.swift") else {
             throw SelfTestFailure("tool agent line: \(toolLine)")
         }
-        let quietAgent = SubagentSummary(id: "c", title: "quiet", updatedAt: Date(), isActive: true)
-        guard StatusFacts.liveDetail(quietAgent) == Localized.text("working") else {
+        let quietAgent = SubagentSummary(id: "c", title: "quiet", updatedAt: read, isActive: true)
+        guard StatusFacts.liveDetail(quietAgent, at: read, under: .going)
+            == Localized.text("working")
+        else {
             throw SelfTestFailure("quiet agent line")
+        }
+        let aWeekOn = read.addingTimeInterval(604_800)
+        guard StatusFacts.liveDetail(todoAgent, at: aWeekOn, under: .going).hasSuffix("10081m 35s")
+        else { throw SelfTestFailure("a line under work still open stopped counting") }
+        let held = StatusFacts.liveDetail(todoAgent, at: aWeekOn, under: .over(at: nil))
+        guard held.hasSuffix("1m 35s") else {
+            throw SelfTestFailure("a line under work that is over counts on: \(held)")
         }
 
         var idle = StatusFacts()
@@ -2214,7 +2233,74 @@ public enum SelfTest {
             fanRows[0].title.contains("0"), fanRows[1].title.contains("1"),
             !fanRows[0].title.contains("/home/marcus")
         else { throw SelfTestFailure("fan-out titles keep their shared preamble") }
-        return 9
+        return 11
+    }
+
+    /// A subagent card's live line is a clock, and it has to read the errand rather than the days
+    /// since. The agent handed here is deliberately left claiming to be active, because that is the
+    /// one shape the fault lives in: a sidecar goes on reporting itself out for as long as its
+    /// window lasts, so a call that is over holding an agent that still says it is working is what
+    /// a real fan-out delivers, and a check that settled the record by hand would never once build
+    /// it. Read off the widget rather than off the vocabulary, and read twice — at the moment the
+    /// card was built and a week later — because a clock that grows is only ever caught by asking
+    /// a second time.
+    private static func checkSubagentCard() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        let now = Date()
+        let aWeekOn = now.addingTimeInterval(604_800)
+        var call = ToolCall(
+            id: "task-1", name: "Task", status: .running,
+            input: .object(["description": .string("port the renderer")]))
+        let agent = SubagentSummary(
+            id: "s1", title: "port the renderer", agentType: "explore", toolUseID: call.id,
+            updatedAt: now.addingTimeInterval(-12), isActive: true,
+            startedAt: now.addingTimeInterval(-252), toolCount: 4, currentTool: "Bash swift build")
+        let context = TranscriptContext()
+        context.agentFacts[call.id] = agent
+
+        guard drawn(call, at: now, in: context) == "live=4 tools · Bash swift build · 4m 12s" else {
+            throw SelfTestFailure("a live card's line: \(drawn(call, at: now, in: context))")
+        }
+        let counting = drawn(call, at: aWeekOn, in: context)
+        guard counting.hasSuffix("10084m 12s") else {
+            throw SelfTestFailure("a card under a running call stopped counting: \(counting)")
+        }
+
+        call.status = .completed
+        let settled = drawn(call, at: now, in: context)
+        guard settled.hasSuffix("4m 0s") else {
+            throw SelfTestFailure("a card under an ended call: \(settled)")
+        }
+        guard drawn(call, at: aWeekOn, in: context) == settled else {
+            throw SelfTestFailure(
+                "a card under an ended call kept counting a week later: "
+                    + drawn(call, at: aWeekOn, in: context))
+        }
+
+        call.background = BackgroundOutcome(
+            taskID: "task-1", status: .completed, summary: "the errand ended",
+            reportedAt: now.addingTimeInterval(-100))
+        let credited = drawn(call, at: aWeekOn, in: context)
+        guard credited.hasSuffix("2m 32s") else {
+            throw SelfTestFailure(
+                "a stale sidecar is credited with work past the report: \(credited)")
+        }
+
+        context.agentFacts[call.id] = nil
+        guard drawn(call, at: now, in: context) == "live=none" else {
+            throw SelfTestFailure("a card with no live agent wears a clock anyway")
+        }
+        return 5
+    }
+
+    /// The card as this transcript would draw it at that moment: the pass stamps the clock, exactly
+    /// as the pane's own passes do, and the line is read back off the widget it built.
+    private static func drawn(_ call: ToolCall, at now: Date, in context: TranscriptContext)
+        -> String
+    {
+        context.liveNow = now
+        let card = SubagentRowView.make(call, key: "sub", context: context)
+        return SubagentRowView.liveReading(of: card)
     }
 
     /// A workflow launched in a transcript has to become one card carrying the run: its name, the
@@ -2351,7 +2437,7 @@ public enum SelfTest {
     ) throws -> Int {
         guard gtk_init_check() != 0 else { return 0 }
         let context = TranscriptContext()
-        context.workflowNow = now
+        context.liveNow = now
         context.workflowRuns[call.id] = live
         context.expanded.set("wf", open: true)
         var card = WorkflowCardView.make(call, key: "wf", context: context)
@@ -2441,7 +2527,7 @@ public enum SelfTest {
         _ card: UnsafeMutablePointer<GtkWidget>, call: ToolCall, context: TranscriptContext,
         at now: Date
     ) throws -> UnsafeMutablePointer<GtkWidget> {
-        context.workflowNow = now
+        context.liveNow = now
         if WorkflowCardView.restate(card, call: call, context: context) { return card }
         return WorkflowCardView.make(call, key: "wf", context: context)
     }

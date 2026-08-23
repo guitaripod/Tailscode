@@ -317,6 +317,13 @@ enum ToolRowView {
 
 /// A subagent is never its own chat: it renders inline at the tool call that spawned it, and
 /// expanding it fetches the sidecar transcript into the same card.
+///
+/// The line a live card shows is the shared vocabulary's, read at the moment the pass stamped and
+/// bounded by the call that spawned the agent. A sidecar goes on claiming it is working for as long
+/// as its window lasts and nothing corrects it afterwards, so a clock read off that record and the
+/// reader's own wall never stops: a four-minute errand under a Task call that ended last week would
+/// read as seven days, and grow again every time the transcript is drawn. `AgentHold(call)` is what
+/// says when the work stopped.
 enum SubagentRowView {
     static func make(_ call: ToolCall, key: String, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
@@ -333,7 +340,9 @@ enum SubagentRowView {
         if let live = context.agentFacts[call.id], live.isActive {
             gtk_box_append(
                 ptr(header),
-                Gtk.label(StatusFacts.liveDetail(live), css: "agent-live", selectable: false))
+                Gtk.label(
+                    StatusFacts.liveDetail(live, at: context.liveNow, under: AgentHold(call)),
+                    css: "agent-live", selectable: false))
         } else if call.status == .completed {
             gtk_box_append(ptr(header), Gtk.label("done", css: "glyph-done", selectable: false))
         }
@@ -372,5 +381,23 @@ enum SubagentRowView {
             }
             return body
         }
+    }
+
+    /// One reading of what a card's live line says the agent has been out for, for a harness that
+    /// has to prove a row under a call that is over stops counting. A clock is a label like any
+    /// other once it is on screen, so the only honest reading is the one taken off the widget
+    /// rather than off the vocabulary that was asked to build it.
+    static func liveReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card),
+            let header = Gtk.disclosureHeader(button)
+        else { return "live=none" }
+        var child = gtk_widget_get_first_child(header)
+        while let current = child {
+            if gtk_widget_has_css_class(current, "agent-live") != 0 {
+                return "live=" + (gtk_label_get_text(op(current)).map { String(cString: $0) } ?? "")
+            }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return "live=none"
     }
 }

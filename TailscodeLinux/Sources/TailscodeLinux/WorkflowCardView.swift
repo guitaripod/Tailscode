@@ -23,7 +23,7 @@ enum WorkflowCardView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let run = context.workflowRuns[call.id]
-        let now = context.workflowNow
+        let now = context.liveNow
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let icon = mark(run)
         let markLabel = Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false)
@@ -69,7 +69,7 @@ enum WorkflowCardView {
         _ widget: UnsafeMutablePointer<GtkWidget>, call: ToolCall, context: TranscriptContext
     ) -> Bool {
         let run = context.workflowRuns[call.id]
-        let now = context.workflowNow
+        let now = context.liveNow
         guard let button = gtk_widget_get_first_child(widget),
             isA(button, gtk_button_get_type()),
             let header = Gtk.disclosureHeader(button)
