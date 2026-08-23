@@ -16,7 +16,7 @@ final class ChatViewController: UIViewController {
     private let commandPalette = SlashCommandPalette()
     private let banner = BannerView()
     private let emptyState = ChatEmptyStateView()
-    private let loadingState = UIContentUnavailableView(configuration: .loading())
+    private let loadingState = WorkingPlaceholderView()
 
     private var rowsByID: [String: ChatRow] = [:]
     private var orderedIDs: [String] = []

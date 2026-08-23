@@ -241,10 +241,20 @@ final class CompactionCell: UICollectionViewCell {
     /// An indeterminate sweep: compaction reports no progress, and a bar that pretended to know
     /// would be lying about a step that can run for two minutes.
     private func startSweeping() {
-        setFill(0.3)
+        setFill(sweepFill)
         layoutIfNeeded()
         fill.layer.removeAllAnimations()
         sweep()
+    }
+
+    /// How much of the track the bar holds while it cannot say how far along it is.
+    ///
+    /// A short stripe is only honest while it travels: parked at 30% by a reader who asked for
+    /// less motion it reads as a third done, which is a number nobody measured. Still, it fills
+    /// the track — the same thing the sweep bar on the desks does.
+    private var sweepFill: Double {
+        ActivityMotion.turning.honoring(reduceMotion: UIAccessibility.isReduceMotionEnabled)
+            .isAnimated ? 0.3 : 1
     }
 
     /// The bar's own movement, laid on apart from the shape it moves in, so a reader who changes
@@ -283,6 +293,8 @@ final class CompactionCell: UICollectionViewCell {
     /// preference already changed; a card with nothing running has no wait to draw.
     @objc private func retuneSweep() {
         guard startedAt != nil else { return }
+        setFill(sweepFill)
+        layoutIfNeeded()
         sweep()
     }
 
