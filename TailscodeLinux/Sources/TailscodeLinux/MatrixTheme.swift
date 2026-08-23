@@ -722,10 +722,9 @@ enum MatrixTheme {
         .watch-code { color: \(accent); \(t(.pairingCode)) }
         .pill-source { color: \(info); border: 1px solid alpha(\(info), 0.5); }
         .lane-row {
-            background-color: alpha(\(text), 0.05);
-            border: 1px solid \(rule);
-            border-radius: 999px;
-            padding: 1px;
+            background-color: transparent;
+            border: none;
+            padding: 0;
         }
         .lane-pill {
             \(t(.hint))
