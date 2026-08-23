@@ -15,10 +15,6 @@ final class AuraPainter: @unchecked Sendable {
     private let stops: [Double]
     private var tick: UInt = 0
     private var lastPainted = 0.0
-    /// The lap turns in seconds, not frames, so drawing it past thirty a second buys nothing an
-    /// eye can keep — and on a fast display an uncapped aura redraws every pane it wraps at the
-    /// panel's own rate. Same cap as the orb: a skipped frame costs a frame, never the phase.
-    private static let frameInterval = 1.0 / 30.0
     private(set) var isActive = false
 
     init() {
@@ -61,10 +57,7 @@ final class AuraPainter: @unchecked Sendable {
                 { raw in
                     guard let raw else { return }
                     let painter = Unmanaged<AuraPainter>.fromOpaque(raw).takeUnretainedValue()
-                    let time = AuraPainter.now
-                    guard time - painter.lastPainted >= AuraPainter.frameInterval else { return }
-                    painter.lastPainted = time
-                    painter.paint(at: time)
+                    painter.step()
                 }, box))
     }
 
@@ -73,6 +66,20 @@ final class AuraPainter: @unchecked Sendable {
         tailscode_remove_tick(area, guint(tick))
         tick = 0
         g_object_unref(UnsafeMutableRawPointer(area))
+    }
+
+    /// One frame of the lap, at the tempo everything in this app that moves runs at.
+    ///
+    /// The lap turns in seconds, not frames, so painting it past that tempo buys nothing an eye can
+    /// keep — and on a fast display an uncapped aura redraws every pane it wraps at the panel's own
+    /// rate. Which tick the tempo owes is ``ActivityTuning/wantsFrame(at:lastDrawn:)``'s answer and
+    /// not a comparison of its own, because the interval falls exactly on a 60Hz and 120Hz tick
+    /// boundary, where a bare comparison silently drops to two thirds of the rate.
+    private func step() {
+        let time = Self.now
+        guard ActivityTuning.wantsFrame(at: time, lastDrawn: lastPainted) else { return }
+        lastPainted = time
+        paint(at: time)
     }
 
     private func paint(at time: Double) {

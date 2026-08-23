@@ -257,7 +257,9 @@ final class MainWindow: @unchecked Sendable {
                                     .utf8))
                     }
                 case "workflowdemo":
-                    self.activePane.driverWorkflowDemo()
+                    self.activePane.driverWorkflowDemo(argument)
+                case "workflowmark":
+                    self.activePane.reportWorkflowMark()
                 case "resumedemo":
                     self.activePane.driverResumeDemo(argument.isEmpty ? "waiting" : argument)
                 case "resumestate":

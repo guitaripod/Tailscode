@@ -14,11 +14,6 @@ final class OrbPainter: @unchecked Sendable {
     private var field: PresenceField
     private var tick: UInt = 0
     private var lastPainted = 0.0
-    /// How often the body is redrawn. It breathes on a swell measured in seconds, and drawing that
-    /// a hundred and sixty-five times a second because the display can is a fan spinning for
-    /// motion no eye can tell from thirty. The arithmetic still reads absolute time, so a skipped
-    /// frame costs a frame and never the phase.
-    private static let frameInterval = 1.0 / 30.0
     private let stops: [Float]
     private(set) var signal = PresenceSignal()
     private(set) var lastFrameSettled = false
@@ -102,11 +97,7 @@ final class OrbPainter: @unchecked Sendable {
                 { raw in
                     guard let raw else { return }
                     let painter = Unmanaged<OrbPainter>.fromOpaque(raw).takeUnretainedValue()
-                    let time = OrbPainter.now
-                    guard time - painter.lastPainted >= OrbPainter.frameInterval else { return }
-                    painter.lastPainted = time
-                    painter.paint(at: time)
-                    if painter.lastFrameSettled { painter.stop() }
+                    painter.step()
                 }, Unmanaged.passUnretained(self).toOpaque()))
     }
 
@@ -115,6 +106,23 @@ final class OrbPainter: @unchecked Sendable {
         tailscode_remove_tick(area, guint(tick))
         tick = 0
         g_object_unref(UnsafeMutableRawPointer(area))
+    }
+
+    /// One frame of the body, at the tempo everything in this app that moves runs at, and the last
+    /// one when the frame reports itself settled.
+    ///
+    /// It breathes on a swell measured in seconds, and drawing that a hundred and sixty-five times
+    /// a second because the display can is a fan spinning for motion no eye can tell from the
+    /// tempo. Which tick the tempo owes is ``ActivityTuning/wantsFrame(at:lastDrawn:)``'s answer
+    /// rather than a comparison of its own, which on a 60Hz or 120Hz panel lands on the tick
+    /// boundary and quietly runs the creature slow. The arithmetic still reads absolute time, so a
+    /// skipped frame costs a frame and never the phase.
+    private func step() {
+        let time = Self.now
+        guard ActivityTuning.wantsFrame(at: time, lastDrawn: lastPainted) else { return }
+        lastPainted = time
+        paint(at: time)
+        if lastFrameSettled { stop() }
     }
 
     private func paint(at time: Double) {

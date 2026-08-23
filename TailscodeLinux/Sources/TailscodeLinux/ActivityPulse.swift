@@ -26,10 +26,9 @@ final class ActivityPulse {
     private var lastOpacity = -1.0
     private var lastFrame = ""
     private var lastStepped = 0.0
-    /// A swell measured in seconds needs no more than thirty frames of it a second; stepped at a
-    /// fast panel's own rate, every breathing badge redraws the window that often for light no
-    /// eye can tell apart. The arithmetic reads absolute time, so a skipped frame skips nothing.
-    private static let frameInterval = 1.0 / ActivityTuning.frameRate
+    private var startedAt = 0.0
+    private var offered = 0
+    private var drawn = 0
 
     private init(
         widget: UnsafeMutablePointer<GtkWidget>, icon: ActivityIcon, motion: ActivityMotion,
@@ -108,8 +107,23 @@ final class ActivityPulse {
         g_object_set_data_full(ptr(widget), Self.key, nil, nil)
     }
 
+    /// What this mark is actually doing, for a harness that has to prove a claim about it rather
+    /// than look at it: whether it is moving at all, how many ticks the panel offered, how many of
+    /// them the tempo took, and the rate that really came out. A screenshot cannot tell thirty
+    /// frames a second from twenty, and the two numbers have to be read side by side — a mark
+    /// drawing twenty on a panel offering twenty is keeping every frame it was given, while one
+    /// drawing twenty on a panel offering sixty is the boundary bug this gate exists to answer.
+    static func reading(of widget: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let pulse = current(of: widget), pulse.tick != 0 else { return "moving=0" }
+        let seconds = max(Self.now - pulse.startedAt, 0.001)
+        return "moving=1 offered=\(pulse.offered) frames=\(pulse.drawn)"
+            + " panel=" + String(format: "%.1f", Double(pulse.offered) / seconds)
+            + " fps=" + String(format: "%.1f", Double(pulse.drawn) / seconds)
+    }
+
     private func start() {
         guard tick == 0 else { return }
+        startedAt = Self.now
         step()
         let box = Unmanaged.passUnretained(self).toOpaque()
         tick = UInt(
@@ -131,10 +145,19 @@ final class ActivityPulse {
     /// One frame: light, and — for a state that sweeps — the frame of the ring. Both are written
     /// only when they actually changed, so a breathing badge costs one property set per frame and
     /// a sweeping one costs four text writes a second.
+    ///
+    /// A swell measured in seconds needs no more than the vocabulary's tempo of it a second, and
+    /// the panel's clock is the only one on offer — so which of its ticks the tempo owes is
+    /// ``ActivityTuning/wantsFrame(at:lastDrawn:)``'s to answer, never a bare comparison here: on a
+    /// 60Hz or 120Hz desk one frame of the tempo lands exactly on a tick boundary, where a clock
+    /// quantised to microseconds measures the tick short and the mark falls to two thirds of the
+    /// rate it was owed. The arithmetic reads absolute time, so a skipped frame skips nothing.
     private func step() {
         let time = Self.now
-        guard time - lastStepped >= Self.frameInterval else { return }
+        offered += 1
+        guard ActivityTuning.wantsFrame(at: time, lastDrawn: lastStepped) else { return }
         lastStepped = time
+        drawn += 1
         let opacity = motion.intensity(at: time)
         if abs(opacity - lastOpacity) > 0.004 {
             lastOpacity = opacity

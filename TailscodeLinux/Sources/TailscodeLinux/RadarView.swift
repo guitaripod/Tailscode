@@ -14,7 +14,7 @@ import TailscodeCore
 /// The inks are painted rather than styled, so a theme change that restyles every other widget by
 /// CSS would leave them where they were; they are re-read whenever the palette's accent differs
 /// from the one they were mixed from, which costs four colours on a frame that was going to be
-/// drawn anyway. When the scan ends the clock stops: a finished picture repainted sixty times a
+/// drawn anyway. When the scan ends the clock stops: a finished picture repainted thirty times a
 /// second is a fan spinning for nothing.
 final class RadarView: @unchecked Sendable {
     let widget: UnsafeMutablePointer<GtkWidget>
@@ -22,6 +22,7 @@ final class RadarView: @unchecked Sendable {
     var scanning = false
 
     private var tick: guint = 0
+    private var lastDrawn = 0.0
     private var inkedFrom = ""
 
     static var motionAllowed: Bool { tailscode_animations_enabled() != 0 }
@@ -56,9 +57,21 @@ final class RadarView: @unchecked Sendable {
         let box = Unmanaged.passRetained(TickBox(self)).toOpaque()
         let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
             guard let raw else { return }
-            Unmanaged<TickBox>.fromOpaque(raw).takeUnretainedValue().radar?.draw()
+            Unmanaged<TickBox>.fromOpaque(raw).takeUnretainedValue().radar?.step()
         }
         tick = tailscode_add_tick(widget, callback, box)
+    }
+
+    /// One frame of the sweep, at the tempo every moving thing in this app shares rather than at
+    /// whatever the panel offers. The dial's whole picture is read from absolute time, so a tick
+    /// the tempo does not want costs a frame and never the phase — and a tick it does want is
+    /// ``ActivityTuning/wantsFrame(at:lastDrawn:)``'s to name, because one frame of the tempo falls
+    /// exactly on a 60Hz and 120Hz tick boundary where a bare comparison drops a third of them.
+    private func step() {
+        let time = Self.now
+        guard ActivityTuning.wantsFrame(at: time, lastDrawn: lastDrawn) else { return }
+        lastDrawn = time
+        draw()
     }
 
     func stopClock() {

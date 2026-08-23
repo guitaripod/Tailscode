@@ -4250,7 +4250,11 @@ final class ChatPane: @unchecked Sendable {
                         ?? "none") + "\n").utf8))
     }
 
-    func driverWorkflowDemo() {
+    /// One workflow run, either still out or ended the way the harness ends one, so a headless
+    /// harness can look at both halves of the card's life. The ending is the real road — the report
+    /// seated back on the launching call — because a demo that ended a run any other way would
+    /// prove the card against a road no server drives.
+    func driverWorkflowDemo(_ ending: String) {
         let now = Date()
         let script = """
             export const meta = {
@@ -4263,10 +4267,11 @@ final class ChatPane: @unchecked Sendable {
               ],
             }
             """
-        let call = ToolCall(
-            id: "demo-wf", name: "Workflow", status: .running,
+        var call = ToolCall(
+            id: "demo-wf", name: "Workflow", status: .completed,
             input: .object(["script": .string(script)]),
             output: "Workflow launched in background. Task ID: demo-task\nRun ID: wf_demo")
+        call.background = Self.demoOutcome(ending, at: now.addingTimeInterval(-4))
         let prompt = ChatMessage(
             id: "demo-user", role: .user, agentType: .claudeCode,
             parts: [MessagePart(id: "t", kind: .text("/kaytetty-best Pokemon Yellow"))],
@@ -4291,6 +4296,7 @@ final class ChatPane: @unchecked Sendable {
                 isActive: true, isCompleted: false, startedAt: now.addingTimeInterval(-41),
                 toolCount: 2, currentTool: "Bash"),
         ]
+        if call.background != nil { agents = agents.map(Self.settled) }
         var state = ConversationState()
         state.messages = [prompt, launch]
         state.hasLoadedTranscript = true
@@ -4299,6 +4305,53 @@ final class ChatPane: @unchecked Sendable {
         context.expanded.set("demo-launch:p", open: true)
         refreshWorkflowRuns()
         replaceRows { if case .workflow = $0.kind { return true } else { return false } }
+    }
+
+    /// The report the harness would have posted for this ending, or nothing at all for a run that
+    /// is still out.
+    private static func demoOutcome(_ ending: String, at reportedAt: Date) -> BackgroundOutcome? {
+        switch ending {
+        case "done":
+            return BackgroundOutcome(
+                taskID: "demo-task", status: .completed,
+                summary: "Dynamic workflow \"kaytetty-best\" completed",
+                result: "**Buy the boxed Pokémon Yellow at 89 €** — the fair band is 75–110 €.",
+                reportedAt: reportedAt)
+        case "stopped":
+            return BackgroundOutcome(
+                taskID: "demo-task", status: .stopped,
+                summary: "No completion record was found.", reportedAt: reportedAt)
+        case "failed":
+            return BackgroundOutcome(
+                taskID: "demo-task", status: .failed,
+                summary: "The workflow script threw at phase 2.", reportedAt: reportedAt)
+        default:
+            return nil
+        }
+    }
+
+    /// An agent as it stands once the run it belongs to is over: nothing is still out on a machine
+    /// after the report that ended the run has landed.
+    private static func settled(_ agent: SubagentSummary) -> SubagentSummary {
+        SubagentSummary(
+            id: agent.id, title: agent.title, agentType: agent.agentType,
+            updatedAt: agent.updatedAt, isActive: false, isCompleted: true,
+            startedAt: agent.startedAt, toolCount: agent.toolCount)
+    }
+
+    /// What the workflow card's mark is doing, for a harness that cannot watch it: the run's state,
+    /// the glyph the card is showing, and the rate the mark itself counted. A screenshot proves
+    /// neither that a mark stopped nor what tempo it is keeping.
+    func reportWorkflowMark() {
+        for index in renderedRows.indices {
+            guard case .workflow(let call) = renderedRows[index].kind, index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            let state = context.workflowRuns[call.id].map { "\($0.state)" } ?? "none"
+            FileHandle.standardOutput.write(
+                Data(
+                    "WORKFLOW state=\(state) \(WorkflowCardView.markReading(of: ptr(raw)))\n".utf8))
+        }
     }
 
     func driverType(_ text: String) {

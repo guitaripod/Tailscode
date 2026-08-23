@@ -88,6 +88,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        let runFailures = WorkflowRunCheck.run()
+        if runFailures.isEmpty {
+            report("workflow run: every ending is read, holds still, and the tempo is thirty")
+        } else {
+            report("workflow run: \(runFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
         do {
             let checks = try checkStatusBand()
             report("status band: \(checks) states say the right thing")
@@ -2266,6 +2274,34 @@ public enum SelfTest {
         guard run.isLive, run.launch.runID == "wf_abc" else {
             throw SelfTestFailure("live state: \(run.state)")
         }
+        guard run.activityIcon.motion == .turning else {
+            throw SelfTestFailure("a live run's mark does not turn")
+        }
+
+        for (status, expected) in [
+            (BackgroundOutcome.Status.completed, ActivityIcon.finished),
+            (.stopped, ActivityIcon.stopped),
+            (.failed, ActivityIcon.failed),
+        ] {
+            let ended = try reported(status, on: call, launch: launch, agents: agents, now: now)
+            guard !ended.isLive, ended.activityIcon == expected,
+                ended.activityIcon.motion == .still
+            else {
+                throw SelfTestFailure("a \(status.rawValue) run keeps moving: \(ended.state)")
+            }
+            guard ended.elapsed(at: now.addingTimeInterval(9_000)) == 120 else {
+                throw SelfTestFailure(
+                    "a \(status.rawValue) run's clock kept climbing: "
+                        + "\(ended.elapsed(at: now.addingTimeInterval(9_000)) ?? -1)")
+            }
+            guard ended.result == (status == .completed ? "# The answer" : nil) else {
+                throw SelfTestFailure(
+                    "a \(status.rawValue) run's answer: \(ended.result ?? "nil")")
+            }
+        }
+
+        let marks = try checkWorkflowCardMark(
+            call: call, live: run, launch: launch, agents: agents, now: now)
 
         let notification = ChatMessage(
             id: "m2", role: .user, agentType: .claudeCode,
@@ -2288,7 +2324,71 @@ public enum SelfTest {
             throw SelfTestFailure("answer not folded in: \(finished.result ?? "nil")")
         }
 
-        return 12
+        return 25 + marks
+    }
+
+    /// The card's own mark, read off the widget rather than off the vocabulary.
+    ///
+    /// A run reaching an ending is only half of a mark that stops. The label also has to come off
+    /// the frame clock and be left showing the ending's own glyph — otherwise the card keeps
+    /// whichever frame of the sweep it was holding when the report landed, which is a still picture
+    /// of work still going. Both roads a pane takes are walked here, because the fault lived in the
+    /// seam rather than in either end: a stop or a fault is restated into the card already on
+    /// screen, while an answer arriving changes the card's shape and earns a rebuild.
+    private static func checkWorkflowCardMark(
+        call: ToolCall, live: WorkflowRun, launch: ChatMessage, agents: [SubagentSummary], now: Date
+    ) throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        let context = TranscriptContext()
+        context.workflowNow = now
+        context.workflowRuns[call.id] = live
+        var card = WorkflowCardView.make(call, key: "wf", context: context)
+        guard WorkflowCardView.markReading(of: card).contains("moving=1") else {
+            throw SelfTestFailure(
+                "a live card's mark holds still: \(WorkflowCardView.markReading(of: card))")
+        }
+
+        var claims = 1
+        for status in [BackgroundOutcome.Status.stopped, .failed, .completed] {
+            let ended = try reported(
+                status, on: call, launch: launch, agents: agents, now: now)
+            context.workflowRuns[call.id] = ended
+            if !WorkflowCardView.restate(card, call: call, context: context) {
+                card = WorkflowCardView.make(call, key: "wf", context: context)
+            }
+            let reading = WorkflowCardView.markReading(of: card)
+            guard reading == "mark=\(ended.activityIcon.glyph) moving=0" else {
+                throw SelfTestFailure("a \(status.rawValue) card's mark: \(reading)")
+            }
+            claims += 1
+        }
+        return claims
+    }
+
+    /// The same launch, ended the way the harness ends one: its report seated back on the call that
+    /// started it. This is the only road a real backend delivers an ending on — the prose road
+    /// above survives for a server that says less — so it is the one an ending has to be proved
+    /// against, or a card can be shipped that never stops moving on the only backend that has
+    /// workflows.
+    private static func reported(
+        _ status: BackgroundOutcome.Status, on call: ToolCall, launch: ChatMessage,
+        agents: [SubagentSummary], now: Date
+    ) throws -> WorkflowRun {
+        var ended = call
+        ended.status = .completed
+        ended.background = BackgroundOutcome(
+            taskID: "task-1", status: status, summary: "the run ended",
+            result: status == .completed ? "# The answer" : nil,
+            reportedAt: now.addingTimeInterval(120))
+        let message = ChatMessage(
+            id: launch.id, role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "p1", kind: .tool(ended))], createdAt: launch.createdAt)
+        let runs = WorkflowRunAssembly.runs(
+            messages: [message], agents: agents, now: now.addingTimeInterval(9_000))
+        guard let run = runs.first, runs.count == 1 else {
+            throw SelfTestFailure("one ended launch is not one run")
+        }
+        return run
     }
 
     /// Two observers on one conversation, which is the whole point of a desktop client that is a

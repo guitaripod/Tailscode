@@ -25,9 +25,10 @@ enum WorkflowCardView {
         let run = context.workflowRuns[call.id]
         let now = context.workflowNow
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let mark = Gtk.label(glyph(run, now), css: glyphClass(run), selectable: false)
-        if run?.isLive == true { ActivityPulse.apply(.openWork, to: mark) }
-        gtk_box_append(ptr(header), mark)
+        let icon = mark(run)
+        let markLabel = Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false)
+        applyMark(icon, to: markLabel)
+        gtk_box_append(ptr(header), markLabel)
         gtk_box_append(ptr(header), Gtk.label("▸ workflow", css: "tool-name", selectable: false))
 
         let name = run?.name ?? call.summary.title ?? Localized.text("Workflow")
@@ -75,13 +76,9 @@ enum WorkflowCardView {
         else { return false }
         let head = children(of: header)
         guard head.count == 5 else { return false }
-        if run?.isLive == true {
-            ActivityPulse.apply(.openWork, to: head[0])
-        } else {
-            ActivityPulse.apply(nil, to: head[0])
-            setLabel(head[0], text: glyph(run, now))
-        }
-        setExclusiveClass(head[0], among: Self.glyphClasses, to: glyphClass(run))
+        let icon = mark(run)
+        applyMark(icon, to: head[0])
+        setExclusiveClass(head[0], among: Self.glyphClasses, to: icon.glyphCSS)
         setLabel(head[3], text: run.map { $0.headline(at: now) } ?? "")
         setExclusiveClass(head[3], among: Self.headlineClasses, to: run.map(headlineClass) ?? "dim")
         gtk_widget_set_visible(head[3], run == nil ? 0 : 1)
@@ -149,12 +146,7 @@ enum WorkflowCardView {
         let head = children(of: header)
         guard head.count == 4 else { return false }
         let icon = ActivityIcon.workflowAgent(agent)
-        if agent.isActive && !agent.isCompleted {
-            ActivityPulse.apply(.openWork, to: head[0])
-        } else {
-            ActivityPulse.apply(nil, to: head[0])
-            setLabel(head[0], text: icon.glyph)
-        }
+        applyMark(icon, to: head[0])
         setExclusiveClass(head[0], among: Self.glyphClasses, to: icon.glyphCSS)
         let tool = agent.isActive ? agent.currentTool : nil
         setLabel(head[2], text: tool ?? "")
@@ -275,9 +267,7 @@ enum WorkflowCardView {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let icon = ActivityIcon.workflowAgent(agent)
         let glyph = Gtk.label(icon.glyph, css: icon.glyphCSS, selectable: false)
-        if agent.isActive && !agent.isCompleted {
-            ActivityPulse.apply(.openWork, to: glyph)
-        }
+        applyMark(icon, to: glyph)
         gtk_box_append(ptr(header), glyph)
         let title = Gtk.label(
             String(agent.title.replacingOccurrences(of: "\n", with: " ").prefix(120)),
@@ -371,35 +361,43 @@ enum WorkflowCardView {
         return keep.isEmpty ? name : keep.joined(separator: "-")
     }
 
-    private static func glyph(_ run: WorkflowRun?, _ now: Date) -> String {
-        guard let run else { return "○" }
-        switch run.state {
-        case .launching, .running: return ActivityIcon.openWork.glyph
-        case .finished: return "⏺"
-        case .failed: return "✗"
-        }
+    /// The mark this card wears, which is the run's own — never a face invented here. A card that
+    /// spelled an ending its own way could disagree with the agent rows under it and with the same
+    /// card on a phone, and the ending is the whole thing a reader is looking for. A call whose run
+    /// has not been assembled yet has not started, and idle is what not started looks like.
+    private static func mark(_ run: WorkflowRun?) -> ActivityIcon { run?.activityIcon ?? .idle }
+
+    /// Points a mark at its state and leaves it showing that state's own glyph.
+    ///
+    /// A settled state does not animate, and ``ActivityPulse`` stops a mark without putting words
+    /// back — so the still glyph is written here, or a run that ended would keep whichever frame of
+    /// the sweep it was on when the report landed, which is the moving record this card exists not
+    /// to be.
+    private static func applyMark(
+        _ icon: ActivityIcon, to label: UnsafeMutablePointer<GtkWidget>
+    ) {
+        ActivityPulse.apply(icon, to: label)
+        let motion = icon.motion.honoring(reduceMotion: !ActivityPulse.motionAllowed)
+        guard !motion.isAnimated else { return }
+        setLabel(label, text: icon.glyph)
     }
 
-    private static let glyphClasses = [
-        "glyph-pending", "glyph-running", "glyph-done", "glyph-error",
-    ]
+    /// One reading of the header's mark, for a harness that has to prove it stopped rather than
+    /// watch it: the glyph on screen and what the mark itself counted.
+    static func markReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card), isA(button, gtk_button_get_type()),
+            let header = Gtk.disclosureHeader(button), let label = children(of: header).first
+        else { return "mark=none" }
+        let glyph = gtk_label_get_text(op(label)).map { String(cString: $0) } ?? ""
+        return "mark=\(glyph) " + ActivityPulse.reading(of: label)
+    }
+
+    private static let glyphClasses = ActivityTone.allCases.map(\.glyphCSS)
     private static let headlineClasses = ["agent-live", "dim", "glyph-error"]
 
-    private static func glyphClass(_ run: WorkflowRun?) -> String {
-        guard let run else { return "glyph-pending" }
-        switch run.state {
-        case .launching, .running: return "glyph-running"
-        case .finished: return "glyph-done"
-        case .failed: return "glyph-error"
-        }
-    }
-
     private static func headlineClass(_ run: WorkflowRun) -> String {
-        switch run.state {
-        case .launching, .running: return "agent-live"
-        case .finished: return "dim"
-        case .failed: return "glyph-error"
-        }
+        if run.isLive { return "agent-live" }
+        return run.activityIcon.tone == .danger ? "glyph-error" : "dim"
     }
 
     private static func isA(_ widget: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
