@@ -403,3 +403,122 @@ struct ConnectionPhaseTests {
         #expect(StatusFacts.dialClock(9) == 9)
     }
 }
+
+@Suite("What an agent row's clock is measured against")
+struct AgentClockTests {
+    private static let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let reportedAt = startedAt.addingTimeInterval(252)
+    private static let now = startedAt.addingTimeInterval(9_000)
+    private static let aWeekLater = reportedAt.addingTimeInterval(604_800)
+
+    private static let errand = SubagentSummary(
+        id: "c", title: "hunt", updatedAt: reportedAt, isActive: true, isCompleted: false,
+        startedAt: startedAt)
+    private static let early = SubagentSummary(
+        id: "d", title: "scope", updatedAt: startedAt.addingTimeInterval(30), isActive: false,
+        isCompleted: true, startedAt: startedAt)
+    private static let stale = SubagentSummary(
+        id: "e", title: "appraise", updatedAt: reportedAt.addingTimeInterval(1_800),
+        isActive: true, isCompleted: false, startedAt: startedAt)
+
+    private static func call(_ status: ToolStatus, reporting: Bool = false) -> ToolCall {
+        ToolCall(
+            id: "t", name: "Task", status: status,
+            background: reporting
+                ? BackgroundOutcome(
+                    taskID: "task-1", status: .stopped, summary: "No completion was recorded.",
+                    reportedAt: reportedAt)
+                : nil)
+    }
+
+    @Test("An agent still out under a call that is running is the only one timed to the reader")
+    func aRunningCallTimesItsAgentToNow() {
+        let going = AgentHold(Self.call(.running))
+        #expect(Self.errand.elapsed(at: Self.now, under: going) == 9_000)
+        #expect(Self.early.elapsed(at: Self.now, under: going) == 30)
+        #expect(
+            SubagentSummary(id: "f", title: "unstarted", updatedAt: Self.now, isActive: true)
+                .elapsed(at: Self.now, under: going) == nil)
+    }
+
+    @Test("An agent under a call that is over stops where the work stopped, forever")
+    func anEndedCallStopsTheClocksUnderIt() {
+        let over = AgentHold(Self.call(.completed))
+        #expect(Self.errand.elapsed(at: Self.now, under: over) == 252)
+        #expect(
+            Self.errand.elapsed(at: Self.aWeekLater, under: over)
+                == Self.errand.elapsed(at: Self.reportedAt, under: over))
+        #expect(Self.early.elapsed(at: Self.aWeekLater, under: over) == 30)
+        for status: ToolStatus in [.pending, .completed, .error] {
+            let hold = AgentHold(Self.call(status))
+            #expect(
+                Self.errand.elapsed(at: Self.now, under: hold)
+                    == Self.errand.elapsed(at: Self.aWeekLater, under: hold))
+        }
+    }
+
+    @Test("A sidecar still claiming to work after the report is credited to the report")
+    func aStaleSidecarIsCreditedToTheEnding() {
+        let stamped = AgentHold(Self.call(.completed, reporting: true))
+        #expect(Self.stale.elapsed(at: Self.now, under: stamped) == 252)
+        #expect(Self.early.elapsed(at: Self.now, under: stamped) == 30)
+        #expect(
+            Self.stale.elapsed(at: Self.now, under: AgentHold(Self.call(.completed))) == 2_052)
+    }
+
+    @Test("The live line prints the agent's clock, not the reader's")
+    func liveDetailReadsTheGivenMoment() {
+        #expect(
+            StatusFacts.liveDetail(Self.errand, at: Self.now, under: AgentHold(Self.call(.running)))
+                .contains("150m 0s"))
+        #expect(
+            StatusFacts.liveDetail(
+                Self.errand, at: Self.aWeekLater, under: AgentHold(Self.call(.completed)))
+                .contains("4m 12s"))
+        #expect(
+            StatusFacts.liveDetail(
+                SubagentSummary(id: "g", title: "quiet", updatedAt: Self.now, isActive: true),
+                at: Self.now, under: AgentHold(Self.call(.running))) == Localized.text("working"))
+    }
+
+    @Test("The band measures every duration against the moment its facts were read")
+    func theBandHoldsOneMoment() {
+        let facts = Self.facts(status: .running, connection: .live)
+        #expect(facts.readAt == Self.now)
+        #expect(facts.connectionFor == 9_000)
+        #expect(facts.elapsed == 9_000)
+        #expect(Self.agentDetail(facts)?.contains("150m 0s") == true)
+    }
+
+    @Test("A turn that is not open settles the agent rows under it")
+    func anIdleBandSettlesItsRows() {
+        for facts in [
+            Self.facts(status: .idle, connection: .live),
+            Self.facts(status: .running, connection: .offline),
+            Self.facts(status: .running, connection: .reconnecting),
+        ] {
+            #expect(Self.agentDetail(facts)?.contains("4m 12s") == true)
+            #expect(Self.agentDetail(facts)?.contains("150m 0s") == false)
+        }
+    }
+
+    @Test("An agent's age on the band is read at the same moment as its clock")
+    func agesReadTheSameMoment() {
+        let facts = Self.facts(status: .idle, connection: .live, agents: [Self.early])
+        #expect(Self.agentDetail(facts) == Localized.text("done · %@ ago", "2h"))
+    }
+
+    private static func facts(
+        status: BackendStatus, connection: ConnectionPhase, agents: [SubagentSummary] = [errand]
+    ) -> StatusFacts {
+        StatusFacts.from(
+            state: ConversationState(
+                messages: [], status: status, connection: connection, hasLoadedTranscript: true,
+                connectionChangedAt: startedAt),
+            turnStartedAt: startedAt, agents: agents, usage: nil, attachments: 0, now: now)
+    }
+
+    private static func agentDetail(_ facts: StatusFacts) -> String? {
+        facts.segments.first { $0.id == "agents" }?.rows.first?.detail
+    }
+}

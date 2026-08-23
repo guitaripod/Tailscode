@@ -1,6 +1,53 @@
 import CodingAgentKit
 import Foundation
 
+/// The work that holds a subagent: the call that spawned it in a transcript, the turn it is
+/// running under on the band. An agent's own record never settles — its sidecar goes on claiming
+/// it is working for as long as its window lasts, and nothing corrects it afterwards — so the work
+/// around it outranks it, exactly as a run outranks the agent rows inside it.
+public enum AgentHold: Sendable, Equatable {
+    /// The work is still open, so an agent still out is timed to the moment it is read at.
+    case going
+    /// The work is over — at this moment, when anything stamped one at all. Nothing that happened
+    /// after it may be credited to an agent inside it.
+    case over(at: Date?)
+
+    /// How the call that spawned an agent holds it. A running call may still have agents out;
+    /// any other status means the work is over — at the moment its background report carries, when
+    /// it was the kind of call that reported back at all.
+    public init(_ call: ToolCall) {
+        self = call.status == .running ? .going : .over(at: call.background?.reportedAt)
+    }
+}
+
+extension SubagentSummary {
+    /// How long this agent has been out, or how long it was out for — read against the work that
+    /// holds it rather than against its own record alone.
+    ///
+    /// An agent that never reported finishing has no ending of its own, and its sidecar goes on
+    /// claiming it is working for as long as its window lasts. Timed to the reader's clock it
+    /// therefore never stops: a four-minute errand under a call that ended last week reads as
+    /// seven days, and grows again every time the transcript is opened. Work cannot still be in
+    /// flight inside work that is over, which is what `WorkflowAgent.elapsed(at:in:)` already
+    /// decided one level up.
+    public func elapsed(at now: Date, under hold: AgentHold) -> TimeInterval? {
+        guard let startedAt else { return nil }
+        return max(0, lastMoment(at: now, under: hold).timeIntervalSince(startedAt))
+    }
+
+    /// The latest moment this agent may be credited with running: the moment it is read at while
+    /// it is still out under work that is still open, its own record once it reported finishing,
+    /// and — under work that is over — the earlier of that record and the ending, because an agent
+    /// stopped when the work did at the latest and may be credited with nothing later than it was
+    /// last seen doing.
+    private func lastMoment(at now: Date, under hold: AgentHold) -> Date {
+        switch hold {
+        case .going: return isCompleted ? updatedAt : now
+        case .over(let ending): return min(updatedAt, ending ?? updatedAt)
+        }
+    }
+}
+
 /// Everything true about the turn right now, gathered once so the band that draws it has no logic
 /// in it — and so the same facts can be asserted headlessly.
 public struct StatusFacts: Sendable {
@@ -47,6 +94,16 @@ public struct StatusFacts: Sendable {
     public var goalFailed = false
     public var queued: Int = 0
     public var attachments: Int = 0
+    /// The moment these facts were read. Every duration the band states is measured against it
+    /// rather than against whatever the clock says when a row happens to be built: a snapshot
+    /// whose clocks keep running is not a snapshot, and a menu unfolded a minute after the segment
+    /// that opened it would disagree with it.
+    public var readAt = Date()
+    /// How the turn holds the agents under it. A subagent's record goes on claiming it is active
+    /// long after the turn that spawned it stopped, and while this device is offline, dialling or
+    /// failed nothing is refreshing that record at all — so a row's clock runs only while the turn
+    /// itself is open on the other machine.
+    public var agentHold: AgentHold { activity?.isInFlight == true ? .going : .over(at: nil) }
 
     public init() {}
 
@@ -81,9 +138,10 @@ public struct StatusFacts: Sendable {
         state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
-        git: GitState? = nil, model: String? = nil
+        git: GitState? = nil, model: String? = nil, now: Date = Date()
     ) -> StatusFacts {
         var facts = StatusFacts()
+        facts.readAt = now
         if let failure = state.lastFailure {
             let message = QuotaSurface.statusFailureMessage(
                 failure: failure.message, quotas: quotas, model: model) ?? failure.message
@@ -108,10 +166,10 @@ public struct StatusFacts: Sendable {
             }
         }
         if state.connectionChangedAt > .distantPast {
-            facts.connectionFor = Date().timeIntervalSince(state.connectionChangedAt)
+            facts.connectionFor = now.timeIntervalSince(state.connectionChangedAt)
         }
         facts.activity = Self.activity(for: facts.phase, in: state, agents: agents)
-        if let turnStartedAt { facts.elapsed = Date().timeIntervalSince(turnStartedAt) }
+        if let turnStartedAt { facts.elapsed = now.timeIntervalSince(turnStartedAt) }
         facts.runningTool = Self.runningTool(in: state)
         facts.queued = queued
         facts.spend = spend
@@ -388,13 +446,13 @@ public struct StatusFacts: Sendable {
             let name = agent.agentType ?? SubagentSummary.untitled
             return Segment.Row(
                 title: "\(StatusMark.open) \(name) — \(trimmed(agent.title))",
-                detail: Self.liveDetail(agent),
+                detail: Self.liveDetail(agent, at: readAt, under: agentHold),
                 action: .agent(agent.toolUseID ?? agent.id))
         }
         rows += restShown.map { agent in
             let glyph = agent.isCompleted ? StatusMark.done : StatusMark.idle
             let name = agent.agentType ?? SubagentSummary.untitled
-            let age = Self.age(Date().timeIntervalSince(agent.updatedAt))
+            let age = Self.age(readAt.timeIntervalSince(agent.updatedAt))
             let state = agent.isCompleted
                 ? Localized.text("done · %@ ago", age) : Localized.text("idle · %@ ago", age)
             return Segment.Row(
@@ -413,8 +471,13 @@ public struct StatusFacts: Sendable {
     }
 
     /// One line saying what a live agent is doing: its todo position when it keeps a list,
-    /// otherwise its tool trail — count, elapsed, and the tool running at this moment.
-    public static func liveDetail(_ agent: SubagentSummary) -> String {
+    /// otherwise its tool trail — count, elapsed, and the tool running at this moment. The clock
+    /// is read at a moment the caller states and bounded by the work that holds the agent, so a
+    /// row under a call that is over stops where the work stopped instead of counting for as long
+    /// as the transcript survives.
+    public static func liveDetail(_ agent: SubagentSummary, at now: Date, under hold: AgentHold)
+        -> String
+    {
         var parts: [String] = []
         if let done = agent.todosDone, let total = agent.todosTotal, total > 0 {
             parts.append("\(done)/\(total)")
@@ -425,8 +488,8 @@ public struct StatusFacts: Sendable {
             if let count = agent.toolCount { parts.append(Localized.text("%@ tools", "\(count)")) }
             parts.append(String(current.prefix(48)))
         }
-        if let started = agent.startedAt {
-            parts.append(Self.clock(max(0, Date().timeIntervalSince(started))))
+        if let elapsed = agent.elapsed(at: now, under: hold) {
+            parts.append(Self.clock(elapsed))
         }
         return parts.isEmpty ? Localized.text("working") : parts.joined(separator: " · ")
     }

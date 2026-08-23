@@ -338,7 +338,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .subagentCards, area: "transcript", title: "Subagents inline",
             spec:
-                "A subagent renders as a card docked at its spawning tool call, expanding in place; a wide fan-out collapses behind one group row; never a separate chat."),
+                "A subagent renders as a card docked at its spawning tool call, expanding in place; a wide fan-out collapses behind one group row; never a separate chat. The row's live line is StatusFacts.liveDetail(_:at:under:), and its clock belongs to the agent rather than to whoever is reading: a sidecar goes on claiming it is working for as long as its window lasts, so the spawning call bounds it — AgentHold(call) — and an agent under a call that is over stopped when the call stopped, at the latest. Otherwise a four-minute errand reopened a week later reads as seven days and grows again every time the transcript is drawn."),
         CapabilityDefinition(
             id: .taskBoard, area: "transcript", title: "The agent's plan is one live board",
             spec:
@@ -453,7 +453,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .statusBand, area: "status", title: "Status band",
             spec:
-                "A persistent strip states phase, token estimate, and clock from the shared StatusFacts — the same facts on every platform."),
+                "A persistent strip states phase, token estimate, and clock from the shared StatusFacts — the same facts on every platform. StatusFacts is a snapshot of one moment, StatusFacts.readAt, and every duration on the band — the dial, the turn's elapsed, an agent row's clock and its age — is measured against that moment rather than against whatever the clock says when a row happens to be built, so a menu unfolded later cannot disagree with the segment that opened it. Agent rows are held by the turn: their clocks run only while the turn is open on the other machine, because nothing refreshes a subagent's record once this device is idle, offline or dialling."),
         CapabilityDefinition(
             id: .sessionSpend, area: "sessions", title: "What this conversation cost",
             spec:
