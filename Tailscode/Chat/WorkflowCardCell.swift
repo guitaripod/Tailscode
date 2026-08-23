@@ -23,7 +23,7 @@ final class WorkflowCardCell: UICollectionViewCell {
     private let phaseStack = UIStackView()
     private let agentStack = UIStackView()
     private let answerLabel = UILabel()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let mark = ActivityBadgeView(pointSize: 12)
     private let column = UIStackView()
     private var fillWidth: NSLayoutConstraint?
     private var containerTop: NSLayoutConstraint!
@@ -99,8 +99,7 @@ final class WorkflowCardCell: UICollectionViewCell {
         fill.translatesAutoresizingMaskIntoConstraints = false
         track.addSubview(fill)
 
-        spinner.hidesWhenStopped = true
-        spinner.setContentHuggingPriority(.required, for: .horizontal)
+        mark.setContentHuggingPriority(.required, for: .horizontal)
 
         phaseStack.axis = .vertical
         phaseStack.spacing = 2
@@ -108,7 +107,7 @@ final class WorkflowCardCell: UICollectionViewCell {
         agentStack.spacing = 4
 
         let header = UIStackView(arrangedSubviews: [
-            iconView, titleLabel, UIView(), headlineLabel, spinner, elapsedLabel,
+            iconView, titleLabel, UIView(), headlineLabel, mark, elapsedLabel,
         ])
         header.axis = .horizontal
         header.spacing = 6
@@ -166,13 +165,11 @@ final class WorkflowCardCell: UICollectionViewCell {
         self.onAgentTap = onAgentTap
         titleLabel.text = run.name
         headlineLabel.text = run.headline(at: now)
-        headlineLabel.textColor = run.isLive ? Theme.Color.accent : Theme.Color.secondaryLabel
         summaryLabel.text = run.summary
         summaryLabel.isHidden = run.summary == nil
         elapsedLabel.text = run.elapsed(at: now).map(WorkflowRun.duration)
         elapsedLabel.isHidden = elapsedLabel.text == nil
-        if run.isLive { spinner.startAnimating() } else { spinner.stopAnimating() }
-        rail.backgroundColor = run.isLive ? Theme.Color.accent : Theme.Color.success
+        wearEnding(of: run)
 
         fillWidth?.isActive = false
         let fraction = max(0.02, min(1, run.progress))
@@ -220,6 +217,23 @@ final class WorkflowCardCell: UICollectionViewCell {
         let answer = run.result?.trimmingCharacters(in: .whitespacesAndNewlines)
         answerLabel.text = answer.map { $0.count > 600 ? String($0.prefix(600)) + "…" : $0 }
         answerLabel.isHidden = (answer ?? "").isEmpty
+    }
+
+    /// The one mark this card wears, and the colours that have to agree with it.
+    ///
+    /// The face comes from the run rather than from a spinner this cell starts and stops itself:
+    /// the call that launches a run answers in milliseconds while the work takes minutes, so
+    /// nothing about the tool row is its progress, and only the run's own state knows the ending.
+    /// Every ending in the vocabulary holds perfectly still, because a record that keeps moving
+    /// reads as work that never ended. The rail takes the mark's tone with it — a run that was
+    /// stopped no longer wears the green of a success nobody reported — and the headline is
+    /// written in the ending's own voice, raised only where the run actually broke.
+    private func wearEnding(of run: WorkflowRun) {
+        let icon = run.activityIcon
+        mark.show(icon, spoken: nil)
+        rail.backgroundColor = run.isLive ? Theme.Color.accent : icon.tone.color
+        let ended = icon.tone == .danger ? Theme.Color.danger : Theme.Color.secondaryLabel
+        headlineLabel.textColor = run.isLive ? Theme.Color.accent : ended
     }
 
     private func rebuild(_ stack: UIStackView, _ build: (UIStackView) -> Void) {

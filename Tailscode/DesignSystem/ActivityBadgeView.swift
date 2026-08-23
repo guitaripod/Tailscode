@@ -15,6 +15,22 @@ extension ActivityTone {
     }
 }
 
+extension CADisplayLink {
+    /// Pins a clock this client runs by hand to the one tempo every mark in the app moves at.
+    ///
+    /// A mark's arithmetic reads absolute time, so the compositor is free to hand it fewer frames
+    /// under load and it stays in phase — but a link left at the panel's own rate redraws a swell
+    /// measured in seconds up to a hundred and twenty times a second for light no eye can tell
+    /// apart, and two marks on one screen would keep two different tempos. Both the rate and the
+    /// floor come from `ActivityTuning`, because a client that names its own is a client that can
+    /// disagree with the other two desks about how fast a live thing looks live.
+    func runAtActivityTempo() {
+        let rate = Float(ActivityTuning.frameRate)
+        preferredFrameRateRange = CAFrameRateRange(
+            minimum: Float(ActivityTuning.minimumFrameRate), maximum: rate, preferred: rate)
+    }
+}
+
 /// The one moving thing a busy surface is allowed: the state's own symbol, breathing, knocking or
 /// sweeping the way that state means.
 ///
@@ -45,6 +61,10 @@ final class ActivityBadgeView: UIView {
 
     /// For a surface whose state has no name of its own in the vocabulary — a folded run of steps
     /// that is still open, which is not a phase of the turn but is certainly not idle either.
+    ///
+    /// A nil `spoken` is a badge the reader's ear never meets, because the row around it already
+    /// says the same thing in words: a mark with no sentence would be one more stop on the way
+    /// through the card with nothing for VoiceOver to read out there.
     func show(_ icon: ActivityIcon?, spoken: String?) {
         self.icon = icon
         self.spoken = spoken
@@ -113,7 +133,7 @@ final class ActivityBadgeView: UIView {
             withConfiguration: UIImage.SymbolConfiguration(
                 pointSize: pointSize, weight: .semibold))
         imageView.tintColor = overrideColor ?? icon.tone.color
-        isAccessibilityElement = true
+        isAccessibilityElement = spoken != nil
         accessibilityLabel = spoken
         accessibilityTraits = .updatesFrequently
         motion = icon.motion.honoring(reduceMotion: UIAccessibility.isReduceMotionEnabled)
@@ -124,8 +144,7 @@ final class ActivityBadgeView: UIView {
     private func start() {
         guard link == nil, motion.isAnimated, window != nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(step))
-        let fps = Float(ActivityTuning.frameRate)
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: fps, preferred: fps)
+        link.runAtActivityTempo()
         link.add(to: .main, forMode: .common)
         self.link = link
     }

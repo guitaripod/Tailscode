@@ -596,6 +596,7 @@ final class UpdateMarkButton: UIButton {
     private func start() {
         guard link == nil, window != nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(step))
+        link.runAtActivityTempo()
         link.add(to: .main, forMode: .common)
         self.link = link
     }

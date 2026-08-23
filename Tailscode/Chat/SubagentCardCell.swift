@@ -100,7 +100,7 @@ final class SubagentGroupCell: UICollectionViewCell {
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let detailLabel = UILabel()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let mark = ActivityBadgeView(pointSize: 11)
     private let chevron = UIImageView()
     private let toggle = UIButton(type: .system)
     private var onToggle: (() -> Void)?
@@ -140,8 +140,6 @@ final class SubagentGroupCell: UICollectionViewCell {
         detailLabel.textColor = Theme.Color.secondaryLabel
         detailLabel.adjustsFontForContentSizeCategory = true
 
-        spinner.hidesWhenStopped = true
-
         chevron.image = UIImage(
             systemName: "chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
@@ -159,8 +157,8 @@ final class SubagentGroupCell: UICollectionViewCell {
         toggle.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [rail, iconView, column, spinner, chevron, toggle].forEach(container.addSubview)
-        spinner.translatesAutoresizingMaskIntoConstraints = false
+        [rail, iconView, column, mark, chevron, toggle].forEach(container.addSubview)
+        mark.translatesAutoresizingMaskIntoConstraints = false
 
         containerTop = container.topAnchor.constraint(
             equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
@@ -191,9 +189,9 @@ final class SubagentGroupCell: UICollectionViewCell {
             column.topAnchor.constraint(equalTo: container.topAnchor, constant: Theme.Spacing.m),
             column.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Theme.Spacing.m),
 
-            spinner.leadingAnchor.constraint(greaterThanOrEqualTo: column.trailingAnchor, constant: Theme.Spacing.s),
-            spinner.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            chevron.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: Theme.Spacing.s),
+            mark.leadingAnchor.constraint(greaterThanOrEqualTo: column.trailingAnchor, constant: Theme.Spacing.s),
+            mark.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            chevron.leadingAnchor.constraint(equalTo: mark.trailingAnchor, constant: Theme.Spacing.s),
             chevron.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Theme.Spacing.m),
             chevron.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             chevron.widthAnchor.constraint(equalToConstant: 12),
@@ -213,7 +211,7 @@ final class SubagentGroupCell: UICollectionViewCell {
         detailLabel.text = group.expanded ? String(localized: "tap to collapse") : group.detail
         rail.backgroundColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
         iconView.tintColor = group.live > 0 ? Theme.Color.success : Theme.Color.accent
-        if group.live > 0 { spinner.startAnimating() } else { spinner.stopAnimating() }
+        mark.show(group.live > 0 ? .openWork : nil, spoken: nil)
         chevron.transform = group.expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
         toggle.accessibilityLabel = "\(group.title), \(group.detail)"
         toggle.accessibilityValue =
@@ -236,7 +234,7 @@ final class SubagentCardCell: UICollectionViewCell {
     private let typeBadge = PaddedLabel()
     private let statusLabel = UILabel()
     private let statusDot = UIView()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let mark = ActivityBadgeView(pointSize: 11)
     private let chevron = UIImageView()
     private let previewLabel = UILabel()
     private let stack = UIStackView()
@@ -293,8 +291,6 @@ final class SubagentCardCell: UICollectionViewCell {
         statusLabel.font = Theme.Ramp.font(.rowDetail)
         statusLabel.adjustsFontForContentSizeCategory = true
 
-        spinner.hidesWhenStopped = true
-
         chevron.image = UIImage(
             systemName: "chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
@@ -308,7 +304,7 @@ final class SubagentCardCell: UICollectionViewCell {
         previewLabel.numberOfLines = 2
 
         let statusRow = UIStackView(arrangedSubviews: [
-            statusDot, statusLabel, typeBadge, spinner, UIView(),
+            statusDot, statusLabel, typeBadge, mark, UIView(),
         ])
         statusRow.axis = .horizontal
         statusRow.spacing = Theme.Spacing.xs
@@ -396,7 +392,7 @@ final class SubagentCardCell: UICollectionViewCell {
         } else {
             typeBadge.isHidden = true
         }
-        if card.isActive && !card.expanded { spinner.startAnimating() } else { spinner.stopAnimating() }
+        mark.show(card.isActive && !card.expanded ? .openWork : nil, spoken: nil)
         chevron.transform = card.expanded ? CGAffineTransform(rotationAngle: .pi) : .identity
 
         let preview = Self.collapsedPreview(card)
@@ -441,11 +437,11 @@ final class SubagentCardCell: UICollectionViewCell {
     }
 
     private static func loadingRow() -> UIView {
-        let spinner = UIActivityIndicatorView(style: .medium)
-        spinner.startAnimating()
+        let mark = ActivityBadgeView(pointSize: 11)
+        mark.show(.openWork, spoken: nil)
         let label = ToolStepRenderer.pathLabel(
             String(localized: "Loading this agent's transcript…"))
-        let row = UIStackView(arrangedSubviews: [spinner, label, UIView()])
+        let row = UIStackView(arrangedSubviews: [mark, label, UIView()])
         row.axis = .horizontal
         row.spacing = Theme.Spacing.s
         row.alignment = .center

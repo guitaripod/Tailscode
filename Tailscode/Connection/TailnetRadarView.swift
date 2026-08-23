@@ -65,6 +65,7 @@ final class TailnetRadarView: UIView {
     private func start() {
         guard link == nil, window != nil else { return }
         let made = CADisplayLink(target: self, selector: #selector(step))
+        made.runAtActivityTempo()
         made.add(to: .main, forMode: .common)
         link = made
     }
