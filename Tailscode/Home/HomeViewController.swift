@@ -21,6 +21,7 @@ final class HomeViewController: UIViewController {
     private let composerBar = HomeComposerBar()
     private let commandPalette = SlashCommandPalette()
     private let suggestions = HomeAskSuggestions()
+    private let videoChips = HomeVideoChips()
     private let attachmentStrip = HomeAttachmentStrip()
     private let failureCard = HomeComposerFailureCard()
     /// Everything that floats between the board and the box, in the order a hand reaches for it:
@@ -145,6 +146,15 @@ final class HomeViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(3))
                     self?.presentQuickAsk()
                     self?.seedAskForVerification()
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_VIDEOLANE"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    self.setLane(.video, animated: false)
+                    ForgeRunner.shared.describe("a cat asleep on a warm tiled roof")
+                    self.composerBar.setText(ForgeRunner.shared.board.recipe.prompt)
                 }
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_STREAM"] != nil {
@@ -1355,23 +1365,40 @@ final class HomeViewController: UIViewController {
     /// whatever it was left holding.
     private func setLane(_ lane: QuickAskLane, animated: Bool) {
         guard askLane != lane else { return }
+        let previous = askLane
         askLane = lane
         composerBar.setLane(lane, animated: animated)
+        if previous == .video { composerBar.clearText() }
+        if lane == .video {
+            if let scope = composerDraftScope {
+                DraftStore.record(composerBar.rawText, for: scope)
+            }
+            composerDraftScope = nil
+            composerBar.setText(ForgeRunner.shared.board.recipe.prompt)
+        }
         dismissFailure()
         appliedComposerState = nil
         updateComposer()
         updateSuggestions()
-        updateCommandPalette(for: composerBar.currentText)
+        updateCommandPalette(for: lane == .video ? "" : composerBar.currentText)
     }
 
     /// A render is minutes long and happens on another machine, so the mark on the way in says
     /// one thing only: that something is being made right now. It clears itself when the render
-    /// stops, which is why it needs no acknowledgement of its own.
+    /// stops, which is why it needs no acknowledgement of its own. The video lane reads the same
+    /// snapshots: its chips restate the recipe, and the box follows a draft another surface edited.
     @objc private func updateVideoMark() {
         videoButton.apply(
             rendering: ForgeRunner.shared.isRendering,
             configured: ForgeRunner.shared.endpoint != nil,
             spoken: ForgeRunner.shared.board.job.subtitle)
+        guard askLane == .video else { return }
+        appliedComposerState = nil
+        updateComposer()
+        let prompt = ForgeRunner.shared.board.recipe.prompt
+        if !composerBar.isEditing, composerBar.rawText != prompt {
+            composerBar.setText(prompt)
+        }
     }
 
     @objc func openVideo() {
@@ -1480,7 +1507,14 @@ final class HomeViewController: UIViewController {
         failureCard.isHidden = true
         suggestions.isHidden = true
         attachmentStrip.isHidden = true
-        [failureCard, suggestions, attachmentStrip].forEach(accessories.addArrangedSubview)
+        videoChips.isHidden = true
+        [failureCard, suggestions, videoChips, attachmentStrip].forEach(
+            accessories.addArrangedSubview)
+        videoChips.onCycle = { [weak self] field in self?.cycleVideoChip(field) }
+        videoChips.onOpen = { [weak self] in
+            Theme.Haptics.tap()
+            self?.presentVideo()
+        }
         view.addSubview(accessories)
         NSLayoutConstraint.activate([
             accessories.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -1757,6 +1791,11 @@ extension HomeViewController: HomeComposerBarDelegate {
     }
 
     func homeComposerTextDidChange(_ text: String) {
+        if askLane == .video {
+            ForgeRunner.shared.describe(text)
+            updateSuggestions()
+            return
+        }
         updateCommandPalette(for: composerBar.currentText)
         updateSuggestions()
         enhancement.updateInput(composerBar.currentText)
@@ -1987,6 +2026,8 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// to whatever the composer was already pointed at rather than to an arbitrary server.
     var composerAim: ComposerAim? {
         switch askLane {
+        case .video:
+            return nil
         case .chat:
             guard let target = composeTarget,
                 let profile = viewModel.servers.first(where: { $0.id == target.profileID })
@@ -2015,7 +2056,11 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// flicker shut mid-choice. Both menus resolve their contents when opened,
     /// so skipping the rebuild can't serve a stale list.
     private func updateComposer() {
-        composerBar.isHidden = viewModel.servers.isEmpty
+        composerBar.isHidden = viewModel.servers.isEmpty && askLane != .video
+        if askLane == .video {
+            updateVideoComposer()
+            return
+        }
         guard let aim = composerAim else {
             updateSuggestions()
             return
@@ -2042,6 +2087,67 @@ extension HomeViewController: HomeComposerBarDelegate {
         refreshAbilities(for: aim)
         updateSuggestions()
         view.setNeedsLayout()
+    }
+
+    /// The video lane's chrome: the destination chip names the renderer the way the chat lane
+    /// names its project — or says none is set up and opens the setup — the model chip has nothing
+    /// to say, the paperclip is not offered, and the walkable settings ride as chips under the box.
+    private func updateVideoComposer() {
+        let board = ForgeRunner.shared.board
+        let configured = ForgeRunner.shared.endpoint != nil
+        composerBar.setModel(title: nil, menu: nil)
+        composerBar.showsAttach = false
+        composerBar.ultracodeEffort = nil
+        let title = board.value(of: .endpoint)
+        let state = ["video", title, "\(configured)"].joined(separator: "|")
+        if state != appliedComposerState {
+            appliedComposerState = state
+            let icon = UIImage(
+                systemName: configured ? "desktopcomputer" : "desktopcomputer.trianglebadge.exclamationmark",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))?
+                .withTintColor(
+                    configured ? Theme.Color.accent : Theme.Color.warning,
+                    renderingMode: .alwaysOriginal)
+            composerBar.setContext(icon: icon, title: title, menu: videoTargetMenu())
+        }
+        videoChips.update(board: board)
+        updateSuggestions()
+        view.setNeedsLayout()
+    }
+
+    private func videoTargetMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(
+                title: ForgeSurface.title, image: UIImage(systemName: ForgeEntryPoint.symbol)
+            ) { [weak self] _ in self?.presentVideo() },
+            UIAction(
+                title: ForgeSetup.title, image: UIImage(systemName: "desktopcomputer")
+            ) { [weak self] _ in self?.presentRendererSetup() },
+        ])
+    }
+
+    private func presentRendererSetup() {
+        Theme.Haptics.tap()
+        let nav = UINavigationController(rootViewController: ForgeSetupViewController())
+        nav.navigationBar.prefersLargeTitles = true
+        present(nav, animated: true)
+    }
+
+    /// Sending from the video lane is the forge's own begin: a configured renderer starts the
+    /// render and the surface opens over the work so the first seconds of waiting are watched; a
+    /// missing one opens the same surface leading with its setup instead of failing the send. A
+    /// render already out is never cancelled by a send — the surface simply opens on it.
+    private func renderSend(_ text: String) {
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        let runner = ForgeRunner.shared
+        runner.describe(words)
+        if let action = runner.begin(), case .render(let recipe) = action {
+            Theme.Haptics.send()
+            runner.render(recipe)
+        }
+        view.endEditing(true)
+        presentVideo()
     }
 
     /// A chat names the project it will live in; a question has none to name, so the chip says
@@ -2173,6 +2279,8 @@ extension HomeViewController: HomeComposerBarDelegate {
                 }
                 modelChoices[aim.memoryKey] = choice
             }
+        case .video:
+            assertionFailure("the video lane has no ComposerAim")
         case .ask:
             QuickAskDefaults.recordModel(selection, forProfileID: aim.profile.id)
             var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
@@ -2196,6 +2304,8 @@ extension HomeViewController: HomeComposerBarDelegate {
             EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: aim.profile.id)
         case .ask:
             QuickAskDefaults.recordEffort(level, forProfileID: aim.profile.id)
+        case .video:
+            assertionFailure("the video lane has no ComposerAim")
         }
         var choice = modelChoices[aim.memoryKey] ?? ModelChoice()
         choice.effort = level
@@ -2231,6 +2341,8 @@ extension HomeViewController: HomeComposerBarDelegate {
             case .ask:
                 QuickAskDefaults.adopt(pick)
                 self.aimAsk(at: pick.profileID)
+            case .video:
+                assertionFailure("the video lane has no ComposerAim")
             }
         }
         let nav = UINavigationController(rootViewController: picker)
@@ -2273,6 +2385,8 @@ extension HomeViewController: HomeComposerBarDelegate {
                         completion(self?.askTargets() ?? [])
                     }
                 ])
+        case .video:
+            return videoTargetMenu()
         }
     }
 
@@ -2399,6 +2513,7 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// The session is created only now, on commit; the box keeps the words and whatever is in its
     /// strip until the create succeeds, so a dead server loses nothing.
     private func composerSend(_ text: String) {
+        if askLane == .video { return renderSend(text) }
         guard let aim = composerAim,
             QuickAskComposition.canSend(text: text, attachments: attachments.count)
         else { return }
@@ -2442,6 +2557,8 @@ extension HomeViewController: HomeComposerBarDelegate {
         case .ask:
             QuickAskDefaults.record(profileID: aim.profile.id)
             QuickAskDefaults.stamp(profileID: aim.profile.id, sessionID: entry.session.id)
+        case .video:
+            assertionFailure("the video lane has no ComposerAim")
         }
         let payload = attachments.map(\.prompt)
         attachments = []
@@ -2467,7 +2584,18 @@ extension HomeViewController {
             && attachments.isEmpty && commandPalette.isHidden
     }
 
+    /// A chip is the same press the board's row answers: the walk goes through the runner, so the
+    /// composer and the forge surface can never disagree about what the next render is made from.
+    private func cycleVideoChip(_ field: ForgeField) {
+        guard let row = ForgeRunner.shared.board.rows.first(where: { $0.kind == .field(field) }),
+            row.isActivatable
+        else { return }
+        Theme.Haptics.selection()
+        _ = ForgeRunner.shared.activate(row)
+    }
+
     func updateSuggestions() {
+        setAccessory(videoChips, visible: askLane == .video && !composerBar.isHidden)
         guard wantsSuggestions else { return setAccessory(suggestions, visible: false) }
         if let aim = composerAim {
             suggestions.update(

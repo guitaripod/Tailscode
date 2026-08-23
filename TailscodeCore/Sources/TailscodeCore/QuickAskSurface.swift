@@ -188,19 +188,67 @@ public enum QuickAskRecents {
 public enum QuickAskLane: String, Sendable, CaseIterable {
     case chat
     case ask
+    case video
 
-    public var toggled: QuickAskLane { self == .ask ? .chat : .ask }
+    /// The lanes in the order a flip walks them, which is also the order a swipe reads them:
+    /// the everyday lane first, the question beside it, and the lane that spends another
+    /// machine's card last — the most deliberate flip is the longest one.
+    public static var order: [QuickAskLane] { allCases }
 
-    /// The one word on the switch. It names the lane being offered rather than the one in force,
-    /// which is why it does not change when the switch is thrown — a control whose label moves
-    /// under the finger is a control nobody can aim at twice.
-    public static var switchTitle: String { Localized.text("Ask") }
+    /// The lane after this one, wrapping. With three lanes the tap on the switch is a walk
+    /// rather than a toggle, and a swipe is the same walk with a direction.
+    public var toggled: QuickAskLane { advanced(by: 1) }
+
+    public func advanced(by steps: Int) -> QuickAskLane {
+        let all = Self.order
+        guard let index = all.firstIndex(of: self) else { return self }
+        let count = all.count
+        return all[((index + steps) % count + count) % count]
+    }
+
+    /// The word the switch wears. Three lanes cannot share one static label, so the switch
+    /// states the lane in force — which is also the one fact the bar owes the reader.
+    public var word: String {
+        switch self {
+        case .chat: return Localized.text("Chat")
+        case .ask: return Localized.text("Ask")
+        case .video: return Localized.text("Video")
+        }
+    }
+
+    /// The switch's symbol on the Apple clients: the lane's own face, so the pill reads at a
+    /// glance before the word does. Video wears the forge's one symbol everywhere it appears.
+    public var symbol: String {
+        switch self {
+        case .chat: return "bubble.left"
+        case .ask: return "sparkle"
+        case .video: return ForgeEntryPoint.symbol
+        }
+    }
 
     public var placeholder: String {
         switch self {
         case .chat: return Localized.text("Start a new chat…")
         case .ask: return Localized.text("Ask anything — no project, no setup")
+        case .video: return Localized.text("Describe the video…")
         }
+    }
+
+    /// What the send control promises. Two lanes send words to a machine that answers in words;
+    /// the third spends minutes of another machine's card, and a control that says so is the
+    /// difference between a flip nobody noticed and a render nobody meant.
+    public var sendLabel: String {
+        switch self {
+        case .chat, .ask: return Localized.text("Send")
+        case .video: return Localized.text("Render")
+        }
+    }
+
+    /// The settings the video lane wears as chips under the box — every value the board can walk
+    /// by itself, in the board's own order, so the composer and the forge surface never disagree
+    /// about what a render is made from.
+    public static var videoChips: [ForgeField] {
+        ForgeField.allCases.filter(\.isCyclable)
     }
 
     /// What a screen reader is told the switch is, said as the state it is in. A toggle that reads
@@ -209,12 +257,46 @@ public enum QuickAskLane: String, Sendable, CaseIterable {
         switch self {
         case .chat:
             return Localized.text(
-                "Quick ask off. Sending starts a chat in the project named beside this switch.")
+                "Chat lane. Sending starts a chat in the project named beside this switch.")
         case .ask:
             return Localized.text(
                 "Quick ask on. Sending asks the named machine with no project, on the model this ask remembers."
             )
+        case .video:
+            return Localized.text(
+                "Video lane. Sending renders a video on the machine with the card, with the settings named under this box."
+            )
         }
+    }
+}
+
+/// The flip as a gesture: a horizontal swipe on the prompt box walks the lanes, with enough
+/// travel demanded that a scroll begun on the bar never changes where a send goes. The
+/// arithmetic is Core's so the feel is a fact rather than a per-client guess: the distance that
+/// commits, the fraction of a drag the bar visibly follows, and how far it leans before the
+/// spring takes over. A desktop has no swipe to give — its pointer flips the switch — so only
+/// the phone reads these.
+public enum ComposerLaneSwipe {
+    /// Points of travel that commit a flip. More than a scroll's sideways wobble, less than a
+    /// third of any phone's width, so the gesture is deliberate and still cheap.
+    public static let threshold: Double = 64
+    /// How much of the finger's travel the bar visibly follows, so the drag reads as weight
+    /// rather than as the bar leaving.
+    public static let follow: Double = 1.0 / 3.0
+    /// The farthest the bar leans, in points, however far the finger goes.
+    public static let lean: Double = 28
+
+    /// How far the bar draws itself displaced for a drag of `translation` points.
+    public static func offset(for translation: Double) -> Double {
+        let eased = translation * follow
+        return max(-lean, min(lean, eased))
+    }
+
+    /// The lane a completed drag lands in, or nil for travel that stayed under the threshold.
+    /// Dragging left pulls the next lane in; dragging right pulls the previous one back.
+    public static func landed(_ lane: QuickAskLane, translation: Double) -> QuickAskLane? {
+        guard abs(translation) >= threshold else { return nil }
+        return lane.advanced(by: translation < 0 ? 1 : -1)
     }
 }
 

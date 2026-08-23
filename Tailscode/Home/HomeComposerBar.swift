@@ -292,28 +292,79 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     /// The switch is a chip rather than a `UISwitch`: it sits in a row of chips, it is thrown with
     /// the same tap the chips beside it answer, and a chip can wear the accent outright, which is
-    /// the one state a person has to be able to read without stopping to look.
+    /// the one state a person has to be able to read without stopping to look. With three lanes
+    /// the tap is a walk rather than a toggle, and the swipe on the box is the same walk with a
+    /// direction.
     private func buildLaneSwitch() {
         var config = UIButton.Configuration.plain()
         config.cornerStyle = .capsule
         config.contentInsets = NSDirectionalEdgeInsets(
             top: 2, leading: Theme.Spacing.s, bottom: 2, trailing: Theme.Spacing.s + 1)
         config.imagePadding = 4
-        config.image = UIImage(
-            systemName: "sparkle",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
         laneButton.configuration = config
         laneButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         laneButton.setContentHuggingPriority(.required, for: .horizontal)
         laneButton.addAction(
             UIAction { [weak self] _ in self?.laneTapped() }, for: .touchUpInside)
         laneButton.accessibilityTraits = [.button]
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(composerLanePan))
+        pan.delegate = self
+        pan.maximumNumberOfTouches = 1
+        addGestureRecognizer(pan)
     }
 
     private func laneTapped() {
         setLane(lane.toggled, animated: true)
         Theme.Haptics.selection()
         delegate?.homeComposerDidToggleLane(self)
+    }
+
+    /// The flip as a gesture: the bar follows the finger with weight, commits a lane once the drag
+    /// is deliberate, lands with the selection haptic, and springs home. The arithmetic — how far
+    /// commits, how much the bar follows, how far it leans — is Core's, so the feel is one fact.
+    /// After a commit the baseline resets, so one long drag can walk more than one lane.
+    @objc private func composerLanePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: self).x
+        switch gesture.state {
+        case .changed:
+            lean(CGAffineTransform(
+                translationX: ComposerLaneSwipe.offset(for: translation), y: 0))
+            guard let next = ComposerLaneSwipe.landed(lane, translation: translation) else {
+                return
+            }
+            gesture.setTranslation(.zero, in: self)
+            setLane(next, animated: true)
+            Theme.Haptics.selection()
+            delegate?.homeComposerDidToggleLane(self)
+        case .ended, .cancelled, .failed:
+            UIView.animate(
+                withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.7,
+                initialSpringVelocity: 0.4
+            ) {
+                self.lean(.identity)
+            }
+        default:
+            break
+        }
+    }
+
+    /// The whole bar leans as one body — the glass, the chips, the words, the buttons — because a
+    /// background sliding out from under its own text reads as breakage, not weight.
+    private func lean(_ transform: CGAffineTransform) {
+        for view in [bar, auraHost, topRow, textView, placeholder, sendButton, attachButton] {
+            view.transform = transform
+        }
+    }
+
+    /// Only a clearly horizontal drag is a lane flip — a vertical one belongs to the scroll
+    /// behind the bar and to the text view's own scrolling.
+    override func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let pan = gesture as? UIPanGestureRecognizer else {
+            return super.gestureRecognizerShouldBegin(gesture)
+        }
+        let velocity = pan.velocity(in: self)
+        return abs(velocity.x) > abs(velocity.y) * 1.5
     }
 
     /// Thrown by hand or restored on launch — the same drawing either way, and the animation is
@@ -324,6 +375,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         lane = next
         guard animated else {
             paintLaneSwitch()
+            updateSendButton()
             placeholder.text = lane.placeholder
             return
         }
@@ -335,23 +387,30 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             withDuration: 0.34, delay: 0, usingSpringWithDamping: 0.62, initialSpringVelocity: 0.6
         ) {
             self.paintLaneSwitch()
+            self.updateSendButton()
             self.laneButton.imageView?.transform = .identity
             self.layoutIfNeeded()
         }
     }
 
+    /// The switch states the lane in force — its word and its own symbol — and wears the accent
+    /// whenever the box is anywhere but the everyday lane, because those are the two lanes where a
+    /// send goes somewhere a glance has to be able to confirm.
     private func paintLaneSwitch() {
         var config = laneButton.configuration ?? .plain()
-        var title = AttributedString(QuickAskLane.switchTitle)
+        var title = AttributedString(lane.word)
         title.font = Theme.Ramp.font(.sectionLabel)
         config.attributedTitle = title
-        let on = lane == .ask
+        config.image = UIImage(
+            systemName: lane.symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+        let on = lane != .chat
         config.baseForegroundColor = on ? Theme.Color.onAccent : Theme.Color.tertiaryLabel
         config.background.backgroundColor = on ? Theme.Color.accent : .clear
         config.background.strokeColor = on ? .clear : Theme.Color.separator
         config.background.strokeWidth = on ? 0 : 1
         laneButton.configuration = config
-        laneButton.accessibilityLabel = QuickAskLane.switchTitle
+        laneButton.accessibilityLabel = lane.word
         laneButton.accessibilityValue = lane.spoken
         laneButton.accessibilityTraits = on ? [.button, .selected] : [.button]
     }
@@ -524,13 +583,16 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.reloadInputViews()
     }
 
+    /// The send control wears the lane: the video lane spends minutes of another machine's card,
+    /// so its button is the forge's own face and its name is Render — a wrong-lane send has to be
+    /// impossible to miss before the press, not after it.
     private func updateSendButton() {
         let hasText = !trimmed.isEmpty || carriesAttachments
         var config = sendButton.configuration ?? .filled()
         config.image = isSending
             ? nil
             : UIImage(
-                systemName: "arrow.up",
+                systemName: lane == .video ? lane.symbol : "arrow.up",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
         config.baseBackgroundColor =
             hasText || isSending ? Theme.Color.accent : Theme.Color.separator
@@ -538,7 +600,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         sendButton.configuration = config
         sendWork.show(isSending, on: sendButton)
         sendButton.isEnabled = hasText && !isSending
-        sendButton.accessibilityLabel = String(localized: "Send")
+        sendButton.accessibilityLabel = lane.sendLabel
     }
 
     @objc private func sendTapped() {

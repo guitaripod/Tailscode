@@ -286,5 +286,31 @@ extension DeviceStores {
             #expect(ModelEffort.isOffered(options: []) == false)
             #expect(ModelEffort.isOffered(options: ["low"]))
         }
+
+        @Test("Three lanes walk in one order and a swipe is that walk with a direction")
+        func lanesWalkAndSwipe() {
+            #expect(QuickAskLane.order == [.chat, .ask, .video])
+            #expect(QuickAskLane.chat.toggled == .ask)
+            #expect(QuickAskLane.ask.toggled == .video)
+            #expect(QuickAskLane.video.toggled == .chat)
+            #expect(QuickAskLane.chat.advanced(by: -1) == .video)
+            #expect(ComposerLaneSwipe.landed(.chat, translation: -ComposerLaneSwipe.threshold) == .ask)
+            #expect(ComposerLaneSwipe.landed(.chat, translation: ComposerLaneSwipe.threshold) == .video)
+            #expect(ComposerLaneSwipe.landed(.chat, translation: -ComposerLaneSwipe.threshold + 1) == nil)
+            #expect(ComposerLaneSwipe.offset(for: 1000) == ComposerLaneSwipe.lean)
+            #expect(ComposerLaneSwipe.offset(for: -1000) == -ComposerLaneSwipe.lean)
+            #expect(abs(ComposerLaneSwipe.offset(for: 30) - 10) < 0.001)
+        }
+
+        @Test("The video lane says what it costs and what it is made from")
+        func videoLaneIdentity() {
+            #expect(QuickAskLane.video.sendLabel != QuickAskLane.chat.sendLabel)
+            #expect(QuickAskLane.video.symbol == ForgeEntryPoint.symbol)
+            #expect(QuickAskLane.videoChips.allSatisfy { $0.isCyclable })
+            #expect(!QuickAskLane.videoChips.contains(.prompt))
+            #expect(!QuickAskLane.videoChips.contains(.endpoint))
+            let words = Set(QuickAskLane.allCases.map(\.word))
+            #expect(words.count == QuickAskLane.allCases.count)
+        }
     }
 }

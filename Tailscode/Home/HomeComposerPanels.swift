@@ -287,3 +287,91 @@ final class HomeComposerFailureCard: UIView {
         isAccessibilityElement = false
     }
 }
+
+/// The video lane's own furniture: every setting the board can walk, worn as chips under the box
+/// so a render is composed without leaving the keyboard — and the road into the full surface at
+/// the end of the row. The values are the board's own words, and a tap is the same walk the
+/// board's rows answer, so the composer and the forge can never disagree about the next render.
+@MainActor
+final class HomeVideoChips: UIView {
+    var onCycle: ((ForgeField) -> Void)?
+    var onOpen: (() -> Void)?
+
+    private let scrollView = UIScrollView()
+    private let row = UIStackView()
+    private var applied: String?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.contentInset = UIEdgeInsets(
+            top: 0, left: Theme.Spacing.l, bottom: 0, right: Theme.Spacing.l)
+        addSubview(scrollView)
+
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.xs
+        row.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(row)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            scrollView.heightAnchor.constraint(equalTo: row.heightAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Redrawn only when a value actually changed, because this is rebuilt on every snapshot off
+    /// the render socket and a scroll view rebuilt under a finger forgets where it was.
+    func update(board: ForgeBoard) {
+        let fields = QuickAskLane.videoChips
+        let identity = fields.map { "\($0.rawValue)=\(board.value(of: $0))" }
+            .joined(separator: "|") + "|\(board.isBusy)"
+        guard identity != applied else { return }
+        applied = identity
+        row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for field in fields {
+            let chip = chip(symbol: field.symbol, title: board.value(of: field)) {
+                [weak self] in self?.onCycle?(field)
+            }
+            chip.isEnabled = !board.isBusy
+            chip.accessibilityLabel = "\(field.label), \(board.value(of: field))"
+            row.addArrangedSubview(chip)
+        }
+        let open = chip(symbol: "slider.horizontal.3", title: ForgeSurface.title) {
+            [weak self] in self?.onOpen?()
+        }
+        open.accessibilityLabel = ForgeSurface.title
+        row.addArrangedSubview(open)
+    }
+
+    private func chip(
+        symbol: String, title: String, action: @escaping () -> Void
+    ) -> UIButton {
+        var config = Theme.Glass.buttonConfiguration()
+        config.cornerStyle = .capsule
+        config.buttonSize = .small
+        config.imagePadding = Theme.Spacing.xs
+        config.titleLineBreakMode = .byTruncatingTail
+        config.image = UIImage(
+            systemName: symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        var name = AttributedString(title)
+        name.font = Theme.Ramp.font(.sectionLabel)
+        config.attributedTitle = name
+        let button = UIButton(configuration: config)
+        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        button.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        button.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
+        return button
+    }
+}

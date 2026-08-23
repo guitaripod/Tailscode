@@ -133,6 +133,9 @@ enum ParityManifest {
         case .forgeSetup: return .implemented("ForgeSetupWindow")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
+        case .videoLane:
+            return .notApplicable(
+                "this desk has no swipe to give a composer and no front-door prompt box to give lanes — the composer lives in each pane, and video is already one press away as the header's own first-class control (forgeEntry), which is this desk's button-shaped road to the same surface")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")
         }
     }

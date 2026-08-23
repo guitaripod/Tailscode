@@ -136,6 +136,7 @@ enum ParityManifest {
         case .forgeSetup: return .implemented("ForgeSetupViewController")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("ForgeClipCell")
+        case .videoLane: return .implemented("composerLanePan")
         }
     }
 }
