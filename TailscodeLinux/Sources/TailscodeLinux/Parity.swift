@@ -129,6 +129,8 @@ enum ParityManifest {
             return .notApplicable(
                 "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")
         case .videoForge: return .implemented("ForgePane")
+        case .forgeEntry: return .implemented("ForgeWindow")
+        case .forgeSetup: return .implemented("ForgeSetupWindow")
         case .autoResume: return .implemented("armResume")
         case .forgeHistory: return .implemented("presentClipMenu")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")

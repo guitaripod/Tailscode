@@ -14,13 +14,14 @@ enum SettingsFile {
     private static let dataKey = "__data"
 
     /// Keys written by the shared stores rather than by this app's own settings — bookmarks, seen
-    /// state and model choices. Captured by prefix because their key space is per session.
+    /// state, model choices, and the renderer the forge points at with the clips it brought back.
+    /// Captured by prefix because their key space is per session.
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",
-        "tailscode.slash.recents",
+        "tailscode.slash.recents", "tailscode.forge.",
     ]
 
     private nonisolated(unsafe) static var state: [String: Any] = [:]

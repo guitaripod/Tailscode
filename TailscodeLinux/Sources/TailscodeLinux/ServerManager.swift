@@ -1135,6 +1135,14 @@ final class ServerManager: @unchecked Sendable {
                     self?.toast(Localized.text("Copied — run it in a terminal."))
                 }
             ]
+        case .copyCommand(let command):
+            return [
+                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Copy")) {
+                    [weak self] in
+                    Gtk.copyToClipboard(command)
+                    self?.toast(Localized.text("Copied — run it in a terminal."))
+                }
+            ]
         case .none, .openAppSettings, .revealPassword, .seePro:
             return []
         }

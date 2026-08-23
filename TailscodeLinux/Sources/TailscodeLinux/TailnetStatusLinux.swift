@@ -31,14 +31,23 @@ public struct TailnetStatusLinux: Sendable {
 
     public let address: String?
     public let peers: [Peer]
+    /// This machine, in the same shape as a peer. The tailnet's own status leaves Self out of the
+    /// peer list, which is right for an agent scan — nothing on this desk is the server it talks to
+    /// — and wrong for a service scan: the desktop somebody codes at is the likeliest machine on
+    /// the whole tailnet to be holding the graphics card, and a sweep that only asks peers could
+    /// never find the renderer it is running on.
+    public let me: Peer?
     /// Which of the four ways this machine can be off a tailnet it is, when it is off one. Carried
     /// beside the address rather than derived from its absence, because a nil address is the one
     /// thing every failure has in common and the differences are what a person can act on.
     public let reading: TailscaleReading
 
-    public init(address: String?, peers: [Peer], reading: TailscaleReading? = nil) {
+    public init(
+        address: String?, peers: [Peer], me: Peer? = nil, reading: TailscaleReading? = nil
+    ) {
         self.address = address
         self.peers = peers
+        self.me = me
         if let reading {
             self.reading = reading
         } else if let address {
@@ -65,30 +74,44 @@ public struct TailnetStatusLinux: Sendable {
         }
         let selfNode = root["Self"] as? [String: Any]
         let address = (selfNode?["TailscaleIPs"] as? [String])?.first { !$0.contains(":") }
+        let me = selfNode.flatMap(Self.peer)
         let reading = TailscaleReading.read(
             found: true, sandboxed: Packaging.isFlatpak,
             backendState: root["BackendState"] as? String, address: address)
         let rawPeers: [Any] = Array((root["Peer"] as? [String: Any])?.values ?? [:].values)
         let peers: [Peer] = rawPeers.compactMap { value in
-            guard let peer = value as? [String: Any],
-                let name = (peer["HostName"] as? String) ?? (peer["DNSName"] as? String),
-                let ip = (peer["TailscaleIPs"] as? [String])?.first(where: { !$0.contains(":") })
-            else { return nil }
-            var dns = (peer["DNSName"] as? String) ?? ""
-            while dns.hasSuffix(".") { dns.removeLast() }
-            return Peer(
-                hostname: name, address: ip, online: (peer["Online"] as? Bool) ?? false,
-                os: (peer["OS"] as? String) ?? "", dnsName: dns)
+            guard let node = value as? [String: Any] else { return nil }
+            return peer(node)
         }
         return TailnetStatusLinux(
-            address: address, peers: peers.sorted { $0.hostname < $1.hostname }, reading: reading)
+            address: address, peers: peers.sorted { $0.hostname < $1.hostname }, me: me,
+            reading: reading)
+    }
+
+    /// One node of `tailscale status --json`, read the same way whether it is a peer or this
+    /// machine. Self reports no `Online` field, because a node answering about itself is by
+    /// definition up.
+    private static func peer(_ node: [String: Any]) -> Peer? {
+        guard let name = (node["HostName"] as? String) ?? (node["DNSName"] as? String),
+            let ip = (node["TailscaleIPs"] as? [String])?.first(where: { !$0.contains(":") })
+        else { return nil }
+        var dns = (node["DNSName"] as? String) ?? ""
+        while dns.hasSuffix(".") { dns.removeLast() }
+        return Peer(
+            hostname: name, address: ip, online: (node["Online"] as? Bool) ?? true,
+            os: (node["OS"] as? String) ?? "", dnsName: dns)
     }
 
     /// The peers worth asking, in the scanner's own shape. Only what is online — a machine that
     /// is asleep answers nothing and costs the scan a full timeout apiece — and the scanner
     /// drops the phones and TVs that could never run an agent anyway.
-    public func scannableDevices() -> [TailscaleDevice] {
-        TailnetScanner.scannableDevices(peers.filter(\.online).map(\.device))
+    /// - Parameter includingThisMachine: whether the machine doing the scanning is one of the
+    ///   answers. False for an agent scan, which is looking for the *other* computer; true for a
+    ///   service like the renderer, which may perfectly well be this one.
+    public func scannableDevices(includingThisMachine: Bool = false) -> [TailscaleDevice] {
+        var devices = peers.filter(\.online).map(\.device)
+        if includingThisMachine, let me { devices.insert(me.device, at: 0) }
+        return TailnetScanner.scannableDevices(devices)
     }
 
     /// The daemon is asked over its own CLI rather than its socket: `tailscaled.sock` is root-owned

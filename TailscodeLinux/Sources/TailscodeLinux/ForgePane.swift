@@ -3,20 +3,19 @@ import CGtkShim
 import Foundation
 import TailscodeCore
 
-/// A video being asked for, made, and watched — inside the split tree, as a pane like any other.
+/// A video being asked for, made, and watched — the body of the forge modal.
 ///
 /// The whole of what this shows is `ForgeBoard`'s: which machine renders and whether it answered,
 /// the render in hand with its bar and its stage, the settings the next one is made from, and the
-/// clips already kept. This owns four things the board cannot — the prompt box, the reachability
-/// probe, the render stream, and the player — and hands every answer straight back into the board
-/// so the words on screen are Core's in every state.
+/// clips already kept. Nothing here is state: the board, the connection and the render's own task
+/// live in ``ForgeRunner`` so that closing the window cannot cancel four minutes of somebody else's
+/// card. What this owns is the drawing — the prompt box, the rows, and the player.
 ///
-/// The clip plays where the board was rather than in a window of its own: the pane keeps its
-/// heading, its prompt and its keys, so a finished render is watched in place and Escape puts the
-/// board back with the recipe that made it still in the boxes.
+/// The clip plays where the board was rather than in a window of its own: the surface keeps its
+/// prompt and its keys, so a finished render is watched in place and Escape puts the board back
+/// with the recipe that made it still in the boxes.
 final class ForgePane: @unchecked Sendable {
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private(set) var board: ForgeBoard
     private var player: OpaquePointer?
     private var surface: UnsafeMutablePointer<GtkWidget>?
     private var callbackBox: UnsafeMutableRawPointer?
@@ -24,42 +23,40 @@ final class ForgePane: @unchecked Sendable {
 
     private let askBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     private let entry = gtk_entry_new()!
-    private let headingLabel: UnsafeMutablePointer<GtkWidget>
     private let hintLabel: UnsafeMutablePointer<GtkWidget>
     private let reasonLabel: UnsafeMutablePointer<GtkWidget>
-    private let noticeLabel: UnsafeMutablePointer<GtkWidget>
     private let stage = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private let boardScroller = gtk_scrolled_window_new()!
     private let boardHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
 
     private var parent: UnsafeMutablePointer<GtkWidget>?
-    private var client: ForgeClient?
-    private var renderTask: Task<Void, Never>?
-    private var reachTask: Task<Void, Never>?
+    private let runner = ForgeRunner.shared
     private var openTask: Task<Void, Never>?
     /// Why the last thing somebody pressed did not happen — a machine that would not answer, a
     /// file that is gone, a player that would not decode. Never a render's own failure: that one
     /// is the job's, and the board says it on the render row where it happened.
     private var reason: String?
-    /// What the pane itself is waiting on, as opposed to what the renderer is. Only the lookup
+    /// What the surface itself is waiting on, as opposed to what the renderer is. Only the lookup
     /// before a clip opens lands here, and it says so rather than leaving a pressed row silent.
     private var working: String?
     private var typing = false
 
-    /// Told to the pane's owner whenever what this slot says about itself changes, so the identity
-    /// strip follows the render rather than lagging a state behind it.
+    /// Told to the pane's owner whenever what this surface says about itself changes, so the modal's
+    /// own footer follows the render rather than lagging a state behind it.
     var onChange: (@Sendable () -> Void)?
+
+    var board: ForgeBoard { runner.board }
 
     init(parent: UnsafeMutablePointer<GtkWidget>?) {
         self.parent = parent
-        board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
-        headingLabel = Gtk.label(board.heading, css: "video-heading", selectable: false)
-        hintLabel = Gtk.label(board.hint, css: "dim", selectable: false)
+        hintLabel = Gtk.label(ForgeRunner.shared.board.hint, css: "dim", selectable: false)
         reasonLabel = Gtk.label("", css: "forge-reason", wrap: true, selectable: false)
-        noticeLabel = Gtk.label(board.notice, css: "video-notice", wrap: true, selectable: false)
         buildRoot()
-        board.filled(history: ForgeStore.history())
-        probe()
+        runner.watch(self) { [weak self] in
+            Gtk.onMain { [weak self] in self?.render() }
+        }
+        runner.prepare()
+        syncPrompt()
         render()
     }
 
@@ -81,7 +78,6 @@ final class ForgePane: @unchecked Sendable {
 
         gtk_label_set_wrap(op(hintLabel), 0)
         gtk_label_set_ellipsize(op(hintLabel), PANGO_ELLIPSIZE_END)
-        gtk_label_set_max_width_chars(op(noticeLabel), 46)
 
         gtk_scrolled_window_set_policy(op(boardScroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
         gtk_scrolled_window_set_child(op(boardScroller), boardHolder)
@@ -95,12 +91,10 @@ final class ForgePane: @unchecked Sendable {
         gtk_widget_set_hexpand(stage, 1)
         gtk_box_append(ptr(stage), boardScroller)
 
-        gtk_box_append(ptr(askBox), headingLabel)
         gtk_box_append(ptr(askBox), entry)
         gtk_box_append(ptr(askBox), reasonLabel)
         gtk_box_append(ptr(askBox), stage)
         gtk_box_append(ptr(askBox), hintLabel)
-        gtk_box_append(ptr(askBox), noticeLabel)
         gtk_box_append(ptr(root), askBox)
     }
 
@@ -155,10 +149,21 @@ final class ForgePane: @unchecked Sendable {
         typed()
     }
 
+    /// Puts the prompt box back in step with the recipe the board holds — after an old clip's
+    /// settings are put back in the draft, or after the driver has stood the board in a state. The
+    /// write is not an edit, so it must not be read back as one.
+    private func syncPrompt() {
+        let words = board.recipe.prompt
+        guard Dialogs.entryText(entry) != words else { return }
+        typing = true
+        gtk_editable_set_text(op(entry), words)
+        typing = false
+    }
+
     /// The board's own keys, offered before the box they are typed into gets them. Only chords a
     /// text field cannot want are claimed, so every letter and digit still types into the prompt —
-    /// except while a clip is playing and the prompt does not have the keyboard, when the pane is
-    /// a player and answers a player's keys.
+    /// except while a clip is playing and the prompt does not have the keyboard, when the surface
+    /// is a player and answers a player's keys.
     func handleChord(_ chord: KeyChord) -> Bool {
         if isPlaying {
             if chord.keyval == Keymap.escape {
@@ -175,24 +180,29 @@ final class ForgePane: @unchecked Sendable {
             }
         }
         guard let command = ForgeBoard.command(for: chord) else { return false }
-        let (handled, action) = board.handle(command)
+        let (handled, action) = runner.handle(command)
         guard handled else { return false }
-        guard let action else {
-            remember()
-            render()
-            return true
-        }
+        guard let action else { return true }
         perform(action)
         return true
     }
 
-    func shutdown() {
-        renderTask?.cancel()
-        renderTask = nil
-        reachTask?.cancel()
-        reachTask = nil
+    /// Stops this pane being drawn, and nothing else. It has to happen the instant the window is
+    /// destroyed rather than a turn of the main loop later: the runner keeps yielding snapshots for
+    /// as long as the render runs, and one that lands after the widgets are gone writes text into
+    /// labels GTK has already freed.
+    func stopDrawing() {
+        runner.unwatch(self)
         openTask?.cancel()
         openTask = nil
+    }
+
+    /// The window is closing. The render is deliberately not touched — it lives in the runner, and
+    /// a person who closed a window asked for the window to go, never for the other machine to stop
+    /// — so what is let go of here is exactly what belongs to this view: the player and the lookup
+    /// that would have fed it.
+    func shutdown() {
+        stopDrawing()
         if let player {
             tailscode_mpv_free(player)
             self.player = nil
@@ -209,8 +219,7 @@ final class ForgePane: @unchecked Sendable {
     private func typed() {
         guard !typing else { return }
         guard let raw = gtk_editable_get_text(op(entry)) else { return }
-        board.describe(String(cString: raw))
-        render()
+        runner.describe(String(cString: raw))
     }
 
     /// What activating a row means here. Everything the board can do on its own — walking a
@@ -218,22 +227,23 @@ final class ForgePane: @unchecked Sendable {
     private func perform(_ action: ForgeAction) {
         switch action {
         case .render(let recipe):
-            start(recipe)
+            reason = nil
+            runner.start(recipe)
         case .cancel:
-            stop()
+            runner.stop()
         case .play(let asset):
             play(asset)
         case .edit(let field):
             edit(field)
         case .configure:
-            askForRenderer()
+            openSetup()
         }
     }
 
     private func edit(_ field: ForgeField) {
         switch field {
         case .endpoint:
-            askForRenderer()
+            openSetup()
         case .prompt:
             focusPrompt()
         case .negative:
@@ -243,17 +253,19 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    /// Where the renderer lives, asked for in the one place a person can answer it. The reading is
-    /// Core's and so is every refusal, so a typed address that cannot be reached is explained in
-    /// the same sentence on every client.
-    private func askForRenderer() {
-        Dialogs.prompt(
-            title: ForgeField.endpoint.label, body: ForgeFailure.unconfigured.description,
-            placeholder: board.value(of: .endpoint),
-            initial: board.endpoint?.displayHost ?? "", confirmLabel: Localized.text("Save"),
-            parent: parent
-        ) { [weak self] text in
-            Gtk.onMain { [weak self] in self?.point(at: text) }
+    /// Where the renderer lives, asked for the way a server is asked for: a surface that states
+    /// this machine's own address, sweeps the tailnet for the box with the card, checks what it is
+    /// given and explains what it finds. Every word of it is Core's.
+    ///
+    /// The renderer somebody picked is taken up by the runner rather than by this pane, because the
+    /// setup window outlives the surface that opened it: closing the forge modal while the setup is
+    /// still up must not be what decides whether the address they chose is ever pointed at.
+    private func openSetup() {
+        ForgeSetupWindow.present(parent: parent) { [weak self] in
+            Gtk.onMain { [weak self] in
+                ForgeRunner.shared.pointAtStoredRenderer()
+                self?.reason = nil
+            }
         }
     }
 
@@ -263,101 +275,8 @@ final class ForgePane: @unchecked Sendable {
             placeholder: board.value(of: .negative), initial: board.recipe.negative,
             confirmLabel: Localized.text("Save"), parent: parent
         ) { [weak self] text in
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.board.avoid(text)
-                self.remember()
-                self.render()
-            }
+            Gtk.onMain { [weak self] in self?.runner.avoid(text) }
         }
-    }
-
-    private func point(at raw: String) {
-        let reading = ForgeEndpoint.read(raw)
-        switch reading {
-        case .endpoint(let endpoint):
-            reason = nil
-            ForgeStore.remember(endpoint)
-            SettingsFile.capture()
-            board.point(at: endpoint)
-            probe()
-        case .empty:
-            reason = nil
-            ForgeStore.remember(nil)
-            SettingsFile.capture()
-            board.point(at: nil)
-            render()
-        case .bindAll, .unsupportedScheme, .invalid:
-            reason = ForgeEndpoint.complaint(reading)
-            render()
-        }
-    }
-
-    /// Whether anything is listening, asked the cheap way. The box is socket-activated, so this
-    /// says the port answers and nothing more — which is exactly what the row it feeds claims.
-    private func probe() {
-        guard let endpoint = board.endpoint else { return }
-        board.checking()
-        reachTask?.cancel()
-        reachTask = Task { [weak self] in
-            let verdict = await endpoint.reach()
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.board.reached(verdict)
-                self.render()
-            }
-        }
-    }
-
-    /// One render, watched. Every snapshot the stream yields goes straight into the board, and the
-    /// last one is always terminal — so a bar that stops moving is a render that stopped, never a
-    /// client that stopped listening.
-    private func start(_ recipe: ForgeRecipe) {
-        guard let endpoint = board.endpoint else { return }
-        remember()
-        reason = nil
-        let client = ForgeClient(endpoint: endpoint)
-        self.client = client
-        renderTask?.cancel()
-        renderTask = Task { [weak self] in
-            for await job in client.render(recipe) {
-                Gtk.onMain { [weak self] in self?.saw(job) }
-            }
-        }
-        render()
-    }
-
-    private func saw(_ job: ForgeJob) {
-        board.saw(job)
-        if job.isFinished, ForgeStore.record(job) != nil {
-            SettingsFile.capture()
-            board.filled(history: ForgeStore.history())
-        }
-        render()
-    }
-
-    /// Stops the render on the machine doing it, and stops watching for it here.
-    ///
-    /// The interrupt alone is not enough. A job still queued behind another has nothing running to
-    /// interrupt, and a machine that has gone quiet answers no frame at all — in both cases a pane
-    /// that only fired the POST would sit on a bar that never moves. Cancelling the stream is what
-    /// ends the watch; ``ForgeClient`` yields the stopped snapshot on its way out, so the board
-    /// still draws the server's account of it rather than this client's guess.
-    private func stop() {
-        renderTask?.cancel()
-        renderTask = nil
-        guard let client = renderer() else { return }
-        Task { await client.cancel() }
-    }
-
-    /// The client for whatever machine is configured right now, kept so a cancel and a lookup use
-    /// the same one the render did rather than minting a connection per press.
-    private func renderer() -> ForgeClient? {
-        if let client, client.endpoint == board.endpoint { return client }
-        guard let endpoint = board.endpoint else { return nil }
-        let fresh = ForgeClient(endpoint: endpoint)
-        client = fresh
-        return fresh
     }
 
     /// A clip, asked for before it is opened. The file is on the other machine and `/view` answers
@@ -365,7 +284,7 @@ final class ForgePane: @unchecked Sendable {
     /// them about this machine — so Core is asked where the file is first and its sentence is what
     /// a clip that is gone says.
     private func play(_ asset: ForgeAsset) {
-        guard let client = renderer() else { return }
+        guard let client = runner.renderer(for: asset) else { return }
         guard tailscode_mpv_available() != 0 else {
             return refuse(Localized.text("This build has no libmpv, so a slot cannot play"))
         }
@@ -428,18 +347,8 @@ final class ForgePane: @unchecked Sendable {
         withCommand(arguments) { tailscode_mpv_command(player, $0) }
     }
 
-    /// What the next render starts from, kept. `UserDefaults` on Linux is keyed to the executable's
-    /// path, so the durable copy is written in the same breath — otherwise the settings somebody
-    /// built survive only until the next install puts the binary somewhere else.
-    private func remember() {
-        ForgeStore.remember(board.recipe)
-        SettingsFile.capture()
-    }
-
     private func render() {
-        gtk_label_set_text(op(headingLabel), board.heading)
         gtk_label_set_text(op(hintLabel), isPlaying ? board.job.hint : board.hint)
-        gtk_label_set_text(op(noticeLabel), board.notice)
         drawAside()
         gtk_widget_set_visible(boardScroller, isPlaying ? 0 : 1)
         if let surface { gtk_widget_set_visible(surface, isPlaying ? 1 : 0) }
@@ -447,7 +356,7 @@ final class ForgePane: @unchecked Sendable {
         onChange?()
     }
 
-    /// The one line the pane says on its own behalf, under the prompt: what it is waiting on, or
+    /// The one line the surface says on its own behalf, under the prompt: what it is waiting on, or
     /// why the last press did nothing. They share a line because they are the same slot in the
     /// reading — the answer to "what happened when I pressed that" — and wear different tones so
     /// a wait is never mistaken for a refusal.
@@ -486,23 +395,16 @@ final class ForgePane: @unchecked Sendable {
     }
 
     private func activate(section: String, offset: Int) {
-        board.focus(section: section, offset: offset)
-        guard let action = board.activate() else {
-            remember()
-            render()
-            return
-        }
+        runner.focus(section: section, offset: offset)
+        guard let action = runner.activate() else { return }
         perform(action)
     }
 
     /// The button under the render, which means a different thing in each of its four states —
     /// stop what is running, play what came back, ask for a machine that was never given, or
-    /// render. Which of them it is is the board's answer, not this pane's.
+    /// render. Which of them it is is the board's answer, not this surface's.
     private func call() {
-        guard let action = board.begin() else {
-            render()
-            return
-        }
+        guard let action = runner.begin() else { return }
         perform(action)
     }
 
@@ -521,22 +423,14 @@ final class ForgePane: @unchecked Sendable {
              { [weak self] in
                  Gtk.onMain { [weak self] in
                      guard let self else { return }
-                     self.board.reuse(entry)
-                     self.describe(entry.recipe.prompt)
-                     self.remember()
-                     self.render()
+                     self.runner.reuse(entry)
+                     self.syncPrompt()
                  }
              }))
         rows.append(
             (Localized.text("Forget it"), nil,
              { [weak self] in
-                 Gtk.onMain { [weak self] in
-                     guard let self else { return }
-                     ForgeStore.remove(entry.id)
-                     SettingsFile.capture()
-                     self.board.filled(history: ForgeStore.history())
-                     self.render()
-                 }
+                 Gtk.onMain { [weak self] in self?.runner.forget(entry) }
              }))
         Gtk.contextMenu(on: boardHolder, x: x, y: y, rows: rows)
     }
@@ -607,7 +501,7 @@ final class ForgePane: @unchecked Sendable {
     }
 
     /// mpv's own words about the file. A clip that will not play says why and hands the board
-    /// back, because a black pane with nothing in it is indistinguishable from one still loading.
+    /// back, because a black surface with nothing in it is indistinguishable from one still loading.
     private func received(event: String, payload: String) {
         switch event {
         case "error":
@@ -642,100 +536,15 @@ final class ForgePane: @unchecked Sendable {
 }
 
 extension ForgePane {
-    /// Every state the surface has, put on screen without a renderer to make one happen. A render
-    /// is minutes of another machine's card, so the states between pressing the button and holding
-    /// a file cannot be reached in a build loop — and they are exactly the states worth checking,
-    /// since each of them is a different sentence. Every value here is Core's own: the phases come
-    /// from `ForgeJob`'s mutators and the frames from `ForgeEvent`, so nothing is described in
-    /// words this pane made up.
+    /// Every state the surface has, put on screen without a renderer to make one happen. The board
+    /// is stood up by the runner, which owns it; this only puts the prompt box back in step with
+    /// the recipe that came with the state.
     func demonstrate(_ name: String) {
-        quiet()
-        let renderer = ForgeEndpoint(host: Self.demoHost)
-        let recipe = ForgeRecipe(
-            prompt: Self.demoPrompt, negative: Self.demoAvoidance, seconds: 5, fps: 24, seed: 7)
-        board = ForgeBoard(recipe: recipe, endpoint: name == "unset" ? nil : renderer)
-        describe(name == "unset" ? "" : Self.demoPrompt)
+        showBoard()
+        runner.demonstrate(name)
+        syncPrompt()
         reason = nil
         working = nil
-        switch name {
-        case "unset":
-            board.filled(history: [])
-        case "checking":
-            board.checking()
-            board.filled(history: [])
-        case "down":
-            board.reached(.timedOut)
-            board.filled(history: [])
-        case "history":
-            board.reached(.listening)
-            board.filled(history: Self.demoHistory(recipe))
-        case "empty":
-            board.reached(.listening)
-            board.filled(history: [])
-        default:
-            board.reached(.listening)
-            board.saw(Self.demoJob(name, recipe: recipe))
-            board.filled(history: Self.demoHistory(recipe))
-        }
         render()
     }
-
-    /// Everything already in flight, let go of before a state is put on screen by hand — the probe
-    /// and the render both answer on their own clock, and a snapshot landing a second later would
-    /// quietly rewrite the state somebody asked to look at.
-    private func quiet() {
-        showBoard()
-        reachTask?.cancel()
-        reachTask = nil
-        renderTask?.cancel()
-        renderTask = nil
-        openTask?.cancel()
-        openTask = nil
-    }
-
-    private static let demoHost = "arch"
-    private static let demoPrompt = "a cat asleep on a warm roof"
-    private static let demoAvoidance = "blurry"
-
-    private static func demoJob(_ name: String, recipe: ForgeRecipe) -> ForgeJob {
-        var job = ForgeJob(recipe: recipe)
-        guard name != "ready" else { return job }
-        job.submitting()
-        guard name != "waking" else { return job }
-        job.accepted(promptID: demoPromptID, queued: 2)
-        guard name != "queued" else { return job }
-        switch name {
-        case "failed":
-            job.saw(.failed(demoPromptID, reason: ForgeFailure.noOutput(demoHost).description))
-        case "cancelled":
-            job.saw(.interrupted(demoPromptID))
-        case "collecting", "done":
-            job.saw(.progressed(demoPromptID, census: ForgeCensus(finished: 27, total: 28, running: "save")))
-            job.saw(.finished(demoPromptID))
-            if name == "done" { job.delivered(demoAsset) }
-        default:
-            job.saw(.started(demoPromptID))
-            job.saw(.progressed(demoPromptID, census: ForgeCensus(finished: 7, total: 28, running: "pass1")))
-            job.saw(.sampling(demoPromptID, node: "pass1", step: 3, steps: 8))
-        }
-        return job
-    }
-
-    private static func demoHistory(_ recipe: ForgeRecipe) -> [ForgeEntry] {
-        let made = (0..<6).map { index in
-            ForgeEntry(
-                id: "\(demoPromptID)\(index)", recipe: recipe.with(seed: index),
-                asset: ForgeAsset(filename: "forge_0000\(index).mp4", subfolder: "video"),
-                finishedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(index)))
-        }
-        let lost = ForgeEntry(
-            id: "\(demoPromptID)gone", recipe: recipe.with(seed: 9), asset: nil,
-            failure: ForgeFailure.unreachable(demoHost).description,
-            finishedAt: Date(timeIntervalSince1970: 1_700_000_000))
-        return made + [lost]
-    }
-
-    private static let demoPromptID = "demo"
-    private static let demoAsset = ForgeAsset(
-        filename: "forge_00001.mp4", subfolder: "video", type: "output")
 }

@@ -543,6 +543,10 @@ final class FirstRunDialog: @unchecked Sendable {
             gtk_box_append(
                 ptr(diagnosisActions),
                 Gtk.button(title) { [self] in Gtk.onMain { [self] in revealPassword() } })
+        case .copyCommand(let command):
+            gtk_box_append(
+                ptr(diagnosisActions),
+                Gtk.button(title) { Gtk.copyToClipboard(command) })
         case .none, .openAppSettings, .seePro:
             gtk_widget_set_visible(diagnosisActions, 0)
         }

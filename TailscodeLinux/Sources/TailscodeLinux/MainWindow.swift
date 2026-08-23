@@ -25,6 +25,9 @@ final class MainWindow: @unchecked Sendable {
     private let searchEntry = gtk_search_entry_new()!
 
     private var sidebarLimit = 60
+    /// The first-class way into video, kept so its promise and its mark can be rewritten whenever
+    /// a renderer is chosen or a render starts.
+    private var videoButton: UnsafeMutablePointer<GtkWidget>?
     /// The standing mark. One line in the sidebar's foot, rendered from what this device already
     /// knew before any check of this launch has come back — and hidden outright when there is
     /// nothing standing, because a mark that is always lit stops being read.
@@ -484,20 +487,17 @@ final class MainWindow: @unchecked Sendable {
                     FileHandle.standardOutput.write(
                         Data("BROWSE \(pane.webSummary ?? "-")\n".utf8))
                 case "forge":
-                    let pane = self.presentForge()
-                    if !argument.isEmpty { pane.driveForgeState(argument) }
-                    FileHandle.standardOutput.write(
-                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                    let forge = self.presentForge()
+                    if !argument.isEmpty { forge.demonstrate(argument) }
+                    FileHandle.standardOutput.write(Data("FORGE \(forge.summary)\n".utf8))
                 case "fstate":
-                    let pane = self.activePane
-                    pane.driveForgeState(argument)
+                    ForgeWindow.current?.demonstrate(argument)
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
                 case "ftype":
-                    let pane = self.activePane
-                    pane.driveForgePrompt(argument)
+                    ForgeWindow.current?.describe(argument)
                     FileHandle.standardOutput.write(
-                        Data("FORGE \(pane.forgeSummary ?? "-")\n".utf8))
+                        Data("FORGE \(ForgeWindow.current?.summary ?? "-")\n".utf8))
                 case "fkey":
                     let keyval: UInt32
                     var state: UInt32 = 0
@@ -514,11 +514,11 @@ final class MainWindow: @unchecked Sendable {
                     }
                     var handled = false
                     if let chord = KeyChord.canonical(keyval: keyval, state: state) {
-                        handled = self.activePane.handleForgeChord(chord)
+                        handled = ForgeWindow.current?.handleChord(chord) ?? false
                     }
                     FileHandle.standardOutput.write(
                         Data(
-                            "FKEY \(argument) handled=\(handled) \(self.activePane.forgeSummary ?? "-")\n"
+                            "FKEY \(argument) handled=\(handled) \(ForgeWindow.current?.summary ?? "-")\n"
                                 .utf8))
                 case "web":
                     let described = self.splitHost.orderedPanes.enumerated().map {
@@ -678,6 +678,34 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
+    /// The way in to video, carrying the weight the app gives its other primary actions: it sits
+    /// in the sidebar's header beside the button that starts a chat, rather than inside the gear
+    /// menu, which is where a preference lives and not where an action does. It promises something
+    /// different before a renderer exists than after, and it wears the render's own mark while the
+    /// other machine is working — so somebody who closed the surface can still see it is out.
+    private func makeVideoButton() -> UnsafeMutablePointer<GtkWidget> {
+        let button = Gtk.button(ForgeEntryPoint.glyph, css: ["flat"]) { [weak self] in
+            Gtk.onMain { [weak self] in self?.presentForge() }
+        }
+        videoButton = button
+        ForgeRunner.shared.watch(self) { [weak self] in
+            Gtk.onMain { [weak self] in self?.refreshVideoButton() }
+        }
+        refreshVideoButton()
+        return button
+    }
+
+    private func refreshVideoButton() {
+        guard let videoButton else { return }
+        let rendering = ForgeRunner.shared.isRendering
+        gtk_widget_set_tooltip_text(
+            videoButton,
+            ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil))
+        tailscode_set_accessible_label(
+            videoButton, ForgeEntryPoint.accessibilityLabel(rendering: rendering))
+        ActivityPulse.apply(ForgeEntryPoint.activity(rendering: rendering)?.icon, to: videoButton)
+    }
+
     private func makeSidebarPane() -> UnsafeMutablePointer<GtkWidget> {
         let toolbar = adw_toolbar_view_new()!
         let header = adw_header_bar_new()!
@@ -686,6 +714,7 @@ final class MainWindow: @unchecked Sendable {
         adw_header_bar_pack_start(
             op(header),
             Gtk.button("+", css: ["flat"]) { [weak self] in self?.presentNewChat() })
+        adw_header_bar_pack_start(op(header), makeVideoButton())
         adw_header_bar_pack_end(
             op(header),
             Gtk.menuButton("⚙", css: ["flat"]) { [weak self] in
@@ -704,9 +733,9 @@ final class MainWindow: @unchecked Sendable {
                 let forge: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in _ = self?.presentForge() }
                 }
-                let board = ForgeBoard()
                 return [
-                    (Localized.text("%@…", board.heading), board.notice, forge),
+                    (ForgeEntryPoint.menuTitle,
+                     ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
@@ -2286,23 +2315,13 @@ final class MainWindow: @unchecked Sendable {
         }
     }
 
-    /// The forge, opened where somebody can watch it work. A render is minutes of another
-    /// machine's card, so it never takes a pane that is holding a conversation: an empty pane
-    /// becomes the forge, a pane with a chat in it splits and the forge takes the new half, and a
-    /// forge already open is raised rather than made a second time.
+    /// The forge, opened over the work rather than beside it. A render is a task somebody starts,
+    /// watches and collects — not a place they work — so it is a modal on top of this window and
+    /// the conversation behind it is left exactly as it was. One already open is raised rather than
+    /// made a second time, and closing it never touches a render, which lives in `ForgeRunner`.
     @discardableResult
-    func presentForge() -> ChatPane {
-        if let open = splitHost.orderedPanes.first(where: { $0.isForging }) {
-            splitHost.focus(open, grabKeyboard: false)
-            open.showForge()
-            return open
-        }
-        let pane = activePane
-        let target = pane.entry == nil ? pane : (splitHost.split(pane, edge: .right) ?? pane)
-        target.showForge()
-        splitHost.focus(target, grabKeyboard: false)
-        splitHost.persist()
-        return target
+    func presentForge() -> ForgeWindow {
+        ForgeWindow.present(parent: window)
     }
 
     /// A slot that started, stopped, or learned the stream's own title. The layout is written back
@@ -2919,9 +2938,6 @@ final class MainWindow: @unchecked Sendable {
                 return true
             }
             if self.pendingChords.isEmpty, self.activePane.handleWatchChord(chord) {
-                return true
-            }
-            if self.pendingChords.isEmpty, self.activePane.handleForgeChord(chord) {
                 return true
             }
             if context == .normal, self.focused == .transcript, self.pendingChords.isEmpty,

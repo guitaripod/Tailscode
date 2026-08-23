@@ -12,37 +12,26 @@ import TailscodeCore
 /// credential has to be minted before the app can go and look. The shared `TailnetScanner` asks
 /// each online peer on both agent ports; anything that answers becomes a row that adds itself.
 ///
-/// The wait is drawn rather than spun. `TailnetRadar` is the arithmetic — where the sweep is, and
-/// how brightly each found machine sits on the dial — and this file only rasterises it through the
-/// shim's cairo painter, on frames from the display's own clock. A machine keeps the place its own
-/// name gives it, so a second scan puts it back where the reader last saw it. When the scan ends
-/// the clock stops: a finished picture repainted sixty times a second is a fan spinning for
-/// nothing.
+/// The wait is drawn rather than spun. `TailnetRadar` is the arithmetic and `RadarView` paints it,
+/// which is the same dial the renderer's own sweep turns. A machine keeps the place its own name
+/// gives it, so a second scan puts it back where the reader last saw it.
 final class DiscoveryPanel: @unchecked Sendable {
     private let onAdd: @Sendable (TailnetScanner.Suggestion) -> Void
     private let onChanged: @Sendable () -> Void
 
     let group: UnsafeMutablePointer<GtkWidget>
-    private let radar: UnsafeMutablePointer<GtkWidget>
-    private let radarRow: UnsafeMutablePointer<GtkWidget>
+    private let radar = RadarView()
     private let statusRow: UnsafeMutablePointer<GtkWidget>
     private let statusActions: UnsafeMutablePointer<GtkWidget>
     private var resultRows: [UnsafeMutablePointer<GtkWidget>] = []
 
-    private var blips: [RadarBlip] = []
     private var found: [TailnetScanner.Suggestion] = []
     private var configured: Set<String> = []
-    private var scanning = false
     private var scanID = 0
     private var checked = 0
     private var total = 0
     private var peerCount = 0
-    private var tick: guint = 0
     private var startedAt = 0.0
-    private var inkedFrom = ""
-
-    private static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
-    private static var motionAllowed: Bool { tailscode_animations_enabled() != 0 }
 
     init(
         onAdd: @escaping @Sendable (TailnetScanner.Suggestion) -> Void,
@@ -57,14 +46,7 @@ final class DiscoveryPanel: @unchecked Sendable {
             ptr(group),
             Localized.text("Every machine on your tailnet, asked on both agent ports."))
 
-        radar = tailscode_radar_new()!
-        gtk_widget_set_size_request(radar, 168, 168)
-        gtk_widget_set_halign(radar, GTK_ALIGN_CENTER)
-        let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.margins(holder, top: 14, bottom: 10)
-        gtk_box_append(ptr(holder), radar)
-        radarRow = Self.plainRow(holding: holder)
-        adw_preferences_group_add(ptr(group), ptr(radarRow))
+        adw_preferences_group_add(ptr(group), ptr(radar.preferencesRow()))
 
         let row = adw_action_row_new()!
         adw_preferences_row_set_use_markup(ptr(row), 0)
@@ -76,7 +58,6 @@ final class DiscoveryPanel: @unchecked Sendable {
         adw_action_row_add_suffix(ptr(row), actions)
         adw_preferences_group_add(ptr(group), ptr(row))
 
-        applyInk()
         rest()
     }
 
@@ -87,36 +68,20 @@ final class DiscoveryPanel: @unchecked Sendable {
         renderResults()
     }
 
-    /// The dial is painted rather than styled, so a theme change that restyles every other widget
-    /// by CSS leaves its inks where they were. They are re-read whenever the palette's accent
-    /// differs from the one they were mixed from, which costs four colours on a frame that was
-    /// going to be drawn anyway.
-    private func applyInk() {
-        let palette = MatrixTheme.palette
-        guard palette.accent != inkedFrom else { return }
-        inkedFrom = palette.accent
-        var ink: [Double] = []
-        for hex in [palette.textDim, palette.accent, palette.warn, palette.info] {
-            let rgb = PresenceRGB(hex: hex) ?? PresenceRGB(red: 0.5, green: 0.5, blue: 0.5)
-            ink.append(contentsOf: [rgb.red, rgb.green, rgb.blue])
-        }
-        ink.withUnsafeBufferPointer { tailscode_radar_ink(radar, $0.baseAddress, 4) }
-    }
-
     func scan() {
-        guard !scanning else { return }
+        guard !radar.scanning else { return }
         scanID += 1
         let id = scanID
-        scanning = true
-        blips = []
+        radar.scanning = true
+        radar.blips = []
         found = []
         checked = 0
         total = 0
         peerCount = 0
-        startedAt = Self.now
+        startedAt = RadarView.now
         renderResults()
         setStatus(Localized.text("Reading your tailnet…"), detail: "", actions: [])
-        startClock()
+        radar.startClock()
 
         Task { [weak self] in
             let status = TailnetStatusLinux.read()
@@ -174,7 +139,7 @@ final class DiscoveryPanel: @unchecked Sendable {
                     return
                 }
                 self.found = complete
-                self.blips = complete.map { self.blip(for: $0, bornAt: self.startedAt) }
+                self.radar.blips = complete.map { self.blip(for: $0, bornAt: self.startedAt) }
                 self.finish(id: id, note: nil)
             }
         }
@@ -183,9 +148,9 @@ final class DiscoveryPanel: @unchecked Sendable {
     /// A machine takes its place on the dial the moment it answers, rather than when the whole
     /// sweep is over — the picture is the progress, so it has to move while the scan runs.
     private func light(_ suggestion: TailnetScanner.Suggestion) {
-        let made = blip(for: suggestion, bornAt: Self.now)
-        guard !blips.contains(where: { $0.key == made.key }) else { return }
-        blips.append(made)
+        let made = blip(for: suggestion, bornAt: RadarView.now)
+        guard !radar.blips.contains(where: { $0.key == made.key }) else { return }
+        radar.blips.append(made)
         found.append(suggestion)
         renderResults()
     }
@@ -216,7 +181,7 @@ final class DiscoveryPanel: @unchecked Sendable {
 
     private func finish(id: Int, note: String? = nil, stalled: String? = nil) {
         guard scanID == id else { return }
-        scanning = false
+        radar.scanning = false
         renderResults()
         let again = Self.button(Localized.text("Scan again")) { [weak self] in self?.scan() }
         if let note {
@@ -253,8 +218,7 @@ final class DiscoveryPanel: @unchecked Sendable {
                     many: "Across %@ machines on your tailnet."),
                 actions: [again])
         }
-        drawFrame()
-        stopClockIfSettled()
+        radar.draw()
     }
 
     private func rest() {
@@ -262,7 +226,7 @@ final class DiscoveryPanel: @unchecked Sendable {
             Localized.text("Nothing scanned yet"),
             detail: Localized.text("Ask every machine on your tailnet which agent it runs."),
             actions: [Self.button(Localized.text("Scan my tailnet")) { [weak self] in self?.scan() }])
-        drawFrame()
+        radar.draw()
     }
 
     private func renderResults() {
@@ -327,86 +291,11 @@ final class DiscoveryPanel: @unchecked Sendable {
         gtk_widget_set_visible(statusActions, actions.isEmpty ? 0 : 1)
     }
 
-    /// A widget handed to `adw_preferences_group_add` that is not a row lands in a box *after* the
-    /// group's list, which would put the dial under every result it drew. Wrapping it in a bare
-    /// preferences row puts it in the list, in the order it was added — and it activates nothing,
-    /// because it is a picture rather than a control.
-    private static func plainRow(holding child: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
-        let row = adw_preferences_row_new()!
-        gtk_list_box_row_set_child(ptr(row), child)
-        gtk_list_box_row_set_activatable(ptr(row), 0)
-        gtk_list_box_row_set_selectable(ptr(row), 0)
-        return row
-    }
-
     private static func button(
         _ title: String, css: [String] = ["flat"], onClick: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = Gtk.button(title, css: css, onClick: onClick)
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
         return button
-    }
-
-    private func startClock() {
-        guard tick == 0, Self.motionAllowed else {
-            drawFrame()
-            return
-        }
-        let box = Unmanaged.passRetained(TickBox(self)).toOpaque()
-        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
-            guard let raw else { return }
-            Unmanaged<TickBox>.fromOpaque(raw).takeUnretainedValue().panel?.drawFrame()
-        }
-        tick = tailscode_add_tick(radar, callback, box)
-    }
-
-    private func stopClockIfSettled() {
-        guard tick != 0 else { return }
-        tailscode_remove_tick(radar, tick)
-        tick = 0
-    }
-
-    private func drawFrame() {
-        applyInk()
-        let frame = TailnetRadar.frame(
-            at: Self.now, blips: blips, scanning: scanning,
-            reducedMotion: !Self.motionAllowed)
-        var sparks: [Double] = []
-        sparks.reserveCapacity(frame.sparks.count * 5)
-        for spark in frame.sparks {
-            sparks.append(contentsOf: [
-                spark.angle, spark.radius, spark.light, spark.scale, Double(Self.tone(spark.tone)),
-            ])
-        }
-        let count = Int32(frame.sparks.count)
-        TailnetRadar.rings.withUnsafeBufferPointer { rings in
-            sparks.withUnsafeBufferPointer { blips in
-                tailscode_radar_set(
-                    radar, frame.sweep, frame.sweepLight, frame.ping, frame.pingLight,
-                    rings.baseAddress, Int32(TailnetRadar.rings.count), blips.baseAddress, count)
-            }
-        }
-        if frame.settled { stopClockIfSettled() }
-    }
-
-    private static func tone(_ tone: RadarTone) -> Int32 {
-        switch tone {
-        case .ready: return 0
-        case .locked: return 1
-        case .pending: return 2
-        }
-    }
-}
-
-/// The tick callback's payload. The shim takes a raw pointer and gives it back every frame, so the
-/// reference has to be one this side owns; it holds the panel weakly, because a clock that kept a
-/// closed window's panel alive would repaint a dial nobody can see.
-private final class TickBox {
-    weak var panel: DiscoveryPanel?
-
-    init(_ panel: DiscoveryPanel) {
-        self.panel = panel
     }
 }
