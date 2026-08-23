@@ -62,6 +62,21 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     }
 
     public var affordanceGlyph: String { isCyclable ? "⇅" : "›" }
+
+    /// One symbol per decision, so a chip or a row is read down its left edge rather than word by
+    /// word. The client owes the drawing; the words are all Core's.
+    public var symbol: String {
+        switch self {
+        case .endpoint: return "desktopcomputer"
+        case .prompt: return "text.alignleft"
+        case .negative: return "nosign"
+        case .size: return "aspectratio"
+        case .seconds: return "timer"
+        case .fps: return "speedometer"
+        case .model: return "cpu"
+        case .seed: return "dice"
+        }
+    }
 }
 
 /// What a row is, underneath what it says. Every client draws all five the same way — a title, a

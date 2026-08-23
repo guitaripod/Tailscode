@@ -2,197 +2,214 @@ import CAdw
 import Foundation
 import TailscodeCore
 
-/// The forge, drawn. `ForgeBoard` decides the four sections — the renderer and whether it answered,
-/// the render in hand, what the next one is made from, and the clips already made — and this turns
-/// each of them into a heading and its rows. Nothing here decides what a row says, which state it
-/// is in, or what pressing it means: every word comes off the row, and the only judgement made
-/// here is which of the app's existing tones a badge wears.
-///
-/// Rebuilt whole on every snapshot, like the watch board beside it. A render yields several job
-/// snapshots a second and a section is a few dozen widgets, so rebuilding costs less than keeping
-/// a tree and a model in agreement about a shape that changes every time a phase does.
+/// The forge, drawn as a studio. `ForgeBoard` still decides every word and what pressing something
+/// means; this is the composition — the stage is the room, the settings walk as chips, and what was
+/// made is a strip of clips rather than another list.
 enum ForgeBoardView {
-    /// The board, and where in it the cursor sits — reported as the child's position rather than as
-    /// its pointer, because the board is rebuilt on every snapshot and a pointer handed across a
-    /// frame is a pointer to a widget that may already be gone.
-    static func make(
-        _ model: ForgeBoard, onActivate: @escaping @Sendable (String, Int) -> Void,
-        onCall: @escaping @Sendable () -> Void,
-        onClipMenu: @escaping @Sendable (ForgeEntry, Double, Double) -> Void
-    ) -> (root: UnsafeMutablePointer<GtkWidget>, focused: Int?) {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_widget_set_hexpand(column, 1)
-        var cursorAt: Int?
-        var position = 0
-
-        for section in model.sections {
-            let call = section.id == ForgeBoard.renderID ? onCall : nil
-            gtk_box_append(ptr(column), header(section, call: call))
-            position += 1
-            for (offset, row) in section.rows.enumerated() {
-                let isFocused = row.id == model.focused?.id
-                let widget = make(row, phase: section.phase, focused: isFocused, job: model.job) {
-                    onActivate(section.id, offset)
-                }
-                if isFocused { cursorAt = position }
-                if let entry = row.entry {
-                    Gtk.onRightClick(widget) { x, y in onClipMenu(entry, x, y) }
-                }
-                gtk_box_append(ptr(column), widget)
-                position += 1
-            }
-        }
-        return (column, cursorAt)
-    }
-
-    /// A section's heading. The render section's detail is not a caption but the caption of the
-    /// button — `ForgeBoard.renderCall` is the answer to "what does pressing this do", said in
-    /// four different words in four different states — so it is drawn as the button it describes
-    /// rather than as dim text beside a row somebody has to find.
-    private static func header(
-        _ section: ForgeSection, call: (@Sendable () -> Void)?
+    static func renderer(
+        _ board: ForgeBoard, onActivate: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let title = Gtk.label(section.title, css: "section-header", selectable: false)
-        gtk_widget_set_hexpand(title, 1)
-        gtk_box_append(ptr(line), title)
-        if let call {
-            let button = Gtk.button(section.detail, css: ["forge-call"], onClick: call)
-            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), button)
-        } else if let spoken = ForgeBoard.headerDetail(of: section) {
-            let detail = Gtk.label(spoken, css: "watch-section-detail", selectable: false)
-            gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(line), detail)
+        guard let row = board.rows.first(where: { $0.kind == .field(.endpoint) }) else {
+            return Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         }
-        Gtk.margins(line, trailing: 8)
-        return line
-    }
-
-    private static func make(
-        _ row: ForgeRow, phase: ForgePhase, focused: Bool, job: ForgeJob,
-        onActivate: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        if case .note = row.kind { return note(row) }
-        guard row.isActivatable else { return spent(row, phase: phase, job: job) }
+        let phase = board.sections.first(where: { $0.id == ForgeBoard.rendererID })?.phase ?? .idle
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "session-row")
-        if focused { Gtk.addClass(button, "row-focused") }
-        if row.isPrimary { Gtk.addClass(button, "forge-render-row") }
-        gtk_button_set_child(ptr(button), lines(row, phase: phase, job: job))
+        Gtk.addClass(button, "forge-renderer")
+        if row.id == board.focused?.id { Gtk.addClass(button, "forge-chip-on") }
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(line, top: 6, bottom: 6, leading: 10, trailing: 10)
+        let host = Gtk.label(row.title, css: "forge-chip-value", selectable: false)
+        gtk_widget_set_hexpand(host, 1)
+        gtk_label_set_ellipsize(op(host), PANGO_ELLIPSIZE_END)
+        gtk_box_append(ptr(line), host)
+        if let badge = row.badge {
+            let pill = Gtk.label(badge, css: "pill", selectable: false)
+            Gtk.addClass(pill, tone(for: row, phase: phase))
+            gtk_box_append(ptr(line), pill)
+        }
+        let mark = Gtk.label(ForgeField.endpoint.affordanceGlyph, css: "forge-affordance", selectable: false)
+        gtk_box_append(ptr(line), mark)
+        gtk_button_set_child(ptr(button), line)
+        gtk_widget_set_tooltip_text(button, row.detail)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onActivate)
         return button
     }
 
-    /// A line the board owed the reader — that a section is being asked, that nothing has been
-    /// rendered yet, or why one stopped. It is a label, never a button: nothing here does anything,
-    /// and drawing it as a row that hovers would promise otherwise.
-    private static func note(_ row: ForgeRow) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(row.title, css: "watch-note", wrap: true, selectable: false)
-        gtk_label_set_max_width_chars(op(label), 44)
-        Gtk.margins(label, top: 2, bottom: 4, leading: 8, trailing: 8)
-        return label
-    }
-
-    /// A setting the render in flight has already consumed. It keeps its label and its value —
-    /// what the render was started with is exactly what a person watching it wants to read — and
-    /// loses only the ability to be pressed, which is the honest thing for a row whose value the
-    /// other machine is already working from.
-    private static func spent(
-        _ row: ForgeRow, phase: ForgePhase, job: ForgeJob
+    static func chips(
+        _ board: ForgeBoard, onActivate: @escaping @Sendable (ForgeField) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let holder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.addClass(holder, "forge-row-spent")
-        Gtk.margins(holder, top: 4, bottom: 4, leading: 4, trailing: 6)
-        gtk_box_append(ptr(holder), lines(row, phase: phase, job: job))
-        return holder
+        let wrap = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_widget_set_hexpand(wrap, 1)
+        Gtk.addClass(wrap, "forge-chips")
+        let fields = ForgeStudio.chips
+        let stride = 3
+        var index = 0
+        while index < fields.count {
+            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            gtk_widget_set_hexpand(row, 1)
+            for field in fields[index..<min(index + stride, fields.count)] {
+                guard let item = board.rows.first(where: { $0.kind == .field(field) }) else {
+                    continue
+                }
+                let button = chip(
+                    item, field: field, focused: item.id == board.focused?.id
+                ) {
+                    onActivate(field)
+                }
+                gtk_widget_set_hexpand(button, 1)
+                gtk_box_append(ptr(row), button)
+            }
+            gtk_box_append(ptr(wrap), row)
+            index += stride
+        }
+        return wrap
     }
 
-    private static func lines(
-        _ row: ForgeRow, phase: ForgePhase, job: ForgeJob
+    static func filmstrip(
+        _ board: ForgeBoard, onActivate: @escaping @Sendable (Int) -> Void,
+        onClipMenu: @escaping @Sendable (ForgeEntry, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        Gtk.margins(column, top: 4, bottom: 4, leading: 4, trailing: 6)
-        gtk_widget_set_hexpand(column, 1)
-
-        if case .job = row.kind {
-            gtk_box_append(ptr(column), stage(job))
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER)
+        gtk_scrolled_window_set_min_content_height(op(scroller), Int32(ForgeStudio.filmHeight))
+        gtk_widget_set_hexpand(scroller, 1)
+        Gtk.addClass(scroller, "forge-film")
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.margins(row, top: 4, bottom: 2, leading: 2, trailing: 2)
+        gtk_widget_set_valign(row, GTK_ALIGN_START)
+        guard let section = board.sections.first(where: { $0.id == ForgeBoard.historyID }) else {
+            gtk_scrolled_window_set_child(op(scroller), row)
+            return scroller
         }
-        let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        let title = Gtk.label(
-            row.title, css: row.isPrimary ? "row-title-unread" : "row-title", selectable: false)
-        gtk_widget_set_hexpand(title, 1)
-        gtk_box_append(ptr(titleRow), title)
-        if let badge = row.badge {
-            let pill = Gtk.label(badge, css: "pill", selectable: false)
-            Gtk.addClass(pill, tone(for: row, phase: phase))
-            gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(titleRow), pill)
+        if section.rows.allSatisfy({ $0.kind == .note }) {
+            let empty = Gtk.label(
+                section.rows.first?.title ?? "", css: "watch-note", wrap: true, selectable: false)
+            gtk_box_append(ptr(row), empty)
+        } else {
+            for (offset, item) in section.rows.enumerated() {
+                let card = filmCard(item, focused: item.id == board.focused?.id) {
+                    onActivate(offset)
+                }
+                if let entry = item.entry {
+                    Gtk.onRightClick(card) { x, y in onClipMenu(entry, x, y) }
+                }
+                gtk_box_append(ptr(row), card)
+            }
         }
-        if case .field(let field) = row.kind, row.isActivatable {
-            let mark = Gtk.label(field.affordanceGlyph, css: "forge-affordance", selectable: false)
-            gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(titleRow), mark)
-        }
-        gtk_box_append(ptr(column), titleRow)
-
-        if !row.detail.isEmpty {
-            let detail = Gtk.label(
-                row.detail, css: row.isPrimary ? "forge-state" : "row-detail", wrap: row.isPrimary,
-                selectable: false)
-            gtk_label_set_max_width_chars(op(detail), 52)
-            gtk_box_append(ptr(column), detail)
-        }
-        if let fraction = row.fraction {
-            gtk_box_append(ptr(column), bar(fraction))
-        }
-        if let note = row.note, !note.isEmpty {
-            gtk_box_append(
-                ptr(column), Gtk.label(note, css: "watch-meta", selectable: false))
-        }
-        return column
+        gtk_scrolled_window_set_child(op(scroller), row)
+        return scroller
     }
 
-    /// The stage: the recessed frame the clip will land in, present in every state rather than
-    /// only when there is a picture — a card that appears when a clip lands and is absent before
-    /// it is a card that reads as broken for the four minutes that matter most. The face is the
-    /// phase's own from Core: work wears the activity's motionless glyph column here, and a
-    /// settled state holds one still glyph with the stage's own caption under it.
-    private static func stage(_ job: ForgeJob) -> UnsafeMutablePointer<GtkWidget> {
-        let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        Gtk.addClass(frame, "forge-stage")
-        gtk_widget_set_hexpand(frame, 1)
+    static func stageFace(_ job: ForgeJob) -> UnsafeMutablePointer<GtkWidget> {
+        let face = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        gtk_widget_set_hexpand(face, 1)
+        gtk_widget_set_vexpand(face, 1)
+        gtk_widget_set_valign(face, GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(face, GTK_ALIGN_CENTER)
         let glyph = Gtk.label(job.phase.stageGlyph, css: "forge-stage-glyph", selectable: false)
         Gtk.addClass(glyph, job.phase.tone.glyphCSS)
-        gtk_widget_set_valign(glyph, GTK_ALIGN_END)
-        gtk_widget_set_vexpand(glyph, 1)
-        gtk_box_append(ptr(frame), glyph)
-        let words = job.isBusy ? job.stageName : nil
-        let caption = Gtk.label(words ?? "", css: "forge-stage-caption", selectable: false)
-        gtk_widget_set_valign(caption, GTK_ALIGN_START)
-        gtk_widget_set_vexpand(caption, 1)
-        gtk_widget_set_visible(caption, words == nil ? 0 : 1)
-        gtk_box_append(ptr(frame), caption)
-        Gtk.margins(frame, bottom: 6)
-        return frame
+        gtk_label_set_xalign(op(glyph), 0.5)
+        gtk_box_append(ptr(face), glyph)
+        let words = job.isBusy ? (job.stageName ?? job.subtitle) : job.subtitle
+        let caption = Gtk.label(words, css: "forge-stage-caption", selectable: false)
+        gtk_label_set_xalign(op(caption), 0.5)
+        gtk_label_set_wrap(op(caption), 1)
+        gtk_label_set_max_width_chars(op(caption), 36)
+        gtk_box_append(ptr(face), caption)
+        if let fraction = job.fraction {
+            let track = bar(fraction)
+            gtk_widget_set_size_request(track, 180, -1)
+            gtk_widget_set_halign(track, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(face), track)
+        }
+        return face
     }
 
-    /// The render's own bar, drawn only where the board handed one over. Submitting and queueing
-    /// carry no fraction on purpose — there is nothing honest to fill — so those states get the
-    /// word in the corner and no bar at all rather than a bar that has not moved.
+    static func status(_ job: ForgeJob) -> UnsafeMutablePointer<GtkWidget> {
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let title = Gtk.label(job.title, css: "row-title-unread", selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+        gtk_box_append(ptr(line), title)
+        if let badge = job.badge {
+            let pill = Gtk.label(badge, css: "pill", selectable: false)
+            Gtk.addClass(pill, job.phase.tone == .danger ? "pill-error" : "pill-live")
+            gtk_box_append(ptr(line), pill)
+        }
+        return line
+    }
+
+    private static func chip(
+        _ row: ForgeRow, field: ForgeField, focused: Bool,
+        onActivate: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "forge-chip")
+        if focused { Gtk.addClass(button, "forge-chip-on") }
+        if !row.isActivatable { Gtk.addClass(button, "forge-row-spent") }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.margins(column, top: 4, bottom: 4, leading: 8, trailing: 8)
+        let name = Gtk.label(field.label, css: "forge-chip-label", selectable: false)
+        gtk_label_set_xalign(op(name), 0)
+        let value = Gtk.label(row.detail, css: "forge-chip-value", selectable: false)
+        gtk_label_set_xalign(op(value), 0)
+        gtk_box_append(ptr(column), name)
+        gtk_box_append(ptr(column), value)
+        gtk_button_set_child(ptr(button), column)
+        gtk_widget_set_sensitive(button, row.isActivatable ? 1 : 0)
+        if let note = row.note, !note.isEmpty {
+            gtk_widget_set_tooltip_text(button, note)
+        }
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onActivate)
+        return button
+    }
+
+    private static func filmCard(
+        _ row: ForgeRow, focused: Bool, onActivate: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        if case .expander = row.kind {
+            let button = Gtk.button(row.title, css: ["flat", "forge-film-more"], onClick: onActivate)
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+            return button
+        }
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "forge-film-card")
+        if focused { Gtk.addClass(button, "forge-chip-on") }
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.margins(column, top: 6, bottom: 6, leading: 8, trailing: 8)
+        gtk_widget_set_size_request(column, 132, -1)
+        let title = Gtk.label(row.title, css: "row-title", selectable: false)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+        gtk_label_set_max_width_chars(op(title), 16)
+        gtk_box_append(ptr(column), title)
+        if !row.detail.isEmpty {
+            let detail = Gtk.label(row.detail, css: "watch-meta", selectable: false)
+            gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
+            gtk_label_set_max_width_chars(op(detail), 16)
+            gtk_box_append(ptr(column), detail)
+        }
+        if let badge = row.badge {
+            let pill = Gtk.label(badge, css: "pill", selectable: false)
+            Gtk.addClass(pill, row.entry?.isPlayable == true ? "pill-source" : "pill-error")
+            gtk_widget_set_halign(pill, GTK_ALIGN_START)
+            gtk_box_append(ptr(column), pill)
+        }
+        gtk_button_set_child(ptr(button), column)
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onActivate)
+        return button
+    }
+
     private static func bar(_ fraction: Double) -> UnsafeMutablePointer<GtkWidget> {
         let bar = gtk_progress_bar_new()!
         Gtk.addClass(bar, "forge-bar")
         gtk_progress_bar_set_fraction(op(bar), min(max(fraction, 0), 1))
         gtk_widget_set_hexpand(bar, 1)
-        Gtk.margins(bar, top: 2, bottom: 2)
         return bar
     }
 
-    /// Which of the app's existing pill tones a badge wears. Read off state rather than off the
-    /// word inside the badge: a clip says whether its file is still fetchable, and every other row
-    /// takes its section's phase, so nothing here has to recognise a string Core is free to reword.
     private static func tone(for row: ForgeRow, phase: ForgePhase) -> String {
         if let entry = row.entry { return entry.isPlayable ? "pill-source" : "pill-error" }
         switch phase {

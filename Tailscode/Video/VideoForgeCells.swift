@@ -1,23 +1,6 @@
 import TailscodeCore
 import UIKit
 
-extension ForgeField {
-    /// One symbol per decision, so a settings list is read down its left edge rather than word by
-    /// word. The client owes the drawing; the words are all Core's.
-    var symbol: String {
-        switch self {
-        case .endpoint: return "desktopcomputer"
-        case .prompt: return "text.alignleft"
-        case .negative: return "nosign"
-        case .size: return "aspectratio"
-        case .seconds: return "timer"
-        case .fps: return "speedometer"
-        case .model: return "cpu"
-        case .seed: return "dice"
-        }
-    }
-}
-
 /// One word in a capsule — the render's own badge, the clip's length, whether the machine answered.
 /// Small enough to sit at the end of a row without competing with the title it belongs to.
 final class ForgePill: UIView {
@@ -105,8 +88,8 @@ final class ForgeStageCell: UICollectionViewListCell {
     private var clock: Task<Void, Never>?
     private var appliedRatio: CGFloat = 0
 
-    private static let stageFloor: CGFloat = 132
-    private static let stageCeiling: CGFloat = 300
+    private static let stageFloor: CGFloat = 220
+    private static let stageCeiling: CGFloat = 420
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -733,5 +716,78 @@ final class ForgeExpanderCell: UICollectionViewListCell {
         isAccessibilityElement = true
         accessibilityTraits = .button
         accessibilityLabel = row.title
+    }
+}
+
+/// The walkable settings as chips. One cell so a phone does not spend a screen of rows on values
+/// a tap already walks.
+final class ForgeChipsCell: UICollectionViewCell {
+    var onCycle: ((ForgeField) -> Void)?
+    private let wrap = UIStackView()
+    private var applied = ""
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        wrap.axis = .vertical
+        wrap.spacing = Theme.Spacing.s
+        wrap.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(wrap)
+        NSLayoutConstraint.activate([
+            wrap.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.s),
+            wrap.bottomAnchor.constraint(
+                equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.s),
+            wrap.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            wrap.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func apply(_ board: ForgeBoard) {
+        let identity =
+            ForgeStudio.chips.map { "\($0.rawValue)=\(board.value(of: $0))" }.joined(separator: "|")
+            + "|\(board.isBusy)|\(board.focused?.id ?? "")"
+        guard identity != applied else { return }
+        applied = identity
+        wrap.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let fields = ForgeStudio.chips
+        let stride = 3
+        var index = 0
+        while index < fields.count {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = Theme.Spacing.s
+            row.distribution = .fillEqually
+            for field in fields[index..<min(index + stride, fields.count)] {
+                guard let item = board.rows.first(where: { $0.kind == .field(field) }) else {
+                    continue
+                }
+                row.addArrangedSubview(
+                    chip(field, value: item.detail, enabled: item.isActivatable))
+            }
+            wrap.addArrangedSubview(row)
+            index += stride
+        }
+    }
+
+    private func chip(_ field: ForgeField, value: String, enabled: Bool) -> UIButton {
+        var config = Theme.Glass.buttonConfiguration()
+        config.cornerStyle = .large
+        config.buttonSize = .small
+        config.titleAlignment = .leading
+        var name = AttributedString(field.label)
+        name.font = Theme.Ramp.font(.sectionLabel)
+        name.foregroundColor = Theme.Color.tertiaryLabel
+        var body = AttributedString("\n\(value)")
+        body.font = Theme.Ramp.font(.rowTitle)
+        body.foregroundColor = Theme.Color.label
+        config.attributedTitle = name + body
+        config.titleLineBreakMode = .byTruncatingTail
+        let button = UIButton(configuration: config)
+        button.isEnabled = enabled
+        button.accessibilityLabel = "\(field.label), \(value)"
+        button.addAction(
+            UIAction { [weak self] _ in self?.onCycle?(field) }, for: .touchUpInside)
+        return button
     }
 }

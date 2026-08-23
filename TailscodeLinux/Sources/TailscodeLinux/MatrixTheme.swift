@@ -746,34 +746,71 @@ enum MatrixTheme {
         .forge-pane { background-color: \(canvas); }
         .forge-call {
             \(t(.control))
-            min-height: 0;
-            padding: 3px 14px;
+            min-height: 36px;
+            padding: 8px 18px;
             border: none;
-            border-radius: 999px;
+            border-radius: 10px;
             color: \(palette.onAccent);
             background-color: \(accent);
             background-image: none;
             box-shadow: none;
+            font-weight: 600;
         }
         .forge-call:hover { background-color: \(accentDim); }
-        .forge-render-row {
-            background-color: alpha(\(accent), 0.07);
-            border: 1px solid alpha(\(accent), 0.28);
+        .forge-call-stop {
+            color: \(palette.onAccent);
+            background-color: \(danger);
         }
-        .forge-render-row:hover { background-color: alpha(\(accent), 0.13); }
-        .row-focused.forge-render-row { background-color: alpha(\(accent), 0.18); }
-        .forge-state { color: \(text); \(t(.cardBody)) }
+        .forge-call-stop:hover { background-color: alpha(\(danger), 0.85); }
         .forge-stage {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
-            border-radius: 8px;
-            min-height: 116px;
-            padding: 10px;
+            border-radius: 14px;
+            min-height: 280px;
+            padding: 16px;
         }
-        .forge-stage-glyph { color: \(textDim); \(t(.paneHeadline)) font-size: 200%; }
-        .forge-stage-caption { color: \(textDim); \(t(.hint)) }
+        .forge-stage-glyph { color: \(textDim); \(t(.paneHeadline)) font-size: 280%; }
+        .forge-stage-caption { color: \(textDim); \(t(.hint)); }
         .forge-affordance { color: \(textDim); \(t(.hint)) opacity: 0.7; }
         .forge-row-spent { opacity: 0.5; }
+        .forge-prompt {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 12px;
+        }
+        .forge-prompt textview, .forge-prompt text {
+            background: transparent;
+            color: \(text);
+            \(t(.composer))
+        }
+        .forge-renderer {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+        }
+        .forge-renderer:hover { background-color: alpha(\(accent), 0.10); }
+        .forge-chip {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+            min-width: 72px;
+        }
+        .forge-chip:hover { background-color: alpha(\(accent), 0.10); }
+        .forge-chip-on {
+            border-color: \(accent);
+            background-color: alpha(\(accent), 0.14);
+        }
+        .forge-chip-label { color: \(textDim); \(t(.sectionLabel)) }
+        .forge-chip-value { color: \(text); \(t(.rowTitleStrong)) }
+        .forge-chips { }
+        .forge-film { background: transparent; }
+        .forge-film-card {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: 10px;
+        }
+        .forge-film-card:hover { background-color: alpha(\(accent), 0.10); }
+        .forge-film-more { color: \(accent); \(t(.rowTitle)) }
         .forge-bar trough {
             min-height: 4px;
             background-color: \(rule);

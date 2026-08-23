@@ -828,12 +828,33 @@ public enum ForgeSurface {
     }
 
     /// The size the modal opens at on a desktop, so a Mac sheet and a GTK window are the same
-    /// surface rather than two shapes that happen to share a name. Tall enough for the renderer,
-    /// the render, seven settings and the first clips without scrolling.
-    public static let preferredWidth: Double = 680
-    public static let preferredHeight: Double = 820
-    public static let minimumWidth: Double = 480
-    public static let minimumHeight: Double = 560
+    /// surface rather than two shapes that happen to share a name. Landscape: the stage is the
+    /// room and the controls sit beside it, which is how a studio is read rather than a form.
+    public static let preferredWidth: Double = 1080
+    public static let preferredHeight: Double = 680
+    public static let minimumWidth: Double = 800
+    public static let minimumHeight: Double = 520
+}
+
+/// How the forge is composed on screen. The board is still the four sections — this is the drawing
+/// contract, so a phone, a Mac and a Linux desktop put the same things in the same places: the
+/// stage is the room, the words are typed once, the settings walk as chips, and what was made is a
+/// strip of clips rather than another list.
+public enum ForgeStudio {
+    /// The walkable settings, worn as chips. Same set the video lane already uses, so the composer
+    /// and this surface cannot disagree about what a render is made from.
+    public static var chips: [ForgeField] { ForgeField.allCases.filter(\.isCyclable) }
+
+    /// Share of a desktop given to the stage. The rest is the control column.
+    public static let stageShare: Double = 0.58
+
+    /// Width the control column asks for, so the prompt has a line length and the chips wrap
+    /// rather than stretch.
+    public static let controlWidth: Double = 360
+
+    /// Height of the filmstrip under the stage. Tall enough for a thumb and a caption, short
+    /// enough that the stage stays the room.
+    public static let filmHeight: Double = 92
 }
 
 /// The setup's rules, checked headlessly — the parser, the sweep, every sentence a failure can
@@ -991,6 +1012,18 @@ public enum ForgeSetupCheck {
         expect(ForgeSweep.deadline > ForgeSweep.probeTimeout, "a scan outlives any one probe in it")
         expect(ForgeSurface.preferredWidth >= ForgeSurface.minimumWidth, "the modal's sizes are consistent")
         expect(ForgeSurface.preferredHeight >= ForgeSurface.minimumHeight, "in both directions")
+        expect(
+            ForgeSurface.preferredWidth > ForgeSurface.preferredHeight,
+            "the desktop is a landscape studio, not a tall form")
+        expect(ForgeStudio.chips == ForgeField.allCases.filter(\.isCyclable), "the chips are the walkable settings")
+        expect(!ForgeStudio.chips.contains(.prompt), "the prompt is the composer, not a chip")
+        expect(!ForgeStudio.chips.contains(.endpoint), "the renderer is a status, not a chip")
+        expect(ForgeStudio.stageShare > 0.5 && ForgeStudio.stageShare < 0.75, "the stage is the room")
+        expect(ForgeStudio.controlWidth > 280, "the control column has a line length")
+        expect(ForgeStudio.filmHeight > 60, "the filmstrip can hold a thumb")
+        for field in ForgeField.allCases {
+            expect(!field.symbol.isEmpty, "every decision has a face (\(field.rawValue))")
+        }
         expect(ForgeSetup.startCommand.contains("--listen"), "the command handed over binds where the tailnet can reach it")
         expect(ForgeSetup.startCommand.contains("\(ForgeSweep.port)"), "on the port everything else asks")
 

@@ -5,15 +5,13 @@ import TailscodeCore
 
 /// A video being asked for, made, and watched — the body of the forge modal.
 ///
-/// The whole of what this shows is `ForgeBoard`'s: which machine renders and whether it answered,
-/// the render in hand with its bar and its stage, the settings the next one is made from, and the
-/// clips already kept. Nothing here is state: the board, the connection and the render's own task
-/// live in ``ForgeRunner`` so that closing the window cannot cancel four minutes of somebody else's
-/// card. What this owns is the drawing — the prompt box, the rows, and the player.
+/// The whole of what this shows is `ForgeBoard`'s. The composition is `ForgeStudio`'s: the stage
+/// is the room, the words are typed once, the settings walk as chips, and what was made is a strip
+/// of clips. Nothing here is state — the board, the connection and the render's own task live in
+/// ``ForgeRunner`` so that closing the window cannot cancel four minutes of somebody else's card.
 ///
-/// The clip plays where the board was rather than in a window of its own: the surface keeps its
-/// prompt and its keys, so a finished render is watched in place and Escape puts the board back
-/// with the recipe that made it still in the boxes.
+/// A finished clip plays in the stage rather than taking the window: the prompt and the chips stay
+/// put, so the next one is one edit away.
 final class ForgePane: @unchecked Sendable {
     let root = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private var player: OpaquePointer?
@@ -21,20 +19,25 @@ final class ForgePane: @unchecked Sendable {
     private var callbackBox: UnsafeMutableRawPointer?
     private(set) var playing: ForgeAsset?
 
-    private let askBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-    private let entry = gtk_entry_new()!
-    private let hintLabel: UnsafeMutablePointer<GtkWidget>
+    private let split = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL)!
+    private let stage = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+    private let stageFrame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let stageFace = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let statusLine = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+    private let filmHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let rendererHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let chipsHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let promptView = gtk_text_view_new()!
+    private let avoidEntry = gtk_entry_new()!
+    private let call = gtk_button_new_with_label(ForgeBoard().renderCall)!
     private let reasonLabel: UnsafeMutablePointer<GtkWidget>
-    private let stage = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-    private let boardScroller = gtk_scrolled_window_new()!
-    private let boardHolder = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
 
     private var parent: UnsafeMutablePointer<GtkWidget>?
     private let runner = ForgeRunner.shared
     private var openTask: Task<Void, Never>?
     /// Why the last thing somebody pressed did not happen — a machine that would not answer, a
     /// file that is gone, a player that would not decode. Never a render's own failure: that one
-    /// is the job's, and the board says it on the render row where it happened.
+    /// is the job's, and the stage says it where it happened.
     private var reason: String?
     /// What the surface itself is waiting on, as opposed to what the renderer is. Only the lookup
     /// before a clip opens lands here, and it says so rather than leaving a pressed row silent.
@@ -49,7 +52,6 @@ final class ForgePane: @unchecked Sendable {
 
     init(parent: UnsafeMutablePointer<GtkWidget>?) {
         self.parent = parent
-        hintLabel = Gtk.label(ForgeRunner.shared.board.hint, css: "dim", selectable: false)
         reasonLabel = Gtk.label("", css: "forge-reason", wrap: true, selectable: false)
         buildRoot()
         runner.watch(self) { [weak self] in
@@ -57,6 +59,7 @@ final class ForgePane: @unchecked Sendable {
         }
         runner.prepare()
         syncPrompt()
+        syncAvoid()
         render()
     }
 
@@ -66,36 +69,89 @@ final class ForgePane: @unchecked Sendable {
         gtk_widget_set_hexpand(root, 1)
         gtk_widget_set_vexpand(root, 1)
 
-        Gtk.addClass(askBox, "watch-ask")
-        gtk_widget_set_vexpand(askBox, 1)
-        Gtk.margins(askBox, top: 14, bottom: 12, leading: 14, trailing: 14)
+        gtk_paned_set_wide_handle(op(split), 1)
+        gtk_paned_set_resize_start_child(op(split), 1)
+        gtk_paned_set_resize_end_child(op(split), 0)
+        gtk_paned_set_shrink_start_child(op(split), 1)
+        gtk_paned_set_shrink_end_child(op(split), 0)
+        gtk_widget_set_hexpand(split, 1)
+        gtk_widget_set_vexpand(split, 1)
+        Gtk.margins(split, top: 10, bottom: 8, leading: 12, trailing: 12)
 
-        gtk_entry_set_placeholder_text(ptr(entry), board.prompt)
-        gtk_widget_set_hexpand(entry, 1)
-        Gtk.connect(UnsafeMutableRawPointer(entry), "changed") { [weak self] in
+        gtk_paned_set_start_child(op(split), makeStage())
+        gtk_paned_set_end_child(op(split), makeControls())
+        gtk_box_append(ptr(root), split)
+        Gtk.after(0) { [weak self] in
+            guard let self else { return }
+            let width = gtk_widget_get_width(self.split)
+            guard width > 0 else { return }
+            gtk_paned_set_position(op(self.split), Int32(Double(width) * ForgeStudio.stageShare))
+        }
+    }
+
+    private func makeStage() -> UnsafeMutablePointer<GtkWidget> {
+        gtk_widget_set_hexpand(stage, 1)
+        gtk_widget_set_vexpand(stage, 1)
+        Gtk.addClass(stageFrame, "forge-stage")
+        gtk_widget_set_hexpand(stageFrame, 1)
+        gtk_widget_set_vexpand(stageFrame, 1)
+        gtk_widget_set_hexpand(stageFace, 1)
+        gtk_widget_set_vexpand(stageFace, 1)
+        gtk_box_append(ptr(stageFrame), stageFace)
+        gtk_box_append(ptr(stage), statusLine)
+        gtk_box_append(ptr(stage), stageFrame)
+        gtk_box_append(ptr(stage), filmHolder)
+        gtk_widget_set_hexpand(filmHolder, 1)
+        return stage
+    }
+
+    private func makeControls() -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        gtk_widget_set_size_request(column, Int32(ForgeStudio.controlWidth), -1)
+        gtk_widget_set_hexpand(column, 0)
+        gtk_widget_set_vexpand(column, 1)
+        Gtk.margins(column, leading: 8)
+
+        gtk_widget_set_hexpand(rendererHolder, 1)
+        gtk_box_append(ptr(column), rendererHolder)
+
+        let promptFrame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(promptFrame, "forge-prompt")
+        gtk_text_view_set_wrap_mode(ptr(promptView), GTK_WRAP_WORD_CHAR)
+        gtk_text_view_set_accepts_tab(ptr(promptView), 0)
+        gtk_text_view_set_top_margin(ptr(promptView), 8)
+        gtk_text_view_set_bottom_margin(ptr(promptView), 8)
+        gtk_text_view_set_left_margin(ptr(promptView), 10)
+        gtk_text_view_set_right_margin(ptr(promptView), 10)
+        gtk_widget_set_vexpand(promptView, 1)
+        gtk_widget_set_size_request(promptView, -1, 120)
+        Gtk.connect(
+            UnsafeMutableRawPointer(gtk_text_view_get_buffer(ptr(promptView))), "changed"
+        ) { [weak self] in
             self?.typed()
         }
+        gtk_box_append(ptr(promptFrame), promptView)
+        gtk_box_append(ptr(column), promptFrame)
 
-        gtk_label_set_wrap(op(hintLabel), 0)
-        gtk_label_set_ellipsize(op(hintLabel), PANGO_ELLIPSIZE_END)
+        gtk_entry_set_placeholder_text(ptr(avoidEntry), Localized.text("Nothing in particular"))
+        gtk_widget_set_hexpand(avoidEntry, 1)
+        gtk_widget_set_tooltip_text(avoidEntry, ForgeField.negative.label)
+        Gtk.connect(UnsafeMutableRawPointer(avoidEntry), "changed") { [weak self] in
+            self?.typedAvoid()
+        }
+        gtk_box_append(ptr(column), avoidEntry)
 
-        gtk_scrolled_window_set_policy(op(boardScroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
-        gtk_scrolled_window_set_child(op(boardScroller), boardHolder)
-        gtk_scrolled_window_set_min_content_height(op(boardScroller), 0)
-        gtk_widget_set_vexpand(boardScroller, 1)
-        gtk_widget_set_hexpand(boardScroller, 1)
-        gtk_widget_set_hexpand(boardHolder, 1)
-        gtk_widget_set_valign(boardHolder, GTK_ALIGN_START)
+        gtk_widget_set_hexpand(chipsHolder, 1)
+        gtk_box_append(ptr(column), chipsHolder)
+        gtk_box_append(ptr(column), reasonLabel)
 
-        gtk_widget_set_vexpand(stage, 1)
-        gtk_widget_set_hexpand(stage, 1)
-        gtk_box_append(ptr(stage), boardScroller)
-
-        gtk_box_append(ptr(askBox), entry)
-        gtk_box_append(ptr(askBox), reasonLabel)
-        gtk_box_append(ptr(askBox), stage)
-        gtk_box_append(ptr(askBox), hintLabel)
-        gtk_box_append(ptr(root), askBox)
+        Gtk.addClass(call, "forge-call")
+        gtk_widget_set_hexpand(call, 1)
+        Gtk.connect(UnsafeMutableRawPointer(call), "clicked") { [weak self] in
+            Gtk.onMain { [weak self] in self?.callPressed() }
+        }
+        gtk_box_append(ptr(column), call)
+        return column
     }
 
     var isPlaying: Bool { playing != nil }
@@ -137,16 +193,30 @@ final class ForgePane: @unchecked Sendable {
     }
 
     func focusPrompt() {
-        gtk_widget_grab_focus(entry)
+        gtk_widget_grab_focus(promptView)
     }
 
     /// Types into the prompt as a person would, so the driver exercises the same path a keystroke
     /// does rather than a private one that could drift from it.
     func describe(_ text: String) {
         typing = true
-        gtk_editable_set_text(op(entry), text)
+        setPrompt(text)
         typing = false
         typed()
+    }
+
+    private func promptText() -> String {
+        let buffer = gtk_text_view_get_buffer(ptr(promptView))
+        var start = GtkTextIter()
+        var end = GtkTextIter()
+        gtk_text_buffer_get_bounds(buffer, &start, &end)
+        guard let raw = gtk_text_buffer_get_text(buffer, &start, &end, 0) else { return "" }
+        defer { g_free(raw) }
+        return String(cString: raw)
+    }
+
+    private func setPrompt(_ text: String) {
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(promptView)), text, -1)
     }
 
     /// Puts the prompt box back in step with the recipe the board holds — after an old clip's
@@ -154,9 +224,17 @@ final class ForgePane: @unchecked Sendable {
     /// write is not an edit, so it must not be read back as one.
     private func syncPrompt() {
         let words = board.recipe.prompt
-        guard Dialogs.entryText(entry) != words else { return }
+        guard promptText() != words else { return }
         typing = true
-        gtk_editable_set_text(op(entry), words)
+        setPrompt(words)
+        typing = false
+    }
+
+    private func syncAvoid() {
+        let words = board.recipe.negative
+        guard Dialogs.entryText(avoidEntry) != words else { return }
+        typing = true
+        gtk_editable_set_text(op(avoidEntry), words)
         typing = false
     }
 
@@ -180,9 +258,18 @@ final class ForgePane: @unchecked Sendable {
             }
         }
         guard let command = ForgeBoard.command(for: chord) else { return false }
+        if promptHasFocus || avoidHasFocus {
+            switch command {
+            case .up, .down, .activate, .expand: return false
+            case .render, .cancel, .reroll, .back: break
+            }
+        }
         let (handled, action) = runner.handle(command)
         guard handled else { return false }
-        guard let action else { return true }
+        guard let action else {
+            render()
+            return true
+        }
         perform(action)
         return true
     }
@@ -214,12 +301,18 @@ final class ForgePane: @unchecked Sendable {
         }
     }
 
-    private var promptHasFocus: Bool { gtk_widget_has_focus(entry) != 0 }
+    private var promptHasFocus: Bool { gtk_widget_has_focus(promptView) != 0 }
+    private var avoidHasFocus: Bool { gtk_widget_has_focus(avoidEntry) != 0 }
 
     private func typed() {
         guard !typing else { return }
-        guard let raw = gtk_editable_get_text(op(entry)) else { return }
-        runner.describe(String(cString: raw))
+        runner.describe(promptText())
+    }
+
+    private func typedAvoid() {
+        guard !typing else { return }
+        guard let raw = gtk_editable_get_text(op(avoidEntry)) else { return }
+        runner.avoid(String(cString: raw))
     }
 
     /// What activating a row means here. Everything the board can do on its own — walking a
@@ -247,7 +340,7 @@ final class ForgePane: @unchecked Sendable {
         case .prompt:
             focusPrompt()
         case .negative:
-            askForAvoidance()
+            gtk_widget_grab_focus(avoidEntry)
         case .size, .seconds, .fps, .model, .seed:
             return
         }
@@ -266,16 +359,6 @@ final class ForgePane: @unchecked Sendable {
                 ForgeRunner.shared.pointAtStoredRenderer()
                 self?.reason = nil
             }
-        }
-    }
-
-    private func askForAvoidance() {
-        Dialogs.prompt(
-            title: ForgeField.negative.label, body: nil,
-            placeholder: board.value(of: .negative), initial: board.recipe.negative,
-            confirmLabel: Localized.text("Save"), parent: parent
-        ) { [weak self] text in
-            Gtk.onMain { [weak self] in self?.runner.avoid(text) }
         }
     }
 
@@ -326,7 +409,7 @@ final class ForgePane: @unchecked Sendable {
         render()
     }
 
-    /// Back to the board with the clip stopped and the recipe that made it still in the boxes —
+    /// Back to the stage with the clip stopped and the recipe that made it still in the boxes —
     /// the point of keeping a seed is that the next one is one edit away rather than a retype.
     private func showBoard() {
         guard isPlaying else { return }
@@ -348,15 +431,15 @@ final class ForgePane: @unchecked Sendable {
     }
 
     private func render() {
-        gtk_label_set_text(op(hintLabel), isPlaying ? board.job.hint : board.hint)
         drawAside()
-        gtk_widget_set_visible(boardScroller, isPlaying ? 0 : 1)
+        gtk_widget_set_visible(stageFace, isPlaying ? 0 : 1)
         if let surface { gtk_widget_set_visible(surface, isPlaying ? 1 : 0) }
-        renderBoard()
+        drawStage()
+        drawControls()
         onChange?()
     }
 
-    /// The one line the surface says on its own behalf, under the prompt: what it is waiting on, or
+    /// The one line the surface says on its own behalf, under the chips: what it is waiting on, or
     /// why the last press did nothing. They share a line because they are the same slot in the
     /// reading — the answer to "what happened when I pressed that" — and wear different tones so
     /// a wait is never mistaken for a refusal.
@@ -373,37 +456,70 @@ final class ForgePane: @unchecked Sendable {
         gtk_widget_set_visible(reasonLabel, 1)
     }
 
-    /// The board, rebuilt whole. A render yields snapshots several times a second and a section is
-    /// a few dozen widgets, so rebuilding costs less than keeping a widget tree and a model in
-    /// agreement about a shape that changes every time a phase does.
-    private func renderBoard() {
-        Gtk.removeChildren(of: boardHolder)
-        guard !isPlaying else { return }
-        let built = ForgeBoardView.make(
-            board,
-            onActivate: { [weak self] section, offset in
-                Gtk.onMain { [weak self] in self?.activate(section: section, offset: offset) }
-            },
-            onCall: { [weak self] in
-                Gtk.onMain { [weak self] in self?.call() }
-            },
-            onClipMenu: { [weak self] entry, x, y in
-                Gtk.onMain { [weak self] in self?.presentClipMenu(entry, x: x, y: y) }
+    private func drawStage() {
+        Gtk.removeChildren(of: statusLine)
+        gtk_box_append(ptr(statusLine), ForgeBoardView.status(board.job))
+        Gtk.removeChildren(of: stageFace)
+        gtk_box_append(ptr(stageFace), ForgeBoardView.stageFace(board.job))
+        Gtk.removeChildren(of: filmHolder)
+        gtk_box_append(
+            ptr(filmHolder),
+            ForgeBoardView.filmstrip(
+                board,
+                onActivate: { [weak self] offset in
+                    Gtk.onMain { [weak self] in
+                        self?.activate(section: ForgeBoard.historyID, offset: offset)
+                    }
+                },
+                onClipMenu: { [weak self] entry, x, y in
+                    Gtk.onMain { [weak self] in self?.presentClipMenu(entry, x: x, y: y) }
+                }))
+    }
+
+    private func drawControls() {
+        Gtk.removeChildren(of: rendererHolder)
+        gtk_box_append(
+            ptr(rendererHolder),
+            ForgeBoardView.renderer(board) { [weak self] in
+                Gtk.onMain { [weak self] in self?.openSetup() }
             })
-        gtk_box_append(ptr(boardHolder), built.root)
-        reveal(built.focused)
+        Gtk.removeChildren(of: chipsHolder)
+        gtk_box_append(
+            ptr(chipsHolder),
+            ForgeBoardView.chips(board) { [weak self] field in
+                Gtk.onMain { [weak self] in self?.cycle(field) }
+            })
+        gtk_button_set_label(ptr(call), board.renderCall)
+        gtk_widget_remove_css_class(call, "forge-call-stop")
+        if board.isBusy { Gtk.addClass(call, "forge-call-stop") }
+        syncPrompt()
+        syncAvoid()
+        gtk_widget_set_sensitive(promptView, board.isBusy ? 0 : 1)
+        gtk_widget_set_sensitive(avoidEntry, board.isBusy ? 0 : 1)
+    }
+
+    private func cycle(_ field: ForgeField) {
+        guard let section = board.sections.first(where: { $0.id == ForgeBoard.settingsID }),
+            let offset = section.rows.firstIndex(where: { $0.kind == .field(field) })
+        else { return }
+        runner.focus(section: ForgeBoard.settingsID, offset: offset)
+        if let action = runner.activate() {
+            perform(action)
+        } else {
+            render()
+        }
     }
 
     private func activate(section: String, offset: Int) {
         runner.focus(section: section, offset: offset)
-        guard let action = runner.activate() else { return }
+        guard let action = runner.activate() else {
+            render()
+            return
+        }
         perform(action)
     }
 
-    /// The button under the render, which means a different thing in each of its four states —
-    /// stop what is running, play what came back, ask for a machine that was never given, or
-    /// render. Which of them it is is the board's answer, not this surface's.
-    private func call() {
+    private func callPressed() {
         guard let action = runner.begin() else { return }
         perform(action)
     }
@@ -425,6 +541,7 @@ final class ForgePane: @unchecked Sendable {
                      guard let self else { return }
                      self.runner.reuse(entry)
                      self.syncPrompt()
+                     self.syncAvoid()
                  }
              }))
         rows.append(
@@ -432,44 +549,7 @@ final class ForgePane: @unchecked Sendable {
              { [weak self] in
                  Gtk.onMain { [weak self] in self?.runner.forget(entry) }
              }))
-        Gtk.contextMenu(on: boardHolder, x: x, y: y, rows: rows)
-    }
-
-    /// Scrolls the row under the cursor into view. The board is rebuilt on every snapshot, so the
-    /// widget is found again at the moment it is measured rather than remembered from the frame
-    /// that made it — the one it was is very likely already freed. A board built this frame has no
-    /// allocation yet, and a row that measures nothing is a row GTK has not laid out rather than a
-    /// row at the top, so it is asked again on the next frame instead of scrolling to nowhere.
-    private func reveal(_ position: Int?) {
-        guard let position else { return }
-        Gtk.after(0) { [weak self] in
-            guard let self, !self.scrollIntoView(position) else { return }
-            Gtk.after(32) { [weak self] in self?.scrollIntoView(position) }
-        }
-    }
-
-    @discardableResult
-    private func scrollIntoView(_ position: Int) -> Bool {
-        guard let column = gtk_widget_get_first_child(boardHolder) else { return false }
-        var child = gtk_widget_get_first_child(column)
-        var index = 0
-        while let current = child, index < position {
-            child = gtk_widget_get_next_sibling(current)
-            index += 1
-        }
-        guard let target = child, index == position,
-            let bounds = Gtk.bounds(of: target, in: column), bounds.height > 0,
-            let adjustment = gtk_scrolled_window_get_vadjustment(op(boardScroller))
-        else { return false }
-        let page = gtk_adjustment_get_page_size(adjustment)
-        guard page > 0 else { return false }
-        let value = gtk_adjustment_get_value(adjustment)
-        if bounds.y < value {
-            gtk_adjustment_set_value(adjustment, bounds.y)
-        } else if bounds.y + bounds.height > value + page {
-            gtk_adjustment_set_value(adjustment, bounds.y + bounds.height - page)
-        }
-        return true
+        Gtk.contextMenu(on: filmHolder, x: x, y: y, rows: rows)
     }
 
     private func ensurePlayer() -> Bool {
@@ -496,7 +576,7 @@ final class ForgePane: @unchecked Sendable {
         surface = area
         gtk_widget_set_hexpand(area, 1)
         gtk_widget_set_vexpand(area, 1)
-        gtk_box_append(ptr(stage), area)
+        gtk_box_append(ptr(stageFrame), area)
         return true
     }
 
@@ -543,6 +623,7 @@ extension ForgePane {
         showBoard()
         runner.demonstrate(name)
         syncPrompt()
+        syncAvoid()
         reason = nil
         working = nil
         render()

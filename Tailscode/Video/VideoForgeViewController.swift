@@ -16,9 +16,7 @@ import UIKit
 final class VideoForgeViewController: UIViewController {
     private enum Item: Hashable {
         case row(String)
-        /// The standing fact under the renderer: where a render actually happens. It is the board's
-        /// sentence, but it belongs to no row, so it is the one item this screen adds.
-        case notice
+        case chips
         /// What closing this does not do, said only while a render is out. A surface that can be
         /// dismissed over four minutes of somebody else's card owes the reader that sentence.
         case dismissNote
@@ -78,9 +76,10 @@ final class VideoForgeViewController: UIViewController {
     }
 
     private func configureCollectionView() {
-        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-        configuration.headerMode = .supplementary
+        var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
+        configuration.headerMode = .none
         configuration.backgroundColor = .clear
+        configuration.showsSeparators = false
         configuration.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             self?.swipeActions(at: indexPath)
         }
@@ -170,8 +169,8 @@ final class VideoForgeViewController: UIViewController {
             [weak self] cell, _, item in
             guard let self else { return }
             switch item {
-            case .notice:
-                cell.apply(self.board.notice, tone: .quiet)
+            case .chips:
+                return
             case .dismissNote:
                 guard let words = ForgeSurface.dismissNote(rendering: self.runner.isRendering)
                 else { return }
@@ -188,11 +187,23 @@ final class VideoForgeViewController: UIViewController {
             }
             cell.apply(row, expanded: self.board.expanded.contains(id))
         }
+        let chips = UICollectionView.CellRegistration<ForgeChipsCell, Item> {
+            [weak self] cell, _, _ in
+            guard let self else { return }
+            cell.apply(self.board)
+            cell.onCycle = { [weak self] field in self?.cycle(field) }
+        }
 
         dataSource = UICollectionViewDiffableDataSource<String, Item>(
             collectionView: collectionView
         ) { [weak self] view, indexPath, item in
-            guard let self, case .row = item, let row = self.row(for: item) else {
+            guard let self else {
+                return view.dequeueConfiguredReusableCell(using: note, for: indexPath, item: item)
+            }
+            if case .chips = item {
+                return view.dequeueConfiguredReusableCell(using: chips, for: indexPath, item: item)
+            }
+            guard case .row = item, let row = self.row(for: item) else {
                 return view.dequeueConfiguredReusableCell(using: note, for: indexPath, item: item)
             }
             switch row.kind {
@@ -214,29 +225,7 @@ final class VideoForgeViewController: UIViewController {
             }
         }
 
-        let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-            elementKind: UICollectionView.elementKindSectionHeader
-        ) { [weak self] cell, _, indexPath in
-            guard let self, let id = self.dataSource.sectionIdentifier(for: indexPath.section),
-                let section = self.board.sections.first(where: { $0.id == id })
-            else { return }
-            var content = cell.defaultContentConfiguration()
-            content.text = section.title
-            content.secondaryText = self.headerDetail(of: section)
-            content.textProperties.font = Theme.Ramp.font(.rowTitleStrong)
-            content.secondaryTextProperties.font = Theme.Ramp.font(.panelFootnote)
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-            content.prefersSideBySideTextAndSecondaryText = true
-            cell.contentConfiguration = content
-        }
-        dataSource.supplementaryViewProvider = { view, _, indexPath in
-            view.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
-        }
-    }
-
-    /// A section's own detail, said or suppressed by Core's one rule for all three clients.
-    private func headerDetail(of section: ForgeSection) -> String? {
-        ForgeBoard.headerDetail(of: section)
+        dataSource.supplementaryViewProvider = { _, _, _ in nil }
     }
 
     private func row(for item: Item) -> ForgeRow? {
@@ -275,13 +264,24 @@ final class VideoForgeViewController: UIViewController {
         index = Dictionary(board.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         syncStageClip()
         var snapshot = NSDiffableDataSourceSnapshot<String, Item>()
-        for section in board.sections {
-            snapshot.appendSections([section.id])
-            var items = section.rows.map { Item.row($0.id) }
-            if section.id == ForgeBoard.rendererID { items.append(.notice) }
-            if section.id == ForgeBoard.renderID, runner.isRendering { items.append(.dismissNote) }
-            snapshot.appendItems(items, toSection: section.id)
+        snapshot.appendSections(["studio"])
+        var items: [Item] = []
+        if let job = board.rows.first(where: { $0.kind == .job }) { items.append(.row(job.id)) }
+        if runner.isRendering { items.append(.dismissNote) }
+        if let prompt = board.rows.first(where: { $0.kind == .field(.prompt) }) {
+            items.append(.row(prompt.id))
         }
+        items.append(.chips)
+        if let avoid = board.rows.first(where: { $0.kind == .field(.negative) }) {
+            items.append(.row(avoid.id))
+        }
+        if let renderer = board.rows.first(where: { $0.kind == .field(.endpoint) }) {
+            items.append(.row(renderer.id))
+        }
+        if let history = board.sections.first(where: { $0.id == ForgeBoard.historyID }) {
+            items.append(contentsOf: history.rows.map { Item.row($0.id) })
+        }
+        snapshot.appendItems(items, toSection: "studio")
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
         var content: [Item: Int] = [:]
@@ -308,8 +308,10 @@ final class VideoForgeViewController: UIViewController {
     private func signature(_ item: Item) -> Int {
         var hasher = Hasher()
         switch item {
-        case .notice:
-            hasher.combine(board.notice)
+        case .chips:
+            hasher.combine(ForgeStudio.chips.map { board.value(of: $0) }.joined())
+            hasher.combine(board.isBusy)
+            hasher.combine(board.focused?.id)
         case .dismissNote:
             hasher.combine(runner.isRendering)
         case .row(let id):
@@ -400,6 +402,14 @@ final class VideoForgeViewController: UIViewController {
         let nav = UINavigationController(rootViewController: setup)
         nav.navigationBar.prefersLargeTitles = true
         present(nav, animated: true)
+    }
+
+    private func cycle(_ field: ForgeField) {
+        guard let row = board.rows.first(where: { $0.kind == .field(field) }) else { return }
+        Theme.Haptics.selection()
+        if let action = runner.activate(row) {
+            perform(action)
+        }
     }
 
     private func type(_ text: String, into field: ForgeField) {

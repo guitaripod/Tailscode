@@ -22,12 +22,11 @@ import TailscodeCore
 final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private let runner = ForgeRunner.shared
     private var board: ForgeBoard { runner.board }
-    private let boardView = ForgeBoardView()
+    private let studio = ForgeStudioView()
     private let field = NSTextField()
-    private let call = NSButton()
+    private let avoid = NSTextField()
     private let asideLabel = NSTextField(wrappingLabelWithString: "")
     private var asideGlass: NSGlassEffectView?
-    private var dockGroup: NSView?
     private let theatre = AVPlayerView()
 
     private var openTask: Task<Void, Never>?
@@ -73,62 +72,54 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         theatre.isHidden = true
         addSubview(theatre)
 
-        boardView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(boardView)
-        boardView.onActivate = { [weak self] section, offset in
-            self?.pressed(section: section, offset: offset)
+        studio.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(studio)
+        studio.onCycle = { [weak self] field in self?.cycle(field) }
+        studio.onConfigure = { [weak self] in self?.askForRenderer() }
+        studio.onCall = { [weak self] in self?.perform(self?.runner.begin()) }
+        studio.onActivateHistory = { [weak self] offset in
+            self?.pressed(section: ForgeBoard.historyID, offset: offset)
         }
-        boardView.onClipMenu = { [weak self] entry, view, point in
+        studio.onClipMenu = { [weak self] entry, view, point in
             self?.presentClipMenu(entry, on: view, at: point)
         }
 
-        let dock = buildDock()
-        addSubview(dock)
-        dockGroup = dock
+        prepareFields()
+        let aside = buildAside()
+        studio.attachPrompt(field, avoid: avoid, aside: aside)
 
         NSLayoutConstraint.activate([
             theatre.topAnchor.constraint(equalTo: topAnchor),
             theatre.bottomAnchor.constraint(equalTo: bottomAnchor),
             theatre.leadingAnchor.constraint(equalTo: leadingAnchor),
             theatre.trailingAnchor.constraint(equalTo: trailingAnchor),
-            boardView.topAnchor.constraint(equalTo: topAnchor),
-            boardView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            boardView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            boardView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            dock.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.l),
-            dock.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.l),
-            dock.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -MacTheme.Spacing.m),
+            studio.topAnchor.constraint(equalTo: topAnchor),
+            studio.bottomAnchor.constraint(equalTo: bottomAnchor),
+            studio.leadingAnchor.constraint(equalTo: leadingAnchor),
+            studio.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
     }
 
-    /// The prompt and the one button under it, on the material the rest of this window's floating
-    /// layer is made of — with the pane's own aside above it, tinted rather than clear so a wait
-    /// and a refusal are told apart before either is read.
-    private func buildDock() -> NSView {
+    private func prepareFields() {
         field.placeholderString = board.prompt
         field.font = MacTheme.Ramp.font(.composer)
         field.delegate = self
         field.target = self
         field.action = #selector(promptSubmitted)
         field.translatesAutoresizingMaskIntoConstraints = false
+        field.lineBreakMode = .byWordWrapping
+        field.usesSingleLineMode = false
+        field.cell?.wraps = true
+        field.heightAnchor.constraint(greaterThanOrEqualToConstant: 88).isActive = true
 
-        call.title = board.renderCall
-        call.bezelStyle = .rounded
-        call.target = self
-        call.action = #selector(callPressed)
-        call.setContentHuggingPriority(.required, for: .horizontal)
-        call.translatesAutoresizingMaskIntoConstraints = false
+        avoid.placeholderString = Localized.text("Nothing in particular")
+        avoid.font = MacTheme.Ramp.font(.rowDetail)
+        avoid.delegate = self
+        avoid.translatesAutoresizingMaskIntoConstraints = false
+        avoid.toolTip = ForgeField.negative.label
+    }
 
-        let row = NSStackView(views: [field, call])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = MacTheme.Spacing.s
-        row.edgeInsets = NSEdgeInsets(
-            top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.s,
-            right: MacTheme.Spacing.m)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        let card = MacTheme.glass(around: row, cornerRadius: MacTheme.Radius.card)
-
+    private func buildAside() -> NSView {
         asideLabel.font = MacTheme.Ramp.font(.panelFootnote)
         asideLabel.textColor = MacTheme.Color.onGlass
         asideLabel.isSelectable = false
@@ -144,21 +135,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             around: asideRow, tint: MacTheme.Color.accent, cornerRadius: MacTheme.Radius.card)
         aside.isHidden = true
         asideGlass = aside
-
-        let host = FillingStack(views: [aside, card])
-        host.spacing = MacTheme.Spacing.s
-        host.translatesAutoresizingMaskIntoConstraints = false
-        let group = MacTheme.glassGroup()
-        group.contentView = host
-        return group
-    }
-
-    override func layout() {
-        super.layout()
-        let bottom =
-            (dockGroup?.frame.height ?? 0) + MacTheme.Spacing.m + MacTheme.Spacing.l
-        boardView.insets = NSEdgeInsets(
-            top: safeAreaInsets.top + MacTheme.Spacing.s, left: 0, bottom: bottom, right: 0)
+        return aside
     }
 
     var isPlaying: Bool { playing != nil }
@@ -227,7 +204,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         stageTask?.cancel()
         stageTask = nil
         stopTheatre()
-        boardView.quietStage()
+        studio.quietStage()
         releaseField()
     }
 
@@ -259,8 +236,12 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     }
 
     func controlTextDidChange(_ notification: Notification) {
-        guard (notification.object as? NSTextField) === field else { return }
-        typed()
+        guard let box = notification.object as? NSTextField else { return }
+        if box === field {
+            typed()
+        } else if box === avoid, !typing {
+            runner.avoid(avoid.stringValue)
+        }
     }
 
     private var promptHasFocus: Bool { field.currentEditor() != nil }
@@ -274,8 +255,16 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         perform(runner.begin())
     }
 
-    @objc private func callPressed() {
-        perform(runner.begin())
+    private func cycle(_ field: ForgeField) {
+        guard let section = board.sections.first(where: { $0.id == ForgeBoard.settingsID }),
+            let offset = section.rows.firstIndex(where: { $0.kind == .field(field) })
+        else { return }
+        runner.focus(section: ForgeBoard.settingsID, offset: offset)
+        if let action = runner.activate() {
+            perform(action)
+        } else {
+            render()
+        }
     }
 
     /// A press on a row is the same act as walking to it and pressing enter, so it goes through the
@@ -314,7 +303,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         case .prompt:
             focusPrompt()
         case .negative:
-            askForAvoidance()
+            window?.makeFirstResponder(avoid)
         case .size, .seconds, .fps, .model, .seed:
             return
         }
@@ -387,7 +376,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private func openTheatre(_ asset: ForgeAsset, at url: URL) {
         working = nil
         reason = nil
-        boardView.quietStage()
+        studio.quietStage()
         let player = AVPlayer(url: url)
         player.isMuted = muted
         theatre.player = player
@@ -482,20 +471,23 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
     private func render() {
         let watching = isPlaying
         theatre.isHidden = !watching
-        boardView.isHidden = watching
-        dockGroup?.isHidden = watching
+        studio.isHidden = watching
         applyBackground()
-        call.title = board.renderCall
-        call.setAccessibilityLabel(board.renderCall)
-        call.contentTintColor = board.isBusy ? MacTheme.Color.danger : MacTheme.Color.accent
         field.placeholderString = board.prompt
-        field.toolTip = board.hint
+        field.isEnabled = !board.isBusy
+        avoid.isEnabled = !board.isBusy
+        if avoid.stringValue != board.recipe.negative, !typing {
+            typing = true
+            avoid.stringValue = board.recipe.negative
+            typing = false
+        }
         if !watching {
             syncStageClip()
-            boardView.render(board, clip: stageClip?.url, clipFailure: stageFailure) { entry in
+            studio.render(
+                board, clip: stageClip?.url, clipFailure: stageFailure
+            ) { entry in
                 self.goneWords(for: entry)
             }
-            if let focused = board.focused { boardView.reveal(focused.id) }
         }
         drawAside()
         onChange?()
