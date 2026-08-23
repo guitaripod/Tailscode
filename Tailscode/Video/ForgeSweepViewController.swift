@@ -27,11 +27,25 @@ final class ForgeSweepViewController: UIViewController {
         case trouble(String)
     }
 
+    /// What a probe can tell the screen, carried to the scan that asked for it rather than posted at
+    /// the screen from whichever thread a machine happened to answer on.
+    private enum Sighting: Sendable {
+        case advanced(checked: Int, total: Int)
+        case found(ForgeCandidate)
+    }
+
     private let current: ForgeEndpoint?
     private var reading = ForgeSweepReading()
     private var gate: Gate = .ready
     private var found: [ForgeCandidate] = []
+    /// The scan in flight, and the only handle there is: the fan-out and the deadline are its
+    /// children rather than tasks of their own, so cancelling this cancels the whole scan. A screen
+    /// that is gone must not leave a probe at every machine on the tailnet running to Core's
+    /// deadline, and the outer handle alone used to stop only the walk's first step.
     private var scan: Task<Void, Never>?
+    /// Which scan the screen is holding. A walk let go of still drains the probes already out, so
+    /// its last act must not clear the handle of the scan that replaced it.
+    private var scanID = 0
     private var didAutoScan = false
 
     private let radar = TailnetRadarView()
@@ -70,7 +84,21 @@ final class ForgeSweepViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         guard isBeingDismissed || isMovingFromParent else { return }
+        release()
+    }
+
+    /// The screen is going, so the tailnet stops being asked about it. Dropping the last reference
+    /// is not enough: a weakly captured `self` makes the callbacks no-ops while every probe carries
+    /// on to its own timeout, which is the cost this cancels. The dial is emptied with it, so a
+    /// screen that comes back — a dismissal a finger took back, or the sheet opened a second time —
+    /// starts a scan of its own rather than reading as one that is still out.
+    private func release() {
         scan?.cancel()
+        scan = nil
+        scanID += 1
+        didAutoScan = false
+        reading = ForgeSweepReading()
+        found = []
     }
 
     private func buildUI() {
@@ -209,15 +237,26 @@ final class ForgeSweepViewController: UIViewController {
         found = []
         reading = ForgeSweepReading()
         render()
+        scanID += 1
+        let id = scanID
         scan = Task { [weak self] in
             await self?.sweep(peers)
-            self?.scan = nil
+            self?.retire(id)
         }
+    }
+
+    /// A scan lets go of the screen's handle only while it is still the scan the screen is holding.
+    /// A walk that was cancelled goes on draining the probes already out, and clearing the handle on
+    /// its way past would leave the scan that replaced it looking like no scan at all.
+    private func retire(_ id: Int) {
+        guard scanID == id else { return }
+        scan = nil
     }
 
     /// One walk of the tailnet, given up on when Core says a person has watched long enough. The
     /// walk itself checks for cancellation between machines, so the deadline stops the scan
-    /// spreading rather than abandoning probes that are already out.
+    /// spreading rather than abandoning probes that are already out — and every task it takes to
+    /// run is held under the one handle the screen cancels.
     private func sweep(
         _ peers: @escaping @Sendable () async throws -> ([TailscaleDevice], ForgeSweep.Probe)
     ) async {
@@ -235,28 +274,45 @@ final class ForgeSweepViewController: UIViewController {
         let targets = ForgeSweep.targets(devices)
         reading.began(targets, at: TailnetRadarView.now)
         render()
-        let walk = Task { [weak self] in
-            await ForgeSweep.run(
-                targets: targets, probe: probe,
-                onProgress: { [weak self] checked, total in
-                    Task { @MainActor in self?.advanced(checked: checked, total: total) }
-                },
-                onFound: { [weak self] candidate in
-                    Task { @MainActor in self?.light(candidate) }
-                })
-        }
-        let watchdog = Task {
-            try? await Task.sleep(for: ForgeSweep.deadline)
-            walk.cancel()
-        }
-        _ = await walk.value
-        watchdog.cancel()
+        await walk(targets, probe: probe)
         guard !Task.isCancelled else { return }
         reading.finished()
         found = reading.found
         if !found.isEmpty { Theme.Haptics.received() }
         render()
         UIAccessibility.post(notification: .announcement, argument: reading.title)
+    }
+
+    /// Every machine asked at once, raced against Core's deadline, with both the fan-out and the
+    /// clock running as children of the task the screen holds. Nothing here is an unstructured
+    /// `Task`: a probe's answer arrives as a `Sighting` the scan reads on its own turn instead of a
+    /// hop posted at the main actor, so letting go of the scan lets go of the fan-out, the clock and
+    /// every answer still on its way — and a dial the screen has since started fresh can never be
+    /// written into by a walk it already gave up on.
+    private func walk(_ targets: [ForgeSweep.Target], probe: @escaping ForgeSweep.Probe) async {
+        let (sightings, sighted) = AsyncStream<Sighting>.makeStream()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                _ = await ForgeSweep.run(
+                    targets: targets, probe: probe,
+                    onProgress: { sighted.yield(.advanced(checked: $0, total: $1)) },
+                    onFound: { sighted.yield(.found($0)) })
+                sighted.finish()
+            }
+            group.addTask {
+                try? await Task.sleep(for: ForgeSweep.deadline)
+                sighted.finish()
+            }
+            for await sighting in sightings { apply(sighting) }
+            group.cancelAll()
+        }
+    }
+
+    private func apply(_ sighting: Sighting) {
+        switch sighting {
+        case .advanced(let checked, let total): advanced(checked: checked, total: total)
+        case .found(let candidate): light(candidate)
+        }
     }
 
     private func advanced(checked: Int, total: Int) {
