@@ -988,6 +988,49 @@ gboolean tailscode_animations_enabled(void) {
     return enabled;
 }
 
+#define TAILSCODE_ANIMATION_WATCH "tailscode-animation-watch"
+
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+} TailscodeAnimationWatch;
+
+static void tailscode_animation_watch_free(gpointer raw) {
+    TailscodeAnimationWatch *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+static void tailscode_animations_changed(GObject *settings, GParamSpec *spec, gpointer raw) {
+    (void)settings;
+    (void)spec;
+    TailscodeAnimationWatch *box = g_object_get_data(G_OBJECT(raw), TAILSCODE_ANIMATION_WATCH);
+    if (box && box->handler) box->handler(box->data);
+}
+
+void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), void *data) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!lifetime || !settings) return;
+    gboolean connected =
+        g_object_get_data(G_OBJECT(lifetime), TAILSCODE_ANIMATION_WATCH) != NULL;
+    TailscodeAnimationWatch *box = g_new0(TailscodeAnimationWatch, 1);
+    box->handler = handler;
+    box->data = data;
+    g_object_set_data_full(
+        G_OBJECT(lifetime), TAILSCODE_ANIMATION_WATCH, box, tailscode_animation_watch_free);
+    if (connected) return;
+    g_signal_connect_object(
+        settings, "notify::gtk-enable-animations", G_CALLBACK(tailscode_animations_changed),
+        lifetime, 0);
+}
+
+void tailscode_set_animations_enabled(gboolean enabled) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!settings) return;
+    g_object_set(settings, "gtk-enable-animations", enabled, NULL);
+}
+
 typedef struct {
     void (*handler)(void *);
     void *data;
@@ -1004,19 +1047,26 @@ static gboolean tailscode_tick_trampoline(
 
 static void tailscode_tick_free(gpointer raw) { g_free(raw); }
 
+static int tailscode_tick_count = 0;
+
 guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data) {
     if (!widget) return 0;
     TailscodeTick *box = g_new0(TailscodeTick, 1);
     box->handler = handler;
     box->data = data;
-    return gtk_widget_add_tick_callback(
+    guint id = gtk_widget_add_tick_callback(
         widget, tailscode_tick_trampoline, box, tailscode_tick_free);
+    if (id != 0) tailscode_tick_count += 1;
+    return id;
 }
 
 void tailscode_remove_tick(GtkWidget *widget, guint id) {
     if (!widget || id == 0) return;
     gtk_widget_remove_tick_callback(widget, id);
+    tailscode_tick_count -= 1;
 }
+
+int tailscode_live_ticks(void) { return tailscode_tick_count; }
 
 #define TAILSCODE_RADAR_RINGS 4
 #define TAILSCODE_RADAR_SPARKS 64

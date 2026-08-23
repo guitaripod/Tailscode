@@ -100,9 +100,6 @@ final class CascadePainter: @unchecked Sendable {
     var owes: Bool { live.owes }
     var revealed: Int { live.revealed }
 
-    /// Whether the desktop wants motion at all, read per turn rather than per frame.
-    static var motionAllowed: Bool { tailscode_animations_enabled() != 0 }
-
     /// The one clock every timed thing in a pane reads: the display's own monotonic time in
     /// seconds. An entrance queued against it lines up with the reveal moving on it.
     static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
@@ -122,13 +119,20 @@ final class CascadePainter: @unchecked Sendable {
 
     /// Points the wave at the row the stream is writing into, or lets go of it. Letting go settles
     /// the row at once: a finished paragraph with a glowing tail is a lie about what is live.
+    ///
+    /// The desk is asked here rather than where the clock is installed, and asked again on every
+    /// arrival — which is what keeps this reveal off ``RepeatingMotion``'s road without being off
+    /// the doctrine: the wave is bounded by the turn that is writing, and a turn that is writing is
+    /// arriving. A desk that asks for less motion is answered by the next lump of text, which hands
+    /// the row over whole rather than revealing it, exactly as it would have been answered at the
+    /// start of the turn.
     func focus(
         _ id: String?, markup: String, sealed: Bool, ultracode: Bool,
         clock: UnsafeMutablePointer<GtkWidget>?
     ) {
         self.ultracode = ultracode
         let bytes = Array(markup.utf8CString)
-        guard Self.motionAllowed, let id, let rendered = Self.renderedText(of: bytes) else {
+        guard RepeatingMotion.allowed, let id, let rendered = Self.renderedText(of: bytes) else {
             release()
             return
         }
@@ -157,7 +161,7 @@ final class CascadePainter: @unchecked Sendable {
     /// expire, which would leave the row cut at its last unmatched bracket for the rest of the turn.
     /// `markdown` is false for a row that streams code, which the gate must not read as prose.
     func renderable(row: String, _ source: String, sealed: Bool, markdown: Bool) -> String {
-        guard Self.motionAllowed else { return source }
+        guard RepeatingMotion.allowed else { return source }
         return live.renderable(row: row, source, sealed: sealed, markdown: markdown, at: Self.now)
     }
 
@@ -305,7 +309,7 @@ enum CascadeEntrance {
         _ widget: UnsafeMutablePointer<GtkWidget>, delay: Double, from opacity: Double = 0,
         onFinish: (@Sendable () -> Void)? = nil
     ) {
-        guard CascadePainter.motionAllowed else {
+        guard RepeatingMotion.allowed else {
             onFinish?()
             return
         }

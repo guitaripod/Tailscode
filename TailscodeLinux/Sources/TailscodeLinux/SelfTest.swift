@@ -145,6 +145,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkRepeatingMotion()
+            report("repeating motion: \(checks) claims hold — every never-ending lap asks again")
+        } catch {
+            report("repeating motion: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompletion()
             report("completion: \(checks) queries rank and gate")
         } catch {
@@ -2092,6 +2100,161 @@ public enum SelfTest {
         guard SessionRowState.live.activity == .working,
             SessionRowState.idle.activity == nil
         else { throw SelfTestFailure("a row's state and its activity disagree") }
+    }
+
+    /// Every motion in this client that never ends on its own, proved to ask the desk again rather
+    /// than only once.
+    ///
+    /// A guard read where the clock is installed answers the question at that instant and never
+    /// afterwards, and the question stays open for exactly as long as the lap does — which is the
+    /// whole defect: a ring lit when a tier was picked turns for the rest of that conversation
+    /// under a preference changed a minute later, and a desk that allows movement back is never
+    /// given it. So the claim is made the only way a running app can make it. The harness takes the
+    /// desktop's own switch in its hand (`gtk-enable-animations`, which is what every desktop's
+    /// "reduce animation" setting actually writes), turns it off and on under surfaces that are
+    /// already moving, and reads what each one is left holding.
+    ///
+    /// The road itself is proved before its callers, because two surfaces agreeing means nothing if
+    /// what they agree through is wrong: ``RepeatingMotion`` lays a clock exactly when the desk
+    /// allows movement, never stacks a second on the first, takes it off again, and refuses a
+    /// meaning the vocabulary calls still whatever the desk allows. GTK will not enumerate a
+    /// widget's tick callbacks, so the count of clocks this whole process holds is what those
+    /// claims are read against — the same number the sweep ends on, so nothing here leaves one
+    /// turning behind it.
+    private static func checkRepeatingMotion() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("repeating motion: \(label)") }
+            checks += 1
+        }
+        let asFound = RepeatingMotion.allowed
+        func desk(wantsMotion: Bool) { tailscode_set_animations_enabled(wantsMotion ? 1 : 0) }
+        func glyph(of label: UnsafeMutablePointer<GtkWidget>) -> String {
+            gtk_label_get_text(op(label)).map { String(cString: $0) } ?? ""
+        }
+        defer { desk(wantsMotion: asFound) }
+
+        let clocks = tailscode_live_ticks()
+        let subject = gtk_label_new("·")!
+        let lap = RepeatingMotion {}
+        desk(wantsMotion: true)
+        try expect(
+            lap.lay(on: subject) && lap.isTurning && tailscode_live_ticks() == clocks + 1,
+            "the road lays one clock on when the desk allows movement")
+        try expect(
+            lap.lay(on: subject) && tailscode_live_ticks() == clocks + 1,
+            "and asked twice it replaces that clock rather than stacking a second on top of it")
+        lap.lift()
+        try expect(
+            !lap.isTurning && tailscode_live_ticks() == clocks,
+            "lifted, the client is holding nothing that would ask for another frame")
+        desk(wantsMotion: false)
+        let quiet = tailscode_live_ticks()
+        try expect(
+            !lap.lay(on: subject) && tailscode_live_ticks() == quiet,
+            "a desk that asked for less motion is handed no clock at all")
+        desk(wantsMotion: true)
+        let moving = tailscode_live_ticks()
+        try expect(
+            !lap.lay(on: subject, meaning: .still) && tailscode_live_ticks() == moving,
+            "a meaning the vocabulary calls still never moves, whatever the desk allows")
+
+        let aura = AuraPainter()
+        aura.setActive(true)
+        try expect(aura.isTurning, "the aura turns for as long as the tier stays picked")
+        desk(wantsMotion: false)
+        try expect(
+            !aura.isTurning && aura.isActive,
+            "a desk asking for less mid-conversation stops the ring and keeps it lit — a power"
+                + " being on is a fact, and the fact is the edge rather than the travel around it")
+        desk(wantsMotion: true)
+        try expect(
+            aura.isTurning,
+            "and allowing movement back turns it again, however long ago the tier was picked")
+        aura.setActive(false)
+        desk(wantsMotion: false)
+        desk(wantsMotion: true)
+        try expect(
+            !aura.isTurning,
+            "an aura whose power is off has no fact to draw and stays dark through the change")
+
+        let radar = RadarView()
+        radar.scanning = true
+        radar.startClock()
+        try expect(radar.isTurning, "a scan still out on the tailnet turns the dial")
+        desk(wantsMotion: false)
+        try expect(!radar.isTurning, "a desk asking for less mid-scan settles it at rest")
+        desk(wantsMotion: true)
+        try expect(
+            radar.isTurning,
+            "and allowing movement back mid-scan turns it again, which the old one-directional"
+                + " guard could never do on the one screen somebody walks away from")
+        radar.scanning = false
+        desk(wantsMotion: false)
+        desk(wantsMotion: true)
+        try expect(
+            !radar.isTurning,
+            "a scan that finished is not restarted by the change: the dial is a picture of"
+                + " something happening, and nothing is")
+
+        let mark = gtk_label_new("x")!
+        ActivityPulse.apply(.openWork, to: mark)
+        try expect(
+            ActivityPulse.reading(of: mark).contains("moving=1"),
+            "an open piece of work turns its mark for as long as the work is open")
+        desk(wantsMotion: false)
+        try expect(
+            ActivityPulse.reading(of: mark) == "moving=0"
+                && glyph(of: mark) == ActivityIcon.openWork.glyph,
+            "a desk asking for less mid-turn stops the mark on the state's own glyph, because"
+                + " reduced motion drops the movement and nothing else")
+        desk(wantsMotion: true)
+        try expect(
+            ActivityPulse.reading(of: mark).contains("moving=1"),
+            "and a turn that is still running is given its mark back")
+
+        let settled = gtk_label_new("·")!
+        ActivityPulse.apply(.failed, to: settled)
+        desk(wantsMotion: false)
+        desk(wantsMotion: true)
+        try expect(
+            ActivityPulse.reading(of: settled) == "moving=0",
+            "a state the vocabulary calls still keeps no clock and is handed none by the change")
+
+        setenv("TAILSCODE_ORB", "1", 1)
+        let orb = OrbPainter()
+        try expect(orb.isDrawing, "a creature standing at the foot of the sidebar has a clock")
+        setenv("TAILSCODE_ORB", "0", 1)
+        orb.applyEnabled()
+        try expect(
+            !orb.isDrawing,
+            "a stopped clock is exactly what a settled frame under reduced motion leaves behind,"
+                + " and a stopped clock asks nothing more")
+        desk(wantsMotion: false)
+        desk(wantsMotion: true)
+        try expect(
+            !orb.isDrawing,
+            "so the change never wakes a creature the setting itself switched off")
+        setenv("TAILSCODE_ORB", "1", 1)
+        desk(wantsMotion: false)
+        desk(wantsMotion: true)
+        try expect(
+            orb.isDrawing,
+            "while a body frozen mid-breath is started again by it, rather than standing there"
+                + " for as long as the sidebar does")
+
+        setenv("TAILSCODE_ORB", "0", 1)
+        orb.applyEnabled()
+        unsetenv("TAILSCODE_ORB")
+        ActivityPulse.stop(mark)
+        ActivityPulse.stop(settled)
+        radar.stopClock()
+        lap.lift()
+        try expect(
+            tailscode_live_ticks() == clocks,
+            "and everything the sweep started asks for no more frames than the client began with")
+        return checks
     }
 
     /// A picture must come back byte-identical, keyed to its server file — and two different

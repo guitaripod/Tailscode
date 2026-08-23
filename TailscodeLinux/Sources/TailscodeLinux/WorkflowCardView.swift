@@ -390,12 +390,16 @@ enum WorkflowCardView {
     /// back — so the still glyph is written here, or a run that ended would keep whichever frame of
     /// the sweep it was on when the report landed, which is the moving record this card exists not
     /// to be.
+    ///
+    /// Whether a state that does move is *allowed* to is not asked here. That question stays open
+    /// for as long as the run does, so it is the mark's own to re-take every time the desk changes
+    /// its mind; a second reading of the preference taken where the card happened to be drawn could
+    /// only go stale against it, and a card restated once a second would keep answering with it.
     private static func applyMark(
         _ icon: ActivityIcon, to label: UnsafeMutablePointer<GtkWidget>
     ) {
         ActivityPulse.apply(icon, to: label)
-        let motion = icon.motion.honoring(reduceMotion: !ActivityPulse.motionAllowed)
-        guard !motion.isAnimated else { return }
+        guard !icon.motion.isAnimated else { return }
         setLabel(label, text: icon.glyph)
     }
 

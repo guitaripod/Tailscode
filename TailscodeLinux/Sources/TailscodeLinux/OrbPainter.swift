@@ -33,6 +33,24 @@ final class OrbPainter: @unchecked Sendable {
         gtk_box_append(ptr(widget), area)
         gtk_widget_set_visible(widget, 0)
         applyEnabled()
+        RepeatingMotion.watch(area) { [weak self] in self?.motionPreferenceChanged() }
+    }
+
+    /// Whether the creature's clock is running, for a harness that has to prove it rather than
+    /// watch it — a body breathing and a body that stopped are the same picture in any one frame,
+    /// and a clock left turning over a settled body is the whole cost the pausing exists to avoid.
+    var isDrawing: Bool { tick != 0 }
+
+    /// Takes the still-or-moving decision again when the desk changes its mind.
+    ///
+    /// Every frame already asks — a creature told to stop moving settles, and a settled frame stops
+    /// the clock — which is exactly why the change has to be answered: a stopped clock asks nothing
+    /// more, so a desk that allowed movement back would be left with a body frozen mid-breath for
+    /// as long as the sidebar stood. Waking is the whole of the answer. The next frame reads the
+    /// preference again and settles straight back if nothing changed, and a creature the setting
+    /// itself switched off is not woken at all.
+    private func motionPreferenceChanged() {
+        wake()
     }
 
     private static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
@@ -126,7 +144,7 @@ final class OrbPainter: @unchecked Sendable {
     }
 
     private func paint(at time: Double) {
-        let frame = field.frame(at: time, reduceMotion: !CascadePainter.motionAllowed)
+        let frame = field.frame(at: time, reduceMotion: !RepeatingMotion.allowed)
         lastFrameSettled = frame.settled
         var blobs: [Float] = []
         blobs.reserveCapacity(frame.blobs.count * 4)

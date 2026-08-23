@@ -13,19 +13,24 @@ import TailscodeCore
 final class AuraPainter: @unchecked Sendable {
     private let area: UnsafeMutablePointer<GtkWidget>
     private let stops: [Double]
-    private var tick: UInt = 0
     private var lastPainted = 0.0
     private(set) var isActive = false
+    private lazy var lap = RepeatingMotion { [weak self] in self?.step() }
 
     init() {
         area = tailscode_aura_new()
         stops = Ultracode.rainbowStops.flatMap { [$0.red, $0.green, $0.blue] }
         gtk_widget_set_visible(area, 0)
         paint(at: 0)
+        RepeatingMotion.watch(area) { [weak self] in self?.relay() }
     }
 
     /// The drawing area itself, for the overlay that lays it over the prompt box.
     var widget: UnsafeMutablePointer<GtkWidget> { area }
+
+    /// Whether the ring is turning right now, for a harness that has to prove it rather than watch
+    /// it — a lit ring and a turning one are the same picture in any one frame.
+    var isTurning: Bool { lap.isTurning }
 
     private static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
 
@@ -35,37 +40,27 @@ final class AuraPainter: @unchecked Sendable {
         guard active != isActive else { return }
         isActive = active
         gtk_widget_set_visible(area, active ? 1 : 0)
-        guard active else {
-            stop()
+        relay()
+    }
+
+    /// Reads the desk's mind again, and lays the lap or takes it off accordingly.
+    ///
+    /// A tier stays picked for as long as the conversation lasts, so an aura that asked only at the
+    /// moment it lit would keep turning for the rest of that conversation under a preference
+    /// already changed — and would never start again for a desk that allowed movement back. What a
+    /// desk asking for less is left with is the ring itself, lit and still: a power being on is a
+    /// fact, and the fact is the edge rather than the travel around it. An aura whose power is off
+    /// has no fact to draw, so it stays dark through the change.
+    private func relay() {
+        guard isActive else {
+            lap.lift()
             return
         }
-        guard CascadePainter.motionAllowed else {
+        guard lap.lay(on: area, meaning: .turning) else {
             paint(at: 0)
             return
         }
         paint(at: Self.now)
-        start()
-    }
-
-    private func start() {
-        guard tick == 0 else { return }
-        g_object_ref(UnsafeMutableRawPointer(area))
-        let box = Unmanaged.passUnretained(self).toOpaque()
-        tick = UInt(
-            tailscode_add_tick(
-                area,
-                { raw in
-                    guard let raw else { return }
-                    let painter = Unmanaged<AuraPainter>.fromOpaque(raw).takeUnretainedValue()
-                    painter.step()
-                }, box))
-    }
-
-    private func stop() {
-        guard tick != 0 else { return }
-        tailscode_remove_tick(area, guint(tick))
-        tick = 0
-        g_object_unref(UnsafeMutableRawPointer(area))
     }
 
     /// One frame of the lap, at the tempo everything in this app that moves runs at.
@@ -90,6 +85,4 @@ final class AuraPainter: @unchecked Sendable {
                 Int32(Ultracode.rainbowStops.count))
         }
     }
-
-    deinit { stop() }
 }

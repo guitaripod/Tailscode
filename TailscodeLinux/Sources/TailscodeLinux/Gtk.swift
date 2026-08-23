@@ -52,7 +52,7 @@ enum Gtk {
     /// window's own controls and the wrong one for everything the app builds and rebuilds — a
     /// transcript row, a sidebar row, the rows a popover makes fresh on every open. Those are made
     /// in their thousands over a session and each one kept a closure nobody could ever call again.
-    private static let releaseInstalled: Bool = {
+    static let releaseInstalled: Bool = {
         tailscode_set_box_release { raw in
             guard let raw else { return }
             Unmanaged<AnyObject>.fromOpaque(raw).release()

@@ -21,18 +21,22 @@ final class RadarView: @unchecked Sendable {
     var blips: [RadarBlip] = []
     var scanning = false
 
-    private var tick: guint = 0
     private var lastDrawn = 0.0
     private var inkedFrom = ""
+    private lazy var lap = RepeatingMotion { [weak self] in self?.step() }
 
-    static var motionAllowed: Bool { tailscode_animations_enabled() != 0 }
     static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
 
     init(size: Int32 = 168) {
         widget = tailscode_radar_new()!
         gtk_widget_set_size_request(widget, size, size)
         gtk_widget_set_halign(widget, GTK_ALIGN_CENTER)
+        RepeatingMotion.watch(widget) { [weak self] in self?.relay() }
     }
+
+    /// Whether the sweep is turning right now, for a harness that has to prove it rather than watch
+    /// it — a dial at rest and a dial mid-sweep are the same picture in any one frame.
+    var isTurning: Bool { lap.isTurning }
 
     /// A widget handed to `adw_preferences_group_add` that is not a row lands in a box *after* the
     /// group's list, which would put the dial under every result it drew. Wrapping it in a bare
@@ -50,16 +54,22 @@ final class RadarView: @unchecked Sendable {
     }
 
     func startClock() {
-        guard tick == 0, Self.motionAllowed else {
+        relay()
+    }
+
+    /// Reads the desk's mind again, and turns the dial or settles it accordingly.
+    ///
+    /// The old guard was one-directional: turning motion off settled the dial, and nothing ever
+    /// started it again for a desk that allowed movement back mid-scan — which is the one screen
+    /// somebody leaves to go and wake a machine and comes back to. A scan that has finished is not
+    /// restarted by the change either: the dial is a picture of something happening, and nothing is.
+    private func relay() {
+        guard scanning, lap.lay(on: widget, meaning: .turning) else {
+            lap.lift()
             draw()
             return
         }
-        let box = Unmanaged.passRetained(TickBox(self)).toOpaque()
-        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
-            guard let raw else { return }
-            Unmanaged<TickBox>.fromOpaque(raw).takeUnretainedValue().radar?.step()
-        }
-        tick = tailscode_add_tick(widget, callback, box)
+        draw()
     }
 
     /// One frame of the sweep, at the tempo every moving thing in this app shares rather than at
@@ -75,15 +85,14 @@ final class RadarView: @unchecked Sendable {
     }
 
     func stopClock() {
-        guard tick != 0 else { return }
-        tailscode_remove_tick(widget, tick)
-        tick = 0
+        lap.lift()
     }
 
     func draw() {
         applyInk()
         let frame = TailnetRadar.frame(
-            at: Self.now, blips: blips, scanning: scanning, reducedMotion: !Self.motionAllowed)
+            at: Self.now, blips: blips, scanning: scanning,
+            reducedMotion: !RepeatingMotion.allowed)
         var sparks: [Double] = []
         sparks.reserveCapacity(frame.sparks.count * 5)
         for spark in frame.sparks {
@@ -120,16 +129,5 @@ final class RadarView: @unchecked Sendable {
         case .locked: return 1
         case .pending: return 2
         }
-    }
-}
-
-/// The tick callback's payload. The shim takes a raw pointer and gives it back every frame, so the
-/// reference has to be one this side owns; it holds the dial weakly, because a clock that kept a
-/// closed window's dial alive would repaint a picture nobody can see.
-private final class TickBox {
-    weak var radar: RadarView?
-
-    init(_ radar: RadarView) {
-        self.radar = radar
     }
 }

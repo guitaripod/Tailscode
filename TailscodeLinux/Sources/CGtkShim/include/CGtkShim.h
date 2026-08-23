@@ -240,9 +240,30 @@ const char *tailscode_markup_text(const char *markup);
 guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data);
 void tailscode_remove_tick(GtkWidget *widget, guint id);
 
+/// How many of those clocks this process is holding right now. Every frame in this client comes
+/// from one of them, so the number is the whole of what the app is asking the compositor to redraw
+/// — which is what makes a claim about a lap being taken off, or never stacked on its predecessor,
+/// something a harness can prove rather than assert: GTK will not enumerate a widget's tick
+/// callbacks, and a still frame and a moving one are the same picture in any screenshot.
+int tailscode_live_ticks(void);
+
 /// Whether the desktop wants motion at all. A person who has turned animations off has said what
 /// they want from a cascade, and the answer is the text.
 gboolean tailscode_animations_enabled(void);
+
+/// Calls `handler(data)` whenever the desktop changes its mind about animations, for exactly as
+/// long as `lifetime` is alive. A motion that never ends on its own is up for as long as the thing
+/// it stands for, so the preference has to be re-read while it runs rather than once where it was
+/// laid; GTK announces the change as `notify::gtk-enable-animations` on the default settings, and
+/// tying the connection to a widget is what keeps a window's worth of marks from outliving it.
+/// Watching the same widget twice replaces the handler rather than connecting a second one.
+void tailscode_watch_animations(GtkWidget *lifetime, void (*handler)(void *), void *data);
+
+/// The harness's own hand on that preference: it changes what this process's default settings say
+/// about animations, which is how a claim about re-asking is proved rather than asserted. Nothing
+/// in the app calls it — a client that wrote the desktop's motion setting would be answering a
+/// question it is supposed to be asking.
+void tailscode_set_animations_enabled(gboolean enabled);
 
 /// The tailnet radar: a drawing area that shows a scan as a dial rather than a spinner. Every
 /// number it draws comes from Core's `TailnetRadar` — the sweep's angle, the ping ring, and each
