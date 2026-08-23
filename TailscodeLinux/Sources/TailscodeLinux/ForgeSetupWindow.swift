@@ -174,21 +174,37 @@ final class ForgeSetupWindow: @unchecked Sendable {
         return row
     }
 
-    /// What this machine is on the tailnet, and every machine it can see. Both come out of one
-    /// reading: the sentence the surface leads with, and the peer list a sweep would ask.
+    /// The first look, taken as the window opens so the surface leads with a fact rather than a
+    /// blank. Every look after this one belongs to a press — see `scan`.
     private func readTailnet() {
         Task { [weak self] in
-            let status = TailnetStatusLinux.read()
-            let devices = status.scannableDevices(includingThisMachine: true)
-            let reading = status.reading
+            let reading = Self.readings()
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                self.devices = devices
-                self.setup.tailnet = reading
-                if !reading.isUp { self.sweep = ForgeSweepReading(blocked: reading) }
+                self.took(reading)
                 self.render()
             }
         }
+    }
+
+    /// What this machine is on the tailnet, and every machine it can see. Both come out of one
+    /// reading: the sentence the surface leads with, and the peer list a sweep would ask. Blocking
+    /// work, so it is never taken on the loop that has to keep the dial turning.
+    private static func readings() -> (tailnet: TailscaleReading, devices: [TailscaleDevice]) {
+        let status = TailnetStatusLinux.read()
+        return (status.reading, status.scannableDevices(includingThisMachine: true))
+    }
+
+    /// A reading taken into the window: the line about this machine, the machines a sweep would
+    /// ask, and whichever fact stops a sweep before it starts. A tailnet that has since come up
+    /// clears the refusal the dial was wearing, because a refusal left standing over a fact that
+    /// stopped being true is the whole of the bug this exists to close.
+    private func took(_ reading: (tailnet: TailscaleReading, devices: [TailscaleDevice])) {
+        devices = reading.devices
+        setup.tailnet = reading.tailnet
+        sweep =
+            reading.tailnet.isUp
+            ? ForgeSweepReading() : ForgeSweepReading(blocked: reading.tailnet)
     }
 
     /// The window is going away. Everything it started goes with it, and the static lets go of it
@@ -282,13 +298,39 @@ final class ForgeSetupWindow: @unchecked Sendable {
         }
     }
 
-    /// The tailnet, asked which machine answers on the forge's port. Raced against Core's own
-    /// deadline, because a peer that has gone to sleep holds its port open and says nothing — the
-    /// sweep reports what it did find rather than spinning until the window closes.
+    /// The tailnet, re-read and then asked which machine answers on the forge's port.
+    ///
+    /// The reading is taken again on every press. Whether this machine is on a tailnet at all is a
+    /// live fact — somebody signs in, starts the daemon, comes back — so a surface whose whole
+    /// remedy is "go fix that, then scan" has to be able to see that it worked. Read once when the
+    /// window opened, it would refuse forever for a state that stopped being true, sweep a peer
+    /// list assembled before the tunnel came up, and go on blaming a later timeout on a tailnet
+    /// this machine has since joined.
     private func scan() {
-        guard !sweep.isScanning, setup.discovery.isEnabled else { return }
+        guard sweepTask == nil, !sweep.isScanning else { return }
         scanID += 1
         let id = scanID
+        sweepTask = Task { [weak self] in
+            let reading = Self.readings()
+            guard !Task.isCancelled else { return }
+            Gtk.onMain { [weak self] in
+                guard let self, self.scanID == id else { return }
+                self.took(reading)
+                self.render()
+                guard reading.tailnet.isUp else {
+                    self.sweepTask = nil
+                    self.offer(reading.tailnet.remedy)
+                    return
+                }
+                self.sweepTailnet(id)
+            }
+        }
+    }
+
+    /// Every machine on the tailnet, asked at once. Raced against Core's own deadline, because a
+    /// peer that has gone to sleep holds its port open and says nothing — the sweep reports what it
+    /// did find rather than spinning until the window closes.
+    private func sweepTailnet(_ id: Int) {
         let targets = ForgeSweep.targets(devices)
         sweep.began(targets, at: RadarView.now)
         radar.scanning = true
@@ -309,7 +351,6 @@ final class ForgeSetupWindow: @unchecked Sendable {
                 self.render()
             }
         }
-        sweepTask?.cancel()
         sweepTask = Task { [weak self] in
             _ = await Self.within(ForgeSweep.deadline) {
                 await ForgeSweep.run(
@@ -394,7 +435,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
                 adw_action_row_add_suffix(ptr(row), pill)
             }
             let forget = Self.button("✕") { [weak self] in
-                Gtk.onMain { [weak self] in self?.forget(renderer) }
+                Gtk.onMain { [weak self] in self?.confirmForget(renderer) }
             }
             gtk_widget_set_tooltip_text(forget, ForgeSetup.forgetTitle)
             adw_action_row_add_suffix(ptr(row), forget)
@@ -403,6 +444,18 @@ final class ForgeSetupWindow: @unchecked Sendable {
             }
             adw_preferences_group_add(ptr(knownGroup), ptr(row))
             knownRows.append(row)
+        }
+    }
+
+    /// Forgetting the machine in force stops every screen in the app being able to render, and the
+    /// press is a small unlabelled glyph beside the one that recalls it — so it is asked before it
+    /// is done, the way removing a server on this desk is. The words are Core's.
+    private func confirmForget(_ renderer: ForgeRenderer) {
+        Dialogs.confirm(
+            title: ForgeSetup.forgetTitle, body: renderer.detail,
+            confirmLabel: ForgeSetup.forgetTitle, parent: window
+        ) { [weak self] in
+            Gtk.onMain { [weak self] in self?.forget(renderer) }
         }
     }
 
@@ -453,15 +506,12 @@ final class ForgeSetupWindow: @unchecked Sendable {
         }
     }
 
-    /// What the dial's own button does, which is the scan when there is one to run and the
-    /// tailnet's own remedy when there is not — a machine with no tailnet cannot sweep one, and
-    /// offering the sweep anyway would be a button that fails on purpose.
+    /// What the dial's own button does, which is always the scan — and the scan re-reads Tailscale
+    /// before it sweeps, so one press is both "find out whether I can" and "do it". A machine with
+    /// no tailnet is sent through the door its reading names instead of sweeping a tailnet it is
+    /// not on, and the press that follows the fix finds that it worked.
     private func pressSweep() {
-        guard case .blocked(let reading) = sweep.stage else {
-            scan()
-            return
-        }
-        offer(reading.remedy)
+        scan()
     }
 
     /// The tailnet's own way out, which is a different act in each of the four states it can be in:
@@ -493,15 +543,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
         Gtk.setTone(statusRow, Self.tone(status.tone), from: Self.tones)
         gtk_widget_set_visible(statusRow, status.title.isEmpty ? 0 : 1)
         Gtk.removeChildren(of: statusActions)
-        if let diagnosis = status.diagnosis,
-            let title = Self.title(for: diagnosis, on: setup.tailnet)
-        {
-            gtk_box_append(
-                ptr(statusActions),
-                Self.button(title) { [weak self] in
-                    Gtk.onMain { [weak self] in self?.perform(.fix(diagnosis.fix)) }
-                })
-        }
+        if let button = remedy(for: status) { gtk_box_append(ptr(statusActions), button) }
         gtk_widget_set_visible(statusActions, gtk_widget_get_first_child(statusActions) == nil ? 0 : 1)
 
         let note = setup.secondaryNote
@@ -522,6 +564,24 @@ final class ForgeSetupWindow: @unchecked Sendable {
         }
         gtk_widget_set_sensitive(button, primary.isEnabled ? 1 : 0)
         gtk_box_append(ptr(buttonRow), button)
+    }
+
+    /// The one press a failure offers, which is `ConnectDiagnosis`'s own — the sentence and the
+    /// action are two halves of one value, so a status with no diagnosis has no button by
+    /// construction rather than by a check here.
+    ///
+    /// The row does not repeat the dock. Where a failure's remedy is the press the button row at
+    /// the foot already carries, the row states what is wrong and lets that button carry the act:
+    /// `.timedOut` and `.nameNotResolved` both answer "Try again", which is the primary's own word,
+    /// and the commonest failure on this window would otherwise print it twice forty pixels apart.
+    private func remedy(for status: ForgeSetupReading) -> UnsafeMutablePointer<GtkWidget>? {
+        guard let diagnosis = status.diagnosis,
+            let title = Self.title(for: diagnosis, on: setup.tailnet),
+            title != setup.primary.title
+        else { return nil }
+        return Self.button(title) { [weak self] in
+            Gtk.onMain { [weak self] in self?.perform(.fix(diagnosis.fix)) }
+        }
     }
 
     /// What the status row's button says. `ConnectDiagnosis` can only tell that this machine is
