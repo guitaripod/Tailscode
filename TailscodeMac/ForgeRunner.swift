@@ -45,7 +45,16 @@ final class ForgeRunner {
     /// Whoever is drawing this right now — the sheet while it is open, and the toolbar control for
     /// as long as the app is up, which is what lets a render still be seen once the surface it was
     /// started from has gone.
-    private var watchers: [ObjectIdentifier: () -> Void] = [:]
+    private var watchers: [ObjectIdentifier: Watcher] = [:]
+
+    /// Who asked to be told, held weakly beside what to tell them. An `ObjectIdentifier` is an
+    /// address and an address is reused, so an entry outliving its owner does not merely waste a
+    /// call: the next object allocated there inherits its slot, and one of the two watchers is
+    /// silently lost. The owner is kept only to know it is still there.
+    private struct Watcher {
+        weak var owner: AnyObject?
+        let notify: () -> Void
+    }
 
     private init() {
         board = ForgeBoard(recipe: ForgeStore.recipe(), endpoint: ForgeStore.endpoint())
@@ -59,15 +68,30 @@ final class ForgeRunner {
     var endpoint: ForgeEndpoint? { board.endpoint }
 
     func watch(_ owner: AnyObject, _ block: @escaping () -> Void) {
-        watchers[ObjectIdentifier(owner)] = block
+        watchers[ObjectIdentifier(owner)] = Watcher(owner: owner, notify: block)
     }
 
     func unwatch(_ owner: AnyObject) {
         watchers.removeValue(forKey: ObjectIdentifier(owner))
     }
 
+    /// How many surfaces are still being told. A watcher that outlived its owner changes nothing on
+    /// screen, so this count is the only place the mistake can be seen before the address is reused.
+    var watcherCount: Int {
+        forgetTheDeparted()
+        return watchers.count
+    }
+
     private func changed() {
-        for watcher in watchers.values { watcher() }
+        forgetTheDeparted()
+        for watcher in watchers.values { watcher.notify() }
+    }
+
+    /// Owners that are gone, dropped before anybody is called — a backstop under every surface
+    /// letting go by hand, never a substitute for it, since an entry only leaves here once
+    /// something else happens to change.
+    private func forgetTheDeparted() {
+        watchers = watchers.filter { $0.value.owner != nil }
     }
 
     /// What a surface about to be shown owes the reader: the machine asked again, in case it went to

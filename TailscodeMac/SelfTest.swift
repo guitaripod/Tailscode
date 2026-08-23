@@ -1436,6 +1436,37 @@ enum SelfTest {
             ForgeEntryPoint.activity(rendering: true) == .working,
             "and a render out wears the state that breathes")
 
+        let host = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        let watching = ForgeRunner.shared.watcherCount
+        host.contentView?.addSubview(mark)
+        try expect(
+            ForgeRunner.shared.watcherCount == watching + 1,
+            "a control on screen is called back, so its badge follows the render")
+        mark.removeFromSuperview()
+        try expect(
+            ForgeRunner.shared.watcherCount == watching,
+            "and lets go the moment it leaves, rather than being called for the life of the process")
+
+        let sheet = ForgeSheet.present(on: host)
+        try expect(ForgeSheet.current === sheet, "the forge that is up is the one a press finds")
+        try expect(
+            ForgeSheet.present(on: host) === sheet,
+            "so a second press fetches that one forward rather than building another over it")
+        sheet.close()
+        try expect(
+            ForgeSheet.current == nil,
+            "a closed forge is gone at the press rather than a runloop turn later")
+        let reopened = ForgeSheet.present(on: host)
+        try expect(
+            reopened !== sheet,
+            "which is what lets the press after a close open the forge instead of raising a dead one")
+        reopened.close()
+        try expect(
+            ForgeRunner.shared.watcherCount == watching,
+            "and a surface that has gone is watching nothing")
+
         try expect(
             ForgeSurface.preferredWidth >= ForgeSurface.minimumWidth
                 && ForgeSurface.preferredHeight >= ForgeSurface.minimumHeight,

@@ -45,8 +45,7 @@ final class ForgeSheet {
         let made = ForgeSheet(near: host)
         active.append(made)
         host.beginSheet(made.sheet) { _ in
-            made.release()
-            active.removeAll { $0 === made }
+            Self.dismissed(made)
         }
         made.slot.focusPrompt()
         return made
@@ -198,8 +197,32 @@ final class ForgeSheet {
         }
     }
 
-    private func close() {
-        sheet.sheetParent?.endSheet(sheet)
+    /// The way out — and the sheet stops being the one that is up *here*, in the same breath as
+    /// asking AppKit to end it, rather than when AppKit gets round to saying so. A sheet's
+    /// completion handler runs a whole runloop turn after `endSheet`, and ``current`` is the gate
+    /// every press goes through: for that turn the surface is on its way out and still answers as
+    /// the one that is open, so the press that follows a close raises a sheet in the middle of its
+    /// own dismissal and does nothing anybody can see. Linux closed the same gap in
+    /// `ForgeWindow.destroyed`, and for the same reason.
+    func close() {
+        let window = sheet
+        Self.dismissed(self)
+        window.sheetParent?.endSheet(window)
+    }
+
+    /// This sheet is gone — and it is the one that ended that lets go, never whatever the static
+    /// happens to hold, so a sheet opened in its place is not released out from under the press
+    /// that opened it. It runs at most once: ``close`` does it now and AppKit's completion says the
+    /// same thing a turn later, while a sheet ended any other way — the host window closing, AppKit
+    /// ending it for reasons of its own — arrives only through that completion. What carries the
+    /// object across the gap is the completion's own strong hold on it, which is why the list this
+    /// drops it from is a gate rather than the thing keeping it alive.
+    ///
+    /// The render is left exactly where it is, in the runner, still arriving.
+    private static func dismissed(_ made: ForgeSheet) {
+        guard active.contains(where: { $0 === made }) else { return }
+        active.removeAll { $0 === made }
+        made.release()
     }
 
     /// The sheet that is already up, fetched to the front of the window it hangs from. There is one
@@ -216,6 +239,7 @@ final class ForgeSheet {
     private func release() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        NotificationCenter.default.removeObserver(self)
         slot.shutdown()
     }
 
@@ -278,11 +302,27 @@ final class ForgeMarkButton: NSButton {
             badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 1),
             badge.topAnchor.constraint(equalTo: topAnchor, constant: -1),
         ])
-        ForgeRunner.shared.watch(self) { [weak self] in self?.render() }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The mark follows the window, not the process. Watching from `init` and never letting go left
+    /// every control ever built being called back for the life of the app — invisible while it only
+    /// costs a call, and not invisible at all once the runner's table, which is keyed by the
+    /// object's address, hands a dead button's slot to whatever is allocated there next. A toolbar
+    /// takes an item's view out of the hierarchy and puts it back, so this is the hook that says
+    /// when the badge is worth keeping current: on the way in it watches and draws itself at once,
+    /// on the way out it lets go.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else {
+            ForgeRunner.shared.unwatch(self)
+            return
+        }
+        ForgeRunner.shared.watch(self) { [weak self] in self?.render() }
+        render()
+    }
 
     /// A tooltip is not read aloud, so what this control promises goes into the accessibility label
     /// as well — and the label says whether a render is out, because the badge alone says it only to
