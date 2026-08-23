@@ -220,9 +220,27 @@ public struct WorkflowAgent: Sendable, Hashable, Identifiable {
             updatedAt: summary.updatedAt)
     }
 
-    public func elapsed(at now: Date) -> TimeInterval? {
+    /// How long this agent has been out, or how long it was out for — read against the run that
+    /// holds it rather than against its own record alone.
+    ///
+    /// An agent that never reported finishing has no ending of its own, and the sidecar behind it
+    /// goes on claiming it is working for as long as its window lasts. Timed to the reader's clock
+    /// it therefore never stops: a four-minute errand inside a run that ended last week reads as
+    /// seven days, and grows again every time the card is opened. Work cannot still be in flight
+    /// inside a run that is over, so the run outranks the agent here exactly as it does for the
+    /// mark it wears.
+    public func elapsed(at now: Date, in run: WorkflowRun) -> TimeInterval? {
         guard let startedAt else { return nil }
-        return max(0, (isCompleted ? updatedAt : now).timeIntervalSince(startedAt))
+        return max(0, lastMoment(at: now, in: run).timeIntervalSince(startedAt))
+    }
+
+    /// The latest moment this agent may be credited with running: now while it is still out under
+    /// a live run, its own record once it reported finishing, and — under a run that is over — the
+    /// earlier of that record and the run's own ending, because an agent stopped when the run did
+    /// at the latest and may be credited with nothing later than it was seen doing.
+    private func lastMoment(at now: Date, in run: WorkflowRun) -> Date {
+        guard run.isLive else { return min(updatedAt, run.finishedAt ?? updatedAt) }
+        return isCompleted ? updatedAt : now
     }
 }
 
@@ -704,6 +722,60 @@ public enum WorkflowRunCheck {
             },
             "while an agent that did report finishing keeps its tick")
 
+        let errand = WorkflowAgent(
+            id: "c", title: "hunt", isActive: true, isCompleted: false, startedAt: started,
+            updatedAt: reported)
+        let early = WorkflowAgent(
+            id: "d", title: "scope", isActive: false, isCompleted: true, startedAt: started,
+            updatedAt: started.addingTimeInterval(30))
+        let stale = WorkflowAgent(
+            id: "e", title: "appraise", isActive: true, isCompleted: false, startedAt: started,
+            updatedAt: reported.addingTimeInterval(1_800))
+        let going = WorkflowRun(
+            id: "r", name: "n", agents: [errand, early], state: .running, startedAt: started)
+        expect(
+            errand.elapsed(at: now, in: going) == 9_000,
+            "an agent still out under a run that is going is timed to now")
+        expect(
+            early.elapsed(at: now, in: going) == 30,
+            "while one that reported finishing keeps the length its own record gives it")
+
+        let settled = folded(
+            reporting: BackgroundOutcome(
+                taskID: "task-1", status: .stopped, summary: "No completion record was found.",
+                reportedAt: reported),
+            agents: [errand, early, stale])
+        expect(
+            seated("c", in: settled)?.elapsed(at: now, in: settled) == 252,
+            "the same agent under a run that is over stops where the run stopped")
+        expect(
+            seated("c", in: settled)?.elapsed(at: now, in: settled)
+                == seated("c", in: settled)?.elapsed(
+                    at: now.addingTimeInterval(604_800), in: settled),
+            "and reads the same a week later as it did the moment the run ended")
+        expect(
+            seated("e", in: settled)?.elapsed(at: now, in: settled) == 252,
+            "a sidecar still reporting itself half an hour on is credited to the run's ending")
+        expect(
+            seated("d", in: settled)?.elapsed(at: now, in: settled) == 30,
+            "and one last seen early keeps its own length, not the whole run's")
+
+        let untimedEnding = folded(
+            reporting: nil, completions: ["task-1": "the answer"], agents: [errand])
+        expect(
+            seated("c", in: untimedEnding)?.elapsed(at: now, in: untimedEnding) == 252,
+            "an ending nobody stamped still settles the agents it was read off")
+
+        expect(
+            everyEnding.allSatisfy {
+                let over = WorkflowRun(
+                    id: "r", name: "n", agents: [errand], state: $0, startedAt: started,
+                    finishedAt: reported)
+                return over.agents[0].elapsed(at: now, in: over)
+                    == over.agents[0].elapsed(at: now.addingTimeInterval(604_800), in: over)
+            },
+            "and no ending leaves a row growing for as long as the transcript survives")
+
         expect(liveRun.phaseStanding == .planned, "a live run's plan is a plan")
         expect(
             WorkflowRun(id: "r", name: "n", state: .launching).phaseStanding == .planned,
@@ -771,6 +843,12 @@ public enum WorkflowRunCheck {
         let runs = WorkflowRunAssembly.runs(
             launches: [launch], agents: agents.map(Self.summary), completions: completions)
         return runs[0]
+    }
+
+    /// One agent of a folded run by id, so a pin names the agent it means rather than trusting the
+    /// order the fold happened to seat them in.
+    private static func seated(_ id: String, in run: WorkflowRun) -> WorkflowAgent? {
+        run.agents.first { $0.id == id }
     }
 
     /// The shape the assembly seats agents from, so the check folds them the way a transcript

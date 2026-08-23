@@ -333,6 +333,70 @@ struct WorkflowRunTests {
         #expect(ActivityIcon.workflowAgent(run.agents[0], in: run).motion == .turning)
     }
 
+    @Test("An agent that never reported finishing is timed to its run's ending, not to the reader")
+    func anEndedRunStopsTheClocksUnderIt() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .stopped,
+            summary: "No completion record was found for this run.", reportedAt: Self.reportedAt)
+        let run = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)],
+            agents: [
+                Self.agent(
+                    "a", at: Self.reportedAt.addingTimeInterval(1_800), active: true,
+                    completed: false, from: Self.startedAt),
+                Self.agent(
+                    "b", at: Self.startedAt.addingTimeInterval(30), active: false, completed: true,
+                    from: Self.startedAt),
+            ])[0]
+        let sidecar = run.agents.first { $0.id == "a" }
+        let done = run.agents.first { $0.id == "b" }
+        let aWeekLater = Self.reportedAt.addingTimeInterval(604_800)
+
+        #expect(run.finishedAt == Self.reportedAt)
+        #expect(sidecar?.elapsed(at: aWeekLater, in: run) == 252)
+        #expect(
+            sidecar?.elapsed(at: aWeekLater, in: run)
+                == sidecar?.elapsed(at: Self.reportedAt, in: run))
+        #expect(done?.elapsed(at: aWeekLater, in: run) == 30)
+    }
+
+    @Test("An agent still out under a run that is going is the only one timed to now")
+    func aLiveRunTimesItsAgentsToNow() {
+        let run = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: Self.startedAt)],
+            agents: [
+                Self.agent(
+                    "a", at: Self.reportedAt, active: true, completed: false,
+                    from: Self.startedAt),
+                Self.agent(
+                    "b", at: Self.startedAt.addingTimeInterval(30), active: false, completed: true,
+                    from: Self.startedAt),
+            ])[0]
+        let now = Self.startedAt.addingTimeInterval(9_000)
+
+        #expect(run.isLive)
+        #expect(run.agents.first { $0.id == "a" }?.elapsed(at: now, in: run) == 9_000)
+        #expect(run.agents.first { $0.id == "b" }?.elapsed(at: now, in: run) == 30)
+    }
+
+    @Test("An agent under an ending nobody stamped stops where the run was last seen to move")
+    func anUntimedEndingStopsItsAgentsToo() {
+        let run = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: Self.startedAt)],
+            agents: [
+                Self.agent(
+                    "a", at: Self.reportedAt, active: true, completed: false,
+                    from: Self.startedAt)
+            ],
+            completions: ["wuzrihlvy": "done"])[0]
+        let aWeekLater = Self.reportedAt.addingTimeInterval(604_800)
+
+        #expect(run.state == .finished)
+        #expect(run.agents[0].elapsed(at: aWeekLater, in: run) == 252)
+    }
+
     @Test("An ending nobody timed reads the same however long afterwards it is opened")
     func anUntimedEndingBorrowsNobodysClock() {
         let notification = ChatMessage(
@@ -432,10 +496,10 @@ struct WorkflowRunTests {
     }
 
     private static func agent(
-        _ id: String, at: Date, active: Bool, completed: Bool
+        _ id: String, at: Date, active: Bool, completed: Bool, from: Date? = nil
     ) -> SubagentSummary {
         SubagentSummary(
             id: id, title: "agent \(id)", agentType: WorkflowRunAssembly.agentType,
-            updatedAt: at, isActive: active, isCompleted: completed, startedAt: at)
+            updatedAt: at, isActive: active, isCompleted: completed, startedAt: from ?? at)
     }
 }
