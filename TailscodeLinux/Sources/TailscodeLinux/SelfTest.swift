@@ -2367,8 +2367,20 @@ public enum SelfTest {
             throw SelfTestFailure(
                 "no agent is out on a live card: \(WorkflowCardView.agentReading(of: card))")
         }
+        let atLaunch = WorkflowCardView.agentClockReading(of: card)
+        guard atLaunch == clocks(of: live, at: now) else {
+            throw SelfTestFailure("a live card's row clocks: \(atLaunch)")
+        }
+        card = try restated(card, call: call, context: context, at: now.addingTimeInterval(9_000))
+        let anHourOn = WorkflowCardView.agentClockReading(of: card)
+        guard anHourOn == clocks(of: live, at: now.addingTimeInterval(9_000)),
+            anHourOn != atLaunch
+        else {
+            throw SelfTestFailure("a live card's rows stopped counting: \(anHourOn)")
+        }
+        card = try restated(card, call: call, context: context, at: now)
 
-        var claims = 3
+        var claims = 5
         var rails: [String: String] = [:]
         for status in [BackgroundOutcome.Status.stopped, .failed, .completed] {
             let ended = try reported(
@@ -2390,7 +2402,19 @@ public enum SelfTest {
                 throw SelfTestFailure("a \(status.rawValue) card's rail: \(drawn)")
             }
             rails[status.rawValue] = drawn
-            claims += 3
+            let stopped = WorkflowCardView.agentClockReading(of: card)
+            guard stopped == clocks(of: ended, at: now) else {
+                throw SelfTestFailure("a \(status.rawValue) card's row clocks: \(stopped)")
+            }
+            card = try restated(
+                card, call: call, context: context, at: now.addingTimeInterval(604_800))
+            let aWeekOn = WorkflowCardView.agentClockReading(of: card)
+            guard aWeekOn == stopped else {
+                throw SelfTestFailure(
+                    "a \(status.rawValue) card's rows kept counting a week later: \(aWeekOn)")
+            }
+            card = try restated(card, call: call, context: context, at: now)
+            claims += 5
         }
         guard rails["stopped"] != rails["completed"], rails["failed"] != rails["completed"],
             rails["stopped"] != planned
@@ -2407,6 +2431,28 @@ public enum SelfTest {
         let standing = run.phaseStanding
         return "phases="
             + run.phases.map { _ in "\(standing.glyph):\(standing.css)" }.joined(separator: ",")
+    }
+
+    /// The card moved on to another moment, by whichever road it would take in the app: restated in
+    /// place while its shape holds, rebuilt when it no longer does. Reading a clock at a second
+    /// moment is the only way to catch one that grows, and a check that only ever read the card at
+    /// the instant it was built would never once ask the question.
+    private static func restated(
+        _ card: UnsafeMutablePointer<GtkWidget>, call: ToolCall, context: TranscriptContext,
+        at now: Date
+    ) throws -> UnsafeMutablePointer<GtkWidget> {
+        context.workflowNow = now
+        if WorkflowCardView.restate(card, call: call, context: context) { return card }
+        return WorkflowCardView.make(call, key: "wf", context: context)
+    }
+
+    /// The clock every row of this run may honestly show at that moment, spelled the way the widget
+    /// spells it, from the vocabulary that decides it rather than from a second reading of the run
+    /// invented here.
+    private static func clocks(of run: WorkflowRun, at now: Date) -> String {
+        "clocks="
+            + run.agents.map { $0.elapsed(at: now, in: run).map(WorkflowRun.duration) ?? "" }
+            .joined(separator: ",")
     }
 
     /// Every agent row of an ended run, which is every row holding perfectly still: the one that

@@ -150,7 +150,7 @@ enum WorkflowCardView {
         let tool = liveTool(agent, wearing: icon)
         setLabel(head[2], text: tool ?? "")
         gtk_widget_set_visible(head[2], tool == nil ? 0 : 1)
-        let elapsed = agent.elapsed(at: now)
+        let elapsed = agent.elapsed(at: now, in: run)
         setLabel(head[3], text: elapsed.map(WorkflowRun.duration) ?? "")
         gtk_widget_set_visible(head[3], elapsed == nil ? 0 : 1)
         return true
@@ -285,10 +285,10 @@ enum WorkflowCardView {
         let tool = Gtk.label(working ?? "", css: "agent-live", selectable: false)
         gtk_widget_set_visible(tool, working == nil ? 0 : 1)
         gtk_box_append(ptr(header), tool)
+        let out = agent.elapsed(at: now, in: run)
         let elapsed = Gtk.label(
-            agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
-            css: "workflow-elapsed", selectable: false)
-        gtk_widget_set_visible(elapsed, agent.elapsed(at: now) == nil ? 0 : 1)
+            out.map(WorkflowRun.duration) ?? "", css: "workflow-elapsed", selectable: false)
+        gtk_widget_set_visible(elapsed, out == nil ? 0 : 1)
         gtk_box_append(ptr(header), elapsed)
 
         let key = "wf:\(run.id):\(agent.id)"
@@ -448,6 +448,28 @@ enum WorkflowCardView {
             return "\(text):\(moving ? "moving" : "still")"
         }
         return "agents=\(marks.joined(separator: ","))"
+    }
+
+    /// One reading of what each agent row says it has been out for, for a harness that has to prove
+    /// a row under a run that ended stops counting: the elapsed word every row is showing, in the
+    /// order the run seats them. A row's mark settling while its clock climbs is the same lie one
+    /// label along, so the two are read separately rather than trusted to move together.
+    static func agentClockReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card),
+            let body = gtk_widget_get_next_sibling(button),
+            let agents = children(of: body).first(where: {
+                gtk_widget_has_css_class($0, "workflow-agents") != 0
+            })
+        else { return "clocks=none" }
+        let clocks = children(of: agents).compactMap { row -> String? in
+            guard let disclosure = gtk_widget_get_first_child(row),
+                let header = Gtk.disclosureHeader(disclosure)
+            else { return nil }
+            let head = children(of: header)
+            guard head.count == 4 else { return nil }
+            return gtk_label_get_text(op(head[3])).map { String(cString: $0) } ?? ""
+        }
+        return "clocks=\(clocks.joined(separator: ","))"
     }
 
     private static let glyphClasses = ActivityTone.allCases.map(\.glyphCSS)
