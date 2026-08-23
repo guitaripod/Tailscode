@@ -69,6 +69,14 @@ enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkSubagentRow()
+            report("subagent row: \(checks) claims hold — the clock stops with the call")
+        } catch {
+            report("subagent row: \(error)")
+            failures += 1
+        }
+
         let runFailures = WorkflowRunCheck.run()
         if runFailures.isEmpty {
             report("workflow run: every ending settles the run, stops its clock and holds still")
@@ -779,6 +787,58 @@ enum SelfTest {
             "so the row opened while it was a lone call is still open once it is a run")
         context.expanded.set("run:m1:p1", open: false)
         try expect(!context.isExpanded("run:m1:p1"), "and closing it closes it")
+        return checks
+    }
+
+    /// The subagent row's live line, which is the whole of what a reader saw go wrong: a sidecar
+    /// still calling itself busy under a call that had already reported back, beside a clock that
+    /// grew every time the transcript was opened. Proved by drawing the row at stated moments,
+    /// because what a row claims about time is a reading rather than an animation to watch.
+    private static func checkSubagentRow() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("subagent row case failed: \(label)") }
+            checks += 1
+        }
+        let began = Date(timeIntervalSince1970: 1_700_000_000)
+        let over = began.addingTimeInterval(252)
+        let week = over.addingTimeInterval(604_800)
+        let context = TranscriptContext()
+        let errand = SubagentSummary(
+            id: "a", title: "hunt", updatedAt: over.addingTimeInterval(1_800), isActive: true,
+            startedAt: began)
+        let settled = SubagentSummary(
+            id: "a", title: "hunt", updatedAt: over, isActive: true, isCompleted: true,
+            startedAt: began)
+        func reading(_ status: ToolStatus, _ agent: SubagentSummary, read now: Date) -> String {
+            context.agentFacts = ["t": agent]
+            context.agentReadAt = now
+            return SubagentRowView.reading(
+                of: SubagentRowView.make(
+                    ToolCall(id: "t", name: "Task", status: status), key: "agent", context: context)
+            )
+        }
+
+        try expect(
+            reading(.running, errand, read: over) == StatusFacts.clock(252),
+            "an agent still out under a running call is timed to the moment its facts arrived")
+        try expect(
+            reading(.running, errand, read: week) != reading(.running, errand, read: over),
+            "which is what makes it a clock while the work holding it is still going")
+        try expect(
+            reading(.running, settled, read: week) == StatusFacts.clock(252),
+            "an agent that reported finishing keeps its own length, however long the call runs on")
+        try expect(
+            reading(.completed, errand, read: week) == Localized.text("done"),
+            "a call that reported back says so, whatever its sidecar's record still claims")
+        try expect(
+            reading(.completed, errand, read: week) == reading(.completed, errand, read: over),
+            "so a transcript reopened a week later reads exactly what it read on the day")
+        for ending in [ToolStatus.error, .pending] {
+            try expect(
+                reading(ending, errand, read: week).isEmpty,
+                "and no call that is not running has a working agent under it to report")
+        }
         return checks
     }
 

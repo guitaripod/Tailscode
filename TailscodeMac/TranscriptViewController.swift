@@ -755,7 +755,12 @@ final class TranscriptViewController: NSViewController {
     /// Live facts for the running fan-out, keyed by spawning tool-use id: only the cards whose
     /// facts actually changed re-paint, in place, so a working agent's progress line ticks
     /// without touching the scroll or the forty cards around it.
+    ///
+    /// The moment travels in with the facts. A row's clock is a reading of this arrival rather than
+    /// of whenever the row happened to be built, so a card drawn between two polls states the time
+    /// the facts on it are from.
     func applyAgentFacts(_ facts: [String: SubagentSummary]) {
+        context.agentReadAt = Date()
         let changed = facts.keys.filter { context.agentFacts[$0] != facts[$0] }
         let vanished = context.agentFacts.keys.filter { facts[$0] == nil }
         context.agentFacts = facts

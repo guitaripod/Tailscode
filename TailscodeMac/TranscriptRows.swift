@@ -17,6 +17,11 @@ final class TranscriptContext {
     /// Live facts for the agents of the running fan-out, keyed by spawning tool-use id — what an
     /// inline agent card shows for progress while its transcript is still being written.
     var agentFacts: [String: SubagentSummary] = [:]
+    /// The moment those facts were read at. It belongs to the arrival rather than to the row: an
+    /// agent's clock is a reading of one snapshot, so a card built between two polls states the
+    /// time the facts it draws are from, and two cards in the same transcript can never disagree
+    /// about what time it is.
+    var agentReadAt: Date = Date()
     /// The workflow runs of this conversation, keyed by the Workflow call that started each. A run
     /// outlives its tool call by minutes, so the card reads its state from here rather than from a
     /// call that has said all it will say.

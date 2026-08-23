@@ -504,10 +504,12 @@ enum SubagentRowView {
         header.addArrangedSubview(
             ToolRowView.detailLabel(
                 String(title.replacingOccurrences(of: "\n", with: " ").prefix(140))))
-        if let live = context.agentFacts[call.id], live.isActive {
+        if let live = context.agentFacts[call.id],
+            let detail = liveDetail(of: live, under: call, at: context.agentReadAt)
+        {
             header.addArrangedSubview(
                 RowKit.label(
-                    StatusFacts.liveDetail(live), font: MacTheme.Ramp.font(.panelFootnote),
+                    detail, font: MacTheme.Ramp.font(.panelFootnote),
                     color: MacTheme.Color.accent))
         } else if call.status == .completed {
             header.addArrangedSubview(
@@ -563,5 +565,36 @@ enum SubagentRowView {
             }
             return RowKit.inset(card, leading: 26)
         }
+    }
+
+    /// What this agent is doing, or nothing at all once the work that holds it is over.
+    ///
+    /// A sidecar goes on calling itself active — and its own record is the only thing that ever
+    /// said so — for as long as its reporting window lasts, which outlives the call by up to half
+    /// an hour. Gated on that record alone the line stayed lit beside a settled mark, under a call
+    /// that had already reported and in place of the ending this row would otherwise have shown;
+    /// and its clock, read against whoever was looking, never stopped: a four-minute errand
+    /// reopened a week later read as seven days and grew again every time the transcript was
+    /// drawn. The call that spawned the agent is what says when the work stopped, which is what
+    /// ``AgentHold`` decides once for all three clients — so it both gates the line and bounds the
+    /// clock the shared vocabulary prints, and an agent that reported finishing under a call still
+    /// running keeps its own length rather than counting on.
+    private static func liveDetail(of agent: SubagentSummary, under call: ToolCall, at now: Date)
+        -> String?
+    {
+        let hold = AgentHold(call)
+        guard agent.isActive, hold == .going else { return nil }
+        return StatusFacts.liveDetail(agent, at: now, under: hold)
+    }
+
+    /// One reading of what an agent row says beside its title, for a harness that has to prove a
+    /// row under a call that is over reads the same whenever the transcript is opened. The word is
+    /// taken as drawn — empty where the row shows none — because a line nobody can see is not a
+    /// line this row claimed.
+    static func reading(of row: NSView) -> String {
+        guard let header = (row as? DisclosureRow)?.headerView as? NSStackView,
+            let label = header.arrangedSubviews.dropFirst(3).first as? NSTextField
+        else { return "" }
+        return label.stringValue
     }
 }
