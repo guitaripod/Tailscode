@@ -1059,7 +1059,9 @@ final class HomeViewController: UIViewController {
     }
 
     private func updateEmptyState(itemCount: Int) {
-        collectionView.backgroundView = nil
+        let working = itemCount == 0 && !viewModel.isEmptyOfServers && !hasLoadedOnce
+        if !working { collectionView.backgroundView = nil }
+        collectionView.showsWork(working)
         if itemCount > 0 {
             contentUnavailableConfiguration = nil
         } else if viewModel.isEmptyOfServers {
@@ -1070,7 +1072,7 @@ final class HomeViewController: UIViewController {
                 localized: "Add a connection in Settings to start chatting with your agents.")
             contentUnavailableConfiguration = config
         } else if !hasLoadedOnce {
-            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+            contentUnavailableConfiguration = nil
         } else {
             contentUnavailableConfiguration = nil
             collectionView.backgroundView = Self.emptyHintView()

@@ -1,6 +1,8 @@
 import UIKit
 
 final class PrimaryButton: UIButton {
+    private lazy var work = ButtonWorkMark(on: self, tint: Theme.Color.onAccent)
+
     init(title: String) {
         super.init(frame: .zero)
         var config = Theme.Glass.buttonConfiguration(prominent: true)
@@ -15,7 +17,7 @@ final class PrimaryButton: UIButton {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func setLoading(_ loading: Bool) {
-        configuration?.showsActivityIndicator = loading
+        work.show(loading, on: self)
         isEnabled = !loading
     }
 
@@ -27,6 +29,8 @@ final class PrimaryButton: UIButton {
 /// The same shape as ``PrimaryButton`` without the claim: only one action on a
 /// screen can be the primary one.
 final class SecondaryButton: UIButton {
+    private lazy var work = ButtonWorkMark(on: self, tint: Theme.Color.label)
+
     init(title: String) {
         super.init(frame: .zero)
         var config = Theme.Glass.buttonConfiguration()
@@ -41,7 +45,7 @@ final class SecondaryButton: UIButton {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func setLoading(_ loading: Bool) {
-        configuration?.showsActivityIndicator = loading
+        work.show(loading, on: self)
         isEnabled = !loading
     }
 

@@ -104,6 +104,27 @@ final class ActivityBadgeView: UIView {
         apply()
     }
 
+    /// Says the app is working on the reader's behalf, in the one mark the vocabulary gives that
+    /// state — the swap every `UIActivityIndicatorView` in this client made.
+    ///
+    /// UIKit draws its indeterminate indicator itself, at a rate this app has no say in and cannot
+    /// read, so any screen carrying one kept two tempos: the system's, and the thirty frames every
+    /// badge, dot and gear mark here is stepped at. It is also the mark a reader looks at longest,
+    /// since one is only ever up while something is taking its time — a probe, a rebuild, an
+    /// account being signed in on another machine. Handing it back to the vocabulary costs nothing
+    /// and settles the last rate this client did not set. What is left is deliberate and says so
+    /// where it stands: the answer cascade and the shader preview, which are renderers rather than
+    /// marks, and `UIRefreshControl`, whose indicator is a scroll view drawing a drag rather than
+    /// a client reporting a state.
+    ///
+    /// Not working takes the mark down rather than freezing it: a settled open-work mark over a
+    /// finished job reads as one more thing left to happen. A nil `spoken` is for the surfaces
+    /// where a label beside the badge already says it, because a mark that repeats the sentence
+    /// next to it is one more stop on the way through with nothing of its own to add.
+    func working(_ working: Bool, spoken: String? = nil) {
+        show(working ? .openWork : nil, spoken: working ? spoken : nil)
+    }
+
     private var icon: ActivityIcon?
     private var spoken: String?
 
@@ -117,6 +138,7 @@ final class ActivityBadgeView: UIView {
         self.pointSize = pointSize
         super.init(frame: .zero)
         isUserInteractionEnabled = false
+        isHidden = true
         imageView.contentMode = .center
         imageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(imageView)
@@ -199,5 +221,63 @@ final class ActivityBadgeView: UIView {
         let rotation = motion.rotation(at: time)
         imageView.transform = CGAffineTransform(rotationAngle: rotation)
             .scaledBy(x: scale, y: scale)
+    }
+}
+
+extension UICellAccessory {
+    /// The mark a list row wears while the machine it names is being worked on, in the trailing
+    /// slot a system indicator used to sweep in.
+    ///
+    /// Written once rather than in each screen that has update rows, because two lists spelling
+    /// "this one is busy" two ways is exactly what the vocabulary exists to stop — and a row's own
+    /// headline already says what is happening in words, so the mark carries no sentence of its
+    /// own unless the caller has one the row does not.
+    @MainActor static func working(spoken: String? = nil) -> UICellAccessory {
+        let badge = ActivityBadgeView(pointSize: 13)
+        badge.working(true, spoken: spoken)
+        return .customView(configuration: .init(customView: badge, placement: .trailing()))
+    }
+}
+
+/// The mark a button wears while the press it took is still out, in the place the system's own
+/// indeterminate indicator used to sit.
+///
+/// `UIButton.Configuration.showsActivityIndicator` is a `UIActivityIndicatorView` in a
+/// configuration's clothing — the system drawing an indeterminate sweep at a rate this app has no
+/// say in and cannot read, on the one control a person is watching hardest, which is the one they
+/// just pressed. The vocabulary's own open-work mark stands there instead, on the pulse every
+/// other mark in this client is stepped by.
+///
+/// The button's words stay where they are and are only inked out: a title removed for the wait
+/// takes the button's own height with it, and a press whose acknowledgement is the control under
+/// the finger changing size is a press that reads as a mistake. The mark is laid over the words
+/// rather than beside them, so nothing moves between the press and the answer.
+@MainActor
+final class ButtonWorkMark {
+    private let mark: ActivityBadgeView
+
+    init(on button: UIButton, pointSize: CGFloat = 15, tint: UIColor) {
+        mark = ActivityBadgeView(pointSize: pointSize)
+        mark.overrideColor = tint
+        mark.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(mark)
+        NSLayoutConstraint.activate([
+            mark.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            mark.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+        ])
+    }
+
+    /// Whether the button's press is still out. Enabling and disabling stays the caller's, because
+    /// only the surface knows whether a button that is working is a button with nothing left to
+    /// offer or one that could still be pressed again.
+    func show(_ working: Bool, on button: UIButton) {
+        button.configuration?.titleTextAttributesTransformer = working ? Self.inkedOut : nil
+        mark.working(working)
+    }
+
+    private static let inkedOut = UIConfigurationTextAttributesTransformer { attributes in
+        var attributes = attributes
+        attributes.foregroundColor = UIColor.clear
+        return attributes
     }
 }

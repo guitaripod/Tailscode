@@ -226,7 +226,7 @@ final class ServerDetailViewController: UIViewController {
                 content.text = String(localized: "Server software")
                 content.secondaryText = String(localized: "Checking…")
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-                cell.accessories = [spinner()]
+                cell.accessories = [.working()]
                 break
             }
             content.text = reading.headline
@@ -239,7 +239,7 @@ final class ServerDetailViewController: UIViewController {
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body))
             content.imageProperties.tintColor = reading.tone.color
             cell.accessibilityLabel = reading.accessibilityLine()
-            if reading.verdict.isBusy { cell.accessories = [spinner()] }
+            if reading.verdict.isBusy { cell.accessories = [.working()] }
         case .updateVersions:
             content.text = String(localized: "Running")
             content.secondaryText = reading?.installed.line
@@ -301,12 +301,6 @@ final class ServerDetailViewController: UIViewController {
             content.imageProperties.tintColor = Theme.Color.danger
         }
         cell.contentConfiguration = content
-    }
-
-    private func spinner() -> UICellAccessory {
-        let view = UIActivityIndicatorView(style: .medium)
-        view.startAnimating()
-        return .customView(configuration: .init(customView: view, placement: .trailing()))
     }
 
     private static func symbol(for invitation: UpdateInvitation) -> String {

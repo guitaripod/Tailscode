@@ -42,6 +42,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private let textView = PastingTextView()
     private let placeholder = UILabel()
     private let sendButton = UIButton(type: .system)
+    private lazy var sendWork = ButtonWorkMark(
+        on: sendButton, pointSize: 13, tint: Theme.Color.onAccent)
     private let attachButton = UIButton(type: .system)
     private let enhanceBadge = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
@@ -525,7 +527,6 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private func updateSendButton() {
         let hasText = !trimmed.isEmpty || carriesAttachments
         var config = sendButton.configuration ?? .filled()
-        config.showsActivityIndicator = isSending
         config.image = isSending
             ? nil
             : UIImage(
@@ -535,6 +536,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             hasText || isSending ? Theme.Color.accent : Theme.Color.separator
         config.baseForegroundColor = Theme.Color.onAccent
         sendButton.configuration = config
+        sendWork.show(isSending, on: sendButton)
         sendButton.isEnabled = hasText && !isSending
         sendButton.accessibilityLabel = String(localized: "Send")
     }

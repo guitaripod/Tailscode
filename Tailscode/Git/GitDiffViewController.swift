@@ -13,7 +13,7 @@ final class GitDiffViewController: UIViewController {
     private var lines: [GitDiffLine] = []
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, GitDiffLine>!
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
     private let emptyLabel = UILabel()
 
     init(title: String, subtitle: String, load: @escaping @Sendable () async throws -> String?) {
@@ -41,7 +41,6 @@ final class GitDiffViewController: UIViewController {
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.hidesWhenStopped = true
         view.addSubview(spinner)
         emptyLabel.font = Theme.Ramp.font(.panelDetail)
         emptyLabel.textColor = Theme.Color.secondaryLabel
@@ -97,12 +96,12 @@ final class GitDiffViewController: UIViewController {
             view.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
         }
 
-        spinner.startAnimating()
+        spinner.working(true, spoken: String(localized: "Loading the diff"))
         Task { [weak self] in
             guard let self else { return }
             let patch = (try? await self.load()) ?? nil
             self.lines = GitPatchReader.lines(patch ?? "")
-            self.spinner.stopAnimating()
+            self.spinner.working(false)
             if self.lines.isEmpty {
                 self.emptyLabel.text = patch == nil
                     ? String(localized: "This server could not produce a diff for that.")

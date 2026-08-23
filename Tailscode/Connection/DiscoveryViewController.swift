@@ -16,7 +16,7 @@ final class DiscoveryViewController: UIViewController {
     private let resultsHeader = UILabel()
     private let resultsContainer = UIView()
     private let emptyLabel = UILabel()
-    private let scanActivity = UIActivityIndicatorView(style: .medium)
+    private let scanActivity = ActivityBadgeView(pointSize: 16)
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, ListItem>!
     private var suggestions: [TailnetScanner.Suggestion] = []
@@ -85,7 +85,6 @@ final class DiscoveryViewController: UIViewController {
         emptyLabel.textAlignment = .center
         emptyLabel.isHidden = true
 
-        scanActivity.hidesWhenStopped = true
 
         let stack = UIStackView(arrangedSubviews: [header, statusLabel, configureButton, scanButton, scanActivity, resultsHeader, resultsContainer, emptyLabel])
         stack.axis = .vertical
@@ -244,7 +243,7 @@ final class DiscoveryViewController: UIViewController {
     @objc private func scanTapped() {
         guard hasCreds, scanTask == nil else { return }
         scanButton.setLoading(true)
-        scanActivity.startAnimating()
+        scanActivity.working(true, spoken: String(localized: "Scanning the tailnet"))
         statusLabel.text = String(localized: "Fetching devices and probing servers…")
         lastDeviceCount = nil
         devices = []
@@ -309,7 +308,7 @@ final class DiscoveryViewController: UIViewController {
                 suggestions = []
             }
             scanButton.setLoading(false)
-            scanActivity.stopAnimating()
+            scanActivity.working(false)
             scanButton.setTitle(String(localized: "Scan again"))
             applyResultsSnapshot()
             refreshState()

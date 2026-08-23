@@ -521,7 +521,7 @@ final class ImagePageCell: UICollectionViewCell {
 
     private let scrollView = UIScrollView()
     private let imageView = UIImageView()
-    private let spinner = UIActivityIndicatorView(style: .large)
+    private let spinner = ActivityBadgeView(pointSize: 28)
     private let failure = UILabel()
     private let analysisInteraction = ImageAnalysisInteraction()
     private var token = UUID()
@@ -552,8 +552,7 @@ final class ImagePageCell: UICollectionViewCell {
         imageView.addInteraction(analysisInteraction)
         scrollView.addSubview(imageView)
 
-        spinner.color = .white
-        spinner.hidesWhenStopped = true
+        spinner.overrideColor = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(spinner)
 
@@ -602,7 +601,7 @@ final class ImagePageCell: UICollectionViewCell {
         analysisInteraction.analysis = nil
         analysisInteraction.preferredInteractionTypes = []
         failure.isHidden = true
-        spinner.stopAnimating()
+        spinner.working(false)
         scrollView.zoomScale = 1
         onSingleTap = nil
         onLoaded = nil
@@ -619,12 +618,12 @@ final class ImagePageCell: UICollectionViewCell {
             show(decoded, data: local)
             return
         }
-        spinner.startAnimating()
+        spinner.working(true, spoken: String(localized: "Loading the picture"))
         let token = self.token
         Task { [weak self] in
             let loaded = await AttachmentImageStore.shared.image(for: item.file, using: backend)
             guard let self, self.token == token else { return }
-            self.spinner.stopAnimating()
+            self.spinner.working(false)
             guard let loaded else {
                 self.failure.text = String(localized: "Couldn't load \(item.filename)")
                 self.failure.isHidden = false
@@ -635,7 +634,7 @@ final class ImagePageCell: UICollectionViewCell {
     }
 
     private func show(_ image: UIImage, data: Data?) {
-        spinner.stopAnimating()
+        spinner.working(false)
         failure.isHidden = true
         self.image = image
         self.data = data

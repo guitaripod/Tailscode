@@ -351,8 +351,9 @@ final class WorkflowCardCell: UICollectionViewCell {
     /// own record: a sidecar goes on calling itself active for up to half an hour after the run
     /// around it ended, and the per-second restate that would ever re-ask is itself gated on the
     /// run being live — so a card left to the record alone sweeps its agents forever under a
-    /// header that says the work stopped. The sentence follows the mark for the same reason: only
-    /// an agent the mark shows as out is one VoiceOver may call working.
+    /// header that says the work stopped. The sentence and the caption follow the mark for the
+    /// same reason: only an agent the mark shows as out is one VoiceOver may call working, or one
+    /// this row may name a tool for.
     private func update(
         _ handle: AgentHandle, with agent: WorkflowAgent, in run: WorkflowRun, at now: Date
     ) {
@@ -360,12 +361,24 @@ final class WorkflowCardCell: UICollectionViewCell {
         handle.glyph.show(
             icon, spoken: icon == .openWork ? String(localized: "Agent working") : nil)
         handle.title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
-        let tool = agent.isActive ? agent.currentTool : nil
+        let tool = Self.liveTool(agent, wearing: icon)
         handle.live.text = tool
         handle.live.isHidden = tool == nil
         let elapsed = agent.elapsed(at: now)
         handle.time.text = elapsed.map(WorkflowRun.duration)
         handle.time.isHidden = elapsed == nil
+    }
+
+    /// The tool an agent is holding right now, which is the mark's answer rather than a second
+    /// one this card works out for itself.
+    ///
+    /// A sidecar goes on naming the tool it was last seen on for as long as its reporting window
+    /// lasts, which outlives the run by up to half an hour — so a row read from the agent alone
+    /// would keep "WebFetch" lit beside a settled mark under a header that says the run is over.
+    /// ``ActivityIcon/workflowAgent(_:in:)`` has already weighed the agent against its run: only
+    /// the mark it hands back for an agent genuinely still out names a tool.
+    private static func liveTool(_ agent: WorkflowAgent, wearing icon: ActivityIcon) -> String? {
+        icon == .openWork ? agent.currentTool : nil
     }
 
     /// A phase's model as a badge: the family, without the vendor prefix or the dated build that

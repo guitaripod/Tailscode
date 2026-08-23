@@ -45,7 +45,7 @@ final class ServerSignInViewController: UIViewController {
         detail: String(localized: "That is what signs the machine in. Nothing is stored on this phone."))
     private let codeField = UITextField()
     private let action = PrimaryButton(title: String(localized: "Open the sign-in page"))
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
     private let statusLabel = UILabel()
 
     init(profile: ConnectionProfile, backend: any AuthenticatingBackend) {
@@ -166,7 +166,7 @@ final class ServerSignInViewController: UIViewController {
             stepTwo.setState(.waiting)
             codeField.isHidden = true
             action.isHidden = true
-            spinner.startAnimating()
+            spinner.working(true)
             statusLabel.text = String(localized: "Asking the server for a link…")
             statusLabel.isHidden = false
         case .awaitingCode:
@@ -184,14 +184,14 @@ final class ServerSignInViewController: UIViewController {
                 codeField.text?.isEmpty == false
                     ? String(localized: "Finish signing in")
                     : String(localized: "Open the sign-in page"))
-            spinner.stopAnimating()
+            spinner.working(false)
             statusLabel.isHidden = true
         case .submitting:
             stepOne.setState(.done)
             stepTwo.setState(.active)
             codeField.isHidden = false
             action.isHidden = true
-            spinner.startAnimating()
+            spinner.working(true)
             statusLabel.text = String(localized: "Signing the machine in…")
             statusLabel.isHidden = false
         case .signedIn(let status):
@@ -209,7 +209,7 @@ final class ServerSignInViewController: UIViewController {
             codeField.isHidden = true
             action.isHidden = false
             action.setTitle(String(localized: "Done"))
-            spinner.stopAnimating()
+            spinner.working(false)
             statusLabel.isHidden = true
         case .failed(let reason):
             badge.image = UIImage(systemName: "exclamationmark.triangle.fill")
@@ -221,7 +221,7 @@ final class ServerSignInViewController: UIViewController {
             codeField.isHidden = true
             action.isHidden = false
             action.setTitle(String(localized: "Start over"))
-            spinner.stopAnimating()
+            spinner.working(false)
             statusLabel.isHidden = true
         }
     }

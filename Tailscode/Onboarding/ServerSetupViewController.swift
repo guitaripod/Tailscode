@@ -52,7 +52,7 @@ final class ServerSetupViewController: UIViewController {
     private let diagnosisCard = DiagnosisCardView()
     private let checkingRow = UIStackView()
     private let checkingLabel = UILabel()
-    private let checkingSpinner = UIActivityIndicatorView(style: .medium)
+    private let checkingSpinner = ActivityBadgeView(pointSize: 16)
     private var choiceCards: [AgentType: AgentChoiceCard] = [:]
 
     private var backend: AgentType = .openCode
@@ -314,7 +314,6 @@ final class ServerSetupViewController: UIViewController {
         addressHint.textColor = Theme.Color.tertiaryLabel
         addressHint.numberOfLines = 0
 
-        checkingSpinner.hidesWhenStopped = true
         checkingLabel.font = Theme.Ramp.font(.panelDetail)
         checkingLabel.adjustsFontForContentSizeCategory = true
         checkingLabel.textColor = Theme.Color.secondaryLabel
@@ -684,18 +683,18 @@ final class ServerSetupViewController: UIViewController {
         switch verification {
         case .idle:
             checkingRow.isHidden = true
-            checkingSpinner.stopAnimating()
+            checkingSpinner.working(false)
             diagnosisCard.hide()
             connectCard.setPill(nil)
         case .checking:
-            checkingSpinner.startAnimating()
+            checkingSpinner.working(true)
             checkingLabel.text = String(localized: "Looking for an agent…")
             checkingRow.isHidden = false
             diagnosisCard.hide()
             connectCard.setPill(nil)
         case .verified(let agent, let version, _):
             checkingRow.isHidden = true
-            checkingSpinner.stopAnimating()
+            checkingSpinner.working(false)
             diagnosisCard.hide()
             agentCard.setPill(
                 String(localized: "Answering"), symbol: "checkmark.circle.fill", tint: Theme.Color.success)
@@ -704,7 +703,7 @@ final class ServerSetupViewController: UIViewController {
                 symbol: "checkmark.circle.fill", tint: Theme.Color.success)
         case .failed(let diagnosis):
             checkingRow.isHidden = true
-            checkingSpinner.stopAnimating()
+            checkingSpinner.working(false)
             diagnosisCard.show(
                 diagnosis,
                 tint: diagnosis.fix == .revealPassword ? Theme.Color.warning : Theme.Color.danger)

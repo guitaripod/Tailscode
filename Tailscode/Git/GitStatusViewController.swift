@@ -64,7 +64,7 @@ final class GitStatusViewController: UIViewController {
     private var loadFailure: String?
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
     private let refresher = UIRefreshControl()
 
     init(backend: any GitObservingBackend, directory: String?, sessionID: String?) {
@@ -98,7 +98,6 @@ final class GitStatusViewController: UIViewController {
         refresher.addAction(UIAction { [weak self] _ in self?.load(showSpinner: false) }, for: .valueChanged)
         view.addSubview(collectionView)
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.hidesWhenStopped = true
         view.addSubview(spinner)
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -261,7 +260,7 @@ final class GitStatusViewController: UIViewController {
     }
 
     private func load(showSpinner: Bool) {
-        if showSpinner { spinner.startAnimating() }
+        if showSpinner { spinner.working(true, spoken: String(localized: "Reading the repository")) }
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -273,7 +272,7 @@ final class GitStatusViewController: UIViewController {
             } catch {
                 self.loadFailure = String(localized: "Could not read the repository.")
             }
-            self.spinner.stopAnimating()
+            self.spinner.working(false)
             self.refresher.endRefreshing()
             self.apply()
         }

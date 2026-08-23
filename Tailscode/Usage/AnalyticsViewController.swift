@@ -11,7 +11,7 @@ final class AnalyticsViewController: UIViewController {
     private let scroll = UIScrollView()
     private let column = UIStackView()
     private let refresher = UIRefreshControl()
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
     private let stateLabel = UILabel()
     private let stateStack = UIStackView()
     private var loadTask: Task<Void, Never>?
@@ -118,7 +118,6 @@ final class AnalyticsViewController: UIViewController {
     }
 
     private func setupStateViews() {
-        spinner.hidesWhenStopped = true
         stateLabel.font = Theme.Ramp.font(.panelLabel)
         stateLabel.textColor = Theme.Color.secondaryLabel
         stateLabel.textAlignment = .center
@@ -161,13 +160,13 @@ final class AnalyticsViewController: UIViewController {
 
     private func showLoading() {
         guard column.arrangedSubviews.isEmpty else { return }
-        spinner.startAnimating()
+        spinner.working(true)
         stateLabel.text = String(localized: "Reading the ledger…")
         stateStack.isHidden = false
     }
 
     private func showEmpty() {
-        spinner.stopAnimating()
+        spinner.working(false)
         stateLabel.text = String(localized: "Nothing on the ledger yet")
         stateStack.isHidden = false
     }
@@ -179,7 +178,7 @@ final class AnalyticsViewController: UIViewController {
             showEmpty()
             return
         }
-        spinner.stopAnimating()
+        spinner.working(false)
         stateStack.isHidden = true
 
         column.addArrangedSubview(hero(analytics))

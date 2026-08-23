@@ -20,7 +20,7 @@ final class TranscriptSearchViewController: UIViewController {
     private var board: TranscriptSearch.Board?
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, TranscriptSearch.Row>!
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
     private var searchTask: Task<Void, Never>?
 
     init(
@@ -45,7 +45,7 @@ final class TranscriptSearchViewController: UIViewController {
         configureCollectionView()
         configureDataSource()
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        spinner.startAnimating()
+        spinner.working(true, spoken: String(localized: "Searching the transcripts"))
         view.addSubview(spinner)
         NSLayoutConstraint.activate([
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -61,7 +61,7 @@ final class TranscriptSearchViewController: UIViewController {
             let found = await TranscriptSearch.run(query: query, sources: sources)
             guard !Task.isCancelled else { return }
             self?.board = found
-            self?.spinner.stopAnimating()
+            self?.spinner.working(false)
             self?.applySnapshot()
         }
     }

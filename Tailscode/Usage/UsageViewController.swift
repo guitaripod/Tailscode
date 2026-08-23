@@ -738,7 +738,7 @@ private class ProviderCard: UIView {
     private let noteLabel = UILabel()
     private let detailsStack = UIStackView()
     private var detailsExpanded = false
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = ActivityBadgeView(pointSize: 16)
 
     init(title: String, accent: UIColor) {
         self.cardTitle = title
@@ -750,15 +750,15 @@ private class ProviderCard: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func setLoading(_ loading: Bool) {
-        if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
+        spinner.working(loading)
     }
 
     func renderError() {
-        spinner.stopAnimating()
+        spinner.working(false)
     }
 
     func apply(_ model: CardModel) {
-        spinner.stopAnimating()
+        spinner.working(false)
         subtitleLabel.text = model.subtitle
         pillLabel.text = model.pill
         pillBackground.backgroundColor = model.accent.withAlphaComponent(0.14)
@@ -816,7 +816,6 @@ private class ProviderCard: UIView {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        spinner.hidesWhenStopped = true
         let header = UIStackView(arrangedSubviews: [names, spacer, spinner, pill()])
         header.axis = .horizontal
         header.alignment = .center

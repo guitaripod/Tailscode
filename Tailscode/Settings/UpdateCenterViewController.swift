@@ -254,7 +254,7 @@ final class UpdateCenterViewController: UIViewController {
                 withConfiguration: UIImage.SymbolConfiguration(textStyle: .body))
             content.imageProperties.tintColor = reading.tone.color
             cell.accessibilityLabel = reading.accessibilityLine()
-            if reading.verdict.isBusy { cell.accessories = [spinner()] }
+            if reading.verdict.isBusy { cell.accessories = [.working()] }
         case .installed(let key):
             guard let reading = reading(key) else { break }
             content.text = String(localized: "Installed")
@@ -327,7 +327,7 @@ final class UpdateCenterViewController: UIViewController {
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "arrow.down.circle.fill")
             content.imageProperties.tintColor = Theme.Color.accent
-            if UpdateMonitor.isUpdatingEverything { cell.accessories = [spinner()] }
+            if UpdateMonitor.isUpdatingEverything { cell.accessories = [.working()] }
         }
         cell.contentConfiguration = content
     }
@@ -341,12 +341,6 @@ final class UpdateCenterViewController: UIViewController {
         case .openPage: return "safari"
         case .recheck: return "arrow.clockwise"
         }
-    }
-
-    private func spinner() -> UICellAccessory {
-        let view = UIActivityIndicatorView(style: .medium)
-        view.startAnimating()
-        return .customView(configuration: .init(customView: view, placement: .trailing()))
     }
 
     /// What one machine is worth saying about it, in the order a person reads it: the verdict, the
@@ -390,12 +384,15 @@ final class UpdateCenterViewController: UIViewController {
     }
 
     private func updateEmptyState(itemCount: Int) {
+        let working = itemCount == 0 && UpdateMonitor.isChecking
+        if !working { collectionView.backgroundView = nil }
+        collectionView.showsWork(working)
         guard itemCount == 0 else {
             contentUnavailableConfiguration = nil
             return
         }
-        guard !UpdateMonitor.isChecking else {
-            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        guard !working else {
+            contentUnavailableConfiguration = nil
             return
         }
         var config = UIContentUnavailableConfiguration.empty()

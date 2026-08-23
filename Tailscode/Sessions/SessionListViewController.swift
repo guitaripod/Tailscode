@@ -68,7 +68,7 @@ final class SessionListViewController: UIViewController {
         configureSelectionBar()
         configureDataSource()
         bind()
-        contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        collectionView.showsWork(true)
         NotificationCenter.default.addObserver(
             self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -990,10 +990,12 @@ final class SessionListViewController: UIViewController {
     }
 
     private func updateEmptyState(itemCount: Int) {
+        let working = itemCount == 0 && !hasLoadedOnce && searchQuery.isEmpty
+        collectionView.showsWork(working)
         if itemCount > 0 {
             contentUnavailableConfiguration = nil
-        } else if !hasLoadedOnce, searchQuery.isEmpty {
-            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        } else if working {
+            contentUnavailableConfiguration = nil
         } else if !searchQuery.isEmpty {
             contentUnavailableConfiguration = UIContentUnavailableConfiguration.search()
         } else if case .live = filter {
@@ -1631,10 +1633,11 @@ final class FileBrowserViewController: UIViewController {
     }
 
     private func load() async {
-        if dataSource.snapshot().numberOfItems == 0 {
-            contentUnavailableConfiguration = UIContentUnavailableConfiguration.loading()
+        if dataSource.snapshot().numberOfItems == 0 { collectionView.showsWork(true) }
+        defer {
+            collectionView.refreshControl?.endRefreshing()
+            collectionView.showsWork(false)
         }
-        defer { collectionView.refreshControl?.endRefreshing() }
         do {
             let nodes = try await backend.listFiles(path: path)
                 .sorted { a, b in
