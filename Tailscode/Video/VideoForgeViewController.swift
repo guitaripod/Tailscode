@@ -191,7 +191,10 @@ final class VideoForgeViewController: UIViewController {
             [weak self] cell, _, _ in
             guard let self else { return }
             cell.apply(self.board)
-            cell.onCycle = { [weak self] field in self?.cycle(field) }
+            cell.onPick = { [weak self] field, id in
+                self?.runner.pick(field, id: id)
+                Theme.Haptics.selection()
+            }
         }
 
         dataSource = UICollectionViewDiffableDataSource<String, Item>(
@@ -363,6 +366,8 @@ final class VideoForgeViewController: UIViewController {
             play(asset, entryID: nil)
         case .edit(let field):
             open(field)
+        case .choose(let field):
+            choose(field)
         case .configure:
             openRenderer()
         }
@@ -404,12 +409,24 @@ final class VideoForgeViewController: UIViewController {
         present(nav, animated: true)
     }
 
-    private func cycle(_ field: ForgeField) {
-        guard let row = board.rows.first(where: { $0.kind == .field(field) }) else { return }
-        Theme.Haptics.selection()
-        if let action = runner.activate(row) {
-            perform(action)
+    private func choose(_ field: ForgeField) {
+        guard let path = dataSource.indexPath(for: .chips),
+            let cell = collectionView.cellForItem(at: path) as? ForgeChipsCell
+        else { return }
+        cell.becomeFirstResponder()
+        let sheet = UIAlertController(title: field.label, message: nil, preferredStyle: .actionSheet)
+        for choice in board.choices(of: field) {
+            sheet.addAction(
+                UIAlertAction(
+                    title: choice.menuTitle, style: .default
+                ) { [weak self] _ in
+                    self?.runner.pick(field, id: choice.id)
+                    Theme.Haptics.selection()
+                })
         }
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = cell
+        present(sheet, animated: true)
     }
 
     private func type(_ text: String, into field: ForgeField) {

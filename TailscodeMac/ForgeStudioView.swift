@@ -6,7 +6,7 @@ import TailscodeCore
 /// chips, and what was made is a strip of clips. Every word is still `ForgeBoard`'s.
 @MainActor
 final class ForgeStudioView: NSView {
-    var onCycle: ((ForgeField) -> Void)?
+    var onPick: ((ForgeField, String) -> Void)?
     var onConfigure: (() -> Void)?
     var onCall: (() -> Void)?
     var onActivateHistory: ((Int) -> Void)?
@@ -46,7 +46,7 @@ final class ForgeStudioView: NSView {
             self?.onClipMenu?(entry, view, point)
         }
         renderer.onPress = { [weak self] in self?.onConfigure?() }
-        chips.onCycle = { [weak self] field in self?.onCycle?(field) }
+        chips.onPick = { [weak self] field, id in self?.onPick?(field, id) }
         call.setAction { [weak self] in self?.onCall?() }
 
         split.addArrangedSubview(stageColumn)
@@ -106,6 +106,10 @@ final class ForgeStudioView: NSView {
         chips.render(board)
         call.title = board.renderCall
         call.contentTintColor = board.isBusy ? MacTheme.Color.danger : MacTheme.Color.accent
+    }
+
+    func openMenu(for field: ForgeField, from view: NSView) {
+        chips.openMenu(for: field, from: view)
     }
 
     func quietStage() { stage.pause() }
@@ -231,8 +235,9 @@ final class ForgeHeroStage: NSView {
 
 @MainActor
 final class ForgeChipWrap: NSView {
-    var onCycle: ((ForgeField) -> Void)?
+    var onPick: ((ForgeField, String) -> Void)?
     private let stack = FillingStack()
+    private var board = ForgeBoard()
 
     init() {
         super.init(frame: .zero)
@@ -251,6 +256,7 @@ final class ForgeChipWrap: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func render(_ board: ForgeBoard) {
+        self.board = board
         for view in stack.arrangedSubviews {
             stack.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -273,12 +279,28 @@ final class ForgeChipWrap: NSView {
                     focused: item.id == board.focused?.id)
                 chip.isEnabled = item.isActivatable
                 chip.toolTip = item.note
-                chip.onPress = { [weak self] in self?.onCycle?(field) }
+                chip.onPress = { [weak self, weak chip] in
+                    guard let self, let chip else { return }
+                    self.openMenu(for: field, from: chip)
+                }
                 row.addArrangedSubview(chip)
             }
             stack.addArrangedSubview(row)
             index += stride
         }
+    }
+
+    func openMenu(for field: ForgeField, from view: NSView) {
+        let menu = NSMenu()
+        for choice in board.choices(of: field) {
+            let item = ClosureMenuItem(title: choice.menuTitle) { [weak self] in
+                self?.onPick?(field, choice.id)
+            }
+            item.state = choice.selected ? .on : .off
+            if !choice.detail.isEmpty { item.subtitle = choice.detail }
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height), in: view)
     }
 }
 

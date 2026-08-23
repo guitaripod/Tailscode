@@ -37,7 +37,7 @@ enum ForgeBoardView {
     }
 
     static func chips(
-        _ board: ForgeBoard, onActivate: @escaping @Sendable (ForgeField) -> Void
+        _ board: ForgeBoard, onPick: @escaping @Sendable (ForgeField, String) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let wrap = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         gtk_widget_set_hexpand(wrap, 1)
@@ -53,10 +53,8 @@ enum ForgeBoardView {
                     continue
                 }
                 let button = chip(
-                    item, field: field, focused: item.id == board.focused?.id
-                ) {
-                    onActivate(field)
-                }
+                    item, field: field, board: board, focused: item.id == board.focused?.id,
+                    onPick: onPick)
                 gtk_widget_set_hexpand(button, 1)
                 gtk_box_append(ptr(row), button)
             }
@@ -141,12 +139,20 @@ enum ForgeBoardView {
     }
 
     private static func chip(
-        _ row: ForgeRow, field: ForgeField, focused: Bool,
-        onActivate: @escaping @Sendable () -> Void
+        _ row: ForgeRow, field: ForgeField, board: ForgeBoard, focused: Bool,
+        onPick: @escaping @Sendable (ForgeField, String) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
-        let button = gtk_button_new()!
-        Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "forge-chip")
+        let choices = board.choices(of: field)
+        let button = Gtk.menuButton("", css: ["flat", "forge-chip"]) {
+            choices.map { choice in
+                (
+                    choice.menuTitle,
+                    choice.detail.isEmpty ? nil : choice.detail,
+                    { onPick(field, choice.id) }
+                )
+            }
+        }
+        gtk_menu_button_set_always_show_arrow(op(button), 0)
         if focused { Gtk.addClass(button, "forge-chip-on") }
         if !row.isActivatable { Gtk.addClass(button, "forge-row-spent") }
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
@@ -157,12 +163,11 @@ enum ForgeBoardView {
         gtk_label_set_xalign(op(value), 0)
         gtk_box_append(ptr(column), name)
         gtk_box_append(ptr(column), value)
-        gtk_button_set_child(ptr(button), column)
+        gtk_menu_button_set_child(op(button), column)
         gtk_widget_set_sensitive(button, row.isActivatable ? 1 : 0)
         if let note = row.note, !note.isEmpty {
             gtk_widget_set_tooltip_text(button, note)
         }
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onActivate)
         return button
     }
 

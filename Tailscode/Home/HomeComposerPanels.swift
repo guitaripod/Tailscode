@@ -294,7 +294,7 @@ final class HomeComposerFailureCard: UIView {
 /// board's rows answer, so the composer and the forge can never disagree about the next render.
 @MainActor
 final class HomeVideoChips: UIView {
-    var onCycle: ((ForgeField) -> Void)?
+    var onPick: ((ForgeField, String) -> Void)?
     var onOpen: (() -> Void)?
 
     private let scrollView = UIScrollView()
@@ -340,11 +340,21 @@ final class HomeVideoChips: UIView {
         applied = identity
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for field in fields {
-            let chip = chip(symbol: field.symbol, title: board.value(of: field)) {
-                [weak self] in self?.onCycle?(field)
-            }
+            let chip = chip(symbol: field.symbol, title: board.value(of: field), action: nil)
             chip.isEnabled = !board.isBusy
             chip.accessibilityLabel = "\(field.label), \(board.value(of: field))"
+            chip.showsMenuAsPrimaryAction = true
+            chip.menu = UIMenu(
+                title: field.label,
+                children: board.choices(of: field).map { choice in
+                    UIAction(
+                        title: choice.title,
+                        subtitle: choice.detail.isEmpty ? nil : choice.detail,
+                        state: choice.selected ? .on : .off
+                    ) { [weak self] _ in
+                        self?.onPick?(field, choice.id)
+                    }
+                })
             row.addArrangedSubview(chip)
         }
         let open = chip(symbol: "slider.horizontal.3", title: ForgeSurface.title) {
@@ -355,7 +365,7 @@ final class HomeVideoChips: UIView {
     }
 
     private func chip(
-        symbol: String, title: String, action: @escaping () -> Void
+        symbol: String, title: String, action: (() -> Void)?
     ) -> UIButton {
         var config = Theme.Glass.buttonConfiguration()
         config.cornerStyle = .capsule
@@ -369,7 +379,9 @@ final class HomeVideoChips: UIView {
         name.font = Theme.Ramp.font(.sectionLabel)
         config.attributedTitle = name
         let button = UIButton(configuration: config)
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        if let action {
+            button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        }
         button.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         button.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
         return button

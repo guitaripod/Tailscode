@@ -1035,9 +1035,9 @@ public enum ForgeSetupCheck {
         for field in ForgeField.allCases {
             expect(
                 field.isCyclable
-                    ? (field.affordanceGlyph == "⇅" && field.affordanceSymbol == "chevron.up.chevron.down")
+                    ? (field.affordanceGlyph == "▾" && field.affordanceSymbol == "chevron.down")
                     : (field.affordanceGlyph == "›" && field.affordanceSymbol == "chevron.right"),
-                "a row that cycles and a row that opens wear different marks (\(field.rawValue))")
+                "a row that opens a list and a row that opens a field wear different marks (\(field.rawValue))")
         }
 
         expect(ForgeJobPhase.running(0.5).activity == .working, "a render that is working breathes")

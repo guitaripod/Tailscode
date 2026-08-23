@@ -74,7 +74,7 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
 
         studio.translatesAutoresizingMaskIntoConstraints = false
         addSubview(studio)
-        studio.onCycle = { [weak self] field in self?.cycle(field) }
+        studio.onPick = { [weak self] field, id in self?.runner.pick(field, id: id) }
         studio.onConfigure = { [weak self] in self?.askForRenderer() }
         studio.onCall = { [weak self] in self?.perform(self?.runner.begin()) }
         studio.onActivateHistory = { [weak self] offset in
@@ -255,16 +255,8 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
         perform(runner.begin())
     }
 
-    private func cycle(_ field: ForgeField) {
-        guard let section = board.sections.first(where: { $0.id == ForgeBoard.settingsID }),
-            let offset = section.rows.firstIndex(where: { $0.kind == .field(field) })
-        else { return }
-        runner.focus(section: ForgeBoard.settingsID, offset: offset)
-        if let action = runner.activate() {
-            perform(action)
-        } else {
-            render()
-        }
+    private func choose(_ field: ForgeField) {
+        studio.openMenu(for: field, from: studio)
     }
 
     /// A press on a row is the same act as walking to it and pressing enter, so it goes through the
@@ -291,6 +283,8 @@ final class ForgeSlotView: NSView, NSTextFieldDelegate {
             play(asset, entryID: nil)
         case .edit(let field):
             edit(field)
+        case .choose(let field):
+            choose(field)
         case .configure:
             askForRenderer()
         }

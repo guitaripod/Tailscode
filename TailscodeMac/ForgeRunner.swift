@@ -140,6 +140,12 @@ final class ForgeRunner {
         changed()
     }
 
+    func pick(_ field: ForgeField, id: String) {
+        board.pick(field, id: id)
+        ForgeStore.remember(board.recipe)
+        changed()
+    }
+
     func describe(_ words: String) {
         board.describe(words)
         changed()

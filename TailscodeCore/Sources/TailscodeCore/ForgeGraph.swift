@@ -73,6 +73,16 @@ public struct ForgeSize: Sendable, Codable, Hashable, Identifiable {
     public static let small = ForgeSize(width: 832, height: 480)
 
     public static let options: [ForgeSize] = [landscape, portrait, square, small]
+
+    public var name: String {
+        switch self {
+        case Self.landscape: return Localized.text("Landscape")
+        case Self.portrait: return Localized.text("Portrait")
+        case Self.square: return Localized.text("Square")
+        case Self.small: return Localized.text("Small")
+        default: return label
+        }
+    }
 }
 
 /// Everything a person chose, and nothing about how it is rendered. A recipe is what gets stored

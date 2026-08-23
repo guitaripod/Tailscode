@@ -328,6 +328,8 @@ final class ForgePane: @unchecked Sendable {
             play(asset)
         case .edit(let field):
             edit(field)
+        case .choose(let field):
+            choose(field)
         case .configure:
             openSetup()
         }
@@ -486,8 +488,8 @@ final class ForgePane: @unchecked Sendable {
         Gtk.removeChildren(of: chipsHolder)
         gtk_box_append(
             ptr(chipsHolder),
-            ForgeBoardView.chips(board) { [weak self] field in
-                Gtk.onMain { [weak self] in self?.cycle(field) }
+            ForgeBoardView.chips(board) { [weak self] field, id in
+                Gtk.onMain { [weak self] in self?.runner.pick(field, id: id) }
             })
         gtk_button_set_label(ptr(call), board.renderCall)
         gtk_widget_remove_css_class(call, "forge-call-stop")
@@ -498,16 +500,17 @@ final class ForgePane: @unchecked Sendable {
         gtk_widget_set_sensitive(avoidEntry, board.isBusy ? 0 : 1)
     }
 
-    private func cycle(_ field: ForgeField) {
-        guard let section = board.sections.first(where: { $0.id == ForgeBoard.settingsID }),
-            let offset = section.rows.firstIndex(where: { $0.kind == .field(field) })
-        else { return }
-        runner.focus(section: ForgeBoard.settingsID, offset: offset)
-        if let action = runner.activate() {
-            perform(action)
-        } else {
-            render()
+    private func choose(_ field: ForgeField) {
+        let rows = board.choices(of: field).map { choice in
+            (
+                choice.menuTitle,
+                choice.detail.isEmpty ? nil : choice.detail,
+                { [weak self] in
+                    Gtk.onMain { [weak self] in self?.runner.pick(field, id: choice.id) }
+                } as @Sendable () -> Void
+            )
         }
+        Gtk.contextMenu(on: chipsHolder, x: 8, y: 8, rows: rows)
     }
 
     private func activate(section: String, offset: Int) {

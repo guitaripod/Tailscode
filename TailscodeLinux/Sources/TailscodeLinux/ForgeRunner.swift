@@ -69,6 +69,12 @@ final class ForgeRunner: @unchecked Sendable {
         probe()
     }
 
+    func pick(_ field: ForgeField, id: String) {
+        board.pick(field, id: id)
+        remember()
+        changed()
+    }
+
     func describe(_ words: String) {
         board.describe(words)
         changed()

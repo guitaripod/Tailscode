@@ -378,8 +378,11 @@ struct ForgeTests {
                 continue
             }
             board.focus(index)
-            for _ in 0..<6 {
-                #expect(board.activate() == nil)
+            #expect(board.activate() == .choose(field))
+            let options = board.choices(of: field)
+            #expect(!options.isEmpty, "\(field) has a menu")
+            for choice in options {
+                board.pick(field, id: choice.id)
                 #expect(ForgeGraph(recipe: board.recipe).problems.isEmpty)
             }
         }

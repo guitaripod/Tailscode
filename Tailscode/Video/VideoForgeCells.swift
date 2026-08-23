@@ -722,7 +722,7 @@ final class ForgeExpanderCell: UICollectionViewListCell {
 /// The walkable settings as chips. One cell so a phone does not spend a screen of rows on values
 /// a tap already walks.
 final class ForgeChipsCell: UICollectionViewCell {
-    var onCycle: ((ForgeField) -> Void)?
+    var onPick: ((ForgeField, String) -> Void)?
     private let wrap = UIStackView()
     private var applied = ""
 
@@ -763,14 +763,16 @@ final class ForgeChipsCell: UICollectionViewCell {
                     continue
                 }
                 row.addArrangedSubview(
-                    chip(field, value: item.detail, enabled: item.isActivatable))
+                    chip(field, value: item.detail, enabled: item.isActivatable, board: board))
             }
             wrap.addArrangedSubview(row)
             index += stride
         }
     }
 
-    private func chip(_ field: ForgeField, value: String, enabled: Bool) -> UIButton {
+    private func chip(_ field: ForgeField, value: String, enabled: Bool, board: ForgeBoard)
+        -> UIButton
+    {
         var config = Theme.Glass.buttonConfiguration()
         config.cornerStyle = .large
         config.buttonSize = .small
@@ -786,8 +788,18 @@ final class ForgeChipsCell: UICollectionViewCell {
         let button = UIButton(configuration: config)
         button.isEnabled = enabled
         button.accessibilityLabel = "\(field.label), \(value)"
-        button.addAction(
-            UIAction { [weak self] _ in self?.onCycle?(field) }, for: .touchUpInside)
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(
+            title: field.label,
+            children: board.choices(of: field).map { choice in
+                UIAction(
+                    title: choice.title,
+                    subtitle: choice.detail.isEmpty ? nil : choice.detail,
+                    state: choice.selected ? .on : .off
+                ) { [weak self] _ in
+                    self?.onPick?(field, choice.id)
+                }
+            })
         return button
     }
 }

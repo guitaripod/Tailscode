@@ -220,6 +220,12 @@ final class ForgeRunner {
         return action
     }
 
+    func pick(_ field: ForgeField, id: String) {
+        board.pick(field, id: id)
+        ForgeStore.remember(board.recipe)
+        announce()
+    }
+
     func describe(_ words: String) {
         board.describe(words)
         announce()

@@ -1510,7 +1510,10 @@ final class HomeViewController: UIViewController {
         videoChips.isHidden = true
         [failureCard, suggestions, videoChips, attachmentStrip].forEach(
             accessories.addArrangedSubview)
-        videoChips.onCycle = { [weak self] field in self?.cycleVideoChip(field) }
+        videoChips.onPick = { [weak self] field, id in
+            ForgeRunner.shared.pick(field, id: id)
+            Theme.Haptics.selection()
+        }
         videoChips.onOpen = { [weak self] in
             Theme.Haptics.tap()
             self?.presentVideo()
@@ -2582,16 +2585,6 @@ extension HomeViewController {
     private var wantsSuggestions: Bool {
         askLane == .ask && !composerBar.isHidden && composerBar.currentText.isEmpty
             && attachments.isEmpty && commandPalette.isHidden
-    }
-
-    /// A chip is the same press the board's row answers: the walk goes through the runner, so the
-    /// composer and the forge surface can never disagree about what the next render is made from.
-    private func cycleVideoChip(_ field: ForgeField) {
-        guard let row = ForgeRunner.shared.board.rows.first(where: { $0.kind == .field(field) }),
-            row.isActivatable
-        else { return }
-        Theme.Haptics.selection()
-        _ = ForgeRunner.shared.activate(row)
     }
 
     func updateSuggestions() {

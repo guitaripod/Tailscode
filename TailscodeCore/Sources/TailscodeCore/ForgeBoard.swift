@@ -44,8 +44,8 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     public var opensSetup: Bool { self == .endpoint }
 
     /// Whether the board can change this by itself. Words are typed and an address is dictated, so
-    /// those go back to the client as something to open; the rest are short lists the board walks,
-    /// which is why pressing one of them is a step rather than an outcome.
+    /// those go back to the client as something to open; the rest are short lists the board holds,
+    /// which is why pressing one of them opens the list rather than walking it blind.
     public var isCyclable: Bool {
         switch self {
         case .size, .seconds, .fps, .model, .seed: return true
@@ -54,14 +54,14 @@ public enum ForgeField: String, Sendable, Equatable, CaseIterable {
     }
 
     /// The mark a row wears at its end, so what pressing it does is read before it is pressed: a
-    /// setting the board walks by itself cycles, and one the client opens discloses. One symbol for
-    /// the Apple clients and one glyph for the text ones, so a Mac cannot promise a different act
-    /// than a phone for the same row.
+    /// setting with a list opens it, and one the client edits discloses. One symbol for the Apple
+    /// clients and one glyph for the text ones, so a Mac cannot promise a different act than a
+    /// phone for the same row.
     public var affordanceSymbol: String {
-        isCyclable ? "chevron.up.chevron.down" : "chevron.right"
+        isCyclable ? "chevron.down" : "chevron.right"
     }
 
-    public var affordanceGlyph: String { isCyclable ? "⇅" : "›" }
+    public var affordanceGlyph: String { isCyclable ? "▾" : "›" }
 
     /// One symbol per decision, so a chip or a row is read down its left edge rather than word by
     /// word. The client owes the drawing; the words are all Core's.
@@ -99,8 +99,29 @@ public enum ForgeAction: Sendable, Equatable {
     case play(ForgeAsset)
     /// A value the board cannot walk: the client opens its own field for it.
     case edit(ForgeField)
+    /// A short list the board holds. The client opens it as a menu; picking a row comes back as
+    /// `pick`, never as another walk.
+    case choose(ForgeField)
     /// There is no renderer yet, so there is nothing to render on. The client asks for an address.
     case configure
+}
+
+/// One row in a setting's menu. The id is what `ForgeBoard.pick` takes back; the title is what the
+/// menu shows; the detail is why you would pick it, and may be empty.
+public struct ForgeChoice: Sendable, Equatable, Identifiable {
+    public let id: String
+    public let title: String
+    public let detail: String
+    public let selected: Bool
+
+    public init(id: String, title: String, detail: String = "", selected: Bool) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.selected = selected
+    }
+
+    public var menuTitle: String { selected ? "✓ \(title)" : title }
 }
 
 public struct ForgeRow: Sendable, Equatable, Identifiable {
@@ -361,8 +382,7 @@ public struct ForgeBoard: Sendable, Equatable {
         case .field(let field):
             if field.opensSetup { return .configure }
             guard field.isCyclable else { return .edit(field) }
-            cycle(field)
-            return nil
+            return .choose(field)
         case .clip(let entry):
             guard let asset = entry.asset else {
                 reuse(entry)
@@ -453,6 +473,71 @@ public struct ForgeBoard: Sendable, Equatable {
         case Keymap.tab: return .expand
         case Keymap.escape: return .back
         default: return nil
+        }
+    }
+
+    /// The list a setting opens, in the order it is offered, with the current value marked. Seed is
+    /// not a list — the only honest row is a new one — so that menu is one action.
+    public func choices(of field: ForgeField) -> [ForgeChoice] {
+        switch field {
+        case .size:
+            return ForgeSize.options.map { size in
+                ForgeChoice(
+                    id: size.id, title: size.label, detail: size.name,
+                    selected: recipe.size == size)
+            }
+        case .seconds:
+            return Self.secondsOptions.map { seconds in
+                ForgeChoice(
+                    id: "\(seconds)", title: Localized.text("%@s", "\(seconds)"),
+                    detail: Localized.text("%@ frames", "\(seconds * recipe.fps + 1)"),
+                    selected: recipe.seconds == seconds)
+            }
+        case .fps:
+            return ForgeRecipe.fpsOptions.map { fps in
+                ForgeChoice(
+                    id: "\(fps)", title: Localized.text("%@ fps", "\(fps)"),
+                    detail: "", selected: recipe.fps == fps)
+            }
+        case .model:
+            return ForgeModel.allCases.map { model in
+                ForgeChoice(
+                    id: model.rawValue, title: model.label, detail: model.detail,
+                    selected: recipe.model == model)
+            }
+        case .seed:
+            return [
+                ForgeChoice(
+                    id: "reroll", title: Localized.text("New seed"),
+                    detail: Localized.text("The same seed and prompt make the same clip"),
+                    selected: false)
+            ]
+        case .endpoint, .prompt, .negative:
+            return []
+        }
+    }
+
+    /// Applies one row from `choices(of:)`. An unknown id is ignored rather than crashing, because
+    /// a menu rebuilt under a press can hand back a value the board no longer offers.
+    public mutating func pick(_ field: ForgeField, id: String) {
+        switch field {
+        case .size:
+            guard let size = ForgeSize.options.first(where: { $0.id == id }) else { return }
+            revise(recipe.with(size: size))
+        case .seconds:
+            guard let seconds = Int(id) else { return }
+            revise(recipe.with(seconds: seconds))
+        case .fps:
+            guard let fps = Int(id) else { return }
+            revise(recipe.with(fps: fps))
+        case .model:
+            guard let model = ForgeModel(rawValue: id) else { return }
+            revise(recipe.with(model: model))
+        case .seed:
+            guard id == "reroll" else { return }
+            cycle(.seed)
+        case .endpoint, .prompt, .negative:
+            return
         }
     }
 
@@ -936,9 +1021,13 @@ public enum ForgeBoardCheck {
 
         if let index = board.rows.firstIndex(where: { $0.kind == .field(.size) }) {
             board.focus(index)
-            let before = board.recipe.size
-            expect(board.activate() == nil, "walking a setting is a step, not an outcome")
-            expect(board.recipe.size != before, "and the setting actually moved")
+            expect(board.activate() == .choose(.size), "a setting opens its list rather than walking it")
+            let sizes = board.choices(of: .size)
+            expect(sizes.count == ForgeSize.options.count, "every offered size is in the menu")
+            expect(sizes.contains(where: \.selected), "and the current one is marked")
+            let next = sizes.first(where: { !$0.selected })?.id ?? sizes[0].id
+            board.pick(.size, id: next)
+            expect(board.recipe.size.id == next, "picking a row is what moves the setting")
             expect(board.recipe.width % ForgeRecipe.block == 0, "onto a size the model can take")
         } else {
             failures.append("the frame size is a row")
