@@ -1839,7 +1839,7 @@ final class ChatViewController: UIViewController {
 
     private func rebuildTranscript(_ state: ConversationState) -> TranscriptRebuild {
         let runs = WorkflowRunAssembly.runs(
-            messages: state.messages, agents: viewModel.trackedSubagents, now: workflowNow)
+            messages: state.messages, agents: viewModel.trackedSubagents)
         workflowRuns = runs
         updateWorkflowTicker()
         let rows = ChatRowBuilder.makeRows(

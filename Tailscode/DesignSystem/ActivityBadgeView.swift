@@ -90,7 +90,15 @@ final class ActivityBadgeView: UIView {
     /// A nil `spoken` is a badge the reader's ear never meets, because the row around it already
     /// says the same thing in words: a mark with no sentence would be one more stop on the way
     /// through the card with nothing for VoiceOver to read out there.
+    ///
+    /// Being told the same thing again is not news, and a card that is restated once a second says
+    /// exactly that: `apply` builds the symbol, re-reads the reduce-motion setting and puts the
+    /// image back at nought degrees, so a badge that was mid-sweep would snap to the top of its
+    /// turn every second and only find its place again on the next frame. Tearing the clock down
+    /// and building it again each time is how a swell turns into a stutter, so a mark that has not
+    /// changed is left alone — the same guard the two desks keep.
     func show(_ icon: ActivityIcon?, spoken: String?) {
+        guard icon != self.icon || spoken != self.spoken else { return }
         self.icon = icon
         self.spoken = spoken
         apply()

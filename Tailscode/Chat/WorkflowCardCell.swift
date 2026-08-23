@@ -29,9 +29,19 @@ final class WorkflowCardCell: UICollectionViewCell {
     private var containerTop: NSLayoutConstraint!
     private var onAgentTap: ((String) -> Void)?
     private var phaseSignature: [String] = []
-    private var phaseDots: [UIImageView] = []
+    private var phaseHandles: [PhaseHandle] = []
     private var agentIDs: [String] = []
     private var agentHandles: [AgentHandle] = []
+
+    /// The pieces of one phase row a restate writes into: the marker, and the title it is read out
+    /// with. The standing rides on the title rather than on the marker so the rail gains no extra
+    /// stop for a reader going through it — one voice per phase, saying which phase and how it
+    /// stands, instead of a dot that announces itself and a title that repeats the row.
+    private struct PhaseHandle {
+        let dot: UIImageView
+        let title: UILabel
+        let phase: WorkflowPhase
+    }
 
     /// The mutable pieces of one agent row, kept so a reconfigure writes into them instead of
     /// rebuilding the row — a rebuilt row takes the button out from under a finger mid-tap.
@@ -185,20 +195,14 @@ final class WorkflowCardCell: UICollectionViewCell {
         let phases = run.phases.map { "\($0.title)|\($0.detail ?? "")|\($0.model ?? "")" }
         if phases != phaseSignature {
             phaseSignature = phases
-            phaseDots = []
+            phaseHandles = []
             rebuild(phaseStack) { stack in
                 for phase in run.phases {
                     stack.addArrangedSubview(self.phaseRow(phase, run: run))
                 }
             }
         }
-        let done = !run.isLive
-        for dot in phaseDots {
-            dot.image = UIImage(
-                systemName: done ? "circle.fill" : "circle",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
-            dot.tintColor = done ? Theme.Color.accent : Theme.Color.tertiaryLabel
-        }
+        for handle in phaseHandles { Self.wear(run.phaseStanding, on: handle) }
 
         let ids = run.agents.map(\.id)
         if ids != agentIDs {
@@ -211,7 +215,7 @@ final class WorkflowCardCell: UICollectionViewCell {
             }
         }
         for (handle, agent) in zip(agentHandles, run.agents) {
-            update(handle, with: agent, at: now)
+            update(handle, with: agent, in: run, at: now)
         }
 
         let answer = run.result?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -245,24 +249,37 @@ final class WorkflowCardCell: UICollectionViewCell {
         stack.isHidden = stack.arrangedSubviews.isEmpty
     }
 
+    /// One phase row, wearing the standing the run's own state earns it.
+    ///
+    /// A run that was stopped or broke is not a run that got through its plan: nothing anywhere
+    /// records which phase was current when it ended, so a rail that fills on any ending claims
+    /// four finished phases for a four-phase script killed inside the first. Core decides which of
+    /// the three readings applies and what each one looks like, so the three cards cannot disagree
+    /// about a plan; a filled dot and a hollow one are the same silence to a screen reader, so the
+    /// standing's own word is spoken over the phase it belongs to.
+    private static func wear(_ standing: WorkflowPhaseStanding, on handle: PhaseHandle) {
+        handle.dot.image = UIImage(
+            systemName: standing.symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold))
+        handle.dot.tintColor = standing.tone.color
+        handle.title.accessibilityLabel = "\(handle.phase.title), \(standing.spoken)"
+    }
+
     /// The phases the script declares, as the plan it is. Which phase an agent belongs to is only
     /// recorded by a finished run, so a live card never points at one — claiming a position the
     /// data cannot support is worse than showing the plan and the agents separately.
     private func phaseRow(_ phase: WorkflowPhase, run: WorkflowRun) -> UIView {
-        let done = !run.isLive
-        let dot = UIImageView(
-            image: UIImage(
-                systemName: done ? "circle.fill" : "circle",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .semibold)))
-        dot.tintColor = done ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        let dot = UIImageView()
         dot.setContentHuggingPriority(.required, for: .horizontal)
-        phaseDots.append(dot)
 
         let title = UILabel()
         title.font = Theme.Ramp.font(.workflowStep)
         title.textColor = Theme.Color.label
         title.text = phase.title
         title.setContentHuggingPriority(.required, for: .horizontal)
+        let handle = PhaseHandle(dot: dot, title: title, phase: phase)
+        phaseHandles.append(handle)
+        Self.wear(run.phaseStanding, on: handle)
 
         let detail = UILabel()
         detail.font = Theme.Ramp.font(.workflowModel)
@@ -330,11 +347,18 @@ final class WorkflowCardCell: UICollectionViewCell {
         return row
     }
 
-    private func update(_ handle: AgentHandle, with agent: WorkflowAgent, at now: Date) {
+    /// One agent row restated. The mark is read against the run rather than against the agent's
+    /// own record: a sidecar goes on calling itself active for up to half an hour after the run
+    /// around it ended, and the per-second restate that would ever re-ask is itself gated on the
+    /// run being live — so a card left to the record alone sweeps its agents forever under a
+    /// header that says the work stopped. The sentence follows the mark for the same reason: only
+    /// an agent the mark shows as out is one VoiceOver may call working.
+    private func update(
+        _ handle: AgentHandle, with agent: WorkflowAgent, in run: WorkflowRun, at now: Date
+    ) {
+        let icon = ActivityIcon.workflowAgent(agent, in: run)
         handle.glyph.show(
-            ActivityIcon.workflowAgent(agent),
-            spoken: agent.isActive && !agent.isCompleted
-                ? String(localized: "Agent working") : nil)
+            icon, spoken: icon == .openWork ? String(localized: "Agent working") : nil)
         handle.title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
         let tool = agent.isActive ? agent.currentTool : nil
         handle.live.text = tool
