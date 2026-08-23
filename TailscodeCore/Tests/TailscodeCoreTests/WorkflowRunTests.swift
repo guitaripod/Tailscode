@@ -215,12 +215,116 @@ struct WorkflowRunTests {
         #expect(WorkflowRunAssembly.completions(in: [notification])["t2"] == #"Workflow "probe" completed"#)
     }
 
+    @Test("A reported ending stops the run, and hands the card its answer")
+    func reportedCompletionSettlesTheRun() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .completed,
+            summary: #"Dynamic workflow "kaytetty-best" completed"#,
+            result: "**60 EUR** — Espoo", reportedAt: Self.reportedAt)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
+            now: Self.startedAt.addingTimeInterval(9_000))
+
+        #expect(runs[0].state == .finished)
+        #expect(runs[0].isLive == false)
+        #expect(runs[0].activityIcon.motion == .still)
+        #expect(runs[0].result == "**60 EUR** — Espoo")
+        #expect(runs[0].finishedAt == Self.reportedAt)
+        #expect(runs[0].elapsed(at: Self.startedAt.addingTimeInterval(9_000)) == 252)
+        #expect(runs[0].progress == 1)
+    }
+
+    @Test("A launch that reported nothing back is still running, however long it has been")
+    func silenceIsNotAnEnding() {
+        var call = Self.call()
+        call.status = .completed
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)],
+            agents: [Self.agent("a", at: Self.startedAt, active: true, completed: false)],
+            now: Self.startedAt.addingTimeInterval(9_000))
+
+        #expect(runs[0].state == .running)
+        #expect(runs[0].isLive)
+        #expect(runs[0].activityIcon.motion == .turning)
+        #expect(runs[0].finishedAt == nil)
+    }
+
+    @Test("A run that was stopped is over without being blamed")
+    func stoppedIsNotFailed() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .stopped,
+            summary: "No completion record was found for this run.\nIt may have been stopped.",
+            reportedAt: Self.reportedAt)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
+            now: Self.reportedAt)
+
+        #expect(runs[0].state == .stopped("No completion record was found for this run."))
+        #expect(runs[0].isLive == false)
+        #expect(runs[0].activityIcon.tone == .quiet)
+        #expect(runs[0].activityIcon.motion == .still)
+        #expect(runs[0].result == nil)
+        #expect(runs[0].headline(at: Self.reportedAt) == "No completion record was found for this run.")
+    }
+
+    @Test("A run the harness reported as failed wears the fault, not a tick")
+    func reportedFailureIsAFailure() {
+        var call = Self.call()
+        call.status = .completed
+        call.background = BackgroundOutcome(
+            taskID: "wuzrihlvy", status: .failed, summary: "Script threw at phase 2",
+            reportedAt: Self.reportedAt)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: Self.startedAt)], agents: [],
+            now: Self.reportedAt)
+
+        #expect(runs[0].state == .failed("Script threw at phase 2"))
+        #expect(runs[0].activityIcon.tone == .danger)
+        #expect(runs[0].activityIcon.motion == .still)
+    }
+
+    @Test("A backend that hands the notification through as prose still settles the run")
+    func rawNotificationStillWorks() {
+        let notification = ChatMessage(
+            id: "m2", role: .user, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "text",
+                    kind: .text(
+                        "<task-notification>\n<task-id>wuzrihlvy</task-id>\n"
+                            + "<result>\"done\"</result>\n</task-notification>"))
+            ],
+            createdAt: Self.reportedAt)
+        let launch = ChatMessage(
+            id: "m1", role: .assistant, agentType: .claudeCode,
+            parts: [MessagePart(id: "call-1", kind: .tool(Self.call()))],
+            createdAt: Self.startedAt)
+
+        let runs = WorkflowRunAssembly.runs(
+            messages: [launch, notification], agents: [], now: Self.reportedAt)
+
+        #expect(runs[0].state == .finished)
+        #expect(runs[0].result == "done")
+    }
+
+    @Test("The headless check every client runs finds nothing wrong")
+    func theCheckPasses() {
+        #expect(WorkflowRunCheck.run() == [])
+    }
+
     @Test("Durations read as a person would say them")
     func durationFormatting() {
         #expect(WorkflowRun.duration(9) == "9s")
         #expect(WorkflowRun.duration(84) == "1m24s")
         #expect(WorkflowRun.duration(3_725) == "1h02m")
     }
+
+    private static let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let reportedAt = Date(timeIntervalSince1970: 1_700_000_252)
 
     private static func call(id: String = "call-1") -> ToolCall {
         ToolCall(

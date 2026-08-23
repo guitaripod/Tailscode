@@ -228,14 +228,18 @@ public struct WorkflowAgent: Sendable, Hashable, Identifiable {
 
 /// A workflow run as the conversation can know it. The Workflow tool returns the moment the run is
 /// handed to the background, so the tool call's own status says only that it launched; the run's
-/// real progress is its agents arriving, working and finishing, and its answer comes back later as
-/// its own message. Nothing here infers which phase an agent belongs to: only the finished run
+/// real progress is its agents arriving, working and finishing, and its ending arrives long
+/// afterwards as the harness's own report of the task, carried on the call that started it. Nothing here infers which phase an agent belongs to: only the finished run
 /// records that, so a live card shows the plan and the agents, never a guessed position in it.
 public struct WorkflowRun: Sendable, Hashable, Identifiable {
     public enum State: Sendable, Hashable {
         case launching
         case running
         case finished
+        /// Over without an answer and without a fault: a timeout, a teardown, someone pressing
+        /// stop, a harness that died holding the run. Kept apart from ``failed`` because a card
+        /// that paints a stop as a fault claims a cause the transcript cannot show.
+        case stopped(String)
         case failed(String)
     }
 
@@ -272,9 +276,15 @@ public struct WorkflowRun: Sendable, Hashable, Identifiable {
     public var isLive: Bool {
         switch state {
         case .launching, .running: return true
-        case .finished, .failed: return false
+        case .finished, .stopped, .failed: return false
         }
     }
+
+    /// The mark this run wears, from the one vocabulary all three clients read. A run that has
+    /// stopped for any reason holds perfectly still — which is the whole point of asking here
+    /// rather than each card deciding for itself, because a card that keeps sweeping after the
+    /// work ended is a record that reads as work that never ended.
+    public var activityIcon: ActivityIcon { ActivityIcon.workflowRun(self) }
 
     /// Fraction of the agents seen so far that have finished. A run does not announce how many it
     /// will spawn, so this is honest about what it measures: progress through the fan-out in hand,
@@ -307,7 +317,7 @@ public struct WorkflowRun: Sendable, Hashable, Identifiable {
             let agents = Localized.text("%lld agents", self.agents.count)
             guard let elapsed = elapsed(at: now) else { return agents }
             return agents + " · " + Self.duration(elapsed)
-        case .failed(let reason):
+        case .stopped(let reason), .failed(let reason):
             return reason
         }
     }
@@ -401,27 +411,58 @@ public enum WorkflowRunAssembly {
             ?? Localized.text("Workflow")
         let output = call.output ?? ""
         let launchIDs = WorkflowLaunch.parse(output: output)
-        let result = launchIDs.taskID.flatMap { completions[$0] }
-        let state: WorkflowRun.State
-        if call.status == .error {
-            state = .failed(firstLine(output) ?? Localized.text("Workflow failed"))
-        } else if result != nil {
-            state = .finished
-        } else if launchIDs.isEmpty, call.status == .running {
-            state = .launching
-        } else {
-            state = .running
-        }
+        let ending = ending(
+            of: call, output: output, launchIDs: launchIDs, completions: completions,
+            agents: agents, now: now)
         return WorkflowRun(
             id: call.id, name: name, summary: meta?.summary, phases: meta?.phases ?? [],
-            launch: launchIDs, agents: agents, state: state, startedAt: launch.at,
-            finishedAt: result != nil ? agents.map(\.updatedAt).max() ?? now : nil,
-            result: result)
+            launch: launchIDs, agents: agents, state: ending.state, startedAt: launch.at,
+            finishedAt: ending.finishedAt, result: ending.result)
     }
 
-    /// A run's answer comes back as its own message, not as the tool's result: the harness posts a
-    /// `<task-notification>` naming the task it finished. Reading it is how a card stops spinning.
-    /// The same reading, taken from the messages themselves.
+    /// Everything a run's ending decides, read from the only two places an ending can come from.
+    ///
+    /// The tool call answers the moment the run is handed to the background, so its own status can
+    /// only say that a launch worked; what settles the run arrives long afterwards as the harness's
+    /// report of the task, seated back on the call that started it (``ToolCall/background``). A
+    /// backend that hands the report through as its raw text instead still settles the run through
+    /// `completions`, which is why both roads are read here rather than in three cards.
+    private static func ending(
+        of call: ToolCall, output: String, launchIDs: WorkflowLaunch,
+        completions: [String: String], agents: [WorkflowAgent], now: Date
+    ) -> (state: WorkflowRun.State, finishedAt: Date?, result: String?) {
+        if call.status == .error {
+            return (.failed(firstLine(output) ?? Localized.text("Workflow failed")), nil, nil)
+        }
+        if let reported = call.background {
+            return (
+                state(of: reported), reported.reportedAt ?? agents.map(\.updatedAt).max() ?? now,
+                reported.isSuccess ? reported.answer : nil
+            )
+        }
+        if let answer = launchIDs.taskID.flatMap({ completions[$0] }) {
+            return (.finished, agents.map(\.updatedAt).max() ?? now, answer)
+        }
+        if launchIDs.isEmpty, call.status == .running { return (.launching, nil, nil) }
+        return (.running, nil, nil)
+    }
+
+    private static func state(of reported: BackgroundOutcome) -> WorkflowRun.State {
+        switch reported.status {
+        case .completed: return .finished
+        case .stopped:
+            return .stopped(
+                reported.summary.flatMap(firstLine) ?? Localized.text("Workflow stopped"))
+        case .failed:
+            return .failed(
+                reported.summary.flatMap(firstLine) ?? Localized.text("Workflow failed"))
+        }
+    }
+
+    /// The same ending read the long way round, for a backend that hands the harness's
+    /// `<task-notification>` through as raw text rather than as the call's own
+    /// ``ToolCall/background``. Kept because a transcript is only ever as structured as the server
+    /// that served it, and a card must still stop on one that says less.
     ///
     /// A message's `text` joins all its text parts into a new string, so asking every message in a
     /// conversation for it rebuilds the whole transcript's prose on every arrival. Almost no
@@ -483,5 +524,108 @@ public enum WorkflowRunAssembly {
         let line = text.split(separator: "\n").first.map(String.init)?
             .trimmingCharacters(in: .whitespaces)
         return (line?.isEmpty ?? true) ? nil : line
+    }
+}
+
+/// The rules a workflow card lives by, checked headlessly so all three clients are proved against
+/// one set of answers — above all the one that was never checked: that a run which ended can be
+/// seen to have ended through the road the real backend actually delivers it on.
+public enum WorkflowRunCheck {
+    public static func run() -> [String] {
+        var failures: [String] = []
+        func expect(_ condition: Bool, _ label: String) {
+            if !condition { failures.append(label) }
+        }
+
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        let reported = started.addingTimeInterval(252)
+        let now = started.addingTimeInterval(9_000)
+
+        let live = folded(reporting: nil)
+        expect(live.state == .running, "a run nothing reported on is still running")
+        expect(live.isLive, "and reads as live")
+        expect(live.activityIcon.motion == .turning, "so its mark turns")
+        expect(live.finishedAt == nil, "and it has not ended")
+
+        let done = folded(
+            reporting: BackgroundOutcome(
+                taskID: "task-1", status: .completed, summary: "Workflow completed",
+                result: "# The answer", reportedAt: reported))
+        expect(done.state == .finished, "a reported completion finishes the run")
+        expect(!done.isLive, "which is not live")
+        expect(done.activityIcon.motion == .still, "so its mark holds perfectly still")
+        expect(done.activityIcon == ActivityIcon.finished, "wearing the face a done thing wears")
+        expect(done.result == "# The answer", "and the answer is folded into the card")
+        expect(done.finishedAt == reported, "ended when the report landed, not when looked at")
+        expect(done.progress == 1, "a finished run is whole")
+        expect(done.elapsed(at: now) == 252, "and its clock stopped with it")
+
+        let stopped = folded(
+            reporting: BackgroundOutcome(
+                taskID: "task-1", status: .stopped, summary: "No completion record was found.",
+                reportedAt: reported))
+        expect(stopped.state == .stopped("No completion record was found."), "a stop is a stop")
+        expect(!stopped.isLive, "and is over")
+        expect(stopped.activityIcon.motion == .still, "so it stops moving too")
+        expect(stopped.activityIcon.tone == .quiet, "without being blamed for a fault")
+        expect(stopped.result == nil, "and claims no answer it never got")
+
+        let broke = folded(
+            reporting: BackgroundOutcome(
+                taskID: "task-1", status: .failed, summary: "Script threw at phase 2",
+                reportedAt: reported))
+        expect(broke.state == .failed("Script threw at phase 2"), "a fault keeps its reason")
+        expect(broke.activityIcon.tone == .danger, "and wears it")
+        expect(broke.activityIcon.motion == .still, "still, because a fault is a record")
+
+        expect(
+            everyEnding.allSatisfy { !WorkflowRun(id: "r", name: "n", state: $0).isLive },
+            "no ending is live")
+        expect(
+            everyEnding.allSatisfy {
+                ActivityIcon.workflowRun(WorkflowRun(id: "r", name: "n", state: $0)).motion == .still
+            },
+            "no ending moves")
+
+        expect(framesDrawn(atHz: 60) == 30, "a 60Hz panel draws the tempo, not two thirds of it")
+        expect(framesDrawn(atHz: 120) == 30, "and so does a 120Hz one")
+        expect(
+            framesDrawn(atHz: 144) <= Int(ActivityTuning.frameRate),
+            "a panel that cannot land on the tempo stays under it")
+
+        return failures
+    }
+
+    private static let everyEnding: [WorkflowRun.State] = [
+        .finished, .stopped("stopped"), .failed("failed"),
+    ]
+
+    /// One launch, folded the way a client folds it, with whatever the harness reported back.
+    private static func folded(reporting outcome: BackgroundOutcome?) -> WorkflowRun {
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        var call = ToolCall(
+            id: "call-1", name: "Workflow", status: .completed,
+            input: .object(["name": .string("kaytetty-best")]),
+            output: "Workflow launched in background. Task ID: task-1\nRun ID: wf_abc")
+        call.background = outcome
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: call, at: started)], agents: [],
+            now: started.addingTimeInterval(9_000))
+        return runs[0]
+    }
+
+    /// How many frames one second of a panel's own ticks is allowed to draw. The clock a frame
+    /// callback reads is whole microseconds, and the bug this pins lived entirely in the third of a
+    /// microsecond rounding takes off a pair of 60Hz ticks.
+    private static func framesDrawn(atHz hz: Double) -> Int {
+        var drawn = 0
+        var last = -1.0
+        for tick in 0..<Int(hz) {
+            let time = ((Double(tick) / hz) * 1_000_000).rounded(.down) / 1_000_000
+            guard ActivityTuning.wantsFrame(at: time, lastDrawn: last) else { continue }
+            drawn += 1
+            last = time
+        }
+        return drawn
     }
 }

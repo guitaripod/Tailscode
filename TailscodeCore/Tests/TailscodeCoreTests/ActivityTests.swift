@@ -333,6 +333,58 @@ struct ConnectionPhaseTests {
         #expect(band?.text.contains("600") == false)
     }
 
+    @Test("A panel whose tick lands on the boundary draws thirty frames a second, not twenty")
+    func boundaryTicksAreNotDropped() {
+        for hz in [60.0, 120.0, 240.0] {
+            var drawn = 0
+            var last = -1.0
+            for tick in 0..<Int(hz) {
+                let time = quantised(Double(tick) / hz)
+                guard ActivityTuning.wantsFrame(at: time, lastDrawn: last) else { continue }
+                drawn += 1
+                last = time
+            }
+            #expect(drawn == 30, "\(hz)Hz stepped \(drawn) frames in a second")
+        }
+    }
+
+    @Test("A panel that cannot land on the tempo runs under it rather than over it")
+    func anAwkwardPanelNeverOverdraws() {
+        var drawn = 0
+        var last = -1.0
+        for tick in 0..<144 {
+            let time = quantised(Double(tick) / 144)
+            guard ActivityTuning.wantsFrame(at: time, lastDrawn: last) else { continue }
+            drawn += 1
+            last = time
+        }
+        #expect(drawn == 29)
+        #expect(drawn <= Int(ActivityTuning.frameRate))
+    }
+
+    /// The clock a GTK frame clock reads is whole microseconds, and the whole bug lived in the
+    /// third of a microsecond that rounding takes off a 60 Hz pair of ticks.
+    private func quantised(_ seconds: Double) -> Double {
+        (seconds * 1_000_000).rounded(.down) / 1_000_000
+    }
+
+    @Test("A workflow run wears one mark, and every ending of it holds still")
+    func aRunHasOneMark() {
+        let run: (WorkflowRun.State) -> WorkflowRun = { state in
+            WorkflowRun(id: "r", name: "kaytetty-best", state: state)
+        }
+        #expect(run(.launching).activityIcon.motion == .turning)
+        #expect(run(.running).activityIcon.motion == .turning)
+        #expect(run(.finished).activityIcon == ActivityIcon.finished)
+        #expect(run(.stopped("gone")).activityIcon == ActivityIcon.stopped)
+        #expect(run(.failed("threw")).activityIcon == ActivityIcon.failed)
+        for state: WorkflowRun.State in [.finished, .stopped("gone"), .failed("threw")] {
+            #expect(run(state).activityIcon.motion == .still)
+            #expect(run(state).activityIcon.glyph.count == 1)
+            #expect(run(state).isLive == false)
+        }
+    }
+
     @Test("A state from a client that never stamped the change shows no invented clock")
     func unstampedStateInventsNothing() {
         let bare = ConversationState(connection: .connecting)

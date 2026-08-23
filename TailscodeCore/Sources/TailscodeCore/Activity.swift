@@ -17,9 +17,35 @@ public enum ActivityTuning {
     /// Every client steps its clock at this rate; a skipped frame skips nothing, because the
     /// arithmetic reads absolute time.
     public static let frameRate: Double = 30
+    /// The slowest a mark may be allowed to run when the system is under load and choosing what to
+    /// drop. Below this a sweep reads as a stutter rather than a turn, which is a worse lie than a
+    /// mark that costs a few more frames.
+    public static let minimumFrameRate: Double = 24
+    /// One frame of the tempo, in seconds. Kept here rather than divided out in three clients,
+    /// because a client that computes its own is a client that can disagree about the rate.
+    public static var frameInterval: TimeInterval { 1 / frameRate }
+    /// How early a display tick may be and still count as this tempo's next frame.
+    ///
+    /// A client that gates its panel's own tick can only ever draw on a multiple of the refresh
+    /// interval, and 1/30 s falls exactly on a 60 Hz and a 120 Hz boundary — where a clock
+    /// quantised to microseconds measures two ticks as 33333 µs against a budget of 33333.33 and
+    /// refuses the frame it was owed, so the mark falls to every third tick and runs at 20. The
+    /// slack is a fraction of a frame: wide enough that a boundary tick counts, far too narrow to
+    /// let the tick below it through.
+    public static let frameSlack: TimeInterval = 0.0005
     /// How much a breathing badge grows at the top of its swell. Small on purpose: scale is the
     /// second voice of the same fact, and a badge that visibly jumps steals the eye from the row.
     public static let lift: Double = 0.08
+
+    /// Whether a display tick is the frame this tempo owes, given when the last one was drawn.
+    ///
+    /// Only a client that has to gate a full-rate frame clock by hand needs this; one that can ask
+    /// its compositor for a rate (`CAFrameRateRange`) is already being handed the right ticks. Both
+    /// roads answer to ``frameRate``, and this one answers to ``frameSlack`` as well, so a panel
+    /// whose tick lands on the boundary draws thirty frames a second rather than twenty.
+    public static func wantsFrame(at time: TimeInterval, lastDrawn: TimeInterval) -> Bool {
+        time - lastDrawn >= frameInterval - frameSlack
+    }
 }
 
 /// A repeating swell, evaluated from a clock rather than stepped from a frame count, so a badge
@@ -212,11 +238,33 @@ public struct ActivityIcon: Sendable, Equatable {
     public static let finished = ActivityIcon(
         symbol: "checkmark.circle.fill", glyph: "✓", tone: .live, motion: .still)
 
+    /// Work that broke. Still, because a fault is a record and a record does not move.
+    public static let failed = ActivityIcon(
+        symbol: "xmark.circle.fill", glyph: StatusMark.failed, tone: .danger, motion: .still)
+
+    /// Work that was ended rather than finished — a timeout, a teardown, someone pressing stop.
+    /// Quiet rather than red: nothing broke, and a mark that shouts claims a fault nobody proved.
+    public static let stopped = ActivityIcon(
+        symbol: "stop.circle", glyph: "■", tone: .quiet, motion: .still)
+
     /// The mark one workflow agent wears: turning while it is out, a tick when it is done, idle
     /// while it has not started. Authored once so three cards cannot disagree about one agent.
     public static func workflowAgent(_ agent: WorkflowAgent) -> ActivityIcon {
         if agent.isCompleted { return .finished }
         return agent.isActive ? .openWork : .idle
+    }
+
+    /// The mark a whole run wears, so the card's own header cannot disagree with the agent rows
+    /// under it. A run is the one piece of work whose launching call answers in milliseconds while
+    /// the work itself takes minutes, so nothing about the tool row can be read as its progress:
+    /// only the state settles it, and every settled state here holds perfectly still.
+    public static func workflowRun(_ run: WorkflowRun) -> ActivityIcon {
+        switch run.state {
+        case .launching, .running: return .openWork
+        case .finished: return .finished
+        case .stopped: return .stopped
+        case .failed: return .failed
+        }
     }
 }
 
