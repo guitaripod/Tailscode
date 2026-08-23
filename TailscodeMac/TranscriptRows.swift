@@ -899,6 +899,10 @@ struct TranscriptRow: Hashable {
     /// A turn the machine was pulled out from under. The account of what the work had already done
     /// is the substance of it — a person decides between continuing and starting over on whether
     /// anything on that machine changed — so it is drawn as lines rather than as a sentence.
+    ///
+    /// Every word on it is Core's, including the one nobody was being told: while the card stands
+    /// undecided the server will not carry this session on by itself, so a card left alone quietly
+    /// turns unattended continuation off for the whole conversation.
     @MainActor
     private static func interruptedTurn(_ turn: InterruptedTurn, context: TranscriptContext)
         -> NSView
@@ -921,27 +925,48 @@ struct TranscriptRow: Hashable {
                     "· \(line)", font: MacTheme.Ramp.font(.rowNote),
                     color: MacTheme.Color.secondaryLabel))
         }
-        if !turn.queued.isEmpty {
+        if let queued = turn.queuedLine {
             card.addArrangedSubview(
                 RowKit.wrapping(
-                    turn.queued.count == 1
-                        ? Localized.text("One prompt was waiting behind it and never ran.")
-                        : Localized.text(
-                            "%@ prompts were waiting behind it and never ran.",
-                            "\(turn.queued.count)"),
-                    font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel))
+                    queued, font: MacTheme.Ramp.font(.rowNote),
+                    color: MacTheme.Color.secondaryLabel))
         }
+        if let cost = turn.cost {
+            card.addArrangedSubview(
+                RowKit.wrapping(
+                    cost, font: MacTheme.Ramp.font(.rowNote), color: InterruptedTurn.tone.color))
+        }
+        if let buttons = interruptedActions(turn, context: context) {
+            card.addArrangedSubview(buttons)
+        }
+        return card
+    }
+
+    /// The two things a cut-off turn offers, or nothing at all once the server has picked it back
+    /// up — the work is going again there, so "let it go" would mean forgetting the record rather
+    /// than stopping anything, and a button that cannot do what its words say is worse than no
+    /// button.
+    ///
+    /// A press already in flight keeps both, wearing Core's in-flight wording and refusing a second
+    /// press, because seeing what was asked for is the whole point of acknowledging it — a button
+    /// that vanished under the pointer is a press nobody can tell landed.
+    @MainActor
+    private static func interruptedActions(_ turn: InterruptedTurn, context: TranscriptContext)
+        -> NSStackView?
+    {
+        guard !turn.isResumed else { return nil }
         let buttons = NSStackView()
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.m
-        if !turn.isResumed, let resume = context.resumeInterrupted {
-            buttons.addArrangedSubview(RowKit.linkButton(turn.resumeTitle) { resume() })
+        if let resume = context.resumeInterrupted {
+            buttons.addArrangedSubview(
+                RowKit.linkButton(turn.resumeTitle, enabled: turn.acceptsPress) { resume() })
         }
         if let dismiss = context.dismissInterrupted {
-            buttons.addArrangedSubview(RowKit.linkButton(turn.dismissTitle) { dismiss() })
+            buttons.addArrangedSubview(
+                RowKit.linkButton(turn.dismissTitle, enabled: turn.acceptsPress) { dismiss() })
         }
-        card.addArrangedSubview(buttons)
-        return card
+        return buttons.arrangedSubviews.isEmpty ? nil : buttons
     }
 }
 
@@ -1122,10 +1147,15 @@ enum RowKit {
         @objc private func fire() { handler() }
     }
 
-    static func linkButton(_ title: String, action: @escaping () -> Void) -> NSButton {
+    /// A flat little button. `enabled` is for the ones that stay on screen having already been
+    /// pressed: the row still says what was asked for, and says it cannot be asked twice.
+    static func linkButton(_ title: String, enabled: Bool = true, action: @escaping () -> Void)
+        -> NSButton
+    {
         let button = ActionButton(title: title, action: action)
         button.isBordered = false
-        button.contentTintColor = MacTheme.Color.accent
+        button.isEnabled = enabled
+        button.contentTintColor = enabled ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
         button.font = MacTheme.Ramp.font(.panelFootnote)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button

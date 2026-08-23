@@ -349,6 +349,7 @@ final class TranscriptViewController: NSViewController {
         inFlightImages = []
         inFlightSubagents = []
         pending.removeAll()
+        interruptionPress = nil
         resume.removeAll()
         resumeClock?.cancel()
         resumeClock = nil
@@ -707,6 +708,7 @@ final class TranscriptViewController: NSViewController {
         cascade.release()
         stopTailRepair()
         forgetHeldRows()
+        interruptionPress = nil
         page?.shutdown()
         forge?.shutdown()
         #if !TAILSCODE_MAS
@@ -1028,21 +1030,10 @@ final class TranscriptViewController: NSViewController {
             self?.readDesignBoard(directory)
         }
         context.resumeInterrupted = { [weak self] in
-            guard let conversation = self?.conversation else { return }
-            Task { [weak self] in
-                do {
-                    try await conversation.resumeInterruptedTurn()
-                } catch {
-                    await MainActor.run {
-                        self?.onToast?(
-                            Localized.text("The server could not pick that turn back up."))
-                    }
-                }
-            }
+            self?.pressInterruption(.pickUp)
         }
         context.dismissInterrupted = { [weak self] in
-            guard let conversation = self?.conversation else { return }
-            Task { try? await conversation.dismissInterruptedTurn() }
+            self?.pressInterruption(.letGo)
         }
         earlierButton.target = self
         earlierButton.action = #selector(showEarlierRows)
@@ -1625,7 +1616,7 @@ final class TranscriptViewController: NSViewController {
     /// to the screen and never memoized — the server owns it, not this device.
     private func docked(_ rows: [TranscriptRow], state: ConversationState) -> [TranscriptRow] {
         var rows = rows
-        if let cutOff = InterruptedTurnReading.read(state.interruption) {
+        if let cutOff = interruptedCard(state) {
             if !rows.isEmpty {
                 rows.append(TranscriptRow(key: "interrupted:break", kind: .turnBreak))
             }
@@ -1639,6 +1630,61 @@ final class TranscriptViewController: NSViewController {
                     kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
         }
         return rows
+    }
+
+    /// A press this device has made on the cut-off card and has no answer to yet.
+    ///
+    /// The server's word travels a tailnet and may never arrive at all, so what was asked for is
+    /// this device's own account until something answers it — never mistaken for the server having
+    /// agreed, which is a different state with different words.
+    private var interruptionPress: InterruptedTurnPress?
+
+    /// The cut-off turn's card as this device must draw it: the server's record wearing a press it
+    /// has not answered yet. The press is dropped the moment the record itself says anything, which
+    /// is what stops a button sitting in flight after the thing it asked for has happened.
+    private func interruptedCard(_ state: ConversationState) -> InterruptedTurn? {
+        guard let card = InterruptedTurnReading.read(state.interruption) else { return nil }
+        guard let press = interruptionPress, card.acceptsPress else { return card }
+        return InterruptedTurnReading.pressed(card, press)
+    }
+
+    /// Runs one press on the cut-off card and keeps this device's account of it honest from the
+    /// click to the answer.
+    ///
+    /// The card is repainted before the request leaves, because a card that looks exactly as it did
+    /// tells the person their click did nothing. A refusal is never a dead end: the Kit re-reads the
+    /// record before it rethrows one, so the card corrects itself or comes down in the same breath
+    /// as the sentence explaining why — and the sentence is the server's own, because it knows why
+    /// and this pane does not.
+    private func pressInterruption(_ press: InterruptedTurnPress) {
+        guard let conversation, interruptionPress == nil else { return }
+        interruptionPress = press
+        redrawInterruption()
+        Task { [weak self] in
+            do {
+                switch press {
+                case .pickUp: try await conversation.resumeInterruptedTurn()
+                case .letGo: try await conversation.dismissInterruptedTurn()
+                }
+                self?.settleInterruptionPress(nil)
+            } catch {
+                self?.settleInterruptionPress(InterruptedTurnReading.refusal(for: error))
+            }
+        }
+    }
+
+    private func settleInterruptionPress(_ refusal: String?) {
+        interruptionPress = nil
+        redrawInterruption()
+        if let refusal { onToast?(refusal) }
+    }
+
+    /// Repaints for news this device made rather than the server's — a press taken on the cut-off
+    /// card, or the refusal that corrected it. The server's account did not move, so nothing is
+    /// refetched and only the docked card is rebuilt.
+    private func redrawInterruption() {
+        guard let state = lastState else { return }
+        apply(state: state, rows: lastFullRows)
     }
 
     /// The same edges the phone reports to the hand, read before the new state replaces the old:

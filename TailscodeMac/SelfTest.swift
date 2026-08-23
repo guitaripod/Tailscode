@@ -69,6 +69,22 @@ enum SelfTest {
             failures += 1
         }
 
+        let cutOffFailures = InterruptedTurnCheck.run()
+        if cutOffFailures.isEmpty {
+            report("cut-off turn: the words, the cost, the press and the refusal all hold")
+        } else {
+            report("cut-off turn: \(cutOffFailures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkInterruptedCard()
+            report("cut-off card: \(checks) claims hold — nothing on it is this client's wording")
+        } catch {
+            report("cut-off card: \(error)")
+            failures += 1
+        }
+
         do {
             let checks = try checkShortcuts()
             report("shortcuts: \(checks) keys resolve, rebind and stay conflict-free")
@@ -738,6 +754,102 @@ enum SelfTest {
         context.expanded.set("run:m1:p1", open: false)
         try expect(!context.isExpanded("run:m1:p1"), "and closing it closes it")
         return checks
+    }
+
+    /// The card a cut-off turn draws, built as the transcript builds it, in every state it has.
+    ///
+    /// What is proved here is that the Mac renders Core's answers rather than its own: the sentence
+    /// about what never ran, the one about what leaving the card undecided costs, and the two button
+    /// titles all have to be the strings Core hands over, character for character. The press states
+    /// are proved on the view because that is where the defect was — a press that changed nothing on
+    /// screen — and a resumed card is proved to offer nothing, because both of its actions would lie.
+    private static func checkInterruptedCard() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("cut-off card: \(label)") }
+            checks += 1
+        }
+        let context = TranscriptContext()
+        context.resumeInterrupted = {}
+        context.dismissInterrupted = {}
+        func view(_ turn: InterruptedTurn) -> NSView {
+            TranscriptRow(key: "interrupted", kind: .interruptedTurn(turn))
+                .makeView(context: context)
+        }
+        func says(_ turn: InterruptedTurn, _ text: String) -> Bool {
+            words(in: view(turn)).contains { $0.contains(text) }
+        }
+
+        let started = Date(timeIntervalSince1970: 1_700_000_000)
+        let cutOff = TurnInterruption(
+            turnID: "t1", prompt: "port the toggles", startedAt: started,
+            detectedAt: started.addingTimeInterval(200),
+            progress: TurnInterruption.Progress(toolCount: 3, lastTool: "Edit"),
+            queued: ["and then the mac"])
+        guard let waiting = InterruptedTurnReading.read(cutOff) else {
+            throw SelfTestFailure("cut-off card: an interrupted turn reads as a card")
+        }
+
+        guard let queuedLine = waiting.queuedLine, let cost = waiting.cost else {
+            throw SelfTestFailure(
+                "cut-off card: an undecided card has both a queued line and a cost to state")
+        }
+        try expect(says(waiting, waiting.prompt), "the card carries what was asked")
+        try expect(
+            says(waiting, queuedLine),
+            "what never ran is said in Core's sentence, not one retyped here")
+        try expect(
+            says(waiting, cost),
+            "and the card says the session will not carry itself on while it stands")
+        let offered = buttons(in: view(waiting))
+        try expect(
+            offered.map(\.title) == [waiting.resumeTitle, waiting.dismissTitle],
+            "an undecided card offers exactly the two actions, in Core's words")
+        try expect(offered.allSatisfy(\.isEnabled), "both of which can be pressed")
+
+        let pickingUp = InterruptedTurnReading.pressed(waiting, .pickUp)
+        let pressed = buttons(in: view(pickingUp))
+        try expect(
+            pressed.first?.title == InterruptedTurn.pickingUpTitle,
+            "a press renames its own button the instant it lands")
+        try expect(
+            pressed.allSatisfy { !$0.isEnabled }, "and the card stops taking a second press")
+        try expect(
+            pickingUp.cost == nil && !says(pickingUp, cost),
+            "a decided card stops charging for standing")
+        try expect(
+            buttons(in: view(InterruptedTurnReading.pressed(waiting, .letGo))).last?.title
+                == InterruptedTurn.lettingGoTitle,
+            "letting go acknowledges itself the same way")
+
+        let resumed = InterruptedTurnReading.read(
+            TurnInterruption(
+                turnID: "t1", prompt: "port the toggles", startedAt: started,
+                detectedAt: started.addingTimeInterval(200), resumedAt: Date()))
+        guard let resumed else {
+            throw SelfTestFailure("cut-off card: a resumed turn still draws its card")
+        }
+        try expect(
+            buttons(in: view(resumed)).isEmpty,
+            "a turn the server picked back up offers nothing, because both actions would lie")
+        try expect(says(resumed, resumed.detail), "and says instead that the work is going again")
+        return checks
+    }
+
+    /// Every word actually on a built row, so a claim about what a card says is checked against the
+    /// pixels rather than against the value that was passed in.
+    private static func words(in view: NSView) -> [String] {
+        var found: [String] = []
+        if let field = view as? NSTextField { found.append(field.stringValue) }
+        for child in view.subviews { found += words(in: child) }
+        return found
+    }
+
+    private static func buttons(in view: NSView) -> [NSButton] {
+        var found: [NSButton] = []
+        if let button = view as? NSButton { found.append(button) }
+        for child in view.subviews { found += buttons(in: child) }
+        return found
     }
 
     /// The whole keyboard system without a window: the shipped table resolves, canonicalisation

@@ -1,10 +1,10 @@
 import AppKit
 import TailscodeCore
 
-/// A two-second floating confirmation — the answer to "did my click do anything". A glass
-/// capsule bottom-center over the transcript, above the composer so glass never stacks on glass.
-/// Toasts queue: each one gets its two seconds, because two at once is a pile nobody reads and a
-/// dropped one is a confirmation that lied.
+/// A floating confirmation — the answer to "did my click do anything". A glass capsule
+/// bottom-center over the transcript, above the composer so glass never stacks on glass. Toasts
+/// queue: each one gets its own dwell, because two at once is a pile nobody reads and a dropped one
+/// is a confirmation that lied.
 @MainActor
 final class ToastPresenter {
     /// Where a toast lands, resolved per show: the transcript view and the top of the floating
@@ -63,7 +63,7 @@ final class ToastPresenter {
             glass.animator().alphaValue = 1
         }
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(Self.dwell(text)))
             await NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.3
                 glass.animator().alphaValue = 0
@@ -73,5 +73,12 @@ final class ToastPresenter {
             self.draining = false
             self.drain()
         }
+    }
+
+    /// How long a capsule stands: long enough to read what it says. Two seconds answers "did my
+    /// click do anything", but some of what arrives here is a sentence a server wrote explaining
+    /// why it refused something, and a reason that vanished mid-word explained nothing.
+    private static func dwell(_ text: String) -> TimeInterval {
+        min(6, max(2, Double(text.count) / 22))
     }
 }
