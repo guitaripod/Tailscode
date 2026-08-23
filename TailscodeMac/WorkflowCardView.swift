@@ -137,7 +137,10 @@ enum WorkflowCardView {
     /// it ended, and the per-second restate that would ever re-ask is itself gated on the run being
     /// live — so a card left to the record alone sweeps its agents forever under a header that says
     /// the work stopped. The caption and the sentence follow the mark for the same reason: only an
-    /// agent the mark shows as out is holding a tool, or is one VoiceOver may call working.
+    /// agent the mark shows as out is holding a tool, or is one VoiceOver may call working. The
+    /// clock is read against the run for the same reason and by the same road — an agent that never
+    /// reported finishing has no ending of its own, so a row timed to its own record alone counts a
+    /// four-minute errand as however long ago the run was.
     private static func restateAgent(
         _ row: DisclosureRow, agent: WorkflowAgent, in run: WorkflowRun, now: Date
     ) -> Bool {
@@ -151,7 +154,7 @@ enum WorkflowCardView {
         let tool = liveTool(agent, wearing: icon)
         setLabel(head[1], text: tool ?? "")
         head[1].isHidden = tool == nil
-        let elapsed = agent.elapsed(at: now)
+        let elapsed = agent.elapsed(at: now, in: run)
         setLabel(head[2], text: elapsed.map(WorkflowRun.duration) ?? "")
         head[2].isHidden = elapsed == nil
         return true
@@ -315,9 +318,9 @@ enum WorkflowCardView {
         tool.isHidden = working == nil
         header.addArrangedSubview(tool)
         let elapsed = RowKit.label(
-            agent.elapsed(at: now).map(WorkflowRun.duration) ?? "",
+            agent.elapsed(at: now, in: run).map(WorkflowRun.duration) ?? "",
             font: MacTheme.Ramp.font(.workflowMeter), color: MacTheme.Color.secondaryLabel)
-        elapsed.isHidden = agent.elapsed(at: now) == nil
+        elapsed.isHidden = agent.elapsed(at: now, in: run) == nil
         header.addArrangedSubview(elapsed)
 
         let key = "wf:\(run.id):\(agent.id)"
@@ -466,6 +469,23 @@ enum WorkflowCardView {
             return "\(icon.glyph):\(moving ? "moving" : "still"):\(tool)"
         }
         return "agents=" + rows.joined(separator: ",")
+    }
+
+    /// One reading of what the agent rows say about time, for a harness that has to prove a row
+    /// under a run that is over reads the same whenever the transcript is opened. The caption is
+    /// taken as drawn — an empty one where the row shows none — because a length nobody can see is
+    /// not a length this card claimed.
+    static func agentClockReading(of card: NSView) -> String {
+        guard let agents = find(agentsID, in: card) as? NSStackView else { return "clocks=none" }
+        let rows = agents.arrangedSubviews.compactMap { row -> String? in
+            guard let header = (row as? DisclosureRow)?.headerView as? NSStackView else {
+                return nil
+            }
+            let labels = header.arrangedSubviews.compactMap { $0 as? NSTextField }
+            guard labels.count == 3 else { return nil }
+            return labels[2].isHidden ? "" : labels[2].stringValue
+        }
+        return "clocks=" + rows.joined(separator: ",")
     }
 
     private static func headlineColor(_ run: WorkflowRun) -> NSColor {

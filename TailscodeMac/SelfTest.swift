@@ -906,6 +906,40 @@ enum SelfTest {
         try expect(
             systemIndicator(in: drawn(.running)) == nil,
             "with nothing on the card AppKit spins at a rate this app cannot read")
+
+        let began = Date(timeIntervalSince1970: 1_700_000_000)
+        let over = began.addingTimeInterval(252)
+        let week = over.addingTimeInterval(604_800)
+        let errand = WorkflowAgent(
+            id: "a", title: "hunt", isActive: true, isCompleted: false, startedAt: began,
+            updatedAt: over.addingTimeInterval(1_800))
+        func clock(_ state: WorkflowRun.State, ending: Date?, read now: Date) -> String {
+            context.workflowRuns = [
+                call.id: WorkflowRun(
+                    id: call.id, name: "kaytetty-best", agents: [errand], state: state,
+                    startedAt: began, finishedAt: ending)
+            ]
+            context.workflowNow = now
+            return WorkflowCardView.agentClockReading(
+                of: WorkflowCardView.make(call, key: "wf", context: context))
+        }
+        try expect(
+            clock(.running, ending: nil, read: over) == "clocks=" + WorkflowRun.duration(252),
+            "an agent still out under a run that is going is timed to the reader's clock")
+        try expect(
+            clock(.running, ending: nil, read: week) != clock(.running, ending: nil, read: over),
+            "which is what makes it a clock while the run is still going")
+        for ending in [WorkflowRun.State.finished, .stopped("stopped"), .failed("broke")] {
+            try expect(
+                clock(ending, ending: over, read: over) == "clocks="
+                    + WorkflowRun.duration(252),
+                "an ended run credits its rows with the errand they ran, not the sidecar's own"
+                    + " half hour past it")
+            try expect(
+                clock(ending, ending: over, read: week) == clock(ending, ending: over, read: over),
+                "and a card reopened a week later reads the same, because the clock stopped"
+                    + " with the run")
+        }
         return checks
     }
 
