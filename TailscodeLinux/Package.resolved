@@ -1,5 +1,5 @@
 {
-  "originHash" : "b88604dad9b7673dc02f70fa85be87d9f612a670e54a3bfdd86ed0cd6e3d6adc",
+  "originHash" : "7b0f49ed534886694554cbb7432c9436f8d3cfd8eead21a8ed2e971c9d0422ac",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "9544287b9416c0bc71e58b9f3aead8dd14b16103",
         "version" : "1.36.0"
+      }
+    },
+    {
+      "identity" : "codingagentkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/guitaripod/CodingAgentKit.git",
+      "state" : {
+        "revision" : "f36ac7346d5769383b132d9c19b22278c936d381",
+        "version" : "0.20.0"
       }
     },
     {
@@ -195,8 +204,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/swift-service-lifecycle",
       "state" : {
-        "revision" : "9829955b385e5bb88128b73f1b8389e9b9c3191a",
-        "version" : "2.11.0"
+        "revision" : "7f9326b0326ff86e3646295ea6e891f68c471c5e",
+        "version" : "2.12.0"
       }
     },
     {
@@ -204,8 +213,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system",
       "state" : {
-        "revision" : "704705c5c51156ede21172a38654d522ce487074",
-        "version" : "1.8.0"
+        "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
+        "version" : "1.8.1"
       }
     }
   ],

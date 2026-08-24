@@ -285,15 +285,17 @@ enum UpdateWatch {
     /// reading that costs anything or goes stale — so a launch that is not due carries the moment of
     /// the last fetch forward rather than claiming a fresh one, and lets `UpdateFreshness` decide
     /// when that stops being worth believing.
-    static func appReading(fetching: Bool) -> UpdateReading {
+    static func appReading(
+        fetching: Bool, release: AppRelease?, failure: String?
+    ) -> UpdateReading {
         let install = LinuxAppInstall.read()
         let packaging = Packaging.current()
         let running = LinuxAppInstall.updateState()
         let checkout = LinuxAppInstall.checkout(of: install, fetching: fetching)
         let obstacle = LinuxAppInstall.obstacle(for: install)
         return UpdateReadings.app(
-            install: install, release: nil, checkout: checkout, running: running,
-            obstacle: obstacle,
+            install: install, release: release, checkout: checkout, running: running,
+            failure: failure, obstacle: obstacle,
             command: handCommand(obstacle: obstacle, checkout: checkout, packaging: packaging),
             projectURL: projectURL,
             checkedAt: fetching ? Date() : UpdateLedger.remembered(.app)?.checkedAt,
@@ -316,7 +318,10 @@ enum UpdateWatch {
     }
 
     private static func recordApp(fetching: Bool) async {
-        let reading = await Task.detached { appReading(fetching: fetching) }.value
+        let (release, failure) = await LatestRelease.reading(fetching: fetching)
+        let reading = await Task.detached {
+            appReading(fetching: fetching, release: release, failure: failure)
+        }.value
         UpdateLedger.record(reading)
     }
 

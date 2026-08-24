@@ -131,6 +131,41 @@ extension DeviceStores {
             }
         }
 
+        /// The new thing a package install gets to see: the release feed is the one comparison it
+        /// has, and a newer release must light the mark and hand over the manager's own line rather
+        /// than offering a press this machine can never finish.
+        @Test func aPackagedInstallSeesAReleaseItCannotInstallItself() {
+            let install = AppInstall(
+                kind: .packaged, version: "1.22", provenance: .appBundle,
+                packager: "paru")
+            let release = AppRelease(version: "1.24", provenance: .gitHubRelease, readAt: Self.now)
+            let reading = UpdateReadings.app(
+                install: install, release: release, command: "paru -Syu tailscode",
+                checkedAt: Self.now)
+            #expect(reading.verdict.offer?.target == "1.24")
+            #expect(reading.invitation == .copyCommand("paru -Syu tailscode"))
+            #expect(reading.stands())
+            #expect(UpdateRollup(readings: [reading]).showsMark)
+            #expect(reading.headline == Localized.text("Update to 1.24"))
+            #expect(reading.detail(now: Self.now).contains("1.22"))
+        }
+
+        /// A release feed that answered nothing is not a release that answered "nothing newer" —
+        /// the row says it could not check, and the offer is only claimed by a check that made it.
+        @Test func aPackagedInstallWhoseFeedFailedSaysItCouldNotCheck() {
+            let install = AppInstall(
+                kind: .packaged, version: "1.22", provenance: .appBundle,
+                packager: "paru")
+            let reading = UpdateReadings.app(
+                install: install, release: nil, failure: "Nothing came back.",
+                command: "paru -Syu tailscode", checkedAt: Self.now)
+            guard case .unverified(.unreachable) = reading.verdict else {
+                Issue.record("a failed feed read as \(reading.verdict)")
+                return
+            }
+            #expect(reading.invitation == .recheck)
+        }
+
         @Test func aTestFlightBuildIsNeverSentToTheStore() {
             let install = AppInstall(kind: .testFlight, version: "1.10", provenance: .appBundle)
             let release = AppRelease(version: "1.9", provenance: .appStore, readAt: Self.now)
