@@ -43,6 +43,9 @@ public enum ProviderIdentity {
         case "anthropic", "claude": return "claude"
         case "xai", "grok": return "grok"
         case "deepseek": return "deepseek"
+        case "openrouter": return "openrouter"
+        case "kimi", "kimi-code": return "kimi"
+        case "bonsai": return "bonsai"
         default: return nil
         }
     }

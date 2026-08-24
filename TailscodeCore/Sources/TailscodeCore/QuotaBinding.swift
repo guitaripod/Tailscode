@@ -116,10 +116,10 @@ public enum QuotaBinding {
     private static func house(
         _ slug: String, matchesFamilyOf name: String, id: String, local: Bool = false
     ) -> Bool {
+        if local { return false }
         let family = ModelFamily.of(name: name, id: id)
         switch slug {
         case "opencode":
-            if local { return false }
             switch family.key {
             case "claude", "grok", "deepseek": return false
             default: return true
