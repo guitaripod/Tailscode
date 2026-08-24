@@ -16,7 +16,7 @@
 set -euo pipefail
 
 BUILD=101
-MARKETING=1.22
+MARKETING=1.24
 NO_UPLOAD=
 ARGN=0
 while [ $# -gt 0 ]; do
