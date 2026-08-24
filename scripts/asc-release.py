@@ -37,7 +37,7 @@ def die(message: str) -> NoReturn:
 
 def version_record(marketing: str) -> dict:
     for row in asc.get(
-        f"/v1/apps/{APP}/appStoreVersions", **{"limit": "50"}
+        f"/v1/apps/{APP}/appStoreVersions", **{"limit": "50", "filter[platform]": PLATFORM}
     ).get("data", []):
         if row["attributes"]["versionString"] == marketing:
             print(f"version {marketing} exists ({row['attributes']['appStoreState']})")
@@ -166,7 +166,8 @@ def wait_for_build(number: str) -> dict:
     for attempt in range(60):
         for row in asc.get(
             "/v1/builds",
-            **{"filter[app]": APP, "limit": "20", "sort": "-uploadedDate"},
+            **{"filter[app]": APP, "filter[preReleaseVersion.platform]": PLATFORM,
+               "limit": "20", "sort": "-uploadedDate"},
         ).get("data", []):
             if row["attributes"].get("version") != number:
                 continue
