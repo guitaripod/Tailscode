@@ -1721,10 +1721,12 @@ final class TranscriptViewController: NSViewController {
         }
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
+        let effectiveSelection = composer.pickedModel ?? composer.selection(for: composer.activeModelID)
+        let effectiveModel = composer.activeModelID ?? effectiveSelection?.modelID
         return QuotaSurface.hottestExhausted(
             in: QuotaSurface.billingQuotas(
-                in: relevant, selection: composer.pickedModel, model: composer.activeModelID),
-            model: composer.activeModelID
+                in: relevant, selection: effectiveSelection, model: effectiveModel),
+            model: effectiveModel
         )
         .map(QuotaSurface.short)
     }

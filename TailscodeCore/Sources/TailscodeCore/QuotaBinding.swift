@@ -99,6 +99,13 @@ public enum QuotaBinding {
         _ quota: UsageQuota, selection: ModelSelection?, model: String? = nil, named name: String? = nil
     ) -> Bool {
         guard let slug = ProviderBrand.slug(quota.providerName) else { return true }
+        let probeID = model ?? selection?.modelID ?? name ?? ""
+        let probeName = name ?? model ?? selection?.modelID ?? ""
+        if slug == "opencode",
+            probeID.lowercased().contains("-free") || probeName.lowercased().contains("-free")
+        {
+            return false
+        }
         guard let selection else {
             guard model != nil || name != nil else { return true }
             return house(slug, matchesFamilyOf: name ?? "", id: model ?? "")
@@ -117,6 +124,9 @@ public enum QuotaBinding {
         _ slug: String, matchesFamilyOf name: String, id: String, local: Bool = false
     ) -> Bool {
         if local { return false }
+        let lowerID = id.lowercased()
+        let lowerName = name.lowercased()
+        if lowerID.contains("-free") || lowerName.contains("-free") { return false }
         let family = ModelFamily.of(name: name, id: id)
         switch slug {
         case "opencode":

@@ -2396,10 +2396,18 @@ final class ChatPane: @unchecked Sendable {
         }
         guard state.lastFailure == nil, state.status != .running else { return nil }
         let relevant = QuotaSurface.relevantQuotas(for: backend?.agentType, among: quotas)
+        let effectiveSelection: ModelSelection? = {
+            if let chosenModel { return chosenModel }
+            guard let id = activeModelID,
+                let info = models.first(where: { $0.id == id })
+            else { return nil }
+            return info.selection
+        }()
+        let effectiveModel = activeModelID ?? effectiveSelection?.modelID
         return QuotaSurface.hottestExhausted(
             in: QuotaSurface.billingQuotas(
-                in: relevant, selection: chosenModel, model: activeModelID),
-            model: activeModelID
+                in: relevant, selection: effectiveSelection, model: effectiveModel),
+            model: effectiveModel
         )
         .map(QuotaSurface.short)
     }

@@ -42,7 +42,8 @@ public enum ProviderIdentity {
     /// from the prepaid balance. Keys with no house of their own answer nil.
     public static func slug(_ providerID: String) -> String? {
         switch providerID.lowercased() {
-        case "opencode", "opencode-go": return "opencode"
+        case "opencode-go": return "opencode"
+        case "opencode": return "opencode-free"
         case "anthropic", "claude": return "claude"
         case "xai", "grok": return "grok"
         case "deepseek": return "deepseek"

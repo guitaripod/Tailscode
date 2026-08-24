@@ -69,6 +69,10 @@ final class ComposerView: NSView {
         (chosenModel, ModelEffort.surviving(chosenEffort, options: effortOptions()))
     }
     var pickedModel: ModelSelection? { chosenModel }
+    func selection(for modelID: String?) -> ModelSelection? {
+        guard let modelID, let info = models.first(where: { $0.id == modelID }) else { return nil }
+        return info.selection
+    }
     /// The effort a send from this composer would carry, surviving what the model actually offers.
     var activeEffort: String? { ModelEffort.surviving(chosenEffort, options: effortOptions()) }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
