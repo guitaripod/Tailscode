@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.24" date="2026-08-24">
+      <description>
+        <p>Ask for a video and watch it being made: an agent renders it on one of your machines while the app follows the work, and the finished film is kept right there. The renderer has its own studio now — one walk sets it up, the model list is a picker you aim into, settings open as a menu, and the chip wears the machine that answered.</p>
+        <p>The composer grows a third lane beside chat and ask, and the send wears the lane it is sending down. When a provider refuses a request mid-turn, the card says what happened and offers the same words again without the pictures.</p>
+      </description>
+    </release>
     <release version="1.22" date="2026-08-21">
       <description>
         <p>A machine that stops answering stops its clocks. A conversation's age counted on whether or not the server holding it was still reachable, so a turn that ended hours ago kept ageing on a laptop that had been asleep since. The column now freezes at the moment that machine was last heard from, and a live card over a server that has gone quiet says so instead of claiming the turn is still running.</p>

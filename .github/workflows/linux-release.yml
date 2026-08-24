@@ -88,6 +88,20 @@ jobs:
       # rather than with a CLI this container would have to install first. A tag pushed from a
       # working copy has no release object behind it, and uploading to one that does not exist
       # fails the job after the artifact is already built.
+      - name: Release notes body
+        id: notes
+        run: |
+          version=$(sed -n 's/.*static let current = "\([^"]*\)".*/\1/p' \
+            TailscodeLinux/Sources/TailscodeLinux/TailscodeVersion.swift | head -1)
+          python3 - "$version" > /tmp/notes.txt <<'PY'
+          import json, sys
+          notes = json.load(open("docs/release-notes.json"))
+          entry = notes.get(sys.argv[1], {})
+          body = entry.get("en-US") or next(iter(entry.values()), "")
+          print(json.dumps(body))
+          PY
+          printf 'NOTES_BODY<<EOF\n%s\nEOF\n' "$(cat /tmp/notes.txt)" >> "$GITHUB_ENV"
+          echo "release body read for $version"
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         env:
@@ -99,7 +113,7 @@ jobs:
             grep -m1 -o '"id": *[0-9]*' | grep -o '[0-9]*' || true)
           if [ -z "$id" ]; then
             id=$(curl -fsS -X POST -H "$auth" -H 'content-type: application/json' \
-              -d "{\"tag_name\":\"$GITHUB_REF_NAME\",\"name\":\"${GITHUB_REF_NAME#v}\",\"generate_release_notes\":true}" \
+              -d "{\"tag_name\":\"$GITHUB_REF_NAME\",\"name\":\"${GITHUB_REF_NAME#v}\",\"body\":$NOTES_BODY}" \
               "$api/releases" | grep -m1 -o '"id": *[0-9]*' | grep -o '[0-9]*')
             echo "created release $GITHUB_REF_NAME"
           fi
