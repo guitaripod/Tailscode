@@ -7,6 +7,8 @@ public enum ProviderIdentity {
     public static func displayName(_ providerID: String) -> String {
         switch providerID.lowercased() {
         case "ollama": return "Ollama"
+        case "arch": return "Arch"
+        case "vllm": return "Arch"
         case "opencode-go": return "OpenCode Go"
         case "opencode": return "OpenCode"
         case "anthropic", "claude": return "Anthropic"
@@ -29,9 +31,10 @@ public enum ProviderIdentity {
     }
 
     /// True when the provider's models run in a process on the server machine
-    /// itself (today: Ollama) rather than a hosted API.
+    /// itself (Ollama, or a local vLLM on Arch) rather than a hosted API.
     public static func isLocal(_ providerID: String) -> Bool {
-        providerID.lowercased() == "ollama"
+        let id = providerID.lowercased()
+        return id == "ollama" || id == "arch" || id == "vllm"
     }
 
     /// The brand a provider key bills against, for the quota wall's billing rule — a model
