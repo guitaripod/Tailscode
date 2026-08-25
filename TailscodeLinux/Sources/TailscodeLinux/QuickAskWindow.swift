@@ -35,6 +35,7 @@ final class QuickAskWindow: @unchecked Sendable {
     /// keystroke is never blank, and corrected by a fetch behind it.
     private var commands: [AgentCommand] = []
     private let recents: [SessionEntry]
+    private var catalogWatch: Task<Void, Never>?
     private var targetIndex: Int
     private let onAsk:
         @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?)
@@ -278,6 +279,7 @@ final class QuickAskWindow: @unchecked Sendable {
         }
 
         refreshTarget()
+        watchCatalog()
         restoreDraft()
         updateVimBadge()
         loadCommands()
@@ -316,6 +318,7 @@ final class QuickAskWindow: @unchecked Sendable {
     /// hands back whatever was last written for the one arrived at, the way re-aiming Home's
     /// composer does — a draft belongs to the machine it was written for.
     private func retarget(to index: Int) {
+        watchCatalog()
         guard index != targetIndex else { return }
         stashDraft()
         targetIndex = index
@@ -482,15 +485,38 @@ final class QuickAskWindow: @unchecked Sendable {
         editor.focus()
     }
 
+    /// The catalog is asked once per aim, in the background: a server that has never been
+    /// opened has an empty cache, and a model chip hidden for that read as "this server has
+    /// no models" when the truth was only that nobody had asked yet.
+    private func watchCatalog() {
+        catalogWatch?.cancel()
+        let server = targetServer
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            guard let profile = profiles.first(where: { $0.id == server.id }),
+                let backend = await ServerDirectory.shared.backend(for: profile)
+            else { return }
+            for await reading in ModelCatalogWatch.readings(
+                profileID: server.id, backend: backend)
+            {
+                guard let self, self.targetServer.id == server.id else { return }
+                ModelCatalogStore.store(reading.models, for: server.id)
+                Gtk.onMain { [weak self] in self?.refreshTarget() }
+            }
+        }
+    }
+
     private func refreshTarget() {
         let server = targetServer
         gtk_menu_button_set_label(op(target), server.name + " · " + ServerLabel.agent(server.backend))
         adw_window_title_set_subtitle(
             op(UnsafeMutableRawPointer(title)), Self.subtitle())
+        let picked = QuickAskDefaults.model(forProfileID: server.id)
         gtk_menu_button_set_label(
             op(model),
-            ModelBadge.label(model: QuickAskDefaults.model(forProfileID: server.id), effort: nil))
-        gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
+            picked == nil && ModelCatalogStore.cached(server.id).isEmpty
+                ? Localized.text("Model…")
+                : ModelBadge.label(model: picked, effort: nil))
         let levels = effortOptions()
         dropUnofferedEffort(on: server.id, options: levels)
         gtk_menu_button_set_label(

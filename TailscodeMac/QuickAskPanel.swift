@@ -560,7 +560,26 @@ final class QuickAskPanel: NSPanel {
         editor.focus()
     }
 
-    @objc private func openModelDirectory() {
+    /// The catalog is asked once per aim, in the background: a server that has never been
+    /// opened has an empty cache, and a model chip hidden for that read as "this server has
+    /// no models" when the truth was only that nobody had asked yet.
+    private func watchCatalog() {
+        catalogWatch?.cancel()
+        catalogWatch = Task { [weak self] in
+            guard let self else { return }
+            let server = self.targetServer
+            guard let backend = await ServerDirectory.shared.backend(for: server) else { return }
+            for await reading in ModelCatalogWatch.readings(
+                profileID: server.id, backend: backend)
+            {
+                guard self.targetServer.id == server.id else { return }
+                ModelCatalogStore.store(reading.models, for: server.id)
+                await MainActor.run { self.refreshAim() }
+            }
+        }
+    }
+
+    private func openModelDirectoryNow() {
         let server = targetServer
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
@@ -671,9 +690,13 @@ final class QuickAskPanel: NSPanel {
         serverChip.title = server.name + " · " + ServerLabel.agent(server.backend)
         let picked = QuickAskDefaults.model(forProfileID: server.id)
         let starred = picked.map(ModelFavoritesStore.isFavorite) ?? false
-        modelButton.title = (starred ? "★ " : "") + ModelBadge.label(
-            model: picked, effort: nil)
-        modelButton.isHidden = ModelCatalogStore.cached(server.id).isEmpty
+        modelButton.title =
+            (starred ? "★ " : "")
+            + (picked == nil && ModelCatalogStore.cached(server.id).isEmpty
+                ? Localized.text("Model…")
+                : ModelBadge.label(model: picked, effort: nil))
+        modelButton.isHidden = false
+        watchCatalog()
         refreshEffort()
         let able = abilities
         attachButton.isHidden = !able.attachments
