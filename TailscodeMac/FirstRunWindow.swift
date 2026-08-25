@@ -33,6 +33,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     private let connectButton = RowKit.ActionButton(title: "") {}
     private var claudeRadio: NSButton!
     private var opencodeRadio: NSButton!
+    private var ompRadio: NSButton!
     private var closed = false
     private var probeGeneration = 0
     private var verified: (url: URL, agent: AgentType, version: String?)?
@@ -90,8 +91,11 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             action: #selector(kindChanged))
         opencodeRadio = NSButton(
             radioButtonWithTitle: "opencode · 4096", target: self, action: #selector(kindChanged))
+        ompRadio = NSButton(
+            radioButtonWithTitle: "oh-my-pi · 4099", target: self,
+            action: #selector(kindChanged))
         claudeRadio.state = .on
-        let kindRow = NSStackView(views: [claudeRadio, opencodeRadio])
+        let kindRow = NSStackView(views: [claudeRadio, opencodeRadio, ompRadio])
         kindRow.orientation = .horizontal
         kindRow.spacing = MacTheme.Spacing.m
         column.addArrangedSubview(kindRow)
@@ -252,7 +256,8 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     }
 
     private var preferredBackend: AgentType {
-        opencodeRadio.state == .on ? .openCode : .claudeCode
+        opencodeRadio.state == .on
+            ? .openCode : (ompRadio.state == .on ? .omp : .claudeCode)
     }
 
     private func updateReading() {

@@ -39,7 +39,7 @@ final class FirstRunDialog: @unchecked Sendable {
     private let diagnosisLabel = Gtk.label("", css: "row-detail", wrap: true, selectable: false)
     private let diagnosisActions = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
     private let connectButton = gtk_button_new_with_label("")!
-    private var useOpenCode = false
+    private var chosenBackend: AgentType = .claudeCode
     private var passwordShown = false
     private var tailnetAddress: String?
     private var tailscale: TailscaleReading = .daemonDown
@@ -94,6 +94,12 @@ final class FirstRunDialog: @unchecked Sendable {
             note: Localized.text(
                 "Installs opencode if it is missing, serves it on port 4096, and keeps its model list current."
             ))
+        appendCommand(
+            to: content, label: "omp-bridge",
+            command: BridgeInstall.command(for: .omp, password: mintedPassword),
+            note: Localized.text(
+                "Drives oh-my-pi (install it first) on port 4099. Needs git and a Swift 6 toolchain."
+            ))
 
         appendStep(to: content, number: "3", title: Localized.text("Connect this machine"), pill: nil)
 
@@ -112,17 +118,37 @@ final class FirstRunDialog: @unchecked Sendable {
         let kindRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let claudeButton = gtk_toggle_button_new_with_label("claude-bridge · 4098")!
         let opencodeButton = gtk_toggle_button_new_with_label("opencode · 4096")!
+        let ompButton = gtk_toggle_button_new_with_label("oh-my-pi · 4099")!
         gtk_toggle_button_set_active(ptr(claudeButton), 1)
         gtk_toggle_button_set_group(ptr(opencodeButton), ptr(claudeButton))
+        gtk_toggle_button_set_group(ptr(ompButton), ptr(claudeButton))
         let claudeBits = UInt(bitPattern: claudeButton)
+        let opencodeBits = UInt(bitPattern: opencodeButton)
         Gtk.connect(UnsafeMutableRawPointer(claudeButton), "toggled") { [self] in
-            guard let raw = UnsafeMutableRawPointer(bitPattern: claudeBits) else { return }
-            let button: UnsafeMutablePointer<GtkToggleButton> = ptr(raw)
-            useOpenCode = gtk_toggle_button_get_active(button) == 0
+            guard let raw = UnsafeMutableRawPointer(bitPattern: claudeBits),
+                gtk_toggle_button_get_active(ptr(raw)) != 0
+            else { return }
+            chosenBackend = .claudeCode
+            Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(opencodeButton), "toggled") { [self] in
+            guard let raw = UnsafeMutableRawPointer(bitPattern: opencodeBits),
+                gtk_toggle_button_get_active(ptr(raw)) != 0
+            else { return }
+            chosenBackend = .openCode
+            Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
+        }
+        let ompBits = UInt(bitPattern: ompButton)
+        Gtk.connect(UnsafeMutableRawPointer(ompButton), "toggled") { [self] in
+            guard let raw = UnsafeMutableRawPointer(bitPattern: ompBits),
+                gtk_toggle_button_get_active(ptr(raw)) != 0
+            else { return }
+            chosenBackend = .omp
             Gtk.onMain { [self] in scheduleProbe(afterMilliseconds: 100) }
         }
         gtk_box_append(ptr(kindRow), claudeButton)
         gtk_box_append(ptr(kindRow), opencodeButton)
+        gtk_box_append(ptr(kindRow), ompButton)
         gtk_box_append(ptr(content), kindRow)
 
         gtk_box_append(ptr(content), readingLabel)
@@ -228,7 +254,7 @@ final class FirstRunDialog: @unchecked Sendable {
     private func adopt(_ suggestion: TailnetScanner.Suggestion) {
         guard !suggestion.requiresAuth else {
             gtk_editable_set_text(op(addressEntry), suggestion.baseURL.absoluteString)
-            useOpenCode = suggestion.backend == .openCode
+            chosenBackend = suggestion.backend
             revealPassword()
             gtk_label_set_text(
                 op(diagnosisLabel),
@@ -259,7 +285,7 @@ final class FirstRunDialog: @unchecked Sendable {
         // The password this app minted is the one the copied command sets, so it is already the
         // best guess — filled in rather than demanded, and still editable for a bridge that was
         // installed before today and kept its old one.
-        if Dialogs.entryText(addressEntry).isEmpty || !useOpenCode {
+        if Dialogs.entryText(addressEntry).isEmpty || chosenBackend != .openCode {
             gtk_editable_set_text(op(passwordEntry), mintedPassword)
         }
         gtk_widget_grab_focus(passwordEntry)
@@ -410,7 +436,7 @@ final class FirstRunDialog: @unchecked Sendable {
             gtk_label_set_text(op(readingLabel), "")
             return
         }
-        let backend: AgentType = useOpenCode ? .openCode : .claudeCode
+        let backend: AgentType = chosenBackend
         switch HostAddress.read(raw, defaultPort: HostAddress.port(for: backend)) {
         case .address(let address):
             gtk_label_set_text(op(readingLabel), "→ \(address.url.absoluteString)")
@@ -438,7 +464,7 @@ final class FirstRunDialog: @unchecked Sendable {
 
     private func probe(userInitiated: Bool) {
         let raw = Dialogs.entryText(addressEntry)
-        let backend: AgentType = useOpenCode ? .openCode : .claudeCode
+        let backend: AgentType = chosenBackend
         guard case .address(let address) = HostAddress.read(
             raw, defaultPort: HostAddress.port(for: backend))
         else {

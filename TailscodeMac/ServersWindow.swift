@@ -60,6 +60,7 @@ final class ServersWindow: NSWindowController {
     private let passwordField = NSSecureTextField()
     private let claudeRadio = NSButton(radioButtonWithTitle: "claude-bridge · 4098", target: nil, action: nil)
     private let opencodeRadio = NSButton(radioButtonWithTitle: "opencode · 4096", target: nil, action: nil)
+    private let ompRadio = NSButton(radioButtonWithTitle: "oh-my-pi · 4099", target: nil, action: nil)
 
     init(onChanged: @escaping @MainActor () -> Void) {
         self.onChanged = onChanged
@@ -143,8 +144,10 @@ final class ServersWindow: NSWindowController {
         claudeRadio.action = #selector(agentPicked)
         opencodeRadio.target = self
         opencodeRadio.action = #selector(agentPicked)
+        ompRadio.target = self
+        ompRadio.action = #selector(agentPicked)
         claudeRadio.state = .on
-        let kindRow = NSStackView(views: [claudeRadio, opencodeRadio, Self.spacer()])
+        let kindRow = NSStackView(views: [claudeRadio, opencodeRadio, ompRadio, Self.spacer()])
         kindRow.orientation = .horizontal
         kindRow.spacing = MacTheme.Spacing.s
 
@@ -183,8 +186,9 @@ final class ServersWindow: NSWindowController {
     }
 
     @objc private func agentPicked(_ sender: NSButton) {
-        claudeRadio.state = sender === claudeRadio ? .on : .off
-        opencodeRadio.state = sender === opencodeRadio ? .on : .off
+        for radio in [claudeRadio, opencodeRadio, ompRadio] {
+            radio.state = radio === sender ? .on : .off
+        }
     }
 
     @objc private func closeWindow() {
@@ -367,6 +371,7 @@ final class ServersWindow: NSWindowController {
                 }
                 self.claudeRadio.state = suggestion.backend == .claudeCode ? .on : .off
                 self.opencodeRadio.state = suggestion.backend == .openCode ? .on : .off
+                self.ompRadio.state = suggestion.backend == .omp ? .on : .off
                 if suggestion.requiresAuth, self.passwordField.stringValue.isEmpty {
                     self.setStatus(
                         Localized.text("%@ wants a password.", suggestion.recommendedProfileName))
@@ -386,7 +391,9 @@ final class ServersWindow: NSWindowController {
             password = pasted
             passwordField.stringValue = pasted
         }
-        let backend: AgentType = opencodeRadio.state == .on ? .openCode : .claudeCode
+        let backend: AgentType =
+            opencodeRadio.state == .on
+            ? .openCode : (ompRadio.state == .on ? .omp : .claudeCode)
 
         guard !raw.isEmpty else {
             setStatus(Localized.text("Type the server's tailnet address first."))

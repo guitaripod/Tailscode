@@ -136,6 +136,7 @@ final class ServerManager: @unchecked Sendable {
         let model = gtk_string_list_new(nil)!
         gtk_string_list_append(model, "claude-bridge · 4098")
         gtk_string_list_append(model, "opencode · 4096")
+        gtk_string_list_append(model, "oh-my-pi · 4099")
         adw_combo_row_set_model(
             ptr(UnsafeMutableRawPointer(agent)),
             OpaquePointer(UnsafeMutableRawPointer(model)))
@@ -861,7 +862,7 @@ final class ServerManager: @unchecked Sendable {
             if let agentRow {
                 adw_combo_row_set_selected(
                     ptr(UnsafeMutableRawPointer(agentRow)),
-                    suggestion.backend == .openCode ? 1 : 0)
+                    guint(AgentType.allCases.firstIndex(of: suggestion.backend) ?? 0))
             }
             setStatus(
                 Localized.text("%@ wants a password", suggestion.recommendedProfileName),
@@ -997,8 +998,8 @@ final class ServerManager: @unchecked Sendable {
 
     private var selectedBackend: AgentType {
         guard let agentRow else { return .claudeCode }
-        return adw_combo_row_get_selected(ptr(UnsafeMutableRawPointer(agentRow))) == 1
-            ? .openCode : .claudeCode
+        let index = adw_combo_row_get_selected(ptr(UnsafeMutableRawPointer(agentRow)))
+        return [AgentType.claudeCode, .openCode, .omp][Int(index)]
     }
 
     private func clearAddForm() {

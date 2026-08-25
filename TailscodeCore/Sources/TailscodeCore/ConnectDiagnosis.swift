@@ -73,7 +73,7 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                 return httpsDiagnosis(plain: plain)
             }
             let detail = Localized.text(
-                "Something is listening on %@, but it isn't opencode or claude-bridge. opencode serves port 4096, claude-bridge port 4098.",
+                "Something is listening on %@, but it isn't an agent this app knows. opencode serves 4096, claude-bridge 4098, omp-bridge 4099.",
                 address.displayHost)
             if let alternatePort, let port = alternatePort.port {
                 return ConnectDiagnosis(
@@ -113,7 +113,7 @@ public struct ConnectDiagnosis: Equatable, Sendable {
                     symbol: "questionmark.app",
                     title: Localized.text("%@ answered, but not as an agent", address.displayHost),
                     detail: Localized.text(
-                        "The port is open and something is on it, yet it didn't respond as opencode or claude-bridge. Check the port — 4096 for opencode, 4098 for claude-bridge."
+                        "The port is open and something is on it, yet it didn't respond as a known agent. Check the port — 4096 opencode, 4098 claude-bridge, 4099 omp-bridge."
                     ),
                     fix: alternatePort.map { .retryOtherPort($0) } ?? .retry,
                     actionTitle: alternatePort?.port.map { Localized.text("Try port %@", "\($0)") }
