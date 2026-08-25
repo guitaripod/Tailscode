@@ -535,7 +535,11 @@ final class QuickAskPanel: NSPanel {
                 candidate.isElsewhere
                 ? Localized.text("on %@ — the ask moves there", candidate.serverName)
                 : candidate.primary.providerName
-            item.representedObject = PickBox(pick: candidate.pick)
+            item.representedObject = PickBox(
+                pick: ModelPick(
+                    profileID: candidate.profileID, selection: candidate.selection,
+                    isElsewhere: candidate.isElsewhere,
+                    serverName: candidate.serverName, modelName: candidate.name))
             item.target = self
             menu.addItem(item)
         }
