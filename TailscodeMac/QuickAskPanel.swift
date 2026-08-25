@@ -23,11 +23,16 @@ import TailscodeCore
 /// `QuickAskSend` made rather than as the word it was typed as.
 @MainActor
 final class QuickAskPanel: NSPanel {
+    @objc final class PickBox: NSObject {
+        let pick: ModelPick
+        init(pick: ModelPick) { self.pick = pick }
+    }
+
     private(set) static weak var frontmost: QuickAskPanel?
 
     private let editor = PromptEditor(
         placeholder: Localized.text("Ask anything — no project, no setup"))
-    private let serverPopup = NSPopUpButton()
+    private let serverChip = NSButton()
     private let modelButton = NSButton()
     private let effortButton = NSPopUpButton()
     private let attachButton = NSButton()
@@ -106,15 +111,14 @@ final class QuickAskPanel: NSPanel {
         }
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
 
-        let aimed = QuickAskDefaults.target(
+        aimedServerID = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
-        for server in servers { serverPopup.addItem(withTitle: server.name) }
-        if let index = servers.firstIndex(where: { $0.id == aimed }) {
-            serverPopup.selectItem(at: index)
-        }
-        serverPopup.isHidden = servers.count < 2
-        serverPopup.target = self
-        serverPopup.action = #selector(serverChanged)
+        serverChip.bezelStyle = .rounded
+        serverChip.controlSize = .small
+        serverChip.target = self
+        serverChip.action = #selector(serverChipPicked)
+        serverChip.isHidden = servers.count < 2
+        serverChip.showsBorderOnlyWhileMouseInside = true
 
         modelButton.bezelStyle = .rounded
         modelButton.controlSize = .small
@@ -149,7 +153,7 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
-        let aim = NSStackView(views: [serverPopup, modelButton, effortButton, attachButton])
+        let aim = NSStackView(views: [serverChip, modelButton, effortButton, attachButton])
         aim.orientation = .horizontal
         aim.spacing = 8
         let column = QuickAskDropView(views: [editor, completion, chips, aim, status, starters])
@@ -420,11 +424,45 @@ final class QuickAskPanel: NSPanel {
         return true
     }
 
+    private var aimedServerID: String?
+    private var modelMenu: NSMenu?
+
     private var targetServer: ConnectionProfile {
-        servers[min(max(0, serverPopup.indexOfSelectedItem), servers.count - 1)]
+        servers.first { $0.id == aimedServerID } ?? servers[0]
+    }
+
+    @objc private func serverChipPicked(_ sender: NSButton) {
+        popServerMenu()
+    }
+
+    /// Where the question goes, as a menu rather than a blind cycle: every server named with the
+    /// agent that would answer, the aimed one ticked, the address a tooltip away.
+    private func popServerMenu() {
+        let menu = NSMenu()
+        for server in servers {
+            let item = NSMenuItem(
+                title: "\(server.name) · \(ServerLabel.agent(server.backend))",
+                action: #selector(serverMenuItemPicked(_:)), keyEquivalent: "")
+            item.state = server.id == aimedServerID ? .on : .off
+            item.representedObject = server.id
+            item.toolTip = server.baseURL.absoluteString
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.popUp(
+            positioning: nil, at: NSPoint(x: 0, y: serverChip.bounds.maxY + 4),
+            in: serverChip)
+    }
+
+    @objc private func serverMenuItemPicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        guard id != aimedServerID else { return }
+        aimedServerID = id
+        serverChanged()
     }
 
     @objc private func serverChanged() {
+        refreshAim()
         retargetDraft()
         refreshAim()
         refreshCommands()
@@ -468,6 +506,57 @@ final class QuickAskPanel: NSPanel {
     /// sheet is watched, not snapshot: a server that is restarting reads as restarting rather than
     /// as a machine with no models, and the list lands on the open sheet when it is back.
     @objc private func chooseModel() {
+        popModelMenu()
+    }
+
+    /// What will answer, at menu length: the server's own default, your stars, what you reached
+    /// for, the local floor — the same list the composer's pill shows — and the road to the full
+    /// directory when none of the shortlist is the answer.
+    private func popModelMenu() {
+        let server = targetServer
+        let selected = QuickAskDefaults.model(forProfileID: server.id)
+        let menu = NSMenu()
+        let auto = NSMenuItem(
+            title: Localized.text("Server default"), action: #selector(modelMenuItemPicked(_:)),
+            keyEquivalent: "")
+        auto.state = selected == nil ? .on : .off
+        auto.target = self
+        menu.addItem(auto)
+        menu.addItem(.separator())
+        let sources = chooserSources(for: server)
+        for candidate in ModelChooser.shortlist(sources: sources, selected: selected, limit: 8) {
+            let star = candidate.offers.contains { ModelFavoritesStore.isFavorite($0.selection) }
+                ? "★ " : ""
+            let item = NSMenuItem(
+                title: (selected == candidate.selection ? "✓ " : "") + star + candidate.name,
+                action: #selector(modelMenuItemPicked(_:)), keyEquivalent: "")
+            item.state = candidate.isElsewhere ? .off : (selected == candidate.selection ? .on : .off)
+            item.toolTip =
+                candidate.isElsewhere
+                ? Localized.text("on %@ — the ask moves there", candidate.serverName)
+                : candidate.primary.providerName
+            item.representedObject = PickBox(pick: candidate.pick)
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let all = NSMenuItem(
+            title: Localized.text("All models…"), action: #selector(openModelDirectory),
+            keyEquivalent: "")
+        all.target = self
+        menu.addItem(all)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: modelButton.bounds.maxY + 4), in: modelButton)
+    }
+
+    @objc private func modelMenuItemPicked(_ sender: NSMenuItem) {
+        guard let box = sender.representedObject as? PickBox else { return }
+        QuickAskDefaults.adopt(box.pick)
+        aim(at: box.pick.profileID)
+        refreshAim()
+        editor.focus()
+    }
+
+    @objc private func openModelDirectory() {
         let server = targetServer
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
@@ -503,8 +592,7 @@ final class QuickAskPanel: NSPanel {
     }
 
     private func aim(at profileID: String) {
-        guard let index = servers.firstIndex(where: { $0.id == profileID }) else { return }
-        serverPopup.selectItem(at: index)
+        aimedServerID = profileID
         retargetDraft()
         refreshCommands()
     }
@@ -576,8 +664,11 @@ final class QuickAskPanel: NSPanel {
     /// longer can.
     private func refreshAim() {
         let server = targetServer
-        modelButton.title = ModelBadge.label(
-            model: QuickAskDefaults.model(forProfileID: server.id), effort: nil)
+        serverChip.title = server.name + " · " + ServerLabel.agent(server.backend)
+        let picked = QuickAskDefaults.model(forProfileID: server.id)
+        let starred = picked.map(ModelFavoritesStore.isFavorite) ?? false
+        modelButton.title = (starred ? "★ " : "") + ModelBadge.label(
+            model: picked, effort: nil)
         modelButton.isHidden = ModelCatalogStore.cached(server.id).isEmpty
         refreshEffort()
         let able = abilities
@@ -790,7 +881,7 @@ final class QuickAskPanel: NSPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        serverPopup.isEnabled = false
+        serverChip.isEnabled = false
         modelButton.isEnabled = false
         effortButton.isEnabled = false
         attachButton.isEnabled = false
@@ -806,7 +897,7 @@ final class QuickAskPanel: NSPanel {
             }
             self.asking = false
             self.editor.isEditable = true
-            self.serverPopup.isEnabled = true
+            self.serverChip.isEnabled = true
             self.modelButton.isEnabled = true
             self.effortButton.isEnabled = true
             self.attachButton.isEnabled = true

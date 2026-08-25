@@ -114,11 +114,11 @@ final class QuickAskWindow: @unchecked Sendable {
         editor = PromptEditor(
             css: "ask-entry", placeholder: Localized.text("Ask anything — no project, no setup"))
         hint = Gtk.label("", css: "ask-hint", selectable: false)
-        target = Gtk.button("", css: ["flat", "ask-chip"]) {
-            Gtk.onMain { QuickAskWindow.open?.cycleTarget() }
+        target = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
+            QuickAskWindow.open?.serverRows() ?? []
         }
-        model = Gtk.button("", css: ["flat", "ask-chip"]) {
-            Gtk.onMain { QuickAskWindow.open?.chooseModel() }
+        model = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
+            QuickAskWindow.open?.modelRows() ?? []
         }
         effort = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
             QuickAskWindow.open?.effortRows() ?? []
@@ -414,13 +414,81 @@ final class QuickAskWindow: @unchecked Sendable {
         return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
+    /// Where the question goes, as a menu rather than a cycle: every server named with the
+    /// agent that would answer and the address it lives at, the aimed one ticked. Cycling hid
+    /// the list and made reaching the third machine two blind presses.
+    private func serverRows() -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
+        servers.enumerated().map { index, server in
+            let aimed = index == targetIndex
+            return (
+                (aimed ? "✓ " : "") + server.name + " · " + ServerLabel.agent(server.backend),
+                server.baseURL.absoluteString,
+                { Gtk.onMain { QuickAskWindow.open?.retarget(to: index) } }
+            )
+        }
+    }
+
+    /// What will answer, at menu length: the server's own default, your stars, what you reached
+    /// for, the local floor — the same list the composer's pill shows — and the road to the full
+    /// directory when none of the shortlist is the answer.
+    private func modelRows() -> [(title: String, detail: String?, action: @Sendable () -> Void)] {
+        guard !asking else { return [] }
+        let server = targetServer
+        let selected = QuickAskDefaults.model(forProfileID: server.id)
+        var rows: [(title: String, detail: String?, action: @Sendable () -> Void)] = [
+            (
+                (selected == nil ? "✓ " : "") + Localized.text("Server default"),
+                Localized.text("Let the machine decide"),
+                { Gtk.onMain { QuickAskWindow.open?.pick(ModelPick(
+                    profileID: server.id, selection: nil, isElsewhere: false,
+                    serverName: server.name, modelName: "")) } }
+            )
+        ]
+        let sources = ModelFleet.sources(profiles: servers, current: server.id)
+        for candidate in ModelChooser.shortlist(sources: sources, selected: selected, limit: 8) {
+            let star = candidate.offers.contains {
+                ModelFavoritesStore.isFavorite($0.selection)
+            } ? "★ " : ""
+            let aimed = !candidate.isElsewhere && candidate.carries(selected)
+            rows.append(
+                (
+                    (aimed ? "✓ " : "") + star + candidate.name,
+                    candidate.isElsewhere
+                        ? Localized.text("on %@ — the ask moves there", candidate.serverName)
+                        : candidate.primary.providerName,
+                    {
+                        let chosen = ModelPick(
+                            profileID: candidate.profileID, selection: candidate.selection,
+                            isElsewhere: candidate.isElsewhere,
+                            serverName: candidate.serverName, modelName: candidate.name)
+                        Gtk.onMain { QuickAskWindow.open?.pick(chosen) }
+                    }
+                ))
+        }
+        rows.append(
+            (
+                Localized.text("All models…"), Localized.text("Search every server's catalog"),
+                { Gtk.onMain { QuickAskWindow.open?.chooseModel() } }
+            ))
+        return rows
+    }
+
+    private func pick(_ pick: ModelPick) {
+        QuickAskDefaults.adopt(pick)
+        if let index = servers.firstIndex(where: { $0.id == pick.profileID }) {
+            retarget(to: index)
+        }
+        refreshTarget()
+        editor.focus()
+    }
+
     private func refreshTarget() {
         let server = targetServer
-        gtk_button_set_label(ptr(target), server.name)
+        gtk_menu_button_set_label(op(target), server.name + " · " + ServerLabel.agent(server.backend))
         adw_window_title_set_subtitle(
             op(UnsafeMutableRawPointer(title)), Self.subtitle())
-        gtk_button_set_label(
-            ptr(model),
+        gtk_menu_button_set_label(
+            op(model),
             ModelBadge.label(model: QuickAskDefaults.model(forProfileID: server.id), effort: nil))
         gtk_widget_set_visible(model, ModelCatalogStore.cached(server.id).isEmpty ? 0 : 1)
         let levels = effortOptions()
