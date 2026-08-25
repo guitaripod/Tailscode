@@ -26,7 +26,8 @@ final class DiscoveryPanel: @unchecked Sendable {
     private var resultRows: [UnsafeMutablePointer<GtkWidget>] = []
 
     private var found: [TailnetScanner.Suggestion] = []
-    private var configured: Set<String> = []
+    private var configuredProfiles: [ConnectionProfile] = []
+    private var configuredDevices: [TailscaleDevice] = []
     private var scanID = 0
     private var checked = 0
     private var total = 0
@@ -61,10 +62,12 @@ final class DiscoveryPanel: @unchecked Sendable {
         rest()
     }
 
-    /// Which servers are already saved, so a machine the app already has offers a fact rather than
-    /// a second copy of itself.
-    func setConfigured(_ profiles: [ConnectionProfile]) {
-        configured = Set(profiles.map { Self.key(host: $0.baseURL.host ?? "", port: $0.baseURL.port ?? 0) })
+    /// Which servers are already saved, so a machine the app already has offers a fact rather
+    /// than a second copy of itself. Judged over every name the tailnet knows each machine by,
+    /// so a profile saved under a 100.x address still matches the DNS name the scan found.
+    func setConfigured(_ profiles: [ConnectionProfile], devices: [TailscaleDevice] = []) {
+        configuredProfiles = profiles
+        configuredDevices = devices
         renderResults()
     }
 
@@ -86,6 +89,7 @@ final class DiscoveryPanel: @unchecked Sendable {
         Task { [weak self] in
             let status = TailnetStatusLinux.read()
             let devices = status.scannableDevices(includingThisMachine: true)
+            self?.configuredDevices = (status.peers + [status.me].compactMap { $0 }).map(\.device)
             Gtk.onMain { [weak self] in
                 guard let self, self.scanID == id else { return }
                 self.peerCount = devices.count
@@ -244,9 +248,9 @@ final class DiscoveryPanel: @unchecked Sendable {
             gtk_widget_set_valign(glyph, GTK_ALIGN_CENTER)
             adw_action_row_add_prefix(ptr(row), glyph)
 
-            let key = Self.key(
-                host: suggestion.baseURL.host ?? "", port: suggestion.baseURL.port ?? 0)
-            if configured.contains(key) {
+            if ConfiguredServers.isConfigured(
+                suggestion.baseURL, profiles: configuredProfiles, devices: configuredDevices)
+            {
                 let mark = Gtk.label(Localized.text("Already added"), css: "dim", selectable: false)
                 gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
                 adw_action_row_add_suffix(ptr(row), mark)

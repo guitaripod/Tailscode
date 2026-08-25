@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import TailscodeCore
 import UIKit
 
 @MainActor
@@ -148,6 +149,14 @@ final class DiscoveryViewController: UIViewController {
                 ]
             } else {
                 cell.accessories = [.disclosureIndicator()]
+            }
+            if ConfiguredServers.isConfigured(
+                item.suggestion.baseURL,
+                profiles: ConnectionController.shared.profiles,
+                devices: self.devices)
+            {
+                content.secondaryText = [content.secondaryText, String(localized: "Already added")]
+                    .compactMap { $0 }.joined(separator: " · ")
             }
         }
 

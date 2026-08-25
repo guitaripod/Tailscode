@@ -379,7 +379,8 @@ final class DiscoveryPanel {
 
     private var blips: [RadarBlip] = []
     private var found: [TailnetScanner.Suggestion] = []
-    private var configured: Set<String> = []
+    private var configuredProfiles: [ConnectionProfile] = []
+    private var knownDevices: [TailscaleDevice] = []
     private var scanning = false
     private var scanID = 0
     private var peerCount = 0
@@ -461,8 +462,7 @@ final class DiscoveryPanel {
     /// Which servers are already saved, so a machine the app already has offers a fact rather than
     /// a second copy of itself.
     func setConfigured(_ profiles: [ConnectionProfile]) {
-        configured = Set(
-            profiles.map { Self.key(host: $0.baseURL.host ?? "", port: $0.baseURL.port ?? 0) })
+        configuredProfiles = profiles
         renderResults()
     }
 
@@ -520,6 +520,7 @@ final class DiscoveryPanel {
             }.value
             guard let self, self.scanID == id else { return }
             let devices = survey.scannable(includingThisMachine: true)
+            self.knownDevices = (survey.peers + [survey.me].compactMap { $0 })
             self.peerCount = devices.count
             guard !devices.isEmpty else {
                 let blocked = Self.blocked(survey)
@@ -737,8 +738,8 @@ final class DiscoveryPanel {
         lines.spacing = 2
 
         let trailing: NSView
-        if configured.contains(
-            Self.key(host: suggestion.baseURL.host ?? "", port: suggestion.baseURL.port ?? 0))
+        if ConfiguredServers.isConfigured(
+            suggestion.baseURL, profiles: configuredProfiles, devices: knownDevices)
         {
             trailing = MacDialogs.detailLabel(Localized.text("Already added"))
         } else {
