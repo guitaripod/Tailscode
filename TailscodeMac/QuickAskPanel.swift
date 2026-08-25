@@ -545,7 +545,7 @@ final class QuickAskPanel: NSPanel {
         }
         menu.addItem(.separator())
         let all = NSMenuItem(
-            title: Localized.text("All models…"), action: #selector(openModelDirectory),
+            title: Localized.text("All models…"), action: #selector(openModelDirectoryNow),
             keyEquivalent: "")
         all.target = self
         menu.addItem(all)
@@ -579,7 +579,7 @@ final class QuickAskPanel: NSPanel {
         }
     }
 
-    private func openModelDirectoryNow() {
+    @objc private func openModelDirectoryNow() {
         let server = targetServer
         catalogWatch?.cancel()
         catalogWatch = Task { [weak self] in
