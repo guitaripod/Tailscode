@@ -20,7 +20,11 @@ public enum ProbeSweep {
     }
 
     public static func username(for backend: AgentType) -> String {
-        backend == .openCode ? "opencode" : "claude"
+        switch backend {
+        case .openCode: return "opencode"
+        case .claudeCode: return "claude"
+        case .omp: return "omp"
+        }
     }
 
     /// Retries with the other backend's Basic-auth username on `.authFailed`: the caller's
@@ -40,11 +44,16 @@ public enum ProbeSweep {
             credentials: BasicCredentials(username: username(for: backend), password: password),
             policy: policy, retryUnreachable: retryUnreachable)
         guard case .authFailed = outcome else { return outcome }
-        let other: AgentType = backend == .openCode ? .claudeCode : .openCode
-        return await ConnectionProbe().probe(
-            baseURL: baseURL,
-            credentials: BasicCredentials(username: username(for: other), password: password),
-            policy: policy, retryUnreachable: retryUnreachable)
+        var lastOutcome = ConnectionProbe.Outcome.authFailed
+        for other in [AgentType.claudeCode, .omp, .openCode] where other != backend {
+            let outcome = await ConnectionProbe().probe(
+                baseURL: baseURL,
+                credentials: BasicCredentials(username: username(for: other), password: password),
+                policy: policy, retryUnreachable: retryUnreachable)
+            if case .authFailed = outcome { lastOutcome = outcome; continue }
+            return outcome
+        }
+        return lastOutcome
     }
 
     /// Probes every candidate and keeps the most informative verdict, stopping early once an

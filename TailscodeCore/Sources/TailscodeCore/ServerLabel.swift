@@ -7,7 +7,11 @@ import Foundation
 /// machine share a name and differ by agent, so the name alone never has to encode both.
 public enum ServerLabel {
     public static func agent(_ backend: AgentType) -> String {
-        backend == .openCode ? "opencode" : "Claude Code"
+        switch backend {
+        case .openCode: return "opencode"
+        case .claudeCode: return "Claude Code"
+        case .omp: return "Oh My Pi"
+        }
     }
 
     public static func display(name: String, backend: AgentType) -> String {

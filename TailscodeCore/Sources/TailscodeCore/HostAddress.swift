@@ -9,6 +9,7 @@ import Foundation
 public struct HostAddress: Equatable, Sendable {
     public static let openCodePort = 4096
     public static let claudeCodePort = 4098
+    public static let ompPort = 4099
 
     public let url: URL
     /// True when the app supplied the port rather than the user. The other
@@ -31,7 +32,11 @@ public struct HostAddress: Equatable, Sendable {
     }
 
     public static func port(for backend: AgentType) -> Int {
-        backend == .openCode ? openCodePort : claudeCodePort
+        switch backend {
+        case .openCode: return openCodePort
+        case .claudeCode: return claudeCodePort
+        case .omp: return ompPort
+        }
     }
 
     public static func read(_ raw: String, defaultPort: Int) -> Reading {
@@ -72,12 +77,16 @@ public struct HostAddress: Equatable, Sendable {
     /// port, the other agent's default is the single most likely correction.
     public func probeCandidates() -> [URL] {
         guard portWasInferred, let port = url.port else { return [url] }
-        let alternate = port == Self.openCodePort ? Self.claudeCodePort : Self.openCodePort
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return [url]
+        let alternates = [Self.openCodePort, Self.claudeCodePort, Self.ompPort]
+            .filter { $0 != port }
+        var candidates: [URL] = [url]
+        for candidate in alternates {
+            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            else { continue }
+            components.port = candidate
+            if let candidateURL = components.url { candidates.append(candidateURL) }
         }
-        components.port = alternate
-        return [url, components.url].compactMap { $0 }
+        return candidates
     }
 
     public var displayHost: String {

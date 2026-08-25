@@ -62,7 +62,7 @@ public enum ModelFleet {
                 profileID: profile.id, name: profile.name, backend: profile.backend,
                 models: models, isCurrent: isCurrent,
                 allowsServerDefault: isCurrent ? allowsServerDefault : true,
-                acceptsAnyModelID: profile.backend == .claudeCode,
+                acceptsAnyModelID: profile.backend != .openCode,
                 isReachable: reachability[profile.id])
         }
     }

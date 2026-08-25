@@ -29,6 +29,9 @@ public enum BridgeInstall {
         case .claudeCode:
             return
                 "curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | BRIDGE_PASSWORD=\(password) bash"
+        case .omp:
+            return
+                "curl -fsSL https://raw.githubusercontent.com/guitaripod/omp-bridge/master/install.sh | OMP_REPO=https://github.com/guitaripod/omp-bridge OMP_PASSWORD=\(password) bash"
         }
     }
 

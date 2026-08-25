@@ -62,6 +62,7 @@ public enum QuotaSurface {
         switch backend {
         case .claudeCode: return ["claude"]
         case .openCode: return ["opencode", "deepseek", "grok"]
+        case .omp: return []
         default: return nil
         }
     }
