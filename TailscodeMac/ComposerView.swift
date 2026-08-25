@@ -22,6 +22,8 @@ final class ComposerView: NSView {
     var onToast: ((String) -> Void)?
     /// The attachments-in-waiting changed — the status band counts them.
     var onAttachmentsChanged: (() -> Void)?
+    /// A model picked on another machine, move confirmed: the hub opens a new chat there.
+    var onMoveToServer: ((String) -> Void)?
 
     let completion = CompletionPopover()
 
@@ -435,7 +437,7 @@ final class ComposerView: NSView {
                 self.modelsByProfile[profileID] = reading.models
                 self.reachableByProfile[profileID] = reading.reachable
                 self.models = reading.models
-                self.modelSheet?.update(models: reading.models, isReachable: reading.reachable)
+                self.modelSheet?.update(sources: self.modelSources())
                 self.refreshPills()
             }
         }
@@ -562,11 +564,23 @@ final class ComposerView: NSView {
         onToast?(ModelAbilities.dropped(dropped))
     }
 
-    /// The pill offers what this person actually works with — the shared shortlist — and hands the
-    /// rest to the chooser, the only surface that can hold a catalog of two hundred and still be
-    /// read. The two are the same list at two lengths.
+    /// Every server the app knows, with this conversation's own first — the list both the pill's
+    /// menu and the full chooser answer from, so the two are one catalog at two lengths and stars
+    /// read the same in each.
+    private func modelSources() -> [ModelSource] {
+        ModelChooserSheet.fleetSources(
+            profiles: ServerDirectory.shared.profiles, current: entry?.profileID,
+            currentModels: models, backend: backend?.agentType, allowsServerDefault: true,
+            reachable: entry.flatMap { reachableByProfile[$0.profileID] })
+    }
+
+    /// The pill offers what this person actually works with — the shared shortlist over the whole
+    /// fleet, this machine's picks first — and hands the rest to the chooser, the only surface that
+    /// can hold a catalog of two hundred and still be read. The two are the same list at two lengths.
     private func modelMenuRows() -> [PillsRow.MenuRow] {
-        guard !models.isEmpty else {
+        let sources = modelSources()
+        let quotas = quotasForModels?() ?? []
+        guard !models.isEmpty || sources.count > 1 else {
             let reading =
                 ModelChooser(
                     models: [], selected: nil,
@@ -581,25 +595,31 @@ final class ComposerView: NSView {
                 self?.setModel(nil)
             }
         ]
-        let quotas = quotasForModels?() ?? []
-        for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
+        for candidate in ModelChooser.shortlist(sources: sources, selected: chosenModel) {
             let selection = candidate.selection
-            let providers = candidate.providerNames.joined(separator: " · ")
+            let pinned = ModelFavoritesStore.isFavorite(selection)
+            var parts: [String] = []
+            if candidate.isElsewhere { parts.append(candidate.serverName) }
+            parts.append(candidate.providerNames.joined(separator: " · "))
+            let subtitle = parts.joined(separator: " · ")
             let wall = ModelChooser.wall(for: candidate, quotas: quotas)
             rows.append(
                 PillsRow.MenuRow(
-                    candidate.name,
-                    subtitle: wall.map { "\(QuotaSurface.rowNote($0)) · \(providers)" }
-                        ?? providers,
+                    (pinned ? "★ " : "") + candidate.name,
+                    subtitle: wall.map { "\(QuotaSurface.rowNote($0)) · \(subtitle)" } ?? subtitle,
                     checked: candidate.carries(chosenModel)
                 ) { [weak self] in
-                    self?.setModel(selection)
+                    self?.handleModelPick(
+                        ModelPick(
+                            profileID: candidate.profileID, selection: selection,
+                            isElsewhere: candidate.isElsewhere, serverName: candidate.serverName,
+                            modelName: candidate.name))
                 })
         }
         rows.append(
             PillsRow.MenuRow(
                 Localized.text("All models…"),
-                subtitle: ModelChooser(models: models, selected: chosenModel, quotas: quotas)
+                subtitle: ModelChooser(sources: sources, selected: chosenModel, quotas: quotas)
                     .summary
             ) { [weak self] in
                 self?.openModelChooser()
@@ -609,13 +629,28 @@ final class ComposerView: NSView {
 
     private func openModelChooser() {
         guard let host = window else { return }
-        let reachable = entry.map { reachableByProfile[$0.profileID] ?? nil } ?? nil
         modelSheet = ModelChooserSheet.present(
-            on: host, models: models, selected: chosenModel, allowsServerDefault: true,
-            isReachable: reachable, quotas: quotasForModels?() ?? []
-        ) { [weak self] selection in
+            on: host, sources: modelSources(), selected: chosenModel,
+            quotas: quotasForModels?() ?? []
+        ) { [weak self] pick in
             self?.modelSheet = nil
-            self?.setModel(selection)
+            self?.handleModelPick(pick)
+        }
+    }
+
+    /// A pick's whole answer: this chat changes model, or the work moves to the machine that runs
+    /// it — remembered there first (`adopt`), then opened as a new chat that arrives already on it.
+    private func handleModelPick(_ pick: ModelPick) {
+        guard pick.isElsewhere else {
+            setModel(pick.selection)
+            return
+        }
+        MacDialogs.confirm(
+            on: window, title: ModelFleet.moveTitle(pick), body: ModelFleet.moveBody(pick),
+            confirmLabel: ModelFleet.moveAction, destructive: false
+        ) { [weak self] in
+            ModelFleet.adopt(pick)
+            self?.onMoveToServer?(pick.profileID)
         }
     }
 

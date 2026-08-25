@@ -427,7 +427,11 @@ final class ServerDetailViewController: UIViewController {
                             ? await ModelCatalog.models(for: self.profile.id, backend: backend) : []
                         completion(
                             ModelMenu.elements(
-                                models: models,
+                                sources: ModelFleet.sources(
+                                    profiles: ConnectionController.shared.profiles,
+                                    current: self.profile.id, currentModels: models,
+                                    allowsServerDefault:
+                                        ChatModelResolver.honoursServerDefault(backend)),
                                 choice: self.modelChoice,
                                 efforts: backend.reasoningEffortOptions,
                                 allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),

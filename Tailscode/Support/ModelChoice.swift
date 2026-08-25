@@ -187,14 +187,6 @@ enum ModelMenu {
     /// the searchable picker.
     private static let inlineLimit = 8
 
-    /// The menu and the picker are one list at two lengths, so the shortlist rule lives in the Kit
-    /// beside the folding — a model the menu offers is the same folded row the picker shows.
-    private static func shortlist(
-        _ models: [ModelInfo], selected: ModelSelection?
-    ) -> [ModelCandidate] {
-        ModelChooser.shortlist(models, selected: selected, limit: inlineLimit)
-    }
-
     /// A model the account cannot spend on right now says so in the menu as well as in the picker,
     /// with what ran out and when it comes back — the quick list and the full one are one list, and
     /// a fact that only the long version carries is a fact the short version is lying about.
@@ -205,18 +197,27 @@ enum ModelMenu {
             candidate.isLocal
             ? String(localized: "\(candidate.primary.providerName) · local")
             : (showsProvider ? candidate.providerNames.joined(separator: " · ") : nil)
-        guard let wall = ModelChooser.wall(for: candidate, quotas: quotas) else { return who }
-        let note = QuotaSurface.rowNote(wall)
-        guard let who else { return note }
-        return "\(note) · \(who)"
+        let where_ = candidate.isElsewhere ? candidate.serverName : nil
+        var parts: [String] = []
+        if let where_ { parts.append(where_) }
+        if let wall = ModelChooser.wall(for: candidate, quotas: quotas) {
+            parts.append(QuotaSurface.rowNote(wall))
+        }
+        if let who { parts.append(who) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// The quick menu answers over the whole fleet, not the one server whose chip was pressed —
+    /// stars and other machines' models belong inline where the pick happens.
     static func elements(
-        models: [ModelInfo], choice: ModelChoice, efforts: [String],
+        sources: [ModelSource], choice: ModelChoice, efforts: [String],
         allowsServerDefault: Bool, quotas: [UsageQuota] = [], actions: Actions
     ) -> [UIMenuElement] {
         var sections: [UIMenuElement] = []
-        let shortlist = shortlist(models, selected: choice.model)
+        let shortlist = ModelChooser.shortlist(
+            sources: sources, selected: choice.model, limit: inlineLimit)
+        let directory = ModelChooser(sources: sources, selected: choice.model, quotas: quotas)
+        let candidates = directory.candidates
         var picks: [UIMenuElement] = []
         if allowsServerDefault {
             picks.append(
@@ -227,14 +228,17 @@ enum ModelMenu {
                     state: choice.model == nil ? .on : .off
                 ) { _ in actions.selectModel(nil) })
         }
-        let showsProvider = Set(models.map(\.providerID)).count > 1
+        let showsProvider = Set(candidates.flatMap { $0.offers.map(\.providerID) }).count > 1
         picks += shortlist.map { candidate in
+            let pinned = ModelFavoritesStore.isFavorite(candidate.selection)
             let walled = ModelChooser.wall(for: candidate, quotas: quotas) != nil
             return UIAction(
-                title: candidate.name,
+                title: (pinned ? "★ " : "") + candidate.name,
                 subtitle: subtitle(candidate, quotas: quotas, showsProvider: showsProvider),
-                image: walled
-                    ? UIImage(systemName: "gauge.with.dots.needle.100percent") : nil,
+                image: pinned
+                    ? UIImage(systemName: "star.fill")
+                    : (walled
+                        ? UIImage(systemName: "gauge.with.dots.needle.100percent") : nil),
                 state: candidate.carries(choice.model) ? .on : .off
             ) { _ in actions.selectModel(candidate.selection) }
         }
@@ -244,7 +248,7 @@ enum ModelMenu {
         }
         sections.append(UIMenu(options: .displayInline, children: picks))
         if let browseAll = actions.browseAll,
-            ModelChooser.fold(models).count > shortlist.count
+            candidates.count > shortlist.count
         {
             sections.append(
                 UIMenu(
@@ -252,15 +256,13 @@ enum ModelMenu {
                     children: [
                         UIAction(
                             title: String(localized: "All models…"),
-                            subtitle: ModelChooser(
-                                models: models, selected: choice.model, quotas: quotas
-                            ).summary,
+                            subtitle: directory.summary,
                             image: UIImage(systemName: "magnifyingglass")
                         ) { _ in browseAll() }
                     ]))
         }
         let options = ModelEffort.options(
-            models: models, selection: choice.model, agentOptions: efforts)
+            models: sources.flatMap(\.models), selection: choice.model, agentOptions: efforts)
         if !options.isEmpty {
             var levels: [UIMenuElement] = [
                 UIAction(

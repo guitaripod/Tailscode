@@ -3968,7 +3968,11 @@ final class ChatViewController: UIViewController {
         let label = ModelBadge.label(
             model: viewModel.displayedModel, effort: viewModel.displayedEffort)
         let elements = ModelMenu.elements(
-            models: viewModel.supportsModelSelection ? availableModels : [],
+            sources: ModelFleet.sources(
+                profiles: ConnectionController.shared.profiles, current: viewModel.contextID,
+                currentModels: viewModel.supportsModelSelection ? availableModels : [],
+                allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
+                reachability: pickerReachability),
             choice: choice,
             efforts: viewModel.reasoningEffortOptions,
             allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),

@@ -231,9 +231,12 @@ final class ModelChooserWindow: @unchecked Sendable {
     }
 
     private func key(keyval: UInt32, state: UInt32) -> Bool {
-        guard let chord = KeyChord.canonical(keyval: keyval, state: state),
-            let command = ModelChooser.command(for: chord)
-        else { return false }
+        guard let chord = KeyChord.canonical(keyval: keyval, state: state) else { return false }
+        if chord.control, Keymap.scalar(chord.keyval) == "s" {
+            toggleFocusedPin()
+            return true
+        }
+        guard let command = ModelChooser.command(for: chord) else { return false }
         let outcome = chooser.handle(command)
         guard outcome.handled else { return false }
         if outcome.dismissed {
@@ -246,6 +249,12 @@ final class ModelChooserWindow: @unchecked Sendable {
         }
         refresh(keepingScroll: true)
         return true
+    }
+
+    private func toggleFocusedPin() {
+        guard let row = chooser.focused, let selection = row.selection else { return }
+        chooser.togglePin(selection)
+        refresh(keepingScroll: true)
     }
 
     private func pick(_ chosen: ModelPick) {
@@ -413,6 +422,9 @@ final class ModelChooserWindow: @unchecked Sendable {
         }
         if let group = markColumn { gtk_size_group_add_widget(ptr(group), marks) }
         gtk_box_append(ptr(trailing), marks)
+        if !row.isAuto {
+            gtk_box_append(ptr(trailing), star(row))
+        }
 
         let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(content, top: 4, bottom: 4, leading: 4, trailing: 6)
@@ -568,6 +580,34 @@ final class ModelChooserWindow: @unchecked Sendable {
         }
         flush()
         return result
+    }
+
+    /// The star at the row's trailing edge, its own press: the row picks, the star pins. The
+    /// same toggle Ctrl+S reaches from the keyboard, and both land on the model, not the row —
+    /// a star follows it through every section it appears in.
+    private func star(_ row: ModelChooserRow) -> UnsafeMutablePointer<GtkWidget> {
+        let button = gtk_button_new()!
+        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "model-star")
+        gtk_button_set_child(
+            ptr(button),
+            Gtk.label(row.isPinned ? "★" : "☆", css: "model-star-glyph", selectable: false))
+        gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        gtk_widget_set_tooltip_text(
+            button,
+            Localized.text(row.isPinned ? "Unstar this model" : "Star this model"))
+        if let selection = row.selection {
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.chooser.togglePin(selection)
+                    self.refresh(keepingScroll: true)
+                }
+            }
+        } else {
+            gtk_widget_set_sensitive(button, 0)
+        }
+        return button
     }
 
     private static func factPill(_ fact: ModelFact) -> UnsafeMutablePointer<GtkWidget> {

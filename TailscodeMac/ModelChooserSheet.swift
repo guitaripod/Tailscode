@@ -1,8 +1,9 @@
 import AppKit
 import CodingAgentKit
+import CodingAgentKitApple
 import TailscodeCore
 
-/// Every model the server offers, from every provider, as one list.
+/// Every model the fleet offers, from every provider, as one list.
 ///
 /// The pill's menu holds what this person actually works with; a catalog of two hundred entries
 /// needs a surface you can search, and one that is organised by something a reader recognises. The
@@ -20,10 +21,8 @@ final class ModelChooserSheet: NSObject {
 
     private let sheet: NSWindow
     private var chooser: ModelChooser
-    private let onPick: @MainActor (ModelSelection?) -> Void
-    private var allowsServerDefault: Bool
+    private let onPick: @MainActor (ModelPick) -> Void
     private var quotas: [UsageQuota]
-    private var isReachable: Bool?
     private let summary = NSTextField(labelWithString: "")
     private let field = NSSearchField()
     private let table = NSTableView()
@@ -38,15 +37,37 @@ final class ModelChooserSheet: NSObject {
     /// of an edge that moves with the name beside it.
     private var markWidth: CGFloat = 0
 
+    /// Every server the app knows, as the one list a chooser is built from — this conversation's
+    /// own machine first. The pattern is Linux's chat pane's: catalogs come from the fleet's own
+    /// memory, so the list can name what another server runs without this chat ever having talked
+    /// to it, and a machine that did not answer reads as a state rather than as no models.
+    static func fleetSources(
+        profiles: [ConnectionProfile], current: String?, currentModels: [ModelInfo],
+        backend: AgentType?, allowsServerDefault: Bool, reachable: Bool?
+    ) -> [ModelSource] {
+        var reachability: [String: Bool] = [:]
+        if let current, let reachable { reachability[current] = reachable }
+        let sources = ModelFleet.sources(
+            profiles: profiles, current: current, currentModels: currentModels,
+            allowsServerDefault: allowsServerDefault, reachability: reachability)
+        guard sources.isEmpty else { return sources }
+        let agent = backend ?? .openCode
+        return [
+            ModelSource(
+                profileID: current ?? "", name: "", backend: agent, models: currentModels,
+                isCurrent: true, allowsServerDefault: allowsServerDefault,
+                acceptsAnyModelID: agent == .claudeCode, isReachable: reachable)
+        ]
+    }
+
     @discardableResult
     static func present(
-        on host: NSWindow, models: [ModelInfo], selected: ModelSelection?,
-        allowsServerDefault: Bool, isReachable: Bool? = nil, quotas: [UsageQuota] = [],
-        onPick: @escaping @MainActor (ModelSelection?) -> Void
+        on host: NSWindow, sources: [ModelSource], selected: ModelSelection?,
+        quotas: [UsageQuota] = [],
+        onPick: @escaping @MainActor (ModelPick) -> Void
     ) -> ModelChooserSheet {
         let controller = ModelChooserSheet(
-            models: models, selected: selected, allowsServerDefault: allowsServerDefault,
-            isReachable: isReachable, quotas: quotas, onPick: onPick)
+            sources: sources, selected: selected, quotas: quotas, onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
@@ -58,16 +79,11 @@ final class ModelChooserSheet: NSObject {
     }
 
     private init(
-        models: [ModelInfo], selected: ModelSelection?, allowsServerDefault: Bool,
-        isReachable: Bool?, quotas: [UsageQuota],
-        onPick: @escaping @MainActor (ModelSelection?) -> Void
+        sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota],
+        onPick: @escaping @MainActor (ModelPick) -> Void
     ) {
-        self.allowsServerDefault = allowsServerDefault
         self.quotas = quotas
-        self.isReachable = isReachable
-        chooser = ModelChooser(
-            models: models, selected: selected, allowsServerDefault: allowsServerDefault,
-            quotas: quotas, isReachable: isReachable)
+        chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
@@ -192,13 +208,10 @@ final class ModelChooserSheet: NSObject {
     /// A catalog that arrived while the sheet is open: the list, the summary and the filters are
     /// re-answered from it, and what the reader was doing — the query, the filter — survives the
     /// answer. A server that comes back from a restart reaches the open sheet this way.
-    func update(models: [ModelInfo], isReachable: Bool?) {
-        self.isReachable = isReachable
+    func update(sources: [ModelSource]) {
         let query = chooser.query
         let scope = chooser.scope
-        chooser = ModelChooser(
-            models: models, selected: chooser.selected,
-            allowsServerDefault: allowsServerDefault, quotas: quotas, isReachable: isReachable)
+        chooser = ModelChooser(sources: sources, selected: chooser.selected, quotas: quotas)
         chooser.search(query)
         if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
         filters.segmentCount = chooser.scopes.count
@@ -213,12 +226,19 @@ final class ModelChooserSheet: NSObject {
 
     /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a filter. AppKit hands ⌃N/⌃P to the field
     /// as `moveDown:`/`moveUp:` already, but the arrows and the digits with a modifier never reach
-    /// `doCommandBy`.
+    /// `doCommandBy`. ⌘S stars whatever row the cursor is on — a chord, because a star is a
+    /// decision made from the keyboard while the hand is already there.
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.sheet,
-                event.modifierFlags.contains(.control)
-            else { return event }
+            guard let self, event.window === self.sheet else { return event }
+            if event.modifierFlags.contains(.command),
+                event.charactersIgnoringModifiers?.lowercased() == "s"
+            {
+                guard let selection = self.chooser.focused?.selection else { return event }
+                self.chooser.togglePin(selection)
+                return self.refreshed()
+            }
+            guard event.modifierFlags.contains(.control) else { return event }
             let all = event.modifierFlags.contains(.shift)
             switch (event.keyCode, all) {
             case (124, true): return self.chooser.setAllCollapsed(false) ? self.refreshed() : event
@@ -334,7 +354,7 @@ final class ModelChooserSheet: NSObject {
             rebuildKeepingScroll()
         case .row(let row, let index):
             chooser.focus(index)
-            pick(row.selection)
+            pick(row)
         }
     }
 
@@ -346,10 +366,10 @@ final class ModelChooserSheet: NSObject {
         revealCursor()
     }
 
-    private func pick(_ selection: ModelSelection?) {
+    private func pick(_ row: ModelChooserRow) {
         let handler = onPick
         sheet.sheetParent?.endSheet(sheet)
-        handler(selection)
+        handler(row.pick)
     }
 
     private func toggle(_ index: Int) {
@@ -362,6 +382,20 @@ final class ModelChooserSheet: NSObject {
 
     fileprivate func expandAction(_ index: Int) -> () -> Void {
         { [weak self] in self?.toggle(index) }
+    }
+
+    fileprivate func togglePinAction(_ index: Int) -> () -> Void {
+        { [weak self] in self?.togglePin(at: index) }
+    }
+
+    private func togglePin(at index: Int) {
+        guard entries.indices.contains(index), case .row(let row, _) = entries[index] else {
+            return
+        }
+        chooser.focus(index)
+        guard let selection = row.selection else { return }
+        chooser.togglePin(selection)
+        rebuildKeepingScroll()
     }
 }
 
@@ -391,7 +425,8 @@ extension ModelChooserSheet: NSTableViewDataSource, NSTableViewDelegate {
             return ModelChooserHeaderView(section: section)
         case .row(let value, let index):
             return ModelChooserRowView(
-                row: value, marks: markWidth, onExpand: expandAction(index))
+                row: value, marks: markWidth, onExpand: expandAction(index),
+                onTogglePin: togglePinAction(index))
         }
     }
 }
@@ -414,7 +449,8 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
             move(by: -1)
             return true
         case #selector(NSResponder.insertNewline(_:)):
-            pick(chooser.focused?.selection ?? nil)
+            guard let focused = chooser.focused else { return true }
+            pick(focused)
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             sheet.sheetParent?.endSheet(sheet)
@@ -480,7 +516,10 @@ private final class ModelChooserRowView: NSTableCellView {
         row.facts.filter(\.isCapability).map(\.tag).joined(separator: " ")
     }
 
-    init(row: ModelChooserRow, marks width: CGFloat, onExpand: @escaping () -> Void) {
+    init(
+        row: ModelChooserRow, marks width: CGFloat,
+        onExpand: @escaping () -> Void, onTogglePin: @escaping () -> Void
+    ) {
         super.init(frame: .zero)
 
         let title = NSTextField(labelWithAttributedString: Self.title(row))
@@ -519,6 +558,25 @@ private final class ModelChooserRowView: NSTableCellView {
         }
         for fact in row.facts where !fact.isCapability { line.addArrangedSubview(Self.pill(fact)) }
 
+        let star = RowKit.ActionButton(title: "", action: onTogglePin)
+        star.isBordered = false
+        star.bezelStyle = .accessoryBar
+        star.contentTintColor = MacTheme.Color.accent
+        if row.selection != nil {
+            star.image = NSImage(
+                systemSymbolName: row.isPinned ? "star.fill" : "star",
+                accessibilityDescription: Localized.text(
+                    row.isPinned ? "Unpin this model" : "Pin this model"))
+            star.toolTip = Localized.text(
+                row.isPinned ? "Unpin this model" : "Pin this model")
+        } else {
+            star.isEnabled = false
+            star.image = NSImage(
+                systemSymbolName: "star",
+                accessibilityDescription: Localized.text("Pin this model"))
+        }
+        line.addArrangedSubview(star)
+
         let capabilities = row.facts.filter(\.isCapability)
         let marks = NSTextField(labelWithString: Self.marksText(row))
         marks.font = MacTheme.Ramp.font(.gaugeCaption)
@@ -548,6 +606,7 @@ private final class ModelChooserRowView: NSTableCellView {
             line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.s),
             line.centerYAnchor.constraint(equalTo: centerYAnchor),
             check.widthAnchor.constraint(equalToConstant: 14 * MacTheme.UIScale.factor),
+            star.widthAnchor.constraint(equalToConstant: 16 * MacTheme.UIScale.factor),
             marks.widthAnchor.constraint(equalToConstant: width),
             chevron.widthAnchor.constraint(equalToConstant: 18 * MacTheme.UIScale.factor),
         ])

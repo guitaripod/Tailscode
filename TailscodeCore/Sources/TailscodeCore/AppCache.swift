@@ -118,6 +118,33 @@ public enum RecentModelsStore {
     }
 }
 
+/// The models you starred, in the order you starred them, surfaced as a Pinned
+/// section above every family and merged into every quick menu. Stars live on
+/// this device: a model you pin on the phone is the one you reach for there.
+public enum ModelFavoritesStore {
+    static let storageKey = "tailscode.favoriteModels"
+    static let limit = 24
+
+    public static func all() -> [ModelSelection] {
+        (UserDefaults.standard.stringArray(forKey: storageKey) ?? [])
+            .compactMap(ModelSelection.init(string:))
+    }
+
+    public static func isFavorite(_ selection: ModelSelection) -> Bool {
+        all().contains { $0 == selection }
+    }
+
+    public static func toggle(_ selection: ModelSelection) {
+        var raw = UserDefaults.standard.stringArray(forKey: storageKey) ?? []
+        if let index = raw.firstIndex(of: selection.rawValue) {
+            raw.remove(at: index)
+        } else {
+            raw.insert(selection.rawValue, at: 0)
+        }
+        UserDefaults.standard.set(Array(raw.prefix(limit)), forKey: storageKey)
+    }
+}
+
 /// Persists the chosen reasoning-effort level per session (Claude Code), plus a
 /// per-server default so a new chat starts at the effort you last worked at.
 public enum EffortPreferenceStore {

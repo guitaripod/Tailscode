@@ -2210,7 +2210,10 @@ extension HomeViewController: HomeComposerBarDelegate {
                             backend.capabilities.supportsModelSelection
                             ? await ModelCatalog.models(for: aim.profile.id, backend: backend) : []
                         var elements = ModelMenu.elements(
-                            models: models,
+                            sources: ModelFleet.sources(
+                                profiles: ConnectionController.shared.profiles,
+                                current: aim.profile.id, currentModels: models,
+                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend)),
                             choice: self.modelChoices[aim.memoryKey] ?? ModelChoice(),
                             efforts: backend.reasoningEffortOptions,
                             allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),

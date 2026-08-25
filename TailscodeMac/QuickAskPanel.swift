@@ -476,19 +476,37 @@ final class QuickAskPanel: NSPanel {
             for await reading in ModelCatalogWatch.readings(profileID: server.id, backend: backend)
             {
                 guard self.targetServer.id == server.id else { return }
-                self.modelSheet?.update(models: reading.models, isReachable: reading.reachable)
+                self.modelSheet?.update(
+                    sources: self.chooserSources(
+                        for: server, models: reading.models, reachable: reading.reachable))
                 self.refreshAim()
             }
         }
         modelSheet = ModelChooserSheet.present(
-            on: self, models: ModelCatalogStore.cached(server.id),
-            selected: QuickAskDefaults.model(forProfileID: server.id),
-            allowsServerDefault: server.backend == .claudeCode
-        ) { [weak self] selection in
-            QuickAskDefaults.recordModel(selection, forProfileID: server.id)
+            on: self, sources: chooserSources(for: server),
+            selected: QuickAskDefaults.model(forProfileID: server.id)
+        ) { [weak self] pick in
+            QuickAskDefaults.adopt(pick)
             self?.modelSheet = nil
+            self?.aim(at: pick.profileID)
             self?.refreshAim()
         }
+    }
+
+    private func chooserSources(
+        for server: ConnectionProfile, models: [ModelInfo]? = nil, reachable: Bool? = nil
+    ) -> [ModelSource] {
+        ModelChooserSheet.fleetSources(
+            profiles: servers, current: server.id,
+            currentModels: models ?? ModelCatalogStore.cached(server.id), backend: server.backend,
+            allowsServerDefault: server.backend == .claudeCode, reachable: reachable)
+    }
+
+    private func aim(at profileID: String) {
+        guard let index = servers.firstIndex(where: { $0.id == profileID }) else { return }
+        serverPopup.selectItem(at: index)
+        retargetDraft()
+        refreshCommands()
     }
 
     /// How hard the machine is asked to think, which is half of what a question costs and the

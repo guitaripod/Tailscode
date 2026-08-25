@@ -858,6 +858,13 @@ final class TranscriptViewController: NSViewController {
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
+        composer.onMoveToServer = { [weak self] profileID in
+            guard let self,
+                let host = self.view.window?.windowController as? MainWindowController,
+                let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
+            else { return }
+            host.presentNewChat(on: profile)
+        }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
         composer.onBrowseCommands = { [weak self] in self?.presentCommandCatalog() }
         composer.quotasForModels = { [weak self] in

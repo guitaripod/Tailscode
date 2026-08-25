@@ -459,6 +459,10 @@ public struct ModelChooserRow: Sendable, Hashable, Identifiable {
             serverName: serverName, modelName: title)
     }
 
+    /// Whether you starred this model, wherever it is listed — a star follows the model
+    /// through every section it appears in.
+    public var isPinned: Bool = false
+
     public var isAuto: Bool {
         if case .auto = kind { return true }
         return false
@@ -539,6 +543,8 @@ public struct ModelChooser: Sendable, Equatable {
     /// "all" is chrome pretending to be a control.
     public let scopes: [ModelChooserScope]
     private let recents: [ModelSelection]
+    private var favorites: [ModelSelection]
+    private var favoriteKeys: Set<String>
     /// Whether a row has to name who runs it. One provider behind the whole catalog is a fact
     /// about the server, said once at the top, not a word repeated under two hundred names.
     private let showsProviders: Bool
@@ -603,7 +609,8 @@ public struct ModelChooser: Sendable, Equatable {
     /// worse than one that overstates a wall by a machine.
     public init(
         sources: [ModelSource], selected: ModelSelection?,
-        recents: [ModelSelection] = RecentModelsStore.all(), quotas: [UsageQuota] = []
+        recents: [ModelSelection] = RecentModelsStore.all(),
+        favorites: [ModelSelection] = ModelFavoritesStore.all(), quotas: [UsageQuota] = []
     ) {
         self.sources = sources
         let candidates = sources.flatMap { Self.fold(source: $0, preferred: selected) }
@@ -611,6 +618,8 @@ public struct ModelChooser: Sendable, Equatable {
         self.selected = selected
         self.allowsServerDefault = sources.first { $0.isCurrent }?.allowsServerDefault ?? false
         self.recents = recents
+        self.favorites = favorites
+        self.favoriteKeys = Set(favorites.map(\.rawValue))
         self.walls = Self.walls(for: candidates, quotas: quotas)
         self.policy = .over(candidates)
         self.showsProviders = Set(candidates.flatMap { $0.offers.map(\.providerID) }).count > 1
@@ -934,6 +943,7 @@ public struct ModelChooser: Sendable, Equatable {
 
         if query.isEmpty {
             sections += currentSection()
+            sections += pinnedSection()
             let inUse = candidates.first { !$0.isElsewhere && $0.carries(selected) }
             let recent = recents.compactMap { selection in
                 candidates.first { !$0.isElsewhere && $0.carries(selection) }
@@ -989,6 +999,21 @@ public struct ModelChooser: Sendable, Equatable {
         self.sections = sections
         self.hidden = hiding
         rows = sections.flatMap(\.rows)
+    }
+
+    /// Whether a star is on this model right now.
+    public func isFavorite(_ selection: ModelSelection) -> Bool {
+        favoriteKeys.contains(selection.rawValue)
+    }
+
+    /// Stars or unstars a model and re-renders: the Pinned section answers immediately, so the
+    /// press feels like moving the list rather than filing a preference away somewhere.
+    public mutating func togglePin(_ selection: ModelSelection) {
+        ModelFavoritesStore.toggle(selection)
+        favorites = ModelFavoritesStore.all()
+        favoriteKeys = Set(favorites.map(\.rawValue))
+        rebuild()
+        cursor = min(cursor, max(0, rows.count - 1))
     }
 
     /// Opens or shuts one heading. Answers whether anything happened, so a key that finds nothing
@@ -1073,6 +1098,27 @@ public struct ModelChooser: Sendable, Equatable {
         ]
     }
 
+    /// The models you starred. They lead the families because a star is a decision made
+    /// once so a list never has to be searched twice; what this chat runs already has its
+    /// own section above.
+    private func pinnedSection() -> [ModelChooserSection] {
+        guard query.isEmpty else { return [] }
+        let pinned = favorites.compactMap { selection -> ModelCandidate? in
+            candidates.first { !$0.isElsewhere && $0.carries(selection) && inScope($0) }
+                ?? candidates.first { $0.carries(selection) && inScope($0) }
+        }
+        var seen = Set<String>()
+        let unique = pinned.filter { seen.insert($0.id).inserted }.prefix(8)
+        guard !unique.isEmpty else { return [] }
+        return [
+            ModelChooserSection(
+                id: "·pinned", title: Localized.text("Pinned"),
+                detail: Localized.text("Your stars"), rows: unique.flatMap {
+                    rows(for: $0, section: "·pinned", highlight: [])
+                })
+        ]
+    }
+
     /// A catalog is a shortlist where the server will take any name, so a word it does not contain
     /// is not necessarily a mistake — it may be the model that shipped this morning, a dated
     /// release, or a context variant. The list says so and offers to use it rather than shrugging.
@@ -1124,7 +1170,9 @@ public struct ModelChooser: Sendable, Equatable {
                 facts: offer.isLocal ? [.local] : [],
                 isSelected: !candidate.isElsewhere && selected == offer.selection,
                 isExpanded: false, canExpand: false,
-                isNested: true, wall: walls[offer.selection.rawValue])
+                isNested: true,
+                wall: walls[offer.selection.rawValue],
+                isPinned: favoriteKeys.contains(offer.selection.rawValue))
         }
         return result
     }
@@ -1142,7 +1190,8 @@ public struct ModelChooser: Sendable, Equatable {
             isSelected: !candidate.isElsewhere && candidate.carries(selected),
             isExpanded: expanded.contains(candidate.id),
             canExpand: candidate.offers.count > 1, isNested: false,
-            wall: walls[candidate.selection.rawValue])
+            wall: walls[candidate.selection.rawValue],
+            isPinned: favoriteKeys.contains(candidate.selection.rawValue))
     }
 
     /// Under the name: who runs it, and the id the server actually knows it by — the one string
@@ -1352,6 +1401,29 @@ public struct ModelChooser: Sendable, Equatable {
     /// The models worth offering without opening the whole thing: what the person picked recently,
     /// whatever is picked now, and — for a catalog small enough to read in one glance — all of it.
     /// The quick menu and the full chooser are the same list at two lengths, never two lists.
+    /// The quick menu's answer, over every server you have: what this chat runs, then your
+    /// stars, then what you reached for lately, then the local floor. The same order the full
+    /// directory opens on, cut to menu length — two surfaces, one list.
+    public static func shortlist(
+        sources: [ModelSource], selected: ModelSelection?, limit: Int = 8,
+        recents: [ModelSelection] = RecentModelsStore.all(),
+        favorites: [ModelSelection] = ModelFavoritesStore.all()
+    ) -> [ModelCandidate] {
+        let candidates = sources.flatMap { fold(source: $0, preferred: selected) }
+        var result: [ModelCandidate] = []
+        func admit(_ candidate: ModelCandidate?) {
+            guard let candidate, result.count < limit,
+                !result.contains(where: { $0.id == candidate.id })
+            else { return }
+            result.append(candidate)
+        }
+        if let selected { admit(candidates.first { !$0.isElsewhere && $0.carries(selected) }) }
+        for selection in favorites { admit(candidates.first { $0.carries(selection) }) }
+        for selection in recents { admit(candidates.first { $0.carries(selection) }) }
+        for candidate in candidates where candidate.isLocal { admit(candidate) }
+        return result
+    }
+
     public static func shortlist(
         _ models: [ModelInfo], selected: ModelSelection?, limit: Int = 8,
         recents: [ModelSelection] = RecentModelsStore.all()
@@ -1561,6 +1633,32 @@ public enum ModelChooserCheck {
         expect(
             !fleet.rows.isEmpty && fleet.rows.allSatisfy { $0.isElsewhere || $0.isLiteral },
             "a server's name finds what it runs")
+
+        var pinned = ModelChooser(sources: [studio, homelab], selected: nil, recents: [], favorites: [
+            ModelSelection(providerID: "ollama", modelID: "qwen3:latest"),
+        ])
+        expect(
+            pinned.sections.first { $0.id == "·pinned" }?.rows.count == 1,
+            "a starred model leads its own section")
+        expect(
+            pinned.rows.first { $0.sectionID == "·pinned" }?.isPinned == true,
+            "and the row says it is pinned")
+        let unpinnedCount =
+            pinned.sections.first { $0.id == "·pinned" }?.rows.count ?? 0
+        pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
+        expect(pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "the star is on")
+        FileHandle.standardError.write(
+            Data("DBG2 sections: \(pinned.sections.map { "\($0.id):\($0.rows.count)" }.joined(separator: " ")) favsOn\n".utf8))
+        pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
+        expect(!pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "and toggles off")
+
+        let quick = ModelChooser.shortlist(
+            sources: [studio, homelab], selected: nil, limit: 4,
+            favorites: [ModelSelection(providerID: "openrouter", modelID: "anthropic/claude-sonnet-4.5")])
+        expect(quick.first?.name != nil && quick.count <= 4, "the quick list keeps its length")
+        expect(
+            quick.contains { $0.name == "Claude Sonnet 4.5" },
+            "a star from another door still makes the quick list")
 
         fleet.search("claude-opus-4-5-20260101")
         expect(fleet.emptyResult == nil, "a name the catalog lacks is not the end of the list")

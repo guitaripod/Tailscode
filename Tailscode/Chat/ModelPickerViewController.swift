@@ -145,9 +145,9 @@ final class ModelPickerViewController: UIViewController {
             cell.accessibilityLabel = Self.spoken(row)
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
-            cell.accessories = [
-                self.marks(row, room: self.view.bounds.width * 0.42)
-            ]
+            cell.accessories =
+                [self.star(row), self.marks(row, room: self.view.bounds.width * 0.42)]
+                .compactMap { $0 }
         }
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -239,6 +239,35 @@ final class ModelPickerViewController: UIViewController {
         parts += row.facts.map(\.label)
         if row.isSelected { parts.append(String(localized: "Currently chosen")) }
         return parts.joined(separator: ". ")
+    }
+
+    /// The star, ahead of everything the row wears: pinning is a decision about the model, the
+    /// marks are facts about it. Every listing of the same model wears the same state, because
+    /// `isPinned` follows the selection through every section it appears in.
+    private func star(_ row: ModelChooserRow) -> UICellAccessory? {
+        guard !row.isAuto, !row.isLiteral, let selection = row.selection else { return nil }
+        let pinned = row.isPinned
+        let button = UIButton(type: .system)
+        button.setImage(
+            UIImage(
+                systemName: pinned ? "star.fill" : "star",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)),
+            for: .normal)
+        button.tintColor = pinned ? Theme.Color.accent : Theme.Color.tertiaryLabel
+        button.frame = CGRect(x: 0, y: 0, width: 30, height: 28)
+        button.accessibilityLabel =
+            pinned ? String(localized: "Unpin") : String(localized: "Pin")
+        button.addAction(UIAction { [weak self] _ in self?.togglePin(selection) }, for: .touchUpInside)
+        return .customView(
+            configuration: .init(
+                customView: button, placement: .trailing(), isHidden: false,
+                reservedLayoutWidth: .actual, maintainsFixedSize: true))
+    }
+
+    private func togglePin(_ selection: ModelSelection) {
+        Theme.Haptics.selection()
+        chooser.togglePin(selection)
+        applySnapshot(keepingScroll: true)
     }
 
     /// Everything the row wears, in one accessory.

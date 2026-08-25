@@ -2810,9 +2810,10 @@ final class ChatPane: @unchecked Sendable {
                 ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) })
     }
 
-    /// The pill offers what this person actually works with — the shared shortlist — and hands the
-    /// rest to the chooser, which is the only surface that can hold a catalog of two hundred and
-    /// still be read. The two are the same list at two lengths.
+    /// The pill offers what this person actually works with — the shared shortlist, over every
+    /// server this app is connected to — and hands the rest to the chooser, which is the only
+    /// surface that can hold a catalog of two hundred and still be read. The two are the same list
+    /// at two lengths.
     private func modelRows() -> [(String, String?, @Sendable () -> Void)] {
         guard !models.isEmpty else {
             return [(Localized.text("This server lists no models"), nil, {})]
@@ -2824,26 +2825,34 @@ final class ChatPane: @unchecked Sendable {
                 }
             })
         ]
+        let sources = modelSources()
         let quotas = modelQuotas()
-        for candidate in ModelChooser.shortlist(models, selected: chosenModel) {
-            let selection = candidate.selection
+        let starred = Set(ModelFavoritesStore.all().map(\.rawValue))
+        for candidate in ModelChooser.shortlist(
+            sources: sources, selected: chosenModel, limit: 8)
+        {
             let providers = candidate.providerNames.joined(separator: " · ")
             let wall = ModelChooser.wall(for: candidate, quotas: quotas)
+            let star = starred.contains(candidate.selection.rawValue) ? "★ " : ""
+            let pick = ModelPick(
+                profileID: candidate.profileID, selection: candidate.selection,
+                isElsewhere: candidate.isElsewhere, serverName: candidate.serverName,
+                modelName: candidate.name)
             rows.append(
-                (candidate.name,
+                (star + candidate.name,
                  wall.map { "\(QuotaSurface.rowNote($0)) · \(providers)" } ?? providers,
                  { [weak self] in
-                    Gtk.onMain { [weak self] in
-                        self?.setChosenModel(selection)
-                    }
-                }))
+                     Gtk.onMain { [weak self] in
+                         self?.apply(pick)
+                     }
+                 }))
         }
         rows.append(
             (Localized.text("All models…"),
              ModelChooser(models: models, selected: chosenModel, quotas: quotas).summary,
              { [weak self] in
-                Gtk.onMain { [weak self] in self?.openModelChooser() }
-             }))
+                 Gtk.onMain { [weak self] in self?.openModelChooser() }
+              }))
         return rows
     }
 
