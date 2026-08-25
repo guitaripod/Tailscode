@@ -44,7 +44,7 @@ final class DiscoveryPanel: @unchecked Sendable {
         adw_preferences_group_set_title(ptr(group), Localized.text("Find my machines"))
         adw_preferences_group_set_description(
             ptr(group),
-            Localized.text("Every machine on your tailnet, asked on both agent ports."))
+            Localized.text("Every machine on your tailnet — this one included — asked on all three agent ports."))
 
         adw_preferences_group_add(ptr(group), ptr(radar.preferencesRow()))
 
@@ -85,7 +85,7 @@ final class DiscoveryPanel: @unchecked Sendable {
 
         Task { [weak self] in
             let status = TailnetStatusLinux.read()
-            let devices = status.scannableDevices()
+            let devices = status.scannableDevices(includingThisMachine: true)
             Gtk.onMain { [weak self] in
                 guard let self, self.scanID == id else { return }
                 self.peerCount = devices.count

@@ -352,7 +352,7 @@ final class TailnetRadarView: NSView {
 /// Setting a machine up is a scan, not a form.
 ///
 /// Everything this app talks to is already on the tailnet, so the address a person would type is
-/// one this Mac can go and find: every awake peer is asked on both agent ports through the shared
+/// one this Mac can go and find: every awake peer — this Mac included — is asked on all three agent ports through the shared
 /// `TailnetScanner`, and anything that answers becomes a row that adds itself. A machine already
 /// configured says so instead of offering itself a second time, and a scan that finds nothing says
 /// which peers it asked and why they came to nothing — an empty list is not an answer.
@@ -415,7 +415,7 @@ final class DiscoveryPanel {
 
         heading.stringValue = Localized.text("Find my machines")
         subtitle.stringValue = Localized.text(
-            "Every machine on your tailnet, asked on both agent ports.")
+            "Every machine on your tailnet — this one included — asked on all three agent ports.")
         statusDetail.isSelectable = true
 
         let holder = NSView()
@@ -519,7 +519,7 @@ final class DiscoveryPanel {
                 DiscoverySurvey.read()
             }.value
             guard let self, self.scanID == id else { return }
-            let devices = survey.scannable()
+            let devices = survey.scannable(includingThisMachine: true)
             self.peerCount = devices.count
             guard !devices.isEmpty else {
                 let blocked = Self.blocked(survey)
