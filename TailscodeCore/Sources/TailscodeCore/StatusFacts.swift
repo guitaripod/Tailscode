@@ -134,8 +134,23 @@ public struct StatusFacts: Sendable {
         return characters / 4
     }
 
+    /// When the running turn actually began, read from the transcript instead of a client-side
+    /// clock: the opener is the earliest user message after the last completed assistant answer,
+    /// so a chat reopened mid-turn — or opened on another device — counts from the prompt that
+    /// started the work, and a prompt queued behind a running turn does not reset the count.
+    /// One answer for every band, ticker and row; no client keeps a stopwatch of its own.
+    public static func turnStart(in state: ConversationState) -> Date? {
+        guard state.status == .running || state.compaction?.isRunning == true else { return nil }
+        var opener: ChatMessage?
+        for message in state.messages.reversed() {
+            if message.role == .assistant, message.completedAt != nil { break }
+            if message.role == .user { opener = message }
+        }
+        return (opener ?? state.messages.last(where: { $0.role == .user }))?.createdAt
+    }
+
     public static func from(
-        state: ConversationState, turnStartedAt: Date?, agents: [SubagentSummary],
+        state: ConversationState, agents: [SubagentSummary],
         usage: AgentUsage?, attachments: Int, contextTokens: Int? = nil,
         quotas: [UsageQuota] = [], queued: Int = 0, spend: SessionSpend? = nil,
         git: GitState? = nil, model: String? = nil, now: Date = Date()
@@ -169,7 +184,9 @@ public struct StatusFacts: Sendable {
             facts.connectionFor = now.timeIntervalSince(state.connectionChangedAt)
         }
         facts.activity = Self.activity(for: facts.phase, in: state, agents: agents)
-        if let turnStartedAt { facts.elapsed = now.timeIntervalSince(turnStartedAt) }
+        if let startedAt = Self.turnStart(in: state) {
+            facts.elapsed = max(0, now.timeIntervalSince(startedAt))
+        }
         facts.runningTool = Self.runningTool(in: state)
         facts.queued = queued
         facts.spend = spend

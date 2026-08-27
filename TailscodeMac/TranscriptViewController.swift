@@ -186,7 +186,6 @@ final class TranscriptViewController: NSViewController {
     private var contextEstimate: Int?
     private var countedMessages = -1
     private var notice: String?
-    private var turnStartedAt: Date?
     private var tickerTask: Task<Void, Never>?
     private var workflowRuns: [WorkflowRun] = []
     private var agentStreamTask: Task<Void, Never>?
@@ -367,7 +366,6 @@ final class TranscriptViewController: NSViewController {
         git = nil
         contextEstimate = nil
         countedMessages = -1
-        turnStartedAt = nil
         tickerTask?.cancel()
         tickerTask = nil
         agentStreamTask?.cancel()
@@ -1699,15 +1697,9 @@ final class TranscriptViewController: NSViewController {
             bandGlass?.isHidden = !statusBand.hasContent
             return
         }
-        let running = state.status == .running || state.compaction?.isRunning == true
-        if running {
-            if turnStartedAt == nil { turnStartedAt = Date() }
-        } else {
-            turnStartedAt = nil
-        }
         let quotas = quotasForStatus?() ?? []
         let facts = StatusFacts.from(
-            state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
+            state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, contextTokens: contextEstimate, quotas: quotas,
             spend: spend, git: git, model: composer.activeModelID)
         lastFacts = facts

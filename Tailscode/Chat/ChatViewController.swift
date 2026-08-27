@@ -2315,6 +2315,7 @@ final class ChatViewController: UIViewController {
     ///   redraw of what this device is holding — the two readings that walk every message in the
     ///   conversation would return exactly what they returned last time, at the same cost.
     private func updateNavStatus(for state: ConversationState, messagesMoved: Bool = true) {
+        turnStartedAt = StatusFacts.turnStart(in: state)
         if messagesMoved, state.messages.count != countedMessages {
             countedMessages = state.messages.count
             contextEstimate = StatusFacts.estimateContextTokens(state.messages)
@@ -2323,7 +2324,7 @@ final class ChatViewController: UIViewController {
         updateContextChip()
         updateSpendChip()
         let facts = StatusFacts.from(
-            state: state, turnStartedAt: turnStartedAt, agents: viewModel.trackedSubagents,
+            state: state, agents: viewModel.trackedSubagents,
             usage: nil, attachments: pendingAttachments.count, contextTokens: contextEstimate,
             queued: viewModel.queued.count)
         var text: String?
@@ -2359,8 +2360,7 @@ final class ChatViewController: UIViewController {
             lastStatusPhaseText = ""
             return
         }
-        if viewModel.isBusy, turnStartedAt == nil {
-            turnStartedAt = Date()
+        if viewModel.isBusy, elapsedTicker == nil {
             elapsedTicker = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))

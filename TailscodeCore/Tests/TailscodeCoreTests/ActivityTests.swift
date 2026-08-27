@@ -228,7 +228,7 @@ struct ActivityTests {
             SubagentSummary(id: "\($0)", title: "agent \($0)", updatedAt: Date(), isActive: true)
         }
         let facts = StatusFacts.from(
-            state: state, turnStartedAt: nil, agents: agents, usage: nil, attachments: 0)
+            state: state, agents: agents, usage: nil, attachments: 0)
         #expect(facts.activity == .delegating(active: 3))
     }
 
@@ -301,7 +301,7 @@ struct ConnectionPhaseTests {
 
     private func facts(_ state: ConversationState) -> StatusFacts {
         StatusFacts.from(
-            state: state, turnStartedAt: nil, agents: [], usage: nil, attachments: 0)
+            state: state, agents: [], usage: nil, attachments: 0)
     }
 
     @Test("A live idle conversation is ready, and says nothing about connecting")
@@ -396,7 +396,7 @@ struct ConnectionPhaseTests {
     func unstampedStateInventsNothing() {
         let bare = ConversationState(connection: .connecting)
         #expect(StatusFacts.from(
-            state: bare, turnStartedAt: nil, agents: [], usage: nil, attachments: 0)
+            state: bare, agents: [], usage: nil, attachments: 0)
             .connectionFor == nil)
         #expect(StatusFacts.dialClock(nil) == nil)
         #expect(StatusFacts.dialClock(0.5) == nil)
@@ -513,12 +513,75 @@ struct AgentClockTests {
     ) -> StatusFacts {
         StatusFacts.from(
             state: ConversationState(
-                messages: [], status: status, connection: connection, hasLoadedTranscript: true,
+                messages: [
+                    ChatMessage(
+                        id: "u1", role: .user, agentType: .claudeCode, createdAt: startedAt)
+                ],
+                status: status, connection: connection, hasLoadedTranscript: true,
                 connectionChangedAt: startedAt),
-            turnStartedAt: startedAt, agents: agents, usage: nil, attachments: 0, now: now)
+            agents: agents, usage: nil, attachments: 0, now: now)
     }
 
     private static func agentDetail(_ facts: StatusFacts) -> String? {
         facts.segments.first { $0.id == "agents" }?.rows.first?.detail
+    }
+}
+
+@Suite("Where the turn clock comes from")
+struct TurnClockTests {
+    private static let promptAt = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let now = promptAt.addingTimeInterval(30)
+
+    private static func user(_ id: String, at date: Date) -> ChatMessage {
+        ChatMessage(id: id, role: .user, agentType: .omp, createdAt: date)
+    }
+
+    private static func assistant(_ id: String, at date: Date, done: Bool) -> ChatMessage {
+        ChatMessage(
+            id: id, role: .assistant, agentType: .omp, createdAt: date,
+            completedAt: done ? date.addingTimeInterval(1) : nil)
+    }
+
+    private static func state(_ messages: [ChatMessage], running: Bool = true) -> ConversationState {
+        ConversationState(
+            messages: messages, status: running ? .running : .idle, connection: .live,
+            hasLoadedTranscript: true)
+    }
+
+    @Test("A reopened chat counts from the prompt, not from when this device looked")
+    func reentryKeepsTheClock() {
+        let facts = StatusFacts.from(
+            state: Self.state([Self.user("u1", at: Self.promptAt)]),
+            agents: [], usage: nil, attachments: 0, now: Self.now)
+        #expect(facts.elapsed == 30)
+    }
+
+    @Test("A prompt queued behind a running turn does not reset the clock")
+    func queuedPromptDoesNotReset() {
+        let messages = [
+            Self.assistant("a0", at: Self.promptAt.addingTimeInterval(-60), done: true),
+            Self.user("u1", at: Self.promptAt),
+            Self.assistant("a1", at: Self.promptAt.addingTimeInterval(5), done: false),
+            Self.user("u2", at: Self.promptAt.addingTimeInterval(20)),
+        ]
+        #expect(StatusFacts.turnStart(in: Self.state(messages)) == Self.promptAt)
+    }
+
+    @Test("A mid-turn completed step still counts from the turn's own prompt")
+    func completedStepKeepsThePrompt() {
+        let messages = [
+            Self.user("u1", at: Self.promptAt),
+            Self.assistant("a1", at: Self.promptAt.addingTimeInterval(5), done: true),
+        ]
+        #expect(StatusFacts.turnStart(in: Self.state(messages)) == Self.promptAt)
+    }
+
+    @Test("An idle chat has no turn clock at all")
+    func idleHasNoClock() {
+        let state = Self.state([Self.user("u1", at: Self.promptAt)], running: false)
+        #expect(StatusFacts.turnStart(in: state) == nil)
+        let facts = StatusFacts.from(
+            state: state, agents: [], usage: nil, attachments: 0, now: Self.now)
+        #expect(facts.elapsed == nil)
     }
 }

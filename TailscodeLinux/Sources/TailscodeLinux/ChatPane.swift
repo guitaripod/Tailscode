@@ -164,7 +164,6 @@ final class ChatPane: @unchecked Sendable {
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
     private var tickerTask: Task<Void, Never>?
-    private var turnStartedAt: Date?
 
     private var models: [ModelInfo] = []
     private var modelsReachable: Bool?
@@ -810,7 +809,6 @@ final class ChatPane: @unchecked Sendable {
             sessionEffort: entry.session.reasoningEffort)
         ultracodeInFlight = false
         refreshUltracodeAura()
-        turnStartedAt = nil
         context.expanded.reset()
         context.subagentRows = [:]
         context.liveReasoning = [:]
@@ -2341,14 +2339,9 @@ final class ChatPane: @unchecked Sendable {
     private func updateStatus() {
         guard let state = lastState else { return }
         let running = state.status == .running || state.compaction?.isRunning == true
-        if running {
-            if turnStartedAt == nil { turnStartedAt = Date() }
-        } else {
-            turnStartedAt = nil
-        }
         let quotas = host?.quotasForStatus() ?? []
         let facts = StatusFacts.from(
-            state: state, turnStartedAt: turnStartedAt, agents: agents, usage: usage,
+            state: state, agents: agents, usage: usage,
             attachments: attachments.count, contextTokens: contextEstimate, quotas: quotas,
             spend: spend, git: git, model: activeModelID)
         if identityActivity != facts.activity {
