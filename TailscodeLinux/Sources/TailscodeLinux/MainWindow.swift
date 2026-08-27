@@ -3433,14 +3433,18 @@ final class MainWindow: @unchecked Sendable {
     }
 
     /// Every quota every server can speak for, raw and per-machine, plus this device's own
-    /// DeepSeek prepaid balance when a key is set. Nothing is dropped here — ``QuotaRollup``
-    /// folds the reports into one holding per provider, so a second machine refines the account's
-    /// numbers instead of being thrown away for arriving late.
+    /// DeepSeek prepaid balance and the Ollama Cloud plan windows when their keys are set.
+    /// Nothing is dropped here — ``QuotaRollup`` folds the reports into one holding per
+    /// provider, so a second machine refines the account's numbers instead of being thrown away
+    /// for arriving late.
     private static func collectQuotas(profiles: [ConnectionProfile]) async -> [(String, UsageQuota)]
     {
         var quotas: [(String, UsageQuota)] = []
         if let reading = await DeepSeekBalance.refresh() {
             quotas.append(("", DeepSeekBalance.snapshot(for: reading)))
+        }
+        if let reading = await OllamaUsage.refresh() {
+            quotas.append(("", OllamaCloud.snapshot(for: reading)))
         }
         for profile in profiles {
             guard let backend = await ServerDirectory.shared.backend(for: profile) else { continue }

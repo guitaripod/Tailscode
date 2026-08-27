@@ -1062,13 +1062,21 @@ final class MainWindowController: NSWindowController {
     }
 
     /// Every quota every server can speak for: the agent's own, plus whatever other providers
-    /// the machine holds accounts for (a bridge also reports Grok). Nothing is dropped here —
-    /// ``QuotaRollup`` folds the reports into one holding per provider, so a second machine
-    /// refines the account's numbers instead of being thrown away for arriving late.
+    /// the machine holds accounts for (a bridge also reports Grok), plus this Mac's own account
+    /// facts — the DeepSeek prepaid balance and the Ollama Cloud plan windows — when their keys
+    /// are set. Nothing is dropped here — ``QuotaRollup`` folds the reports into one holding per
+    /// provider, so a second machine refines the account's numbers instead of being thrown away
+    /// for arriving late.
     private static func collectQuotas(profiles: [ConnectionProfile]) async
         -> [(String, UsageQuota)]
     {
         var quotas: [(String, UsageQuota)] = []
+        if let reading = await DeepSeekBalance.refresh() {
+            quotas.append(("", DeepSeekBalance.snapshot(for: reading)))
+        }
+        if let reading = await OllamaUsage.refresh() {
+            quotas.append(("", OllamaCloud.snapshot(for: reading)))
+        }
         for profile in profiles {
             guard let backend = ServerDirectory.shared.backend(for: profile) else { continue }
             var collected: [UsageQuota] = []

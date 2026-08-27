@@ -45,6 +45,15 @@ enum UsageFormat {
                         appearance.isDark
                             ? NSColor(white: 0.91, alpha: 1) : NSColor(white: 0.12, alpha: 1)
                     }))
+        case "ollama-cloud":
+            return ThemePalette.color(
+                \.brandOllama,
+                system: NSColor(
+                    name: nil,
+                    dynamicProvider: { appearance in
+                        appearance.isDark
+                            ? NSColor(white: 0.94, alpha: 1) : NSColor(white: 0.10, alpha: 1)
+                    }))
         default: return nil
         }
     }
@@ -158,6 +167,7 @@ final class UsageFooterView: NSView {
     private let column = FillingStack()
     private var last: ([(String, UsageQuota)], Date?) = ([], nil)
     private var probing = false
+    private var probingOllama = false
 
     init() {
         super.init(frame: .zero)
@@ -176,6 +186,8 @@ final class UsageFooterView: NSView {
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: DeepSeekBalance.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(repaint), name: OllamaUsage.didChange, object: nil)
     }
 
     @available(*, unavailable)
@@ -192,14 +204,33 @@ final class UsageFooterView: NSView {
     func render(_ quotas: [(String, UsageQuota)], answeredAt: Date?) {
         last = (quotas, answeredAt)
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let glance = QuotaGlance.make(
-            from: DeepSeekBalance.folded(into: quotas), answeredAt: answeredAt)
+        var folded = DeepSeekBalance.folded(into: quotas)
+        if let reading = OllamaUsage.cached {
+            folded = folded + [("", OllamaCloud.snapshot(for: reading))]
+        }
+        let glance = QuotaGlance.make(from: folded, answeredAt: answeredAt)
         isHidden = glance.isEmpty
         toolTip = glance.tooltip.isEmpty ? nil : glance.tooltip
         for line in glance.lines {
             column.addArrangedSubview(row(line))
         }
         probeBalance()
+        probeOllama()
+    }
+
+    /// The cloud plan's windows ride the strip's own cadence too: no server holds them, so they
+    /// are asked for where they are drawn, and only a changed reading redraws the strip.
+    private func probeOllama() {
+        guard !probingOllama else { return }
+        probingOllama = true
+        let drawn = OllamaUsage.cached
+        Task { [weak self] in
+            let reading = await OllamaUsage.refresh()
+            guard let self else { return }
+            self.probingOllama = false
+            guard reading != drawn else { return }
+            self.render(self.last.0, answeredAt: self.last.1)
+        }
     }
 
     /// The prepaid balance rides the strip's own cadence: no server holds it, so it is asked for
@@ -378,6 +409,7 @@ final class UsagePanelViewController: NSViewController {
             if !fresh.isEmpty { self.quotas = fresh }
             let reading = await DeepSeekBalance.refresh()
             self.balance = reading ?? DeepSeekBalance.cached
+            await OllamaUsage.refresh()
             self.refreshing = false
             self.renderCards()
         }
@@ -413,8 +445,14 @@ final class UsagePanelViewController: NSViewController {
     }
 
     private func reports() -> [(String, UsageQuota)] {
-        guard let balance else { return quotas }
-        return quotas + [("", DeepSeekBalance.snapshot(for: balance))]
+        var reports = quotas
+        if let balance {
+            reports = reports + [("", DeepSeekBalance.snapshot(for: balance))]
+        }
+        if let reading = OllamaUsage.cached {
+            reports = reports + [("", OllamaCloud.snapshot(for: reading))]
+        }
+        return reports
     }
 
     /// What the panel says about DeepSeek when there is no balance to draw: a key nobody has set

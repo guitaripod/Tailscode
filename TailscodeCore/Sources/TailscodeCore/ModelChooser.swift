@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import Synchronization
 
 /// Which house a model comes from, read off its own name rather than off whichever gateway resells
 /// it. A catalog that lists two hundred models from one provider key is not organised by that key —
@@ -1446,9 +1447,17 @@ public struct ModelChooser: Sendable, Equatable {
 }
 
 /// The chooser's rules, proved headlessly in the Kit rather than in one client — all three run this
-/// from their own `--selftest`, so folding, ranking and the keys are checked once.
 public enum ModelChooserCheck {
+    /// `run()` flips `ModelFavoritesStore` — real device state, not a copy — so two callers
+    /// running at once (Swift Testing runs suites concurrently) steal each other's toggles and
+    /// both report stars that did not land. One check at a time.
+    private static let gate = Synchronization.Mutex<Bool>(false)
+
     public static func run() -> [String] {
+        gate.withLock { _ in runLocked() }
+    }
+
+    private static func runLocked() -> [String] {
         var failures: [String] = []
         func expect(_ condition: Bool, _ label: String) {
             if !condition { failures.append(label) }
@@ -1647,8 +1656,6 @@ public enum ModelChooserCheck {
             pinned.sections.first { $0.id == "·pinned" }?.rows.count ?? 0
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
         expect(pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "the star is on")
-        FileHandle.standardError.write(
-            Data("DBG2 sections: \(pinned.sections.map { "\($0.id):\($0.rows.count)" }.joined(separator: " ")) favsOn\n".utf8))
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
         expect(!pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "and toggles off")
 

@@ -68,10 +68,31 @@ final class ForgeStudioView: NSView {
         let width = split.bounds.width
         guard width > 0 else { return }
         let stageWidth = width * ForgeStudio.stageShare
-        if abs(split.dividerPosition - stageWidth) > 8 {
-            split.setPosition(stageWidth, ofDividerAt: 0)
+        if abs(split.dividerPosition - stageWidth) <= 8 { return }
+        wantsDividerMove = true
+    }
+
+    /// `setPosition(ofDividerAt:)` inside `layout()` invalidates constraints mid-layout pass and
+    /// AppKit raises the next time the display cycle flushes. The move is staged here and taken
+    /// on the next runloop turn, after the pass has landed.
+    private var wantsDividerMove = false {
+        didSet {
+            guard wantsDividerMove, !wasSet else { return }
+            wasSet = true
+            wantsDividerMove = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                defer { wasSet = false }
+                let width = split.bounds.width
+                guard width > 0 else { return }
+                let stageWidth = width * ForgeStudio.stageShare
+                if abs(split.dividerPosition - stageWidth) > 8 {
+                    split.setPosition(stageWidth, ofDividerAt: 0)
+                }
+            }
         }
     }
+    private var wasSet = false
 
     func attachPrompt(_ field: NSView, avoid: NSView, aside: NSView) {
         controls.insertArrangedSubview(field, at: 1)

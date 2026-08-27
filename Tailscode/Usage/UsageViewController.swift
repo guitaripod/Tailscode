@@ -62,12 +62,14 @@ final class UsageViewController: UIViewController {
     /// Which DeepSeek key state the DeepSeek card last rendered, so returning from the key editor
     /// knows whether the card needs a reload.
     private var deepseekHasKey: Bool?
+    private var ollamaHasKey: Bool?
 
     private let heroCard = HeroCard()
     private let claudeCard = ProviderCard(title: "Claude Code", accent: Theme.Color.claude)
     private let grokCard = ProviderCard(title: "Grok", accent: Theme.Color.grok)
     private let opencodeCard = ProviderCard(title: "opencode go", accent: Theme.Color.opencode)
     private let deepseekCard = DeepSeekCard()
+    private let ollamaCard = OllamaCard()
     private let monthCard = MonthCard()
 
     private lazy var emptyStateView = EmptyStateView(
@@ -89,6 +91,10 @@ final class UsageViewController: UIViewController {
         super.viewWillAppear(animated)
         refreshUpdatedLabel()
         if deepseekCard.isVisible, let deepseekHasKey, deepseekHasKey != DeepSeekCredentials.hasToken {
+            startLoad()
+            return
+        }
+        if ollamaCard.isVisible, let ollamaHasKey, ollamaHasKey != OllamaCredentials.hasToken {
             startLoad()
             return
         }
@@ -172,6 +178,7 @@ final class UsageViewController: UIViewController {
         heroCard.isHidden = true
         monthCard.addTarget(self, action: #selector(openAnalytics), for: .touchUpInside)
         deepseekCard.onOpenEditor = { [weak self] in self?.openDeepSeekEditor() }
+        ollamaCard.onOpenEditor = { [weak self] in self?.openOllamaEditor() }
 
         contentStack.addArrangedSubview(updatedLabel)
         contentStack.addArrangedSubview(errorLabel)
@@ -180,7 +187,7 @@ final class UsageViewController: UIViewController {
         contentStack.addArrangedSubview(grokCard)
         contentStack.addArrangedSubview(opencodeCard)
         contentStack.addArrangedSubview(deepseekCard)
-        contentStack.addArrangedSubview(monthCard)
+        contentStack.addArrangedSubview(ollamaCard)
         contentStack.isHidden = true
     }
 
@@ -197,6 +204,12 @@ final class UsageViewController: UIViewController {
     private func openDeepSeekEditor() {
         Theme.Haptics.tap()
         let editor = DeepSeekKeyViewController()
+        navigationController?.pushViewController(editor, animated: true)
+    }
+
+    private func openOllamaEditor() {
+        Theme.Haptics.tap()
+        let editor = OllamaKeyViewController()
         navigationController?.pushViewController(editor, animated: true)
     }
 
@@ -236,6 +249,7 @@ final class UsageViewController: UIViewController {
         grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
         deepseekCard.isVisible = opencodeProfile != nil || DeepSeekCredentials.hasToken
+        ollamaCard.isVisible = OllamaCredentials.hasToken
         monthCard.isHidden = claudeProfile == nil
         contentStack.isHidden = false
 
@@ -245,7 +259,9 @@ final class UsageViewController: UIViewController {
         async let opencodeFailure: Error? = fillOpencode(
             profile: opencodeProfile, claudeProfiles: claudeProfiles, controller: controller)
         async let deepseekReading: DeepSeekBalance.Reading? = fillDeepseek()
+        async let ollamaReading: OllamaCloud.Reading? = fillOllama()
         let failures = await (claudeFailure, opencodeFailure, grokDone, deepseekReading)
+        _ = await ollamaReading
         guard !Task.isCancelled else { return }
         if let failure = failures.0 ?? failures.1 { showError(failure) }
 
@@ -273,6 +289,23 @@ final class UsageViewController: UIViewController {
         return reading
     }
 
+    /// The cloud plan's windows are this device's own credential, fetched straight from
+    /// ollama.com rather than through any bridge. A refresh that fails keeps whatever the card
+    /// already shows; a missing key reads as the invitation to add one.
+    private func fillOllama() async -> OllamaCloud.Reading? {
+        guard let reading = await OllamaUsage.refresh() else {
+            guard !Task.isCancelled else { return nil }
+            ollamaHasKey = OllamaCredentials.hasToken
+            if !OllamaCredentials.hasToken || !filledCards.contains(.ollama) {
+                ollamaCard.renderKeyless()
+            }
+            return nil
+        }
+        ollamaHasKey = true
+        apply(Self.ollamaModel(reading), to: .ollama)
+        return reading
+    }
+
     /// The sparkline is a preview and the analytics screen is the point: one
     /// fetch feeds both, cached here so the push opens on numbers it already has.
     private func loadAnalytics() {
@@ -288,7 +321,7 @@ final class UsageViewController: UIViewController {
     }
 
     private enum CardKind: CaseIterable {
-        case claude, grok, opencode, deepseek
+        case claude, grok, opencode, deepseek, ollama
     }
 
     private func apply(_ model: CardModel, to kind: CardKind) {
@@ -332,6 +365,7 @@ final class UsageViewController: UIViewController {
         case .grok: return "Grok"
         case .opencode: return "opencode go"
         case .deepseek: return "DeepSeek API"
+        case .ollama: return "Ollama Cloud"
         }
     }
 
@@ -346,8 +380,14 @@ final class UsageViewController: UIViewController {
         guard let entry = UsageWidgetStore.read() else { return }
         for provider in entry.providers where !provider.gauges.isEmpty {
             let kind = Self.kind(for: provider.providerName)
-            guard kind != .deepseek else { continue }
+            guard kind != .deepseek, kind != .ollama else { continue }
             apply(Self.snapshotModel(provider, accent: Self.accent(for: kind)), to: kind)
+        }
+        if let ollama = entry.providers
+            .first(where: { $0.providerName == OllamaCloud.providerName })
+        {
+            apply(Self.snapshotModel(ollama, accent: Self.accent(for: .ollama)), to: .ollama)
+            ollamaHasKey = true
         }
         if let deepseek = entry.providers
             .first(where: { $0.providerName == DeepSeekBalance.providerName })
@@ -367,6 +407,7 @@ final class UsageViewController: UIViewController {
         case "grok": return .grok
         case "opencode": return .opencode
         case "deepseek": return .deepseek
+        case "ollama-cloud": return .ollama
         default: return .claude
         }
     }
@@ -377,6 +418,7 @@ final class UsageViewController: UIViewController {
         case .grok: return Theme.Color.grok
         case .opencode: return Theme.Color.opencode
         case .deepseek: return Theme.Color.modelFamily(.deepseek)
+        case .ollama: return Theme.Color.ollamaCloud
         }
     }
 
@@ -386,6 +428,7 @@ final class UsageViewController: UIViewController {
         case .grok: return grokCard
         case .opencode: return opencodeCard
         case .deepseek: return deepseekCard
+        case .ollama: return ollamaCard
         }
     }
 
@@ -625,6 +668,30 @@ final class UsageViewController: UIViewController {
             note: String(
                 localized:
                     "Billed per token from your own DeepSeek account — no plan caps and no reset, so a balance is exactly the number above."))
+    }
+
+    private static func ollamaModel(_ reading: OllamaCloud.Reading) -> CardModel {
+        let quota = OllamaCloud.snapshot(for: reading)
+        let gauges = quota.gauges.map { gauge -> GaugeVM in
+            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
+            return GaugeVM(
+                name: UsageGaugeFormat.gaugeLabel(gauge.label),
+                fraction: gauge.fraction,
+                percentText: QuotaSurface.amountLabel(
+                    fraction: gauge.fraction, percentText: "\(percent)%"),
+                caption: gauge.fraction >= QuotaSurface.exhaustedFloor
+                    ? String(localized: "Used up — the window resets on ollama's own clock")
+                    : "—")
+        }
+        return CardModel(
+            subtitle: quota.subtitle,
+            pill: String(localized: "LIVE"),
+            accent: Theme.Color.ollamaCloud,
+            gauges: gauges,
+            details: quota.details.map { ($0.key, $0.value) },
+            note: String(
+                localized:
+                    "Straight from ollama.com — the plan's session and weekly windows, not an estimate."))
     }
 
     private static func resetCaption(_ gauge: UsageQuota.Gauge) -> String {
@@ -1056,6 +1123,45 @@ private final class DeepSeekCard: ProviderCard {
         balanceStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         balanceStack.addArrangedSubview(button)
         setGaugeRow(balanceStack)
+    }
+}
+
+/// The Ollama Cloud plan: two windows drawn as ordinary gauges. With no key it is a quiet
+/// invitation to add one rather than an error — the surface stays whole either way.
+@MainActor
+private final class OllamaCard: ProviderCard {
+    var onOpenEditor: (() -> Void)?
+
+    init() {
+        super.init(title: "Ollama Cloud", accent: Theme.Color.ollamaCloud)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    var isVisible: Bool {
+        get { !isHidden }
+        set { isHidden = !newValue }
+    }
+
+    func renderKeyless() {
+        super.apply(
+            CardModel(
+                subtitle: String(localized: "Plan-metered — session and weekly windows"),
+                pill: String(localized: "OPTIONAL"),
+                accent: Theme.Color.ollamaCloud,
+                gauges: [],
+                details: [],
+                note: String(
+                    localized: "Add your Ollama Cloud API key and the plan's windows show here."
+                )))
+        let button = UIButton(type: .system)
+        button.setTitle(String(localized: "Add API key to track the plan"), for: .normal)
+        button.titleLabel?.font = Theme.Ramp.font(.panelLabel)
+        button.setTitleColor(Theme.Color.accent, for: .normal)
+        button.contentHorizontalAlignment = .leading
+        button.addAction(
+            UIAction { [weak self] _ in self?.onOpenEditor?() }, for: .touchUpInside)
+        setGaugeRow(button)
     }
 }
 

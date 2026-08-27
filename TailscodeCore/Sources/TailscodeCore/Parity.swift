@@ -102,6 +102,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case usagePanel
     case usageAnalytics
     case deepseekBalance
+    case ollamaCloudUsage
     case sessionSpend
     case toasts
     case serverManagement
@@ -473,6 +474,10 @@ public enum CapabilityRegistry {
             spec:
                 "DeepSeek models reached through a direct API key are metered by that key's prepaid balance, not by any plan's windows, and the usage surfaces say so in the key's own voice: an optional API key stored with the platform's secret store, read once per refresh from api.deepseek.com/user/balance, and rendered as a balance rather than as quota bars — the total available, split into what was topped up and what was granted, with no invented cap and no reset countdown. An empty balance reads as the wall it is: the provider's card says used up and the chooser marks only DeepSeek models (the billing rule in QuotaBinding.bills), never a neighbour's. No key means no card rather than an error — the surface stays what it was, and the settings row states the key's presence or absence as a fact. The fetch is best-effort on every existing usage path so the widgets and the panel move together."),
 
+        CapabilityDefinition(
+            id: .ollamaCloudUsage, area: "status", title: "Ollama Cloud usage",
+            spec:
+                "Ollama models served by ollama.com itself are metered by the account's plan — a session window (about five hours) and a weekly window, each a fraction of the cap — and the usage surfaces read them from the account's own vantage: an optional API key stored with the platform's secret store, read once per refresh from ollama.com/api/usage (an undocumented endpoint, so every failure degrades to absence rather than error), rendered as two account-wide gauges with the plan's four-week cost as a detail and no invented reset. The wall is Ollama Cloud's alone: the billing rule marks only models reached through the ollama-cloud door, never the local ollama server, whose usage is unlimited by definition. No key means no card rather than an error, and the settings row states whether a key is set."),
         CapabilityDefinition(
             id: .toasts, area: "status", title: "Transient notices",
             spec: "Short-lived confirmations/errors appear as toasts that never steal focus."),

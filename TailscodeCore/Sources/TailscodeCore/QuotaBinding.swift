@@ -137,6 +137,7 @@ public enum QuotaBinding {
         case "claude": return family.key == "claude"
         case "grok": return family.key == "grok"
         case "deepseek": return family.key == "deepseek"
+        case "ollama-cloud": return lowerID.contains("ollama-cloud") || lowerName.contains("ollama-cloud")
         default: return true
         }
     }

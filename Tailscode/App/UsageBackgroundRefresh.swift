@@ -47,6 +47,11 @@ enum UsageBackgroundRefresh {
             {
                 UsageWarnings.evaluate(providers: [deepseek])
             }
+            if let ollama = UsageWidgetStore.read()?.providers
+                .first(where: { $0.providerName == OllamaCloud.providerName })
+            {
+                UsageWarnings.evaluate(providers: [ollama])
+            }
             UsageWidgetStore.reloadTimelinesThrottled()
             AppLogger.session.info(
                 "usage: background refresh finished — \(quotas.count) live quota(s)"

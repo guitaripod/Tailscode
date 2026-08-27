@@ -497,7 +497,7 @@ enum SettingsDialog {
         let usage = group(
             Localized.text("Usage"), on: page,
             description: Localized.text(
-                "The full quota picture lives at the foot of the chat list; the DeepSeek key is the one account fact this machine keeps."))
+                "The full quota picture lives at the foot of the chat list; the Ollama Cloud and DeepSeek keys are the account facts this machine keeps."))
         let deepseekRow = DeepSeekRowHeld()
         let refreshDeepseekRow: @Sendable () -> Void = {
             guard let raw = UnsafeMutableRawPointer(bitPattern: deepseekRow.bits) else { return }
@@ -523,6 +523,32 @@ enum SettingsDialog {
         }
         deepseekRow.bits = UInt(bitPattern: deepseek)
         adw_preferences_group_add(ptr(usage), deepseek)
+
+        let ollamaRow = OllamaRowHeld()
+        let refreshOllamaRow: @Sendable () -> Void = {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: ollamaRow.bits) else { return }
+            adw_action_row_set_subtitle(
+                ptr(raw),
+                OllamaCredentials.hasToken
+                    ? Localized.text("Saved in the app's secret store")
+                    : Localized.text("Not set"))
+        }
+        let ollama = buttonRow(
+            Localized.text("Ollama Cloud API key"),
+            subtitle: OllamaCredentials.hasToken
+                ? Localized.text("Saved in the app's secret store")
+                : Localized.text("Not set"),
+            label: Localized.text("Edit")
+        ) {
+            guard let pageRaw = UnsafeMutableRawPointer(bitPattern: pageBits) else { return }
+            OllamaKeyDialog.present(parent: ptr(pageRaw)) {
+                refreshOllamaRow()
+                onDeepSeekChanged()
+            }
+        }
+        ollamaRow.bits = UInt(bitPattern: ollama)
+        adw_preferences_group_add(ptr(usage), ollama)
+
 
         SummonRows.install(on: page, window: window)
 
@@ -711,5 +737,11 @@ final class WatchRowsHeld: @unchecked Sendable {
 /// The DeepSeek key row's pointer, so the subtitle can restate the key's presence after the editor
 /// changes it — the settings window is built once and the row must answer honestly in place.
 final class DeepSeekRowHeld: @unchecked Sendable {
+    var bits: UInt = 0
+}
+
+/// The Ollama Cloud key row's pointer, so the subtitle can restate the key's presence after the
+/// editor changes it — the settings window is built once and the row must answer honestly in place.
+final class OllamaRowHeld: @unchecked Sendable {
     var bits: UInt = 0
 }

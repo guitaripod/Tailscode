@@ -22,6 +22,7 @@ private enum WidgetBrand {
         case "opencode": return Color(hex: "#03b000")
         case "grok": return Color(hex: dark ? "#e8e8eb" : "#1f1f1f")
         case "deepseek": return Color(hex: "#4d6bfe")
+        case "ollama-cloud": return Color(hex: dark ? "#f0f0f0" : "#1a1a1a")
         default: return nil
         }
     }
@@ -105,6 +106,7 @@ struct WidgetPalette {
         case "opencode": return Color(hex: palette.brandOpencode)
         case "grok": return Color(hex: palette.brandGrok)
         case "deepseek": return Color(hex: palette.brandDeepseek)
+        case "ollama-cloud": return Color(hex: palette.brandOllama)
         default: return nil
         }
     }

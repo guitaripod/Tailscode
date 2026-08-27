@@ -19,11 +19,13 @@ enum LiveQuotaFetcher {
     /// serving its stored snapshot.
     static func fetch(deadline: TimeInterval) async -> [UsageQuota] {
         async let deepseek: DeepSeekBalance.Reading? = DeepSeekBalance.refresh()
+        async let ollama: OllamaCloud.Reading? = OllamaUsage.refresh()
         guard
             let store = try? SharedConnectionStore.make(),
             let profiles = try? store.profiles()
         else {
             _ = await deepseek
+            _ = await ollama
             return []
         }
         let bridges = profiles.filter { $0.backend == .claudeCode }.enumerated()
@@ -32,6 +34,7 @@ enum LiveQuotaFetcher {
             }
         guard !bridges.isEmpty else {
             _ = await deepseek
+            _ = await ollama
             return []
         }
         let results = await withTaskGroup(
@@ -55,6 +58,7 @@ enum LiveQuotaFetcher {
         let reports = results.sorted(by: { $0.index < $1.index })
             .flatMap { entry in entry.quotas.map { (entry.server, $0) } }
         _ = await deepseek
+        _ = await ollama
         return QuotaRollup.account(from: reports).map(\.quota)
     }
 

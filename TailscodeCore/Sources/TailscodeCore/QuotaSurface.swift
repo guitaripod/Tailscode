@@ -61,7 +61,7 @@ public enum QuotaSurface {
     private static func quotaFamilies(for backend: AgentType?) -> Set<String>? {
         switch backend {
         case .claudeCode: return ["claude"]
-        case .openCode: return ["opencode", "deepseek", "grok"]
+        case .openCode: return ["opencode", "deepseek", "grok", "ollama-cloud"]
         case .omp: return []
         default: return nil
         }

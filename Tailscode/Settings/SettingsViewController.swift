@@ -179,6 +179,7 @@ final class SettingsViewController: UIViewController {
         case pushState(String)
         case testNotification
         case usage
+        case ollamaKey
         case deepseekKey
         case keyboardShortcuts
         case haptics
@@ -617,6 +618,16 @@ final class SettingsViewController: UIViewController {
             content.image = UIImage(systemName: "key")
             content.imageProperties.tintColor = Theme.Color.info
             cell.accessories = [.disclosureIndicator()]
+        case .ollamaKey:
+            content.text = String(localized: "Ollama Cloud API key")
+            content.secondaryText =
+                OllamaCredentials.hasToken
+                ? String(localized: "Saved in Keychain") : String(localized: "Not set")
+            content.prefersSideBySideTextAndSecondaryText = true
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "key")
+            content.imageProperties.tintColor = Theme.Color.info
+            cell.accessories = [.disclosureIndicator()]
         case .keyboardShortcuts:
             content.text = String(localized: "Keyboard shortcuts")
             content.secondaryText = String(
@@ -873,7 +884,7 @@ final class SettingsViewController: UIViewController {
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)
 
-        let usageItems: [Item] = [.usage, .deepseekKey]
+        let usageItems: [Item] = [.usage, .ollamaKey, .deepseekKey]
 
         return [
             (.connections, connectionItems),
@@ -1009,6 +1020,10 @@ final class SettingsViewController: UIViewController {
         case .usage:
             return String(
                 localized: "usage limits quota gauges plan spend", comment: "search keywords")
+        case .ollamaKey:
+            return String(
+                localized: "ollama cloud api key plan session weekly windows",
+                comment: "search keywords")
         case .deepseekKey:
             return String(
                 localized: "deepseek api key balance prepaid token", comment: "search keywords")
@@ -1242,6 +1257,14 @@ extension SettingsViewController: UICollectionViewDelegate {
             editor.onChange = { [weak self] in
                 self?.applySnapshot()
                 Task { await DeepSeekBalance.refresh() }
+            }
+            navigationController?.pushViewController(editor, animated: true)
+        case .ollamaKey:
+            Theme.Haptics.tap()
+            let editor = OllamaKeyViewController()
+            editor.onChange = { [weak self] in
+                self?.applySnapshot()
+                Task { await OllamaUsage.refresh() }
             }
             navigationController?.pushViewController(editor, animated: true)
         case .pro:

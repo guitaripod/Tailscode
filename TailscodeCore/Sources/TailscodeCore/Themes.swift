@@ -48,6 +48,7 @@ public struct Palette: Equatable, Sendable {
     public var brandOpencode: String
     public var brandGrok: String
     public var brandDeepseek: String
+    public var brandOllama: String
     /// The shell pane wears the theme too: sixteen ANSI colors plus its own fg/bg, because a
     /// terminal that stays black inside a Solarized window is a hole in the design. These stay
     /// exactly as published — a terminal's colours are a contract with what runs inside it, and
@@ -88,6 +89,7 @@ public struct Palette: Equatable, Sendable {
         self.brandOpencode = "#03b000"
         self.brandGrok = isDark ? "#e8e8eb" : "#1f1f1f"
         self.brandDeepseek = "#4d6bfe"
+        self.brandOllama = isDark ? "#f0f0f0" : "#1a1a1a"
         self.terminalFg = terminalFg ?? text
         self.terminalBg = terminalBg ?? canvas
         self.ansi = ansi
@@ -112,6 +114,7 @@ public struct Palette: Equatable, Sendable {
         copy.brandOpencode = fix(brandOpencode, Contrast.readable)
         copy.brandGrok = fix(brandGrok, Contrast.readable)
         copy.brandDeepseek = fix(brandDeepseek, Contrast.readable)
+        copy.brandOllama = fix(brandOllama, Contrast.readable)
         return copy
     }
 
@@ -133,7 +136,7 @@ public struct Palette: Equatable, Sendable {
             ("brandOpencode", brandOpencode, canvas, Contrast.readable),
             ("brandGrok", brandGrok, canvas, Contrast.readable),
             ("brandDeepseek", brandDeepseek, canvas, Contrast.readable),
-            ("onAccent/accent", onAccent, accent, Contrast.readable),
+            ("brandOllama", brandOllama, canvas, Contrast.readable),
             ("onAccent/warn", onAccent, warn, Contrast.readable),
             ("onAccent/danger", onAccent, danger, Contrast.readable),
             ("onAccent/info", onAccent, info, Contrast.readable),

@@ -791,6 +791,11 @@ final class HomeViewController: UIViewController {
         {
             quotas = quotas.filter { $0.providerName != DeepSeekBalance.providerName } + [deepseek]
         }
+        if let ollama = UsageWidgetStore.cachedQuotas()
+            .first(where: { $0.providerName == OllamaCloud.providerName })
+        {
+            quotas = quotas.filter { $0.providerName != OllamaCloud.providerName } + [ollama]
+        }
         guard !quotas.isEmpty else { return }
         UsageWidgetStore.writeLive(fetched)
         UsageWarnings.evaluate(quotas: fetched)
@@ -798,6 +803,11 @@ final class HomeViewController: UIViewController {
             .first(where: { $0.providerName == DeepSeekBalance.providerName })
         {
             UsageWarnings.evaluate(providers: [deepseek])
+        }
+        if let ollama = UsageWidgetStore.read()?.providers
+            .first(where: { $0.providerName == OllamaCloud.providerName })
+        {
+            UsageWarnings.evaluate(providers: [ollama])
         }
         applySnapshot()
     }

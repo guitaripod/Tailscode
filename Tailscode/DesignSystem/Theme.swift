@@ -113,6 +113,7 @@ enum Theme {
                     : UIColor(red: 0.12, green: 0.12, blue: 0.12, alpha: 1)
             })
         static let opencode = ThemePalette.color(\.brandOpencode, system: .systemTeal)
+        static let ollamaCloud = ThemePalette.color(\.brandOllama, system: .label)
 
         /// A model family's hue and an effort's heat, from the shared catalog: the theme's canvas
         /// corrects them when a theme is on, and the platform's own light and dark grounds do when

@@ -50,6 +50,7 @@ public enum ProviderIdentity {
         case "openrouter": return "openrouter"
         case "kimi", "kimi-code": return "kimi"
         case "bonsai": return "bonsai"
+        case "ollama-cloud": return "ollama-cloud"
         default: return nil
         }
     }

@@ -20,6 +20,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     private var hapticStop = -1
     private let watchAccounts = NSStackView()
     private let deepseekRow = NSStackView()
+    private let ollamaRow = NSStackView()
     /// The block the accounts notification calls. A block observer is held by the notification
     /// centre rather than by this window, so it outlives the window unless it is handed back —
     /// `nonisolated(unsafe)` because `deinit` is the one place that must reach it and `deinit` is
@@ -264,13 +265,18 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             indented(
                 MacDialogs.detailLabel(
                     Localized.text(
-                        "The full quota picture lives at the foot of the chat list; the DeepSeek key is the one account fact this machine keeps."),
+                        "The full quota picture lives at the foot of the chat list; the Ollama Cloud and DeepSeek keys are the account facts this machine keeps."),
                     wraps: true), by: 0))
         deepseekRow.orientation = .vertical
         deepseekRow.alignment = .leading
         deepseekRow.spacing = MacTheme.Spacing.s
         column.addArrangedSubview(deepseekRow)
         renderDeepSeek()
+        ollamaRow.orientation = .vertical
+        ollamaRow.alignment = .leading
+        ollamaRow.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(ollamaRow)
+        renderOllama()
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(
@@ -452,6 +458,29 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @objc private func editDeepSeekKey() {
         DeepSeekKeySheet.present(on: window) { [weak self] in
             self?.renderDeepSeek()
+        }
+    }
+
+    /// The optional Ollama Cloud key, stated as the fact it is: set, or not. The row is drawn
+    /// again in place after the editor closes, because whether a key exists is exactly what the
+    /// editor changes and the content is otherwise only made at the next presentation.
+    private func renderOllama() {
+        for view in ollamaRow.arrangedSubviews { view.removeFromSuperview() }
+        let button = NSButton(
+            title: Localized.text("Edit"), target: self, action: #selector(editOllamaKey))
+        let view = buttonRow(
+            title: Localized.text("Ollama Cloud API key"),
+            subtitle: OllamaCredentials.hasToken
+                ? Localized.text("Saved in this Mac's Keychain")
+                : Localized.text("Not set"),
+            button: button)
+        ollamaRow.addArrangedSubview(view)
+        view.widthAnchor.constraint(equalTo: ollamaRow.widthAnchor).isActive = true
+    }
+
+    @objc private func editOllamaKey() {
+        OllamaKeySheet.present(on: window) { [weak self] in
+            self?.renderOllama()
         }
     }
 

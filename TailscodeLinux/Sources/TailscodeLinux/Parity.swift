@@ -75,6 +75,7 @@ enum ParityManifest {
         case .usagePanel: return .implemented("UsagePanel")
         case .usageAnalytics: return .implemented("AnalyticsCardRenderer")
         case .deepseekBalance: return .implemented("DeepSeekBalance")
+        case .ollamaCloudUsage: return .implemented("OllamaUsage")
         case .sessionSpend: return .implemented("SpendPanel")
         case .toasts: return .implemented("toastOverlay")
         case .serverManagement: return .implemented("ServerManager")

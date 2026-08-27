@@ -8,6 +8,7 @@ public enum ProviderBrand {
         case "grok", "xai": return "grok"
         case "opencode", "opencode go": return "opencode"
         case "deepseek": return "deepseek"
+        case "ollama cloud", "ollama": return "ollama-cloud"
         default: return nil
         }
     }
@@ -20,7 +21,7 @@ public enum ProviderBrand {
     public static func brand(_ providerName: String) -> String? {
         if let exact = slug(providerName) { return exact }
         let lower = providerName.lowercased()
-        for candidate in ["opencode", "claude", "anthropic", "grok", "deepseek"]
+        for candidate in ["opencode", "claude", "anthropic", "grok", "deepseek", "ollama"]
         where lower.contains(candidate) {
             return slug(candidate)
         }
@@ -36,6 +37,7 @@ public enum ProviderBrand {
         case "grok": return "Grok"
         case "opencode": return "opencode"
         case "deepseek": return "DeepSeek"
+        case "ollama-cloud": return "Ollama"
         default: return providerName
         }
     }
