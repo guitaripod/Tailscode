@@ -46,6 +46,7 @@ final class UsageViewController: UIViewController {
     private static let staleInterval: TimeInterval = 5 * 60
 
     private let scrollView = UIScrollView()
+    private var rail: ReadableRail?
     private let contentStack = UIStackView()
     private let refresher = UIRefreshControl()
     private let errorLabel = UILabel()
@@ -146,10 +147,19 @@ final class UsageViewController: UIViewController {
 
             contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            contentStack.centerXAnchor.constraint(
+                equalTo: scrollView.contentLayoutGuide.centerXAnchor),
+            scrollView.contentLayoutGuide.widthAnchor.constraint(
+                equalTo: scrollView.frameLayoutGuide.widthAnchor),
         ])
+        rail = ReadableRail(
+            host: view,
+            compact: [
+                contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+            ],
+            regular: [
+                contentStack.widthAnchor.constraint(equalTo: view.readableContentGuide.widthAnchor)
+            ])
     }
 
     private func setupEmptyState() {

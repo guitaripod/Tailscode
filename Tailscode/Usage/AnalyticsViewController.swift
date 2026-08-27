@@ -9,6 +9,7 @@ import UIKit
 final class AnalyticsViewController: UIViewController {
     private var analytics: UsageAnalytics?
     private let scroll = UIScrollView()
+    private var rail: ReadableRail?
     private let column = UIStackView()
     private let refresher = UIRefreshControl()
     private let spinner = ActivityBadgeView(pointSize: 16)
@@ -110,11 +111,15 @@ final class AnalyticsViewController: UIViewController {
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             column.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            column.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
             column.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            column.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            column.centerXAnchor.constraint(equalTo: scroll.contentLayoutGuide.centerXAnchor),
+            scroll.contentLayoutGuide.widthAnchor.constraint(
+                equalTo: scroll.frameLayoutGuide.widthAnchor),
         ])
+        rail = ReadableRail(
+            host: view,
+            compact: [column.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)],
+            regular: [column.widthAnchor.constraint(equalTo: view.readableContentGuide.widthAnchor)])
     }
 
     private func setupStateViews() {

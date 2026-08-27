@@ -271,6 +271,18 @@ final class AppCoordinator: NSObject {
             handleConnectLink(url)
             return
         }
+        if url.host() == "compose" {
+            perform(.compose)
+            return
+        }
+        if url.host() == "saved" {
+            perform(.saved)
+            return
+        }
+        if url.host() == "ask" {
+            perform(.quickAsk)
+            return
+        }
         if url.host() == "video" {
             guard let home else {
                 pendingSessionLink = (url, Date())

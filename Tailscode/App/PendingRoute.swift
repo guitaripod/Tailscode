@@ -17,10 +17,20 @@ enum PendingRoute {
     private static let horizon: TimeInterval = 30
     private static var parked: (url: URL, at: Date)?
 
+    private static func priority(_ state: UIScene.ActivationState) -> Int {
+        switch state {
+        case .foregroundActive: return 0
+        case .foregroundInactive: return 1
+        case .background: return 2
+        default: return 3
+        }
+    }
+
     static func deliver(_ url: URL) {
-        let scene = UIApplication.shared.connectedScenes
-            .compactMap { $0.delegate as? SceneDelegate }.first
-        if scene?.routeDeepLink(url) == true { return }
+        let scenes = UIApplication.shared.connectedScenes
+            .sorted { priority($0.activationState) < priority($1.activationState) }
+        let delegates = scenes.compactMap { $0.delegate as? SceneDelegate }
+        for delegate in delegates where delegate.routeDeepLink(url) { return }
         AppLogger.lifecycle.info("route parked until the window exists: \(url.absoluteString)")
         parked = (url, Date())
     }

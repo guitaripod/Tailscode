@@ -397,7 +397,7 @@ final class SessionListViewController: UIViewController {
             save.backgroundColor = Theme.Color.warning
             return UISwipeActionsConfiguration(actions: [save])
         }
-        let layout = UICollectionViewCompositionalLayout.list(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
@@ -1311,6 +1311,18 @@ extension SessionListViewController: UICollectionViewDelegate {
             [weak self] _ in
             guard let self else { return UIMenu() }
             var actions: [UIMenuElement] = []
+            if SceneRouting.supportsMultipleWindows,
+                let url = SceneRouting.sessionURL(entry.session.id)
+            {
+                actions.append(
+                    UIAction(
+                        title: String(localized: "Open in New Window"),
+                        image: UIImage(systemName: "rectangle.badge.plus")
+                    ) { _ in
+                        Theme.Haptics.tap()
+                        SceneRouting.openInNewWindow(url)
+                    })
+            }
             if let directory = entry.session.directory,
                 let profile = self.viewModel.servers.first(where: { $0.id == entry.profileID })
             {
@@ -1553,7 +1565,7 @@ final class FileBrowserViewController: UIViewController {
             }
             return UISwipeActionsConfiguration(actions: [remove])
         }
-        let layout = UICollectionViewCompositionalLayout.list(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear

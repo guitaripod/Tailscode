@@ -85,7 +85,7 @@ final class VideoForgeViewController: UIViewController {
         }
         collectionView = UICollectionView(
             frame: .zero,
-            collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration))
+            collectionViewLayout: UICollectionViewCompositionalLayout.readableList(using: configuration))
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
         collectionView.keyboardDismissMode = .interactive

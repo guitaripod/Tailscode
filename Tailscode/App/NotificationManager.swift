@@ -394,11 +394,8 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
     /// nothing to say means.
     private static func destination(route: String?, sessionID: String?) -> URL? {
         if let route, let url = URL(string: "tailscode://\(route)") { return url }
-        guard let sessionID, !sessionID.isEmpty else { return nil }
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove(charactersIn: "/")
-        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: allowed) ?? sessionID
-        return URL(string: "tailscode://session/\(encoded)")
+        guard let sessionID else { return nil }
+        return SceneRouting.sessionURL(sessionID)
     }
 
     /// The lock-screen answer: rebuild the backend the request came from and respond by name.

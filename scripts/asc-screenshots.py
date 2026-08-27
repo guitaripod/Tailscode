@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Upload Tailscode's App Store screenshots (en-US): 6.9" iPhone only.
+"""Upload Tailscode's App Store screenshots (en-US): 6.9" iPhone and 13" iPad.
 
-Tailscode is iPhone-only (UIDeviceFamily 1), so the listing carries a single
-APP_IPHONE_67 set and NO iPad set. This script mirrors the local iphone folder
-to ASC exactly: it deletes any stale iPad set, and replaces the iPhone set when
-its contents differ from ORDER (so re-running after a screenshot refresh is safe).
+Tailscode is universal (UIDeviceFamily 1,2), so the listing carries an
+APP_IPHONE_67 set and an APP_IPAD_PRO_3GEN_129 set. This script mirrors the
+local panel folders to ASC exactly, replacing a set whose contents differ from
+ORDER (so re-running after a screenshot refresh is safe).
 
 ASC asset flow per screenshot: reserve (POST /v1/appScreenshots →
 uploadOperations) → PUT the bytes → commit (PATCH uploaded=true + MD5).
@@ -32,8 +32,10 @@ ORDER = [
     "07-repo-truth.png", "08-month-in-numbers.png", "09-compaction-seam.png",
     "10-verified-setup.png",
 ]
-IPHONE_SET = ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/panels/iphone"))
-STALE_SETS = ["APP_IPAD_PRO_3GEN_129"]
+SETS = [
+    ("APP_IPHONE_67", os.path.join(ROOT, "marketing/appstore/panels/iphone")),
+    ("APP_IPAD_PRO_3GEN_129", os.path.join(ROOT, "marketing/appstore/panels/ipad")),
+]
 
 
 def version_localization():
@@ -72,33 +74,22 @@ def upload_one(set_id, path):
     print(f"  + {name}")
 
 
-def all_sets(loc_id):
-    return asc.get(f"/v1/appStoreVersionLocalizations/{loc_id}/appScreenshotSets").get("data", [])
-
-
 def main():
     loc = version_localization()
-
-    for s in all_sets(loc):
-        if s["attributes"]["screenshotDisplayType"] in STALE_SETS:
-            asc.delete(f"/v1/appScreenshotSets/{s['id']}")
-            print(f"deleted stale set {s['attributes']['screenshotDisplayType']}")
-
-    display_type, folder = IPHONE_SET
-    set_id = screenshot_set(loc, display_type)
-    existing = asc.get(f"/v1/appScreenshotSets/{set_id}/appScreenshots").get("data", [])
-    have = [x["attributes"]["fileName"] for x in existing]
-    if have == ORDER:
-        print(f"{display_type} already matches {len(ORDER)} screenshots — skipping")
-        print("DONE")
-        return
-    for x in existing:
-        asc.delete(f"/v1/appScreenshots/{x['id']}")
-    if existing:
-        print(f"cleared {len(existing)} stale {display_type} screenshots")
-    print(f"{display_type}:")
-    for name in ORDER:
-        upload_one(set_id, os.path.join(folder, name))
+    for display_type, folder in SETS:
+        set_id = screenshot_set(loc, display_type)
+        existing = asc.get(f"/v1/appScreenshotSets/{set_id}/appScreenshots").get("data", [])
+        have = [x["attributes"]["fileName"] for x in existing]
+        if have == ORDER:
+            print(f"{display_type} already matches {len(ORDER)} screenshots — skipping")
+            continue
+        for x in existing:
+            asc.delete(f"/v1/appScreenshots/{x['id']}")
+        if existing:
+            print(f"cleared {len(existing)} stale {display_type} screenshots")
+        print(f"{display_type}:")
+        for name in ORDER:
+            upload_one(set_id, os.path.join(folder, name))
     print("DONE")
 
 

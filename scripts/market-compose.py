@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IPHONE_IN = os.path.join(ROOT, "marketing/appstore/iphone")
+IPAD_IN = os.path.join(ROOT, "marketing/appstore/ipad")
 MAC_IN = os.path.join(ROOT, "Resources/Screenshots/mac")
 OUT = os.path.join(ROOT, "marketing/appstore/panels")
 
@@ -127,6 +128,21 @@ def compose_iphone(master, slug, headline, subline):
     return canvas.crop((0, 0, W, H))
 
 
+def compose_ipad(master, slug, headline, subline):
+    W, H = 2064, 2752
+    canvas = gradient(W, H)
+    glow(canvas, (W // 2, -470), 1400, 26)
+    draw = ImageDraw.Draw(canvas)
+    text_block(draw, 150, 232, headline, subline, 163, 80, 100, "left", W)
+    shot = rounded(Image.open(master).convert("RGB"), 84, 1776)
+    x = (W - shot.width) // 2
+    lines = headline.count("\n") + 1
+    y = 232 + round(lines * 163 * 1.16) + 100 + round(80 * 1.3 * (subline.count("\n") + 1)) + 150
+    shadow_under(canvas, [x + 12, y + 38, x + shot.width - 12, min(H, y + shot.height)], 84)
+    canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
+    return canvas.crop((0, 0, W, H))
+
+
 def compose_mac(master, slug, headline, subline):
     W, H = 2880, 1800
     canvas = gradient(W, H)
@@ -155,9 +171,11 @@ def emit(platform, source_dir, manifest, compose):
 
 
 def main():
-    wanted = sys.argv[1:] or ["iphone", "mac"]
+    wanted = sys.argv[1:] or ["iphone", "ipad", "mac"]
     if "iphone" in wanted:
         emit("iphone", IPHONE_IN, IPHONE, compose_iphone)
+    if "ipad" in wanted:
+        emit("ipad", IPAD_IN, IPHONE, compose_ipad)
     if "mac" in wanted:
         emit("mac", MAC_IN, MAC, compose_mac)
 

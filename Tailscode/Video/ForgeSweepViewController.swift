@@ -138,7 +138,7 @@ final class ForgeSweepViewController: UIViewController {
         configuration.backgroundColor = .clear
         collectionView = UICollectionView(
             frame: .zero,
-            collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration))
+            collectionViewLayout: UICollectionViewCompositionalLayout.readableList(using: configuration))
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
         collectionView.translatesAutoresizingMaskIntoConstraints = false

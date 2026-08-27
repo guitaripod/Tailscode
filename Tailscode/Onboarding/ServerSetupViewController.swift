@@ -68,7 +68,7 @@ final class ServerSetupViewController: UIViewController {
     init(mode: Mode) {
         self.mode = mode
         tailnetCard = SetupStepCard(
-            index: 1, total: 3, title: String(localized: "Tailscale on this iPhone"),
+            index: 1, total: 3, title: DeviceWord.tailscaleStep,
             detail: String(
                 localized:
                     "Install Tailscale here and on the computer that will run the agent, then sign both into the same account. Free for personal use."
@@ -77,7 +77,7 @@ final class ServerSetupViewController: UIViewController {
             index: 2, total: 3, title: String(localized: "Run an agent on that computer"),
             detail: String(localized: "Type this on the computer, not on this phone."))
         connectCard = SetupStepCard(
-            index: 3, total: 3, title: String(localized: "Connect this iPhone"),
+            index: 3, total: 3, title: DeviceWord.connectStep,
             detail: String(
                 localized:
                     "Enter that machine's tailnet address. Run tailscale ip -4 on it, or read it off the machine list in the Tailscale app."
@@ -546,11 +546,7 @@ final class ServerSetupViewController: UIViewController {
         if let address {
             tailnetCard.setStatus(.done)
             tailnetCard.setPill(address, symbol: "checkmark.circle.fill", tint: Theme.Color.success)
-            tailnetCard.setDetail(
-                String(
-                    localized:
-                        "This iPhone is on your tailnet. The computer that runs the agent has to be signed into the same account."
-                ))
+            tailnetCard.setDetail(DeviceWord.onTailnetSameAccount)
             openTailscaleButton.isHidden = true
             tailscaleLink.isHidden = true
         } else {
@@ -564,8 +560,7 @@ final class ServerSetupViewController: UIViewController {
         if cameUp {
             Theme.Haptics.success()
             UIAccessibility.post(
-                notification: .announcement,
-                argument: String(localized: "This iPhone is on your tailnet."))
+                notification: .announcement, argument: DeviceWord.onTailnetAnnouncement)
             if case .failed = verification { probeNow(userInitiated: false) }
         }
         applyVerification()
@@ -700,7 +695,7 @@ final class ServerSetupViewController: UIViewController {
             let diagnosis = ConnectDiagnosis.make(
                 outcome: outcome, address: address, tailnetAddress: tailnetAddress,
                 alternatePort: alternate, sentPassword: !passwordField.text.isEmpty,
-                reachability: reachability, deviceName: String(localized: "This iPhone"),
+                reachability: reachability, deviceName: DeviceWord.thisDevice,
                 offersLocalNetworkSettings: true)
         else { return }
         setVerification(.failed(diagnosis))

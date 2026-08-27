@@ -1437,15 +1437,22 @@ final class HomeViewController: UIViewController {
 
     private func configureCollectionView() {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
-            guard let self, let section = self.dataSource?.sectionIdentifier(for: index)
-            else { return Self.listSection() }
-            switch section {
-            case .live: return Self.liveSection()
-            case .projects: return Self.projectsSection()
-            case .alerts: return Self.listSection(withHeader: false)
-            case .missed: return Self.listSection()
-            case .saved, .recent, .usage: return Self.listSection()
+            let section: NSCollectionLayoutSection
+            if let self, let id = self.dataSource?.sectionIdentifier(for: index) {
+                switch id {
+                case .live: section = Self.liveSection()
+                case .projects: section = Self.projectsSection()
+                case .alerts: section = Self.listSection(withHeader: false)
+                case .missed: section = Self.listSection()
+                case .saved, .recent, .usage: section = Self.listSection()
+                }
+            } else {
+                section = Self.listSection()
             }
+            if environment.traitCollection.horizontalSizeClass == .regular {
+                section.contentInsetsReference = .readableContent
+            }
+            return section
         }
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -1473,6 +1480,8 @@ final class HomeViewController: UIViewController {
         view.endEditing(true)
     }
 
+    private var rails: [ReadableRail] = []
+
     private func configureComposer() {
         composerBar.delegate = self
         composerBar.translatesAutoresizingMaskIntoConstraints = false
@@ -1481,11 +1490,8 @@ final class HomeViewController: UIViewController {
             equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         composerRidesKeyboard = composerBar.bottomAnchor.constraint(
             equalTo: view.keyboardLayoutGuide.topAnchor)
-        NSLayoutConstraint.activate([
-            composerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            composerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            composerFloor,
-        ])
+        NSLayoutConstraint.activate([composerFloor])
+        rails.append(ReadableRail(composerBar, in: view))
 
         configureAccessories()
 
@@ -1493,16 +1499,27 @@ final class HomeViewController: UIViewController {
         commandPalette.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(commandPalette)
         NSLayoutConstraint.activate([
-            commandPalette.leadingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            commandPalette.trailingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             commandPalette.bottomAnchor.constraint(
                 equalTo: accessories.topAnchor, constant: -Theme.Spacing.xs),
             commandPalette.topAnchor.constraint(
                 greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: Theme.Spacing.s),
         ])
+        rails.append(
+            ReadableRail(
+                host: view,
+                compact: [
+                    commandPalette.leadingAnchor.constraint(
+                        equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    commandPalette.trailingAnchor.constraint(
+                        equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+                ],
+                regular: [
+                    commandPalette.leadingAnchor.constraint(
+                        equalTo: view.readableContentGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    commandPalette.trailingAnchor.constraint(
+                        equalTo: view.readableContentGuide.trailingAnchor, constant: -Theme.Spacing.l),
+                ]))
         configureOrb()
     }
 
@@ -1530,11 +1547,10 @@ final class HomeViewController: UIViewController {
         }
         view.addSubview(accessories)
         NSLayoutConstraint.activate([
-            accessories.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            accessories.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             accessories.bottomAnchor.constraint(
                 equalTo: composerBar.topAnchor, constant: -Theme.Spacing.xs),
         ])
+        rails.append(ReadableRail(accessories, in: view))
         suggestions.onStarter = { [weak self] starter in self?.pickStarter(starter) }
         suggestions.onRecent = { [weak self] entry in
             Theme.Haptics.tap()

@@ -49,7 +49,7 @@ final class ThemePickerViewController: UIViewController {
         var layout = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
         layout.headerMode = .supplementary
         collectionView = UICollectionView(
-            frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout.list(using: layout))
+            frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout.readableList(using: layout))
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.backgroundColor = Theme.Color.groupedBackground
         collectionView.delegate = self

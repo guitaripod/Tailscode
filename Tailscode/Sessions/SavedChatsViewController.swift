@@ -130,7 +130,7 @@ final class SavedChatsViewController: UIViewController {
             remove.backgroundColor = Theme.Color.warning
             return UISwipeActionsConfiguration(actions: [remove])
         }
-        let layout = UICollectionViewCompositionalLayout.list(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.delegate = self

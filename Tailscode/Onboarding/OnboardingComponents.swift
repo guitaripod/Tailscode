@@ -13,7 +13,8 @@ final class TailnetLinkView: UIView {
         case down
     }
 
-    private let phoneNode = TailnetNodeView(symbol: "iphone", caption: String(localized: "This iPhone"))
+    private let phoneNode = TailnetNodeView(
+        symbol: DeviceWord.heroSymbol, caption: DeviceWord.thisDevice)
     private let serverNode = TailnetNodeView(symbol: "server.rack", caption: String(localized: "Your machine"))
     private let lineLayer = CAShapeLayer()
     private let dotLayer = CAShapeLayer()
@@ -132,16 +133,13 @@ final class TailnetLinkView: UIView {
         switch state {
         case .linked(let address):
             caption.text = "TAILSCALE\n" + address
-            accessibilityLabel = String(
-                localized: "This iPhone is on your tailnet at \(address), able to reach your machine.")
+            accessibilityLabel = DeviceWord.onTailnetAccessibility(address: address)
         case .down:
             caption.text = "TAILSCALE\n" + String(localized: "not connected")
-            accessibilityLabel = String(
-                localized: "This iPhone is not on your tailnet, so it cannot reach your machine yet.")
+            accessibilityLabel = DeviceWord.offTailnetAccessibility
         case .unknown:
             caption.text = "TAILSCALE"
-            accessibilityLabel = String(
-                localized: "Your iPhone reaches your machine over an encrypted Tailscale link.")
+            accessibilityLabel = DeviceWord.linkAccessibility
         }
         dotLayer.isHidden = !linked || UIAccessibility.isReduceMotionEnabled
         setNeedsLayout()

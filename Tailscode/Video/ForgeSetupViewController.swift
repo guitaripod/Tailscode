@@ -48,7 +48,7 @@ final class ForgeSetupViewController: UIViewController {
     init() {
         setup = ForgeSetup(
             current: ForgeStore.endpoint(), known: ForgeStore.renderers(),
-            tailnet: TailnetStatus.reading, deviceName: String(localized: "This iPhone"))
+            tailnet: TailnetStatus.reading, deviceName: DeviceWord.thisDevice)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -295,7 +295,7 @@ final class ForgeSetupViewController: UIViewController {
         runner.forgetRenderer(renderer.id)
         setup = ForgeSetup(
             current: ForgeStore.endpoint(), known: ForgeStore.renderers(),
-            tailnet: TailnetStatus.reading, deviceName: String(localized: "This iPhone"))
+            tailnet: TailnetStatus.reading, deviceName: DeviceWord.thisDevice)
         setup.type(address.text)
         setup.rename(name.text)
         Theme.Haptics.warning()

@@ -5,7 +5,8 @@
 # no leftover state, no touches to drive. The app's DEBUG launch hooks put each
 # screen on screen by itself, so the set is reproducible and reviewable.
 #
-#   scripts/shots.sh                 # all shots
+#   scripts/shots.sh                 # all shots (iPhone masters)
+#   scripts/shots.sh --ipad          # the same set on a 13" iPad
 #   scripts/shots.sh 07-home 08-usage
 set -euo pipefail
 
@@ -14,6 +15,12 @@ BUNDLE=com.guitaripod.tailscode
 DEVICE_NAME=TailscodeShots
 DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max
 OUT="$ROOT/marketing/appstore/iphone"
+if [ "${1:-}" = "--ipad" ]; then
+  shift
+  DEVICE_NAME=TailscodeShotsPad
+  DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB
+  OUT="$ROOT/marketing/appstore/ipad"
+fi
 
 # name | launch args | env (space separated KEY=VALUE) | seconds to settle
 # "welcome" and "setup" run against a fresh install with no demo backend: they are

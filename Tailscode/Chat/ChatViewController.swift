@@ -548,11 +548,13 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    private var rails: [ReadableRail] = []
+
     private func configureLayout() {
         var config = UICollectionLayoutListConfiguration(appearance: .plain)
         config.showsSeparators = false
         config.backgroundColor = .clear
-        let layout = UICollectionViewCompositionalLayout.list(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = Theme.Color.background
         collectionView.keyboardDismissMode = .interactive
@@ -655,33 +657,56 @@ final class ChatViewController: UIViewController {
             banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-            composer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            composer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
+        rails.append(ReadableRail(composer, in: view))
 
         commandPalette.isHidden = true
         view.addSubview(commandPalette)
         NSLayoutConstraint.activate([
-            commandPalette.leadingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            commandPalette.trailingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             commandPalette.bottomAnchor.constraint(
                 equalTo: composerAccessories.topAnchor, constant: -Theme.Spacing.xs),
             commandPalette.topAnchor.constraint(
                 greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: Theme.Spacing.s),
         ])
+        rails.append(
+            ReadableRail(
+                host: view,
+                compact: [
+                    commandPalette.leadingAnchor.constraint(
+                        equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    commandPalette.trailingAnchor.constraint(
+                        equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+                ],
+                regular: [
+                    commandPalette.leadingAnchor.constraint(
+                        equalTo: view.readableContentGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    commandPalette.trailingAnchor.constraint(
+                        equalTo: view.readableContentGuide.trailingAnchor, constant: -Theme.Spacing.l),
+                ]))
 
         NSLayoutConstraint.activate([
-            composerAccessories.leadingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            composerAccessories.trailingAnchor.constraint(
-                lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             composerAccessories.bottomAnchor.constraint(
-                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs),
+                equalTo: composer.topAnchor, constant: -Theme.Spacing.xs)
         ])
+        rails.append(
+            ReadableRail(
+                host: view,
+                compact: [
+                    composerAccessories.leadingAnchor.constraint(
+                        equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    composerAccessories.trailingAnchor.constraint(
+                        lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor,
+                        constant: -Theme.Spacing.l),
+                ],
+                regular: [
+                    composerAccessories.leadingAnchor.constraint(
+                        equalTo: view.readableContentGuide.leadingAnchor, constant: Theme.Spacing.l),
+                    composerAccessories.trailingAnchor.constraint(
+                        lessThanOrEqualTo: view.readableContentGuide.trailingAnchor,
+                        constant: -Theme.Spacing.l),
+                ]))
 
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         emptyState.isHidden = true

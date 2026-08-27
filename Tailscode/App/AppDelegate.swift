@@ -63,6 +63,54 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         completionHandler(applied > 0 ? .newData : .noData)
     }
 
+    /// The menu bar an iPad (and a Mac running the iPad app) shows. Every item rides the same
+    /// `tailscode://` routes the rest of the app already answers, delivered to the frontmost
+    /// window's coordinator.
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard builder.system == .main else { return }
+        builder.remove(menu: .format)
+        let chat = UIMenu(
+            options: .displayInline,
+            children: [
+                UIKeyCommand(
+                    title: String(localized: "New Chat"), action: #selector(menuNewChat),
+                    input: "n", modifierFlags: .command),
+                UIKeyCommand(
+                    title: String(localized: "Quick Ask"), action: #selector(menuQuickAsk),
+                    input: "n", modifierFlags: [.command, .shift]),
+            ])
+        let places = UIMenu(
+            options: .displayInline,
+            children: [
+                UIKeyCommand(
+                    title: String(localized: "Saved Chats"), action: #selector(menuSaved),
+                    input: "s", modifierFlags: [.command, .alternate]),
+                UIKeyCommand(
+                    title: String(localized: "Usage"), action: #selector(menuUsage),
+                    input: "u", modifierFlags: [.command, .alternate]),
+            ])
+        builder.insertChild(chat, atStartOfMenu: .file)
+        builder.insertChild(places, atStartOfMenu: .view)
+        builder.insertSibling(
+            UIMenu(
+                options: .displayInline,
+                children: [
+                    UIKeyCommand(
+                        title: String(localized: "Settings…"), action: #selector(menuSettings),
+                        input: ",", modifierFlags: .command)
+                ]),
+            afterMenu: .about)
+    }
+
+    @objc private func menuNewChat() { PendingRoute.deliver(URL(string: "tailscode://compose")!) }
+    @objc private func menuQuickAsk() { PendingRoute.deliver(URL(string: "tailscode://ask")!) }
+    @objc private func menuSaved() { PendingRoute.deliver(URL(string: "tailscode://saved")!) }
+    @objc private func menuUsage() { PendingRoute.deliver(URL(string: "tailscode://usage")!) }
+    @objc private func menuSettings() {
+        PendingRoute.deliver(URL(string: "tailscode://settings")!)
+    }
+
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,

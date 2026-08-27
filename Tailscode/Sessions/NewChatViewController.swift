@@ -211,7 +211,7 @@ final class NewChatViewController: UIViewController {
         config.showsSeparators = false
         collectionView = UICollectionView(
             frame: .zero,
-            collectionViewLayout: UICollectionViewCompositionalLayout.list(using: config))
+            collectionViewLayout: UICollectionViewCompositionalLayout.readableList(using: config))
         collectionView.backgroundColor = .clear
         collectionView.keyboardDismissMode = .none
         collectionView.delegate = self

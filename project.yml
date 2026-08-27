@@ -118,13 +118,18 @@ targets:
             UIApplicationShortcutItemTitle: Quick Ask
             UIApplicationShortcutItemIconSymbolName: sparkle
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: false
+          UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:
             UIWindowSceneSessionRoleApplication:
               - UISceneConfigurationName: Default Configuration
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
-        UISupportedInterfaceOrientations:
+        UISupportedInterfaceOrientations~iphone:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: Automatic
@@ -140,11 +145,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.25"
-        CURRENT_PROJECT_VERSION: "118"
+        MARKETING_VERSION: "1.26"
+        CURRENT_PROJECT_VERSION: "120"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_EMIT_LOC_STRINGS: YES
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -206,13 +211,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
-        MARKETING_VERSION: "1.25"
-        CURRENT_PROJECT_VERSION: "118"
+        MARKETING_VERSION: "1.26"
+        CURRENT_PROJECT_VERSION: "120"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO
@@ -250,13 +255,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
-        MARKETING_VERSION: "1.25"
-        CURRENT_PROJECT_VERSION: "118"
+        MARKETING_VERSION: "1.26"
+        CURRENT_PROJECT_VERSION: "120"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: NO

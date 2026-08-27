@@ -110,10 +110,15 @@ final class ModelPickerViewController: UIViewController {
 
     private func configureCollectionView() {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
-            self?.listSection(at: index, environment: environment)
+            let section =
+                self?.listSection(at: index, environment: environment)
                 ?? .list(
                     using: UICollectionLayoutListConfiguration(appearance: .insetGrouped),
                     layoutEnvironment: environment)
+            if environment.traitCollection.horizontalSizeClass == .regular {
+                section.contentInsetsReference = .readableContent
+            }
+            return section
         }
         collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -378,6 +383,7 @@ final class ModelPickerViewController: UIViewController {
             sources: sources, selected: chooser.selected, recents: recents, quotas: quotas)
         chooser.search(query)
         if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
+        guard isViewLoaded else { return }
         if chooser.scopes.count > 1 {
             search.searchBar.scopeButtonTitles = chooser.scopes.map(\.title)
             search.searchBar.showsScopeBar = true

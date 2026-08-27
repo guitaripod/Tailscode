@@ -21,6 +21,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let shortcut = connectionOptions.shortcutItem {
             coordinator.handleShortcut(shortcut)
         }
+        if let activity = connectionOptions.userActivities.first,
+            let url = SceneRouting.url(from: activity)
+        {
+            coordinator.handle(url)
+        }
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        guard let url = SceneRouting.url(from: userActivity) else { return }
+        coordinator?.handle(url)
     }
 
     func windowScene(

@@ -77,7 +77,7 @@ final class ArchivedChatsViewController: UIViewController {
             config.performsFirstActionWithFullSwipe = false
             return config
         }
-        let layout = UICollectionViewCompositionalLayout.list(using: config)
+        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
