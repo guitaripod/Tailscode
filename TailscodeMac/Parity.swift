@@ -103,9 +103,7 @@ enum ParityManifest {
         case .sessionSpend: return .implemented("SpendPanelViewController")
         case .toasts: return .implemented("ToastPresenter")
         case .serverManagement: return .implemented("ServersWindow")
-        case .ompServer:
-            return .gap(
-                "the Kit probes and streams against omp-bridge and the shared Core names it, but no setup surface offers Oh My Pi yet — the choice cards, segments or radios still name two agents, so an omp-bridge server can only be reached by editing a profile's backend directly")
+        case .ompServer: return .implemented("ompRadio")
         case .tailnetDiscovery:
             return .varies(
                 direct: .implemented("DiscoveryPanel"),

@@ -38,6 +38,14 @@ enum MatrixTheme {
         AppTheme.named(themeID).palette(dark: dark).corrected()
     }
 
+    /// Oh My Pi's mint, published the way the shared brand slots are: the authored hue held to
+    /// the readable contrast floor against the canvas it will sit on. Authored here rather than
+    /// in the shared `Palette` because the other brands predate the third agent; the value is the
+    /// same on every desk.
+    static func brandOmp(in palette: Palette) -> String {
+        Contrast.adjusted("#2ab6a3", on: palette.canvas, ratio: Contrast.readable) ?? "#2ab6a3"
+    }
+
     static var css: String { css(for: palette) }
 
     static func css(for palette: Palette) -> String {
@@ -884,11 +892,13 @@ enum MatrixTheme {
         .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
         .brand-claude { color: \(palette.brandClaude); }
         .brand-opencode { color: \(palette.brandOpencode); }
+        .brand-omp { color: \(brandOmp(in: palette)); }
         .brand-grok { color: \(palette.brandGrok); }
         .brand-deepseek { color: \(palette.brandDeepseek); }
         .brand-ollama-cloud { color: \(palette.brandOllama); }
         .gauge-fill-claude { background-color: \(palette.brandClaude); border-radius: 3px; }
         .gauge-fill-opencode { background-color: \(palette.brandOpencode); border-radius: 3px; }
+        .gauge-fill-omp { background-color: \(brandOmp(in: palette)); border-radius: 3px; }
         .gauge-fill-grok { background-color: \(palette.brandGrok); border-radius: 3px; }
         .gauge-fill-deepseek { background-color: \(palette.brandDeepseek); border-radius: 3px; }
         .gauge-fill-ollama-cloud { background-color: \(palette.brandOllama); border-radius: 3px; }

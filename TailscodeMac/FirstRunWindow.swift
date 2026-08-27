@@ -36,6 +36,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
     private var ompRadio: NSButton!
     private var closed = false
     private var probeGeneration = 0
+    /// Minted once and baked into every install command below, then adopted into the password
+    /// field the moment a command is copied — the server the command starts will demand it, so
+    /// handing over the bare installer and asking the user to go find what it generated is worse.
+    private let mintedPassword = BridgeInstall.makePassword()
     private var verified: (url: URL, agent: AgentType, version: String?)?
 
     private init(onSaved: @escaping () -> Void) {
@@ -72,9 +76,17 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
                 title: Localized.text("Run an agent on the machine with your code"),
                 pill: agentPill))
         column.addArrangedSubview(
-            commandRow(label: "claude-bridge", command: ServersWindow.installCommand))
+            commandRow(
+                label: "claude-bridge",
+                command: BridgeInstall.command(for: .claudeCode, password: mintedPassword)))
         column.addArrangedSubview(
-            commandRow(label: "opencode", command: BridgeInstall.opencodeInstallCommand))
+            commandRow(
+                label: "opencode",
+                command: BridgeInstall.command(for: .openCode, password: mintedPassword)))
+        column.addArrangedSubview(
+            commandRow(
+                label: "omp-bridge",
+                command: BridgeInstall.command(for: .omp, password: mintedPassword)))
 
         column.addArrangedSubview(
             stepRow(number: "3", title: Localized.text("Connect this Mac"), pill: nil))
@@ -209,9 +221,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         let text = RowKit.label(
             command, font: MacTheme.Ramp.font(.code), color: MacTheme.Color.secondaryLabel)
         text.lineBreakMode = .byTruncatingTail
-        let copy = RowKit.ActionButton(title: Localized.text("Copy")) {
+        let copy = RowKit.ActionButton(title: Localized.text("Copy")) { [weak self] in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(command, forType: .string)
+            self?.adoptMintedPassword()
         }
         copy.bezelStyle = .accessoryBar
         let row = NSStackView(views: [
@@ -224,6 +237,15 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         row.edgeInsets = NSEdgeInsets(top: 0, left: 22, bottom: 0, right: 0)
         row.translatesAutoresizingMaskIntoConstraints = false
         return row
+    }
+
+    /// The copied command carries the minted password, so the field this window probes with has
+    /// to carry the same one — filled only while it is empty, because a password somebody typed
+    /// is theirs.
+    private func adoptMintedPassword() {
+        guard passwordField.stringValue.isEmpty else { return }
+        passwordField.stringValue = mintedPassword
+        passwordField.isHidden = false
     }
 
     private func setPill(_ label: NSTextField, text: String, color: NSColor) {
@@ -332,7 +354,12 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
         switch verdict.outcome {
         case .ok(let agent, let version):
             verified = (verdict.url, agent, version)
-            let name = agent == .openCode ? "opencode" : "claude-bridge"
+            let name: String
+            switch agent {
+            case .openCode: name = "opencode"
+            case .claudeCode: name = "claude-bridge"
+            case .omp: name = "omp-bridge"
+            }
             setPill(agentPill, text: Localized.text("Answering"), color: MacTheme.Color.success)
             diagnosisLabel.stringValue = Localized.text(
                 "%@ %@ answered at %@.", name, version ?? "", verdict.url.absoluteString)
@@ -393,7 +420,7 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
             name: verified.url.host ?? verified.url.absoluteString,
             backend: verified.agent,
             baseURL: verified.url,
-            username: verified.agent == .claudeCode ? "claude" : "opencode")
+            username: ProbeSweep.username(for: verified.agent))
         do {
             try ServerDirectory.shared.save(profile, password: password.isEmpty ? nil : password)
             onSaved()

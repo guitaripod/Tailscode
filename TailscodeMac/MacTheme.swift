@@ -104,6 +104,18 @@ enum MacTheme {
         static var opencode: NSColor {
             ThemePalette.color(\.brandOpencode, system: .systemTeal)
         }
+        /// Oh My Pi's mint, the third brand beside claude's terracotta and opencode's teal. The
+        /// shared palette carries no omp slot yet, so the hue is the client's own dynamic pair
+        /// rather than a `ThemePalette` lookup — it holds under every theme.
+        static var omp: NSColor {
+            NSColor(
+                name: nil,
+                dynamicProvider: { appearance in
+                    appearance.isDark
+                        ? NSColor(red: 0.16, green: 0.71, blue: 0.64, alpha: 1)
+                        : NSColor(red: 0.12, green: 0.56, blue: 0.50, alpha: 1)
+                })
+        }
 
         /// A model family's hue and an effort's heat, from the shared catalog: the theme's canvas
         /// corrects them when a theme is on, and the platform's own light and dark grounds do when
@@ -170,7 +182,21 @@ enum MacTheme {
         static let onGlassSecondary = NSColor.secondaryLabelColor
 
         static func brand(_ agent: AgentType) -> NSColor {
-            agent == .claudeCode ? claude : opencode
+            switch agent {
+            case .claudeCode: return claude
+            case .openCode: return opencode
+            case .omp: return omp
+            }
+        }
+    }
+
+    /// The SF Symbol a backend wears wherever a server row shows its agent — the same three
+    /// glyphs the phone's `Iconography` assigns, so an agent looks like itself on every client.
+    static func brandSymbol(_ agent: AgentType) -> String {
+        switch agent {
+        case .claudeCode: return "sparkles"
+        case .openCode: return "chevron.left.forwardslash.chevron.right"
+        case .omp: return "function"
         }
     }
 

@@ -4,11 +4,19 @@ import UIKit
 
 extension AgentType {
     var symbolName: String {
-        self == .claudeCode ? "sparkles" : "chevron.left.forwardslash.chevron.right"
+        switch self {
+        case .openCode: return "chevron.left.forwardslash.chevron.right"
+        case .claudeCode: return "sparkles"
+        case .omp: return "function"
+        }
     }
 
     var brandColor: UIColor {
-        self == .claudeCode ? Theme.Color.claude : Theme.Color.opencode
+        switch self {
+        case .openCode: return Theme.Color.opencode
+        case .claudeCode: return Theme.Color.claude
+        case .omp: return Theme.Color.omp
+        }
     }
 }
 

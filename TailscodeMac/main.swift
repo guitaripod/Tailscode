@@ -18,7 +18,7 @@ enum MacCLI {
 
           TailscodeMac                          open the window
           TailscodeMac --demo                   open the scripted demo world (no server)
-          TailscodeMac --connect <address>      save a server (--password, --name, --opencode)
+          TailscodeMac --connect <address>      save a server (--password, --name, --opencode, --omp)
           TailscodeMac --selftest               check the whole chain with no display
           TailscodeMac --shot <path>            draw the window to a PNG (--shot-delay, --shot-size)
           TailscodeMac --tree <path>            write every view's frame and ambiguity to a file
@@ -27,16 +27,16 @@ enum MacCLI {
         """
 
     static let knownOptions: Set<String> = [
-        "--selftest", "--connect", "--password", "--name", "--opencode", "--demo",
+        "--selftest", "--connect", "--password", "--name", "--opencode", "--omp", "--demo",
         "--shot", "--shot-delay", "--shot-size", "--tree", "--tree-constraints", "--open",
         "--version", "--help", "-h",
     ]
 }
 
-/// `TailscodeMac --connect <address> [--password <pw>] [--name <label>] [--opencode]` saves a
-/// server so the installed app has one without anything in its environment. The address is read
-/// the same way the phone reads one, and the server is probed before it is saved — a typo fails
-/// here, named, rather than becoming a row that never loads.
+/// `TailscodeMac --connect <address> [--password <pw>] [--name <label>] [--opencode] [--omp]`
+/// saves a server so the installed app has one without anything in its environment. The address
+/// is read the same way the phone reads one, and the server is probed before it is saved — a
+/// typo fails here, named, rather than becoming a row that never loads.
 enum Connect {
     static var isRequested: Bool { CommandLine.arguments.contains("--connect") }
 
@@ -45,11 +45,13 @@ enum Connect {
         guard let index = arguments.firstIndex(of: "--connect"), index + 1 < arguments.count
         else {
             report(
-                "usage: TailscodeMac --connect <address> [--password <pw>] [--name <label>] [--opencode]")
+                "usage: TailscodeMac --connect <address> [--password <pw>] [--name <label>] [--opencode] [--omp]")
             exit(1)
         }
         let raw = arguments[index + 1]
-        let backend: AgentType = arguments.contains("--opencode") ? .openCode : .claudeCode
+        let backend: AgentType =
+            arguments.contains("--omp")
+            ? .omp : (arguments.contains("--opencode") ? .openCode : .claudeCode)
         let password = value(of: "--password", in: arguments)
             ?? ProcessInfo.processInfo.environment["TAILSCODE_PASSWORD"]
 
@@ -66,7 +68,7 @@ enum Connect {
             name: value(of: "--name", in: arguments) ?? address.displayHost,
             backend: backend,
             baseURL: address.url,
-            username: backend == .claudeCode ? "claude" : "opencode")
+            username: ProbeSweep.username(for: backend))
 
         do {
             let probe = profile.makeBackend(password: password)

@@ -79,9 +79,7 @@ enum ParityManifest {
         case .sessionSpend: return .implemented("SpendViewController")
         case .toasts: return .implemented("presentToast")
         case .serverManagement: return .implemented("ConnectionController")
-        case .ompServer:
-            return .gap(
-                "the Kit probes and streams against omp-bridge and the shared Core names it, but no setup surface offers Oh My Pi yet — the choice cards, segments or radios still name two agents, so an omp-bridge server can only be reached by editing a profile's backend directly")
+        case .ompServer: return .implemented("ompChoice")
         case .tailnetDiscovery: return .implemented("DiscoveryViewController")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverSignIn: return .implemented("ServerSignInViewController")

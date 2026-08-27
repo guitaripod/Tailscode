@@ -111,8 +111,10 @@ final class ServerSetupViewController: UIViewController {
         startTailnetTicker()
         #if DEBUG
             let environment = ProcessInfo.processInfo.environment
-            if environment["TAILSCODE_SETUP_AGENT"] == "claude" {
-                selectBackend(.claudeCode, animated: false)
+            switch environment["TAILSCODE_SETUP_AGENT"] {
+            case "claude": selectBackend(.claudeCode, animated: false)
+            case "omp": selectBackend(.omp, animated: false)
+            default: break
             }
             if let password = environment["TAILSCODE_SETUP_PASSWORD"] {
                 showPasswordField(focus: false)
@@ -255,13 +257,16 @@ final class ServerSetupViewController: UIViewController {
     }
 
     private func buildAgentStep() {
-        let opencode = AgentChoiceCard(
+        let opencodeChoice = AgentChoiceCard(
             backend: .openCode, title: String(localized: "opencode"),
             detail: String(localized: "Any provider you have configured. One command, no build."))
-        let claude = AgentChoiceCard(
+        let claudeChoice = AgentChoiceCard(
             backend: .claudeCode, title: String(localized: "Claude Code"),
             detail: String(localized: "Your own Claude subscription, through claude-bridge."))
-        choiceCards = [.openCode: opencode, .claudeCode: claude]
+        let ompChoice = AgentChoiceCard(
+            backend: .omp, title: String(localized: "Oh My Pi"),
+            detail: String(localized: "Your own oh-my-pi agent, through omp-bridge."))
+        choiceCards = [.openCode: opencodeChoice, .claudeCode: claudeChoice, .omp: ompChoice]
         for (type, card) in choiceCards {
             card.addAction(
                 UIAction { [weak self] _ in
@@ -269,7 +274,7 @@ final class ServerSetupViewController: UIViewController {
                     self?.selectBackend(type, animated: true)
                 }, for: .touchUpInside)
         }
-        let choices = UIStackView(arrangedSubviews: [opencode, claude])
+        let choices = UIStackView(arrangedSubviews: [opencodeChoice, claudeChoice, ompChoice])
         choices.axis = .vertical
         choices.spacing = Theme.Spacing.s
 
@@ -280,14 +285,20 @@ final class ServerSetupViewController: UIViewController {
         agentLink.addAction(
             UIAction { [weak self] _ in
                 guard let self else { return }
-                self.open(
-                    self.backend == .openCode
-                        ? "https://opencode.ai" : "https://github.com/guitaripod/claude-bridge")
+                self.open(self.agentLinkURL(for: self.backend))
             }, for: .touchUpInside)
 
         agentCard.content.addArrangedSubview(choices)
         agentCard.content.addArrangedSubview(commandHost)
         agentCard.content.addArrangedSubview(agentLink)
+    }
+
+    private func agentLinkURL(for backend: AgentType) -> String {
+        switch backend {
+        case .openCode: return "https://opencode.ai"
+        case .claudeCode: return "https://github.com/guitaripod/claude-bridge"
+        case .omp: return "https://github.com/guitaripod/omp-bridge"
+        }
     }
 
     private func buildConnectStep() {
@@ -414,30 +425,55 @@ final class ServerSetupViewController: UIViewController {
     private func selectBackend(_ backend: AgentType, animated: Bool) {
         self.backend = backend
         for (type, card) in choiceCards { card.isSelected = type == backend }
-        agentLink.configuration?.title =
-            backend == .openCode
-            ? String(localized: "Install opencode") : String(localized: "claude-bridge on GitHub")
+        agentLink.configuration?.title = agentLinkTitle(for: backend)
         rebuildCommand(animated: animated)
-        agentCard.setDetail(
-            backend == .openCode
-                ? String(localized: "Type this on the computer, not on this phone.")
-                : String(
-                    localized:
-                        "Type this on the computer, not on this phone. It builds from source (git and a Swift toolchain, a few minutes the first time) and installs a service that survives reboots."
-                ))
-        if backend == .claudeCode {
+        agentCard.setDetail(agentDetail(for: backend))
+        switch backend {
+        case .openCode:
+            if passwordField.text.isEmpty, authTarget == nil {
+                passwordField.isHidden = true
+                passwordDisclosure.isHidden = false
+                passwordNote.isHidden = true
+            }
+        case .claudeCode:
             showPasswordField(focus: false)
             passwordNote.text = String(
                 localized: "claude-bridge always needs a password — the one in the command above.")
             passwordNote.isHidden = false
-        } else if passwordField.text.isEmpty, authTarget == nil {
-            passwordField.isHidden = true
-            passwordDisclosure.isHidden = false
-            passwordNote.isHidden = true
+        case .omp:
+            showPasswordField(focus: false)
+            passwordNote.text = String(
+                localized: "omp-bridge always needs a password — the one in the command above.")
+            passwordNote.isHidden = false
         }
         if !addressField.text.isEmpty { addressChanged() }
         guard animated else { return }
         UIAccessibility.post(notification: .layoutChanged, argument: agentCard)
+    }
+
+    private func agentLinkTitle(for backend: AgentType) -> String {
+        switch backend {
+        case .openCode: return String(localized: "Install opencode")
+        case .claudeCode: return String(localized: "claude-bridge on GitHub")
+        case .omp: return String(localized: "omp-bridge on GitHub")
+        }
+    }
+
+    private func agentDetail(for backend: AgentType) -> String {
+        switch backend {
+        case .openCode:
+            return String(localized: "Type this on the computer, not on this phone.")
+        case .claudeCode:
+            return String(
+                localized:
+                    "Type this on the computer, not on this phone. It builds from source (git and a Swift toolchain, a few minutes the first time) and installs a service that survives reboots."
+            )
+        case .omp:
+            return String(
+                localized:
+                    "Type this on the computer, not on this phone. omp-bridge serves your oh-my-pi agent on port 4099 and installs a service that survives reboots."
+            )
+        }
     }
 
     private func rebuildCommand(animated: Bool) {
@@ -594,14 +630,11 @@ final class ServerSetupViewController: UIViewController {
         let password = passwordField.text.isEmpty ? nil : passwordField.text
         let candidates = authTarget.map { [$0] } ?? address.probeCandidates()
         let preferred = backend
-        let policy =
-            userInitiated
-            ? AgentProbe.policy
-            : ConnectionPolicy(requestTimeout: .seconds(4), resourceTimeout: .seconds(6))
+        let policy = userInitiated ? ProbeSweep.interactivePolicy : ProbeSweep.typingPolicy
         probeTask = Task { @MainActor [weak self] in
             var best: (url: URL, outcome: ConnectionProbe.Outcome)?
             for candidate in candidates {
-                let outcome = await AgentProbe.probe(
+                let outcome = await ProbeSweep.probe(
                     baseURL: candidate, password: password, preferring: preferred,
                     policy: policy, retryUnreachable: userInitiated)
                 guard !Task.isCancelled else { return }

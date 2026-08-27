@@ -382,7 +382,7 @@ final class DiscoveryViewController: UIViewController {
                 String(localized: "Scanned \(count) devices.") + "\n"
                 + String(
                     localized:
-                        "No opencode or Claude Code servers found.\nMake sure the servers are running and listening on ports 4096/4098."
+                        "No opencode, Claude Code, or Oh My Pi servers found.\nMake sure the servers are running and listening on ports 4096/4098/4099."
                 )
             if skippedDeviceCount > 0 {
                 text +=
@@ -432,8 +432,9 @@ final class DiscoveryViewController: UIViewController {
         statusLabel.text = String(localized: "Verifying \(suggestion.baseURL.host ?? "server")…")
         connectTask = Task {
             defer { connectTask = nil }
-            let outcome = await AgentProbe.probe(
-                baseURL: suggestion.baseURL, password: password, preferring: suggestion.backend)
+            let outcome = await ProbeSweep.probe(
+                baseURL: suggestion.baseURL, password: password, preferring: suggestion.backend,
+                policy: ProbeSweep.interactivePolicy, retryUnreachable: true)
             guard !Task.isCancelled else { return }
             switch outcome {
             case .ok(let detected, _):
@@ -442,7 +443,7 @@ final class DiscoveryViewController: UIViewController {
                 Theme.Haptics.error()
                 statusLabel.text = String(
                     localized:
-                        "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode or claude-bridge server."
+                        "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode, claude-bridge, or omp-bridge server."
                 )
             case .authFailed:
                 Theme.Haptics.error()

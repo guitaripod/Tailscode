@@ -40,8 +40,6 @@ enum ServerProbe {
 /// account: signed in as whom, or signed out with the one button that fixes it.
 @MainActor
 final class ServersWindow: NSWindowController {
-    static let installCommand = BridgeInstall.installCommand
-
     private let onChanged: @MainActor () -> Void
     /// What to open when somebody reaches past the free copy's one server.
     var onNeedsPro: (@MainActor () -> Void)?
@@ -209,6 +207,14 @@ final class ServersWindow: NSWindowController {
     }
 
     private func makeRow(_ profile: ConnectionProfile) -> NSView {
+        let icon = NSImageView()
+        icon.image = NSImage(
+            systemSymbolName: MacTheme.brandSymbol(profile.backend),
+            accessibilityDescription: ServerLabel.agent(profile.backend))?
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        icon.contentTintColor = MacTheme.Color.brand(profile.backend)
+        icon.setContentHuggingPriority(.required, for: .horizontal)
         let title = NSTextField(labelWithString: profile.name)
         title.font = MacTheme.Ramp.font(.cardTitle)
         title.lineBreakMode = .byTruncatingTail
@@ -249,7 +255,7 @@ final class ServersWindow: NSWindowController {
         remove.identifier = NSUserInterfaceItemIdentifier(profile.id)
         remove.setContentHuggingPriority(.required, for: .horizontal)
 
-        var trailing: [NSView] = [lines, Self.spacer()]
+        var trailing: [NSView] = [icon, lines, Self.spacer()]
         if ServerRestart.isOffered(profile.backend) {
             let restart = NSButton(
                 title: ServerRestart.title, target: self, action: #selector(restartTapped))
@@ -420,7 +426,7 @@ final class ServersWindow: NSWindowController {
                     name: label.isEmpty ? address.displayHost : label,
                     backend: agent,
                     baseURL: verdict.url,
-                    username: agent == .claudeCode ? "claude" : "opencode")
+                    username: ProbeSweep.username(for: agent))
                 do {
                     try ServerDirectory.shared.save(
                         profile, password: password.isEmpty ? nil : password)
@@ -654,9 +660,15 @@ final class ServersWindow: NSWindowController {
         }
         switch await PortReachability.check(host: host, port: UInt16(port)) {
         case .listening:
+            let expected: String
+            switch backend {
+            case .openCode: expected = "opencode"
+            case .claudeCode: expected = "claude-bridge"
+            case .omp: expected = "omp-bridge"
+            }
             return Localized.text(
                 "%@:%@ answers, but not like a %@ server — is the other agent on this port?",
-                host, "\(port)", backend == .openCode ? "opencode" : "claude-bridge")
+                host, "\(port)", expected)
         case .refused:
             return Localized.text(
                 "%@ is up but nothing listens on %@ — is the server running?", host, "\(port)")

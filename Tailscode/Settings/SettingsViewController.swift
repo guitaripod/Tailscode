@@ -482,7 +482,7 @@ final class SettingsViewController: UIViewController {
                 )
                 : String(
                     localized:
-                        "Tailscale is up, so the agent processes are the likely problem. Check that opencode or claude-bridge is still running."
+                        "Tailscale is up, so the agent processes are the likely problem. Check that opencode, claude-bridge, or omp-bridge is still running."
                 )
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
             content.textProperties.color = Theme.Color.warning

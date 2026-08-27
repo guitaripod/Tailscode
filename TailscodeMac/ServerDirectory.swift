@@ -162,12 +162,13 @@ final class ServerDirectory {
     private static func environmentProfile() -> (ConnectionProfile, String?)? {
         let environment = ProcessInfo.processInfo.environment
         guard let raw = environment["TAILSCODE_HOST"], !raw.isEmpty else { return nil }
-        let backend: AgentType = environment["TAILSCODE_BACKEND"] == "opencode" ? .openCode : .claudeCode
+        let named = environment["TAILSCODE_BACKEND"]
+        let backend: AgentType = named == "opencode" ? .openCode : (named == "omp" ? .omp : .claudeCode)
         guard case .address(let address) = HostAddress.read(raw, defaultPort: HostAddress.port(for: backend))
         else { return nil }
         let profile = ConnectionProfile(
             id: "environment", name: address.displayHost, backend: backend, baseURL: address.url,
-            username: backend == .claudeCode ? "claude" : "opencode")
+            username: ProbeSweep.username(for: backend))
         return (profile, environment["TAILSCODE_PASSWORD"])
     }
 }

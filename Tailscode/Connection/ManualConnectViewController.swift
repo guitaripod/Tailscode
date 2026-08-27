@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
@@ -8,7 +9,7 @@ final class ManualConnectViewController: UIViewController {
 
     private let device: TailscaleDevice
 
-    private let backendControl = UISegmentedControl(items: ["opencode", "Claude Code"])
+    private let backendControl = UISegmentedControl(items: ["opencode", "Claude Code", "Oh My Pi"])
     private let nameField = FormField(
         title: String(localized: "Name"), placeholder: String(localized: "My server"))
     private let hostField = FormField(
@@ -19,7 +20,13 @@ final class ManualConnectViewController: UIViewController {
     private let connectButton = PrimaryButton(title: String(localized: "Test & Connect"))
     private let statusLabel = UILabel()
 
-    private var backend: AgentType { backendControl.selectedSegmentIndex == 0 ? .openCode : .claudeCode }
+    private var backend: AgentType {
+        switch backendControl.selectedSegmentIndex {
+        case 0: return .openCode
+        case 1: return .claudeCode
+        default: return .omp
+        }
+    }
     private var lastPrefilledHost = ""
 
     /// Prefers the stable 100.x tailnet IP: the bare hostname only resolves
@@ -97,7 +104,7 @@ final class ManualConnectViewController: UIViewController {
     /// Only rewrites the host field if the user hasn't edited it, so
     /// switching backends can't discard a hand-typed URL.
     @objc private func backendChanged() {
-        let port = backend == .openCode ? 4096 : 4098
+        let port = HostAddress.port(for: backend)
         let next = "http://\(preferredHost):\(port)"
         if hostField.text.isEmpty || hostField.text == lastPrefilledHost {
             hostField.setText(next)
@@ -120,7 +127,9 @@ final class ManualConnectViewController: UIViewController {
 
         connectButton.setLoading(true)
         showStatus(String(localized: "Testing connection…"), ok: true)
-        let outcome = await AgentProbe.probe(baseURL: url, password: password, preferring: backend)
+        let outcome = await ProbeSweep.probe(
+            baseURL: url, password: password, preferring: backend,
+            policy: ProbeSweep.interactivePolicy, retryUnreachable: true)
         connectButton.setLoading(false)
 
         switch outcome {
@@ -142,7 +151,9 @@ final class ManualConnectViewController: UIViewController {
             showStatus(String(localized: "Unreachable: \(detail)"), ok: false)
             Theme.Haptics.error()
         case .notAnAgentServer:
-            showStatus(String(localized: "Reachable, but not an opencode or claude-bridge server."), ok: false)
+            showStatus(
+                String(localized: "Reachable, but not an opencode, claude-bridge, or omp-bridge server."),
+                ok: false)
             Theme.Haptics.error()
         }
     }

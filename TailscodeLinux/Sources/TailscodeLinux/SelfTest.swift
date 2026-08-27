@@ -1900,6 +1900,8 @@ public enum SelfTest {
             ".seg-warn { color: \(palette.warn); }",
             ".seg-error { color: \(palette.danger); }",
             ".brand-claude { color: \(palette.brandClaude); }",
+            ".brand-omp { color: \(MatrixTheme.brandOmp(in: palette)); }",
+            ".gauge-fill-omp { background-color: \(MatrixTheme.brandOmp(in: palette)); border-radius: 3px; }",
             ".brand-ollama-cloud { color: \(palette.brandOllama); }",
             ".gauge-fill-ollama-cloud { background-color: \(palette.brandOllama); border-radius: 3px; }",
         ]

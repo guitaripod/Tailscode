@@ -1,3 +1,4 @@
+import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
@@ -108,15 +109,16 @@ final class ServerEditViewController: UIViewController {
         let backend = profile.backend
         verifyTask = Task { [weak self] in
             defer { self?.verifyTask = nil }
-            let outcome = await AgentProbe.probe(
-                baseURL: url, password: password, preferring: backend)
+            let outcome = await ProbeSweep.probe(
+                baseURL: url, password: password, preferring: backend,
+                policy: ProbeSweep.interactivePolicy, retryUnreachable: true)
             guard let self, !Task.isCancelled else { return }
             self.saveButton.setLoading(false)
             switch outcome {
             case .ok(let detected, _):
                 var verified = edited
                 verified.backend = detected
-                verified.username = AgentProbe.username(for: detected)
+                verified.username = ProbeSweep.username(for: detected)
                 self.commit(verified, password: password)
             case .authFailed:
                 Theme.Haptics.error()
@@ -125,7 +127,7 @@ final class ServerEditViewController: UIViewController {
             case .notAnAgentServer:
                 Theme.Haptics.error()
                 self.showStatus(
-                    String(localized: "Reachable, but not an opencode or claude-bridge server."),
+                    String(localized: "Reachable, but not an opencode, claude-bridge, or omp-bridge server."),
                     ok: false)
             case .unreachable(let detail):
                 Theme.Haptics.error()

@@ -62,7 +62,7 @@ if Arguments.contains("--themes") {
 /// the process is expected to register, serve the request and exit on idle. Rejecting it as a stray
 /// would make every launcher click on a packaged build print a usage block and exit 2.
 let knownOptions: Set<String> = [
-    "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode",
+    "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode", "--omp",
     "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
     "--gapplication-service",
 ]

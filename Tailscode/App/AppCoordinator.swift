@@ -144,12 +144,22 @@ final class AppCoordinator: NSObject {
                 AppLogger.connection.info("seed skipped — already connected")
                 return
             }
-            let backend: AgentType = env["TAILSCODE_BACKEND"] == "claude" ? .claudeCode : .openCode
-            seed(id: "debug", url: url, backend: backend, password: env["TAILSCODE_PASSWORD"])
+            seed(
+                id: "debug", url: url, backend: Self.debugBackend(env["TAILSCODE_BACKEND"]),
+                password: env["TAILSCODE_PASSWORD"])
 
             if let extra = env["TAILSCODE_HOST2"], let url2 = URL(string: extra) {
-                let backend2: AgentType = env["TAILSCODE_BACKEND2"] == "claude" ? .claudeCode : .openCode
-                seed(id: "debug2", url: url2, backend: backend2, password: env["TAILSCODE_PASSWORD2"])
+                seed(
+                    id: "debug2", url: url2, backend: Self.debugBackend(env["TAILSCODE_BACKEND2"]),
+                    password: env["TAILSCODE_PASSWORD2"])
+            }
+        }
+
+        private static func debugBackend(_ value: String?) -> AgentType {
+            switch value {
+            case "claude": return .claudeCode
+            case "omp": return .omp
+            default: return .openCode
             }
         }
 

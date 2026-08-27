@@ -507,7 +507,7 @@ final class FirstRunDialog: @unchecked Sendable {
         switch verdict.outcome {
         case .ok(let agent, let version):
             verified = (verdict.url, agent, version)
-            let name = agent == .openCode ? "opencode" : "claude-bridge"
+            let name = Self.bridgeName(for: agent)
             setPill(agentPill, text: Localized.text("Answering"), css: "glyph-running")
             gtk_label_set_text(
                 op(diagnosisLabel),
@@ -587,7 +587,7 @@ final class FirstRunDialog: @unchecked Sendable {
             name: verified.url.host ?? verified.url.absoluteString,
             backend: verified.agent,
             baseURL: verified.url,
-            username: verified.agent == .claudeCode ? "claude" : "opencode")
+            username: ProbeSweep.username(for: verified.agent))
         AppLog.write(
             .connection,
             "first run saving \(verified.agent.rawValue) at \(verified.url.absoluteString) "
@@ -619,7 +619,8 @@ final class FirstRunDialog: @unchecked Sendable {
         let alternate: Int
         switch port {
         case HostAddress.openCodePort: alternate = HostAddress.claudeCodePort
-        case HostAddress.claudeCodePort: alternate = HostAddress.openCodePort
+        case HostAddress.claudeCodePort: alternate = HostAddress.ompPort
+        case HostAddress.ompPort: alternate = HostAddress.openCodePort
         default: return nil
         }
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
@@ -627,6 +628,17 @@ final class FirstRunDialog: @unchecked Sendable {
         }
         components.port = alternate
         return components.url
+    }
+
+    /// What the process on the far machine is actually called, for the sentence that names what
+    /// answered: the agent label is Core's, but only opencode serves under its own name — the
+    /// other two agents answer through their bridges.
+    private static func bridgeName(for agent: AgentType) -> String {
+        switch agent {
+        case .openCode: return "opencode"
+        case .claudeCode: return "claude-bridge"
+        case .omp: return "omp-bridge"
+        }
     }
 
     private func finish(profile: ConnectionProfile) async {

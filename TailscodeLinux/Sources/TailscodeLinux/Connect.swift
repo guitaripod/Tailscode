@@ -3,8 +3,8 @@ import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
-/// `tailscode --connect <address> [--password <pw>] [--name <label>] [--opencode]` saves a server
-/// so the installed app has one without anything in its environment.
+/// `tailscode --connect <address> [--password <pw>] [--name <label>] [--opencode|--omp]` saves a
+/// server so the installed app has one without anything in its environment.
 ///
 /// The address is read the same way the phone reads one — a bare tailnet IP, a MagicDNS name, a
 /// host:port, or a full URL — and the port is inferred from the backend when it is missing. The
@@ -18,11 +18,15 @@ enum Connect {
         guard let index = arguments.firstIndex(of: "--connect"),
             index + 1 < arguments.count
         else {
-            report("usage: tailscode --connect <address> [--password <pw>] [--name <label>] [--opencode]")
+            report(
+                "usage: tailscode --connect <address> [--password <pw>] [--name <label>] [--opencode|--omp]"
+            )
             exit(1)
         }
         let raw = arguments[index + 1]
-        let backend: AgentType = arguments.contains("--opencode") ? .openCode : .claudeCode
+        let backend: AgentType =
+            arguments.contains("--omp")
+            ? .omp : arguments.contains("--opencode") ? .openCode : .claudeCode
         let password = value(of: "--password", in: arguments)
             ?? ProcessInfo.processInfo.environment["TAILSCODE_PASSWORD"]
 
@@ -38,7 +42,7 @@ enum Connect {
             name: value(of: "--name", in: arguments) ?? address.displayHost,
             backend: backend,
             baseURL: address.url,
-            username: backend == .claudeCode ? "claude" : "opencode")
+            username: ProbeSweep.username(for: backend))
 
         do {
             let probe = profile.makeBackend(password: password)

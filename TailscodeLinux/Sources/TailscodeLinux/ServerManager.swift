@@ -117,7 +117,9 @@ final class ServerManager: @unchecked Sendable {
         let password = Self.passwordRow(title: Localized.text("Password"))
         gtk_widget_set_tooltip_text(
             password,
-            Localized.text("Only if the server asks for one — claude-bridge's BRIDGE_PASSWORD."))
+            Localized.text(
+                "Only if the server asks for one — claude-bridge's BRIDGE_PASSWORD, omp-bridge's OMP_PASSWORD."
+            ))
         passwordRow = password
         adw_preferences_group_add(ptr(group), ptr(password))
 
@@ -132,7 +134,7 @@ final class ServerManager: @unchecked Sendable {
         adw_preferences_row_set_use_markup(ptr(agent), 0)
         adw_action_row_set_subtitle(
             ptr(agent),
-            Localized.text("Both ports are tried anyway when you don't name one."))
+            Localized.text("Every port is tried anyway when you don't name one."))
         let model = gtk_string_list_new(nil)!
         gtk_string_list_append(model, "claude-bridge · 4098")
         gtk_string_list_append(model, "opencode · 4096")
@@ -862,7 +864,7 @@ final class ServerManager: @unchecked Sendable {
             if let agentRow {
                 adw_combo_row_set_selected(
                     ptr(UnsafeMutableRawPointer(agentRow)),
-                    guint(AgentType.allCases.firstIndex(of: suggestion.backend) ?? 0))
+                    guint(Self.addFormBackends.firstIndex(of: suggestion.backend) ?? 0))
             }
             setStatus(
                 Localized.text("%@ wants a password", suggestion.recommendedProfileName),
@@ -996,10 +998,12 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
+    private static let addFormBackends: [AgentType] = [.claudeCode, .openCode, .omp]
+
     private var selectedBackend: AgentType {
         guard let agentRow else { return .claudeCode }
         let index = adw_combo_row_get_selected(ptr(UnsafeMutableRawPointer(agentRow)))
-        return [AgentType.claudeCode, .openCode, .omp][Int(index)]
+        return Self.addFormBackends[Int(index)]
     }
 
     private func clearAddForm() {
@@ -1090,7 +1094,8 @@ final class ServerManager: @unchecked Sendable {
         let alternate: Int
         switch port {
         case HostAddress.openCodePort: alternate = HostAddress.claudeCodePort
-        case HostAddress.claudeCodePort: alternate = HostAddress.openCodePort
+        case HostAddress.claudeCodePort: alternate = HostAddress.ompPort
+        case HostAddress.ompPort: alternate = HostAddress.openCodePort
         default: return nil
         }
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

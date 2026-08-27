@@ -80,7 +80,7 @@ final class WelcomeViewController: UIViewController {
             Self.valueRow(
                 symbol: "desktopcomputer",
                 text: String(
-                    localized: "Needs a computer on that tailnet running opencode or Claude Code.")),
+                    localized: "Needs a computer on that tailnet running opencode, Claude Code, or Oh My Pi.")),
             Self.valueRow(
                 symbol: "bell.badge",
                 text: String(

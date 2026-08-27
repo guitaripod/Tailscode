@@ -10,7 +10,7 @@ enum TailscodeVersion {
           tailscode                          open the window
           tailscode --ask                    open the question box (bind this to a key)
           tailscode --demo                   open the scripted demo world (no server)
-          tailscode --connect <address>      save a server (--password, --name, --opencode)
+          tailscode --connect <address>      save a server (--password, --name, --opencode, --omp)
           tailscode --selftest               check the whole chain with no display
           tailscode --version
         """

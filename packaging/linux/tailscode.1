@@ -6,8 +6,8 @@ tailscode \- drive your coding agents over Tailscale
 .RI [ options ]
 .SH DESCRIPTION
 Tailscode is a GTK4 client for the coding agents running on your other machines: Claude
-Code through claude\-bridge, and opencode. The agent stays where your code is; this is the
-window onto it, over your own tailnet.
+Code through claude\-bridge, oh\-my\-pi through omp\-bridge, and opencode. The agent stays
+where your code is; this is the window onto it, over your own tailnet.
 .PP
 Running it with no arguments opens the window. A second launch raises the window that
 already exists rather than starting a second app.
@@ -30,6 +30,9 @@ Print the usage summary and exit.
 .TP
 \fB--name\fR
 The name to file the server under, with --connect.
+.TP
+\fB--omp\fR
+Treat the address given to --connect as an omp-bridge (oh-my-pi) server.
 .TP
 \fB--opencode\fR
 Treat the address given to --connect as an opencode server.

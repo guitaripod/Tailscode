@@ -203,9 +203,9 @@ final class DiscoveryPanel: @unchecked Sendable {
                 detail: Self.count(
                     peerCount,
                     one:
-                        "Asked 1 machine on both ports. Run the install command on the machine you code on, then scan again.",
+                        "Asked 1 machine on every agent port. Run the install command on the machine you code on, then scan again.",
                     many:
-                        "Asked %@ machines on both ports. Run the install command on the machine you code on, then scan again."
+                        "Asked %@ machines on every agent port. Run the install command on the machine you code on, then scan again."
                 ),
                 actions: [
                     Self.button(Localized.text("Copy the install command")) { [weak self] in
