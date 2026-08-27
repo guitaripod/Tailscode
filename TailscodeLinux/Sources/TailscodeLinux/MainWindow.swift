@@ -3459,8 +3459,11 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func presentUsage() {
-        UsagePanel.present(parent: sidebarPane, initial: lastQuotas) {
-            await Self.collectQuotas(profiles: await ServerDirectory.shared.profiles())
+        let initial = lastQuotas
+        Task {
+            await UsagePanel.present(parent: sidebarPane, initial: initial) {
+                await Self.collectQuotas(profiles: await ServerDirectory.shared.profiles())
+            }
         }
     }
 

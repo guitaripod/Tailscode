@@ -1829,7 +1829,7 @@ public enum SelfTest {
                 palette.danger, palette.info, palette.special, palette.codeBg,
                 palette.subagentBg, palette.findHit, palette.onAccent,
                 palette.brandClaude, palette.brandOpencode, palette.brandGrok,
-                palette.brandDeepseek,
+                palette.brandDeepseek, palette.brandOllama,
             ]
             for slot in slots {
                 guard slot.hasPrefix("#"), slot.count == 7,
@@ -1900,6 +1900,8 @@ public enum SelfTest {
             ".seg-warn { color: \(palette.warn); }",
             ".seg-error { color: \(palette.danger); }",
             ".brand-claude { color: \(palette.brandClaude); }",
+            ".brand-ollama-cloud { color: \(palette.brandOllama); }",
+            ".gauge-fill-ollama-cloud { background-color: \(palette.brandOllama); border-radius: 3px; }",
         ]
         for rule in required where !css.contains(rule) {
             throw SelfTestFailure("\(palette.name): missing label rule — \(rule)")

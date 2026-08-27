@@ -17,12 +17,12 @@ enum UsagePanel {
         parent: UnsafeMutablePointer<GtkWidget>?,
         initial: [(String, UsageQuota)],
         refresh: @escaping @Sendable () async -> [(String, UsageQuota)]
-    ) {
+    ) async {
         let (window, content) = Dialogs.window(
             title: Localized.text("Usage"), parent: parent, width: 380)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
-        render(initial, into: column, refreshing: true)
+        await render(initial, into: column, refreshing: true)
 
         let scroller = gtk_scrolled_window_new()!
         gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
@@ -56,7 +56,7 @@ enum UsagePanel {
             guard !fresh.isEmpty else { return }
             Gtk.onMain {
                 guard let raw = UnsafeMutableRawPointer(bitPattern: columnBits) else { return }
-                render(fresh, into: ptr(raw), refreshing: false)
+                Task { await render(fresh, into: ptr(raw), refreshing: false) }
             }
         }
     }
@@ -64,7 +64,7 @@ enum UsagePanel {
     private static func render(
         _ quotas: [(String, UsageQuota)], into column: UnsafeMutablePointer<GtkWidget>,
         refreshing: Bool
-    ) {
+    ) async {
         Gtk.removeChildren(of: column)
         guard !quotas.isEmpty else {
             gtk_box_append(
@@ -83,10 +83,53 @@ enum UsagePanel {
         for holding in holdings {
             gtk_box_append(ptr(column), card(holding))
         }
+        if let invitation = await ollamaCard() {
+            gtk_box_append(ptr(column), invitation)
+        }
         if refreshing {
             gtk_box_append(
                 ptr(column), Gtk.label(Localized.text("Refreshing…"), css: "dim", selectable: false))
         }
+    }
+
+    /// What the panel says about Ollama Cloud when there is no reading to draw: a key nobody has
+    /// set is a state with words and one action rather than a blank space. Offered only where it
+    /// could matter — an opencode server fronts cloud models — so an account that has never
+    /// touched ollama.com is not told about one.
+    private static func ollamaCard() async -> UnsafeMutablePointer<GtkWidget>? {
+        let hasKey = OllamaCredentials.hasToken
+        let fronted = await ServerDirectory.shared.profiles().contains { $0.backend == .openCode }
+        guard hasKey || fronted else { return nil }
+
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        let name = Gtk.label("Ollama Cloud", css: "usage-provider", selectable: false)
+        Gtk.addClass(name, "brand-ollama-cloud")
+        gtk_box_append(ptr(header), name)
+        gtk_box_append(ptr(header), Gtk.label("", css: "usage-plan", selectable: false))
+        gtk_box_append(ptr(card), header)
+        gtk_box_append(
+            ptr(card),
+            Gtk.label(
+                hasKey
+                    ? Localized.text(
+                        "The key is set and ollama.com has not answered yet — the plan's windows appear here as soon as it does.")
+                    : Localized.text(
+                        "Ollama models served by ollama.com are metered by your plan. Add the account's API key and the session and weekly windows join these numbers."),
+                css: "row-detail", wrap: true, selectable: false))
+        let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_widget_set_halign(buttons, GTK_ALIGN_END)
+        gtk_box_append(
+            ptr(buttons),
+            Gtk.button(
+                hasKey ? Localized.text("Edit key…") : Localized.text("Add key…"),
+                css: ["suggested-action"],
+                onClick: {
+                    OllamaKeyDialog.present(parent: nil, onChanged: {})
+                }))
+        gtk_box_append(ptr(card), buttons)
+        return card
     }
 
     private static func hero(quota: UsageQuota, gauge: UsageQuota.Gauge)

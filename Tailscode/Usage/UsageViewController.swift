@@ -249,7 +249,7 @@ final class UsageViewController: UIViewController {
         grokCard.isHidden = claudeProfile == nil
         opencodeCard.isHidden = opencodeProfile == nil
         deepseekCard.isVisible = opencodeProfile != nil || DeepSeekCredentials.hasToken
-        ollamaCard.isVisible = OllamaCredentials.hasToken
+        ollamaCard.isVisible = opencodeProfile != nil || OllamaCredentials.hasToken
         monthCard.isHidden = claudeProfile == nil
         contentStack.isHidden = false
 
@@ -344,7 +344,7 @@ final class UsageViewController: UIViewController {
             for gauge in model.gauges where gauge.fraction > 0 {
                 walls.append((Self.providerTitle(for: kind), model.accent, gauge))
             }
-            for gauge in model.gauges where kind != .deepseek {
+            for gauge in model.gauges where kind != .deepseek && kind != .ollama {
                 windows.append((Self.providerTitle(for: kind), model.accent, gauge))
             }
         }
@@ -673,12 +673,10 @@ final class UsageViewController: UIViewController {
     private static func ollamaModel(_ reading: OllamaCloud.Reading) -> CardModel {
         let quota = OllamaCloud.snapshot(for: reading)
         let gauges = quota.gauges.map { gauge -> GaugeVM in
-            let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
             return GaugeVM(
                 name: UsageGaugeFormat.gaugeLabel(gauge.label),
                 fraction: gauge.fraction,
-                percentText: QuotaSurface.amountLabel(
-                    fraction: gauge.fraction, percentText: "\(percent)%"),
+                percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
                 caption: gauge.fraction >= QuotaSurface.exhaustedFloor
                     ? String(localized: "Used up — the window resets on ollama's own clock")
                     : "—")

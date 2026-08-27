@@ -1,5 +1,6 @@
 import BackgroundTasks
 import Foundation
+import TailscodeCore
 
 /// Periodic background refresh of every usage source, so the widgets keep moving even
 /// when neither the app nor a widget timeline reload has run: live Claude/Grok quotas

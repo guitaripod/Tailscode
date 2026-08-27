@@ -60,12 +60,13 @@ enum OllamaUsage {
             subtitle: quota.subtitle,
             isLive: true,
             gauges: quota.gauges.map { gauge in
-                let percent = Int((min(max(gauge.fraction, 0), 1) * 100).rounded())
                 return UsageWidgetEntry.GaugeSnapshot(
                     label: gauge.label,
                     fraction: gauge.fraction,
-                    percentText: "\(percent)%",
-                    caption: "",
+                    percentText: UsageGaugeFormat.percentText(fraction: gauge.fraction),
+                    caption: gauge.fraction >= QuotaSurface.exhaustedFloor
+                        ? String(localized: "Used up — the window resets on ollama's own clock")
+                        : "",
                     resetsAt: nil,
                     usedUSD: nil,
                     limitUSD: nil,

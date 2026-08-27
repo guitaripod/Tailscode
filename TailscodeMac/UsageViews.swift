@@ -436,6 +436,9 @@ final class UsagePanelViewController: NSViewController {
         if let invitation = deepseekCard() {
             column.addArrangedSubview(invitation)
         }
+        if let invitation = ollamaCard() {
+            column.addArrangedSubview(invitation)
+        }
         if refreshing {
             column.addArrangedSubview(
                 RowKit.label(
@@ -502,6 +505,62 @@ final class UsagePanelViewController: NSViewController {
         row.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(row)
         return card
+    }
+
+    /// What the panel says about Ollama Cloud when there is no reading to draw: a key nobody has
+    /// set is a state with words and one action rather than a blank space. Offered only where it
+    /// could matter — an opencode server fronts cloud models — so an account that has never
+    /// touched ollama.com is not told about one.
+    private func ollamaCard() -> NSView? {
+        guard OllamaUsage.cached == nil else { return nil }
+        let hasKey = OllamaCredentials.hasToken
+        let fronted = ServerDirectory.shared.profiles.contains { $0.backend == .openCode }
+        guard hasKey || fronted else { return nil }
+
+        let words =
+            hasKey
+            ? Localized.text(
+                "The key is set and ollama.com has not answered yet — the plan's windows appear here as soon as it does.")
+            : Localized.text(
+                "Ollama models served by ollama.com are metered by your plan. Add the account's API key and the session and weekly windows join these numbers.")
+        let action =
+            hasKey ? Localized.text("Edit key…") : Localized.text("Add key…")
+
+        let card = FillingStack()
+        card.spacing = MacTheme.Spacing.s
+        card.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.m, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m,
+            right: MacTheme.Spacing.m)
+        card.wantsLayer = true
+        card.layer?.backgroundColor = MacTheme.Color.canvasRaised.cgColor
+        card.layer?.cornerRadius = MacTheme.Radius.control
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addArrangedSubview(
+            RowKit.label(
+                Localized.text("Ollama Cloud"), font: MacTheme.Ramp.font(.panelTitle),
+                color: UsageFormat.brandColor("ollama-cloud") ?? MacTheme.Color.label))
+        card.addArrangedSubview(
+            RowKit.wrapping(
+                words, font: MacTheme.Ramp.font(.panelFootnote),
+                color: MacTheme.Color.secondaryLabel))
+        let button = RowKit.ActionButton(title: action) { [weak self] in
+            self?.editOllamaKey()
+        }
+        button.controlSize = .small
+        let row = NSStackView(views: [button, RowKit.spacer()])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = MacTheme.Spacing.s
+        card.addArrangedSubview(row)
+        return card
+    }
+
+    private func editOllamaKey() {
+        OllamaKeySheet.present(on: NSApp?.mainWindow) { [weak self] in
+            guard let self else { return }
+            self.renderCards()
+            self.startRefresh()
+        }
     }
 
     /// The editor is sheeted on the app's own window rather than on the popover, which is

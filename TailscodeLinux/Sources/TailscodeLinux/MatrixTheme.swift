@@ -886,10 +886,12 @@ enum MatrixTheme {
         .brand-opencode { color: \(palette.brandOpencode); }
         .brand-grok { color: \(palette.brandGrok); }
         .brand-deepseek { color: \(palette.brandDeepseek); }
+        .brand-ollama-cloud { color: \(palette.brandOllama); }
         .gauge-fill-claude { background-color: \(palette.brandClaude); border-radius: 3px; }
         .gauge-fill-opencode { background-color: \(palette.brandOpencode); border-radius: 3px; }
         .gauge-fill-grok { background-color: \(palette.brandGrok); border-radius: 3px; }
         .gauge-fill-deepseek { background-color: \(palette.brandDeepseek); border-radius: 3px; }
+        .gauge-fill-ollama-cloud { background-color: \(palette.brandOllama); border-radius: 3px; }
         .usage-card {
             background-color: \(canvasRaised);
             border: 1px solid \(rule);
