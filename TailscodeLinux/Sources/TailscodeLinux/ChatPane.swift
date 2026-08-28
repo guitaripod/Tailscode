@@ -107,6 +107,14 @@ final class ChatPane: @unchecked Sendable {
     private var findCursor = 0
     private var highlightedRow: UInt = 0
     private var canvasBox: UnsafeMutablePointer<GtkWidget>?
+    /// The room under the transcript that lets a just-sent prompt rest at the top of the window,
+    /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
+    private let canvasSpacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private var canvasPadding = 0.0
+    private var canvasPromptKey: String?
+    private var canvasPromptTop: Double?
+    private var canvasSettle: FreshCanvasScroll?
+    private var captionWakeGeneration = 0
     private var pendingSignature = "\u{0}"
     private var compactingElapsed: UnsafeMutablePointer<GtkWidget>?
     private var compactingStartedAt: Date?
@@ -268,6 +276,8 @@ final class ChatPane: @unchecked Sendable {
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
+        gtk_widget_set_visible(canvasSpacer, 0)
+        gtk_box_append(ptr(canvas), canvasSpacer)
         gtk_scrolled_window_set_child(op(scroller), makeTranscriptViewport(canvas))
         gtk_widget_set_vexpand(scroller, 1)
         Gtk.onPressHold(
@@ -292,8 +302,14 @@ final class ChatPane: @unchecked Sendable {
 
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "changed") { [weak self] in
-                guard let self, self.followsBottom else { return }
+                guard let self, self.canvasPromptKey == nil, self.followsBottom else { return }
                 self.schedulePinCorrector()
+            }
+            Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self, self.canvasPromptKey != nil else { return }
+                    self.settleFreshCanvas()
+                }
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
                 guard let self, !self.isAutoScrolling else { return }
@@ -1152,6 +1168,11 @@ final class ChatPane: @unchecked Sendable {
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()
         }
+        if canvasPromptKey != nil, state.status != .running, state.hasLoadedTranscript,
+            !pending.hasInFlight
+        {
+            dropFreshCanvas(animated: isNearBottom())
+        }
         if ultracodeInFlight, state.status != .running, state.hasLoadedTranscript {
             ultracodeInFlight = false
             refreshUltracodeAura()
@@ -1182,14 +1203,10 @@ final class ChatPane: @unchecked Sendable {
                 rows.append(TranscriptRow(key: "pending:break", kind: .turnBreak))
             }
             for send in pending.sends {
-                // The key carries the phase so a send that becomes sent, or fails, is a row the
-                // diff rebuilds rather than one it recognises and leaves alone. Caption aging is
-                // the ticker's job — a Date in the row value rebuilt every token for nothing.
                 let plan = resume.plan(for: send.id)
                 rows.append(
                     TranscriptRow(
-                        key: "pending:\(send.id.uuidString):\(Self.phaseKey(send))"
-                            + (plan.map { ":wait\($0.attempt)" } ?? ""),
+                        key: Self.pendingKey(send.id) + (plan.map { ":wait\($0.attempt)" } ?? ""),
                         kind: .pendingSend(send, plan)))
             }
         }
@@ -1284,6 +1301,7 @@ final class ChatPane: @unchecked Sendable {
                 effort: send.effort, userMessages: userMessages).id
         }
         redrawPending()
+        raiseFreshCanvas(for: id)
         if Ultracode.invokes(send.text) || send.effort == Ultracode.effortLevel {
             ultracodeInFlight = true
             refreshUltracodeAura()
@@ -1312,14 +1330,9 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
-    /// The part of a phase that has to change for the diff to rebuild the row.
-    private static func phaseKey(_ send: PendingSend) -> String {
-        switch send.phase {
-        case .sending: return "sending"
-        case .accepted: return "accepted"
-        case .failed: return "failed"
-        }
-    }
+    /// The key never carries the phase: a send that becomes sent is the same row filling its ink
+    /// in, restated in place rather than rebuilt.
+    private static func pendingKey(_ id: UUID) -> String { "pending:\(id.uuidString)" }
 
     /// Redraws what this device is holding without rebuilding the transcript from the server's
     /// account of the conversation — the account did not move, and walking it again to add one
@@ -1327,6 +1340,36 @@ final class ChatPane: @unchecked Sendable {
     private func redrawPending() {
         guard let state = lastState else { return }
         apply(state: state, rows: lastFullRows)
+        scheduleCaptionWake()
+    }
+
+    /// Wakes the pending rows at the one moment a caption changes on its own — the wait becoming
+    /// news — rather than ticking every second under a row with nothing to say.
+    private func scheduleCaptionWake() {
+        let now = Date()
+        guard let next = pending.sends.compactMap({ PendingSendReading.nextCaptionChange($0, now: now) }).min()
+        else { return }
+        captionWakeGeneration += 1
+        let token = captionWakeGeneration
+        let wait = UInt32(max(0, next.timeIntervalSince(now)) * 1000) + 20
+        Gtk.after(wait) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.captionWakeGeneration == token else { return }
+                self.restatePendingRows()
+                self.scheduleCaptionWake()
+            }
+        }
+    }
+
+    private func restatePendingRows() {
+        let now = Date()
+        for index in renderedRows.indices {
+            guard case .pendingSend(let send, let plan) = renderedRows[index].kind,
+                index < rowWidgets.count,
+                let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+            else { continue }
+            TranscriptRow.restatePending(on: ptr(raw), send: send, plan: plan, now: now)
+        }
     }
 
     private func actOnPending(_ id: UUID, _ act: PendingSend.Act) {
@@ -1865,8 +1908,18 @@ final class ChatPane: @unchecked Sendable {
         }
         for index in renderedRows.indices where renderedRows[index] != window[index] {
             renderedRows[index] = window[index]
+            if restatedPending(at: index) { continue }
             rebuildRow(at: index)
         }
+    }
+
+    /// A pending row whose send moved phase keeps its widget: the ink fills in on it.
+    private func restatedPending(at index: Int) -> Bool {
+        guard case .pendingSend(let send, let plan) = renderedRows[index].kind,
+            index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+        else { return false }
+        return TranscriptRow.restatePending(on: ptr(raw), send: send, plan: plan)
     }
 
     private func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
@@ -2036,6 +2089,12 @@ final class ChatPane: @unchecked Sendable {
             guard TranscriptRow.restateReasoning(
                 widget, text: text, key: rows[last].key, context: context)
             else { return false }
+        case (.pendingSend, .pendingSend(let send, let plan)):
+            guard TranscriptRow.restatePending(on: widget, send: send, plan: plan) else {
+                return false
+            }
+            renderedRows[last] = rows[last]
+            return true
         default:
             return false
         }
@@ -2648,10 +2707,10 @@ final class ChatPane: @unchecked Sendable {
         refreshTurnFacts(includeGit: gitDue)
     }
 
-    /// Ages every pending-send caption that is still on screen. Phase changes rebuild the row;
-    /// the wait itself must not.
+    /// Ages every wait countdown that is still on screen; a plain send's caption is woken by
+    /// `scheduleCaptionWake` instead.
     private func updatePendingCaptions() {
-        guard !pending.isEmpty || !resume.isEmpty else { return }
+        guard !resume.isEmpty else { return }
         let now = Date()
         for index in renderedRows.indices {
             guard case .pendingSend = renderedRows[index].kind, index < rowWidgets.count,
@@ -3205,6 +3264,178 @@ final class ChatPane: @unchecked Sendable {
     func stopTurn() {
         guard let conversation else { return }
         Task { try? await conversation.cancelCurrentTurn() }
+    }
+
+    /// The prompt just sent rises to the top of the window and the answer streams onto the empty
+    /// page under it. The room is made rather than found: the canvas is padded by what the
+    /// viewport lacks below the prompt, the scroll rides one eased motion to put the prompt at
+    /// `FreshCanvas.headroom`, and following the bottom is off until the answer has filled the room.
+    private func raiseFreshCanvas(for id: UUID) {
+        canvasPromptKey = Self.pendingKey(id)
+        canvasPromptTop = nil
+        followsBottom = false
+        awaitFreshCanvasPrompt(attempts: 0)
+    }
+
+    /// The row this frame appended has no height until the next allocation, and the room cannot
+    /// be measured against a row that is not there yet: ask again frame by frame, briefly.
+    private func awaitFreshCanvasPrompt(attempts: Int) {
+        guard canvasPromptKey != nil else { return }
+        if canvasPrompt() != nil {
+            settleFreshCanvas()
+            animateFreshCanvas()
+            return
+        }
+        guard attempts < 30 else {
+            AppLog.write(.ui, "fresh canvas: prompt row never measured")
+            canvasPromptKey = nil
+            setFollowing(true)
+            return
+        }
+        Gtk.after(16) { [weak self] in
+            Gtk.onMain { [weak self] in self?.awaitFreshCanvasPrompt(attempts: attempts + 1) }
+        }
+    }
+
+    /// Where the canvas's prompt sits inside the canvas, following the row through the swap from
+    /// this device's echo to the server's own account of it.
+    private func canvasPrompt() -> (top: Double, height: Double)? {
+        guard let key = canvasPromptKey, let canvas = canvasBox else { return nil }
+        var index = renderedRows.firstIndex { $0.key == key }
+        if index == nil, key.hasPrefix("pending:"),
+            let last = renderedRows.lastIndex(where: {
+                if case .userText = $0.kind { return true }
+                return false
+            })
+        {
+            canvasPromptKey = renderedRows[last].key
+            index = last
+        }
+        guard let index, index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
+        else { return nil }
+        var x = 0.0
+        var y = 0.0
+        var width = 0.0
+        var height = 0.0
+        guard tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &width, &height) != 0,
+            height > 0
+        else { return nil }
+        return (y, height)
+    }
+
+    /// Re-measures the room on every change of the content's size: the padding shrinks as the
+    /// answer grows under the prompt, the prompt is kept where it was through a swap that
+    /// changed its height, and once the answer fills the window the canvas lets go.
+    private func settleFreshCanvas() {
+        guard canvasPromptKey != nil, let scroller = transcriptScroller, let canvas = canvasBox,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        guard let prompt = canvasPrompt() else { return }
+        let viewport = gtk_adjustment_get_page_size(adjustment)
+        guard viewport > 0 else { return }
+        let content = Double(gtk_widget_get_height(canvas)) - canvasPadding
+        let below = max(0, content - prompt.top - prompt.height)
+        let padding = FreshCanvas.padding(viewport: viewport, prompt: prompt.height, below: below)
+        if let previousTop = canvasPromptTop, abs(previousTop - prompt.top) > 0.5,
+            canvasSettle == nil
+        {
+            isAutoScrolling = true
+            gtk_adjustment_set_value(
+                adjustment, gtk_adjustment_get_value(adjustment) + prompt.top - previousTop)
+            isAutoScrolling = false
+        }
+        canvasPromptTop = prompt.top
+        if padding != canvasPadding {
+            AppLog.write(
+                .ui,
+                "fresh canvas: prompt=\(Int(prompt.height)) viewport=\(Int(viewport)) padding=\(Int(padding))")
+            setCanvasPadding(padding)
+        }
+        guard !FreshCanvas.holds(viewport: viewport, prompt: prompt.height, below: below) else {
+            return
+        }
+        canvasPromptKey = nil
+        canvasPromptTop = nil
+        setFollowing(true)
+    }
+
+    private func setCanvasPadding(_ padding: Double) {
+        canvasPadding = padding
+        gtk_widget_set_visible(canvasSpacer, padding > 0 ? 1 : 0)
+        gtk_widget_set_size_request(canvasSpacer, -1, Int32(padding.rounded()))
+    }
+
+    /// One motion from wherever the reader was to the prompt at the top, on the display's clock.
+    /// The target is read again every frame, because the padding the motion rides on lands a
+    /// frame or two after it was asked for.
+    private func animateFreshCanvas() {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return }
+        canvasSettle?.cancel()
+        let target: () -> Double? = { [weak self] in
+            guard let self, let prompt = self.canvasPrompt() else { return nil }
+            return FreshCanvas.offset(
+                promptTop: prompt.top, contentHeight: gtk_adjustment_get_upper(adjustment),
+                viewport: gtk_adjustment_get_page_size(adjustment))
+        }
+        let settle = FreshCanvasScroll(clock: scroller, adjustment: adjustment, target: target) {
+            [weak self] in
+            self?.canvasSettle = nil
+        }
+        canvasSettle = settle
+        let set: (Double) -> Void = { [weak self] value in
+            self?.isAutoScrolling = true
+            gtk_adjustment_set_value(adjustment, value)
+            self?.isAutoScrolling = false
+        }
+        settle.start(reduceMotion: !RepeatingMotion.allowed, set: set)
+    }
+
+    /// The turn ended with room still under it: the room goes, animated when the reader is at the
+    /// bottom and silently otherwise, because dead padding after a finished answer is a lie about
+    /// where the conversation ends.
+    private func dropFreshCanvas(animated: Bool) {
+        canvasSettle?.cancel()
+        canvasSettle = nil
+        canvasPromptKey = nil
+        canvasPromptTop = nil
+        guard canvasPadding > 0 else {
+            setFollowing(true)
+            return
+        }
+        setCanvasPadding(0)
+        guard animated, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else {
+            setFollowing(true)
+            return
+        }
+        followsBottom = true
+        let settle = FreshCanvasScroll(
+            clock: scroller, adjustment: adjustment,
+            target: {
+                max(
+                    0,
+                    gtk_adjustment_get_upper(adjustment)
+                        - gtk_adjustment_get_page_size(adjustment))
+            }
+        ) { [weak self] in
+            self?.canvasSettle = nil
+            self?.schedulePinCorrector()
+        }
+        canvasSettle = settle
+        settle.start(reduceMotion: !RepeatingMotion.allowed) { [weak self] value in
+            self?.isAutoScrolling = true
+            gtk_adjustment_set_value(adjustment, value)
+            self?.isAutoScrolling = false
+        }
+    }
+
+    /// For the driver: whether the canvas holds, and how much room it made.
+    var freshCanvasReading: String {
+        "holding=\(canvasPromptKey != nil) padding=\(Int(canvasPadding)) follows=\(followsBottom)"
     }
 
     private func isNearBottom() -> Bool {
@@ -3948,12 +4179,7 @@ final class ChatPane: @unchecked Sendable {
         lastState?.status == .running
             || lastState?.compaction?.isRunning == true
             || workflowRuns.contains(where: \.isLive)
-            || pending.sends.contains {
-                switch $0.phase {
-                case .sending, .accepted: return true
-                case .failed: return false
-                }
-            }
+            || (!pending.isEmpty && !resume.isEmpty)
     }
 
     /// The clock every live reading in this transcript is drawn against, moved once a second so
@@ -4293,12 +4519,16 @@ final class ChatPane: @unchecked Sendable {
     func reportResumeState() {
         let now = Date()
         let plan = resume.plans.values.min { $0.resumesAt < $1.resumesAt }
+        let line: String
+        if let plan {
+            line = ResumeReading.caption(plan, now: now)
+        } else if let send = pending.sends.first {
+            line = PendingSendReading.state(send, now: now)
+        } else {
+            line = "none"
+        }
         FileHandle.standardOutput.write(
-            Data(
-                ("RESUME pending=\(pending.count) plans=\(resume.count) "
-                    + (plan.map { ResumeReading.caption($0, now: now) }
-                        ?? pending.sends.first.map { PendingSendReading.caption($0, now: now) }
-                        ?? "none") + "\n").utf8))
+            Data("RESUME pending=\(pending.count) plans=\(resume.count) \(line)\n".utf8))
     }
 
     /// One workflow run, either still out or ended the way the harness ends one, so a headless
@@ -4416,5 +4646,78 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_grab_focus(entryView)
         vim.reset(to: text, cursor: text.count, mode: .insert)
         gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
+    }
+}
+
+/// An eased scroll of one adjustment on a widget's own frame clock, ~300 ms from where the value
+/// is to a target read afresh every frame.
+final class FreshCanvasScroll: @unchecked Sendable {
+    private static let duration = 0.3
+    private let clock: UnsafeMutablePointer<GtkWidget>
+    private let adjustment: UnsafeMutablePointer<GtkAdjustment>
+    private let target: () -> Double?
+    private let onFinish: () -> Void
+    private var set: ((Double) -> Void)?
+    private var tick: UInt = 0
+    private var startedAt = 0.0
+    private var from = 0.0
+
+    init(
+        clock: UnsafeMutablePointer<GtkWidget>, adjustment: UnsafeMutablePointer<GtkAdjustment>,
+        target: @escaping () -> Double?, onFinish: @escaping () -> Void
+    ) {
+        self.clock = clock
+        self.adjustment = adjustment
+        self.target = target
+        self.onFinish = onFinish
+    }
+
+    func start(reduceMotion: Bool, set: @escaping (Double) -> Void) {
+        self.set = set
+        from = gtk_adjustment_get_value(adjustment)
+        if reduceMotion {
+            if let value = target() { set(value) }
+            onFinish()
+            return
+        }
+        startedAt = CascadePainter.now
+        g_object_ref(UnsafeMutableRawPointer(clock))
+        let box = Unmanaged.passRetained(self).toOpaque()
+        tick = UInt(
+            tailscode_add_tick(
+                clock,
+                { raw in
+                    guard let raw else { return }
+                    Unmanaged<FreshCanvasScroll>.fromOpaque(raw).takeUnretainedValue().step()
+                }, box))
+    }
+
+    private func step() {
+        guard tick != 0 else { return }
+        let progress: Double = min(1.0, (CascadePainter.now - startedAt) / Self.duration)
+        let remaining: Double = 1.0 - progress
+        let eased: Double = 1.0 - remaining * remaining * remaining
+        if let value = target() {
+            let delta: Double = value - from
+            set?(from + delta * eased)
+        }
+        if progress >= 1 { finish() }
+    }
+
+    func cancel() {
+        guard tick != 0 else { return }
+        stopTick()
+    }
+
+    private func finish() {
+        stopTick()
+        onFinish()
+    }
+
+    private func stopTick() {
+        tailscode_remove_tick(clock, guint(tick))
+        tick = 0
+        g_object_unref(UnsafeMutableRawPointer(clock))
+        Unmanaged.passUnretained(self).release()
     }
 }

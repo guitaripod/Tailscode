@@ -628,9 +628,19 @@ final class ComposerView: NSView {
     }
 
     private func openModelChooser() {
+        presentModelChooser(sources: modelSources(), selected: chosenModel)
+    }
+
+    /// The chooser over a fleet that exists only as a fixture, so the surface can be looked at and
+    /// measured on a desk with no servers on it — `--open models` from the command line.
+    func openDemoModelChooser() {
+        presentModelChooser(sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected)
+    }
+
+    private func presentModelChooser(sources: [ModelSource], selected: ModelSelection?) {
         guard let host = window else { return }
         modelSheet = ModelChooserSheet.present(
-            on: host, sources: modelSources(), selected: chosenModel,
+            on: host, sources: sources, selected: selected,
             quotas: quotasForModels?() ?? []
         ) { [weak self] pick in
             self?.modelSheet = nil

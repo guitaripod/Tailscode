@@ -28,7 +28,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     private let fold: UnsafeMutablePointer<GtkWidget>
     /// One width for every row's capability marks, so what a model reads forms a column rather than
     /// a ragged edge that moves with the length of the name beside it.
-    private var markColumn: UnsafeMutableRawPointer?
+    private var markColumns: [UnsafeMutableRawPointer] = []
     private var rowWidgets: [UInt] = []
     /// Where the list must land once GTK knows how tall the rebuilt box is. A scroller whose
     /// children were replaced this frame reports the old height — often one screenful — so a
@@ -38,7 +38,9 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// Which hold is current, so a rebuild that arrives during another's settle window does not
     /// have its own position let go by the older one's timer.
     private var scrollGeneration = 0
-    private var scopeButtons: [(scope: ModelChooserScope, widget: UInt)] = []
+    private var machineChips: [(profileID: String, widget: UInt)] = []
+    private let strip: UnsafeMutablePointer<GtkWidget>
+    private let consequence: UnsafeMutablePointer<GtkWidget>
 
     static func present(
         sources: [ModelSource], selected: ModelSelection?,
@@ -82,8 +84,16 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.addClass(entry, "model-search")
         gtk_box_append(ptr(column), entry)
 
+        strip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.margins(strip, top: 2, leading: 2, trailing: 2)
+        gtk_box_append(ptr(column), strip)
+        consequence = Gtk.label("", css: "model-consequence", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(consequence), 0)
+        Gtk.margins(consequence, leading: 4, trailing: 4)
+        gtk_box_append(ptr(column), consequence)
+
         count = Gtk.label(chooser.summary, css: "model-summary", selectable: false)
-        gtk_label_set_xalign(op(count), 1)
+        gtk_label_set_xalign(op(count), 0)
         fold = gtk_button_new_with_label("")!
         Gtk.addClass(fold, "flat")
         Gtk.addClass(fold, "model-scope")
@@ -123,36 +133,69 @@ final class ModelChooserWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.applyPendingScroll() }
             }
         }
-        buildScopes()
+        buildMachines()
+        buildBand()
         syncFold()
         render(keepingScroll: false, revealingCursor: true)
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(entry)
     }
 
-    /// The standing filters, as chips beside the count. They carry their own key, because a filter
-    /// nobody can see the shortcut for is a filter reached with the mouse forever.
-    private func buildScopes() {
-        for (index, scope) in chooser.scopes.enumerated() {
+    /// The machines, as tabs above the list — the first question, because which machine runs a
+    /// model is a different kind of question from which model. Each carries its own key, because
+    /// a tab nobody can see the shortcut for is a tab reached with the mouse forever.
+    private func buildMachines() {
+        machineChips = []
+        Gtk.removeChildren(of: strip)
+        gtk_widget_set_visible(strip, chooser.showsMachines ? 1 : 0)
+        guard chooser.showsMachines else {
+            syncMachines()
+            return
+        }
+        for (index, machine) in chooser.machines.enumerated() {
             let button = gtk_button_new()!
             Gtk.addClass(button, "flat")
             Gtk.addClass(button, "model-scope")
+            let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+            if let dotTone = Self.reachabilityTone(machine.isReachable) {
+                let dot = Gtk.label("●", css: "model-machine-dot", selectable: false)
+                Gtk.addClass(dot, dotTone)
+                gtk_widget_set_valign(dot, GTK_ALIGN_CENTER)
+                gtk_box_append(ptr(content), dot)
+            }
             let label = gtk_label_new(nil)!
             gtk_label_set_markup(
                 op(label),
-                "\(PangoMarkdown.escape(scope.title))"
-                    + "  <span alpha=\"55%\">⌃\(index + 1)</span>")
-            gtk_button_set_child(ptr(button), label)
-            gtk_widget_set_tooltip_text(button, scope.detail)
+                PangoMarkdown.escape(machine.title)
+                    + "  <span alpha=\"60%\">\(machine.count)</span>"
+                    + "  <span alpha=\"40%\">⌃\(index + 1)</span>")
+            gtk_box_append(ptr(content), label)
+            gtk_button_set_child(ptr(button), content)
+            gtk_widget_set_tooltip_text(button, machine.detail)
+            let profileID = machine.profileID
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
-                    guard let self, self.chooser.setScope(scope) else { return }
+                    guard let self, self.chooser.setMachine(profileID) else { return }
                     self.refresh(keepingScroll: false)
                 }
             }
-            scopeButtons.append((scope, UInt(bitPattern: button)))
-            gtk_box_append(ptr(band), button)
+            machineChips.append((profileID, UInt(bitPattern: button)))
+            gtk_box_append(ptr(strip), button)
         }
+        syncMachines()
+    }
+
+    /// A server that is not answering wears the danger dot, one that has not answered yet the
+    /// quiet one, and one that is answering needs no dot at all.
+    private static func reachabilityTone(_ reachable: Bool?) -> String? {
+        switch reachable {
+        case .some(false): return "glyph-error"
+        case .none: return "glyph-pending"
+        case .some(true): return nil
+        }
+    }
+
+    private func buildBand() {
         gtk_widget_set_hexpand(count, 1)
         gtk_widget_set_valign(count, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(band), count)
@@ -165,7 +208,6 @@ final class ModelChooserWindow: @unchecked Sendable {
                 self.refresh(keepingScroll: true)
             }
         }
-        syncScopes()
     }
 
     /// The one press over the whole list: open everything a fold is holding, or shut it all again.
@@ -178,20 +220,25 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_button_set_label(ptr(fold), action.title)
     }
 
-    private func syncScopes() {
-        for entry in scopeButtons {
-            guard let raw = UnsafeMutableRawPointer(bitPattern: entry.widget) else { continue }
+    /// The selected tab in accent, and under the strip the one thing a pick on it means that a
+    /// pick on this chat's own machine does not.
+    private func syncMachines() {
+        for chip in machineChips {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: chip.widget) else { continue }
             let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
             Gtk.setTone(
-                widget, entry.scope == chooser.scope ? "model-scope-on" : nil,
+                widget, chip.profileID == chooser.machine ? "model-scope-on" : nil,
                 from: ["model-scope-on"])
         }
+        let words = chooser.showsMachines ? chooser.shownMachine?.consequence : nil
+        gtk_label_set_text(op(consequence), words ?? "")
+        gtk_widget_set_visible(consequence, words == nil ? 0 : 1)
     }
 
     /// Everything the list's own state feeds: the count, the chips, the rows.
     private func refresh(keepingScroll: Bool = false, revealingCursor: Bool = true) {
         gtk_label_set_text(op(count), chooser.summary)
-        syncScopes()
+        syncMachines()
         syncFold()
         render(keepingScroll: keepingScroll, revealingCursor: revealingCursor)
     }
@@ -205,14 +252,12 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     private func refreshSources(_ sources: [ModelSource]) {
         let query = chooser.query
-        let scope = chooser.scope
+        let machine = chooser.machine
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
+        chooser.setMachine(machine)
         chooser.search(query)
-        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
-        scopeButtons = []
-        Gtk.removeChildren(of: band)
-        buildScopes()
+        buildMachines()
         refresh(keepingScroll: false)
     }
 
@@ -285,26 +330,15 @@ final class ModelChooserWindow: @unchecked Sendable {
         let held = keepingScroll ? scrollOffset() : nil
         Gtk.removeChildren(of: list)
         rowWidgets = []
-        if let group = markColumn { g_object_unref(group) }
-        markColumn = UnsafeMutableRawPointer(gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL))
+        for group in markColumns { g_object_unref(group) }
+        markColumns = chooser.policy.capabilitySlots.map { _ in
+            UnsafeMutableRawPointer(gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL))
+        }
         if let empty = chooser.emptyResult {
             let notice = Gtk.label(empty, css: "row-detail", wrap: true, selectable: false)
             gtk_label_set_xalign(op(notice), 0.5)
             Gtk.margins(notice, top: 28, bottom: 10, leading: 6, trailing: 6)
             gtk_box_append(ptr(list), notice)
-            if let escape = chooser.emptyEscape {
-                let way = Gtk.button(
-                    Localized.text("Clear the filter"), css: ["model-scope"]
-                ) { [weak self] in
-                    Gtk.onMain { [weak self] in
-                        guard let self, self.chooser.setScope(escape) else { return }
-                        self.refresh(keepingScroll: false)
-                    }
-                }
-                gtk_widget_set_halign(way, GTK_ALIGN_CENTER)
-                Gtk.margins(way, top: 4, bottom: 24)
-                gtk_box_append(ptr(list), way)
-            }
             return
         }
         var index = 0
@@ -401,27 +435,17 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_widget_set_halign(trailing, GTK_ALIGN_END)
         gtk_widget_set_valign(trailing, GTK_ALIGN_CENTER)
         if let wall = row.wall {
-            let pill = Gtk.label(QuotaSurface.rowMark(wall), css: "model-fact", selectable: false)
-            gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_NONE)
-            gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(pill, QuotaSurface.bannerBody(wall))
-            Gtk.addClass(pill, "model-fact-spent")
-            gtk_box_append(ptr(trailing), pill)
+            let note = Gtk.label(QuotaSurface.rowNote(wall), css: "model-wall", selectable: false)
+            gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_NONE)
+            gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
+            gtk_widget_set_tooltip_text(note, QuotaSurface.bannerBody(wall))
+            gtk_box_append(ptr(trailing), note)
+        } else {
+            gtk_box_append(ptr(trailing), capabilityMarks(row))
         }
         for fact in row.facts where !fact.isCapability {
             gtk_box_append(ptr(trailing), Self.factPill(fact))
         }
-        let capabilities = row.facts.filter(\.isCapability)
-        let marks = Gtk.label(
-            capabilities.map(\.tag).joined(separator: " "), css: "model-mark", selectable: false)
-        gtk_label_set_ellipsize(op(marks), PANGO_ELLIPSIZE_NONE)
-        gtk_label_set_xalign(op(marks), 0)
-        gtk_widget_set_valign(marks, GTK_ALIGN_CENTER)
-        if !capabilities.isEmpty {
-            gtk_widget_set_tooltip_text(marks, capabilities.map(\.label).joined(separator: " · "))
-        }
-        if let group = markColumn { gtk_size_group_add_widget(ptr(group), marks) }
-        gtk_box_append(ptr(trailing), marks)
         if !row.isAuto {
             gtk_box_append(ptr(trailing), star(row))
         }
@@ -610,6 +634,27 @@ final class ModelChooserWindow: @unchecked Sendable {
         return button
     }
 
+    /// One slot per capability the catalog can differ on, in the catalog's own order, held to one
+    /// width down the list by a size group per slot — so what a model reads forms a column, and a
+    /// model that lacks one keeps the empty space rather than pulling the next mark left.
+    private func capabilityMarks(_ row: ModelChooserRow) -> UnsafeMutablePointer<GtkWidget> {
+        let marks = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        gtk_widget_set_valign(marks, GTK_ALIGN_CENTER)
+        let worn = Set(row.facts.filter(\.isCapability))
+        for (index, slot) in chooser.policy.capabilitySlots.enumerated() {
+            let has = worn.contains(slot)
+            let mark = Gtk.label(has ? slot.tag : "", css: "model-mark", selectable: false)
+            gtk_label_set_ellipsize(op(mark), PANGO_ELLIPSIZE_NONE)
+            gtk_label_set_xalign(op(mark), 0)
+            if has { gtk_widget_set_tooltip_text(mark, slot.label) }
+            if index < markColumns.count {
+                gtk_size_group_add_widget(ptr(markColumns[index]), mark)
+            }
+            gtk_box_append(ptr(marks), mark)
+        }
+        return marks
+    }
+
     private static func factPill(_ fact: ModelFact) -> UnsafeMutablePointer<GtkWidget> {
         let label = Gtk.label(fact.tag, css: "model-fact", selectable: false)
         gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
@@ -617,9 +662,8 @@ final class ModelChooserWindow: @unchecked Sendable {
         gtk_widget_set_tooltip_text(label, fact.label)
         switch fact {
         case .local: Gtk.addClass(label, "model-fact-local")
-        case .providers: Gtk.addClass(label, "model-fact-providers")
         case .server: Gtk.addClass(label, "model-fact-server")
-        default: break
+        case .vision, .pdf, .attachments: break
         }
         return label
     }

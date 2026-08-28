@@ -3,13 +3,13 @@ import CodingAgentKit
 import CodingAgentKitApple
 import TailscodeCore
 
-/// Every model the fleet offers, from every provider, as one list.
+/// Every model the fleet offers, one machine at a time, as one list.
 ///
 /// The pill's menu holds what this person actually works with; a catalog of two hundred entries
 /// needs a surface you can search, and one that is organised by something a reader recognises. The
-/// shared `ModelChooser` decides all of it — the folding of the same model offered by two
-/// providers, the family sections, the ranking, the cursor and the keys — and this sheet draws its
-/// answer, so the Mac and the phone are the same list rendered twice.
+/// shared `ModelChooser` decides all of it — which machine is showing, the folding of the same
+/// model offered by two providers, the family sections, the ranking, the cursor and the keys — and
+/// this sheet draws its answer, so the Mac and the phone are the same list rendered twice.
 @MainActor
 final class ModelChooserSheet: NSObject {
     private enum Entry {
@@ -28,14 +28,11 @@ final class ModelChooserSheet: NSObject {
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let empty = NSTextField(wrappingLabelWithString: "")
-    private let clear = NSButton()
     private let fold = NSButton()
-    private let filters = NSSegmentedControl()
+    private let machineStrip = NSStackView()
+    private let consequence = NSTextField(wrappingLabelWithString: "")
     private var entries: [Entry] = []
     private var monitor: Any?
-    /// One width for the capability marks on every row, so what a model reads is a column instead
-    /// of an edge that moves with the name beside it.
-    private var markWidth: CGFloat = 0
 
     /// Every server the app knows, as the one list a chooser is built from — this conversation's
     /// own machine first. The pattern is Linux's chat pane's: catalogs come from the fleet's own
@@ -93,29 +90,25 @@ final class ModelChooserSheet: NSObject {
         let content = NSView()
         sheet.contentView = content
 
-        summary.stringValue = chooser.summary
         summary.font = MacTheme.Ramp.font(.toolOutput)
         summary.textColor = MacTheme.Color.secondaryLabel
-        summary.alignment = .right
+        summary.alignment = .left
+        summary.lineBreakMode = .byTruncatingTail
         summary.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         field.placeholderString = Localized.text("Search models, providers, ids")
         field.delegate = self
-        field.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(field)
 
-        filters.segmentStyle = .rounded
-        filters.trackingMode = .selectOne
-        filters.segmentCount = chooser.scopes.count
-        for (index, scope) in chooser.scopes.enumerated() {
-            filters.setLabel(scope.title, forSegment: index)
-            filters.setToolTip(scope.detail, forSegment: index)
-        }
-        filters.selectedSegment = chooser.scopes.isEmpty ? -1 : 0
-        filters.target = self
-        filters.action = #selector(filterChanged)
-        filters.isHidden = chooser.scopes.isEmpty
-        filters.setContentHuggingPriority(.required, for: .horizontal)
+        machineStrip.orientation = .horizontal
+        machineStrip.alignment = .centerY
+        machineStrip.spacing = MacTheme.Spacing.xs
+        machineStrip.setContentHuggingPriority(.required, for: .vertical)
+
+        consequence.font = MacTheme.Ramp.font(.rowNote)
+        consequence.textColor = MacTheme.Color.warning
+        consequence.isSelectable = false
+        consequence.maximumNumberOfLines = 2
 
         fold.bezelStyle = .accessoryBarAction
         fold.controlSize = .small
@@ -123,12 +116,17 @@ final class ModelChooserSheet: NSObject {
         fold.action = #selector(foldAll)
         fold.setContentHuggingPriority(.required, for: .horizontal)
 
-        let band = NSStackView(views: [filters, summary, fold])
+        let band = NSStackView(views: [summary, fold])
         band.orientation = .horizontal
         band.alignment = .centerY
         band.spacing = MacTheme.Spacing.s
-        band.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(band)
+
+        let top = NSStackView(views: [field, machineStrip, consequence, band])
+        top.orientation = .vertical
+        top.alignment = .leading
+        top.spacing = MacTheme.Spacing.s
+        top.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(top)
 
         table.headerView = nil
         table.rowSizeStyle = .custom
@@ -158,14 +156,6 @@ final class ModelChooserSheet: NSObject {
         empty.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(empty)
 
-        clear.title = Localized.text("Clear the filter")
-        clear.bezelStyle = .rounded
-        clear.target = self
-        clear.action = #selector(clearFilter)
-        clear.isHidden = true
-        clear.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(clear)
-
         let hint = NSTextField(labelWithString: chooser.hint)
         hint.font = MacTheme.Ramp.font(.rowNote)
         hint.textColor = MacTheme.Color.tertiaryLabel
@@ -174,28 +164,28 @@ final class ModelChooserSheet: NSObject {
 
         let inset = MacTheme.Spacing.l
         NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
-            field.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
-            field.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            band.topAnchor.constraint(equalTo: field.bottomAnchor, constant: MacTheme.Spacing.s),
-            band.leadingAnchor.constraint(equalTo: field.leadingAnchor),
-            band.trailingAnchor.constraint(equalTo: field.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: band.bottomAnchor, constant: MacTheme.Spacing.s),
-            scroll.leadingAnchor.constraint(equalTo: field.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            top.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
+            top.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
+            top.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
+            field.widthAnchor.constraint(equalTo: top.widthAnchor),
+            band.widthAnchor.constraint(equalTo: top.widthAnchor),
+            consequence.widthAnchor.constraint(equalTo: top.widthAnchor),
+            machineStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
+            scroll.topAnchor.constraint(equalTo: top.bottomAnchor, constant: MacTheme.Spacing.s),
+            scroll.leadingAnchor.constraint(equalTo: top.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: top.trailingAnchor),
             empty.leadingAnchor.constraint(
                 equalTo: scroll.leadingAnchor, constant: MacTheme.Spacing.l),
             empty.trailingAnchor.constraint(
                 equalTo: scroll.trailingAnchor, constant: -MacTheme.Spacing.l),
             empty.topAnchor.constraint(equalTo: scroll.topAnchor, constant: MacTheme.Spacing.xl),
-            clear.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
-            clear.topAnchor.constraint(equalTo: empty.bottomAnchor, constant: MacTheme.Spacing.s),
             hint.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: MacTheme.Spacing.s),
-            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor),
-            hint.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            hint.leadingAnchor.constraint(equalTo: top.leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: top.trailingAnchor),
             hint.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -inset),
         ])
 
+        rebuildMachines()
         rebuild()
         installMonitor()
     }
@@ -205,29 +195,24 @@ final class ModelChooserSheet: NSObject {
         monitor = nil
     }
 
-    /// A catalog that arrived while the sheet is open: the list, the summary and the filters are
-    /// re-answered from it, and what the reader was doing — the query, the filter — survives the
+    /// A catalog that arrived while the sheet is open: the list, the summary and the machine strip
+    /// are re-answered from it, and what the reader was doing — the query, the tab — survives the
     /// answer. A server that comes back from a restart reaches the open sheet this way.
     func update(sources: [ModelSource]) {
         let query = chooser.query
-        let scope = chooser.scope
+        let machine = chooser.machine
         chooser = ModelChooser(sources: sources, selected: chooser.selected, quotas: quotas)
         chooser.search(query)
-        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
-        filters.segmentCount = chooser.scopes.count
-        for (index, offered) in chooser.scopes.enumerated() {
-            filters.setLabel(offered.title, forSegment: index)
-            filters.setToolTip(offered.detail, forSegment: index)
-        }
-        filters.isHidden = chooser.scopes.isEmpty
+        chooser.setMachine(machine)
+        rebuildMachines()
         rebuild()
         revealCursor()
     }
 
-    /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a filter. AppKit hands ⌃N/⌃P to the field
-    /// as `moveDown:`/`moveUp:` already, but the arrows and the digits with a modifier never reach
-    /// `doCommandBy`. ⌘S stars whatever row the cursor is on — a chord, because a star is a
-    /// decision made from the keyboard while the hand is already there.
+    /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a machine's tab. AppKit hands ⌃N/⌃P
+    /// to the field as `moveDown:`/`moveUp:` already, but the arrows and the digits with a
+    /// modifier never reach `doCommandBy`. ⌘S stars whatever row the cursor is on — a chord,
+    /// because a star is a decision made from the keyboard while the hand is already there.
     private func installMonitor() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.sheet else { return event }
@@ -248,10 +233,10 @@ final class ModelChooserSheet: NSObject {
             default: break
             }
             guard let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }), digit > 0,
-                self.chooser.scopes.indices.contains(digit - 1),
-                self.chooser.setScope(self.chooser.scopes[digit - 1])
+                self.handled(.machine(digit - 1))
             else { return event }
-            return self.refreshed()
+            self.machineChanged()
+            return nil
         }
     }
 
@@ -276,49 +261,53 @@ final class ModelChooserSheet: NSObject {
         scroll.reflectScrolledClipView(scroll.contentView)
     }
 
+    /// One chip per machine, the tab under the cursor in accent. Drawn only past one machine: a
+    /// tab bar with one tab is chrome pretending to be a control.
+    private func rebuildMachines() {
+        for view in machineStrip.arrangedSubviews { view.removeFromSuperview() }
+        machineStrip.isHidden = !chooser.showsMachines
+        guard chooser.showsMachines else { return }
+        for (index, machine) in chooser.machines.enumerated() {
+            machineStrip.addArrangedSubview(
+                MachineChip(machine: machine, selected: index == chooser.machineIndex) {
+                    [weak self] in
+                    guard let self, self.chooser.setMachine(machine.profileID) else { return }
+                    self.machineChanged()
+                })
+        }
+    }
+
+    private func machineChanged() {
+        rebuildMachines()
+        rebuild()
+        scroll.contentView.scroll(to: .zero)
+        revealCursor()
+    }
+
     private func rebuild() {
         entries = []
         var index = 0
-        var marks: CGFloat = 0
-        let font = MacTheme.Ramp.font(.gaugeCaption)
         for section in chooser.sections {
             if !section.title.isEmpty { entries.append(.header(section)) }
             for row in section.rows {
                 entries.append(.row(row, index: index))
-                marks = max(marks, ModelChooserRowView.marksText(row).size(withAttributes: [.font: font]).width)
                 index += 1
             }
         }
-        markWidth = ceil(marks)
         summary.stringValue = chooser.summary
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
-        clear.isHidden = chooser.emptyEscape == nil
+        let line = chooser.shownMachine?.consequence
+        consequence.stringValue = line ?? ""
+        consequence.isHidden = line == nil
         if let action = chooser.foldAction {
             fold.title = action.title
             fold.isHidden = false
         } else {
             fold.isHidden = true
         }
-        if let index = chooser.scopes.firstIndex(of: chooser.scope) {
-            filters.selectedSegment = index
-        }
         table.reloadData()
         syncSelection()
-    }
-
-    @objc private func filterChanged() {
-        let index = filters.selectedSegment
-        guard chooser.scopes.indices.contains(index) else { return }
-        guard chooser.setScope(chooser.scopes[index]) else { return }
-        rebuild()
-        revealCursor()
-    }
-
-    @objc private func clearFilter() {
-        guard let escape = chooser.emptyEscape, chooser.setScope(escape) else { return }
-        rebuild()
-        revealCursor()
     }
 
     private func syncSelection() {
@@ -425,8 +414,8 @@ extension ModelChooserSheet: NSTableViewDataSource, NSTableViewDelegate {
             return ModelChooserHeaderView(section: section)
         case .row(let value, let index):
             return ModelChooserRowView(
-                row: value, marks: markWidth, onExpand: expandAction(index),
-                onTogglePin: togglePinAction(index))
+                row: value, slots: chooser.policy.capabilitySlots,
+                onExpand: expandAction(index), onTogglePin: togglePinAction(index))
         }
     }
 }
@@ -459,6 +448,59 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
             return false
         }
     }
+}
+
+/// One machine's tab: its name, a dot only when it is not answering or has not yet, and what it
+/// holds in the quieter register. The tab showing wears the accent.
+@MainActor
+private final class MachineChip: NSButton {
+    private let onPress: () -> Void
+
+    init(machine: ModelMachine, selected: Bool, onPress: @escaping () -> Void) {
+        self.onPress = onPress
+        super.init(frame: .zero)
+        setButtonType(.momentaryPushIn)
+        bezelStyle = .accessoryBarAction
+        controlSize = .small
+        state = selected ? .on : .off
+        target = self
+        action = #selector(pressed)
+        toolTip = machine.detail
+        let ink = selected ? MacTheme.Color.accent : MacTheme.Color.label
+        let title = NSMutableAttributedString(
+            string: machine.title,
+            attributes: [
+                .font: selected ? MacTheme.Ramp.font(.panelLabel).bold : MacTheme.Ramp.font(.panelLabel),
+                .foregroundColor: ink,
+            ])
+        if let dot = Self.dot(machine.isReachable) {
+            title.append(
+                NSAttributedString(
+                    string: " ●", attributes: [.font: MacTheme.Ramp.font(.gaugeCaption), .foregroundColor: dot]))
+        }
+        title.append(
+            NSAttributedString(
+                string: "  \(machine.count)",
+                attributes: [
+                    .font: MacTheme.Ramp.font(.gaugeCaption),
+                    .foregroundColor: MacTheme.Color.tertiaryLabel,
+                ]))
+        attributedTitle = title
+        setAccessibilityLabel("\(machine.title), \(machine.detail)")
+        setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private static func dot(_ reachable: Bool?) -> NSColor? {
+        switch reachable {
+        case .some(true): return nil
+        case .some(false): return MacTheme.Color.danger
+        case .none: return MacTheme.Color.tertiaryLabel
+        }
+    }
+
+    @objc private func pressed() { onPress() }
 }
 
 /// A family heading with what it holds, counted — the one place the provider count still belongs,
@@ -506,18 +548,15 @@ private final class ModelChooserHeaderView: NSTableCellView {
 }
 
 /// One model in three columns that hold their places down the whole list: the tick, the name over
-/// what it is, and — flush to the right edge — everything the row wears. The facts used to follow
-/// the name, so their left edge moved with every name's length and the eye had to find them again
-/// on each line; against the right edge they read as a column.
+/// what settles which model it is, and — flush to the right edge — only what the row wears: the
+/// wall in front of it or the capability marks as a column of glyph slots, then where it runs,
+/// the star, and the chevron onto its other doors.
 @MainActor
 private final class ModelChooserRowView: NSTableCellView {
-    /// The capabilities a row wears, as the one string that goes in the marks column.
-    static func marksText(_ row: ModelChooserRow) -> String {
-        row.facts.filter(\.isCapability).map(\.tag).joined(separator: " ")
-    }
+    private static let slotWidth: CGFloat = 16
 
     init(
-        row: ModelChooserRow, marks width: CGFloat,
+        row: ModelChooserRow, slots: [ModelFact],
         onExpand: @escaping () -> Void, onTogglePin: @escaping () -> Void
     ) {
         super.init(frame: .zero)
@@ -550,18 +589,23 @@ private final class ModelChooserRowView: NSTableCellView {
         line.spacing = MacTheme.Spacing.xs
         line.alignment = .centerY
         line.orientation = .horizontal
+
         if let wall = row.wall {
-            line.addArrangedSubview(
-                Self.pill(
-                    text: QuotaSurface.rowMark(wall), tint: MacTheme.Color.danger,
-                    tooltip: QuotaSurface.bannerBody(wall)))
+            let note = NSTextField(labelWithString: QuotaSurface.rowNote(wall))
+            note.font = MacTheme.Ramp.font(.gaugeCaption)
+            note.textColor = MacTheme.Color.danger
+            note.toolTip = QuotaSurface.bannerBody(wall)
+            note.setContentCompressionResistancePriority(.required, for: .horizontal)
+            line.addArrangedSubview(note)
+        } else if !slots.isEmpty {
+            line.addArrangedSubview(Self.marks(row, slots: slots))
         }
         for fact in row.facts where !fact.isCapability { line.addArrangedSubview(Self.pill(fact)) }
 
         let star = RowKit.ActionButton(title: "", action: onTogglePin)
         star.isBordered = false
         star.bezelStyle = .accessoryBar
-        star.contentTintColor = MacTheme.Color.accent
+        star.contentTintColor = row.isPinned ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel
         if row.selection != nil {
             star.image = NSImage(
                 systemSymbolName: row.isPinned ? "star.fill" : "star",
@@ -576,14 +620,6 @@ private final class ModelChooserRowView: NSTableCellView {
                 accessibilityDescription: Localized.text("Pin this model"))
         }
         line.addArrangedSubview(star)
-
-        let capabilities = row.facts.filter(\.isCapability)
-        let marks = NSTextField(labelWithString: Self.marksText(row))
-        marks.font = MacTheme.Ramp.font(.gaugeCaption)
-        marks.textColor = MacTheme.Color.tertiaryLabel
-        marks.toolTip = capabilities.map(\.label).joined(separator: " · ")
-        marks.setContentCompressionResistancePriority(.required, for: .horizontal)
-        line.addArrangedSubview(marks)
 
         let chevron = RowKit.ActionButton(title: "", action: onExpand)
         chevron.isBordered = false
@@ -607,18 +643,50 @@ private final class ModelChooserRowView: NSTableCellView {
             line.centerYAnchor.constraint(equalTo: centerYAnchor),
             check.widthAnchor.constraint(equalToConstant: 14 * MacTheme.UIScale.factor),
             star.widthAnchor.constraint(equalToConstant: 16 * MacTheme.UIScale.factor),
-            marks.widthAnchor.constraint(equalToConstant: width),
+            star.heightAnchor.constraint(equalToConstant: 16 * MacTheme.UIScale.factor),
             chevron.widthAnchor.constraint(equalToConstant: 18 * MacTheme.UIScale.factor),
+            chevron.heightAnchor.constraint(equalToConstant: 16 * MacTheme.UIScale.factor),
         ])
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// The capability column: one slot per mark the catalog can wear, in the catalog's order, a
+    /// slot left empty where this model lacks the capability so the glyphs line up down the list.
+    private static func marks(_ row: ModelChooserRow, slots: [ModelFact]) -> NSView {
+        let strip = NSStackView()
+        strip.orientation = .horizontal
+        strip.spacing = 0
+        strip.alignment = .centerY
+        let worn = row.facts.filter(\.isCapability)
+        for slot in slots {
+            let cell = NSImageView()
+            cell.imageScaling = .scaleProportionallyDown
+            if worn.contains(slot) {
+                cell.image = NSImage(systemSymbolName: slot.symbol, accessibilityDescription: slot.label)
+                cell.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
+                cell.contentTintColor = MacTheme.Color.tertiaryLabel
+                cell.toolTip = slot.label
+            }
+            cell.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                cell.widthAnchor.constraint(equalToConstant: slotWidth * MacTheme.UIScale.factor),
+                cell.heightAnchor.constraint(equalToConstant: slotWidth * MacTheme.UIScale.factor),
+            ])
+            strip.addArrangedSubview(cell)
+        }
+        strip.setContentCompressionResistancePriority(.required, for: .horizontal)
+        strip.setContentHuggingPriority(.required, for: .horizontal)
+        strip.setAccessibilityLabel(worn.map(\.label).joined(separator: ", "))
+        return strip
+    }
+
     /// The name, with the letters the query matched picked out. A match changes weight and colour
     /// and never size: a taller glyph inside a word lifts the line's ascent, so the row would jump
     /// as the query changed and the name would read as misspelt rather than as found.
     private static func title(_ row: ModelChooserRow) -> NSAttributedString {
-        let face = MacTheme.Ramp.font(.panelLabel)
+        let base = MacTheme.Ramp.font(.panelLabel)
+        let face = row.isSelected ? base.bold : base
         let text = NSMutableAttributedString(
             string: row.title,
             attributes: [
@@ -633,7 +701,7 @@ private final class ModelChooserRowView: NSTableCellView {
             text.addAttributes(
                 [
                     .foregroundColor: MacTheme.Color.accent,
-                    .font: face.bold,
+                    .font: base.bold,
                 ], range: NSRange(location: start, length: length))
         }
         return text
@@ -643,7 +711,7 @@ private final class ModelChooserRowView: NSTableCellView {
         let tint: NSColor = {
             switch fact {
             case .local: return MacTheme.Color.accent
-            case .providers: return MacTheme.Color.info
+            case .server: return MacTheme.Color.info
             default: return MacTheme.Color.secondaryLabel
             }
         }()

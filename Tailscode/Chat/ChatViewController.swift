@@ -299,6 +299,13 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     self?.presentModelPicker()
+                    guard
+                        let machine = ProcessInfo.processInfo.environment[
+                            "TAILSCODE_MODELS_MACHINE"
+                        ].flatMap(Int.init)
+                    else { return }
+                    try? await Task.sleep(for: .seconds(1))
+                    self?.modelPicker?.tourMachine(machine)
                 }
             }
             if let hook = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_GIT"] {
@@ -532,20 +539,119 @@ final class ChatViewController: UIViewController {
         let composerTop = composerAccessories.bounds.height > 0
             ? min(composer.frame.minY, composerAccessories.frame.minY)
             : composer.frame.minY
-        let bottomInset = max(
+        let composerInset = max(
             0, view.bounds.height - composerTop - collectionView.safeAreaInsets.bottom)
-        if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
-            collectionView.contentInset.bottom = bottomInset
-            collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
-        }
-
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
         let available = composerTop - collectionView.safeAreaInsets.top - bannerInset
+        canvasPadding = freshCanvasPadding(viewport: available)
+        let bottomInset = composerInset + canvasPadding
+        if abs(collectionView.contentInset.bottom - bottomInset) > 0.5 {
+            collectionView.contentInset.bottom = bottomInset
+            collectionView.verticalScrollIndicatorInsets.bottom = composerInset
+        }
+
         let contentHeight = collectionView.collectionViewLayout.collectionViewContentSize.height
-        let topInset = bannerInset + max(0, available - contentHeight)
+        let topInset =
+            bannerInset + (canvasPrompt == nil ? max(0, available - contentHeight) : 0)
         if abs(collectionView.contentInset.top - topInset) > 0.5 {
             collectionView.contentInset.top = topInset
         }
+    }
+
+    /// The room held under the transcript so the prompt just sent can rest at the top of the
+    /// window, and the row it is held for. Read on every relayout so the composer moving, the
+    /// keyboard going or the answer growing all shrink it by the same arithmetic.
+    private var canvasPadding: CGFloat = 0
+    private var canvasPrompt: Int?
+
+    /// The prompt row's place in the list. A pending row and the server's row that replaces it
+    /// land at the same index, which is what lets the canvas survive the swap.
+    private func canvasPromptFrame() -> CGRect? {
+        guard let index = canvasPrompt, index < dataSource.snapshot().numberOfItems,
+            let attributes = collectionView.layoutAttributesForItem(
+                at: IndexPath(item: index, section: 0))
+        else { return nil }
+        return attributes.frame
+    }
+
+    private func freshCanvasPadding(viewport: CGFloat) -> CGFloat {
+        guard canvasPrompt != nil else { return 0 }
+        guard let frame = canvasPromptFrame() else {
+            canvasPrompt = nil
+            return 0
+        }
+        let contentHeight = collectionView.collectionViewLayout.collectionViewContentSize.height
+        let below = max(0, contentHeight - frame.maxY)
+        let padding = FreshCanvas.padding(
+            viewport: viewport, prompt: frame.height, below: below)
+        if padding <= 0 { canvasPrompt = nil }
+        return padding
+    }
+
+    /// The scroll itself: the prompt rises to `FreshCanvas.headroom` under the top edge in one
+    /// motion from wherever the reader was, with the padding already in place so the offset is
+    /// reachable. The bubble fades in as it rides rather than springing up on its own, because
+    /// two movements on one row read as a stutter.
+    private func openFreshCanvas(promptID: String, fading cells: [UIView]) {
+        guard let index = dataSource.snapshot().indexOfItem(promptID) else { return }
+        canvasPrompt = index
+        userScrolledUp = false
+        view.layoutIfNeeded()
+        updateTranscriptInsets()
+        collectionView.layoutIfNeeded()
+        guard let frame = canvasPromptFrame() else { return }
+        let inset = collectionView.adjustedContentInset
+        let viewport = collectionView.bounds.height - inset.top - inset.bottom + canvasPadding
+        let contentHeight =
+            collectionView.collectionViewLayout.collectionViewContentSize.height + canvasPadding
+        let offset =
+            FreshCanvas.offset(
+                promptTop: frame.minY, contentHeight: contentHeight, viewport: viewport)
+            - inset.top
+        AppLogger.chat.info(
+            "fresh canvas: prompt=\(Int(frame.height)) viewport=\(Int(viewport)) padding=\(Int(canvasPadding))"
+        )
+        let target = CGPoint(x: 0, y: offset)
+        for cell in cells { cell.alpha = 0 }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            collectionView.setContentOffset(target, animated: false)
+            for cell in cells { cell.alpha = 1 }
+            return
+        }
+        UIView.animate(
+            withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.9,
+            initialSpringVelocity: 0.3, options: [.allowUserInteraction, .beginFromCurrentState]
+        ) {
+            self.collectionView.contentOffset = target
+            for cell in cells { cell.alpha = 1 }
+        }
+    }
+
+    /// Room nobody will fill any more goes: the turn ended with the canvas still holding, so the
+    /// padding is dropped — animated when the reader is looking at it, silently when they are up
+    /// the transcript.
+    private func closeFreshCanvas() {
+        guard canvasPrompt != nil else { return }
+        let watching = isNearBottom() && !userScrolledUp
+        canvasPrompt = nil
+        let apply = {
+            self.updateTranscriptInsets()
+            self.collectionView.layoutIfNeeded()
+        }
+        guard watching, !UIAccessibility.isReduceMotionEnabled else {
+            apply()
+            return
+        }
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut], animations: apply)
+    }
+
+    /// A row this device is holding changed height on its own clock — its caption strip came or
+    /// went — so the list is asked to measure it again, and the canvas offset is held through it.
+    private func remeasure(_ id: String) {
+        var snapshot = dataSource.snapshot()
+        guard snapshot.itemIdentifiers.contains(id) else { return }
+        snapshot.reconfigureItems([id])
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     private var rails: [ReadableRail] = []
@@ -1247,6 +1353,7 @@ final class ChatViewController: UIViewController {
                 cell.turnInset = self.turnGap(at: indexPath)
                 cell.configure(
                     send, plan: self.viewModel.resumePlan(for: send.id), delegate: self)
+                cell.onResize = { [weak self] in self?.remeasure(id) }
                 return cell
             }
             if id == Self.interruptedRowID, let turn = self.interrupted {
@@ -1961,6 +2068,7 @@ final class ChatViewController: UIViewController {
         deferEmptyStateHide = false
 
         let nearBottom = isNearBottom()
+        let promptTopBefore = canvasPromptFrame()?.minY
         var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
         snapshot.appendSections([.main])
         snapshot.appendItems(uniqueIDs, toSection: .main)
@@ -2020,11 +2128,24 @@ final class ChatViewController: UIViewController {
         animateNextRender = false
         let reconfigurable = changed.filter { idSet.contains($0) }
         if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
-        if !entranceBubbles.isEmpty || entranceThinking {
+        let freshPrompt = entranceBubbles.last { $0.hasPrefix("pending:") }
+        if let freshPrompt {
+            dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+                guard let self else { return }
+                if handOffEmptyState { self.animateEmptyStateHandoff() }
+                let riders = (entranceBubbles + (entranceThinking ? ["thinking"] : [])).compactMap {
+                    id -> UIView? in
+                    guard let index = self.dataSource.snapshot().indexOfItem(id) else { return nil }
+                    return self.collectionView.cellForItem(at: IndexPath(item: index, section: 0))?
+                        .contentView
+                }
+                self.openFreshCanvas(promptID: freshPrompt, fading: riders)
+            }
+        } else if !entranceBubbles.isEmpty || entranceThinking {
             dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 self.updateTranscriptInsets()
-                self.scrollToBottom(animated: false)
+                if self.canvasPrompt == nil { self.scrollToBottom(animated: false) }
                 self.collectionView.layoutIfNeeded()
                 if handOffEmptyState { self.animateEmptyStateHandoff() }
                 self.animateSendEntrance(
@@ -2034,7 +2155,12 @@ final class ChatViewController: UIViewController {
             dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
                 guard let self else { return }
                 self.updateTranscriptInsets()
-                if nearBottom && !self.userScrolledUp && !self.isFingerDown {
+                if let before = promptTopBefore, self.canvasPrompt != nil,
+                    let after = self.canvasPromptFrame()?.minY, abs(after - before) > 0.5
+                {
+                    self.collectionView.contentOffset.y += after - before
+                }
+                if self.canvasPrompt == nil, nearBottom, !self.userScrolledUp, !self.isFingerDown {
                     self.scrollToBottom(animated: animated)
                 }
                 if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
@@ -2061,6 +2187,7 @@ final class ChatViewController: UIViewController {
             hadLoadedTranscript = true
             refreshSpend()
         }
+        if wasRunning, state.status != .running { closeFreshCanvas() }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id
@@ -4029,8 +4156,13 @@ final class ChatViewController: UIViewController {
 
     @objc private func presentModelPicker() {
         Theme.Haptics.tap()
-        let picker = Self.demoPicker { [weak self] pick in self?.apply(pick) }
-            ?? ModelPickerViewController(
+        if let demo = Self.demoPicker(onSelect: { [weak self] pick in self?.apply(pick) }) {
+            modelPicker = demo
+            demo.onClose = { [weak self] in self?.modelPicker = nil }
+            present(UINavigationController(rootViewController: demo), animated: true)
+            return
+        }
+        let picker = ModelPickerViewController(
                 sources: ModelFleet.sources(
                     profiles: ConnectionController.shared.profiles,
                     current: viewModel.contextID, currentModels: availableModels,

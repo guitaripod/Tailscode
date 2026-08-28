@@ -534,6 +534,7 @@ final class MainWindowController: NSWindowController {
         case "cheatsheet", "shortcuts": presentCheatsheet()
         case "commands": transcript.presentCommandCatalog()
         case "chooser": presentChooser(in: transcript)
+        case "models": transcript.composer.openDemoModelChooser()
         case "spend": presentSpend(for: transcript)
         case "git": presentGit(for: transcript)
         case "forge", "video":
@@ -545,7 +546,7 @@ final class MainWindowController: NSWindowController {
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, analytics, newchat, "
-                        + "quickask, cheatsheet, commands, chooser, spend, git, "
+                        + "quickask, cheatsheet, commands, chooser, models, spend, git, "
                         + "forge[:state], renderer\n").utf8))
         }
     }

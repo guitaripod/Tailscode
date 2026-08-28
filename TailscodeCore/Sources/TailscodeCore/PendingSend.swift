@@ -204,18 +204,53 @@ public enum PendingSendReading {
     public static func tone(_ send: PendingSend) -> ActivityTone { icon(send).tone }
     public static func motion(_ send: PendingSend) -> ActivityMotion { icon(send).motion }
 
-    /// The line under the words. Short by design — it sits beneath a message a person just wrote
-    /// and read, and it has one job, which is to say whether it went.
-    public static func caption(_ send: PendingSend, now: Date) -> String {
+    /// How the bubble itself is drawn, which is where the state lives now that the row no longer
+    /// spells "sending" and "sent" under itself. A message on the wire is drawn faint — the words
+    /// are there, the colour is not yet — and the colour arrives when the server has it, so the
+    /// transition a person watches is the bubble filling in rather than a word changing under it.
+    /// A failure keeps the words at full strength and takes the danger tone.
+    public enum Ink: Sendable, Equatable {
+        case faint
+        case full
+        case failed
+
+        /// The bubble's alpha: enough to read the words, little enough to read the wait.
+        public var opacity: Double {
+            switch self {
+            case .faint: return 0.55
+            case .full, .failed: return 1
+            }
+        }
+
+        public var tone: ActivityTone {
+            switch self {
+            case .faint: return .live
+            case .full: return .quiet
+            case .failed: return .danger
+            }
+        }
+    }
+
+    public static func ink(_ send: PendingSend) -> Ink {
+        switch send.phase {
+        case .sending: return .faint
+        case .accepted: return .full
+        case .failed: return .failed
+        }
+    }
+
+    /// The line under the words, and only when it has something to say. A send on its way and a
+    /// send the server took are told by the ink alone; the line appears when the wait has become
+    /// news — a send still on the wire past `slowAfter`, a machine that has not started past
+    /// `quietAfter` — and for a failure, which carries the server's own reason.
+    public static func caption(_ send: PendingSend, now: Date) -> String? {
         let elapsed = now.timeIntervalSince(send.startedAt)
         switch send.phase {
         case .sending:
-            return elapsed >= slowAfter
-                ? Localized.text("Still sending…") : Localized.text("Sending…")
+            return elapsed >= slowAfter ? Localized.text("Still sending…") : nil
         case .accepted:
             return elapsed >= quietAfter
-                ? Localized.text("Sent — waiting for the machine to start")
-                : Localized.text("Sent")
+                ? Localized.text("Waiting for the machine to start") : nil
         case .failed(let reason):
             let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty
@@ -224,12 +259,36 @@ public enum PendingSendReading {
         }
     }
 
-    /// What a row too narrow for the sentence wears instead.
-    public static func badge(_ send: PendingSend) -> String {
+    /// When the caption strip next changes on its own, so a client can wake its clock for that
+    /// moment rather than tick every second under a row that has nothing to say.
+    public static func nextCaptionChange(_ send: PendingSend, now: Date) -> Date? {
         switch send.phase {
-        case .sending: return Localized.text("sending")
-        case .accepted: return Localized.text("sent")
+        case .sending:
+            let at = send.startedAt.addingTimeInterval(slowAfter)
+            return at > now ? at : nil
+        case .accepted:
+            let at = send.startedAt.addingTimeInterval(quietAfter)
+            return at > now ? at : nil
+        case .failed:
+            return nil
+        }
+    }
+
+    /// What a row too narrow for the sentence wears instead — only a failure has a word.
+    public static func badge(_ send: PendingSend) -> String? {
+        switch send.phase {
+        case .sending, .accepted: return nil
         case .failed: return Localized.text("not sent")
+        }
+    }
+
+    /// The state in words, for a screen reader, which cannot read ink.
+    public static func state(_ send: PendingSend, now: Date) -> String {
+        if let caption = caption(send, now: now) { return caption }
+        switch send.phase {
+        case .sending: return Localized.text("Sending")
+        case .accepted: return Localized.text("Sent")
+        case .failed: return Localized.text("Not sent")
         }
     }
 
@@ -237,7 +296,7 @@ public enum PendingSendReading {
     public static func spoken(_ send: PendingSend, now: Date) -> String {
         let words = send.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let pictures = send.attachments.count { $0.mime.hasPrefix("image/") }
-        var line = caption(send, now: now)
+        var line = state(send, now: now)
         if pictures > 0 {
             line += ". "
             line += pictures == 1

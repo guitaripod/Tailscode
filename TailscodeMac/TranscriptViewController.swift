@@ -1,4 +1,5 @@
 import AppKit
+import os
 import CodingAgentKit
 import TailscodeCore
 
@@ -308,13 +309,123 @@ final class TranscriptViewController: NSViewController {
         let strip: CGFloat =
             identityGlass.map { $0.isHidden ? 0 : $0.frame.height + MacTheme.Spacing.s } ?? 0
         let top = view.safeAreaInsets.top + MacTheme.Spacing.s + strip
-        let insets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-        if scrollView.contentInsets.bottom != insets.bottom
+        chromeInsets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        applyInsets()
+    }
+
+    /// What the floating chrome covers, kept apart from the room the fresh canvas adds under the
+    /// transcript so the two can change independently.
+    private var chromeInsets = NSEdgeInsets()
+
+    private func applyInsets() {
+        let insets = NSEdgeInsets(
+            top: chromeInsets.top, left: 0, bottom: chromeInsets.bottom + canvasPadding, right: 0)
+        guard scrollView.contentInsets.bottom != insets.bottom
             || scrollView.contentInsets.top != insets.top
-        {
-            scrollView.contentInsets = insets
-            if followsBottom { schedulePinCorrector() }
+        else { return }
+        scrollView.contentInsets = insets
+        if followsBottom, canvasHold == nil { schedulePinCorrector() }
+    }
+
+    /// The room held under the transcript so a just-sent prompt can rest at the top of the window
+    /// with the answer streaming onto an empty page under it. Zero whenever nothing is rising.
+    private var canvasPadding: CGFloat = 0
+    /// Where the prompt the canvas is holding room for sits in the canvas, measured once when it
+    /// rose. The server's own row replaces the echo at the same height, so the place is the
+    /// prompt's identity through the swap rather than a key that changes under it.
+    private var canvasHold: (top: CGFloat, height: CGFloat)?
+    /// Whether the turn the canvas was made for has been seen running, so its ending is told
+    /// from its never having started.
+    private var canvasSawTurn = false
+    private static let canvasLog = Logger(subsystem: "com.guitaripod.tailscode", category: "chat")
+
+    /// The prompt just sent rises to the top: the padding is made, the follow-the-bottom pin is
+    /// let go, and the move is one motion on the platform's clock from wherever the reader was.
+    private func riseFreshCanvas(rowKey: String) {
+        view.layoutSubtreeIfNeeded()
+        guard let index = renderedRows.firstIndex(where: { $0.key == rowKey }),
+            index < rowViews.count, rowViews[index].superview != nil
+        else { return }
+        let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+        let clip = scrollView.contentView
+        let viewport = clip.bounds.height - chromeInsets.top - chromeInsets.bottom
+        let below = max(0, canvas.frame.height - frame.maxY)
+        let padding = FreshCanvas.padding(
+            viewport: viewport, prompt: frame.height, below: below)
+        canvasHold = (frame.minY, frame.height)
+        canvasSawTurn = false
+        followsBottom = false
+        clearUnseen()
+        canvasPadding = padding
+        applyInsets()
+        view.layoutSubtreeIfNeeded()
+        let offset = FreshCanvas.offset(
+            promptTop: frame.minY + chromeInsets.top,
+            contentHeight: canvas.frame.height + scrollView.contentInsets.top
+                + scrollView.contentInsets.bottom,
+            viewport: clip.bounds.height)
+        let target = NSPoint(x: clip.bounds.origin.x, y: offset - chromeInsets.top)
+        Self.canvasLog.notice(
+            "fresh canvas: prompt=\(frame.height) viewport=\(viewport) padding=\(padding)")
+        isAutoScrolling = true
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            clip.scroll(to: target)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            isAutoScrolling = false
+        } else {
+            NSAnimationContext.runAnimationGroup(
+                { animation in
+                    animation.duration = 0.3
+                    animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    clip.animator().setBoundsOrigin(target)
+                },
+                completionHandler: { [weak self] in
+                    guard let self else { return }
+                    self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+                    self.isAutoScrolling = false
+                })
         }
+    }
+
+    /// The answer growing under the prompt takes the room back, until what is under the prompt
+    /// fills the window on its own and ordinary following resumes.
+    private func recomputeFreshCanvas() {
+        guard let hold = canvasHold else { return }
+        let clip = scrollView.contentView
+        let viewport = clip.bounds.height - chromeInsets.top - chromeInsets.bottom
+        let below = max(0, canvas.frame.height - hold.top - hold.height)
+        guard FreshCanvas.holds(viewport: viewport, prompt: hold.height, below: below) else {
+            releaseFreshCanvas(animated: false)
+            setFollowing(isNearBottom())
+            return
+        }
+        canvasPadding = FreshCanvas.padding(viewport: viewport, prompt: hold.height, below: below)
+        applyInsets()
+    }
+
+    /// The room goes: with the reader at the bottom the transcript settles onto its end, and
+    /// anywhere else nothing moves that they did not move.
+    private func releaseFreshCanvas(animated: Bool) {
+        guard canvasHold != nil || canvasPadding > 0 else { return }
+        canvasHold = nil
+        canvasSawTurn = false
+        canvasPadding = 0
+        applyInsets()
+        if animated {
+            setFollowing(true)
+        } else {
+            adjustScroll { $0 }
+        }
+    }
+
+    /// A turn that ended — or never started — with the canvas still holding room: the room is
+    /// dropped rather than left as dead space under the last answer.
+    private func settleFreshCanvas(_ state: ConversationState) {
+        guard canvasHold != nil else { return }
+        let running = state.status == .running
+        if running { canvasSawTurn = true }
+        guard !running, canvasSawTurn || pending.isEmpty, !pending.hasInFlight else { return }
+        releaseFreshCanvas(animated: isNearBottom())
     }
 
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
@@ -357,6 +468,7 @@ final class TranscriptViewController: NSViewController {
         lastStreamedKey = nil
         stopTailRepair()
         abandoned = nil
+        releaseFreshCanvas(animated: false)
         followsBottom = true
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -672,6 +784,7 @@ final class TranscriptViewController: NSViewController {
         lastStreamedKey = nil
         stopTailRepair()
         abandoned = nil
+        releaseFreshCanvas(animated: false)
         pending.removeAll()
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -720,6 +833,7 @@ final class TranscriptViewController: NSViewController {
     }
 
     func scrollToBottom() {
+        releaseFreshCanvas(animated: false)
         setFollowing(true)
         clearUnseen()
         schedulePinCorrector()
@@ -1051,7 +1165,7 @@ final class TranscriptViewController: NSViewController {
                 userMessages: userMessages).id
         }
         if let state = lastState { apply(state: state, rows: lastFullRows) }
-        scrollToBottom()
+        riseFreshCanvas(rowKey: "echo:\(row.uuidString)")
         Task { [weak self] in
             do {
                 try await conversation.send(
@@ -1065,6 +1179,14 @@ final class TranscriptViewController: NSViewController {
             }
         }
     }
+
+    #if DEBUG
+        /// `TAILSCODE_DRIVE_SEND=<text>` — a send fired from the environment once the chat is open,
+        /// so a headless run can watch a prompt rise and be measured with `--tree`.
+        func driveSend(_ text: String) {
+            sendPrompt(text, model: nil, effort: nil, attachments: [])
+        }
+    #endif
 
     /// The moment the turn yields, the next thing written goes. Never while one is running and
     /// never while the composer is holding one open for rewriting: sending it out from under the
@@ -1117,6 +1239,7 @@ final class TranscriptViewController: NSViewController {
         let reason = AgentErrorText.readable(error)
         pending.mark(id: row, .failed(reason: reason))
         armResume(row: row, reason: reason)
+        releaseFreshCanvas(animated: false)
         redrawPending()
     }
 
@@ -1502,6 +1625,7 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        settleFreshCanvas(state)
         drainQueue()
     }
 
@@ -1523,24 +1647,32 @@ final class TranscriptViewController: NSViewController {
             rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
         }
         for send in pending.sends {
-            // The key carries the phase, so a send that becomes sent, or fails, is a row the diff
-            // rebuilds rather than one it recognises and leaves alone.
             let plan = resume.plan(for: send.id)
             rows.append(
                 TranscriptRow(
-                    key: "echo:\(send.id.uuidString):\(Self.phaseKey(send))"
-                        + (plan.map { ":wait\($0.attempt)" } ?? ""),
+                    key: "echo:\(send.id.uuidString)" + (plan.map { ":wait\($0.attempt)" } ?? ""),
                     kind: .pendingSend(send, plan, now: now)))
         }
+        armCaptionWake(now: now)
         return rows
     }
 
-    /// The part of a phase that has to change for the diff to rebuild the row.
-    private static func phaseKey(_ send: PendingSend) -> String {
-        switch send.phase {
-        case .sending: return "sending"
-        case .accepted: return "accepted"
-        case .failed: return "failed"
+    /// The one moment a pending row's line changes on its own — a send still on the wire past
+    /// `slowAfter`, a machine that has not started past `quietAfter` — so the row is redrawn then
+    /// rather than on a clock ticking under words that have nothing to say.
+    private var captionWake: Task<Void, Never>?
+
+    private func armCaptionWake(now: Date) {
+        captionWake?.cancel()
+        captionWake = nil
+        let next = pending.sends.compactMap { PendingSendReading.nextCaptionChange($0, now: now) }
+            .min()
+        guard let next else { return }
+        let delay = max(0.05, next.timeIntervalSince(now))
+        captionWake = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.redrawPending()
         }
     }
 
@@ -2209,8 +2341,8 @@ final class TranscriptViewController: NSViewController {
             canvas.alphaValue = 0
             pendingReveal = true
         }
-        let stick = initialFill || followsBottom
-        let growth = initialFill ? 0 : appended
+        let stick = initialFill || (followsBottom && canvasHold == nil)
+        let growth = initialFill || canvasHold != nil ? 0 : appended
 
         let edit = preservingScroll { editRows(rows) }
         repaintChangedRows(rows, from: edit.start)
@@ -2465,6 +2597,12 @@ final class TranscriptViewController: NSViewController {
                 continue
             }
             renderedRows[index] = rows[source]
+            if case .pendingSend(let send, let plan, let now) = rows[source].kind,
+                index < rowViews.count, let held = rowViews[index] as? PendingSendRowView
+            {
+                held.restate(send: send, plan: plan, now: now)
+                continue
+            }
             stale.insert(rows[source].key)
         }
         guard !stale.isEmpty else { return }
@@ -2860,12 +2998,20 @@ final class TranscriptViewController: NSViewController {
     @objc private func scrollBoundsChanged() {
         scheduleImageSweep()
         guard !isAutoScrolling else { return }
+        guard canvasHold == nil else {
+            followsBottom = false
+            return
+        }
         let atBottom = isNearBottom()
         followsBottom = atBottom
         if atBottom { clearUnseen() }
     }
 
     @objc private func contentGrew() {
+        if canvasHold != nil {
+            recomputeFreshCanvas()
+            return
+        }
         guard followsBottom else { return }
         schedulePinCorrector()
     }

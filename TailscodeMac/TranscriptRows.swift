@@ -713,98 +713,14 @@ struct TranscriptRow: Hashable {
         return column
     }
 
-    /// A message on its way out: the words drawn as the prompt they will become, with a line
-    /// under them saying whether they went.
-    ///
-    /// The rule and the words are the prompt's own, because that is what this is. What is added is
-    /// the one thing the transcript could never say — that the message is not in the server's
-    /// account yet — and, when it never got there, the words stay here and offer the three things
-    /// worth doing about them rather than being dropped back into the composer.
+    /// A message on its way out: the words drawn as the prompt they will become, told by ink
+    /// rather than by a word — see `PendingSendRowView`, which is kept and restated across phases
+    /// so the bubble fills in rather than being rebuilt.
     @MainActor
     private static func pendingSend(
         _ send: PendingSend, plan: ResumePlan?, now: Date, context: TranscriptContext
     ) -> NSView {
-        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
-        let rule = RowKit.Ground(frame: .zero)
-        rule.fill =
-            plan != nil
-            ? MacTheme.Color.warning
-            : (send.isFailed ? MacTheme.Color.danger : MacTheme.Color.accent)
-
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .leading
-        column.spacing = 2
-        column.translatesAutoresizingMaskIntoConstraints = false
-        column.addArrangedSubview(
-            RowKit.attributedLabel(
-                MacMarkdown.plainWithLinks(
-                    send.text, font: MacTheme.Ramp.font(.prompt),
-                    color: send.isFailed ? MacTheme.Color.secondaryLabel : MacTheme.Color.label)))
-
-        let status = NSStackView()
-        status.orientation = .horizontal
-        status.alignment = .firstBaseline
-        status.spacing = 5
-        if let symbol = NSImage(
-            systemSymbolName: icon.symbol, accessibilityDescription: nil)
-        {
-            let mark = NSImageView(image: symbol)
-            mark.contentTintColor = icon.tone.color
-            mark.symbolConfiguration = NSImage.SymbolConfiguration(
-                pointSize: 10, weight: .semibold)
-            status.addArrangedSubview(mark)
-        }
-        status.addArrangedSubview(
-            RowKit.label(
-                plan.map { ResumeReading.caption($0, now: now) }
-                    ?? PendingSendReading.caption(send, now: now),
-                font: MacTheme.Ramp.font(.hint), color: icon.tone.color))
-        column.addArrangedSubview(status)
-
-        if let plan, let act = context.resumeAct {
-            let buttons = NSStackView()
-            buttons.orientation = .horizontal
-            buttons.spacing = MacTheme.Spacing.m
-            let id = plan.id
-            for choice in ResumeReading.acts {
-                buttons.addArrangedSubview(
-                    RowKit.linkButton(ResumeReading.title(choice)) { act(id, choice) })
-            }
-            column.addArrangedSubview(buttons)
-        } else if !send.acts.isEmpty, let act = context.pendingAct {
-            let buttons = NSStackView()
-            buttons.orientation = .horizontal
-            buttons.spacing = MacTheme.Spacing.m
-            let id = send.id
-            for choice in send.acts {
-                buttons.addArrangedSubview(
-                    RowKit.linkButton(PendingSendReading.title(choice)) { act(id, choice) })
-            }
-            column.addArrangedSubview(buttons)
-        }
-
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(rule)
-        row.addSubview(column)
-        NSLayoutConstraint.activate([
-            rule.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            rule.topAnchor.constraint(equalTo: row.topAnchor),
-            rule.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-            rule.widthAnchor.constraint(equalToConstant: 2),
-            column.leadingAnchor.constraint(
-                equalTo: rule.trailingAnchor, constant: MacTheme.Spacing.s + 2),
-            column.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            column.topAnchor.constraint(equalTo: row.topAnchor),
-            column.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-        ])
-        row.setAccessibilityElement(true)
-        row.setAccessibilityRole(.group)
-        row.setAccessibilityLabel(
-            plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
-                ?? PendingSendReading.spoken(send, now: now))
-        return row
+        PendingSendRowView(send: send, plan: plan, now: now, context: context)
     }
 
     /// What the answer above it took: one quiet strip of symbol-and-number, each figure carrying
@@ -1437,5 +1353,133 @@ final class DisclosureRow: NSView {
                 return
             }
         }
+    }
+}
+
+/// The row a sent message stands in until the server's account carries it. The rule and the words
+/// are the prompt's own, because that is what this is; the state is the ink — faint on the wire,
+/// full once the server has it, the danger tone when it never got there — and the line under the
+/// words is drawn only when `PendingSendReading.caption` has something to say. The row survives a
+/// phase change: the bubble animates from faint to full instead of being torn down and remade.
+@MainActor
+final class PendingSendRowView: NSView {
+    private let rule = RowKit.Ground(frame: .zero)
+    private let column = NSStackView()
+    private let words: NSTextField
+    private let strip = NSStackView()
+    private let mark = NSImageView()
+    private let caption = NSTextField(labelWithString: "")
+    private let acts = NSStackView()
+    private var ink: PendingSendReading.Ink
+    private var send: PendingSend
+    private var plan: ResumePlan?
+    private let context: TranscriptContext
+
+    init(send: PendingSend, plan: ResumePlan?, now: Date, context: TranscriptContext) {
+        self.send = send
+        self.plan = plan
+        self.context = context
+        ink = PendingSendReading.ink(send)
+        words = RowKit.attributedLabel(
+            MacMarkdown.plainWithLinks(
+                send.text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        column.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(words)
+
+        strip.orientation = .horizontal
+        strip.alignment = .firstBaseline
+        strip.spacing = 5
+        mark.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        caption.font = MacTheme.Ramp.font(.hint)
+        strip.addArrangedSubview(mark)
+        strip.addArrangedSubview(caption)
+        column.addArrangedSubview(strip)
+
+        acts.orientation = .horizontal
+        acts.spacing = MacTheme.Spacing.m
+        column.addArrangedSubview(acts)
+
+        addSubview(rule)
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            rule.leadingAnchor.constraint(equalTo: leadingAnchor),
+            rule.topAnchor.constraint(equalTo: topAnchor),
+            rule.bottomAnchor.constraint(equalTo: bottomAnchor),
+            rule.widthAnchor.constraint(equalToConstant: 2),
+            column.leadingAnchor.constraint(
+                equalTo: rule.trailingAnchor, constant: MacTheme.Spacing.s + 2),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        words.alphaValue = ink.opacity
+        rule.alphaValue = ink.opacity
+        paint(now: now)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The same row, a moment later: the ink moves on the platform's clock when the phase changed,
+    /// and the strip appears or goes as the caption has something to say.
+    func restate(send: PendingSend, plan: ResumePlan?, now: Date) {
+        self.send = send
+        self.plan = plan
+        let next = PendingSendReading.ink(send)
+        if next != ink {
+            ink = next
+            let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            NSAnimationContext.runAnimationGroup { animation in
+                animation.duration = reduced ? 0 : 0.25
+                animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                animation.allowsImplicitAnimation = true
+                words.animator().alphaValue = next.opacity
+                rule.animator().alphaValue = next.opacity
+            }
+        }
+        paint(now: now)
+    }
+
+    private func paint(now: Date) {
+        rule.fill =
+            plan != nil
+            ? MacTheme.Color.warning
+            : (ink == .failed ? MacTheme.Color.danger : MacTheme.Color.accent)
+        rule.needsDisplay = true
+        let line = plan.map { ResumeReading.caption($0, now: now) }
+            ?? PendingSendReading.caption(send, now: now)
+        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
+        strip.isHidden = line == nil
+        if let line {
+            caption.stringValue = line
+            caption.textColor = icon.tone.color
+            mark.image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: nil)
+            mark.contentTintColor = icon.tone.color
+            mark.isHidden = mark.image == nil
+        }
+        for view in acts.arrangedSubviews { view.removeFromSuperview() }
+        if let plan, let act = context.resumeAct {
+            let id = plan.id
+            for choice in ResumeReading.acts {
+                acts.addArrangedSubview(
+                    RowKit.linkButton(ResumeReading.title(choice)) { act(id, choice) })
+            }
+        } else if !send.acts.isEmpty, let act = context.pendingAct {
+            let id = send.id
+            for choice in send.acts {
+                acts.addArrangedSubview(
+                    RowKit.linkButton(PendingSendReading.title(choice)) { act(id, choice) })
+            }
+        }
+        acts.isHidden = acts.arrangedSubviews.isEmpty
+        setAccessibilityLabel(
+            plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
+                ?? PendingSendReading.spoken(send, now: now))
     }
 }

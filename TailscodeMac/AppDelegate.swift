@@ -76,6 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [weak main] in
             try? await Task.sleep(for: .seconds(2))
             main?.openSession(withID: id)
+            #if DEBUG
+                guard let text = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE_SEND"],
+                    !text.isEmpty
+                else { return }
+                try? await Task.sleep(for: .seconds(5))
+                main?.transcript.driveSend(text)
+            #endif
         }
     }
 

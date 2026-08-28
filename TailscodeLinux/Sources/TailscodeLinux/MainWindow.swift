@@ -387,6 +387,13 @@ final class MainWindow: @unchecked Sendable {
                                 .utf8))
                     FileHandle.standardOutput.write(
                         Data("AURA \(pane.auraActive ? "on" : "off")\n".utf8))
+                case "send":
+                    self.activePane.sendFromComposer()
+                    FileHandle.standardOutput.write(
+                        Data("SEND \(self.activePane.freshCanvasReading)\n".utf8))
+                case "canvas":
+                    FileHandle.standardOutput.write(
+                        Data("CANVAS \(self.activePane.freshCanvasReading)\n".utf8))
                 case "tab":
                     _ = self.activePane.handleComposerKey(keyval: Keymap.tab, state: 0)
                     FileHandle.standardOutput.write(

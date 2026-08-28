@@ -223,9 +223,7 @@ public enum ModelFact: Sendable, Hashable {
     case vision
     case pdf
     case attachments
-    case effort(Int)
     case local
-    case providers(Int)
     /// The machine that would run it, said only when it is not the machine you are already on.
     case server(String)
 
@@ -234,9 +232,7 @@ public enum ModelFact: Sendable, Hashable {
         case .vision: return Localized.text("vision")
         case .pdf: return Localized.text("pdf")
         case .attachments: return Localized.text("files")
-        case .effort(let count): return Localized.text("%@ levels", "\(count)")
         case .local: return Localized.text("local")
-        case .providers(let count): return Localized.text("%@ providers", "\(count)")
         case .server(let name): return name
         }
     }
@@ -246,9 +242,7 @@ public enum ModelFact: Sendable, Hashable {
         case .vision: return "photo"
         case .pdf: return "doc.richtext"
         case .attachments: return "paperclip"
-        case .effort: return "gauge.with.dots.needle.50percent"
         case .local: return "desktopcomputer"
-        case .providers: return "arrow.triangle.branch"
         case .server: return "arrow.turn.down.right"
         }
     }
@@ -258,9 +252,7 @@ public enum ModelFact: Sendable, Hashable {
         case .vision: return Localized.text("Reads images")
         case .pdf: return Localized.text("Reads PDFs")
         case .attachments: return Localized.text("Takes attachments")
-        case .effort(let count): return Localized.text("%@ effort levels", "\(count)")
         case .local: return Localized.text("Runs on your server's machine")
-        case .providers(let count): return Localized.text("Offered by %@ providers", "\(count)")
         case .server(let name): return Localized.text("Runs on %@ — picking it starts a chat there", name)
         }
     }
@@ -270,20 +262,21 @@ public enum ModelFact: Sendable, Hashable {
     public var isCapability: Bool {
         switch self {
         case .vision, .pdf, .attachments: return true
-        case .effort, .local, .providers, .server: return false
+        case .local, .server: return false
         }
     }
 
     /// The facts that belong on a candidate's row, in one order everywhere: what would move the
-    /// work first, then what it reads.
+    /// work first, then what it reads. Effort levels and door counts are not facts here any more —
+    /// effort is chosen after the pick and every model of a house has it, and the doors are counted
+    /// in the row's own second line.
     public static func of(
-        _ candidate: ModelCandidate, policy: ModelFactPolicy = .everything
+        _ candidate: ModelCandidate, policy: ModelFactPolicy = .everything,
+        namesLocal: Bool = true, namesMachine: Bool = false
     ) -> [ModelFact] {
         var facts: [ModelFact] = []
-        if candidate.isElsewhere { facts.append(.server(candidate.serverName)) }
-        if candidate.isLocal, policy.showsLocal { facts.append(.local) }
-        if candidate.variants.count > 1 { facts.append(.effort(candidate.variants.count)) }
-        if candidate.offers.count > 1 { facts.append(.providers(candidate.offers.count)) }
+        if namesMachine { facts.append(.server(candidate.serverName)) }
+        if candidate.isLocal, policy.showsLocal, namesLocal { facts.append(.local) }
         if let capabilities = candidate.capabilities {
             if capabilities.imageInput, policy.showsVision { facts.append(.vision) }
             if capabilities.pdfInput, policy.showsPDF { facts.append(.pdf) }
@@ -342,39 +335,43 @@ public struct ModelFactPolicy: Sendable, Equatable {
     }
 }
 
-/// A standing narrowing of the catalog, chosen rather than typed. Search answers "which model",
-/// and it answers it well; it is a poor way to ask "only the ones I can reach without moving this
-/// chat" or "only the ones running on my own hardware", which are the two questions a fleet makes
-/// people ask constantly. Those are one press, always visible, never a syntax to remember.
-public enum ModelChooserScope: Sendable, Hashable, Identifiable {
-    case all
-    /// The server the chooser was opened from — a pick that keeps the chat where it is.
-    case here
-    /// Models the server runs on its own machine.
-    case local
+/// One machine's standing in the chooser. A model is a thing a particular machine will run for
+/// you, so the machine is the first question and a tab rather than a filter: the list under it is
+/// one server's catalog, whole, and a pick on another tab is a chat that does not exist yet. The
+/// old arrangement merged every server into one alphabet and offered "this server" and "local" as
+/// standing filters over the merge, which is how the same model came to be listed once per
+/// machine with the machine as a badge on each.
+public struct ModelMachine: Sendable, Hashable, Identifiable {
+    public let profileID: String
+    public let title: String
+    public let backend: AgentType
+    /// Folded models this machine offers, local ones included.
+    public let count: Int
+    /// How many of them run on the machine's own hardware.
+    public let localCount: Int
+    /// The server the chooser was opened from — the one whose chat a pick changes in place.
+    public let isCurrent: Bool
+    public let isReachable: Bool?
 
-    public var id: String {
-        switch self {
-        case .all: return "all"
-        case .here: return "here"
-        case .local: return "local"
-        }
-    }
+    public var id: String { profileID }
 
-    public var title: String {
-        switch self {
-        case .all: return Localized.text("All")
-        case .here: return Localized.text("This server")
-        case .local: return Localized.text("Local")
-        }
-    }
-
+    /// Under the name: what the machine amounts to, or the state it is in when it cannot say.
     public var detail: String {
-        switch self {
-        case .all: return Localized.text("Every model on every server you have")
-        case .here: return Localized.text("Only models this chat can switch to in place")
-        case .local: return Localized.text("Only models running on your server's own machine")
+        if isReachable == false {
+            return count == 0
+                ? Localized.text("Not answering")
+                : Localized.text("Not answering · last known list")
         }
+        if isReachable == nil, count == 0 { return Localized.text("Asking…") }
+        var parts = [ModelChooser.modelCount(count)]
+        if localCount > 0 { parts.append(Localized.text("%@ local", "\(localCount)")) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// What a pick on this tab does, said once above the list rather than repeated on every row.
+    /// Nothing on the current machine, because changing this chat is what a chooser is for.
+    public var consequence: String? {
+        isCurrent ? nil : Localized.text("A pick here starts a new chat on %@", title)
     }
 }
 
@@ -514,24 +511,29 @@ public enum ModelChooserCommand: Sendable, Equatable {
     case activate
     case expand
     case collapse
-    /// The nth standing filter, counted from zero — ⌃1 is the whole catalog wherever it is offered.
-    case scope(Int)
+    /// The nth machine's tab, counted from zero — ⌃1 is the server the chooser opened from.
+    case machine(Int)
     /// Open every heading, or shut every one that answers to a press.
     case expandAll
     case collapseAll
     case dismiss
 }
 
-/// The one model list in the app: every provider's catalog, folded into families, searched by one
-/// query and walked by one set of keys. Toolkit-free so the phone, GTK and AppKit render the same
-/// decision rather than three lists that drifted apart.
+/// The one model list in the app: every server's catalog, one machine at a time, folded into
+/// families, searched by one query and walked by one set of keys. Toolkit-free so the phone, GTK
+/// and AppKit render the same decision rather than three lists that drifted apart.
 ///
-/// The shape of the answer is the point. A flat menu of two hundred rows, each repeating the same
-/// provider key underneath it, is not a choice a person can make; a family heading, a name, and the
-/// facts that would change the pick — reads images, has effort levels, runs on your own machine,
-/// reachable through two providers — is.
+/// The shape of the answer is the point. First the machine, as a tab, because which machine runs
+/// a model is a different kind of question from which model — and a list that answers both at once
+/// answers neither. Then, for that machine, what is yours before what exists: the model this chat
+/// runs, the ones you starred, the ones you reached for, in one short section rather than three;
+/// then what runs on the machine's own hardware, which is a class of its own; then the families.
+/// A row is a name, and under it only what settles which model this is. What a row wears is what
+/// would stop a send — a used-up window — or what the whole catalog does not share.
 public struct ModelChooser: Sendable, Equatable {
     public static let recentLimit = 5
+    /// How many of your own the Yours section holds before it stops being short.
+    public static let yoursLimit = 8
 
     public let candidates: [ModelCandidate]
     public let sources: [ModelSource]
@@ -539,10 +541,10 @@ public struct ModelChooser: Sendable, Equatable {
     public let selected: ModelSelection?
     /// Which facts this catalog is worth wearing, decided once over the whole of it.
     public let policy: ModelFactPolicy
-    /// The standing filters this catalog can be asked for, in the order they are offered. Empty
-    /// when the catalog is one server with nothing local in it: a filter bar that can only say
-    /// "all" is chrome pretending to be a control.
-    public let scopes: [ModelChooserScope]
+    /// Every machine in the fleet, the one the chooser opened from first. One entry when there is
+    /// one machine; a client draws the strip only past that, since a tab bar with one tab is chrome
+    /// pretending to be a control.
+    public let machines: [ModelMachine]
     private let recents: [ModelSelection]
     private var favorites: [ModelSelection]
     private var favoriteKeys: Set<String>
@@ -554,31 +556,25 @@ public struct ModelChooser: Sendable, Equatable {
     /// re-read every gauge to draw them.
     private let walls: [String: QuotaExhaustion]
 
-    /// Past this many models a family heading opens rather than scrolls, and the list arrives shut
-    /// except for what you are on and what you reach for. Under it, a closed heading would be a
-    /// press standing between a person and a list they could already see whole.
+    /// Past this many hosted models a family heading opens rather than scrolls, and the list
+    /// arrives shut except for what you are on and what you reach for. Under it, a closed heading
+    /// would be a press standing between a person and a list they could already see whole.
     public static let foldFrom = 24
 
     public private(set) var query = ""
-    public private(set) var scope: ModelChooserScope = .all
+    /// The machine whose catalog is showing, by profile id.
+    public private(set) var machine = ""
     public private(set) var cursor = 0
     public private(set) var expanded: Set<String> = []
     public private(set) var collapsed: Set<String> = []
     public private(set) var sections: [ModelChooserSection] = []
     public private(set) var rows: [ModelChooserRow] = []
-    /// How many models answered the query and the filter, for the header's count.
+    /// How many models on this machine answered the query, for the header's count.
     private var matched = 0
+    /// How many answered it on other machines, listed under their own heading.
+    private var elsewhereMatched = 0
     /// How many are held behind shut headings, so the header band can offer to open them.
     public private(set) var hidden = 0
-
-    /// Whether a model survives the standing filter.
-    private func inScope(_ candidate: ModelCandidate) -> Bool {
-        switch scope {
-        case .all: return true
-        case .here: return !candidate.isElsewhere
-        case .local: return candidate.isLocal
-        }
-    }
 
     /// One server's list — the shape every screen that only ever meant this machine still asks for.
     public init(
@@ -595,9 +591,8 @@ public struct ModelChooser: Sendable, Equatable {
             ], selected: selected, recents: recents, quotas: quotas)
     }
 
-    /// Every server you have, as one list. The machine a model runs on is a fact on its row rather
-    /// than a list you have to leave and re-enter, and the pick that comes back says which machine
-    /// it meant.
+    /// Every server you have, one tab each. The machine a model runs on is the first choice rather
+    /// than a badge on every row, and the pick that comes back says which machine it meant.
     ///
     /// `quotas` are the walls the account is up against, already narrowed to the backend's provider
     /// family by the caller that knows which one it opened — the chooser marks a model spent, it
@@ -613,21 +608,36 @@ public struct ModelChooser: Sendable, Equatable {
         recents: [ModelSelection] = RecentModelsStore.all(),
         favorites: [ModelSelection] = ModelFavoritesStore.all(), quotas: [UsageQuota] = []
     ) {
-        self.sources = sources
-        let candidates = sources.flatMap { Self.fold(source: $0, preferred: selected) }
+        let ordered = sources.sorted { lhs, rhs in lhs.isCurrent && !rhs.isCurrent }
+        self.sources = ordered
+        let candidates = ordered.flatMap { Self.fold(source: $0, preferred: selected) }
         self.candidates = candidates
         self.selected = selected
-        self.allowsServerDefault = sources.first { $0.isCurrent }?.allowsServerDefault ?? false
+        self.allowsServerDefault = ordered.first { $0.isCurrent }?.allowsServerDefault ?? false
         self.recents = recents
         self.favorites = favorites
         self.favoriteKeys = Set(favorites.map(\.rawValue))
         self.walls = Self.walls(for: candidates, quotas: quotas)
         self.policy = .over(candidates)
         self.showsProviders = Set(candidates.flatMap { $0.offers.map(\.providerID) }).count > 1
-        self.scopes = Self.scopes(for: candidates, sources: sources)
-        self.collapsed = Self.shutOnArrival(candidates: candidates, selected: selected)
+        self.machines = Self.machines(for: ordered, candidates: candidates)
+        self.machine = machines.first?.profileID ?? ""
+        self.collapsed = Self.shutOnArrival(
+            candidates: candidates.filter { $0.profileID == machine }, selected: selected)
         rebuild()
         cursor = rows.firstIndex { $0.isSelected } ?? 0
+    }
+
+    private static func machines(
+        for sources: [ModelSource], candidates: [ModelCandidate]
+    ) -> [ModelMachine] {
+        sources.map { source in
+            let mine = candidates.filter { $0.profileID == source.profileID }
+            return ModelMachine(
+                profileID: source.profileID, title: source.title, backend: source.backend,
+                count: mine.count, localCount: mine.filter(\.isLocal).count,
+                isCurrent: source.isCurrent, isReachable: source.isReachable)
+        }
     }
 
     /// Which headings a big catalog opens on. Everything folds except the family the chat is
@@ -635,25 +645,12 @@ public struct ModelChooser: Sendable, Equatable {
     private static func shutOnArrival(
         candidates: [ModelCandidate], selected: ModelSelection?
     ) -> Set<String> {
-        guard candidates.count > foldFrom else { return [] }
+        let hosted = candidates.filter { !$0.isLocal }
+        guard hosted.count > foldFrom else { return [] }
         let mine = selected.flatMap { pick in
-            candidates.first { $0.carries(pick) }?.family.key
+            hosted.first { $0.carries(pick) }?.family.key
         }
-        return Set(candidates.map(\.family.key)).subtracting(mine.map { [$0] } ?? [])
-    }
-
-    /// The filters this catalog can honestly offer. A filter that would change nothing — "this
-    /// server" with one server, "local" with nothing local — is not offered, so a bar that appears
-    /// at all is a bar where every press does something.
-    private static func scopes(
-        for candidates: [ModelCandidate], sources: [ModelSource]
-    ) -> [ModelChooserScope] {
-        var scopes: [ModelChooserScope] = []
-        if candidates.contains(where: \.isElsewhere) { scopes.append(.here) }
-        if candidates.contains(where: \.isLocal), !candidates.allSatisfy(\.isLocal) {
-            scopes.append(.local)
-        }
-        return scopes.isEmpty ? [] : [.all] + scopes
+        return Set(hosted.map(\.family.key)).subtracting(mine.map { [$0] } ?? [])
     }
 
     private static func walls(
@@ -696,18 +693,33 @@ public struct ModelChooser: Sendable, Equatable {
 
     public var isEmpty: Bool { candidates.isEmpty }
 
+    /// The server the chooser was opened from.
     private var current: ModelSource? { sources.first { $0.isCurrent } }
+
+    /// The server whose tab is showing.
+    private var shown: ModelSource? { sources.first { $0.profileID == machine } }
+
+    /// The tab that is showing, whole.
+    public var shownMachine: ModelMachine? { machines.first { $0.profileID == machine } }
+
+    /// Where the strip's highlight sits.
+    public var machineIndex: Int { machines.firstIndex { $0.profileID == machine } ?? 0 }
+
+    /// Whether a strip is worth drawing at all.
+    public var showsMachines: Bool { machines.count > 1 }
+
+    private var onShownMachine: [ModelCandidate] { candidates.filter { $0.profileID == machine } }
 
     /// What a server that is not answering amounts to, said in place of a claim about its catalog.
     /// A restart is a state, not an empty list: the words the header and the empty body show must
     /// name the state, or a reader who restarted the server is told it has no models while the
     /// answer is on the way back up.
     public var serverReading: String? {
-        guard let current else { return nil }
-        switch current.isReachable {
-        case nil where current.models.isEmpty:
+        guard let shown else { return nil }
+        switch shown.isReachable {
+        case nil where shown.models.isEmpty:
             return Localized.text("Asking the server for its models…")
-        case false where current.models.isEmpty:
+        case false where shown.models.isEmpty:
             return Localized.text("Server is not answering — models will appear when it comes back")
         case false:
             return Localized.text("Server is not answering — showing the last known list")
@@ -717,40 +729,40 @@ public struct ModelChooser: Sendable, Equatable {
     }
 
     /// Whether anything is standing between the reader and the whole catalog.
-    public var isNarrowed: Bool { !query.isEmpty || scope != .all }
+    public var isNarrowed: Bool { !query.isEmpty }
 
-    /// What the list amounts to right now: the whole catalog when nothing is narrowing it, and
-    /// otherwise how much of it survived — a count that moves as you type is the only honest way
-    /// for a header to answer "is it still looking".
+    /// What the list amounts to right now: the shown machine's whole catalog when nothing is
+    /// narrowing it, and otherwise how much of it survived — a count that moves as you type is
+    /// the only honest way for a header to answer "is it still looking".
     public var summary: String {
-        guard !candidates.isEmpty else {
+        let mine = onShownMachine
+        guard !mine.isEmpty else {
             return serverReading ?? Localized.text("This server lists no models")
         }
         guard !isNarrowed else {
-            var parts = [Localized.text("%@ of %@ models", "\(matched)", "\(candidates.count)")]
-            if scope != .all { parts.append(scope.title.lowercased()) }
+            var parts = [Localized.text("%@ of %@ models", "\(matched)", "\(mine.count)")]
+            if elsewhereMatched > 0 {
+                parts.append(Localized.text("%@ elsewhere", "\(elsewhereMatched)"))
+            }
             return parts.joined(separator: " · ")
         }
         return catalogSummary
     }
 
-    /// What the whole catalog amounts to, said once at the top instead of implied by scrolling.
+    /// What the shown machine's catalog amounts to, said once at the top instead of implied by
+    /// scrolling.
     public var catalogSummary: String {
-        guard !candidates.isEmpty else {
+        let mine = onShownMachine
+        guard !mine.isEmpty else {
             return serverReading ?? Localized.text("This server lists no models")
         }
-        var parts = [Self.modelCount(candidates.count)]
+        var parts = [Self.modelCount(mine.count)]
         if let reading = serverReading { parts.append(reading.lowercased()) }
-        let servers = Set(candidates.map(\.profileID))
-        if servers.count > 1 {
-            parts.append(Self.serverCount(servers.count))
-        } else {
-            let providers = Set(candidates.flatMap { $0.offers.map(\.providerID) })
-            if providers.count > 1 { parts.append(Self.providerCount(providers.count)) }
-        }
-        let local = candidates.filter(\.isLocal).count
-        if local > 0 { parts.append(Localized.text("%@ on your machine", "\(local)")) }
-        let walled = candidates.filter { walls[$0.selection.rawValue] != nil }.count
+        let providers = Set(mine.flatMap { $0.offers.map(\.providerID) })
+        if providers.count > 1 { parts.append(Self.providerCount(providers.count)) }
+        let local = mine.filter(\.isLocal).count
+        if local > 0 { parts.append(Localized.text("%@ on its own machine", "\(local)")) }
+        let walled = mine.filter { walls[$0.selection.rawValue] != nil }.count
         if walled > 0 { parts.append(Localized.text("%@ used up", "\(walled)")) }
         return parts.joined(separator: " · ")
     }
@@ -770,31 +782,23 @@ public struct ModelChooser: Sendable, Equatable {
     public var hint: String {
         var parts = [Localized.text("↑↓ chooses")]
         parts.append(Localized.text("⌃→ opens · ⌃← folds"))
-        if scopes.count > 1 {
-            parts.append(Localized.text("⌃1–%@ filters", "\(scopes.count)"))
+        if showsMachines {
+            parts.append(Localized.text("⌃1–%@ servers", "\(machines.count)"))
         }
         parts.append(Localized.text("enter picks · esc closes"))
         return parts.joined(separator: " · ")
     }
 
-    /// Said when nothing survived, naming what did the narrowing rather than shrugging — a query,
-    /// a filter, or both, since a reader who forgot the filter is on will otherwise read an empty
-    /// list as a catalog that lost a model.
+    /// Said when nothing survived, naming the machine as well as the word — a reader who forgot
+    /// which tab is showing would otherwise read an empty list as a catalog that lost a model.
     public var emptyResult: String? {
         guard rows.isEmpty else { return nil }
-        switch (query.isEmpty, scope) {
-        case (true, .all): return serverReading
-        case (true, let scope): return Localized.text("No model here is %@", scope.title.lowercased())
-        case (false, .all): return Localized.text("No model matches “%@”", query)
-        case (false, let scope):
-            return Localized.text(
-                "No model matches “%@” under %@", query, scope.title.lowercased())
+        guard !query.isEmpty else { return serverReading }
+        guard showsMachines, let shownMachine else {
+            return Localized.text("No model matches “%@”", query)
         }
+        return Localized.text("No model on %@ matches “%@”", shownMachine.title, query)
     }
-
-    /// The one press that would undo the narrowing, when a filter is what emptied the list — an
-    /// empty result should hand back the way out rather than leave it to be remembered.
-    public var emptyEscape: ModelChooserScope? { rows.isEmpty && scope != .all ? .all : nil }
 
     public var focused: ModelChooserRow? {
         rows.indices.contains(cursor) ? rows[cursor] : nil
@@ -810,14 +814,18 @@ public struct ModelChooser: Sendable, Equatable {
         if !trimmed.isEmpty { cursor = 0 }
     }
 
-    /// Narrows the catalog to one standing filter. The cursor goes back to the top rather than
-    /// trying to follow the row it was on: a filter is a new question, and the answer to a new
-    /// question starts at its first line.
+    /// Shows another machine's catalog. The cursor lands on whatever that machine already runs
+    /// for this chat, else at the top: a tab is a new question, and its answer starts at its first
+    /// line. The query stays — a person who typed "sonnet" and switched machines is still asking
+    /// about sonnet.
     @discardableResult
-    public mutating func setScope(_ next: ModelChooserScope) -> Bool {
-        guard next != scope, scopes.contains(next) || next == .all else { return false }
-        scope = next
+    public mutating func setMachine(_ profileID: String) -> Bool {
+        guard profileID != machine, machines.contains(where: { $0.profileID == profileID }) else {
+            return false
+        }
+        machine = profileID
         expanded.removeAll()
+        collapsed = Self.shutOnArrival(candidates: onShownMachine, selected: selected)
         rebuild()
         cursor = rows.firstIndex { $0.isSelected } ?? 0
         return true
@@ -890,9 +898,11 @@ public struct ModelChooser: Sendable, Equatable {
             return (setAllCollapsed(false), nil, false)
         case .collapseAll:
             return (setAllCollapsed(true), nil, false)
-        case .scope(let index):
-            guard scopes.indices.contains(index) else { return (false, nil, false) }
-            return (setScope(scopes[index]), nil, false)
+        case .machine(let index):
+            guard showsMachines, machines.indices.contains(index) else {
+                return (false, nil, false)
+            }
+            return (setMachine(machines[index].profileID), nil, false)
         case .activate:
             guard let row = focused else { return (true, nil, false) }
             return (true, row.pick, false)
@@ -917,7 +927,7 @@ public struct ModelChooser: Sendable, Equatable {
             case left: return chord.shift ? .collapseAll : .collapse
             default: break
             }
-            if let digit = Keymap.digit(chord.keyval), digit > 0 { return .scope(digit - 1) }
+            if let digit = Keymap.digit(chord.keyval), digit > 0 { return .machine(digit - 1) }
             switch Keymap.scalar(chord.keyval) {
             case "n": return .down
             case "p": return .up
@@ -939,47 +949,22 @@ public struct ModelChooser: Sendable, Equatable {
     private mutating func rebuild() {
         var sections: [ModelChooserSection] = []
         var hiding = 0
-        let matches = self.matches()
+        let mine = onShownMachine
+        let matches = self.matches(in: mine)
         matched = matches.count
-
         if query.isEmpty {
-            sections += currentSection()
-            sections += pinnedSection()
-            let inUse = candidates.first { !$0.isElsewhere && $0.carries(selected) }
-            let recent = recents.compactMap { selection in
-                candidates.first { !$0.isElsewhere && $0.carries(selection) }
-                    ?? candidates.first { $0.carries(selection) }
-            }
-            var seen = Set<String>()
-            if let inUse { seen.insert(inUse.id) }
-            let unique =
-                recent
-                .filter { inScope($0) }
-                .filter { seen.insert($0.id).inserted }
-                .prefix(Self.recentLimit)
-            if !unique.isEmpty {
-                sections.append(
-                    ModelChooserSection(
-                        id: "·recent", title: Localized.text("Recent"),
-                        detail: Localized.text("What you reach for"),
-                        rows: unique.flatMap { rows(for: $0, section: "·recent", highlight: []) }))
-            }
+            sections += yoursSection(in: mine)
         }
-
+        sections += localSection(from: matches)
         var byFamily: [ModelFamily: [(ModelCandidate, [Int])]] = [:]
-        for (candidate, highlight) in matches {
+        for (candidate, highlight) in matches where !candidate.isLocal {
             byFamily[candidate.family, default: []].append((candidate, highlight))
         }
         for family in byFamily.keys.sorted() {
             let entries = byFamily[family] ?? []
             var detail = Self.modelCount(entries.count)
-            let servers = Set(entries.map { $0.0.profileID })
-            if servers.count > 1 {
-                detail += " · " + Self.serverCount(servers.count)
-            } else {
-                let providers = Set(entries.flatMap { $0.0.offers.map(\.providerID) })
-                if providers.count > 1 { detail += " · " + Self.providerCount(providers.count) }
-            }
+            let providers = Set(entries.flatMap { $0.0.offers.map(\.providerID) })
+            if providers.count > 1 { detail += " · " + Self.providerCount(providers.count) }
             let oneHouse = Set(entries.map { $0.0.primary.providerID }).count < 2
             let shut = query.isEmpty && collapsed.contains(family.key)
             if shut { hiding += entries.count }
@@ -995,97 +980,39 @@ public struct ModelChooser: Sendable, Equatable {
                         },
                     canCollapse: query.isEmpty, isCollapsed: shut, count: entries.count))
         }
-
+        let elsewhere = elsewhereSection()
+        elsewhereMatched = elsewhere.reduce(0) { $0 + $1.count }
+        sections += elsewhere
         sections += literalSections()
         self.sections = sections
         self.hidden = hiding
         rows = sections.flatMap(\.rows)
     }
 
-    /// Whether a star is on this model right now.
-    public func isFavorite(_ selection: ModelSelection) -> Bool {
-        favoriteKeys.contains(selection.rawValue)
-    }
-
-    /// Stars or unstars a model and re-renders: the Pinned section answers immediately, so the
-    /// press feels like moving the list rather than filing a preference away somewhere.
-    public mutating func togglePin(_ selection: ModelSelection) {
-        ModelFavoritesStore.toggle(selection)
-        favorites = ModelFavoritesStore.all()
-        favoriteKeys = Set(favorites.map(\.rawValue))
-        rebuild()
-        cursor = min(cursor, max(0, rows.count - 1))
-    }
-
-    /// Opens or shuts one heading. Answers whether anything happened, so a key that finds nothing
-    /// to fold can go on meaning what it usually means.
-    @discardableResult
-    public mutating func setCollapsed(_ shut: Bool, section id: String) -> Bool {
-        guard query.isEmpty, sections.first(where: { $0.id == id })?.canCollapse == true else {
-            return false
+    /// What is yours on this machine, in one short section: the model this chat runs, named
+    /// rather than implied by a tick somewhere down the page; the ones you starred; the ones you
+    /// reached for lately; and the server's own default, which is a real answer. Three headings
+    /// used to say this — Current, Pinned, Recent — and a person opening the list read three
+    /// headings before the first model they had not already chosen.
+    private func yoursSection(in mine: [ModelCandidate]) -> [ModelChooserSection] {
+        var picked: [ModelCandidate] = []
+        var seen = Set<String>()
+        func admit(_ candidate: ModelCandidate?) {
+            guard let candidate, picked.count < Self.yoursLimit, seen.insert(candidate.id).inserted
+            else { return }
+            picked.append(candidate)
         }
-        guard collapsed.contains(id) != shut else { return false }
-        let anchor = focused?.anchor
-        if shut { collapsed.insert(id) } else { collapsed.remove(id) }
-        rebuild()
-        cursor =
-            rows.firstIndex { $0.sectionID == id && (!shut || $0.anchor == anchor) }
-            ?? rows.firstIndex { $0.anchor == anchor }
-            ?? min(cursor, max(0, rows.count - 1))
-        return true
-    }
-
-    @discardableResult
-    public mutating func toggleSection(_ id: String) -> Bool {
-        setCollapsed(!collapsed.contains(id), section: id)
-    }
-
-    /// Every heading at once — the two presses a long list is worth having.
-    @discardableResult
-    public mutating func setAllCollapsed(_ shut: Bool) -> Bool {
-        guard query.isEmpty else { return false }
-        let foldable = Set(sections.filter(\.canCollapse).map(\.id))
-        let next = shut ? collapsed.union(foldable) : collapsed.subtracting(foldable)
-        guard next != collapsed else { return false }
-        let anchor = focused?.anchor
-        collapsed = next
-        rebuild()
-        cursor = rows.firstIndex { $0.anchor == anchor } ?? 0
-        return true
-    }
-
-    /// Whether anything is folded right now, so a client can name the press it is offering.
-    public var hasCollapsedSections: Bool {
-        sections.contains { $0.isCollapsed }
-    }
-
-    /// What the one press at the top of the list would do, and to how much. `nil` when there is
-    /// nothing to fold either way — a control that cannot change anything is not offered.
-    public var foldAction: (title: String, collapses: Bool)? {
-        guard sections.contains(where: \.canCollapse) else { return nil }
-        if hidden > 0 {
-            return (Localized.text("Show %@ more", "\(hidden)"), false)
+        if let selected, let inUse = mine.first(where: { !$0.isElsewhere && $0.carries(selected) }) {
+            admit(inUse)
         }
-        guard sections.filter({ $0.canCollapse }).count > 1 else { return nil }
-        return (Localized.text("Fold all"), true)
-    }
-
-    /// What this chat is running, and the one alternative that is not a model at all. Both used to
-    /// be implied — a tick somewhere down the list, an untitled row at the top — which is how the
-    /// same model came to be drawn twice with a tick each and no way to tell which one was the
-    /// answer. Named, it reads as the state it is, and Recent stops repeating it.
-    private func currentSection() -> [ModelChooserSection] {
-        var rows: [ModelChooserRow] = []
-        if let selected, let candidate = candidates.first(where: {
-            !$0.isElsewhere && $0.carries(selected) && inScope($0)
-        }) {
-            rows += self.rows(for: candidate, section: "·current", highlight: [])
-        }
-        if allowsServerDefault, let current {
+        for favorite in favorites { admit(mine.first { $0.carries(favorite) }) }
+        for recent in recents.prefix(Self.recentLimit) { admit(mine.first { $0.carries(recent) }) }
+        var rows = picked.flatMap { self.rows(for: $0, section: "·yours", highlight: []) }
+        if allowsServerDefault, let current, current.profileID == machine {
             rows.append(
                 ModelChooserRow(
                     kind: .auto, profileID: current.profileID, serverName: current.name,
-                    isElsewhere: false, sectionID: "·current",
+                    isElsewhere: false, sectionID: "·yours",
                     title: Localized.text("Server default"),
                     detail: Localized.text("Whatever this server runs"), highlight: [],
                     facts: [], isSelected: selected == nil, isExpanded: false, canExpand: false,
@@ -1094,28 +1021,47 @@ public struct ModelChooser: Sendable, Equatable {
         guard !rows.isEmpty else { return [] }
         return [
             ModelChooserSection(
-                id: "·current", title: Localized.text("Current"),
-                detail: Localized.text("What this chat runs"), rows: rows)
+                id: "·yours", title: Localized.text("Yours"),
+                detail: Localized.text("Running, starred, recent"), rows: rows)
         ]
     }
 
-    /// The models you starred. They lead the families because a star is a decision made
-    /// once so a list never has to be searched twice; what this chat runs already has its
-    /// own section above.
-    private func pinnedSection() -> [ModelChooserSection] {
-        guard query.isEmpty else { return [] }
-        let pinned = favorites.compactMap { selection -> ModelCandidate? in
-            candidates.first { !$0.isElsewhere && $0.carries(selection) && inScope($0) }
-                ?? candidates.first { $0.carries(selection) && inScope($0) }
-        }
-        var seen = Set<String>()
-        let unique = pinned.filter { seen.insert($0.id).inserted }.prefix(8)
-        guard !unique.isEmpty else { return [] }
+    /// What runs on the machine's own hardware, as a section rather than a badge. Where a model
+    /// runs is the whole difference between two models of the same name, so the local ones are
+    /// listed here and only here — a family heading never mixes a model on your GPU with one on
+    /// somebody's cloud.
+    private func localSection(from matches: [(ModelCandidate, [Int])]) -> [ModelChooserSection] {
+        let local = matches.filter { $0.0.isLocal }
+        guard !local.isEmpty else { return [] }
+        let title = shownMachine.map { machine in
+            showsMachines
+                ? Localized.text("On %@", machine.title) : Localized.text("On this machine")
+        } ?? Localized.text("On this machine")
         return [
             ModelChooserSection(
-                id: "·pinned", title: Localized.text("Pinned"),
-                detail: Localized.text("Your stars"), rows: unique.flatMap {
-                    rows(for: $0, section: "·pinned", highlight: [])
+                id: "·local", title: title,
+                detail: Localized.text("Runs on the server's own hardware"),
+                rows: local.flatMap {
+                    rows(for: $0.0, section: "·local", highlight: $0.1, namesLocal: false)
+                })
+        ]
+    }
+
+    /// A query is asked of the machine that is showing, and answered from the others too — under
+    /// their own heading, with the machine named on each row, because a person who typed a name
+    /// wants to know it exists somewhere more than they want the tab respected.
+    private func elsewhereSection() -> [ModelChooserSection] {
+        guard !query.isEmpty, showsMachines else { return [] }
+        let others = candidates.filter { $0.profileID != machine }
+        let found = matches(in: others)
+        guard !found.isEmpty else { return [] }
+        let servers = Set(found.map { $0.0.profileID })
+        return [
+            ModelChooserSection(
+                id: "·elsewhere", title: Localized.text("On other servers"),
+                detail: Self.serverCount(servers.count),
+                rows: found.flatMap {
+                    rows(for: $0.0, section: "·elsewhere", highlight: $0.1, namesMachine: true)
                 })
         ]
     }
@@ -1126,9 +1072,8 @@ public struct ModelChooser: Sendable, Equatable {
     private func literalSections() -> [ModelChooserSection] {
         let typed = query.trimmingCharacters(in: .whitespaces)
         guard typed.count > 1, !typed.contains(" ") else { return [] }
-        guard scope != .local else { return [] }
         let takers = sources.filter { source in
-            guard source.acceptsAnyModelID, scope != .here || source.isCurrent else { return false }
+            guard source.acceptsAnyModelID else { return false }
             return !source.models.contains { $0.id.lowercased() == typed.lowercased() }
         }
         guard !takers.isEmpty else { return [] }
@@ -1155,10 +1100,12 @@ public struct ModelChooser: Sendable, Equatable {
 
     private func rows(
         for candidate: ModelCandidate, section: String, highlight: [Int],
-        namesProvider: Bool = true
+        namesProvider: Bool = true, namesLocal: Bool = true, namesMachine: Bool = false
     ) -> [ModelChooserRow] {
         var result = [
-            row(for: candidate, section: section, highlight: highlight, namesProvider: namesProvider)
+            row(
+                for: candidate, section: section, highlight: highlight,
+                namesProvider: namesProvider, namesLocal: namesLocal, namesMachine: namesMachine)
         ]
         guard expanded.contains(candidate.id) else { return result }
         result += candidate.offers.map { offer in
@@ -1180,14 +1127,16 @@ public struct ModelChooser: Sendable, Equatable {
 
     private func row(
         for candidate: ModelCandidate, section: String, highlight: [Int],
-        namesProvider: Bool = true
+        namesProvider: Bool, namesLocal: Bool, namesMachine: Bool
     ) -> ModelChooserRow {
         ModelChooserRow(
             kind: .candidate(candidate), profileID: candidate.profileID,
             serverName: candidate.serverName, isElsewhere: candidate.isElsewhere,
             sectionID: section, title: candidate.name,
             detail: detail(for: candidate, namesProvider: namesProvider),
-            highlight: highlight, facts: ModelFact.of(candidate, policy: policy),
+            highlight: highlight,
+            facts: ModelFact.of(
+                candidate, policy: policy, namesLocal: namesLocal, namesMachine: namesMachine),
             isSelected: !candidate.isElsewhere && candidate.carries(selected),
             isExpanded: expanded.contains(candidate.id),
             canExpand: candidate.offers.count > 1, isNested: false,
@@ -1204,14 +1153,13 @@ public struct ModelChooser: Sendable, Equatable {
     /// out (`Opus` over `opus`) is a second line for a row that has one thing to say. What is left
     /// is a name alone, which is what most rows should have been all along.
     ///
-    /// A folded row names one door: the one a pick would actually go through. How many others there
-    /// are is already a badge on the row, and the list of them is one keystroke below it — spelling
-    /// them all out here is the same fact three times, in the line least able to hold it.
-    private func detail(for candidate: ModelCandidate, namesProvider: Bool = true) -> String {
+    /// A folded row names the door a pick would go through and counts the rest — `Anthropic +1` —
+    /// which used to be a pill on the right; the list of them is one keystroke below the row.
+    private func detail(for candidate: ModelCandidate, namesProvider: Bool) -> String {
         var parts: [String] = []
         let names = candidate.providerNames
         if candidate.offers.count > 1 {
-            parts.append(names[0])
+            parts.append("\(names[0]) +\(candidate.offers.count - 1)")
         } else if (showsProviders && namesProvider) || candidate.isLocal {
             parts.append(names.joined(separator: " · "))
         }
@@ -1230,21 +1178,19 @@ public struct ModelChooser: Sendable, Equatable {
         ModelFamily.tokens(id).joined() != ModelFamily.tokens(name).joined()
     }
 
-    /// The catalog ordered by how well each name answers the query. Ties inside a tier break on
-    /// what the person picked recently, then alphabetically, so the list never reshuffles itself
-    /// for reasons nobody can see.
-    private func matches() -> [(ModelCandidate, [Int])] {
+    /// The given candidates ordered by how well each name answers the query. Ties inside a tier
+    /// break on what the person picked recently, then alphabetically, so the list never reshuffles
+    /// itself for reasons nobody can see.
+    private func matches(in candidates: [ModelCandidate]) -> [(ModelCandidate, [Int])] {
         let recency = Dictionary(
             uniqueKeysWithValues: recents.enumerated().map { ($0.element, $0.offset) })
         func rank(_ candidate: ModelCandidate) -> Int {
             candidate.offers.compactMap { recency[$0.selection] }.min() ?? Int.max
         }
-        let candidates = self.candidates.filter(inScope)
         guard !query.isEmpty else {
             return
                 candidates
                 .sorted { lhs, rhs in
-                    if lhs.isElsewhere != rhs.isElsewhere { return !lhs.isElsewhere }
                     let (walledL, walledR) = (
                         walls[lhs.selection.rawValue] != nil, walls[rhs.selection.rawValue] != nil
                     )
@@ -1317,6 +1263,73 @@ public struct ModelChooser: Sendable, Equatable {
         return hits
     }
 
+    /// Whether a star is on this model right now.
+    public func isFavorite(_ selection: ModelSelection) -> Bool {
+        favoriteKeys.contains(selection.rawValue)
+    }
+
+    /// Stars or unstars a model and re-renders: the Yours section answers immediately, so the
+    /// press feels like moving the list rather than filing a preference away somewhere.
+    public mutating func togglePin(_ selection: ModelSelection) {
+        ModelFavoritesStore.toggle(selection)
+        favorites = ModelFavoritesStore.all()
+        favoriteKeys = Set(favorites.map(\.rawValue))
+        rebuild()
+        cursor = min(cursor, max(0, rows.count - 1))
+    }
+
+    /// Opens or shuts one heading. Answers whether anything happened, so a key that finds nothing
+    /// to fold can go on meaning what it usually means.
+    @discardableResult
+    public mutating func setCollapsed(_ shut: Bool, section id: String) -> Bool {
+        guard query.isEmpty, sections.first(where: { $0.id == id })?.canCollapse == true else {
+            return false
+        }
+        guard collapsed.contains(id) != shut else { return false }
+        let anchor = focused?.anchor
+        if shut { collapsed.insert(id) } else { collapsed.remove(id) }
+        rebuild()
+        cursor =
+            rows.firstIndex { $0.sectionID == id && (!shut || $0.anchor == anchor) }
+            ?? rows.firstIndex { $0.anchor == anchor }
+            ?? min(cursor, max(0, rows.count - 1))
+        return true
+    }
+
+    @discardableResult
+    public mutating func toggleSection(_ id: String) -> Bool {
+        setCollapsed(!collapsed.contains(id), section: id)
+    }
+
+    /// Every heading at once — the two presses a long list is worth having.
+    @discardableResult
+    public mutating func setAllCollapsed(_ shut: Bool) -> Bool {
+        guard query.isEmpty else { return false }
+        let foldable = Set(sections.filter(\.canCollapse).map(\.id))
+        let next = shut ? collapsed.union(foldable) : collapsed.subtracting(foldable)
+        guard next != collapsed else { return false }
+        let anchor = focused?.anchor
+        collapsed = next
+        rebuild()
+        cursor = rows.firstIndex { $0.anchor == anchor } ?? 0
+        return true
+    }
+
+    /// Whether anything is folded right now, so a client can name the press it is offering.
+    public var hasCollapsedSections: Bool {
+        sections.contains { $0.isCollapsed }
+    }
+
+    /// What the one press at the top of the list would do, and to how much. `nil` when there is
+    /// nothing to fold either way — a control that cannot change anything is not offered.
+    public var foldAction: (title: String, collapses: Bool)? {
+        guard sections.contains(where: \.canCollapse) else { return nil }
+        if hidden > 0 {
+            return (Localized.text("Show %@ more", "\(hidden)"), false)
+        }
+        guard sections.filter({ $0.canCollapse }).count > 1 else { return nil }
+        return (Localized.text("Fold all"), true)
+    }
     /// Folds a flat catalog into candidates. Identity is the model's own name where it has one and
     /// its id otherwise, normalised so "Claude Sonnet 4.5" and "claude-sonnet-4-5" are one model
     /// reached two ways; a local model never folds into a hosted one.
@@ -1503,9 +1516,16 @@ public enum ModelChooserCheck {
         expect(chooser.rows.first?.isAuto == true, "the server's own choice leads")
         expect(chooser.rows.first?.isSelected == true, "and is checked when nothing is picked")
         expect(
-            chooser.sections.first?.id == "·current",
+            chooser.sections.first?.id == "·yours",
             "what the chat runs is a named section rather than an untitled row")
-        expect(chooser.sections.count == 5, "current, then one section per family")
+        expect(
+            chooser.sections.contains { $0.id == "·local" },
+            "what runs on the machine's own hardware is a section of its own")
+        expect(
+            chooser.sections.first { $0.id == "qwen" }?.rows.allSatisfy { !$0.facts.contains(.local) }
+                == true,
+            "and never sits in a family beside a hosted namesake")
+        expect(chooser.sections.count == 6, "yours, local, then one section per hosted family")
         expect(chooser.summary.contains("5"), "the summary counts the folded catalog")
         expect(
             chooser.rows.first { $0.title == "GPT-5.6 Luna" }?.detail.contains("gpt-5.6-luna")
@@ -1518,9 +1538,12 @@ public enum ModelChooserCheck {
         chooser.search("sonnet")
         expect(chooser.rows.count == 1, "a query narrows to what it names")
         expect(chooser.rows.first?.highlight.isEmpty == false, "and says which letters it read")
-        expect(chooser.rows.first?.facts.contains(.providers(2)) == true, "two doors is a fact")
         expect(
-            chooser.rows.first?.facts.contains(.effort(3)) == true, "so are its effort levels")
+            chooser.rows.first?.detail.contains("+1") == true,
+            "two doors is counted in the second line rather than worn as a pill")
+        expect(
+            chooser.rows.first?.facts.allSatisfy(\.isCapability) == true,
+            "and effort levels are not a fact about the pick")
 
         chooser.search("openrouter")
         expect(chooser.rows.count == 1, "a provider nobody's model is named after still finds it")
@@ -1575,11 +1598,12 @@ public enum ModelChooserCheck {
 
         var recent = ModelChooser(models: catalog, selected: nil, recents: [selection])
         expect(
-            recent.sections.contains { $0.id == "·recent" },
+            recent.sections.first { $0.id == "·yours" }?.rows.contains { $0.title == "Claude Sonnet 4.5" }
+                == true,
             "what you reached for last leads the list")
         expect(
             Set(recent.rows.map(\.id)).count == recent.rows.count,
-            "a model listed under Recent and again under its family is two rows, not one id twice")
+            "a model listed under Yours and again under its family is two rows, not one id twice")
         if let index = recent.rows.firstIndex(where: {
             $0.sectionID == "claude" && $0.canExpand
         }) {
@@ -1611,49 +1635,53 @@ public enum ModelChooserCheck {
             profileID: "homelab", name: "homelab", backend: .openCode, models: catalog,
             isCurrent: false, allowsServerDefault: true, acceptsAnyModelID: false)
 
-        var fleet = ModelChooser(sources: [studio, homelab], selected: nil, recents: [])
-        expect(fleet.candidates.count == 7, "every server's catalog is in the one list")
+        var fleet = ModelChooser(sources: [homelab, studio], selected: nil, recents: [])
+        expect(fleet.candidates.count == 7, "every server's catalog is folded")
+        expect(fleet.machines.count == 2 && fleet.showsMachines, "and each machine is a tab")
+        expect(fleet.machines.first?.profileID == "studio", "the one the chooser opened from first")
+        expect(fleet.machine == "studio", "and it is the tab showing")
+        expect(fleet.machines[1].count == 5, "a tab counts what its machine offers")
+        expect(fleet.machines[1].localCount == 1, "and how much of it is local")
+        expect(fleet.machines[1].consequence != nil, "another machine's tab says a pick starts a chat there")
+        expect(fleet.machines[0].consequence == nil, "this one's does not")
         expect(
-            Set(fleet.rows.map(\.id)).count == fleet.rows.count,
-            "two servers offering the same model are two rows, not one id twice")
+            fleet.rows.allSatisfy { !$0.isElsewhere },
+            "the list under a tab is one machine's catalog and nothing else's")
         expect(
-            fleet.summary.contains(ModelChooser.serverCount(2)),
-            "and the summary says how many machines are in it")
-        guard let mine = fleet.rows.firstIndex(where: { $0.title == "Opus" }),
-            let theirs = fleet.rows.firstIndex(where: { $0.title == "Claude Sonnet 4.5" })
-        else {
-            return failures + ["the fleet list lost a server's models"]
+            !fleet.rows.contains { $0.title == "Claude Sonnet 4.5" },
+            "the other machine's models are not in it")
+        expect(fleet.summary.contains(ModelChooser.modelCount(2)), "the summary counts this machine")
+        expect(fleet.handle(.machine(1)).handled, "⌃2 shows the second machine")
+        expect(fleet.machine == "homelab", "which is the one it names")
+        guard let theirs = fleet.rows.firstIndex(where: { $0.title == "Claude Sonnet 4.5" }) else {
+            return failures + ["the other machine's tab lost its models"]
         }
-        expect(mine < theirs, "this machine's models lead their family")
-        expect(fleet.rows[mine].isElsewhere == false, "a model here is not elsewhere")
         expect(fleet.rows[theirs].isElsewhere, "a model on the other machine says so")
         expect(
-            fleet.rows[theirs].facts.contains(.server("homelab")),
-            "and names the machine that would run it")
+            !fleet.rows[theirs].facts.contains(.server("homelab")),
+            "without wearing the machine's name on every row under its own tab")
         expect(
             fleet.rows[theirs].pick.profileID == "homelab",
             "picking it answers with that machine")
         expect(
             fleet.rows[theirs].pick.isElsewhere,
             "and says the work has to move rather than the chat change")
-        expect(fleet.rows[mine].isSelected == false, "nothing is picked yet")
-
-        fleet.search("homelab")
         expect(
-            !fleet.rows.isEmpty && fleet.rows.allSatisfy { $0.isElsewhere || $0.isLiteral },
-            "a server's name finds what it runs")
+            !fleet.rows.contains { $0.isAuto },
+            "the server default is this chat's server's answer, not another machine's")
+        expect(!fleet.handle(.machine(5)).handled, "a tab nobody offered leaves the key alone")
+        expect(fleet.setMachine("studio"), "and the tab goes back")
 
         var pinned = ModelChooser(sources: [studio, homelab], selected: nil, recents: [], favorites: [
             ModelSelection(providerID: "ollama", modelID: "qwen3:latest"),
         ])
+        _ = pinned.setMachine("homelab")
         expect(
-            pinned.sections.first { $0.id == "·pinned" }?.rows.count == 1,
-            "a starred model leads its own section")
+            pinned.sections.first { $0.id == "·yours" }?.rows.first?.title == "Qwen3",
+            "a starred model leads Yours on the machine that runs it")
         expect(
-            pinned.rows.first { $0.sectionID == "·pinned" }?.isPinned == true,
+            pinned.rows.first { $0.sectionID == "·yours" }?.isPinned == true,
             "and the row says it is pinned")
-        let unpinnedCount =
-            pinned.sections.first { $0.id == "·pinned" }?.rows.count ?? 0
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
         expect(pinned.isFavorite(ModelSelection(providerID: "anthropic", modelID: "opus")), "the star is on")
         pinned.togglePin(ModelSelection(providerID: "anthropic", modelID: "opus"))
@@ -1684,8 +1712,23 @@ public enum ModelChooserCheck {
             fleet.rows.first?.isElsewhere == false,
             "with this machine's answer first")
         expect(
+            fleet.sections.last { $0.id == "·elsewhere" }?.rows.allSatisfy {
+                $0.facts.contains(.server("homelab"))
+            } == true,
+            "and the other machine's answers under their own heading, each naming its machine")
+        expect(fleet.summary.contains(Localized.text("%@ elsewhere", "1")), "the header counts them")
+        expect(
             fleet.rows.contains { $0.isLiteral } == false,
             "a name the catalog already has is not offered as a typed id")
+        fleet.search("qwen coder")
+        expect(fleet.rows.count == 1 && fleet.rows.first?.isElsewhere == true,
+            "a name only the other machine has is still found there")
+        expect(fleet.emptyResult == nil, "so the list is not empty")
+        fleet.search("zzz nowhere")
+        expect(
+            fleet.emptyResult?.contains("studio") == true,
+            "an empty answer names the machine as well as the word")
+        fleet.search("")
 
         let alone = ModelChooser(models: catalog, selected: nil, recents: [])
         expect(
@@ -1696,43 +1739,15 @@ public enum ModelChooserCheck {
             "and every pick stays where it is")
 
         expect(
-            ModelChooser(models: studio.models, selected: nil, recents: []).scopes.isEmpty,
-            "a catalog with one machine and nothing local offers no filters")
+            ModelChooser(models: studio.models, selected: nil, recents: []).showsMachines == false,
+            "a catalog with one machine draws no strip")
         expect(
-            alone.scopes == [.all, .local],
-            "a catalog with a local model can be asked for only those")
-
-        var filtered = ModelChooser(sources: [studio, homelab], selected: nil, recents: [])
-        expect(
-            filtered.scopes == [.all, .here, .local],
-            "a fleet with local models offers both narrowings, whole catalog first")
-        expect(filtered.setScope(.here), "a filter narrows the list")
-        expect(
-            filtered.rows.allSatisfy { !$0.isElsewhere },
-            "and nothing from another machine survives it")
-        expect(
-            filtered.summary.contains(Localized.text("This server").lowercased()),
-            "the header says what is standing in the way")
-        expect(filtered.summary.contains("of"), "and how much of the catalog is left")
-        filtered.search("qwen coder")
-        expect(filtered.rows.isEmpty, "a query inside a filter is both at once")
-        expect(
-            filtered.emptyResult?.contains(Localized.text("This server").lowercased()) == true,
-            "and an empty answer names the filter as well as the query")
-        expect(filtered.emptyEscape == .all, "with the way out of it")
-        expect(filtered.setScope(.all), "which restores the catalog")
-        expect(!filtered.rows.isEmpty, "and finds what the filter was hiding")
-        filtered.search("")
-        expect(filtered.setScope(.local), "local is a filter of its own")
-        expect(filtered.rows.allSatisfy { !$0.isAuto ? $0.facts.contains(.local) : true },
-            "and holds only what runs on a machine of yours")
-
+            alone.sections.first { $0.id == "·local" }?.title == Localized.text("On this machine"),
+            "and its local section is named for the only machine there is")
         var keyed = ModelChooser(models: catalog, selected: nil, recents: [])
-        expect(keyed.handle(.scope(1)).handled, "⌃2 takes the filter it names")
-        expect(keyed.scope == .local, "which is the second one offered")
         expect(
-            !keyed.handle(.scope(5)).handled,
-            "and a filter nobody offered leaves the key to whoever wants it")
+            !keyed.handle(.machine(0)).handled,
+            "a tab key with one machine leaves the key to whoever wants it")
 
         let described = [
             ModelInfo(
@@ -1795,13 +1810,14 @@ public enum ModelChooserCheck {
         let ownModel = ModelSelection(providerID: "ollama", modelID: "qwen3:latest")
         let inUse = ModelChooser(
             models: catalog, selected: ownModel, recents: [ownModel, selection])
-        expect(inUse.sections.first?.id == "·current", "the model in use leads its own section")
+        expect(inUse.sections.first?.id == "·yours", "the model in use leads the list")
         expect(inUse.rows.first?.isSelected == true, "and is the row the chooser opens on")
-        let recentRows = inUse.sections.first { $0.id == "·recent" }?.rows ?? []
+        let yours = inUse.sections.first { $0.id == "·yours" }?.rows ?? []
         expect(
-            !recentRows.contains { $0.title == "Qwen3" },
-            "Recent stops repeating what the section above it already said")
-        expect(!recentRows.isEmpty, "while what else you reached for is still there")
+            yours.filter { $0.title == "Qwen3" }.count == 1,
+            "a model both running and recent is one row, not two")
+        expect(yours.contains { $0.title == "Claude Sonnet 4.5" }, "while what else you reached for is still there")
+        expect(yours.last?.isAuto == true, "and the server's own default closes the section")
 
         func window(_ label: String, _ fraction: Double) -> UsageQuota.Gauge {
             UsageQuota.Gauge(
@@ -1909,8 +1925,8 @@ public enum ModelChooserCheck {
             (0xFF53, Keymap.control, .expand),
             (0xFF51, Keymap.control, .collapse),
             (0xFF55, 0, .top),
-            (UInt32(UnicodeScalar("1").value), Keymap.control, .scope(0)),
-            (UInt32(UnicodeScalar("3").value), Keymap.control, .scope(2)),
+            (UInt32(UnicodeScalar("1").value), Keymap.control, .machine(0)),
+            (UInt32(UnicodeScalar("3").value), Keymap.control, .machine(2)),
             (UInt32(UnicodeScalar("1").value), 0, nil),
             (UInt32(UnicodeScalar("n").value), Keymap.control, .down),
             (UInt32(UnicodeScalar("j").value), 0, nil),

@@ -105,20 +105,31 @@ struct PendingSendTests {
         let quick = PendingSendReading.caption(send, now: epoch.addingTimeInterval(1))
         let slow = PendingSendReading.caption(
             send, now: epoch.addingTimeInterval(PendingSendReading.slowAfter + 1))
-        #expect(quick != slow)
+        #expect(quick == nil)
+        #expect(slow != nil)
+        #expect(PendingSendReading.ink(send) == .faint)
+        #expect(PendingSendReading.ink(send).opacity < 1)
+        #expect(
+            PendingSendReading.nextCaptionChange(send, now: epoch)
+                == epoch.addingTimeInterval(PendingSendReading.slowAfter))
         var accepted = send
         accepted.phase = .accepted
+        #expect(PendingSendReading.ink(accepted) == .full)
+        #expect(PendingSendReading.badge(accepted) == nil)
+        #expect(PendingSendReading.caption(accepted, now: epoch.addingTimeInterval(1)) == nil)
         #expect(
-            PendingSendReading.caption(accepted, now: epoch.addingTimeInterval(1))
-                != PendingSendReading.caption(
-                    accepted, now: epoch.addingTimeInterval(PendingSendReading.quietAfter + 1)))
+            PendingSendReading.caption(
+                accepted, now: epoch.addingTimeInterval(PendingSendReading.quietAfter + 1)) != nil)
+        #expect(PendingSendReading.state(accepted, now: epoch) == "Sent")
     }
 
     @Test("A failure says what the server said")
     func failureQuotesTheReason() {
         var send = PendingSend(text: "a", startedAt: epoch, baselineUserCount: 0)
         send.phase = .failed(reason: "The server didn't respond")
-        #expect(PendingSendReading.caption(send, now: epoch).contains("The server didn't respond"))
+        #expect(PendingSendReading.caption(send, now: epoch)?.contains("The server didn't respond") == true)
+        #expect(PendingSendReading.ink(send) == .failed)
+        #expect(PendingSendReading.badge(send) != nil)
         send.phase = .failed(reason: "   ")
         #expect(PendingSendReading.caption(send, now: epoch) == "Not sent")
     }
@@ -142,5 +153,23 @@ struct PendingSendTests {
         #expect(SendQueueReading.heldHint(reason: "the tunnel dropped").contains("the tunnel dropped"))
         #expect(!SendQueueReading.heldHint(reason: nil).isEmpty)
         #expect(!SendQueueReading.heldHint(reason: "  ").contains("  ."))
+    }
+}
+
+@Suite("Fresh canvas")
+struct FreshCanvasTests {
+    @Test("A prompt gets the room it needs and no more")
+    func padding() {
+        #expect(FreshCanvas.padding(viewport: 800, prompt: 60, below: 0) == 800 - 12 - 60)
+        #expect(FreshCanvas.padding(viewport: 800, prompt: 60, below: 740) == 0)
+        #expect(FreshCanvas.holds(viewport: 800, prompt: 60, below: 300))
+        #expect(!FreshCanvas.holds(viewport: 800, prompt: 60, below: 900))
+    }
+
+    @Test("The offset lands the prompt at the top and never past the end")
+    func offset() {
+        #expect(FreshCanvas.offset(promptTop: 5000, contentHeight: 5800, viewport: 800) == 4988)
+        #expect(FreshCanvas.offset(promptTop: 5000, contentHeight: 5200, viewport: 800) == 4400)
+        #expect(FreshCanvas.offset(promptTop: 0, contentHeight: 100, viewport: 800) == 0)
     }
 }

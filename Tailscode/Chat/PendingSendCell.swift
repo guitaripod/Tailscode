@@ -9,24 +9,23 @@ protocol PendingSendCellDelegate: AnyObject {
     func pendingSend(_ id: UUID, resume act: ResumeReading.Act)
 }
 
-/// A message on its way out: the words in the bubble they will keep, with a line under them
-/// saying whether they went.
+/// A message on its way out: the words in the bubble they will keep, drawn in the ink that says
+/// whether they went.
 ///
-/// The line is the point. A prompt that merely appears is a claim that it was sent, and until
-/// this row existed that claim was the only thing the app ever made — a send that died on the
-/// tunnel took its words out of the transcript and left them in the composer or, worse, the
-/// pasteboard, for the reader to notice. Here they stay exactly where they were written, and the
-/// row says what happened to them and offers the three things worth doing about it.
-///
-/// The caption ages on the cell's own clock rather than through the transcript. Whether a send has
-/// been out for one second or six is the difference between a formality and the only useful thing
-/// on screen, but redrawing a whole conversation once a second to say so would cost more than the
-/// wait it describes. Nothing it changes moves any layout: the strip is a fixed height and the
-/// words inside it are free to be longer.
+/// The ink is the point. A message on the wire is faint and fills in when the server has it; no
+/// word is drawn under it for that. The strip under the bubble exists only when the wait has
+/// become news — a send still out past `slowAfter`, a machine that has not started past
+/// `quietAfter` — or when the send failed, where it carries the server's own reason and the
+/// three things worth doing about it. The cell wakes itself for exactly the moment the strip
+/// would change (`nextCaptionChange`) rather than ticking every second under a row that has
+/// nothing to say.
 @MainActor
 final class PendingSendCell: UICollectionViewCell {
     static let reuseID = "PendingSendCell"
     weak var delegate: PendingSendCellDelegate?
+    /// The strip appearing or going changes the row's height, which a self-sizing list only
+    /// re-measures when asked; the transcript answers by reconfiguring this row.
+    var onResize: (() -> Void)?
 
     private let bubble = UIView()
     private let label = UILabel()
@@ -41,6 +40,9 @@ final class PendingSendCell: UICollectionViewCell {
     private var plan: ResumePlan?
     private var clock: Timer?
     private var bubbleTop: NSLayoutConstraint!
+    private var stripShown: NSLayoutConstraint!
+    private var stripHidden: NSLayoutConstraint!
+    private var shownPhase: PendingSend.Phase?
 
     /// Extra gap above the bubble when this row opens a new turn, set by the transcript exactly
     /// as it is on every other bubble — a prompt that has not arrived anywhere yet still opens a
@@ -80,6 +82,10 @@ final class PendingSendCell: UICollectionViewCell {
 
         bubbleTop = bubble.topAnchor.constraint(
             equalTo: contentView.topAnchor, constant: Theme.Spacing.xs)
+        stripShown = statusStrip.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: Self.stripHeight)
+        stripHidden = statusStrip.heightAnchor.constraint(equalToConstant: 0)
+        stripHidden.isActive = true
         NSLayoutConstraint.activate([
             bubbleTop,
             bubble.trailingAnchor.constraint(
@@ -98,7 +104,6 @@ final class PendingSendCell: UICollectionViewCell {
             statusStrip.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
             statusStrip.leadingAnchor.constraint(
                 greaterThanOrEqualTo: contentView.leadingAnchor, constant: Theme.Spacing.l),
-            statusStrip.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.stripHeight),
 
             acts.topAnchor.constraint(equalTo: statusStrip.bottomAnchor),
             acts.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
@@ -111,10 +116,9 @@ final class PendingSendCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// The strip holds this height whatever the caption says, so a wait that grows a word does
-    /// not move the transcript under the reader. Only a failure is allowed past it — that caption
-    /// carries the server's own reason, and a reason cut off at "check your connec…" is the one
-    /// thing on this row worth reading in full.
+    /// The strip's height once it has something to say, whatever the words; only a failure is
+    /// allowed past it — that caption carries the server's own reason, and a reason cut off at
+    /// "check your connec…" is the one thing on this row worth reading in full.
     private static let stripHeight: CGFloat = 18
 
     override func prepareForReuse() {
@@ -123,9 +127,13 @@ final class PendingSendCell: UICollectionViewCell {
         contentView.alpha = 1
         contentView.transform = .identity
         badge.prepareForReuse()
+        bubble.layer.removeAllAnimations()
+        bubble.layer.borderWidth = 0
         stopClock()
         send = nil
         plan = nil
+        shownPhase = nil
+        onResize = nil
     }
 
     override func didMoveToWindow() {
@@ -142,17 +150,45 @@ final class PendingSendCell: UICollectionViewCell {
         let failed = send.isFailed
         caption.numberOfLines = failed ? 0 : 1
         caption.textAlignment = failed ? .natural : .right
-        bubble.backgroundColor = Theme.Color.userBubble.withAlphaComponent(failed ? 0.45 : 1)
         label.attributedText = NSAttributedString(
             string: send.text,
             attributes: Theme.Ramp.attributes(.prompt, color: Theme.Color.onAccent))
         let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         badge.show(icon, spoken: nil)
+        paintInk(send, plan: plan)
         rebuildActs(for: send, plan: plan)
         paintCaption()
         isAccessibilityElement = true
         accessibilityTraits = failed && plan == nil ? .staticText : .updatesFrequently
         startClockIfNeeded()
+    }
+
+    /// The bubble's alpha is the state. Faint on the wire, full when the server has it — and the
+    /// change from one to the other is the one thing this row animates, because it is the thing a
+    /// person is waiting to see. A failure keeps the words at full strength and takes the danger
+    /// tone on the bubble's edge.
+    private func paintInk(_ send: PendingSend, plan: ResumePlan?) {
+        let ink = plan == nil ? PendingSendReading.ink(send) : .full
+        let previous = shownPhase
+        shownPhase = send.phase
+        bubble.backgroundColor = Theme.Color.userBubble
+        let target = CGFloat(ink.opacity)
+        if ink == .failed {
+            bubble.layer.borderWidth = 1.5
+            bubble.layer.borderColor = Theme.Color.danger.cgColor
+            bubble.backgroundColor = Theme.Color.userBubble.withAlphaComponent(0.45)
+        } else {
+            bubble.layer.borderWidth = 0
+        }
+        let fills = previous == .sending && send.phase == .accepted
+        guard fills, !UIAccessibility.isReduceMotionEnabled, window != nil else {
+            bubble.layer.removeAllAnimations()
+            bubble.alpha = target
+            return
+        }
+        UIView.animate(
+            withDuration: 0.25, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]
+        ) { self.bubble.alpha = target }
     }
 
     private func rebuildActs(for send: PendingSend, plan: ResumePlan?) {
@@ -214,25 +250,49 @@ final class PendingSendCell: UICollectionViewCell {
         }
     }
 
-    private func paintCaption() {
+    private func paintCaption(announcing: Bool = false) {
         guard let send else { return }
         let now = Date()
         let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
-        caption.attributedText = NSAttributedString(
-            string: plan.map { ResumeReading.caption($0, now: now) }
-                ?? PendingSendReading.caption(send, now: now),
-            attributes: Theme.Ramp.attributes(.rowStamp, color: icon.tone.color))
+        let words =
+            plan.map { ResumeReading.caption($0, now: now) }
+            ?? PendingSendReading.caption(send, now: now)
+        let shown = words != nil
+        caption.attributedText = words.map {
+            NSAttributedString(
+                string: $0, attributes: Theme.Ramp.attributes(.rowStamp, color: icon.tone.color))
+        }
+        if statusStrip.isHidden == shown {
+            statusStrip.isHidden = !shown
+            stripHidden.isActive = !shown
+            stripShown.isActive = shown
+            if announcing, window != nil { onResize?() }
+        }
         accessibilityLabel = plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
             ?? PendingSendReading.spoken(send, now: now)
     }
 
-    /// A caption that ages needs a clock, and only while it is still ageing: a failure says the
-    /// same thing forever, so it keeps none.
+    /// The clock fires once, at the moment the strip would next change on its own, and never
+    /// under a row that has nothing left to say. A held message keeps a countdown, so it keeps
+    /// a beat.
     private func startClockIfNeeded() {
         guard clock == nil, window != nil, let send else { return }
-        guard plan != nil || !send.isFailed else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.paintCaption() }
+        if plan != nil {
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.paintCaption(announcing: true) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            clock = timer
+            return
+        }
+        guard let at = PendingSendReading.nextCaptionChange(send, now: Date()) else { return }
+        let timer = Timer(fire: at, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.clock = nil
+                self.paintCaption(announcing: true)
+                self.startClockIfNeeded()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         clock = timer

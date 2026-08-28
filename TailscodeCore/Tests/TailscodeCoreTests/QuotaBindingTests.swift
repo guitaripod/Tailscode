@@ -180,10 +180,11 @@ struct QuotaBindingTests {
                 ModelInfo(id: "qwen3:latest", name: "Qwen3", providerID: "ollama"),
             ],
             isCurrent: false, allowsServerDefault: true, acceptsAnyModelID: false)
-        let chooser = ModelChooser(
+        var chooser = ModelChooser(
             sources: [here, there], selected: nil, recents: [],
             quotas: [quota("Claude", [gauge("Weekly · Opus 4.1", 1.0)])])
         let mine = chooser.rows.first { !$0.isAuto && !$0.isElsewhere }
+        chooser.setMachine("homelab")
         let theirs = chooser.rows.first { $0.isElsewhere && $0.title.hasPrefix("Opus") }
         let local = chooser.rows.first { $0.title == "Qwen3" }
         #expect(mine?.wall != nil)

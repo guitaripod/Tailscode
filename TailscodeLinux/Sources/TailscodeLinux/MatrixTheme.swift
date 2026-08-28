@@ -146,6 +146,10 @@ enum MatrixTheme {
             background-color: \(accent);
             min-width: 2px;
         }
+        .pending-rule-failed { background-color: \(danger); }
+        .pending-ink { opacity: 1; transition: opacity 250ms ease-out; }
+        .pending-faint { opacity: \(PendingSendReading.Ink.faint.opacity); }
+        .pending-text-failed { color: \(danger); }
         .prompt-glyph { color: \(accent); \(t(.promptGlyph)) }
         .prompt-text { color: \(text); \(t(.prompt)) }
         .agent-text { color: \(text); \(t(.answer)) }
@@ -423,7 +427,9 @@ enum MatrixTheme {
             border-radius: 5px;
         }
         .model-fact-local { color: \(accent); border-color: alpha(\(accent), 0.6); }
-        .model-fact-providers { color: \(info); border-color: alpha(\(info), 0.6); }
+        .model-machine-dot { \(t(.hint)) }
+        .model-consequence { color: \(warn); \(t(.hint)) }
+        .model-wall { color: \(danger); \(t(.hint)) }
         .model-fact-server {
             color: \(warn);
             border-color: alpha(\(warn), 0.6);

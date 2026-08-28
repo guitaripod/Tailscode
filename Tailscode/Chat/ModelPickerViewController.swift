@@ -22,6 +22,9 @@ final class ModelPickerViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, String>!
     private let search = UISearchController(searchResultsController: nil)
+    private let machineStrip = MachineStripView()
+    private let consequence = UILabel()
+    private let above = UIStackView()
     private var didScrollToSelected = false
     private var sectionIDs: [String] = []
     private var rowsByID: [String: ModelChooserRow] = [:]
@@ -49,6 +52,7 @@ final class ModelPickerViewController: UIViewController {
             barButtonSystemItem: .close, target: self, action: #selector(close))
         configureSearch()
         configureCollectionView()
+        configureMachines()
         applySnapshot()
     }
 
@@ -66,24 +70,108 @@ final class ModelPickerViewController: UIViewController {
         collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
     }
 
-    /// The search field, and beside it the standing filters. Typing answers "which model"; it is a
-    /// poor way to ask for "only what this chat can switch to without moving" or "only what runs on
-    /// my own machine", which a fleet makes people ask constantly — so those are a tap that is
-    /// always on screen rather than a word somebody has to know to type.
     private func configureSearch() {
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = String(localized: "Search models, providers, ids")
-        if chooser.scopes.count > 1 {
-            search.searchBar.delegate = self
-            search.searchBar.scopeButtonTitles = chooser.scopes.map(\.title)
-            search.searchBar.selectedScopeButtonIndex = 0
-            search.searchBar.showsScopeBar = true
-            search.scopeBarActivation = .manual
-        }
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.preferredSearchBarPlacement = .stacked
+    }
+
+    /// The machine first, as a strip of tabs under the search field, and under the strip the one
+    /// sentence a tab that is not this chat's server owes: that a pick there is a new chat. The
+    /// strip is a row of capsules that scrolls sideways rather than a segmented control, because
+    /// a server's name is a word somebody chose and a segment truncates it to nothing.
+    private func configureMachines() {
+        above.axis = .vertical
+        above.spacing = Theme.Spacing.xs
+        above.translatesAutoresizingMaskIntoConstraints = false
+        machineStrip.onPick = { [weak self] index in self?.pickMachine(index) }
+        consequence.numberOfLines = 0
+        consequence.adjustsFontForContentSizeCategory = true
+        consequence.isAccessibilityElement = true
+        let line = UIView()
+        line.addSubview(consequence)
+        consequence.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            consequence.topAnchor.constraint(equalTo: line.topAnchor),
+            consequence.bottomAnchor.constraint(equalTo: line.bottomAnchor),
+            consequence.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Theme.Spacing.l),
+            consequence.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+        above.addArrangedSubview(machineStrip)
+        above.addArrangedSubview(line)
+        view.addSubview(above)
+        NSLayoutConstraint.activate([
+            above.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            above.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            above.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        syncMachines()
+    }
+
+    private func syncMachines() {
+        let shown = chooser.showsMachines
+        machineStrip.isHidden = !shown
+        machineStrip.render(chooser.machines, selected: chooser.machineIndex)
+        let line = chooser.shownMachine?.consequence
+        consequence.superview?.isHidden = !shown || line == nil
+        consequence.attributedText = line.map {
+            NSAttributedString(
+                string: $0, attributes: Theme.Ramp.attributes(.cardBody, color: Theme.Color.warning))
+        }
+        consequence.accessibilityLabel = line
+        view.setNeedsLayout()
+    }
+
+    private func pickMachine(_ index: Int) {
+        guard chooser.machines.indices.contains(index),
+            chooser.setMachine(chooser.machines[index].profileID)
+        else { return }
+        Theme.Haptics.selection()
+        syncMachines()
+        applySnapshot()
+        scrollToFocused()
+    }
+
+    private func scrollToFocused() {
+        guard let focused = chooser.focused, let indexPath = dataSource.indexPath(for: focused.id)
+        else { return }
+        collectionView.scrollToItem(at: indexPath, at: .centeredVertically, animated: false)
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard chooser.showsMachines else { return nil }
+        return (1...min(9, chooser.machines.count)).map { digit in
+            let command = UIKeyCommand(
+                title: chooser.machines[digit - 1].title, action: #selector(machineKey(_:)),
+                input: "\(digit)", modifierFlags: .control)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }
+
+    @objc private func machineKey(_ command: UIKeyCommand) {
+        guard let input = command.input, let digit = Int(input),
+            let chord = KeyChord.canonical(
+                keyval: UInt32(0x30 + digit), state: KeyChord.controlMask),
+            case .machine(let index) = ModelChooser.command(for: chord)
+        else { return }
+        pickMachine(index)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let height = above.isHidden ? 0 : above.systemLayoutSizeFitting(
+            CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
+        ).height
+        let inset = machineStrip.isHidden ? 0 : height + Theme.Spacing.xs
+        if abs(collectionView.contentInset.top - inset) > 0.5 {
+            collectionView.contentInset.top = inset
+            collectionView.verticalScrollIndicatorInsets.top = inset
+        }
     }
 
     private func row(for id: String) -> ModelChooserRow? { rowsByID[id] }
@@ -131,7 +219,7 @@ final class ModelPickerViewController: UIViewController {
             guard let self, let row = self.row(for: id) else { return }
             var content = cell.defaultContentConfiguration()
             content.attributedText = Self.title(row)
-            content.textProperties.font = Theme.Ramp.font(.answer)
+            content.textProperties.font = Theme.Ramp.font(row.isSelected ? .rowTitleStrong : .answer)
             if row.isAuto {
                 content.secondaryText = row.detail
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -146,13 +234,15 @@ final class ModelPickerViewController: UIViewController {
             }
             content.textProperties.numberOfLines = 1
             content.textProperties.lineBreakMode = .byTruncatingTail
-            if row.wall != nil { content.textProperties.color = Theme.Color.tertiaryLabel }
+            if row.wall != nil, !row.isSelected {
+                content.textProperties.color = Theme.Color.tertiaryLabel
+            }
             cell.accessibilityLabel = Self.spoken(row)
             cell.contentConfiguration = content
             cell.indentationLevel = row.isNested ? 1 : 0
-            cell.accessories =
-                [self.star(row), self.marks(row, room: self.view.bounds.width * 0.42)]
-                .compactMap { $0 }
+            cell.accessories = [
+                self.marks(row, room: self.view.bounds.width * (row.wall == nil ? 0.42 : 0.56))
+            ]
         }
 
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -246,10 +336,10 @@ final class ModelPickerViewController: UIViewController {
         return parts.joined(separator: ". ")
     }
 
-    /// The star, ahead of everything the row wears: pinning is a decision about the model, the
-    /// marks are facts about it. Every listing of the same model wears the same state, because
-    /// `isPinned` follows the selection through every section it appears in.
-    private func star(_ row: ModelChooserRow) -> UICellAccessory? {
+    /// The star: a decision about the model rather than a fact about it, muted until it is made.
+    /// Every listing of the same model wears the same state, because `isPinned` follows the
+    /// selection through every section it appears in.
+    private func star(_ row: ModelChooserRow) -> UIView? {
         guard !row.isAuto, !row.isLiteral, let selection = row.selection else { return nil }
         let pinned = row.isPinned
         let button = UIButton(type: .system)
@@ -263,10 +353,7 @@ final class ModelPickerViewController: UIViewController {
         button.accessibilityLabel =
             pinned ? String(localized: "Unpin") : String(localized: "Pin")
         button.addAction(UIAction { [weak self] _ in self?.togglePin(selection) }, for: .touchUpInside)
-        return .customView(
-            configuration: .init(
-                customView: button, placement: .trailing(), isHidden: false,
-                reservedLayoutWidth: .actual, maintainsFixedSize: true))
+        return button
     }
 
     private func togglePin(_ selection: ModelSelection) {
@@ -285,7 +372,7 @@ final class ModelPickerViewController: UIViewController {
     /// where it runs, then what it can do.
     private func marks(_ row: ModelChooserRow, room: CGFloat) -> UICellAccessory {
         let strip = RowMarksView(
-            row: row, slots: chooser.policy.capabilitySlots, room: max(60, room)
+            row: row, slots: chooser.policy.capabilitySlots, room: max(60, room), star: star(row)
         ) { [weak self] in
             guard let self, let index = self.chooser.rows.firstIndex(where: { $0.id == row.id })
             else { return }
@@ -335,17 +422,6 @@ final class ModelPickerViewController: UIViewController {
         }
         var config = UIContentUnavailableConfiguration.search()
         config.text = empty
-        if let escape = chooser.emptyEscape {
-            var button = UIButton.Configuration.borderless()
-            button.title = String(localized: "Clear the filter")
-            config.button = button
-            config.buttonProperties.primaryAction = UIAction { [weak self] _ in
-                guard let self, self.chooser.setScope(escape) else { return }
-                self.search.searchBar.selectedScopeButtonIndex =
-                    self.chooser.scopes.firstIndex(of: escape) ?? 0
-                self.applySnapshot()
-            }
-        }
         contentUnavailableConfiguration = config
     }
 
@@ -374,29 +450,23 @@ final class ModelPickerViewController: UIViewController {
     }
 
     /// A catalog that arrived while the picker is up — a server that came back from a restart —
-    /// re-answers the list in place. The query and the filter survive the answer, and a server that
+    /// re-answers the list in place. The query and the tab survive the answer, and a server that
     /// is still down reads as down rather than as a machine with no models.
     func update(sources: [ModelSource]) {
         let query = chooser.query
-        let scope = chooser.scope
+        let machine = chooser.machine
         chooser = ModelChooser(
             sources: sources, selected: chooser.selected, recents: recents, quotas: quotas)
         chooser.search(query)
-        if chooser.scopes.contains(scope) || scope == .all { _ = chooser.setScope(scope) }
+        chooser.setMachine(machine)
         guard isViewLoaded else { return }
-        if chooser.scopes.count > 1 {
-            search.searchBar.scopeButtonTitles = chooser.scopes.map(\.title)
-            search.searchBar.showsScopeBar = true
-            search.scopeBarActivation = .manual
-        } else {
-            search.searchBar.showsScopeBar = false
-        }
-        search.searchBar.selectedScopeButtonIndex =
-            chooser.scopes.firstIndex(of: chooser.scope) ?? 0
+        syncMachines()
         applySnapshot()
     }
 
     #if DEBUG
+        func tourMachine(_ index: Int) { pickMachine(index) }
+
         func tourSearch(_ text: String) {
             search.isActive = true
             search.searchBar.text = text
@@ -482,7 +552,8 @@ private final class PillLabel: UILabel {
     }
 }
 
-/// The right-hand end of a row: what ran out, where it runs, what it takes, and what it reads —
+/// The right-hand end of a row: what ran out or what it reads, where it runs, the star, and the
+/// chevron —
 /// laid out once, inside a width it was told about, so nothing is ever drawn on top of anything.
 /// Marks are dropped from the least decisive end rather than shrunk, and the row's own name keeps
 /// whatever is left; a screen reader still hears all of them from the cell's label.
@@ -491,11 +562,24 @@ private final class RowMarksView: UIView {
     private static let slotWidth: CGFloat = 15
 
     init(
-        row: ModelChooserRow, slots: [ModelFact], room: CGFloat,
+        row: ModelChooserRow, slots: [ModelFact], room: CGFloat, star: UIView?,
         onExpand: @escaping () -> Void
     ) {
         super.init(frame: .zero)
         var tail: [UIView] = []
+        if let star { tail.append(star) }
+        if row.isSelected {
+            let tick = UIImageView(
+                image: UIImage(
+                    systemName: "checkmark",
+                    withConfiguration: UIImage.SymbolConfiguration(
+                        pointSize: 13, weight: .semibold)))
+            tick.tintColor = Theme.Color.accent
+            tick.accessibilityLabel = String(localized: "Currently chosen")
+            tick.frame = CGRect(x: 0, y: 0, width: 20, height: 28)
+            tick.contentMode = .center
+            tail.append(tick)
+        }
         if row.canExpand {
             let chevron = UIButton(type: .system)
             chevron.setImage(
@@ -509,25 +593,21 @@ private final class RowMarksView: UIView {
             chevron.addAction(UIAction { _ in onExpand() }, for: .touchUpInside)
             tail.append(chevron)
         }
-        if row.isSelected {
-            let tick = UIImageView(
-                image: UIImage(
-                    systemName: "checkmark",
-                    withConfiguration: UIImage.SymbolConfiguration(
-                        pointSize: 13, weight: .semibold)))
-            tick.tintColor = Theme.Color.accent
-            tick.contentMode = .center
-            tick.frame = CGRect(x: 0, y: 0, width: 22, height: 22)
-            tail.append(tick)
-        }
         let spoken = max(0, room - tail.reduce(0) { $0 + $1.frame.width + Self.gap })
 
         var pieces: [UIView] = []
         if let wall = row.wall {
-            pieces.append(
-                PillLabel.make(
-                    text: QuotaSurface.rowMark(wall).uppercased(), tint: Theme.Color.danger,
-                    spoken: QuotaSurface.bannerBody(wall), minimum: 0))
+            let note = UILabel()
+            note.attributedText = NSAttributedString(
+                string: QuotaSurface.rowNote(wall),
+                attributes: Theme.Ramp.attributes(.rowStamp, color: Theme.Color.danger))
+            note.accessibilityLabel = QuotaSurface.bannerBody(wall)
+            note.lineBreakMode = .byTruncatingTail
+            let fitted = min(note.intrinsicContentSize.width, spoken)
+            note.frame = CGRect(x: 0, y: 0, width: fitted, height: 28)
+            pieces.append(note)
+        } else if let capabilities = Self.capabilities(row: row, slots: slots) {
+            pieces.append(capabilities)
         }
         for fact in row.facts where !fact.isCapability {
             pieces.append(
@@ -535,16 +615,13 @@ private final class RowMarksView: UIView {
                     text: fact.tag.uppercased(), tint: Self.tint(fact), spoken: fact.label,
                     minimum: 0))
         }
-        if let capabilities = Self.capabilities(row: row, slots: slots) {
-            pieces.append(capabilities)
-        }
 
         var width: CGFloat = 0
         var kept: [UIView] = []
         for piece in pieces {
-            let size = piece.intrinsicContentSize.width
+            let size = piece.frame.width > 0 ? piece.frame.width : piece.intrinsicContentSize.width
             let next = width + size + (kept.isEmpty ? 0 : Self.gap)
-            guard next <= spoken else { break }
+            guard next <= spoken else { continue }
             width = next
             kept.append(piece)
         }
@@ -583,9 +660,8 @@ private final class RowMarksView: UIView {
     /// One slot per capability the catalog can tell models apart by, empty where a model lacks it,
     /// so the symbols read down the list as a column rather than a huddle that shifts per row.
     private static func capabilities(row: ModelChooserRow, slots: [ModelFact]) -> UIView? {
-        guard !slots.isEmpty else { return nil }
+        guard !slots.isEmpty, case .candidate = row.kind else { return nil }
         let worn = Set(row.facts.filter(\.isCapability))
-        guard !worn.isEmpty else { return nil }
         let strip = FixedWidthView(
             width: CGFloat(slots.count) * slotWidth + CGFloat(slots.count - 1) * gap, height: 18)
         var x: CGFloat = 0
@@ -639,12 +715,74 @@ extension ModelPickerViewController: UISearchResultsUpdating {
     }
 }
 
-extension ModelPickerViewController: UISearchBarDelegate {
-    func searchBar(_ searchBar: UISearchBar, selectedScopeButtonIndexDidChange index: Int) {
-        guard chooser.scopes.indices.contains(index),
-            chooser.setScope(chooser.scopes[index])
-        else { return }
-        Theme.Haptics.selection()
-        applySnapshot()
+/// One capsule per machine, scrolling sideways. The name, a dot for a machine that is not
+/// answering, and the count in the quieter register; the selected one wears the accent.
+private final class MachineStripView: UIScrollView {
+    var onPick: ((Int) -> Void)?
+    private let row = UIStackView()
+
+    init() {
+        super.init(frame: .zero)
+        showsHorizontalScrollIndicator = false
+        alwaysBounceHorizontal = false
+        contentInset = UIEdgeInsets(
+            top: 0, left: Theme.Spacing.l, bottom: 0, right: Theme.Spacing.l)
+        row.axis = .horizontal
+        row.spacing = Theme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Theme.Spacing.xs),
+            row.bottomAnchor.constraint(
+                equalTo: contentLayoutGuide.bottomAnchor, constant: -Theme.Spacing.xs),
+            row.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor),
+            row.heightAnchor.constraint(equalTo: frameLayoutGuide.heightAnchor, constant: -2 * Theme.Spacing.xs),
+        ])
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func render(_ machines: [ModelMachine], selected: Int) {
+        for view in row.arrangedSubviews { view.removeFromSuperview() }
+        for (index, machine) in machines.enumerated() {
+            let chip = Self.chip(machine, selected: index == selected)
+            chip.addAction(UIAction { [weak self] _ in self?.onPick?(index) }, for: .touchUpInside)
+            row.addArrangedSubview(chip)
+        }
+        layoutIfNeeded()
+        guard row.arrangedSubviews.indices.contains(selected) else { return }
+        scrollRectToVisible(row.arrangedSubviews[selected].frame.insetBy(dx: -Theme.Spacing.l, dy: 0), animated: false)
+    }
+
+    private static func chip(_ machine: ModelMachine, selected: Bool) -> UIButton {
+        var configuration = UIButton.Configuration.filled()
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 6, leading: Theme.Spacing.m, bottom: 6, trailing: Theme.Spacing.m)
+        configuration.baseBackgroundColor =
+            selected ? Theme.Color.accent : Theme.Color.secondaryBackground
+        let ink = selected ? Theme.Color.onAccent : Theme.Color.label
+        let quiet = selected ? Theme.Color.onAccent.withAlphaComponent(0.7) : Theme.Color.tertiaryLabel
+        let title = NSMutableAttributedString(
+            string: machine.title, attributes: Theme.Ramp.attributes(.rowTitleStrong, color: ink))
+        title.append(
+            NSAttributedString(
+                string: "  \(machine.count)", attributes: Theme.Ramp.attributes(.rowMeta, color: quiet)))
+        configuration.attributedTitle = AttributedString(title)
+        if machine.isReachable != true {
+            configuration.image = UIImage(
+                systemName: "circle.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 6, weight: .bold))
+            configuration.imagePadding = Theme.Spacing.xs
+            configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in
+                machine.isReachable == false ? Theme.Color.danger : Theme.Color.tertiaryLabel
+            }
+        }
+        let button = UIButton(configuration: configuration)
+        button.accessibilityLabel = "\(machine.title). \(machine.detail)"
+        button.accessibilityTraits = selected ? [.button, .selected] : .button
+        return button
     }
 }
