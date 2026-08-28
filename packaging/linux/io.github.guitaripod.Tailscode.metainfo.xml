@@ -69,6 +69,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.29" date="2026-08-28">
+      <description>
+        <p>The model picker starts with the machine: every server is a tab, and under it the providers are a filter — one chip per subscription or key, so you read what Ollama Cloud, OpenCode Go or OpenRouter will run as one list and a pick goes through that door. A model wears its own name (gpt-oss-120b, never a bare GPT), and a heading's chevron always points the way the list is folded.</p>
+        <p>A queued message belongs to its conversation: it survives a restart, goes the moment its turn yields whichever chat is on screen, and never lands in another chat — switching chats used to carry it along. Oh My Pi conversations name themselves and every Oh My Pi session has a real per-turn ledger; a sent message is drawn exactly like a sent message from the keystroke, and only a failure changes its ink.</p>
+        <p>Oh My Pi joins Claude Code and opencode as a first-class agent everywhere, Quick Ask aims with real server and model menus, the model directory has stars, Usage has an Ollama Cloud meter, a turn's clock counts from its own prompt, and the jump-to-bottom button is simply the way back.</p>
+      </description>
+    </release>
     <release version="1.24" date="2026-08-24">
       <description>
         <p>Ask for a video and watch it being made: an agent renders it on one of your machines while the app follows the work, and the finished film is kept right there. The renderer has its own studio now — one walk sets it up, the model list is a picker you aim into, settings open as a menu, and the chip wears the machine that answered.</p>
