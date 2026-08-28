@@ -135,10 +135,11 @@ final class TranscriptViewController: NSViewController {
     private var pendingReveal = false
     private var fillComplete = false
     private var isFillingInChunks = false
-    var followsBottom = true
+    var followsBottom = true {
+        didSet { syncJumpPill() }
+    }
     private var isAutoScrolling = false
     private var pinScheduled = false
-    private var unseenRows = 0
     /// What this device has written and the server has not echoed back, with what became of
     /// each. The ledger and every word it wears are Core's; this owns the clock and the sending.
     private var pending = PendingSendLedger()
@@ -333,7 +334,9 @@ final class TranscriptViewController: NSViewController {
     /// Where the prompt the canvas is holding room for sits in the canvas, measured once when it
     /// rose. The server's own row replaces the echo at the same height, so the place is the
     /// prompt's identity through the swap rather than a key that changes under it.
-    private var canvasHold: (top: CGFloat, height: CGFloat)?
+    private var canvasHold: (top: CGFloat, height: CGFloat)? {
+        didSet { syncJumpPill() }
+    }
     private static let canvasLog = Logger(subsystem: "com.guitaripod.tailscode", category: "chat")
 
     /// The prompt just sent rises to the top: the padding is made, the follow-the-bottom pin is
@@ -351,7 +354,6 @@ final class TranscriptViewController: NSViewController {
             viewport: viewport, prompt: frame.height, below: below)
         canvasHold = (frame.minY, frame.height)
         followsBottom = false
-        clearUnseen()
         canvasPadding = padding
         applyInsets()
         view.layoutSubtreeIfNeeded()
@@ -444,7 +446,6 @@ final class TranscriptViewController: NSViewController {
         resumeClock?.cancel()
         resumeClock = nil
         restoreHeldMessages()
-        clearUnseen()
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
@@ -820,7 +821,6 @@ final class TranscriptViewController: NSViewController {
     func scrollToBottom() {
         releaseFreshCanvas(animated: false)
         setFollowing(true)
-        clearUnseen()
         schedulePinCorrector()
     }
 
@@ -1004,6 +1004,7 @@ final class TranscriptViewController: NSViewController {
 
     private func configureJumpPill() -> NSView {
         jumpButton.isBordered = false
+        jumpButton.title = "↓"
         jumpButton.font = MacTheme.Ramp.font(.pill)
         jumpButton.contentTintColor = MacTheme.Color.onGlass
         jumpButton.target = self
@@ -2352,9 +2353,8 @@ final class TranscriptViewController: NSViewController {
         if stick {
             setFollowing(true)
             schedulePinCorrector()
-        } else {
-            noteAppendedWhileScrolledUp(growth)
         }
+        syncJumpPill()
         scheduleImageSweep()
         if edit.complete, !findBar.isHidden { runFind(retarget: false) }
     }
@@ -2988,7 +2988,6 @@ final class TranscriptViewController: NSViewController {
         }
         let atBottom = isNearBottom()
         followsBottom = atBottom
-        if atBottom { clearUnseen() }
     }
 
     @objc private func contentGrew() {
@@ -3003,7 +3002,7 @@ final class TranscriptViewController: NSViewController {
     private func isNearBottom() -> Bool {
         let clip = scrollView.contentView
         let ceiling = maxScrollOrigin()
-        return clip.bounds.origin.y >= ceiling - 60
+        return clip.bounds.origin.y >= ceiling - 8
     }
 
     private func maxScrollOrigin() -> CGFloat {
@@ -3078,16 +3077,12 @@ final class TranscriptViewController: NSViewController {
         isAutoScrolling = false
     }
 
-    private func clearUnseen() {
-        unseenRows = 0
-        jumpGlass?.isHidden = true
-    }
-
-    private func noteAppendedWhileScrolledUp(_ count: Int) {
-        guard count > 0 else { return }
-        unseenRows += count
-        jumpButton.title = Localized.text("↓ %@", "\(unseenRows)")
-        jumpGlass?.isHidden = false
+    /// The pill is a way back, not a counter: it shows whenever the reader has left the bottom
+    /// of a transcript that has one, and never while a fresh canvas is deliberately holding the
+    /// prompt at the top.
+    private func syncJumpPill() {
+        let show = !followsBottom && canvasHold == nil && !rowViews.isEmpty
+        jumpGlass?.isHidden = !show
     }
 
     private func runFind(retarget: Bool) {

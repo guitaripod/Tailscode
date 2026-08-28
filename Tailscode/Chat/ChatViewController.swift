@@ -83,7 +83,6 @@ final class ChatViewController: UIViewController {
     private var deferEmptyStateHide = false
     private var lastHapticPermissionID: String?
     private var lastHapticFailure: String?
-    private var unreadCount = 0
     private let navStatusLabel = UILabel()
     private var lastNotifiedPermissionID: String?
     private let fab = UIButton(type: .system)
@@ -1214,11 +1213,6 @@ final class ChatViewController: UIViewController {
             systemName: "chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
         config.baseForegroundColor = Theme.Color.label
-        if unreadCount > 0 {
-            config.title = "\(unreadCount)"
-            config.imagePadding = Theme.Spacing.xs
-            config.baseForegroundColor = Theme.Color.accent
-        }
         return config
     }
 
@@ -2151,9 +2145,6 @@ final class ChatViewController: UIViewController {
 
         composer.setBusy(viewModel.isBusy)
         syncFAB()
-        if let rebuild {
-            noteUnread(orderedIDs.filter { rebuild.previous[$0] == nil }.count)
-        }
         updateNavStatus(for: state, messagesMoved: rebuild != nil)
         if wasRunning && state.status != .running {
             if state.messages.last?.isAnswerless == true {
@@ -2386,14 +2377,12 @@ final class ChatViewController: UIViewController {
 
     @objc private func fabTapped() {
         userScrolledUp = false
-        clearUnread()
         scrollToBottom(animated: true)
         Theme.Haptics.tap()
     }
 
     private func syncFAB() {
         let show = !isNearBottom() && orderedIDs.count > 1
-        if !show { clearUnread() }
         guard fab.isHidden == show else { return }
         if show {
             fab.isHidden = false
@@ -2418,20 +2407,6 @@ final class ChatViewController: UIViewController {
                     self.fab.alpha = 1
                 })
         }
-    }
-
-    private func noteUnread(_ count: Int) {
-        guard count > 0, userScrolledUp, !fab.isHidden else { return }
-        unreadCount += count
-        fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = String(localized: "Scroll to bottom, \(unreadCount) new")
-    }
-
-    private func clearUnread() {
-        guard unreadCount != 0 else { return }
-        unreadCount = 0
-        fab.configuration = fabConfiguration()
-        fab.accessibilityLabel = String(localized: "Scroll to bottom")
     }
 
     private var turnStartedAt: Date?
@@ -4437,10 +4412,21 @@ final class ChatViewController: UIViewController {
     }
 
     private func isNearBottom() -> Bool {
-        let offsetY = collectionView.contentOffset.y
+        distanceFromBottom() < 120
+    }
+
+    /// Following resumes only from the bottom itself. A finger that lifted a few lines short of
+    /// it has still scrolled up, and a render that yanks it the rest of the way is the transcript
+    /// overruling the hand that just moved it.
+    private func isAtBottom() -> Bool {
+        distanceFromBottom() < 8
+    }
+
+    private func distanceFromBottom() -> CGFloat {
         let height = collectionView.contentSize.height
         let visible = collectionView.bounds.height
-        return height <= visible || offsetY > height - visible - 120
+        guard height > visible else { return 0 }
+        return height - visible - collectionView.contentOffset.y
     }
 
     private func scrollToBottom(animated: Bool) {
@@ -5011,11 +4997,11 @@ extension ChatViewController: UICollectionViewDelegate {
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        if isNearBottom() { userScrolledUp = false }
+        if isAtBottom() { userScrolledUp = false }
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate && isNearBottom() { userScrolledUp = false }
+        if !decelerate && isAtBottom() { userScrolledUp = false }
     }
 
     private func messageText(for id: String) -> String? {

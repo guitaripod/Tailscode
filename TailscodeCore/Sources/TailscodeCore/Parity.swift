@@ -390,7 +390,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .followBottom, area: "transcript", title: "Follow the bottom deliberately",
             spec:
-                "The transcript follows new content only while the reader is at the bottom; scrolled up, a jump pill appears and counts what arrived."),
+                "The transcript follows new content only while the reader is at the bottom; scrolled up, one plain jump pill offers the way back — it counts nothing, and following resumes only from the bottom itself, never from a few lines short of it."),
         CapabilityDefinition(
             id: .transcriptFind, area: "transcript", title: "Find in conversation",
             spec: "Text search within the open conversation with match count and next/previous."),

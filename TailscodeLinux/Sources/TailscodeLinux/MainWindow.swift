@@ -678,7 +678,7 @@ final class MainWindow: @unchecked Sendable {
                     } ?? -1
                     FileHandle.standardOutput.write(
                         Data(
-                            "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper)) unseen=\(pane.unseenRows)\n"
+                            "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper))\n"
                             .utf8))
                 default:
                     break

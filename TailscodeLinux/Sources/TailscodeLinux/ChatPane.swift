@@ -89,8 +89,9 @@ final class ChatPane: @unchecked Sendable {
     private var pastedImageCount = 0
 
     private let jumpButton = gtk_button_new()!
-    private(set) var unseenRows = 0
-    private(set) var followsBottom = true
+    private(set) var followsBottom = true {
+        didSet { syncJumpPill() }
+    }
     private var isAutoScrolling = false
     private var isFillingInChunks = false
     private var pinCorrectorScheduled = false
@@ -111,7 +112,9 @@ final class ChatPane: @unchecked Sendable {
     /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
     private let canvasSpacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private var canvasPadding = 0.0
-    private var canvasPromptKey: String?
+    private var canvasPromptKey: String? {
+        didSet { syncJumpPill() }
+    }
     private var canvasPromptTop: Double?
     private var canvasSettle: FreshCanvasScroll?
     private var captionWakeGeneration = 0
@@ -289,6 +292,7 @@ final class ChatPane: @unchecked Sendable {
         let overlay = gtk_overlay_new()!
         gtk_overlay_set_child(op(overlay), scroller)
         gtk_widget_set_vexpand(overlay, 1)
+        gtk_button_set_label(ptr(jumpButton), "↓")
         Gtk.addClass(jumpButton, "jump-pill")
         gtk_widget_set_halign(jumpButton, GTK_ALIGN_END)
         gtk_widget_set_valign(jumpButton, GTK_ALIGN_END)
@@ -315,7 +319,6 @@ final class ChatPane: @unchecked Sendable {
                 guard let self, !self.isAutoScrolling else { return }
                 let atBottom = self.isNearBottom()
                 self.followsBottom = atBottom
-                if atBottom { self.clearUnseen() }
             }
         }
 
@@ -840,7 +843,6 @@ final class ChatPane: @unchecked Sendable {
         resumeTask?.cancel()
         resumeTask = nil
         renderAttachments()
-        clearUnseen()
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
@@ -1846,11 +1848,8 @@ final class ChatPane: @unchecked Sendable {
             }
         }
 
-        if stick {
-            scrollToBottom()
-        } else {
-            noteAppendedWhileScrolledUp(growth)
-        }
+        if stick { scrollToBottom() }
+        syncJumpPill()
         if complete, gtk_widget_get_visible(findBar) != 0 { runFind(retarget: false) }
     }
 
@@ -3411,7 +3410,7 @@ final class ChatPane: @unchecked Sendable {
         let value = gtk_adjustment_get_value(adjustment)
         let ceiling = gtk_adjustment_get_upper(adjustment)
             - gtk_adjustment_get_page_size(adjustment)
-        return value >= ceiling - 60
+        return value >= ceiling - 8
     }
 
     /// Following is a decision, not a measurement: the intent is held here and re-applied
@@ -3942,19 +3941,14 @@ final class ChatPane: @unchecked Sendable {
 
     func jumpToBottom() {
         scrollToBottom()
-        clearUnseen()
     }
 
-    private func clearUnseen() {
-        unseenRows = 0
-        gtk_widget_set_visible(jumpButton, 0)
-    }
-
-    private func noteAppendedWhileScrolledUp(_ count: Int) {
-        guard count > 0 else { return }
-        unseenRows += count
-        gtk_button_set_label(ptr(jumpButton), "↓ \(unseenRows)")
-        gtk_widget_set_visible(jumpButton, 1)
+    /// The pill is a way back, not a counter: it shows whenever the reader has left the bottom
+    /// of a transcript that has one, and never while a fresh canvas is deliberately holding the
+    /// prompt at the top.
+    private func syncJumpPill() {
+        let show = !followsBottom && canvasPromptKey == nil && !renderedRows.isEmpty
+        gtk_widget_set_visible(jumpButton, show ? 1 : 0)
     }
 
     func setFindShown(_ shown: Bool) {
