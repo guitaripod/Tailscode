@@ -212,7 +212,7 @@ def main() -> None:
 
     open_submission = None
     for row in asc.get(
-        f"/v1/apps/{APP}/reviewSubmissions", **{"limit": "10"}
+        f"/v1/apps/{APP}/reviewSubmissions", **{"limit": "10", "filter[platform]": PLATFORM}
     ).get("data", []):
         if row["attributes"].get("state") in {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW"}:
             open_submission = row
