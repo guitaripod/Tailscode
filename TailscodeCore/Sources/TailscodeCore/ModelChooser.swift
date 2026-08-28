@@ -377,6 +377,34 @@ public struct ModelMachine: Sendable, Hashable, Identifiable {
 
 /// Why a row survived the query, in the same tiers the slash palette ranks by, so the two lists
 /// the composer opens behave like one idea.
+/// One door the shown machine reaches its models through — a subscription, a key, a gateway — as
+/// a filter over the list rather than a word repeated under every row. A person who pays for
+/// Ollama Cloud and for OpenCode Go asks what each of them will run, and a catalog folded by
+/// family answers that only one row at a time; narrowing to a door answers it whole, and a pick
+/// made under a door goes through that door.
+public struct ModelDoor: Sendable, Hashable, Identifiable {
+    public let providerID: String
+    public let title: String
+    /// How many of the machine's models this door runs.
+    public let count: Int
+    public let isLocal: Bool
+
+    public init(providerID: String, title: String, count: Int, isLocal: Bool) {
+        self.providerID = providerID
+        self.title = title
+        self.count = count
+        self.isLocal = isLocal
+    }
+
+    public var id: String { providerID }
+
+    public var detail: String {
+        isLocal
+            ? Localized.text("%@ on the server's own hardware", ModelChooser.modelCount(count))
+            : ModelChooser.modelCount(count)
+    }
+}
+
 public enum ModelMatch: Int, Sendable, Comparable {
     case exact = 0
     case prefix = 1
@@ -513,6 +541,8 @@ public enum ModelChooserCommand: Sendable, Equatable {
     case collapse
     /// The nth machine's tab, counted from zero — ⌃1 is the server the chooser opened from.
     case machine(Int)
+    /// The nth door, counted from zero; `nil` is every door — ⌥0.
+    case door(Int?)
     /// Open every heading, or shut every one that answers to a press.
     case expandAll
     case collapseAll
@@ -564,6 +594,8 @@ public struct ModelChooser: Sendable, Equatable {
     public private(set) var query = ""
     /// The machine whose catalog is showing, by profile id.
     public private(set) var machine = ""
+    /// The door the list is narrowed to, by provider id; `nil` is every door the machine has.
+    public private(set) var door: String?
     public private(set) var cursor = 0
     public private(set) var expanded: Set<String> = []
     public private(set) var collapsed: Set<String> = []
@@ -708,7 +740,68 @@ public struct ModelChooser: Sendable, Equatable {
     /// Whether a strip is worth drawing at all.
     public var showsMachines: Bool { machines.count > 1 }
 
-    private var onShownMachine: [ModelCandidate] { candidates.filter { $0.profileID == machine } }
+    /// Every model on the shown machine, whatever door it comes through.
+    private var wholeMachine: [ModelCandidate] { candidates.filter { $0.profileID == machine } }
+
+    /// The shown machine's models, narrowed to the chosen door: a candidate keeps only the offer
+    /// that door makes, so the row names one door and a pick goes through it.
+    private var onShownMachine: [ModelCandidate] {
+        guard let door else { return wholeMachine }
+        return wholeMachine.compactMap { candidate in
+            guard let offer = candidate.offers.first(where: { $0.providerID == door }) else {
+                return nil
+            }
+            return ModelCandidate(
+                id: candidate.id, name: candidate.name, family: candidate.family, offers: [offer],
+                profileID: candidate.profileID, serverName: candidate.serverName,
+                isElsewhere: candidate.isElsewhere)
+        }
+    }
+
+    /// The doors the shown machine has, biggest first — one chip each, drawn only past one door,
+    /// because a filter with one answer is chrome pretending to be a control.
+    public var doors: [ModelDoor] {
+        var counts: [String: Int] = [:]
+        var local: Set<String> = []
+        for candidate in wholeMachine {
+            for offer in candidate.offers {
+                counts[offer.providerID, default: 0] += 1
+                if offer.isLocal { local.insert(offer.providerID) }
+            }
+        }
+        return counts.map { id, count in
+            ModelDoor(
+                providerID: id, title: ProviderIdentity.displayName(id), count: count,
+                isLocal: local.contains(id))
+        }
+        .sorted { lhs, rhs in
+            lhs.count == rhs.count ? lhs.title < rhs.title : lhs.count > rhs.count
+        }
+    }
+
+    public var showsDoors: Bool { doors.count > 1 }
+
+    /// The door showing, whole.
+    public var shownDoor: ModelDoor? { doors.first { $0.providerID == door } }
+
+    /// Where a door strip's highlight sits: 0 is every door, then the doors in `doors` order.
+    public var doorIndex: Int { doors.firstIndex { $0.providerID == door }.map { $0 + 1 } ?? 0 }
+
+    /// Narrows the list to one door, or opens it to every door with `nil`. A door is a fact about
+    /// the shown machine, so a tab change lets it go.
+    @discardableResult
+    public mutating func setDoor(_ providerID: String?) -> Bool {
+        guard providerID != door else { return false }
+        if let providerID {
+            guard doors.contains(where: { $0.providerID == providerID }) else { return false }
+        }
+        door = providerID
+        expanded.removeAll()
+        collapsed = Self.shutOnArrival(candidates: onShownMachine, selected: selected)
+        rebuild()
+        cursor = rows.firstIndex { $0.isSelected } ?? 0
+        return true
+    }
 
     /// What a server that is not answering amounts to, said in place of a claim about its catalog.
     /// A restart is a state, not an empty list: the words the header and the empty body show must
@@ -729,18 +822,19 @@ public struct ModelChooser: Sendable, Equatable {
     }
 
     /// Whether anything is standing between the reader and the whole catalog.
-    public var isNarrowed: Bool { !query.isEmpty }
+    public var isNarrowed: Bool { !query.isEmpty || door != nil }
 
     /// What the list amounts to right now: the shown machine's whole catalog when nothing is
     /// narrowing it, and otherwise how much of it survived — a count that moves as you type is
     /// the only honest way for a header to answer "is it still looking".
     public var summary: String {
-        let mine = onShownMachine
-        guard !mine.isEmpty else {
+        let whole = wholeMachine
+        guard !whole.isEmpty else {
             return serverReading ?? Localized.text("This server lists no models")
         }
         guard !isNarrowed else {
-            var parts = [Localized.text("%@ of %@ models", "\(matched)", "\(mine.count)")]
+            var parts = [Localized.text("%@ of %@ models", "\(matched)", "\(whole.count)")]
+            if let shownDoor { parts.append(Localized.text("via %@", shownDoor.title)) }
             if elsewhereMatched > 0 {
                 parts.append(Localized.text("%@ elsewhere", "\(elsewhereMatched)"))
             }
@@ -752,7 +846,7 @@ public struct ModelChooser: Sendable, Equatable {
     /// What the shown machine's catalog amounts to, said once at the top instead of implied by
     /// scrolling.
     public var catalogSummary: String {
-        let mine = onShownMachine
+        let mine = wholeMachine
         guard !mine.isEmpty else {
             return serverReading ?? Localized.text("This server lists no models")
         }
@@ -785,6 +879,9 @@ public struct ModelChooser: Sendable, Equatable {
         if showsMachines {
             parts.append(Localized.text("⌃1–%@ servers", "\(machines.count)"))
         }
+        if showsDoors {
+            parts.append(Localized.text("⌥1–%@ providers · ⌥0 all", "\(min(doors.count, 9))"))
+        }
         parts.append(Localized.text("enter picks · esc closes"))
         return parts.joined(separator: " · ")
     }
@@ -793,7 +890,15 @@ public struct ModelChooser: Sendable, Equatable {
     /// which tab is showing would otherwise read an empty list as a catalog that lost a model.
     public var emptyResult: String? {
         guard rows.isEmpty else { return nil }
-        guard !query.isEmpty else { return serverReading }
+        guard !query.isEmpty else {
+            if let shownDoor {
+                return Localized.text("%@ runs none of these models", shownDoor.title)
+            }
+            return serverReading
+        }
+        if let shownDoor {
+            return Localized.text("No model via %@ matches “%@”", shownDoor.title, query)
+        }
         guard showsMachines, let shownMachine else {
             return Localized.text("No model matches “%@”", query)
         }
@@ -824,6 +929,7 @@ public struct ModelChooser: Sendable, Equatable {
             return false
         }
         machine = profileID
+        door = nil
         expanded.removeAll()
         collapsed = Self.shutOnArrival(candidates: onShownMachine, selected: selected)
         rebuild()
@@ -903,6 +1009,11 @@ public struct ModelChooser: Sendable, Equatable {
                 return (false, nil, false)
             }
             return (setMachine(machines[index].profileID), nil, false)
+        case .door(let index):
+            guard showsDoors else { return (false, nil, false) }
+            guard let index else { return (setDoor(nil), nil, false) }
+            guard doors.indices.contains(index) else { return (false, nil, false) }
+            return (setDoor(doors[index].providerID), nil, false)
         case .activate:
             guard let row = focused else { return (true, nil, false) }
             return (true, row.pick, false)
@@ -934,7 +1045,10 @@ public struct ModelChooser: Sendable, Equatable {
             default: return nil
             }
         }
-        guard !chord.alt else { return nil }
+        guard !chord.alt else {
+            guard let digit = Keymap.digit(chord.keyval) else { return nil }
+            return .door(digit == 0 ? nil : digit - 1)
+        }
         switch chord.keyval {
         case Keymap.up: return .up
         case Keymap.down: return .down

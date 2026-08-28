@@ -140,7 +140,12 @@ extension DeviceStores {
             #expect(ModelBadge.chip(model: nil, effort: "high") == nil)
             #expect(
                 ModelBadge.chip(model: "ollama/qwen3:14b", effort: nil)
-                    == ModelChip(name: "Qwen3 14b", family: .qwen, effort: nil))
+                    == ModelChip(name: "qwen3-14b", family: .qwen, effort: nil))
+            #expect(ModelBadge.chip(model: "ollama-cloud/gpt-oss:120b", effort: nil)?.name == "gpt-oss-120b")
+            #expect(ModelBadge.chip(model: "gpt-5.1-codex", effort: nil)?.name == "gpt-5.1-codex")
+            #expect(ModelBadge.chip(model: "gemini-3-flash-preview", effort: nil)?.name == "gemini-3-flash-preview")
+            #expect(ModelBadge.chip(model: "hf.co/org/Qwen3.6-9B:IQ2_M", effort: nil)?.name == "Qwen3.6-9B")
+            #expect(ModelBadge.chip(model: "ollama/llama3:latest", effort: nil)?.name == "llama3")
             #expect(ModelBadge.chip(model: "sonnet", effort: "ultracode")?.isUltracode == true)
         }
     }

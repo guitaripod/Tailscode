@@ -39,7 +39,9 @@ final class ModelChooserWindow: @unchecked Sendable {
     /// have its own position let go by the older one's timer.
     private var scrollGeneration = 0
     private var machineChips: [(profileID: String, widget: UInt)] = []
+    private var doorChips: [(providerID: String?, widget: UInt)] = []
     private let strip: UnsafeMutablePointer<GtkWidget>
+    private let doorStrip: UnsafeMutablePointer<GtkWidget>
     private let consequence: UnsafeMutablePointer<GtkWidget>
 
     static func present(
@@ -87,6 +89,9 @@ final class ModelChooserWindow: @unchecked Sendable {
         strip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         Gtk.margins(strip, top: 2, leading: 2, trailing: 2)
         gtk_box_append(ptr(column), strip)
+        doorStrip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.margins(doorStrip, top: 2, leading: 2, trailing: 2)
+        gtk_box_append(ptr(column), doorStrip)
         consequence = Gtk.label("", css: "model-consequence", wrap: true, selectable: false)
         gtk_label_set_xalign(op(consequence), 0)
         Gtk.margins(consequence, leading: 4, trailing: 4)
@@ -185,6 +190,46 @@ final class ModelChooserWindow: @unchecked Sendable {
         syncMachines()
     }
 
+    /// The doors under the machine's tab — every door first, then each provider the machine
+    /// reaches its models through, biggest first, each with its own key. A door is a fact about
+    /// the shown machine, so the strip is rebuilt with the tabs and drawn only past one door.
+    private func buildDoors() {
+        doorChips = []
+        Gtk.removeChildren(of: doorStrip)
+        gtk_widget_set_visible(doorStrip, chooser.showsDoors ? 1 : 0)
+        guard chooser.showsDoors else { return }
+        let every = (
+            id: String?.none, title: Localized.text("All"),
+            count: chooser.doors.reduce(0) { $0 + $1.count },
+            detail: Localized.text("Every provider this server reaches"))
+        let doors =
+            [every]
+            + chooser.doors.map {
+                (id: $0.providerID as String?, title: $0.title, count: $0.count, detail: $0.detail)
+            }
+        for (index, door) in doors.enumerated() {
+            let button = gtk_button_new()!
+            Gtk.addClass(button, "flat")
+            Gtk.addClass(button, "model-scope")
+            let label = gtk_label_new(nil)!
+            let key = index <= 9 ? "  <span alpha=\"40%\">⌥\(index)</span>" : ""
+            gtk_label_set_markup(
+                op(label),
+                PangoMarkdown.escape(door.title) + "  <span alpha=\"60%\">\(door.count)</span>" + key)
+            gtk_button_set_child(ptr(button), label)
+            gtk_widget_set_tooltip_text(button, door.detail)
+            let providerID = door.id
+            Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self, self.chooser.setDoor(providerID) else { return }
+                    self.refresh(keepingScroll: false)
+                }
+            }
+            doorChips.append((providerID, UInt(bitPattern: button)))
+            gtk_box_append(ptr(doorStrip), button)
+        }
+    }
+
     /// A server that is not answering wears the danger dot, one that has not answered yet the
     /// quiet one, and one that is answering needs no dot at all.
     private static func reachabilityTone(_ reachable: Bool?) -> String? {
@@ -230,6 +275,18 @@ final class ModelChooserWindow: @unchecked Sendable {
                 widget, chip.profileID == chooser.machine ? "model-scope-on" : nil,
                 from: ["model-scope-on"])
         }
+        if doorChips.count != (chooser.showsDoors ? chooser.doors.count + 1 : 0)
+            || zip(doorChips.dropFirst(), chooser.doors).contains(where: { $0.providerID != $1.providerID })
+        {
+            buildDoors()
+        }
+        for chip in doorChips {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: chip.widget) else { continue }
+            let widget: UnsafeMutablePointer<GtkWidget> = ptr(raw)
+            Gtk.setTone(
+                widget, chip.providerID == chooser.door ? "model-scope-on" : nil,
+                from: ["model-scope-on"])
+        }
         let words = chooser.showsMachines ? chooser.shownMachine?.consequence : nil
         gtk_label_set_text(op(consequence), words ?? "")
         gtk_widget_set_visible(consequence, words == nil ? 0 : 1)
@@ -253,9 +310,11 @@ final class ModelChooserWindow: @unchecked Sendable {
     private func refreshSources(_ sources: [ModelSource]) {
         let query = chooser.query
         let machine = chooser.machine
+        let door = chooser.door
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         chooser.setMachine(machine)
+        chooser.setDoor(door)
         chooser.search(query)
         buildMachines()
         refresh(keepingScroll: false)

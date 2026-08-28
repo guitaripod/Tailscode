@@ -22,7 +22,8 @@ final class ModelPickerViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, String>!
     private let search = UISearchController(searchResultsController: nil)
-    private let machineStrip = MachineStripView()
+    private let machineStrip = ChipStripView()
+    private let doorStrip = ChipStripView()
     private let consequence = UILabel()
     private let above = UIStackView()
     private var didScrollToSelected = false
@@ -88,6 +89,7 @@ final class ModelPickerViewController: UIViewController {
         above.spacing = Theme.Spacing.xs
         above.translatesAutoresizingMaskIntoConstraints = false
         machineStrip.onPick = { [weak self] index in self?.pickMachine(index) }
+        doorStrip.onPick = { [weak self] index in self?.pickDoor(index) }
         consequence.numberOfLines = 0
         consequence.adjustsFontForContentSizeCategory = true
         consequence.isAccessibilityElement = true
@@ -101,6 +103,7 @@ final class ModelPickerViewController: UIViewController {
             consequence.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Theme.Spacing.l),
         ])
         above.addArrangedSubview(machineStrip)
+        above.addArrangedSubview(doorStrip)
         above.addArrangedSubview(line)
         view.addSubview(above)
         NSLayoutConstraint.activate([
@@ -114,7 +117,8 @@ final class ModelPickerViewController: UIViewController {
     private func syncMachines() {
         let shown = chooser.showsMachines
         machineStrip.isHidden = !shown
-        machineStrip.render(chooser.machines, selected: chooser.machineIndex)
+        machineStrip.render(chooser.machines.map(ChipStripView.Chip.init), selected: chooser.machineIndex)
+        syncDoors()
         let line = chooser.shownMachine?.consequence
         consequence.superview?.isHidden = !shown || line == nil
         consequence.attributedText = line.map {
@@ -123,6 +127,19 @@ final class ModelPickerViewController: UIViewController {
         }
         consequence.accessibilityLabel = line
         view.setNeedsLayout()
+    }
+
+    /// The doors under the machine: every door first, then each provider the machine reaches its
+    /// models through, biggest first. Drawn only past one door.
+    private func syncDoors() {
+        let shown = chooser.showsDoors
+        doorStrip.isHidden = !shown
+        guard shown else { return }
+        let every = ChipStripView.Chip(
+            title: String(localized: "All"), count: chooser.doors.reduce(0) { $0 + $1.count },
+            detail: String(localized: "Every provider this server reaches"), dot: nil)
+        doorStrip.render(
+            [every] + chooser.doors.map(ChipStripView.Chip.init), selected: chooser.doorIndex)
     }
 
     private func pickMachine(_ index: Int) {
@@ -135,6 +152,15 @@ final class ModelPickerViewController: UIViewController {
         scrollToFocused()
     }
 
+    private func pickDoor(_ index: Int) {
+        let door = index == 0 ? nil : chooser.doors[safe: index - 1]?.providerID
+        guard index == 0 || door != nil, chooser.setDoor(door) else { return }
+        Theme.Haptics.selection()
+        syncDoors()
+        applySnapshot()
+        scrollToFocused()
+    }
+
     private func scrollToFocused() {
         guard let focused = chooser.focused, let indexPath = dataSource.indexPath(for: focused.id)
         else { return }
@@ -142,14 +168,35 @@ final class ModelPickerViewController: UIViewController {
     }
 
     override var keyCommands: [UIKeyCommand]? {
-        guard chooser.showsMachines else { return nil }
-        return (1...min(9, chooser.machines.count)).map { digit in
-            let command = UIKeyCommand(
-                title: chooser.machines[digit - 1].title, action: #selector(machineKey(_:)),
-                input: "\(digit)", modifierFlags: .control)
-            command.wantsPriorityOverSystemBehavior = true
-            return command
+        var commands: [UIKeyCommand] = []
+        if chooser.showsMachines {
+            commands += (1...min(9, chooser.machines.count)).map { digit in
+                let command = UIKeyCommand(
+                    title: chooser.machines[digit - 1].title, action: #selector(machineKey(_:)),
+                    input: "\(digit)", modifierFlags: .control)
+                command.wantsPriorityOverSystemBehavior = true
+                return command
+            }
         }
+        if chooser.showsDoors {
+            commands += (0...min(9, chooser.doors.count)).map { digit in
+                let title = digit == 0 ? String(localized: "All providers") : chooser.doors[digit - 1].title
+                let command = UIKeyCommand(
+                    title: title, action: #selector(doorKey(_:)),
+                    input: "\(digit)", modifierFlags: .alternate)
+                command.wantsPriorityOverSystemBehavior = true
+                return command
+            }
+        }
+        return commands.isEmpty ? nil : commands
+    }
+
+    @objc private func doorKey(_ command: UIKeyCommand) {
+        guard let input = command.input, let digit = Int(input),
+            let chord = KeyChord.canonical(keyval: UInt32(0x30 + digit), state: KeyChord.altMask),
+            case .door(let index) = ModelChooser.command(for: chord)
+        else { return }
+        pickDoor(index.map { $0 + 1 } ?? 0)
     }
 
     @objc private func machineKey(_ command: UIKeyCommand) {
@@ -167,7 +214,7 @@ final class ModelPickerViewController: UIViewController {
             CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
         ).height
-        let inset = machineStrip.isHidden ? 0 : height + Theme.Spacing.xs
+        let inset = machineStrip.isHidden && doorStrip.isHidden ? 0 : height + Theme.Spacing.xs
         if abs(collectionView.contentInset.top - inset) > 0.5 {
             collectionView.contentInset.top = inset
             collectionView.verticalScrollIndicatorInsets.top = inset
@@ -252,30 +299,7 @@ final class ModelPickerViewController: UIViewController {
                 let id = self.dataSource.sectionIdentifier(for: indexPath.section),
                 let section = self.chooser.sections.first(where: { $0.id == id })
             else { return }
-            var content = UIListContentConfiguration.header()
-            content.text = section.title.isEmpty ? nil : section.title.uppercased()
-            content.secondaryText = section.title.isEmpty ? nil : section.detail
-            content.prefersSideBySideTextAndSecondaryText = true
-            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
-            if section.canCollapse {
-                content.image = UIImage(
-                    systemName: section.isCollapsed ? "chevron.right" : "chevron.down",
-                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
-                content.imageProperties.tintColor = Theme.Color.secondaryLabel
-            }
-            view.contentConfiguration = content
-            view.accessibilityTraits = section.canCollapse ? .button : []
-            view.accessibilityHint =
-                section.canCollapse
-                ? String(localized: "Opens or folds this family") : nil
-            view.gestureRecognizers?.forEach(view.removeGestureRecognizer)
-            guard section.canCollapse else { return }
-            view.addGestureRecognizer(
-                SectionTapRecognizer(section: section.id) { [weak self] id in
-                    guard let self, self.chooser.toggleSection(id) else { return }
-                    Theme.Haptics.selection()
-                    self.applySnapshot(keepingScroll: true)
-                })
+            self.configureHeader(view, section: section)
         }
 
         let footer = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
@@ -303,6 +327,52 @@ final class ModelPickerViewController: UIViewController {
                     using: footer, for: indexPath)
             }
             return collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
+        }
+    }
+
+    /// A heading's face: the chevron says whether it is open. A supplementary view is not an item,
+    /// so a diffable snapshot never reconfigures it — a fold that changed the rows under a heading
+    /// left the chevron pointing the old way until the heading scrolled off and back. The face is
+    /// therefore written from one place, and a fold rewrites every heading on screen through it.
+    private func configureHeader(_ view: UICollectionViewListCell, section: ModelChooserSection) {
+            var content = UIListContentConfiguration.header()
+            content.text = section.title.isEmpty ? nil : section.title.uppercased()
+            content.secondaryText = section.title.isEmpty ? nil : section.detail
+            content.prefersSideBySideTextAndSecondaryText = true
+            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
+            if section.canCollapse {
+                content.image = UIImage(
+                    systemName: section.isCollapsed ? "chevron.right" : "chevron.down",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold))
+                content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            }
+            view.contentConfiguration = content
+            view.accessibilityTraits = section.canCollapse ? .button : []
+            view.accessibilityHint =
+                section.canCollapse
+                ? String(localized: "Opens or folds this family") : nil
+            view.gestureRecognizers?.forEach(view.removeGestureRecognizer)
+            guard section.canCollapse else { return }
+            view.addGestureRecognizer(
+                SectionTapRecognizer(section: section.id) { [weak self] id in
+                    guard let self, self.chooser.toggleSection(id) else { return }
+                    Theme.Haptics.selection()
+                    self.applySnapshot(keepingScroll: true)
+                })
+    }
+
+    private func refreshVisibleHeaders() {
+        for indexPath in collectionView.indexPathsForVisibleSupplementaryElements(
+            ofKind: UICollectionView.elementKindSectionHeader)
+        {
+            guard
+                let view = collectionView.supplementaryView(
+                    forElementKind: UICollectionView.elementKindSectionHeader, at: indexPath)
+                    as? UICollectionViewListCell,
+                let id = dataSource.sectionIdentifier(for: indexPath.section),
+                let section = chooser.sections.first(where: { $0.id == id })
+            else { continue }
+            configureHeader(view, section: section)
         }
     }
 
@@ -405,16 +475,28 @@ final class ModelPickerViewController: UIViewController {
             CGPoint(x: held.x, y: min(held.y, ceiling)), animated: false)
     }
 
+    /// A row's identity is its place in the list, not its face: opening a row's other doors, or
+    /// picking one of them, changes what the row wears without changing which row it is, and a
+    /// snapshot that finds the same ids draws nothing new. Every row whose reading changed is
+    /// reconfigured by name, and the headings on screen are rewritten, so a chevron always points
+    /// the way the list is actually folded.
     private func applyRows() {
         var snapshot = NSDiffableDataSourceSnapshot<String, String>()
+        let before = rowsByID
         rowsByID.removeAll(keepingCapacity: true)
         for section in chooser.sections {
             snapshot.appendSections([section.id])
             snapshot.appendItems(section.rows.map(\.id), toSection: section.id)
             for row in section.rows { rowsByID[row.id] = row }
         }
+        let changed = rowsByID.compactMap { id, row -> String? in
+            guard let old = before[id], old != row else { return nil }
+            return id
+        }
+        if !changed.isEmpty { snapshot.reconfigureItems(changed) }
         sectionIDs = chooser.sections.map(\.id)
         dataSource.apply(snapshot, animatingDifferences: false)
+        refreshVisibleHeaders()
         syncFoldItem()
         guard let empty = chooser.emptyResult else {
             contentUnavailableConfiguration = nil
@@ -455,10 +537,12 @@ final class ModelPickerViewController: UIViewController {
     func update(sources: [ModelSource]) {
         let query = chooser.query
         let machine = chooser.machine
+        let door = chooser.door
         chooser = ModelChooser(
             sources: sources, selected: chooser.selected, recents: recents, quotas: quotas)
         chooser.search(query)
         chooser.setMachine(machine)
+        chooser.setDoor(door)
         guard isViewLoaded else { return }
         syncMachines()
         applySnapshot()
@@ -717,7 +801,36 @@ extension ModelPickerViewController: UISearchResultsUpdating {
 
 /// One capsule per machine, scrolling sideways. The name, a dot for a machine that is not
 /// answering, and the count in the quieter register; the selected one wears the accent.
-private final class MachineStripView: UIScrollView {
+/// A row of capsule chips that answers to one press each — the machines' tabs and, under them,
+/// the doors — the one in force wearing the accent.
+private final class ChipStripView: UIScrollView {
+    struct Chip {
+        let title: String
+        let count: Int
+        let detail: String
+        /// A dot before the name, in the colour of what it says; nil for nothing to say.
+        let dot: UIColor?
+
+        init(title: String, count: Int, detail: String, dot: UIColor?) {
+            self.title = title
+            self.count = count
+            self.detail = detail
+            self.dot = dot
+        }
+
+        init(_ machine: ModelMachine) {
+            self.init(
+                title: machine.title, count: machine.count, detail: machine.detail,
+                dot: machine.isReachable == true
+                    ? nil
+                    : (machine.isReachable == false ? Theme.Color.danger : Theme.Color.tertiaryLabel))
+        }
+
+        init(_ door: ModelDoor) {
+            self.init(title: door.title, count: door.count, detail: door.detail, dot: nil)
+        }
+    }
+
     var onPick: ((Int) -> Void)?
     private let row = UIStackView()
 
@@ -744,19 +857,19 @@ private final class MachineStripView: UIScrollView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func render(_ machines: [ModelMachine], selected: Int) {
+    func render(_ chips: [Chip], selected: Int) {
         for view in row.arrangedSubviews { view.removeFromSuperview() }
-        for (index, machine) in machines.enumerated() {
-            let chip = Self.chip(machine, selected: index == selected)
-            chip.addAction(UIAction { [weak self] _ in self?.onPick?(index) }, for: .touchUpInside)
-            row.addArrangedSubview(chip)
+        for (index, chip) in chips.enumerated() {
+            let button = Self.button(chip, selected: index == selected)
+            button.addAction(UIAction { [weak self] _ in self?.onPick?(index) }, for: .touchUpInside)
+            row.addArrangedSubview(button)
         }
         layoutIfNeeded()
         guard row.arrangedSubviews.indices.contains(selected) else { return }
         scrollRectToVisible(row.arrangedSubviews[selected].frame.insetBy(dx: -Theme.Spacing.l, dy: 0), animated: false)
     }
 
-    private static func chip(_ machine: ModelMachine, selected: Bool) -> UIButton {
+    private static func button(_ chip: Chip, selected: Bool) -> UIButton {
         var configuration = UIButton.Configuration.filled()
         configuration.cornerStyle = .capsule
         configuration.contentInsets = NSDirectionalEdgeInsets(
@@ -766,22 +879,20 @@ private final class MachineStripView: UIScrollView {
         let ink = selected ? Theme.Color.onAccent : Theme.Color.label
         let quiet = selected ? Theme.Color.onAccent.withAlphaComponent(0.7) : Theme.Color.tertiaryLabel
         let title = NSMutableAttributedString(
-            string: machine.title, attributes: Theme.Ramp.attributes(.rowTitleStrong, color: ink))
+            string: chip.title, attributes: Theme.Ramp.attributes(.rowTitleStrong, color: ink))
         title.append(
             NSAttributedString(
-                string: "  \(machine.count)", attributes: Theme.Ramp.attributes(.rowMeta, color: quiet)))
+                string: "  \(chip.count)", attributes: Theme.Ramp.attributes(.rowMeta, color: quiet)))
         configuration.attributedTitle = AttributedString(title)
-        if machine.isReachable != true {
+        if let dot = chip.dot {
             configuration.image = UIImage(
                 systemName: "circle.fill",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 6, weight: .bold))
             configuration.imagePadding = Theme.Spacing.xs
-            configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in
-                machine.isReachable == false ? Theme.Color.danger : Theme.Color.tertiaryLabel
-            }
+            configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in dot }
         }
         let button = UIButton(configuration: configuration)
-        button.accessibilityLabel = "\(machine.title). \(machine.detail)"
+        button.accessibilityLabel = "\(chip.title). \(chip.detail)"
         button.accessibilityTraits = selected ? [.button, .selected] : .button
         return button
     }

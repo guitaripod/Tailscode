@@ -52,21 +52,24 @@ public enum ModelBadge {
             effort: (trimmed?.isEmpty ?? true) ? nil : trimmed)
     }
 
+    /// The name a badge wears. Claude's models answer to a family word because every client of
+    /// theirs does — *Opus* is how a person says `claude-opus-5` — and nothing else does: "GPT"
+    /// for `gpt-oss:120b` or "Gemini" for a dated preview throws away the one word that says which
+    /// model it is. Every other id is worn as itself, with the path a gateway hung on it taken off
+    /// (`ollama-cloud/gpt-oss:120b` names where it is served, never what it is), a Hugging Face
+    /// quant tag dropped, and a size tag joined by a hyphen so it reads as one name.
     private static func familyName(_ raw: String) -> String? {
-        let id = raw.lowercased()
-        let families = [
-            ("fable", "Fable"), ("opus", "Opus"), ("sonnet", "Sonnet"),
-            ("haiku", "Haiku"), ("grok", "Grok"), ("gpt", "GPT"), ("gemini", "Gemini"),
-        ]
-        for (needle, name) in families where id.contains(needle) {
-            return name
-        }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        // Raw catalog ids ("ollama/qwen3:14b", "hf.co/org/Qwen3.6-…:IQ2_M")
-        // read better as names: drop the provider prefix — a path names where a
-        // model is served, never what it is — drop a HF quant tag, and let the
-        // size survive a tag split ("qwen3 14b").
+        let id = trimmed.lowercased()
+        let claude = [("fable", "Fable"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")]
+        for (needle, name) in claude where id.contains(needle) {
+            return name
+        }
+        return identityName(trimmed)
+    }
+
+    static func identityName(_ trimmed: String) -> String {
         var cleaned = trimmed
         if cleaned.contains("/"), let last = cleaned.split(separator: "/").last {
             cleaned = String(last)
@@ -76,11 +79,9 @@ public enum ModelBadge {
         } else if cleaned.contains(":") {
             cleaned = cleaned.split(separator: ":")
                 .filter { $0.lowercased() != "latest" }
-                .joined(separator: " ")
+                .joined(separator: "-")
         }
-        return cleaned.split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
+        return cleaned.isEmpty ? trimmed : cleaned
     }
 }
 

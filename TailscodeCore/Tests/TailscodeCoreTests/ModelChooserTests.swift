@@ -37,6 +37,44 @@ struct ModelChooserTests {
         #expect(offers == 3)
     }
 
+    @Test("A door narrows the list to one provider and a pick goes through it")
+    func doors() {
+        let models = [
+            ModelInfo(id: "gpt-oss:120b", name: "gpt-oss:120b", providerID: "ollama-cloud"),
+            ModelInfo(id: "glm-5.3-flash", name: "glm-5.3-flash", providerID: "ollama-cloud"),
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "opencode-go"),
+            ModelInfo(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", providerID: "openrouter"),
+            ModelInfo(id: "qwen3:14b", name: "qwen3:14b", providerID: "ollama"),
+        ]
+        var chooser = ModelChooser(models: models, selected: nil, recents: [], quotas: [])
+        #expect(chooser.showsDoors)
+        #expect(chooser.doors.map(\.providerID) == ["ollama-cloud", "ollama", "opencode-go", "openrouter"])
+        #expect(chooser.doors.first { $0.providerID == "ollama" }?.isLocal == true)
+        #expect(chooser.doorIndex == 0)
+        let openrouter = chooser.setDoor("openrouter")
+        #expect(openrouter)
+        #expect(chooser.doorIndex == 4)
+        #expect(chooser.isNarrowed)
+        let names = chooser.rows.filter { !$0.isAuto }.map(\.title)
+        #expect(names == ["DeepSeek V4 Pro"])
+        #expect(chooser.rows.first { !$0.isAuto }?.selection?.providerID == "openrouter")
+        #expect(chooser.summary.contains("OpenRouter"))
+        let nowhere = chooser.setDoor("nowhere")
+        #expect(!nowhere)
+        let cloud = chooser.setDoor("ollama-cloud")
+        #expect(cloud)
+        #expect(chooser.rows.filter { !$0.isAuto }.count == 2)
+        chooser.search("zzz")
+        #expect(chooser.emptyResult?.contains("Ollama Cloud") == true)
+        chooser.search("")
+        let every = chooser.setDoor(nil)
+        #expect(every)
+        #expect(!chooser.isNarrowed)
+        #expect(chooser.rows.filter { !$0.isAuto }.count == 4)
+        #expect(ModelChooser.command(for: KeyChord(keyval: 0x0032, control: false, shift: false, alt: true)) == .door(1))
+        #expect(ModelChooser.command(for: KeyChord(keyval: 0x0030, control: false, shift: false, alt: true)) == .door(nil))
+    }
+
     @Test("A folded row's door prefers the model's own key over the reseller")
     func foldDoorPreference() {
         let models = [

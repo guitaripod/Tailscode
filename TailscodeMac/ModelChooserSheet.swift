@@ -30,6 +30,7 @@ final class ModelChooserSheet: NSObject {
     private let empty = NSTextField(wrappingLabelWithString: "")
     private let fold = NSButton()
     private let machineStrip = NSStackView()
+    private let doorStrip = NSStackView()
     private let consequence = NSTextField(wrappingLabelWithString: "")
     private var entries: [Entry] = []
     private var monitor: Any?
@@ -104,6 +105,10 @@ final class ModelChooserSheet: NSObject {
         machineStrip.alignment = .centerY
         machineStrip.spacing = MacTheme.Spacing.xs
         machineStrip.setContentHuggingPriority(.required, for: .vertical)
+        doorStrip.orientation = .horizontal
+        doorStrip.alignment = .centerY
+        doorStrip.spacing = MacTheme.Spacing.xs
+        doorStrip.setContentHuggingPriority(.required, for: .vertical)
 
         consequence.font = MacTheme.Ramp.font(.rowNote)
         consequence.textColor = MacTheme.Color.warning
@@ -121,7 +126,7 @@ final class ModelChooserSheet: NSObject {
         band.alignment = .centerY
         band.spacing = MacTheme.Spacing.s
 
-        let top = NSStackView(views: [field, machineStrip, consequence, band])
+        let top = NSStackView(views: [field, machineStrip, doorStrip, consequence, band])
         top.orientation = .vertical
         top.alignment = .leading
         top.spacing = MacTheme.Spacing.s
@@ -171,6 +176,7 @@ final class ModelChooserSheet: NSObject {
             band.widthAnchor.constraint(equalTo: top.widthAnchor),
             consequence.widthAnchor.constraint(equalTo: top.widthAnchor),
             machineStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
+            doorStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
             scroll.topAnchor.constraint(equalTo: top.bottomAnchor, constant: MacTheme.Spacing.s),
             scroll.leadingAnchor.constraint(equalTo: top.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: top.trailingAnchor),
@@ -201,9 +207,11 @@ final class ModelChooserSheet: NSObject {
     func update(sources: [ModelSource]) {
         let query = chooser.query
         let machine = chooser.machine
+        let door = chooser.door
         chooser = ModelChooser(sources: sources, selected: chooser.selected, quotas: quotas)
         chooser.search(query)
         chooser.setMachine(machine)
+        chooser.setDoor(door)
         rebuildMachines()
         rebuild()
         revealCursor()
@@ -222,6 +230,12 @@ final class ModelChooserSheet: NSObject {
                 guard let selection = self.chooser.focused?.selection else { return event }
                 self.chooser.togglePin(selection)
                 return self.refreshed()
+            }
+            if event.modifierFlags.contains(.option), !event.modifierFlags.contains(.control) {
+                guard let digit = self.digit(of: event), self.handled(.door(digit == 0 ? nil : digit - 1))
+                else { return event }
+                self.machineChanged()
+                return nil
             }
             guard event.modifierFlags.contains(.control) else { return event }
             let all = event.modifierFlags.contains(.shift)
@@ -242,6 +256,15 @@ final class ModelChooserSheet: NSObject {
 
     private func handled(_ command: ModelChooserCommand) -> Bool {
         chooser.handle(command).handled
+    }
+
+    /// The digit under ⌥, read off the key rather than the character — with Option down the
+    /// character is whatever the layout puts there, and on a Finnish keyboard ⌥2 is “@”.
+    private func digit(of event: NSEvent) -> Int? {
+        let keys: [UInt16: Int] = [
+            29: 0, 18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9,
+        ]
+        return keys[event.keyCode]
     }
 
     private func refreshed() -> NSEvent? {
@@ -266,14 +289,53 @@ final class ModelChooserSheet: NSObject {
     private func rebuildMachines() {
         for view in machineStrip.arrangedSubviews { view.removeFromSuperview() }
         machineStrip.isHidden = !chooser.showsMachines
-        guard chooser.showsMachines else { return }
-        for (index, machine) in chooser.machines.enumerated() {
-            machineStrip.addArrangedSubview(
-                MachineChip(machine: machine, selected: index == chooser.machineIndex) {
-                    [weak self] in
-                    guard let self, self.chooser.setMachine(machine.profileID) else { return }
+        if chooser.showsMachines {
+            for (index, machine) in chooser.machines.enumerated() {
+                machineStrip.addArrangedSubview(
+                    MachineChip(
+                        title: machine.title, count: machine.count, detail: machine.detail,
+                        dot: Self.dot(machine.isReachable), selected: index == chooser.machineIndex
+                    ) { [weak self] in
+                        guard let self, self.chooser.setMachine(machine.profileID) else { return }
+                        self.machineChanged()
+                    })
+            }
+        }
+        rebuildDoors()
+    }
+
+    /// The doors under the tab — every door first, then each provider the machine reaches its
+    /// models through, biggest first (⌥0–9). Drawn only past one door.
+    private func rebuildDoors() {
+        for view in doorStrip.arrangedSubviews { view.removeFromSuperview() }
+        doorStrip.isHidden = !chooser.showsDoors
+        guard chooser.showsDoors else { return }
+        doorStrip.addArrangedSubview(
+            MachineChip(
+                title: Localized.text("All"), count: chooser.doors.reduce(0) { $0 + $1.count },
+                detail: Localized.text("Every provider this server reaches"), dot: nil,
+                selected: chooser.doorIndex == 0
+            ) { [weak self] in
+                guard let self, self.chooser.setDoor(nil) else { return }
+                self.machineChanged()
+            })
+        for (index, door) in chooser.doors.enumerated() {
+            doorStrip.addArrangedSubview(
+                MachineChip(
+                    title: door.title, count: door.count, detail: door.detail, dot: nil,
+                    selected: index + 1 == chooser.doorIndex
+                ) { [weak self] in
+                    guard let self, self.chooser.setDoor(door.providerID) else { return }
                     self.machineChanged()
                 })
+        }
+    }
+
+    private static func dot(_ reachable: Bool?) -> NSColor? {
+        switch reachable {
+        case .some(true): return nil
+        case .some(false): return MacTheme.Color.danger
+        case .none: return MacTheme.Color.tertiaryLabel
         }
     }
 
@@ -450,13 +512,16 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
     }
 }
 
-/// One machine's tab: its name, a dot only when it is not answering or has not yet, and what it
-/// holds in the quieter register. The tab showing wears the accent.
+/// One chip in a strip — a machine's tab or a door — its name, a dot only when it has something
+/// to say, and what it holds in the quieter register. The one in force wears the accent.
 @MainActor
 private final class MachineChip: NSButton {
     private let onPress: () -> Void
 
-    init(machine: ModelMachine, selected: Bool, onPress: @escaping () -> Void) {
+    init(
+        title: String, count: Int, detail: String, dot: NSColor?, selected: Bool,
+        onPress: @escaping () -> Void
+    ) {
         self.onPress = onPress
         super.init(frame: .zero)
         setButtonType(.momentaryPushIn)
@@ -465,40 +530,32 @@ private final class MachineChip: NSButton {
         state = selected ? .on : .off
         target = self
         action = #selector(pressed)
-        toolTip = machine.detail
+        toolTip = detail
         let ink = selected ? MacTheme.Color.accent : MacTheme.Color.label
-        let title = NSMutableAttributedString(
-            string: machine.title,
+        let text = NSMutableAttributedString(
+            string: title,
             attributes: [
                 .font: selected ? MacTheme.Ramp.font(.panelLabel).bold : MacTheme.Ramp.font(.panelLabel),
                 .foregroundColor: ink,
             ])
-        if let dot = Self.dot(machine.isReachable) {
-            title.append(
+        if let dot {
+            text.append(
                 NSAttributedString(
                     string: " ●", attributes: [.font: MacTheme.Ramp.font(.gaugeCaption), .foregroundColor: dot]))
         }
-        title.append(
+        text.append(
             NSAttributedString(
-                string: "  \(machine.count)",
+                string: "  \(count)",
                 attributes: [
                     .font: MacTheme.Ramp.font(.gaugeCaption),
                     .foregroundColor: MacTheme.Color.tertiaryLabel,
                 ]))
-        attributedTitle = title
-        setAccessibilityLabel("\(machine.title), \(machine.detail)")
+        attributedTitle = text
+        setAccessibilityLabel("\(title), \(detail)")
         setContentHuggingPriority(.required, for: .horizontal)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    private static func dot(_ reachable: Bool?) -> NSColor? {
-        switch reachable {
-        case .some(true): return nil
-        case .some(false): return MacTheme.Color.danger
-        case .none: return MacTheme.Color.tertiaryLabel
-        }
-    }
 
     @objc private func pressed() { onPress() }
 }
