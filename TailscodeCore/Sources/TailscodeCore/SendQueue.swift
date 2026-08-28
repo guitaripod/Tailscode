@@ -8,12 +8,38 @@ import Foundation
 /// work — you think of the next thing while the last one runs — and the next thing is exactly what
 /// you most often want to reword, reorder or take back once you have read another paragraph of the
 /// answer. Once it is on the server it is a queue entry nobody can reach.
-public struct QueuedSend: Sendable, Hashable, Identifiable {
+public struct QueuedSend: Sendable, Hashable, Identifiable, Codable {
     /// What the message will be when it goes: an ordinary prompt, or a slash command with its
     /// arguments, which is a turn like any other and queues the same way.
-    public enum Kind: Sendable, Hashable {
+    public enum Kind: Sendable, Hashable, Codable {
         case prompt
         case command(name: String, arguments: String)
+
+        private enum CodingKeys: String, CodingKey { case type, name, arguments }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            switch try container.decode(String.self, forKey: .type) {
+            case "command":
+                self = .command(
+                    name: try container.decode(String.self, forKey: .name),
+                    arguments: try container.decodeIfPresent(String.self, forKey: .arguments) ?? "")
+            default:
+                self = .prompt
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .prompt:
+                try container.encode("prompt", forKey: .type)
+            case let .command(name, arguments):
+                try container.encode("command", forKey: .type)
+                try container.encode(name, forKey: .name)
+                try container.encode(arguments, forKey: .arguments)
+            }
+        }
     }
 
     public let id: UUID

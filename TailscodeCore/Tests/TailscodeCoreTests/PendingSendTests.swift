@@ -107,8 +107,8 @@ struct PendingSendTests {
             send, now: epoch.addingTimeInterval(PendingSendReading.slowAfter + 1))
         #expect(quick == nil)
         #expect(slow != nil)
-        #expect(PendingSendReading.ink(send) == .faint)
-        #expect(PendingSendReading.ink(send).opacity < 1)
+        #expect(PendingSendReading.ink(send) == .full)
+        #expect(PendingSendReading.ink(send).opacity == 1)
         #expect(
             PendingSendReading.nextCaptionChange(send, now: epoch)
                 == epoch.addingTimeInterval(PendingSendReading.slowAfter))

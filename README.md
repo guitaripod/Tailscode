@@ -2,7 +2,7 @@
 
 **One product, three native clients, parity enforced by the compiler.** Tailscode is an iPhone app (UIKit), a macOS app (AppKit) and a Linux app (GTK4 + libadwaita), built from one shared Swift core — no cross-platform framework, no web view, no lowest common denominator. Every user-facing capability is a case in a registry, and every client has to answer every case before it will compile.
 
-Those clients drive remote coding agents — [opencode](https://opencode.ai) on port 4096 and **Claude Code** via [claude-bridge](https://github.com/guitaripod/claude-bridge) on port 4098 — running on machines you own. The app talks to them point-to-point over your own [Tailscale](https://tailscale.com) tailnet. No relay, no account, no vendor backend: there is no server of ours in the path, because there is no server of ours. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
+Those clients drive remote coding agents — [opencode](https://opencode.ai) on port 4096, **Claude Code** via [claude-bridge](https://github.com/guitaripod/claude-bridge) on port 4098, and **Oh My Pi** via [omp-bridge](https://github.com/guitaripod/omp-bridge) on port 4099 — running on machines you own. The app talks to them point-to-point over your own [Tailscale](https://tailscale.com) tailnet. No relay, no account, no vendor backend: there is no server of ours in the path, because there is no server of ours. The transport's security is Tailscale's WireGuard, not something Tailscode implements.
 
 <p align="center">
   <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone &amp; Mac — App Store</b></a> ·
@@ -178,6 +178,7 @@ The shared core carries 61 test files with **860 `@Test` functions** (swift-test
     ```
 
   - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098). This is also what makes Live Activity pushes possible.
+  - [omp-bridge](https://github.com/guitaripod/omp-bridge) in front of [Oh My Pi](https://github.com/can1357/oh-my-pi) (port 4099). Same wire protocol as claude-bridge, so every surface works unchanged — and the whole Oh My Pi provider catalog (Ollama Cloud, OpenCode Go, OpenRouter, Anthropic, xAI, DeepSeek, local ollama) lands in the model picker, filterable by provider.
 
 ## Install
 
@@ -288,6 +289,7 @@ All networking, streaming and state live in [CodingAgentKit](https://github.com/
 |---|---|
 | [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) | The engine: Swift 6 package (GPL-3.0), Linux + Apple, unified opencode/Claude Code client, SSE streaming, `MessageReducer`, mockable backends, scriptable CLI |
 | [claude-bridge](https://github.com/guitaripod/claude-bridge) | Hummingbird server that exposes Claude Code (`claude -p` stream-json) as structured HTTP sessions with SSE, subagents, compaction, spend, analytics, git, and APNs pushes |
+| [omp-bridge](https://github.com/guitaripod/omp-bridge) | The same wire protocol over Oh My Pi (`omp --mode rpc`): sessions, streaming, ask dialogs, subagents, spend and analytics read from omp's own transcripts, self-update |
 
 ## License
 

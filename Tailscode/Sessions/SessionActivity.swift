@@ -37,6 +37,30 @@ final class SessionActivity {
     /// The view model kept alive for an in-flight turn, so reopening the chat
     /// reuses it instead of building a fresh one — otherwise queued messages
     /// and optimistic echoes, which live only on the view model, are lost.
+    /// Wakes a view model for every conversation the store is holding a message for, so a queue
+    /// written before the process ended goes when its turn yields rather than when somebody
+    /// happens to open the chat. Called once the chat list can name the sessions; a held
+    /// conversation the list no longer has is left in the store for a listing that does.
+    func wakeHeldQueues(
+        entries: [SessionEntry], backend: (String) -> (any CodingAgentBackend)?
+    ) {
+        for record in SendQueueStore.all() {
+            guard retained[record.sessionID] == nil,
+                let entry = entries.first(where: {
+                    $0.session.id == record.sessionID && $0.profileID == record.profileID
+                }),
+                let backend = backend(record.profileID)
+            else { continue }
+            let viewModel = ChatViewModel(
+                backend: backend, session: entry.session, contextID: entry.profileID,
+                serverName: entry.profileName)
+            retained[record.sessionID] = viewModel
+            AppLogger.chat.info(
+                "queue wake session=\(record.sessionID) held=\(record.items.count)")
+            viewModel.start()
+        }
+    }
+
     func retainedViewModel(for sessionID: String, contextID: String) -> ChatViewModel? {
         guard let viewModel = retained[sessionID], viewModel.contextID == contextID else {
             return nil

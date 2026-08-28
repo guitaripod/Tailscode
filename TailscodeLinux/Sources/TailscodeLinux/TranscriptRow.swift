@@ -1040,8 +1040,7 @@ struct TranscriptRow: Hashable {
     private static func applyInk(
         to bubble: UnsafeMutablePointer<GtkWidget>, send: PendingSend, plan: ResumePlan?
     ) {
-        let faint = plan == nil && PendingSendReading.ink(send) == .faint
-        Gtk.setTone(bubble, faint ? "pending-faint" : nil, from: ["pending-faint"])
+        Gtk.setTone(bubble, nil, from: ["pending-faint"])
     }
 
     /// Restates a pending row for a send whose phase or wait moved without rebuilding it: the ink

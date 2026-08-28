@@ -59,6 +59,7 @@ final class ChatViewModel {
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
         self.serverName = serverName
+        self.queue = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
     }
 
     let serverName: String
@@ -815,7 +816,12 @@ final class ChatViewModel {
     /// The messages written while a turn was running. Held here rather than handed to the server
     /// precisely so they can still be changed: the next thing you type is the thing you most often
     /// want to reword once you have read another paragraph of the answer.
-    private(set) var queue = SendQueue()
+    private(set) var queue = SendQueue() {
+        didSet {
+            guard queue != oldValue else { return }
+            SendQueueStore.save(queue, profileID: contextID, sessionID: session.id)
+        }
+    }
     private var lastSent: QueuedSend?
 
     var queued: [QueuedSend] { queue.items }
@@ -842,8 +848,11 @@ final class ChatViewModel {
     }
 
     private func flushQueue() {
-        guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure else { return }
+        guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure,
+            SendQueueDrain.mayDrain(state)
+        else { return }
         guard let next = queue.takeFirst() else { return }
+        AppLogger.chat.info("queue drain session=\(session.id) left=\(queue.count)")
         deliver(next.text, model: next.model, effort: next.effort, attachments: next.attachments)
     }
 

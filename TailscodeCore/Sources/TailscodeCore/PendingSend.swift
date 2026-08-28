@@ -204,27 +204,19 @@ public enum PendingSendReading {
     public static func tone(_ send: PendingSend) -> ActivityTone { icon(send).tone }
     public static func motion(_ send: PendingSend) -> ActivityMotion { icon(send).motion }
 
-    /// How the bubble itself is drawn, which is where the state lives now that the row no longer
-    /// spells "sending" and "sent" under itself. A message on the wire is drawn faint — the words
-    /// are there, the colour is not yet — and the colour arrives when the server has it, so the
-    /// transition a person watches is the bubble filling in rather than a word changing under it.
-    /// A failure keeps the words at full strength and takes the danger tone.
+    /// How the bubble itself is drawn. A message is yours from the keystroke and it is drawn the
+    /// way every sent message is drawn — full strength, on the wire or accepted — because a bubble
+    /// that fades in as the server takes it is a state nobody asked to watch: the words are what
+    /// matter, and they never change. Only a failure changes the ink, taking the danger tone so a
+    /// message that did not go can never be mistaken for one that did.
     public enum Ink: Sendable, Equatable {
-        case faint
         case full
         case failed
 
-        /// The bubble's alpha: enough to read the words, little enough to read the wait.
-        public var opacity: Double {
-            switch self {
-            case .faint: return 0.55
-            case .full, .failed: return 1
-            }
-        }
+        public var opacity: Double { 1 }
 
         public var tone: ActivityTone {
             switch self {
-            case .faint: return .live
             case .full: return .quiet
             case .failed: return .danger
             }
@@ -233,8 +225,7 @@ public enum PendingSendReading {
 
     public static func ink(_ send: PendingSend) -> Ink {
         switch send.phase {
-        case .sending: return .faint
-        case .accepted: return .full
+        case .sending, .accepted: return .full
         case .failed: return .failed
         }
     }

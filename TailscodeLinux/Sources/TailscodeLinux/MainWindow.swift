@@ -962,6 +962,7 @@ final class MainWindow: @unchecked Sendable {
                 let stream = await conversation.states()
                 for await state in stream {
                     guard let self else { return }
+                    if await Self.drainHeld(conversation, entry: entry, state: state) { continue }
                     let reading = SessionPresence.reading(state, step: nil)
                     let changed = reading != lastReading
                     lastReading = reading
@@ -983,6 +984,67 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         backgroundWatch[key] = (id, task)
+    }
+
+
+    /// A conversation a pane left running still owes its queue: the next waiting message goes the
+    /// moment the turn yields, read from the store rather than from any pane, because the pane
+    /// that wrote it may be showing something else by now. Answers whether a message went, so
+    /// the watch knows the turn is not over.
+    private static func drainHeld(
+        _ conversation: AgentConversation, entry: SessionEntry, state: ConversationState
+    ) async -> Bool {
+        guard SendQueueDrain.mayDrain(state) else { return false }
+        var held = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
+        guard let next = held.takeFirst() else { return false }
+        SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
+        do {
+            try await conversation.send(
+                next.text, model: next.model, reasoningEffort: next.effort,
+                attachments: next.attachments)
+            return true
+        } catch {
+            held.requeueAtHead(next)
+            SendQueueStore.save(held, profileID: entry.profileID, sessionID: entry.session.id)
+            return false
+        }
+    }
+
+    /// Every conversation the store is holding a message for gets a watch, so a queue written
+    /// before the app quit goes when its turn yields rather than when somebody opens the chat.
+    /// A chat a pane is showing drains from the pane; a held chat the listing no longer has waits
+    /// for a listing that does.
+    private func wakeHeldQueues() {
+        let held = SendQueueStore.all()
+        guard !held.isEmpty else { return }
+        let entries = self.entries
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            for record in held {
+                guard let entry = entries.first(where: {
+                        $0.session.id == record.sessionID && $0.profileID == record.profileID
+                    }),
+                    let profile = profiles.first(where: { $0.id == record.profileID }),
+                    let backend = await ServerDirectory.shared.backend(for: profile)
+                else { continue }
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    let key = SessionPinStore.key(record.profileID, record.sessionID)
+                    var shown = false
+                    self.splitHost.eachPane { pane in
+                        if pane.sessionID == record.sessionID, pane.entry?.profileID == record.profileID {
+                            shown = true
+                        }
+                    }
+                    guard self.backgroundWatch[key] == nil, !shown else { return }
+                    self.keepWatching(
+                        AgentConversation(
+                            backend: backend, sessionID: entry.session.id,
+                            cache: AppCache.sessionCache),
+                        entry: entry)
+                }
+            }
+        }
     }
 
     func stopWatching(_ key: String) {
@@ -1177,6 +1239,7 @@ final class MainWindow: @unchecked Sendable {
         self.unreachable = unreachable
         if !lastHeard.isEmpty { self.lastHeard = lastHeard }
         if fromNetwork { listedFromNetwork = true }
+        wakeHeldQueues()
         if let fresh = freshlyCreated {
             if entries.contains(where: { $0.session.id == fresh.session.id }) {
                 freshlyCreated = nil

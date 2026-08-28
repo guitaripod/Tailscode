@@ -53,7 +53,12 @@ final class ChatPane: @unchecked Sendable {
     /// Prompts written while a turn was running, held here rather than handed to the server so
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
-    private var queue = SendQueue()
+    private var queue = SendQueue() {
+        didSet {
+            guard queue != oldValue, let entry else { return }
+            SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
+        }
+    }
     /// Messages a spent provider window stopped, and the moment each goes again. The policy and
     /// every word are Core's; this owns the one clock that fires them and the ledger's copy on
     /// disk, so a window that opens after the app was closed is still explained rather than lost.
@@ -814,6 +819,8 @@ final class ChatPane: @unchecked Sendable {
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
         self.entry = entry
+        editingQueued = nil
+        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         conversation = nil
         backend = nil
         lastState = nil
@@ -1265,8 +1272,8 @@ final class ChatPane: @unchecked Sendable {
     /// never while the composer is holding one open for rewriting: sending it out from under the
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue(_ state: ConversationState) {
-        guard state.status != .running, state.compaction?.isRunning != true,
-            state.lastFailure == nil, editingQueued == nil, !queue.isEmpty, let conversation
+        guard SendQueueDrain.mayDrain(state, editing: editingQueued != nil), !queue.isEmpty,
+            let conversation
         else { return }
         guard !draining else { return }
         draining = true

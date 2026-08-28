@@ -148,7 +148,6 @@ enum MatrixTheme {
         }
         .pending-rule-failed { background-color: \(danger); }
         .pending-ink { opacity: 1; transition: opacity 250ms ease-out; }
-        .pending-faint { opacity: \(PendingSendReading.Ink.faint.opacity); }
         .pending-text-failed { color: \(danger); }
         .prompt-glyph { color: \(accent); \(t(.promptGlyph)) }
         .prompt-text { color: \(text); \(t(.prompt)) }

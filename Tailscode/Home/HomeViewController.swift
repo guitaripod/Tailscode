@@ -386,9 +386,13 @@ final class HomeViewController: UIViewController {
 
     private func bind() {
         viewModel.onChange = { [weak self] in
-            self?.updateComposeButton()
-            self?.updateComposer()
-            self?.applySnapshot()
+            guard let self else { return }
+            self.updateComposeButton()
+            self.updateComposer()
+            self.applySnapshot()
+            SessionActivity.shared.wakeHeldQueues(entries: self.viewModel.entries) {
+                self.viewModel.backend(forProfileID: $0)
+            }
         }
         viewModel.onError = { [weak self] message in
             self?.refreshControl.endRefreshing()

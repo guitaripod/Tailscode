@@ -429,6 +429,8 @@ final class TranscriptViewController: NSViewController {
         streamTask?.cancel()
         self.entry = entry
         self.backend = backend
+        editingQueued = nil
+        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         lastState = nil
         dismissChooser()
         emptyLabel.isHidden = true
@@ -1114,7 +1116,12 @@ final class TranscriptViewController: NSViewController {
     /// Prompts written while a turn was running, held here rather than handed to the server so
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
-    private var queue = SendQueue()
+    private var queue = SendQueue() {
+        didSet {
+            guard queue != oldValue, let entry else { return }
+            SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
+        }
+    }
     /// Which waiting message the composer is rewriting. A message taken back and sent again would
     /// land at the end of the queue, which is not editing but deleting and re-adding.
     private var editingQueued: UUID?
@@ -1178,8 +1185,7 @@ final class TranscriptViewController: NSViewController {
     /// never while the composer is holding one open for rewriting: sending it out from under the
     /// person editing it is the one thing the queue exists to prevent.
     private func drainQueue() {
-        guard let state = lastState, state.status != .running,
-            state.compaction?.isRunning != true, state.lastFailure == nil, editingQueued == nil,
+        guard let state = lastState, SendQueueDrain.mayDrain(state, editing: editingQueued != nil),
             !queue.isEmpty, !draining
         else { return }
         draining = true

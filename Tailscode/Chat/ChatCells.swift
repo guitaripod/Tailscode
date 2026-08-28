@@ -194,8 +194,8 @@ final class TextBubbleCell: UICollectionViewCell {
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         applyHorizontalInsets(
-            outer: isUser || reasoning || timestamp ? Theme.Spacing.l : Theme.Spacing.s,
-            inner: isUser || reasoning || timestamp ? Theme.Spacing.m : Theme.Spacing.s)
+            outer: isUser || timestamp ? Theme.Spacing.l : Theme.Spacing.s,
+            inner: isUser || timestamp ? Theme.Spacing.m : Theme.Spacing.s)
 
         if timestamp {
             bubble.backgroundColor = .clear
@@ -215,9 +215,9 @@ final class TextBubbleCell: UICollectionViewCell {
             return
         }
 
-        maxWidth.isActive = true
-        leadingPin.isActive = !isUser
-        trailingPin.isActive = isUser
+        maxWidth.isActive = isUser
+        leadingPin.isActive = true
+        trailingPin.isActive = true
         textView.textAlignment = .natural
 
         if reasoning {
@@ -249,7 +249,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 attributes: Theme.Ramp.attributes(.prompt, color: Theme.Color.onAccent))
             textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
-            bubble.backgroundColor = Theme.Color.assistantBubble
+            bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.label
             textView.font = Theme.Ramp.font(.answer)
             let rendered = Self.rendered(text, color: Theme.Color.label)
