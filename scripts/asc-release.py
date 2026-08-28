@@ -118,6 +118,26 @@ def write_notes(version_id: str, marketing: str) -> None:
         print(f"  notes on file for locales this version has not got: {', '.join(extra)}")
 
 
+def undeclare_game_center(version_id: str) -> None:
+    """The Mac App Store build carries no game-center entitlement, so a version that
+    declares Game Center is refused with BUILD_INDICATES_GAME_CENTER_DISABLED. The
+    declaration cannot be deleted, only switched off."""
+    existing = asc.get(f"/v1/appStoreVersions/{version_id}/gameCenterAppVersion").get("data")
+    if not existing or not existing["attributes"].get("enabled"):
+        return
+    asc.patch(
+        f"/v1/gameCenterAppVersions/{existing['id']}",
+        {
+            "data": {
+                "type": "gameCenterAppVersions",
+                "id": existing["id"],
+                "attributes": {"enabled": False},
+            }
+        },
+    )
+    print("game center switched off for the Mac version")
+
+
 def ensure_game_center(version_id: str) -> None:
     """A build signed with the Game Center entitlement cannot be reviewed until
     the version it rides in declares Game Center too, and the version record
@@ -125,6 +145,9 @@ def ensure_game_center(version_id: str) -> None:
     STATE_ERROR.BUILD_INDICATES_GAME_CENTER_ENABLED, naming the build rather than
     the missing declaration. Create the link and enable it; `enabled` is refused
     on the create and has to be a second call."""
+    if PLATFORM == "MAC_OS":
+        undeclare_game_center(version_id)
+        return
     try:
         detail = asc.get(f"/v1/apps/{APP}/gameCenterDetail").get("data")
     except Exception:
