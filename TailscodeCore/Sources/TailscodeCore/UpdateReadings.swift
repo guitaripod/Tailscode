@@ -259,7 +259,8 @@ public enum UpdateReadings {
         install: AppInstall, release: AppRelease?, checkout: CheckoutState? = nil,
         running: SourceUpdatePlan.State? = nil, failure: String? = nil, obstacle: String? = nil,
         command: String? = nil, storeURL: String? = nil, projectURL: String? = nil,
-        checkedAt: Date? = nil, title: String = Localized.text("Tailscode"), subtitle: String? = nil
+        checkedAt: Date? = nil, title: String = Localized.text("Tailscode"), subtitle: String? = nil,
+        note: String? = nil
     ) -> UpdateReading {
         let verdict = appVerdict(
             install: install, release: release, checkout: checkout, running: running,
@@ -271,9 +272,24 @@ public enum UpdateReadings {
             verdict: verdict,
             invitation: appInvitation(
                 for: verdict, install: install, checkout: checkout, command: command,
-                storeURL: storeURL, projectURL: projectURL),
+                storeURL: storeURL, projectURL: projectURL, releaseURL: release?.url),
             checkedAt: checkedAt,
-            note: install.build.map { Localized.text("Build %@.", $0) })
+            note: appNote(install: install, verdict: verdict, note: note))
+    }
+
+    /// What to do is worth saying only where there is something to do: a copy a package manager
+    /// owns spells out its whole procedure beside an offer, and stays quiet while it is current.
+    private static func appNote(install: AppInstall, verdict: UpdateVerdict, note: String?)
+        -> String?
+    {
+        let build = install.build.map { Localized.text("Build %@.", $0) }
+        switch verdict {
+        case .behind, .failed:
+            let joined = [build, note].compactMap { $0 }.joined(separator: " ")
+            return joined.isEmpty ? nil : joined
+        default:
+            return build
+        }
     }
 
     private static func checkoutFact(_ checkout: CheckoutState?, checkedAt: Date?) -> VersionFact {
@@ -387,7 +403,7 @@ public enum UpdateReadings {
 
     private static func appInvitation(
         for verdict: UpdateVerdict, install: AppInstall, checkout: CheckoutState?,
-        command: String?, storeURL: String?, projectURL: String?
+        command: String?, storeURL: String?, projectURL: String?, releaseURL: String? = nil
     ) -> UpdateInvitation? {
         switch verdict {
         case .behind(let offer) where offer.canInstallHere && command == nil
@@ -401,7 +417,7 @@ public enum UpdateReadings {
             if let checkout { return .copyCommand("cd \(checkout.path) && git pull") }
             if install.kind == .testFlight { return projectURL.map(UpdateInvitation.openPage) }
             if let storeURL { return .openStore(url: storeURL) }
-            return projectURL.map(UpdateInvitation.openPage)
+            return (releaseURL ?? projectURL).map(UpdateInvitation.openPage)
         case .unverified(.unreachable), .unverified(.neverChecked):
             return .recheck
         case .unverified, .blocked:

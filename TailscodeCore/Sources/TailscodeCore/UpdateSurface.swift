@@ -425,7 +425,7 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
         case .installHere: return Localized.text("Update")
         case .restartHere: return Localized.text("Restart it")
         case .openStore: return Localized.text("Open the App Store")
-        case .copyCommand: return Localized.text("Copy the install command")
+        case .copyCommand: return Localized.text("Copy the command")
         case .openPage: return Localized.text("Open")
         case .recheck: return Localized.text("Check again")
         }
@@ -449,7 +449,9 @@ public enum UpdateInvitation: Sendable, Equatable, Codable {
         case .openStore:
             return Localized.text("The App Store installs it — this app cannot update itself.")
         case .copyCommand:
-            return Localized.text("Run this on that machine; nothing here can install it for you.")
+            return Localized.text(
+                "Nothing here can install it. The command does, run in a terminal on the machine "
+                    + "it names.")
         case .openPage, .recheck: return nil
         }
     }

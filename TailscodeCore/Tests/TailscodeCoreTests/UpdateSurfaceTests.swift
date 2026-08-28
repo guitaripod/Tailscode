@@ -141,9 +141,12 @@ extension DeviceStores {
             let release = AppRelease(version: "1.24", provenance: .gitHubRelease, readAt: Self.now)
             let reading = UpdateReadings.app(
                 install: install, release: release, command: "paru -Syu tailscode",
-                checkedAt: Self.now)
+                checkedAt: Self.now,
+                note: "In a terminal, run  paru -Syu tailscode  — then quit and reopen Tailscode.")
             #expect(reading.verdict.offer?.target == "1.24")
             #expect(reading.invitation == .copyCommand("paru -Syu tailscode"))
+            #expect(reading.detail(now: Self.now).contains("paru -Syu tailscode"))
+            #expect(reading.detail(now: Self.now).contains("quit and reopen"))
             #expect(reading.stands())
             #expect(UpdateRollup(readings: [reading]).showsMark)
             #expect(reading.headline == Localized.text("Update to 1.24"))
@@ -152,6 +155,33 @@ extension DeviceStores {
 
         /// A release feed that answered nothing is not a release that answered "nothing newer" —
         /// the row says it could not check, and the offer is only claimed by a check that made it.
+        /// A copy nobody here can name the owner of is handed the release itself — the page with
+        /// the tarball on it — rather than the project's front door, and never a command that
+        /// would fail.
+        @Test func anUnownedSystemCopyIsHandedTheReleasePage() {
+            let install = AppInstall(
+                kind: .packaged, version: "1.22", provenance: .appBundle, packager: "a tarball")
+            let release = AppRelease(
+                version: "1.24", provenance: .gitHubRelease,
+                url: "https://github.com/guitaripod/Tailscode/releases/tag/v1.24", readAt: Self.now)
+            let reading = UpdateReadings.app(
+                install: install, release: release, projectURL: "https://github.com/guitaripod/Tailscode",
+                checkedAt: Self.now, note: "Download the new tarball, then quit and reopen Tailscode.")
+            #expect(reading.invitation == .openPage(url: release.url!))
+            #expect(reading.detail(now: Self.now).contains("tarball"))
+        }
+
+        /// The procedure is an answer to an offer; a current copy has nothing to be told to do.
+        @Test func aCurrentPackagedInstallCarriesNoProcedure() {
+            let install = AppInstall(
+                kind: .packaged, version: "1.24", provenance: .appBundle, packager: "paru")
+            let release = AppRelease(version: "1.24", provenance: .gitHubRelease, readAt: Self.now)
+            let reading = UpdateReadings.app(
+                install: install, release: release, command: "paru -Syu tailscode",
+                checkedAt: Self.now, note: "then quit and reopen Tailscode.")
+            #expect(!reading.detail(now: Self.now).contains("reopen"))
+        }
+
         @Test func aPackagedInstallWhoseFeedFailedSaysItCouldNotCheck() {
             let install = AppInstall(
                 kind: .packaged, version: "1.22", provenance: .appBundle,

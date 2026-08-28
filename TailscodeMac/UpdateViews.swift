@@ -95,7 +95,7 @@ enum UpdateReadingViews {
             return nil
         case .copyCommand(let command):
             RowKit.copyToClipboard(command)
-            return Localized.text("Command copied — run it on that machine.")
+            return Localized.text("Command copied — run it in a terminal.")
         case .recheck:
             Task { await MacUpdateWatch.shared.recheck(reading.component) }
             return Localized.text("Asking %@ again…", reading.title)

@@ -299,7 +299,7 @@ enum UpdateWatch {
             command: handCommand(obstacle: obstacle, checkout: checkout, packaging: packaging),
             projectURL: projectURL,
             checkedAt: fetching ? Date() : UpdateLedger.remembered(.app)?.checkedAt,
-            title: Localized.text("Tailscode on this machine"))
+            title: Localized.text("Tailscode on this machine"), note: packaging?.instructions)
     }
 
     /// The line to hand over, and only for the rows where no press here can finish the job — a

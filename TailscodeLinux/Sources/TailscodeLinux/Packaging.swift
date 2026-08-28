@@ -19,8 +19,12 @@ enum Packaging {
     struct Reading: Sendable, Equatable {
         /// What owns it, in the words a person would use to talk to it.
         let name: String
-        /// The one line that updates it here, or nothing when the manager updates it unasked.
+        /// The one line that updates it on this computer, or nothing when no line here would.
         let command: String?
+        /// The whole of what to do, in one sentence a person can follow without opening anything
+        /// else: where this copy came from, the line to run, and the relaunch that no package
+        /// manager performs for a program that is still running.
+        let instructions: String
     }
 
     static let flatpakID = "io.github.guitaripod.Tailscode"
@@ -32,7 +36,11 @@ enum Packaging {
 
     static func current(executable: String = DesktopGuard.executablePath) -> Reading? {
         if isFlatpak {
-            return Reading(name: "Flatpak", command: "flatpak update \(flatpakID)")
+            return Reading(
+                name: "Flatpak", command: "flatpak update \(flatpakID)",
+                instructions: Localized.text(
+                    "Installed as a Flatpak. In a terminal, run  %@  — then quit and reopen "
+                        + "Tailscode.", "flatpak update \(flatpakID)"))
         }
         guard isSystemPrefix(executable) else { return nil }
         return distribution()
@@ -47,27 +55,37 @@ enum Packaging {
     }
 
     /// Which manager this distribution uses, read from what is on the box rather than from
-    /// `/etc/os-release`, which names a distribution and not the tool that owns this file. An AUR
-    /// helper is preferred over bare pacman where one exists, because the package is in the AUR and
-    /// `pacman -Syu` would not see it.
+    /// `/etc/os-release`, which names a distribution and not the tool that owns this file. The only
+    /// repository the app is published in is the AUR, so only Arch gets a line: an AUR helper where
+    /// one exists, `makepkg` where there is none (bare `pacman -Syu` cannot see the AUR at all), and
+    /// any other system prefix is a tarball or a package Tailscode does not know about, which gets
+    /// the release page rather than a command that would fail.
     private static func distribution() -> Reading {
         let exists = { FileManager.default.isExecutableFile(atPath: $0) }
         for helper in ["/usr/bin/paru", "/usr/bin/yay"] where exists(helper) {
             let name = (helper as NSString).lastPathComponent
-            return Reading(name: name, command: "\(name) -Syu tailscode")
+            let command = "\(name) -Syu tailscode"
+            return Reading(
+                name: Localized.text("the AUR (%@)", name), command: command,
+                instructions: Localized.text(
+                    "Installed from the AUR. In a terminal, run  %@  — then quit and reopen "
+                        + "Tailscode.", command))
         }
         if exists("/usr/bin/pacman") {
-            return Reading(name: "pacman", command: "sudo pacman -Syu tailscode")
+            let command =
+                "git clone https://aur.archlinux.org/tailscode.git && cd tailscode && makepkg -si"
+            return Reading(
+                name: Localized.text("the AUR"), command: command,
+                instructions: Localized.text(
+                    "Installed from the AUR, and no AUR helper is on this machine. In a terminal, "
+                        + "run  %@  — then quit and reopen Tailscode.", command))
         }
-        if exists("/usr/bin/apt") {
-            return Reading(name: "apt", command: "sudo apt update && sudo apt install tailscode")
-        }
-        if exists("/usr/bin/dnf") {
-            return Reading(name: "dnf", command: "sudo dnf upgrade tailscode")
-        }
-        if exists("/usr/bin/zypper") {
-            return Reading(name: "zypper", command: "sudo zypper update tailscode")
-        }
-        return Reading(name: Localized.text("this system's package manager"), command: nil)
+        return Reading(
+            name: Localized.text("a tarball or a package manager Tailscode does not know"),
+            command: nil,
+            instructions: Localized.text(
+                "Tailscode does not know what installed this copy. Download the new tarball from "
+                    + "the release page, unpack it over the old one the same way, then quit and "
+                    + "reopen Tailscode."))
     }
 }

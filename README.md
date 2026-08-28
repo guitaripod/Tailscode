@@ -211,7 +211,7 @@ tar xf tailscode-1.24-linux-x86_64.tar.gz -C ~/.local --strip-components=2
 
 `--strip-components=2`, not 1: the archive members are `./usr/bin/tailscode`, so stripping one level lands the binary at `~/.local/usr/bin`.
 
-Installed either way, the app checks the project's release feed itself and lights the update mark in its own chrome when a newer release exists, handing over your package manager's command (`paru -Syu tailscode`, `pacman -Syu`, …).
+Installed either way, the app checks the project's release feed itself and lights the update mark in its own chrome when a newer release exists. It never installs the update itself: the card spells out the whole procedure for the way this copy was installed — `paru -Syu tailscode` or `yay -Syu tailscode` from the AUR, `flatpak update io.github.guitaripod.Tailscode` for a Flatpak, the release page for a tarball — then quit and reopen Tailscode, because a package manager replaces the file and not the program still running from it.
 
 A Flatpak manifest (`packaging/flatpak/`) is in the repo but **not published** — Tailscode is not on Flathub. Build it from the manifest if you want the sandbox.
 
