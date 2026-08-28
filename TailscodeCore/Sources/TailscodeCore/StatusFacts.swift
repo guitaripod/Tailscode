@@ -143,10 +143,20 @@ public struct StatusFacts: Sendable {
         guard state.status == .running || state.compaction?.isRunning == true else { return nil }
         var opener: ChatMessage?
         for message in state.messages.reversed() {
-            if message.role == .assistant, message.completedAt != nil { break }
+            if message.role == .assistant, Self.isSettled(message, before: opener) { break }
             if message.role == .user { opener = message }
         }
         return (opener ?? state.messages.last(where: { $0.role == .user }))?.createdAt
+    }
+
+    /// Whether an assistant message closed its turn. A stamped `completedAt` says so outright; a
+    /// backend that never stamps one (claude-bridge) leaves nil on every message it ever sent,
+    /// so there a message that is not streaming and already has a later prompt after it is the
+    /// end of an earlier turn rather than the one still running — otherwise every clock would
+    /// count from the first prompt in the chat.
+    private static func isSettled(_ message: ChatMessage, before later: ChatMessage?) -> Bool {
+        if message.completedAt != nil { return true }
+        return !message.isStreaming && later != nil
     }
 
     public static func from(

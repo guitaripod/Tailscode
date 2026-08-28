@@ -542,6 +542,10 @@ struct TurnClockTests {
             completedAt: done ? date.addingTimeInterval(1) : nil)
     }
 
+    private static func streaming(_ id: String, at date: Date) -> ChatMessage {
+        ChatMessage(id: id, role: .assistant, agentType: .openCode, createdAt: date, isStreaming: true)
+    }
+
     private static func state(_ messages: [ChatMessage], running: Bool = true) -> ConversationState {
         ConversationState(
             messages: messages, status: running ? .running : .idle, connection: .live,
@@ -561,7 +565,7 @@ struct TurnClockTests {
         let messages = [
             Self.assistant("a0", at: Self.promptAt.addingTimeInterval(-60), done: true),
             Self.user("u1", at: Self.promptAt),
-            Self.assistant("a1", at: Self.promptAt.addingTimeInterval(5), done: false),
+            Self.streaming("a1", at: Self.promptAt.addingTimeInterval(5)),
             Self.user("u2", at: Self.promptAt.addingTimeInterval(20)),
         ]
         #expect(StatusFacts.turnStart(in: Self.state(messages)) == Self.promptAt)
@@ -572,6 +576,17 @@ struct TurnClockTests {
         let messages = [
             Self.user("u1", at: Self.promptAt),
             Self.assistant("a1", at: Self.promptAt.addingTimeInterval(5), done: true),
+        ]
+        #expect(StatusFacts.turnStart(in: Self.state(messages)) == Self.promptAt)
+    }
+
+    @Test("A backend that never stamps completion still counts from the latest prompt")
+    func unstampedHistoryDoesNotReachBack() {
+        let messages = [
+            Self.user("u0", at: Self.promptAt.addingTimeInterval(-3_600)),
+            Self.assistant("a0", at: Self.promptAt.addingTimeInterval(-3_590), done: false),
+            Self.user("u1", at: Self.promptAt),
+            Self.assistant("a1", at: Self.promptAt.addingTimeInterval(5), done: false),
         ]
         #expect(StatusFacts.turnStart(in: Self.state(messages)) == Self.promptAt)
     }
