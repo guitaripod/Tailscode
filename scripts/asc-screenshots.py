@@ -75,12 +75,16 @@ def upload_one(set_id, path):
 
 
 def main():
+    force = "--force" in sys.argv[1:]
+    only = [a for a in sys.argv[1:] if not a.startswith("--")]
     loc = version_localization()
     for display_type, folder in SETS:
+        if only and display_type not in only:
+            continue
         set_id = screenshot_set(loc, display_type)
         existing = asc.get(f"/v1/appScreenshotSets/{set_id}/appScreenshots").get("data", [])
         have = [x["attributes"]["fileName"] for x in existing]
-        if have == ORDER:
+        if have == ORDER and not force:
             print(f"{display_type} already matches {len(ORDER)} screenshots — skipping")
             continue
         for x in existing:

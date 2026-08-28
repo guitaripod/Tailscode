@@ -47,6 +47,9 @@ IPHONE = [
     ("setup", "10-verified-setup", "Three steps,\neach one verified", "Your tailnet, your machines, no cloud between."),
 ]
 
+# Same story as the iPhone set, told for a display nobody carries in a pocket.
+IPAD = [(m, s, h.replace("in your pocket", "on your iPad"), sub) for m, s, h, sub in IPHONE]
+
 MAC = [
     ("01-conversation", "01-native-on-mac", "Your coding agents, native on the Mac", "Claude Code and opencode over your own tailnet — no browser, no terminal."),
     ("02-split", "02-two-machines", "Two machines, side by side", "Split the window and point the new pane at any server's conversations."),
@@ -128,17 +131,48 @@ def compose_iphone(master, slug, headline, subline):
     return canvas.crop((0, 0, W, H))
 
 
+def content_window(shot, window_h):
+    """The vertical crop of the master that actually shows something.
+
+    An iPad screen is taller than its content: a chat pins to the bottom, Home
+    fills from the top, and a fixed anchor turns one of them into a black band.
+    Score each row by how much it varies, then keep the window that carries the
+    most ink - ties go to the top, so a full screen keeps its status bar.
+    """
+    if shot.height <= window_h:
+        return shot
+    probe = shot.convert("L").resize((48, shot.height))
+    rows = list(probe.getdata())
+    activity = []
+    for y in range(shot.height):
+        row = rows[y * 48:(y + 1) * 48]
+        mean = sum(row) / 48
+        activity.append(sum(abs(v - mean) for v in row))
+    prefix = [0]
+    for a in activity:
+        prefix.append(prefix[-1] + a)
+    best_top, best_sum = 0, -1
+    for top in range(0, shot.height - window_h + 1, 8):
+        s = prefix[top + window_h] - prefix[top]
+        if s > best_sum:
+            best_top, best_sum = top, s
+    return shot.crop((0, best_top, shot.width, best_top + window_h))
+
+
 def compose_ipad(master, slug, headline, subline):
     W, H = 2064, 2752
     canvas = gradient(W, H)
     glow(canvas, (W // 2, -470), 1400, 26)
     draw = ImageDraw.Draw(canvas)
     text_block(draw, 150, 232, headline, subline, 163, 80, 100, "left", W)
-    shot = rounded(Image.open(master).convert("RGB"), 84, 1776)
-    x = (W - shot.width) // 2
     lines = headline.count("\n") + 1
     y = 232 + round(lines * 163 * 1.16) + 100 + round(80 * 1.3 * (subline.count("\n") + 1)) + 150
-    shadow_under(canvas, [x + 12, y + 38, x + shot.width - 12, min(H, y + shot.height)], 84)
+    scale_w = 1776
+    source = Image.open(master).convert("RGB")
+    window_h = round((H - y - 96) * source.width / scale_w)
+    shot = rounded(content_window(source, window_h), 84, scale_w)
+    x = (W - shot.width) // 2
+    shadow_under(canvas, [x + 12, y + 38, x + shot.width - 12, min(H, y + shot.height + 24)], 84)
     canvas.paste(shot.convert("RGB"), (x, y), shot.split()[3])
     return canvas.crop((0, 0, W, H))
 
@@ -175,7 +209,7 @@ def main():
     if "iphone" in wanted:
         emit("iphone", IPHONE_IN, IPHONE, compose_iphone)
     if "ipad" in wanted:
-        emit("ipad", IPAD_IN, IPHONE, compose_ipad)
+        emit("ipad", IPAD_IN, IPAD, compose_ipad)
     if "mac" in wanted:
         emit("mac", MAC_IN, MAC, compose_mac)
 
