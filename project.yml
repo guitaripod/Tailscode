@@ -49,8 +49,8 @@ targetTemplates:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.25"
-        CURRENT_PROJECT_VERSION: "118"
+        MARKETING_VERSION: "1.26"
+        CURRENT_PROJECT_VERSION: "119"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -146,7 +146,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
         MARKETING_VERSION: "1.26"
-        CURRENT_PROJECT_VERSION: "120"
+        CURRENT_PROJECT_VERSION: "121"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -212,7 +212,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
         MARKETING_VERSION: "1.26"
-        CURRENT_PROJECT_VERSION: "120"
+        CURRENT_PROJECT_VERSION: "121"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -256,7 +256,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
         MARKETING_VERSION: "1.26"
-        CURRENT_PROJECT_VERSION: "120"
+        CURRENT_PROJECT_VERSION: "121"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -309,8 +309,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
-        MARKETING_VERSION: "1.25"
-        CURRENT_PROJECT_VERSION: "118"
+        MARKETING_VERSION: "1.26"
+        CURRENT_PROJECT_VERSION: "119"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -336,7 +336,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Tailscode
-        CURRENT_PROJECT_VERSION: "118"
+        CURRENT_PROJECT_VERSION: "119"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
         CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
         ENABLE_APP_SANDBOX: YES

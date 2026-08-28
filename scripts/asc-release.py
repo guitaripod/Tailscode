@@ -15,6 +15,7 @@ cleanly the calls returned.
 
 Usage: python3 scripts/asc-release.py <marketing-version> <build-number>
        python3 scripts/asc-release.py 1.9 25 --no-submit
+       python3 scripts/asc-release.py 1.26 119 --platform=macos   # the Mac train, notes from "<version>-macos"
 """
 import json
 import os
@@ -27,7 +28,7 @@ import asc  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = "6791660932"
-PLATFORM = "IOS"
+PLATFORM = "MAC_OS" if "--platform=macos" in sys.argv else "IOS"
 
 
 def die(message: str) -> NoReturn:
@@ -68,7 +69,8 @@ def write_notes(version_id: str, marketing: str) -> None:
     wearing the 1.5 notes, because leaving the localizations alone looks exactly
     like writing them when nobody checks. A locale the file does not cover falls
     back to en-US and says so, which is a translation debt worth seeing."""
-    notes = json.load(open(os.path.join(ROOT, "docs/release-notes.json"))).get(marketing)
+    book = json.load(open(os.path.join(ROOT, "docs/release-notes.json")))
+    notes = (book.get(f"{marketing}-macos") if PLATFORM == "MAC_OS" else None) or book.get(marketing)
     if not notes:
         die(f"docs/release-notes.json has no entry for {marketing} — write the notes first")
     rows = asc.get(
@@ -183,7 +185,7 @@ def wait_for_build(number: str) -> dict:
 
 
 def main() -> None:
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    args = [a for a in sys.argv[1:] if not a.startswith("--") ]
     if len(args) != 2:
         die("usage: asc-release.py <marketing-version> <build-number>")
     marketing, number = args
