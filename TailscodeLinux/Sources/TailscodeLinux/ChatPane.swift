@@ -807,6 +807,7 @@ final class ChatPane: @unchecked Sendable {
             host?.keepWatching(previousConversation, entry: previousEntry)
         }
         chooser = nil
+        leaveFreshCanvas()
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         stashDraft()
         self.entry = entry
@@ -1167,11 +1168,6 @@ final class ChatPane: @unchecked Sendable {
         lastState = state
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()
-        }
-        if canvasPromptKey != nil, state.status != .running, state.hasLoadedTranscript,
-            !pending.hasInFlight
-        {
-            dropFreshCanvas(animated: isNearBottom())
         }
         if ultracodeInFlight, state.status != .running, state.hasLoadedTranscript {
             ultracodeInFlight = false
@@ -3393,44 +3389,14 @@ final class ChatPane: @unchecked Sendable {
         settle.start(reduceMotion: !RepeatingMotion.allowed, set: set)
     }
 
-    /// The turn ended with room still under it: the room goes, animated when the reader is at the
-    /// bottom and silently otherwise, because dead padding after a finished answer is a lie about
-    /// where the conversation ends.
-    private func dropFreshCanvas(animated: Bool) {
+    /// Leaving the chat takes the room with it; the next one opens on its own end.
+    private func leaveFreshCanvas() {
         canvasSettle?.cancel()
         canvasSettle = nil
         canvasPromptKey = nil
         canvasPromptTop = nil
-        guard canvasPadding > 0 else {
-            setFollowing(true)
-            return
-        }
-        setCanvasPadding(0)
-        guard animated, let scroller = transcriptScroller,
-            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
-        else {
-            setFollowing(true)
-            return
-        }
-        followsBottom = true
-        let settle = FreshCanvasScroll(
-            clock: scroller, adjustment: adjustment,
-            target: {
-                max(
-                    0,
-                    gtk_adjustment_get_upper(adjustment)
-                        - gtk_adjustment_get_page_size(adjustment))
-            }
-        ) { [weak self] in
-            self?.canvasSettle = nil
-            self?.schedulePinCorrector()
-        }
-        canvasSettle = settle
-        settle.start(reduceMotion: !RepeatingMotion.allowed) { [weak self] value in
-            self?.isAutoScrolling = true
-            gtk_adjustment_set_value(adjustment, value)
-            self?.isAutoScrolling = false
-        }
+        if canvasPadding > 0 { setCanvasPadding(0) }
+        setFollowing(true)
     }
 
     /// For the driver: whether the canvas holds, and how much room it made.

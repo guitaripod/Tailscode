@@ -627,24 +627,6 @@ final class ChatViewController: UIViewController {
         }
     }
 
-    /// Room nobody will fill any more goes: the turn ended with the canvas still holding, so the
-    /// padding is dropped — animated when the reader is looking at it, silently when they are up
-    /// the transcript.
-    private func closeFreshCanvas() {
-        guard canvasPrompt != nil else { return }
-        let watching = isNearBottom() && !userScrolledUp
-        canvasPrompt = nil
-        let apply = {
-            self.updateTranscriptInsets()
-            self.collectionView.layoutIfNeeded()
-        }
-        guard watching, !UIAccessibility.isReduceMotionEnabled else {
-            apply()
-            return
-        }
-        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut], animations: apply)
-    }
-
     /// A row this device is holding changed height on its own clock — its caption strip came or
     /// went — so the list is asked to measure it again, and the canvas offset is held through it.
     private func remeasure(_ id: String) {
@@ -2187,7 +2169,6 @@ final class ChatViewController: UIViewController {
             hadLoadedTranscript = true
             refreshSpend()
         }
-        if wasRunning, state.status != .running { closeFreshCanvas() }
         wasRunning = state.status == .running
         if let permission = pendingPermission, permission.id != lastHapticPermissionID {
             lastHapticPermissionID = permission.id

@@ -334,9 +334,6 @@ final class TranscriptViewController: NSViewController {
     /// rose. The server's own row replaces the echo at the same height, so the place is the
     /// prompt's identity through the swap rather than a key that changes under it.
     private var canvasHold: (top: CGFloat, height: CGFloat)?
-    /// Whether the turn the canvas was made for has been seen running, so its ending is told
-    /// from its never having started.
-    private var canvasSawTurn = false
     private static let canvasLog = Logger(subsystem: "com.guitaripod.tailscode", category: "chat")
 
     /// The prompt just sent rises to the top: the padding is made, the follow-the-bottom pin is
@@ -353,7 +350,6 @@ final class TranscriptViewController: NSViewController {
         let padding = FreshCanvas.padding(
             viewport: viewport, prompt: frame.height, below: below)
         canvasHold = (frame.minY, frame.height)
-        canvasSawTurn = false
         followsBottom = false
         clearUnseen()
         canvasPadding = padding
@@ -408,7 +404,6 @@ final class TranscriptViewController: NSViewController {
     private func releaseFreshCanvas(animated: Bool) {
         guard canvasHold != nil || canvasPadding > 0 else { return }
         canvasHold = nil
-        canvasSawTurn = false
         canvasPadding = 0
         applyInsets()
         if animated {
@@ -416,16 +411,6 @@ final class TranscriptViewController: NSViewController {
         } else {
             adjustScroll { $0 }
         }
-    }
-
-    /// A turn that ended — or never started — with the canvas still holding room: the room is
-    /// dropped rather than left as dead space under the last answer.
-    private func settleFreshCanvas(_ state: ConversationState) {
-        guard canvasHold != nil else { return }
-        let running = state.status == .running
-        if running { canvasSawTurn = true }
-        guard !running, canvasSawTurn || pending.isEmpty, !pending.hasInFlight else { return }
-        releaseFreshCanvas(animated: isNearBottom())
     }
 
     func open(_ entry: SessionEntry, backend: any CodingAgentBackend) {
@@ -1625,7 +1610,6 @@ final class TranscriptViewController: NSViewController {
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
-        settleFreshCanvas(state)
         drainQueue()
     }
 
