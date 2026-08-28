@@ -216,7 +216,7 @@ final class TextBubbleCell: UICollectionViewCell {
         }
 
         maxWidth.isActive = isUser
-        leadingPin.isActive = true
+        leadingPin.isActive = !isUser
         trailingPin.isActive = true
         textView.textAlignment = .natural
 
