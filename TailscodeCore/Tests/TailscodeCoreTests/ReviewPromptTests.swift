@@ -10,7 +10,6 @@ extension DeviceStores {
     @Suite("Review prompt policy", .serialized)
     struct ReviewPromptTests {
         private static let keys = [
-            ReviewPromptPolicy.installedAtKey,
             ReviewPromptPolicy.turnsKey,
             ReviewPromptPolicy.lastAskedKey,
         ]
@@ -29,48 +28,35 @@ extension DeviceStores {
             }
         }
 
-        private static func install(_ age: TimeInterval, turns: Int) -> Date {
-            let now = Date()
-            UserDefaults.standard.set(now.timeIntervalSince1970 - age, forKey: ReviewPromptPolicy.installedAtKey)
+        private static func seed(turns: Int) {
             UserDefaults.standard.set(turns, forKey: ReviewPromptPolicy.turnsKey)
-            return now
         }
 
         @Test("Below the turn threshold nothing is due, and every success still counts")
         func turnThreshold() {
             withCleanStore {
-                let now = Self.install(ReviewPromptPolicy.minimumAge + 60, turns: 0)
-                #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
-                #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
-                #expect(ReviewPromptPolicy.successfulTurns == 2)
+                let now = Date()
+                for _ in 1..<ReviewPromptPolicy.minimumTurns {
+                    #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
+                }
+                #expect(ReviewPromptPolicy.successfulTurns == ReviewPromptPolicy.minimumTurns - 1)
                 #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: now))
             }
         }
 
-        @Test("A young install is not due even past the turn threshold")
-        func ageGate() {
+        @Test("A brand-new install is due the moment enough turns have succeeded")
+        func noAgeGate() {
             withCleanStore {
-                let now = Self.install(60, turns: ReviewPromptPolicy.minimumTurns)
-                #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
-            }
-        }
-
-        @Test("The first success anchors the install date once and never again")
-        func installAnchor() {
-            withCleanStore {
-                let anchored = Date(timeIntervalSince1970: 1_000)
-                let later = anchored.addingTimeInterval(90 * 24 * 60 * 60)
-                ReviewPromptPolicy.recordSuccessfulTurn(now: anchored)
-                ReviewPromptPolicy.recordSuccessfulTurn(now: later)
-                #expect(ReviewPromptPolicy.installedAt == anchored)
+                Self.seed(turns: ReviewPromptPolicy.minimumTurns - 1)
+                #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: Date()))
             }
         }
 
         @Test("One ask per cooldown, then the gate opens again")
         func cooldown() {
             withCleanStore {
-                let now = Self.install(
-                    ReviewPromptPolicy.minimumAge + 60, turns: ReviewPromptPolicy.minimumTurns)
+                let now = Date()
+                Self.seed(turns: ReviewPromptPolicy.minimumTurns)
                 #expect(ReviewPromptPolicy.recordSuccessfulTurn(now: now))
                 ReviewPromptPolicy.markAsked(now: now)
                 #expect(
@@ -82,22 +68,28 @@ extension DeviceStores {
             }
         }
 
-        @Test("A trophy waives the turn count but never the age gate")
+        @Test("A trophy waives the turn count entirely, but not the cooldown")
         func trophyWaivesTurns() {
             withCleanStore {
-                let now = Self.install(
-                    ReviewPromptPolicy.minimumAge + 60, turns: ReviewPromptPolicy.minimumTurns - 1)
+                let now = Date()
                 #expect(ReviewPromptPolicy.noteTrophyEarned(now: now))
-
-                let young = Self.install(60, turns: ReviewPromptPolicy.minimumTurns)
-                #expect(!ReviewPromptPolicy.noteTrophyEarned(now: young))
+                ReviewPromptPolicy.markAsked(now: now)
+                #expect(!ReviewPromptPolicy.noteTrophyEarned(now: now.addingTimeInterval(60)))
             }
         }
 
-        @Test("Without an install anchor a trophy is not due")
-        func noAnchor() {
+        @Test("Returning to finished work is due after two successful turns, not five")
+        func returnToFinishedWork() {
             withCleanStore {
-                #expect(!ReviewPromptPolicy.noteTrophyEarned(now: Date()))
+                let now = Date()
+                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
+                Self.seed(turns: ReviewPromptPolicy.minimumTurnsForReturn - 1)
+                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
+                Self.seed(turns: ReviewPromptPolicy.minimumTurnsForReturn)
+                #expect(ReviewPromptPolicy.noteReturnedToFinishedWork(now: now))
+                #expect(!ReviewPromptPolicy.recordSuccessfulTurn(now: now))
+                ReviewPromptPolicy.markAsked(now: now)
+                #expect(!ReviewPromptPolicy.noteReturnedToFinishedWork(now: now.addingTimeInterval(60)))
             }
         }
     }

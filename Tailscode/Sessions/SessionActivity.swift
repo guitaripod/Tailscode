@@ -104,6 +104,9 @@ final class SessionActivity {
         }
         statuses[sessionID] = status
         if status == .idle, previous != .idle {
+            if UIApplication.shared.applicationState != .active {
+                ReviewPromptCoordinator.shared.turnFinishedWhileAway()
+            }
             let body = String(localized: "Your agent finished.")
             if remotePushCovers(profileID: profileID) {
                 recordMissed(

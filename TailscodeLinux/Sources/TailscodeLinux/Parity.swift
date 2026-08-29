@@ -128,6 +128,7 @@ enum ParityManifest {
         case .summonAnywhere: return .implemented("Summon")
         case .designBoards: return .implemented("DesignBoardWindow")
         case .linkEmbeds: return .gap("transcript links render as touchable text; the preview card owes a GTK widget and a metadata fetcher, which the iOS LinkEmbedCell already carries and Core can share once it exists")
+        case .supporterInvitation: return .notApplicable("no store and no purchase on Linux — there is nothing to invite anyone to buy")
         case .proUnlock:
             return .notApplicable(
                 "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")

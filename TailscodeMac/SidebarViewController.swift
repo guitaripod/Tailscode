@@ -40,6 +40,8 @@ final class SidebarViewController: NSViewController {
     var onToast: ((String) -> Void)?
     /// The standing mark was touched: the Update Center is the whole of what it leads to.
     var onOpenUpdates: (() -> Void)?
+    /// The supporter card's one button: the Pro window is the whole of what it leads to.
+    var onOpenPro: (() -> Void)?
     /// Which session the focused pane is actually showing. With a tiling tree, "already open"
     /// is a fact about the focused pane, not about this list's last click — an empty pane must
     /// be able to receive the row the previous pane still shows.
@@ -61,6 +63,7 @@ final class SidebarViewController: NSViewController {
     /// therefore on screen before this launch has asked anybody anything. It watches the ledger
     /// itself, so nothing above it has to remember to tell it.
     private let updateFooter = UpdateFooterView()
+    private let supporterCard = SupporterCardView()
     private let bulkBar = SidebarBulkBar()
     private let orb = PresenceOrbView()
     /// Whether any open pane's composer is burning the ultracode aura, answered by the hub — the
@@ -161,8 +164,9 @@ final class SidebarViewController: NSViewController {
             object: nil)
 
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
+        supporterCard.onUnlock = { [weak self] in self?.onOpenPro?() }
 
-        let footer = FillingStack(views: [bulkBar, updateFooter, usageFooter, orb])
+        let footer = FillingStack(views: [bulkBar, supporterCard, updateFooter, usageFooter, orb])
         footer.spacing = MacTheme.Spacing.xs
         footer.translatesAutoresizingMaskIntoConstraints = false
 

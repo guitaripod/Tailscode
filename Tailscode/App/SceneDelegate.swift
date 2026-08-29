@@ -51,6 +51,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         PushRegistrar.reregisterIfNeeded()
         UpdateMonitor.checkIfDue()
         HapticEngine.shared.prepare()
+        ReviewPromptCoordinator.shared.returnedToFinishedWork()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

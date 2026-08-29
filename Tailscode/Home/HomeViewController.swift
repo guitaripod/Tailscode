@@ -423,6 +423,12 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(updatesDidChange),
             name: UpdateLedger.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(supporterDidChange),
+            name: SupporterInvitation.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(supporterDidChange),
+            name: ProStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(updateVideoMark),
             name: ForgeRunner.didChange, object: nil)
         for name: Notification.Name in [
@@ -894,6 +900,10 @@ final class HomeViewController: UIViewController {
                         in: .alerts),
                     toSection: .alerts)
             }
+        }
+        if SupporterInvitation.isDue(isPro: ProStore.shared.isPro) {
+            snapshot.appendSections([.supporter])
+            snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
         }
         let missed = ActivityInbox.ordered(limit: 4).shown
         if !missed.isEmpty {
@@ -1446,7 +1456,7 @@ final class HomeViewController: UIViewController {
                 switch id {
                 case .live: section = Self.liveSection()
                 case .projects: section = Self.projectsSection()
-                case .alerts: section = Self.listSection(withHeader: false)
+                case .alerts, .supporter: section = Self.listSection(withHeader: false)
                 case .missed: section = Self.listSection()
                 case .saved, .recent, .usage: section = Self.listSection()
                 }
@@ -1705,6 +1715,12 @@ final class HomeViewController: UIViewController {
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             cell, _, card in cell.configure(card)
         }
+        let supporterCell = UICollectionView.CellRegistration<SupporterCell, SupporterCard> {
+            [weak self] cell, _, card in
+            cell.configure(card)
+            cell.onUnlock = { [weak self] in self?.openSupporterOffer() }
+            cell.onNotNow = { [weak self] in self?.declineSupporterOffer() }
+        }
         let missedCell = UICollectionView.CellRegistration<MissedActivityCell, MissedActivity> {
             cell, _, item in cell.configure(item)
         }
@@ -1736,6 +1752,9 @@ final class HomeViewController: UIViewController {
             case .alert(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: alertCell, for: indexPath, item: card)
+            case .supporter(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: supporterCell, for: indexPath, item: card)
             case .missed(let item):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: missedCell, for: indexPath, item: item)
@@ -1770,7 +1789,7 @@ final class HomeViewController: UIViewController {
                 let section = self.dataSource.sectionIdentifier(for: indexPath.section)
             else { return }
             switch section {
-            case .alerts:
+            case .alerts, .supporter:
                 break
             case .missed:
                 view.configure(
@@ -2977,6 +2996,36 @@ extension HomeViewController: UIDropInteractionDelegate {
     }
 }
 
+extension HomeViewController {
+    /// The store's price for the unlock, fetched once the card is due so the button can name it.
+    private static var fetchedProPrice: String?
+
+    private var proPrice: String? {
+        if let price = Self.fetchedProPrice { return price }
+        Task { @MainActor [weak self] in
+            guard let product = await ProStore.shared.products().pro else { return }
+            Self.fetchedProPrice = product.displayPrice
+            self?.applySnapshot()
+        }
+        return nil
+    }
+
+    @objc private func supporterDidChange() {
+        if ProStore.shared.isPro { SupporterInvitation.settle() }
+        applySnapshot()
+    }
+
+    private func openSupporterOffer() {
+        Theme.Haptics.tap()
+        ProUpgradeViewController.present(from: self)
+    }
+
+    private func declineSupporterOffer() {
+        Theme.Haptics.selection()
+        SupporterInvitation.dismiss()
+    }
+}
+
 extension HomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
@@ -2985,6 +3034,8 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
+        case .supporter:
+            break
         case .missed(let item):
             openMissed(item)
         case .live(let card):
@@ -3051,7 +3102,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: true)
         case .live(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .alert, .missed, .usage, .placeholder, .usagePlaceholder:
+        case .alert, .supporter, .missed, .usage, .placeholder, .usagePlaceholder:
             return nil
         }
     }

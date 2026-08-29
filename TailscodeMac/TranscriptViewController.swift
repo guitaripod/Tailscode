@@ -1783,6 +1783,10 @@ final class TranscriptViewController: NSViewController {
         }
         if wasRunningForHaptics && state.status != .running {
             MacHaptics.shared.play(.received)
+            if state.messages.last?.isAnswerless != true {
+                MacReviewPrompt.shared.turnCompleted()
+                SupporterInvitation.recordSuccessfulTurn()
+            }
         }
         wasRunningForHaptics = state.status == .running
         if let permission = state.pendingPermissions.first, permission.id != hapticPermissionID {

@@ -133,6 +133,7 @@ enum ParityManifest {
         case .designBoards: return .implemented("DesignBoardViewController")
         case .linkEmbeds: return .implemented("LinkEmbedCell")
         case .proUnlock: return .implemented("ProStore")
+        case .supporterInvitation: return .implemented("SupporterCell")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
         case .videoForge: return .implemented("VideoForgeViewController")
         case .forgeEntry: return .implemented("presentVideo")

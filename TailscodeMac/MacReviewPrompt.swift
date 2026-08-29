@@ -1,14 +1,14 @@
+import AppKit
 import StoreKit
 import TailscodeCore
-import UIKit
 
-/// The one place the app asks for a review. The policy — when an ask is due — is Core's
-/// (`ReviewPromptPolicy`); this coordinator only carries it out with the platform's own call,
-/// debouncing each trigger so the ask lands on the person reading the answer rather than on
-/// the frame the answer arrived — or the frame the app came back.
+/// The one place the Mac asks for a review — the phone's `ReviewPromptCoordinator`, shape for
+/// shape. The policy is Core's (`ReviewPromptPolicy`); this object only carries it out with the
+/// platform's own call, debouncing each trigger so the ask lands on the person reading the
+/// answer rather than on the frame it arrived, or the frame the app came back to the front.
 @MainActor
-final class ReviewPromptCoordinator {
-    static let shared = ReviewPromptCoordinator()
+final class MacReviewPrompt {
+    static let shared = MacReviewPrompt()
 
     private var pending: Task<Void, Never>?
     private var finishedWhileAway = false
@@ -46,8 +46,9 @@ final class ReviewPromptCoordinator {
 
     private func askIfDue(_ evaluation: () -> Bool) {
         guard evaluation() else { return }
+        guard let host = NSApp.keyWindow?.contentViewController ?? NSApp.mainWindow?.contentViewController
+        else { return }
         ReviewPromptPolicy.markAsked()
-        AppLogger.ui.info("review: asking")
-        SKStoreReviewController.requestReview()
+        AppStore.requestReview(in: host)
     }
 }

@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app is the moment to re-dial the stream and re-list the chats.
     func applicationDidBecomeActive(_ notification: Notification) {
         main?.handleDidBecomeActive()
+        MacReviewPrompt.shared.returnedToFinishedWork()
     }
 
     /// Switching away is the ordinary way this app stops being asked, and the one people do

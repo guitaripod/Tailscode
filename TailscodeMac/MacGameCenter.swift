@@ -121,6 +121,9 @@ final class MacGameCenter: NSObject {
         let submitted = defaults.dictionary(forKey: Self.scoresKey) as? [String: Int] ?? [:]
 
         let grown = analytics.trophies.filter { $0.percent > (reported[$0.id] ?? 0) + 0.5 }
+        if grown.contains(where: { $0.percent >= 100 }) {
+            MacReviewPrompt.shared.trophyEarned()
+        }
         let achievements = grown.map { trophy in
             let achievement = GKAchievement(identifier: trophy.id)
             achievement.percentComplete = trophy.percent

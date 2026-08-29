@@ -3,11 +3,12 @@ import CodingAgentKit
 import UIKit
 
 enum HomeSection: Hashable {
-    case alerts, missed, live, saved, projects, recent, usage
+    case alerts, supporter, missed, live, saved, projects, recent, usage
 }
 
 enum HomeItem: Hashable {
     case alert(ServerAlertCard)
+    case supporter(SupporterCard)
     case missed(MissedActivity)
     case live(LiveCard)
     case saved(SavedCard)
@@ -33,6 +34,8 @@ extension HomeItem {
         switch self {
         case .alert(let card):
             hasher.combine(card.name)
+        case .supporter(let card):
+            hasher.combine(card.price)
         case .missed(let item):
             hasher.combine(item.title)
             hasher.combine(item.reason)
@@ -635,6 +638,91 @@ final class ServerAlertCell: GlassCardCell {
         accessibilityLabel = String(localized: "\(card.name) is unreachable")
         isAccessibilityElement = true
         accessibilityTraits = .button
+    }
+}
+
+/// The one supporter card, keyed by nothing but its own existence: the price is content, so a
+/// store answer reconfigures the card rather than replacing it.
+struct SupporterCard: Hashable {
+    let price: String?
+
+    static func == (lhs: SupporterCard, rhs: SupporterCard) -> Bool { true }
+    func hash(into hasher: inout Hasher) {}
+}
+
+final class SupporterCell: GlassCardCell {
+    var onUnlock: (() -> Void)?
+    var onNotNow: (() -> Void)?
+
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let bodyLabel = UILabel()
+    private let unlockButton = PrimaryButton(title: ProOffer.title)
+    private let notNowButton = UIButton(type: .system)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        iconView.image = UIImage(
+            systemName: "heart.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
+        iconView.tintColor = Theme.Color.accent
+        iconView.contentMode = .scaleAspectFit
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+
+        titleLabel.font = Theme.Ramp.font(.cardTitle)
+        titleLabel.textColor = Theme.Color.label
+        titleLabel.numberOfLines = 0
+        titleLabel.text = SupporterInvitation.title
+
+        bodyLabel.font = Theme.Ramp.font(.panelFootnote)
+        bodyLabel.textColor = Theme.Color.secondaryLabel
+        bodyLabel.numberOfLines = 0
+        bodyLabel.text = SupporterInvitation.body
+
+        var notNow = Theme.Glass.buttonConfiguration()
+        notNow.title = SupporterInvitation.secondaryAction
+        notNow.baseForegroundColor = Theme.Color.secondaryLabel
+        notNow.cornerStyle = .large
+        notNow.buttonSize = .large
+        notNowButton.configuration = notNow
+
+        unlockButton.addAction(UIAction { [weak self] _ in self?.onUnlock?() }, for: .touchUpInside)
+        notNowButton.addAction(UIAction { [weak self] _ in self?.onNotNow?() }, for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [iconView, titleLabel])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
+
+        let buttons = UIStackView(arrangedSubviews: [unlockButton, notNowButton])
+        buttons.axis = .horizontal
+        buttons.spacing = Theme.Spacing.s
+        buttons.distribution = .fillProportionally
+
+        let column = UIStackView(arrangedSubviews: [header, bodyLabel, buttons])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        column.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+            column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
+        ])
+        isAccessibilityElement = false
+        accessibilityElements = [titleLabel, bodyLabel, unlockButton, notNowButton]
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool {
+        get { false }
+        set {}
+    }
+
+    func configure(_ card: SupporterCard) {
+        unlockButton.setTitle(SupporterInvitation.primaryAction(price: card.price))
     }
 }
 

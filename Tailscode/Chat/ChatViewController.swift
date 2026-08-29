@@ -2152,6 +2152,7 @@ final class ChatViewController: UIViewController {
             } else {
                 Theme.Haptics.received()
                 ReviewPromptCoordinator.shared.turnCompleted()
+                SupporterInvitation.recordSuccessfulTurn()
             }
             refreshSpend()
             refreshGit()
