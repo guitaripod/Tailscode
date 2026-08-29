@@ -147,6 +147,7 @@ final class MainWindow: @unchecked Sendable {
         Task.detached { DesktopIntegration.ensureInstalled() }
         observeMissedActivity()
 
+        Trace.stamp("present begin")
         splitHost = SplitHost(host: self)
         if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
             let snapshot = SplitSnapshot.decode(raw)
@@ -187,6 +188,7 @@ final class MainWindow: @unchecked Sendable {
         toastOverlay = overlay
         adw_application_window_set_content(ptr(window), overlay)
         gtk_window_present(ptr(window))
+        Trace.stamp("window presented")
 
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
@@ -205,6 +207,7 @@ final class MainWindow: @unchecked Sendable {
                     identifier: identifier)
             })
         applyPanePreferences()
+        Trace.stampFirstFrame(of: ptr(overlay), "input box")
         let cachedEntries = SessionListCache.load()
         if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: [], fromNetwork: false) }
         startRefreshing()

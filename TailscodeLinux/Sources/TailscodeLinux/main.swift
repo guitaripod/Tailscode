@@ -7,6 +7,7 @@ import TailscodeCore
 /// Wayland or X to render into, and that is exactly where this app most needs to be checked.
 /// Read before anything asks a preference: the durable copy of the app's own state lives in a
 /// file, not in the executable-keyed defaults store a reinstall abandons.
+Trace.stamp("main")
 SettingsFile.load()
 
 /// The keys for panes this client no longer contains. The registry is Core's and every client
@@ -158,6 +159,7 @@ Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     DraftStore.flush()
 }
 
+Trace.stamp("gtk run")
 let status = g_application_run(ptr(app), 0, nil)
 g_object_unref(app)
 exit(status)
