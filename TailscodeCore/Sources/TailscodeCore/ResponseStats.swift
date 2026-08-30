@@ -18,6 +18,13 @@ import Foundation
 /// The rate is computed from ``MessageUsage/written`` and never from a total. A turn that read a
 /// hundred thousand cached tokens and wrote two hundred did not run at five hundred tokens a
 /// second; only the tokens the model produced were produced at the model's speed.
+///
+/// Where the server also stamped when the first output token landed (``MessagePart/startedAt``),
+/// the wait is split the way DeepSeek's harness splits it: the time to that first token is its own
+/// figure — the queue and the prompt being read — and the rate is measured only over the
+/// generation that followed, because dividing an answer by a wait that includes thirty seconds of
+/// prefill reports the prompt's size as the model's slowness. A backend that stamps nothing gets
+/// the honest fallback: one rate over the whole wait, and no first-token figure invented for it.
 public struct ResponseStats: Sendable, Hashable {
     public let facts: [ResponseStat]
     /// Whether the money was priced from a rate table rather than billed. Always true today —
@@ -50,16 +57,42 @@ public struct ResponseStats: Sendable, Hashable {
         var facts: [ResponseStat] = []
 
         let usage = turn.usage
-        if let usage, usage.written > 0, let elapsed, elapsed >= Self.rateFloor {
-            let rate = Double(usage.written) / elapsed
+        let firstToken = Self.firstToken(of: turn, promptedAt: promptedAt)
+        let generation = Self.generation(of: turn)
+        if let usage, usage.written > 0 {
+            let measured = generation ?? elapsed
+            if let measured, measured >= Self.rateFloor {
+                let rate = Double(usage.written) / measured
+                let detail =
+                    generation != nil
+                    ? Localized.text(
+                        "%@ tokens written in %@ of generation, measured from the first output token so the prompt being read does not count against the model.",
+                        StatusFacts.tokens(usage.written), Self.clock(measured))
+                    : Localized.text(
+                        "%@ tokens written in %@ — the tokens the model produced, over the whole wait.",
+                        StatusFacts.tokens(usage.written), Self.clock(measured))
+                let ledger = ModelSpeedLedger.shared
+                ledger.record(
+                    turnID: turn.id, model: turn.modelID ?? "", tokens: usage.written,
+                    seconds: measured)
+                let average = ledger.sentence(model: turn.modelID)
+                facts.append(
+                    ResponseStat(
+                        kind: .speed, symbol: "gauge.with.dots.needle.67percent", glyph: "⏱",
+                        value: Localized.text("%@ tok/s", Self.rate(rate)),
+                        label: Localized.text("output speed"),
+                        detail: average.map { "\(detail) \($0)" } ?? detail))
+            }
+        }
+
+        if let firstToken, firstToken >= 0.05 {
             facts.append(
                 ResponseStat(
-                    kind: .speed, symbol: "gauge.with.dots.needle.67percent", glyph: "⏱",
-                    value: Localized.text("%@ tok/s", Self.rate(rate)),
-                    label: Localized.text("output speed"),
+                    kind: .firstToken, symbol: "bolt", glyph: "⚡",
+                    value: Self.clock(firstToken),
+                    label: Localized.text("to first token"),
                     detail: Localized.text(
-                        "%@ tokens written in %@ — the tokens the model produced, over the whole wait.",
-                        StatusFacts.tokens(usage.written), Self.clock(elapsed))))
+                        "From the prompt going out to the first token the model wrote — the queue and the prompt being read, before any generating began.")))
         }
 
         if let elapsed {
@@ -151,6 +184,31 @@ public struct ResponseStats: Sendable, Hashable {
         return span > 0 ? span : nil
     }
 
+    /// When the model's first output token landed, read off the server's own part stamps. Only
+    /// the parts the model wrote carry one — a tool part's clock times the tool — and the
+    /// earliest of them is the seam between waiting and reading.
+    private static func firstOutputAt(_ turn: ChatMessage) -> Date? {
+        turn.parts.compactMap(\.startedAt).min()
+    }
+
+    /// The wait before the first output token, against the same start the elapsed uses. Nil where
+    /// the server stamped no parts, and nil rather than nonsense where the stamps disagree with
+    /// the message clock.
+    private static func firstToken(of turn: ChatMessage, promptedAt: Date?) -> TimeInterval? {
+        guard let first = firstOutputAt(turn) else { return nil }
+        let start = min(promptedAt ?? turn.createdAt, turn.createdAt)
+        let span = first.timeIntervalSince(start)
+        return span > 0 ? span : nil
+    }
+
+    /// The generating span alone: first output token to the turn settling, both the server's own
+    /// stamps. Nil where either stamp is missing, and the rate falls back to the whole wait.
+    private static func generation(of turn: ChatMessage) -> TimeInterval? {
+        guard let first = firstOutputAt(turn), let completed = turn.completedAt else { return nil }
+        let span = completed.timeIntervalSince(first)
+        return span > 0 ? span : nil
+    }
+
     private static func readDetail(_ usage: MessageUsage) -> String {
         guard usage.cacheRead > 0 else {
             return Localized.text("Tokens this turn was handed, all of them fresh.")
@@ -194,6 +252,7 @@ public struct ResponseStats: Sendable, Hashable {
 public struct ResponseStat: Sendable, Hashable, Identifiable {
     public enum Kind: String, Sendable, CaseIterable {
         case speed
+        case firstToken
         case elapsed
         case written
         case read
@@ -246,6 +305,6 @@ public enum ResponseStatsSetting {
 
     public static var explanation: String {
         Localized.text(
-            "Puts what each answer took under it — speed, elapsed, tokens, estimated cost, and which model wrote it. Every figure is the server's own; nothing is timed here.")
+            "Puts what each answer took under it — speed, time to first token, elapsed, tokens, estimated cost, and which model wrote it. Every figure is the server's own; nothing is timed here.")
     }
 }

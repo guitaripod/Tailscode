@@ -112,6 +112,51 @@ struct ResponseStatsTests {
         #expect(ResponseStats.read(messages, at: 0) == nil)
     }
 
+    @Test("A stamped first token splits the wait: TTFT its own figure, the rate generation-only")
+    func decodeSplit() {
+        let stamped = ChatMessage(
+            id: "a2", role: .assistant, agentType: .openCode,
+            parts: [
+                MessagePart(
+                    id: "text", kind: .text("x"), startedAt: start.addingTimeInterval(10))
+            ],
+            createdAt: start.addingTimeInterval(1),
+            completedAt: start.addingTimeInterval(30),
+            usage: MessageUsage(output: 400))
+        let stats = ResponseStats(turn: stamped, promptedAt: start)
+        #expect(value(stats, .speed) == "20 tok/s", "400 tokens over the 20s of generation")
+        #expect(value(stats, .firstToken) == "10s")
+        #expect(value(stats, .elapsed) == "30s")
+        let detail = stats?.facts.first { $0.kind == .speed }?.detail ?? ""
+        #expect(detail.contains("generation"))
+    }
+
+    @Test("The earliest stamped part wins, and tool parts never carry one")
+    func earliestStampWins() {
+        let stamped = ChatMessage(
+            id: "a3", role: .assistant, agentType: .openCode,
+            parts: [
+                MessagePart(
+                    id: "think", kind: .reasoning("hmm"), startedAt: start.addingTimeInterval(4)),
+                MessagePart(
+                    id: "text", kind: .text("x"), startedAt: start.addingTimeInterval(12)),
+            ],
+            createdAt: start,
+            completedAt: start.addingTimeInterval(24),
+            usage: MessageUsage(output: 100))
+        let stats = ResponseStats(turn: stamped, promptedAt: start)
+        #expect(value(stats, .firstToken) == "4.0s")
+        #expect(value(stats, .speed) == "5.0 tok/s", "100 tokens over the 20s after the stamp")
+    }
+
+    @Test("A backend that stamps nothing gets no first-token figure and the whole-wait rate")
+    func unstampedFallsBack() {
+        let stats = ResponseStats(turn: turn(), promptedAt: start)
+        #expect(value(stats, .firstToken) == nil)
+        let detail = stats?.facts.first { $0.kind == .speed }?.detail ?? ""
+        #expect(detail.contains("whole wait"))
+    }
+
     @Test("A turn's clock keeps the second it took")
     func clockPrecision() {
         #expect(ResponseStats.clock(1.44) == "1.4s")
