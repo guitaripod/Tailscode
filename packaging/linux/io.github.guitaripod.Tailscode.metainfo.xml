@@ -69,6 +69,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.31" date="2026-08-30">
+      <description>
+        <p>The answer pushes the page up as it is written. Sending still lifts the prompt to the top of the window, and the transcript now holds still until the written words actually reach the bottom — it used to start scrolling early, chasing text that was laid out but not yet shown. A picture sent with a message rises with the words instead of hiding a line above the top edge, a message sent is on screen the instant it is sent even while the conversation is still loading, and a short conversation no longer reads as already full when a prompt rises.</p>
+      </description>
+    </release>
     <release version="1.29" date="2026-08-28">
       <description>
         <p>The model picker starts with the machine: every server is a tab, and under it the providers are a filter — one chip per subscription or key, so you read what Ollama Cloud, OpenCode Go or OpenRouter will run as one list and a pick goes through that door. A model wears its own name (gpt-oss-120b, never a bare GPT), and a heading's chevron always points the way the list is folded.</p>
