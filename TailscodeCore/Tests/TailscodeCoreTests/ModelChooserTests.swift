@@ -152,4 +152,58 @@ struct ModelChooserTests {
         #expect(chooser.catalogSummary.contains("last known"))
         #expect(chooser.catalogSummary.contains("1 model"))
     }
+
+    @Test("Shut families are a list, not an empty one")
+    func foldedCatalogIsNotEmpty() {
+        let models = (0..<(ModelChooser.foldFrom + 6)).map { index in
+            ModelInfo(
+                id: "model-\(index)", name: index % 2 == 0 ? "GPT \(index)" : "Claude \(index)",
+                providerID: "openrouter")
+        }
+        let chooser = ModelChooser(models: models, selected: nil)
+        #expect(chooser.rows.isEmpty == false || chooser.hidden > 0)
+        #expect(chooser.emptyResult == nil)
+        var narrowed = chooser
+        narrowed.search("zzzzzz-nothing")
+        #expect(narrowed.emptyResult != nil)
+    }
+
+    @Test("A machine's state is one of four faces and the doors know their kind")
+    func stateAndDoorKinds() {
+        #expect(
+            ModelMachine(
+                profileID: "a", title: "a", backend: .openCode, count: 0, localCount: 0,
+                isCurrent: true, isReachable: nil
+            ).state == .asking)
+        #expect(
+            ModelMachine(
+                profileID: "a", title: "a", backend: .openCode, count: 3, localCount: 0,
+                isCurrent: true, isReachable: false
+            ).state == .remembered)
+        #expect(ModelMachineState.notAnswering.tone == .danger)
+        #expect(ModelDoorKind.classify("opencode-go") == .subscription)
+        #expect(ModelDoorKind.classify("openrouter") == .gateway)
+        #expect(ModelDoorKind.classify("deepseek") == .key)
+        #expect(ModelDoor(providerID: "ollama", title: "Ollama", count: 1, isLocal: true).kind == .local)
+    }
+
+    @Test("A briefing names the machine, its state, its catalog and its doors")
+    func briefing() {
+        let source = ModelSource(
+            profileID: "p1", name: "arch", backend: .openCode,
+            models: [
+                ModelInfo(id: "gpt-5", name: "GPT-5", providerID: "openrouter"),
+                ModelInfo(id: "gpt-5", name: "GPT-5", providerID: "openai"),
+                ModelInfo(id: "qwen3", name: "Qwen 3", providerID: "ollama"),
+            ], isCurrent: true, allowsServerDefault: true, acceptsAnyModelID: false,
+            isReachable: true)
+        let chooser = ModelChooser(sources: [source], selected: nil)
+        let card = chooser.briefing(machine: "p1")
+        #expect(card?.tone == .live)
+        #expect(card?.sections.map(\.heading).count == 3)
+        #expect(card?.sections.last?.lines.count == 3)
+        let door = chooser.briefing(door: "openrouter")
+        #expect(door?.sections.first?.lines.first?.value == ModelDoorKind.gateway.title)
+        #expect(chooser.briefing(door: "nope") == nil)
+    }
 }

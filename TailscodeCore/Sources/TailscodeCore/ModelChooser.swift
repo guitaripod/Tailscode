@@ -353,7 +353,31 @@ public struct ModelMachine: Sendable, Hashable, Identifiable {
     public let isCurrent: Bool
     public let isReachable: Bool?
 
+    public init(
+        profileID: String, title: String, backend: AgentType, count: Int, localCount: Int,
+        isCurrent: Bool, isReachable: Bool?
+    ) {
+        self.profileID = profileID
+        self.title = title
+        self.backend = backend
+        self.count = count
+        self.localCount = localCount
+        self.isCurrent = isCurrent
+        self.isReachable = isReachable
+    }
+
     public var id: String { profileID }
+
+    /// The state the tab is in, as one word with a tone — the dot a chip wears and the line a
+    /// briefing leads with. Answering needs no dot; a machine that has not answered yet is quiet
+    /// rather than wrong; one that refused is danger, and what it shows is named as remembered.
+    public var state: ModelMachineState {
+        switch isReachable {
+        case .some(true): return .answering
+        case .none: return count == 0 ? .asking : .answering
+        case .some(false): return count == 0 ? .notAnswering : .remembered
+        }
+    }
 
     /// Under the name: what the machine amounts to, or the state it is in when it cannot say.
     public var detail: String {
@@ -397,6 +421,9 @@ public struct ModelDoor: Sendable, Hashable, Identifiable {
     }
 
     public var id: String { providerID }
+
+    /// What kind of door this is — where the request goes and who bills it.
+    public var kind: ModelDoorKind { isLocal ? .local : ModelDoorKind.classify(providerID) }
 
     public var detail: String {
         isLocal
@@ -888,8 +915,13 @@ public struct ModelChooser: Sendable, Equatable {
 
     /// Said when nothing survived, naming the machine as well as the word — a reader who forgot
     /// which tab is showing would otherwise read an empty list as a catalog that lost a model.
+    ///
+    /// Empty means nothing under any heading — not no rows: past `foldFrom` the families arrive
+    /// shut and `rows` is legitimately empty while a dozen headings each say how many they hold,
+    /// and a chooser that read that as "runs none of these models" drew the refusal over the
+    /// very list it was refusing.
     public var emptyResult: String? {
-        guard rows.isEmpty else { return nil }
+        guard sections.allSatisfy({ $0.count == 0 }) else { return nil }
         guard !query.isEmpty else {
             if let shownDoor {
                 return Localized.text("%@ runs none of these models", shownDoor.title)
@@ -2055,5 +2087,393 @@ public enum ModelChooserCheck {
             expect(ModelChooser.command(for: chord) == expected, "key \(keyval)/\(state)")
         }
         return failures
+    }
+}
+
+
+/// The state a machine's tab is in, with the tone a chip paints its dot in. Every client reads
+/// the same four faces so a server that stopped answering looks the same on three desks.
+public enum ModelMachineState: Sendable, Hashable {
+    case answering
+    case asking
+    case notAnswering
+    /// Refused the ask, but a list from before is still on show.
+    case remembered
+
+    public enum Tone: Sendable, Hashable { case live, quiet, danger, attention }
+
+    public var tone: Tone {
+        switch self {
+        case .answering: return .live
+        case .asking: return .quiet
+        case .notAnswering: return .danger
+        case .remembered: return .attention
+        }
+    }
+
+    /// Whether a chip should wear a dot at all: an answering machine needs no mark.
+    public var wearsDot: Bool { self != .answering }
+
+    public var word: String {
+        switch self {
+        case .answering: return Localized.text("Answering")
+        case .asking: return Localized.text("Asking…")
+        case .notAnswering: return Localized.text("Not answering")
+        case .remembered: return Localized.text("Not answering · last known list")
+        }
+    }
+
+    /// What the state means for a person about to pick, said once in the briefing.
+    public var explanation: String {
+        switch self {
+        case .answering:
+            return Localized.text(
+                "This server answered the last ask for its catalog, so the list is what it will run right now.")
+        case .asking:
+            return Localized.text(
+                "The catalog has been asked for and has not come back yet. The list fills in the moment it does.")
+        case .notAnswering:
+            return Localized.text(
+                "The server refused or could not be reached, and nothing is remembered from before. Check that it is running and on the tailnet; models appear when it comes back.")
+        case .remembered:
+            return Localized.text(
+                "The server refused or could not be reached, so this is the list it gave last time. A pick here goes out when it is back — a model it has since lost will be refused then.")
+        }
+    }
+}
+
+/// Where a door leads. The provider keys a server names are config words ("opencode-go",
+/// "openrouter"); a person choosing between two doors to the same model wants to know which one
+/// is the plan they pay for monthly, which is a key that bills per token, which is a gateway
+/// fronting somebody else's house, and which runs on the machine itself.
+public enum ModelDoorKind: Sendable, Hashable {
+    case local
+    case subscription
+    case key
+    case gateway
+    case free
+
+    public static func classify(_ providerID: String) -> ModelDoorKind {
+        switch providerID.lowercased() {
+        case "ollama", "arch", "vllm", "lmstudio", "llamacpp": return .local
+        case "opencode-go", "kimi-code", "claude", "anthropic-plan", "bonsai", "github-copilot":
+            return .subscription
+        case "openrouter", "ollama-cloud", "together", "groq", "fireworks": return .gateway
+        case "opencode", "opencode-free", "server": return .free
+        default: return .key
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .local: return Localized.text("Runs on the server")
+        case .subscription: return Localized.text("Subscription")
+        case .key: return Localized.text("API key")
+        case .gateway: return Localized.text("Gateway")
+        case .free: return Localized.text("Free tier")
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .local: return "desktopcomputer"
+        case .subscription: return "creditcard"
+        case .key: return "key"
+        case .gateway: return "arrow.triangle.branch"
+        case .free: return "gift"
+        }
+    }
+
+    /// One-column glyph for the text desks.
+    public var glyph: String {
+        switch self {
+        case .local: return "⌂"
+        case .subscription: return "◉"
+        case .key: return "⚿"
+        case .gateway: return "⇶"
+        case .free: return "○"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .local:
+            return Localized.text(
+                "The model runs in a process on the server's own hardware. Nothing leaves the machine and nothing is billed; speed is the machine's, and the list is whatever is pulled onto it.")
+        case .subscription:
+            return Localized.text(
+                "A plan paid for monthly. Requests spend from its windows rather than per token, so a wall here is a window used up, not money gone — it opens again on its own clock.")
+        case .key:
+            return Localized.text(
+                "A key the server holds for this provider's own API. Every request is billed per token to that account, and the catalog is whatever the provider offers to it.")
+        case .gateway:
+            return Localized.text(
+                "One key, many houses: the gateway routes each request to the provider that actually runs the model and bills it on one account. The same model may also be reachable through its own door, which is usually cheaper or faster.")
+        case .free:
+            return Localized.text(
+                "No key and no plan: the provider offers these models without an account, usually rate-limited and sometimes retired without notice.")
+        }
+    }
+}
+
+/// One card that explains a tab or a door: what it is, the state it is in, and exactly what is
+/// behind it. The words are Core's so the three clients cannot disagree; a client draws headings,
+/// lines and a footnote, and adds nothing.
+public struct ChooserBriefing: Sendable, Hashable {
+    public struct Line: Sendable, Hashable {
+        public let label: String
+        public let value: String
+        /// An SF Symbol name where the platform has symbols; the text desks draw `glyph`.
+        public let symbol: String?
+        public let glyph: String?
+
+        public init(label: String, value: String, symbol: String? = nil, glyph: String? = nil) {
+            self.label = label
+            self.value = value
+            self.symbol = symbol
+            self.glyph = glyph
+        }
+    }
+
+    public struct Section: Sendable, Hashable {
+        public let heading: String
+        public let lines: [Line]
+        public let footnote: String?
+
+        public init(heading: String, lines: [Line], footnote: String? = nil) {
+            self.heading = heading
+            self.lines = lines
+            self.footnote = footnote
+        }
+    }
+
+    public let title: String
+    public let subtitle: String
+    public let tone: ModelMachineState.Tone?
+    public let lead: String
+    public let sections: [Section]
+
+    public init(
+        title: String, subtitle: String, tone: ModelMachineState.Tone?, lead: String,
+        sections: [Section]
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.tone = tone
+        self.lead = lead
+        self.sections = sections
+    }
+}
+
+extension ModelChooser {
+    /// The card behind a machine's tab.
+    public func briefing(machine profileID: String) -> ChooserBriefing? {
+        guard let machine = machines.first(where: { $0.profileID == profileID }),
+            let source = sources.first(where: { $0.profileID == profileID })
+        else { return nil }
+        let mine = candidates.filter { $0.profileID == profileID }
+        var sections: [ChooserBriefing.Section] = []
+
+        var state = [
+            ChooserBriefing.Line(
+                label: Localized.text("State"), value: machine.state.word,
+                symbol: "circle.fill", glyph: "●")
+        ]
+        if machine.isCurrent {
+            state.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("This chat"),
+                    value: Localized.text("A pick here changes this conversation in place"),
+                    symbol: "bubble.left", glyph: "▸"))
+        } else {
+            state.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("A pick here"),
+                    value: Localized.text("Starts a new chat on %@", machine.title),
+                    symbol: "plus.bubble", glyph: "+"))
+        }
+        sections.append(
+            ChooserBriefing.Section(
+                heading: Localized.text("Now"), lines: state,
+                footnote: machine.state.explanation))
+
+        var catalog = [
+            ChooserBriefing.Line(
+                label: Localized.text("Models"), value: Self.modelCount(mine.count),
+                symbol: "cpu", glyph: "#")
+        ]
+        let families = Set(mine.filter { !$0.isLocal }.map(\.family.key)).count
+        if families > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Families"), value: "\(families)",
+                    symbol: "square.stack.3d.up", glyph: "≡"))
+        }
+        if machine.localCount > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("On its own hardware"),
+                    value: Self.modelCount(machine.localCount), symbol: "desktopcomputer",
+                    glyph: "⌂"))
+        }
+        let vision = mine.filter { $0.capabilities?.imageInput == true }.count
+        if vision > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("See pictures"), value: Self.modelCount(vision),
+                    symbol: "eye", glyph: "◉"))
+        }
+        let pdf = mine.filter { $0.capabilities?.pdfInput == true }.count
+        if pdf > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Read PDFs"), value: Self.modelCount(pdf),
+                    symbol: "doc.text", glyph: "▤"))
+        }
+        let levelled = mine.filter { !$0.variants.isEmpty }.count
+        if levelled > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Take an effort level"), value: Self.modelCount(levelled),
+                    symbol: "dial.medium", glyph: "◔"))
+        }
+        let walled = mine.filter { walls[$0.selection.rawValue] != nil }.count
+        if walled > 0 {
+            catalog.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Used up"), value: Self.modelCount(walled),
+                    symbol: "exclamationmark.octagon", glyph: "!"))
+        }
+        sections.append(
+            ChooserBriefing.Section(
+                heading: Localized.text("Catalog"), lines: catalog,
+                footnote: Self.catalogFootnote(source)))
+
+        let doorsHere = doors(on: profileID)
+        if !doorsHere.isEmpty {
+            sections.append(
+                ChooserBriefing.Section(
+                    heading: Localized.text("Doors"),
+                    lines: doorsHere.map { door in
+                        ChooserBriefing.Line(
+                            label: door.title,
+                            value: Self.modelCount(door.count) + " · " + door.kind.title,
+                            symbol: door.kind.symbol, glyph: door.kind.glyph)
+                    },
+                    footnote: Localized.text(
+                        "A door is the account a request goes through — a plan, a key, a gateway, or the machine itself. The same model behind two doors is one row with a chevron; a pick made under a door goes through that door.")))
+        }
+        return ChooserBriefing(
+            title: machine.title, subtitle: Self.backendLine(source.backend),
+            tone: machine.state.tone, lead: Self.backendStory(source.backend), sections: sections)
+    }
+
+    /// The card behind a door's chip.
+    public func briefing(door providerID: String) -> ChooserBriefing? {
+        guard let door = doors.first(where: { $0.providerID == providerID }),
+            let machine = shownMachine
+        else { return nil }
+        let through = wholeMachine.compactMap { candidate in
+            candidate.offers.first { $0.providerID == providerID }.map { (candidate, $0) }
+        }
+        var lines = [
+            ChooserBriefing.Line(
+                label: Localized.text("Kind"), value: door.kind.title, symbol: door.kind.symbol,
+                glyph: door.kind.glyph),
+            ChooserBriefing.Line(
+                label: Localized.text("Models"), value: Self.modelCount(door.count), symbol: "cpu",
+                glyph: "#"),
+        ]
+        let alsoElsewhere = through.filter { $0.0.offers.count > 1 }.count
+        if alsoElsewhere > 0 {
+            lines.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Also behind another door"),
+                    value: Self.modelCount(alsoElsewhere), symbol: "arrow.triangle.swap",
+                    glyph: "⇄"))
+        }
+        let walled = through.filter { walls[$0.1.selection.rawValue] != nil }.count
+        if walled > 0 {
+            lines.append(
+                ChooserBriefing.Line(
+                    label: Localized.text("Used up"), value: Self.modelCount(walled),
+                    symbol: "exclamationmark.octagon", glyph: "!"))
+        }
+        var sections = [
+            ChooserBriefing.Section(
+                heading: Localized.text("This door"), lines: lines,
+                footnote: door.kind.explanation)
+        ]
+        var byFamily: [ModelFamily: Int] = [:]
+        for (candidate, _) in through { byFamily[candidate.family, default: 0] += 1 }
+        let families = byFamily.keys.sorted().prefix(8)
+        if !families.isEmpty {
+            sections.append(
+                ChooserBriefing.Section(
+                    heading: Localized.text("Behind it"),
+                    lines: families.map { family in
+                        ChooserBriefing.Line(
+                            label: family.title, value: Self.modelCount(byFamily[family] ?? 0))
+                    },
+                    footnote: byFamily.count > families.count
+                        ? Localized.text("and %@ more families", "\(byFamily.count - families.count)")
+                        : nil))
+        }
+        return ChooserBriefing(
+            title: door.title,
+            subtitle: Localized.text("on %@", machine.title), tone: nil,
+            lead: Localized.text(
+                "Narrowing to this door lists only what %@ runs through it, and a pick goes through it.",
+                machine.title), sections: sections)
+    }
+
+    /// The doors of any machine, not only the shown one, for a briefing opened on another tab.
+    private func doors(on profileID: String) -> [ModelDoor] {
+        var counts: [String: Int] = [:]
+        var local: Set<String> = []
+        for candidate in candidates where candidate.profileID == profileID {
+            for offer in candidate.offers {
+                counts[offer.providerID, default: 0] += 1
+                if offer.isLocal { local.insert(offer.providerID) }
+            }
+        }
+        return counts.map { id, count in
+            ModelDoor(
+                providerID: id, title: ProviderIdentity.displayName(id), count: count,
+                isLocal: local.contains(id))
+        }
+        .sorted { lhs, rhs in
+            lhs.count == rhs.count ? lhs.title < rhs.title : lhs.count > rhs.count
+        }
+    }
+
+    static func backendLine(_ backend: AgentType) -> String {
+        switch backend {
+        case .openCode: return Localized.text("opencode server")
+        case .claudeCode: return Localized.text("Claude Code, through claude-bridge")
+        case .omp: return Localized.text("Oh My Pi server")
+        }
+    }
+
+    /// Where this kind of server gets its catalog, said once so a missing model is a fact about
+    /// configuration rather than a mystery about the app.
+    static func backendStory(_ backend: AgentType) -> String {
+        switch backend {
+        case .openCode:
+            return Localized.text(
+                "opencode lists every provider configured on that machine — its opencode.json, the keys in its environment, and any local runtime it found — and every model each of them offers. A model missing here is missing from that machine's configuration, not from Tailscode.")
+        case .claudeCode:
+            return Localized.text(
+                "Claude Code answers to one account, so the catalog is a shortlist of Anthropic's models rather than every legal answer: the CLI runs whatever --model it is handed, and a model id typed into the search is offered as-is.")
+        case .omp:
+            return Localized.text(
+                "Oh My Pi lists the providers its own configuration reaches. A model missing here is missing from that machine's setup.")
+        }
+    }
+
+    static func catalogFootnote(_ source: ModelSource) -> String? {
+        guard source.acceptsAnyModelID else { return nil }
+        return Localized.text(
+            "This server also runs model ids it never listed — type one into the search and it is offered as-is.")
     }
 }

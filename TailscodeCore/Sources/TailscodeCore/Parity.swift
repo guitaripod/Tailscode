@@ -162,6 +162,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case videoLane
     case autoResume
     case freshCanvas
+    case chooserBriefing
 }
 
 /// What one client says about one capability. `implemented` names the wiring point — the type or
@@ -399,6 +400,10 @@ public enum CapabilityRegistry {
             id: .userEcho, area: "transcript", title: "Sent words appear at once, and the ink says what became of them",
             spec:
                 "A sent message renders immediately as a pending row built from what is in memory — never from a rebuild of the transcript, which is what made a long conversation swallow a send — and the row carries its phase from PendingSend. The phase is told by ink rather than by a word: a message on the wire is drawn faint (PendingSendReading.ink → .faint, opacity under one) with the words fully readable, and the colour fills in when the server has it (.full) — the transition a person watches is the bubble arriving rather than a caption changing from sending to sent under it, and neither word is ever drawn. A line appears only when the wait has become news (caption is nil until then): still sending past slowAfter, waiting for the machine to start past quietAfter — and a client wakes its clock for that moment (nextCaptionChange) rather than ticking under a row with nothing to say. A failure keeps the words at full strength in the danger tone, quotes the server's reason, and offers send-again/edit/discard. The state is spoken in words to a screen reader (PendingSendReading.state), which cannot read ink. Retired only when the server's account grows the message it stood in for."),
+        CapabilityDefinition(
+            id: .chooserBriefing, area: "composer", title: "A tab and a door explain themselves",
+            spec:
+                "Every machine tab in the model chooser wears its state as a colour (ModelMachineState: answering needs no dot, asking is quiet, not answering is danger, a remembered list is attention) and every door knows what kind of door it is (ModelDoorKind: runs on the server, subscription, API key, gateway, free tier — classified from the provider key, local by fact). Holding or right-clicking a chip opens its card (ModelChooser.briefing(machine:)/briefing(door:) → ChooserBriefing): what the server is and where its catalog comes from (opencode lists what that machine configured; Claude Code is a shortlist and runs any id), the state in words with what it means for a pick, what a pick there does, exactly what is behind it — models, families, on its own hardware, which can see pictures or read PDFs or take an effort level, how many are used up — and every door with its count and kind, or for a door its kind explained, what is behind it by family, and how many of its models are also behind another door. The words are Core's; a client draws headings, lines and footnotes. An empty list is one with nothing under any heading, never one whose families are folded shut — the refusal used to be drawn over the very list it was refusing."),
         CapabilityDefinition(
             id: .freshCanvas, area: "transcript", title: "A sent prompt rises to the top and the answer streams onto an empty page",
             spec:

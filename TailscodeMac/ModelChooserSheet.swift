@@ -294,7 +294,12 @@ final class ModelChooserSheet: NSObject {
                 machineStrip.addArrangedSubview(
                     MachineChip(
                         title: machine.title, count: machine.count, detail: machine.detail,
-                        dot: Self.dot(machine.isReachable), selected: index == chooser.machineIndex
+                        dot: Self.dot(machine.state), selected: index == chooser.machineIndex,
+                        onInfo: { [weak self] anchor in
+                            guard let self, let card = self.chooser.briefing(machine: machine.profileID)
+                            else { return }
+                            self.presentBriefing(card, from: anchor)
+                        }
                     ) { [weak self] in
                         guard let self, self.chooser.setMachine(machine.profileID) else { return }
                         self.machineChanged()
@@ -322,8 +327,14 @@ final class ModelChooserSheet: NSObject {
         for (index, door) in chooser.doors.enumerated() {
             doorStrip.addArrangedSubview(
                 MachineChip(
-                    title: door.title, count: door.count, detail: door.detail, dot: nil,
-                    selected: index + 1 == chooser.doorIndex
+                    title: door.title, count: door.count, detail: door.detail,
+                    dot: door.kind == .local ? MacTheme.Color.info : nil,
+                    selected: index + 1 == chooser.doorIndex,
+                    onInfo: { [weak self] anchor in
+                        guard let self, let card = self.chooser.briefing(door: door.providerID)
+                        else { return }
+                        self.presentBriefing(card, from: anchor)
+                    }
                 ) { [weak self] in
                     guard let self, self.chooser.setDoor(door.providerID) else { return }
                     self.machineChanged()
@@ -331,12 +342,21 @@ final class ModelChooserSheet: NSObject {
         }
     }
 
-    private static func dot(_ reachable: Bool?) -> NSColor? {
-        switch reachable {
-        case .some(true): return nil
-        case .some(false): return MacTheme.Color.danger
-        case .none: return MacTheme.Color.tertiaryLabel
-        }
+    private static func dot(_ state: ModelMachineState) -> NSColor? {
+        guard state.wearsDot else { return nil }
+        return BriefingPanelViewController.colour(state.tone)
+    }
+
+    private var briefingPopover: NSPopover?
+
+    /// The card behind a chip, in a popover off the chip itself.
+    private func presentBriefing(_ card: ChooserBriefing, from anchor: NSView) {
+        briefingPopover?.close()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = BriefingPanelViewController(briefing: card)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        briefingPopover = popover
     }
 
     private func machineChanged() {
@@ -517,12 +537,15 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
 @MainActor
 private final class MachineChip: NSButton {
     private let onPress: () -> Void
+    private let onInfo: ((NSView) -> Void)?
 
     init(
         title: String, count: Int, detail: String, dot: NSColor?, selected: Bool,
+        onInfo: ((NSView) -> Void)? = nil,
         onPress: @escaping () -> Void
     ) {
         self.onPress = onPress
+        self.onInfo = onInfo
         super.init(frame: .zero)
         setButtonType(.momentaryPushIn)
         bezelStyle = .accessoryBarAction
@@ -558,6 +581,121 @@ private final class MachineChip: NSButton {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     @objc private func pressed() { onPress() }
+
+    /// A right click asks what is behind the chip rather than choosing it.
+    override func rightMouseDown(with event: NSEvent) {
+        guard let onInfo else { return super.rightMouseDown(with: event) }
+        let menu = NSMenu()
+        let item = NSMenuItem(
+            title: Localized.text("About %@…", title), action: #selector(info), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    @objc private func info() { onInfo?(self) }
+}
+
+/// The card behind a tab or a door — Core's `ChooserBriefing` drawn as headings, lines and
+/// footnotes in one column, the state line in the state's own tone.
+@MainActor
+final class BriefingPanelViewController: NSViewController {
+    private let briefing: ChooserBriefing
+
+    init(briefing: ChooserBriefing) {
+        self.briefing = briefing
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    static func colour(_ tone: ModelMachineState.Tone) -> NSColor {
+        switch tone {
+        case .live: return MacTheme.Color.success
+        case .quiet: return MacTheme.Color.tertiaryLabel
+        case .danger: return MacTheme.Color.danger
+        case .attention: return MacTheme.Color.warning
+        }
+    }
+
+    override func loadView() {
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.s
+        column.edgeInsets = NSEdgeInsets(
+            top: MacTheme.Spacing.l, left: MacTheme.Spacing.l, bottom: MacTheme.Spacing.l,
+            right: MacTheme.Spacing.l)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        column.addArrangedSubview(label(briefing.title, .panelTitle, MacTheme.Color.label))
+        column.addArrangedSubview(label(briefing.subtitle, .panelLabel, MacTheme.Color.secondaryLabel))
+        column.addArrangedSubview(wrapped(briefing.lead, MacTheme.Color.secondaryLabel))
+        for (index, section) in briefing.sections.enumerated() {
+            column.setCustomSpacing(MacTheme.Spacing.l, after: column.arrangedSubviews.last!)
+            column.addArrangedSubview(
+                label(section.heading.uppercased(), .metricLabel, MacTheme.Color.secondaryLabel))
+            for (row, line) in section.lines.enumerated() {
+                let tint =
+                    index == 0 && row == 0 && briefing.tone != nil
+                    ? Self.colour(briefing.tone!) : MacTheme.Color.tertiaryLabel
+                column.addArrangedSubview(self.line(line, tint: tint))
+            }
+            if let footnote = section.footnote {
+                column.addArrangedSubview(wrapped(footnote, MacTheme.Color.tertiaryLabel))
+            }
+        }
+        let host = NSView()
+        host.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: host.topAnchor),
+            column.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            column.widthAnchor.constraint(equalToConstant: 380 * MacTheme.UIScale.factor),
+        ])
+        view = host
+    }
+
+    private func label(_ text: String, _ role: TypeRole, _ colour: NSColor) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = MacTheme.Ramp.font(role)
+        field.textColor = colour
+        return field
+    }
+
+    private func wrapped(_ text: String, _ colour: NSColor) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = MacTheme.Ramp.font(.cardBody)
+        field.textColor = colour
+        field.preferredMaxLayoutWidth = 340 * MacTheme.UIScale.factor
+        return field
+    }
+
+    private func line(_ line: ChooserBriefing.Line, tint: NSColor) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = MacTheme.Spacing.s
+        if let symbol = line.symbol,
+            let image = NSImage(systemSymbolName: symbol, accessibilityDescription: line.label)
+        {
+            let glyph = NSImageView(image: image)
+            glyph.contentTintColor = tint
+            glyph.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            glyph.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            row.addArrangedSubview(glyph)
+        }
+        let name = label(line.label, .rowTitle, MacTheme.Color.label)
+        name.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(name)
+        let value = label(line.value, .rowDetail, MacTheme.Color.secondaryLabel)
+        value.alignment = .right
+        value.lineBreakMode = .byWordWrapping
+        value.maximumNumberOfLines = 2
+        value.preferredMaxLayoutWidth = 220 * MacTheme.UIScale.factor
+        row.addArrangedSubview(value)
+        row.widthAnchor.constraint(equalToConstant: 340 * MacTheme.UIScale.factor).isActive = true
+        return row
+    }
 }
 
 /// A family heading with what it holds, counted — the one place the provider count still belongs,

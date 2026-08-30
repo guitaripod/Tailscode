@@ -90,6 +90,8 @@ final class ModelPickerViewController: UIViewController {
         above.translatesAutoresizingMaskIntoConstraints = false
         machineStrip.onPick = { [weak self] index in self?.pickMachine(index) }
         doorStrip.onPick = { [weak self] index in self?.pickDoor(index) }
+        machineStrip.onInfo = { [weak self] index in self?.briefMachine(index) }
+        doorStrip.onInfo = { [weak self] index in self?.briefDoor(index) }
         consequence.numberOfLines = 0
         consequence.adjustsFontForContentSizeCategory = true
         consequence.isAccessibilityElement = true
@@ -140,6 +142,20 @@ final class ModelPickerViewController: UIViewController {
             detail: String(localized: "Every provider this server reaches"), dot: nil)
         doorStrip.render(
             [every] + chooser.doors.map(ChipStripView.Chip.init), selected: chooser.doorIndex)
+    }
+
+    private func briefMachine(_ index: Int) {
+        guard chooser.machines.indices.contains(index),
+            let card = chooser.briefing(machine: chooser.machines[index].profileID)
+        else { return }
+        ChooserBriefingViewController.present(card, from: self)
+    }
+
+    private func briefDoor(_ index: Int) {
+        guard index > 0, let door = chooser.doors[safe: index - 1],
+            let card = chooser.briefing(door: door.providerID)
+        else { return }
+        ChooserBriefingViewController.present(card, from: self)
     }
 
     private func pickMachine(_ index: Int) {
@@ -821,17 +837,20 @@ private final class ChipStripView: UIScrollView {
         init(_ machine: ModelMachine) {
             self.init(
                 title: machine.title, count: machine.count, detail: machine.detail,
-                dot: machine.isReachable == true
-                    ? nil
-                    : (machine.isReachable == false ? Theme.Color.danger : Theme.Color.tertiaryLabel))
+                dot: machine.state.wearsDot
+                    ? ChooserBriefingViewController.colour(machine.state.tone) : nil)
         }
 
         init(_ door: ModelDoor) {
-            self.init(title: door.title, count: door.count, detail: door.detail, dot: nil)
+            self.init(
+                title: door.title, count: door.count, detail: door.detail,
+                dot: door.kind == .local ? Theme.Color.info : nil)
         }
     }
 
     var onPick: ((Int) -> Void)?
+    /// A long press, or the context menu, on a chip: the card that explains it.
+    var onInfo: ((Int) -> Void)?
     private let row = UIStackView()
 
     init() {
@@ -862,6 +881,14 @@ private final class ChipStripView: UIScrollView {
         for (index, chip) in chips.enumerated() {
             let button = Self.button(chip, selected: index == selected)
             button.addAction(UIAction { [weak self] _ in self?.onPick?(index) }, for: .touchUpInside)
+            button.menu = UIMenu(children: [
+                UIAction(
+                    title: String(localized: "About \(chip.title)"),
+                    image: UIImage(systemName: "info.circle")
+                ) { [weak self] _ in self?.onInfo?(index) }
+            ])
+            button.showsMenuAsPrimaryAction = false
+            button.accessibilityHint = String(localized: "Hold for what is behind it")
             row.addArrangedSubview(button)
         }
         layoutIfNeeded()

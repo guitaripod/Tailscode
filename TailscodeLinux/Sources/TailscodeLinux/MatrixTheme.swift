@@ -163,6 +163,9 @@ enum MatrixTheme {
         .glyph-needs { color: \(warn); }
         .glyph-error { color: \(danger); }
         .glyph-pending { color: \(textDim); }
+        .glyph-ok { color: \(accent); }
+        .glyph-warn { color: \(warn); }
+        .section-title { \(t(.metricLabel)) color: \(textDim); }
         .fact-good .subtitle { color: alpha(\(accent), 0.85); opacity: 1; }
         .fact-warn .subtitle { color: \(warn); opacity: 1; }
         .fact-bad .subtitle { color: \(danger); opacity: 1; }

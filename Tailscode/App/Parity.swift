@@ -58,6 +58,7 @@ enum ParityManifest {
         case .transcriptFind: return .implemented("runFind")
         case .userEcho: return .implemented("PendingSendCell")
         case .freshCanvas: return .implemented("openFreshCanvas")
+        case .chooserBriefing: return .implemented("ChooserBriefingViewController")
         case .vimComposer: return .notApplicable("a touch composer; modal editing presumes a hardware keyboard")
         case .slashCompletion: return .implemented("SlashCommandPalette")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

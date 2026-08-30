@@ -162,7 +162,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.addClass(button, "flat")
             Gtk.addClass(button, "model-scope")
             let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-            if let dotTone = Self.reachabilityTone(machine.isReachable) {
+            if let dotTone = Self.stateTone(machine.state) {
                 let dot = Gtk.label("●", css: "model-machine-dot", selectable: false)
                 Gtk.addClass(dot, dotTone)
                 gtk_widget_set_valign(dot, GTK_ALIGN_CENTER)
@@ -184,6 +184,12 @@ final class ModelChooserWindow: @unchecked Sendable {
                     self.refresh(keepingScroll: false)
                 }
             }
+            Gtk.onRightClick(button) { [weak self] x, y in
+                Gtk.onMain { [weak self] in
+                    guard let self, let card = self.chooser.briefing(machine: profileID) else { return }
+                    Self.showBriefing(card, on: self.strip, x: x, y: y)
+                }
+            }
             machineChips.append((profileID, UInt(bitPattern: button)))
             gtk_box_append(ptr(strip), button)
         }
@@ -201,11 +207,14 @@ final class ModelChooserWindow: @unchecked Sendable {
         let every = (
             id: String?.none, title: Localized.text("All"),
             count: chooser.doors.reduce(0) { $0 + $1.count },
-            detail: Localized.text("Every provider this server reaches"))
+            detail: Localized.text("Every provider this server reaches"), kind: ModelDoorKind?.none)
         let doors =
             [every]
             + chooser.doors.map {
-                (id: $0.providerID as String?, title: $0.title, count: $0.count, detail: $0.detail)
+                (
+                    id: $0.providerID as String?, title: $0.title, count: $0.count,
+                    detail: $0.detail, kind: $0.kind as ModelDoorKind?
+                )
             }
         for (index, door) in doors.enumerated() {
             let button = gtk_button_new()!
@@ -213,12 +222,24 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.addClass(button, "model-scope")
             let label = gtk_label_new(nil)!
             let key = index <= 9 ? "  <span alpha=\"40%\">⌥\(index)</span>" : ""
+            let mark = door.kind == .local ? "<span class=\"x\">⌂</span> " : ""
             gtk_label_set_markup(
                 op(label),
-                PangoMarkdown.escape(door.title) + "  <span alpha=\"60%\">\(door.count)</span>" + key)
+                mark + PangoMarkdown.escape(door.title) + "  <span alpha=\"60%\">\(door.count)</span>"
+                    + key)
             gtk_button_set_child(ptr(button), label)
             gtk_widget_set_tooltip_text(button, door.detail)
             let providerID = door.id
+            if let providerID {
+                Gtk.onRightClick(button) { [weak self] x, y in
+                    Gtk.onMain { [weak self] in
+                        guard let self, let card = self.chooser.briefing(door: providerID) else {
+                            return
+                        }
+                        Self.showBriefing(card, on: self.doorStrip, x: x, y: y)
+                    }
+                }
+            }
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
                     guard let self, self.chooser.setDoor(providerID) else { return }
@@ -232,12 +253,81 @@ final class ModelChooserWindow: @unchecked Sendable {
 
     /// A server that is not answering wears the danger dot, one that has not answered yet the
     /// quiet one, and one that is answering needs no dot at all.
-    private static func reachabilityTone(_ reachable: Bool?) -> String? {
-        switch reachable {
-        case .some(false): return "glyph-error"
-        case .none: return "glyph-pending"
-        case .some(true): return nil
+    private static func stateTone(_ state: ModelMachineState) -> String? {
+        guard state.wearsDot else { return nil }
+        return toneClass(state.tone)
+    }
+
+    static func toneClass(_ tone: ModelMachineState.Tone) -> String {
+        switch tone {
+        case .live: return "glyph-ok"
+        case .quiet: return "glyph-pending"
+        case .danger: return "glyph-error"
+        case .attention: return "glyph-warn"
         }
+    }
+
+    /// The card behind a chip, as a popover off the strip it sits in: Core's headings, lines and
+    /// footnotes in one column, the state line in the state's own tone.
+    static func showBriefing(
+        _ card: ChooserBriefing, on anchor: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double
+    ) {
+        let popover = gtk_popover_new()!
+        gtk_widget_set_parent(popover, anchor)
+        var rect = GdkRectangle(x: gint(x), y: gint(y), width: 1, height: 1)
+        gtk_popover_set_pointing_to(ptr(popover), &rect)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.margins(column, top: 10, bottom: 10, leading: 12, trailing: 12)
+        gtk_widget_set_size_request(column, 380, -1)
+        gtk_box_append(ptr(column), Gtk.label(card.title, css: "row-title", selectable: false))
+        gtk_box_append(ptr(column), Gtk.label(card.subtitle, css: "row-detail", selectable: false))
+        let lead = Gtk.label(card.lead, css: "row-detail", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(lead), 60)
+        gtk_box_append(ptr(column), lead)
+        for (index, section) in card.sections.enumerated() {
+            let heading = Gtk.label(section.heading.uppercased(), css: "section-title", selectable: false)
+            Gtk.margins(heading, top: 10)
+            gtk_box_append(ptr(column), heading)
+            for (row, line) in section.lines.enumerated() {
+                let item = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+                let glyph = Gtk.label(line.glyph ?? "·", css: "row-detail", selectable: false)
+                gtk_widget_set_size_request(glyph, 16, -1)
+                if index == 0, row == 0, let tone = card.tone {
+                    Gtk.addClass(glyph, toneClass(tone))
+                }
+                gtk_box_append(ptr(item), glyph)
+                let name = Gtk.label(line.label, css: "row-title", selectable: false)
+                gtk_widget_set_hexpand(name, 1)
+                gtk_label_set_xalign(op(name), 0)
+                gtk_box_append(ptr(item), name)
+                let value = Gtk.label(line.value, css: "row-detail", wrap: true, selectable: false)
+                gtk_label_set_max_width_chars(op(value), 36)
+                gtk_label_set_xalign(op(value), 1)
+                gtk_box_append(ptr(item), value)
+                gtk_box_append(ptr(column), item)
+            }
+            if let footnote = section.footnote {
+                let note = Gtk.label(footnote, css: "row-detail", wrap: true, selectable: false)
+                gtk_label_set_max_width_chars(op(note), 60)
+                Gtk.margins(note, top: 4)
+                gtk_box_append(ptr(column), note)
+            }
+        }
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_max_content_height(op(scroller), 560)
+        gtk_scrolled_window_set_propagate_natural_height(op(scroller), 1)
+        gtk_scrolled_window_set_propagate_natural_width(op(scroller), 1)
+        gtk_scrolled_window_set_child(op(scroller), column)
+        gtk_popover_set_child(ptr(popover), scroller)
+        let bits = UInt(bitPattern: popover)
+        Gtk.connect(UnsafeMutableRawPointer(popover), "closed") {
+            Gtk.onMain {
+                guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+                gtk_widget_unparent(ptr(raw) as UnsafeMutablePointer<GtkWidget>)
+            }
+        }
+        gtk_popover_popup(ptr(popover))
     }
 
     private func buildBand() {
