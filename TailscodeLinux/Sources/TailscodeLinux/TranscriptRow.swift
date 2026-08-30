@@ -231,6 +231,16 @@ struct TranscriptRow: Hashable {
     let key: String
     let kind: Kind
 
+    /// Whether this row is part of what the person sent — the words, or a picture clipped to
+    /// them — which is the block that rises to the top when a prompt goes.
+    var isPromptBlock: Bool {
+        switch kind {
+        case .userText, .pendingSend: return true
+        case .file(_, let mine): return mine
+        default: return false
+        }
+    }
+
     static func searchText(for call: ToolCall) -> String {
         let summary = call.summary
         return [

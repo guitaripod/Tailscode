@@ -1485,6 +1485,27 @@ int tailscode_label_reveal(
     return total;
 }
 
+double tailscode_label_revealed_height(GtkWidget *label, int visible) {
+    if (!label || !GTK_IS_LABEL(label)) return -1;
+    PangoLayout *layout = gtk_label_get_layout(GTK_LABEL(label));
+    if (!layout) return -1;
+    int offset_x = 0, offset_y = 0;
+    gtk_label_get_layout_offsets(GTK_LABEL(label), &offset_x, &offset_y);
+    if (visible <= 0) return offset_y;
+    const char *text = pango_layout_get_text(layout);
+    if (!text) return -1;
+    long total = g_utf8_strlen(text, -1);
+    if (visible >= total) {
+        int width = 0, height = 0;
+        pango_layout_get_pixel_size(layout, &width, &height);
+        return offset_y + height;
+    }
+    const char *edge = g_utf8_offset_to_pointer(text, visible - 1);
+    PangoRectangle pos;
+    pango_layout_index_to_pos(layout, (int)(edge - text), &pos);
+    return offset_y + (double)(pos.y + pos.height) / PANGO_SCALE;
+}
+
 #include <math.h>
 
 #define TAILSCODE_ORB_BLOBS 8

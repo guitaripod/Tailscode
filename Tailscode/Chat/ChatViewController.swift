@@ -561,39 +561,80 @@ final class ChatViewController: UIViewController {
     /// window, and the row it is held for. Read on every relayout so the composer moving, the
     /// keyboard going or the answer growing all shrink it by the same arithmetic.
     private var canvasPadding: CGFloat = 0
+    /// The first and last row of the send the canvas holds room for. A prompt with pictures is
+    /// several rows — each picture above the words — and the block that rises is all of them.
     private var canvasPrompt: Int?
+    private var canvasPromptEnd: Int?
 
-    /// The prompt row's place in the list. A pending row and the server's row that replaces it
-    /// land at the same index, which is what lets the canvas survive the swap.
+    /// The prompt block's place in the list, first row through last. A pending row and the
+    /// server's row that replaces it land at the same index, which is what lets the canvas
+    /// survive the swap.
     private func canvasPromptFrame() -> CGRect? {
-        guard let index = canvasPrompt, index < dataSource.snapshot().numberOfItems,
-            let attributes = collectionView.layoutAttributesForItem(
+        guard let first = canvasPrompt else { return nil }
+        let count = dataSource.snapshot().numberOfItems
+        let last = min(canvasPromptEnd ?? first, count - 1)
+        guard first < count, first <= last else { return nil }
+        var union: CGRect?
+        for index in first...last {
+            guard let attributes = collectionView.layoutAttributesForItem(
                 at: IndexPath(item: index, section: 0))
-        else { return nil }
-        return attributes.frame
+            else { continue }
+            union = union.map { $0.union(attributes.frame) } ?? attributes.frame
+        }
+        return union
     }
 
     private func freshCanvasPadding(viewport: CGFloat) -> CGFloat {
         guard canvasPrompt != nil else { return 0 }
         guard let frame = canvasPromptFrame() else {
             canvasPrompt = nil
+            canvasPromptEnd = nil
             return 0
         }
         let contentHeight = collectionView.collectionViewLayout.collectionViewContentSize.height
-        let below = max(0, contentHeight - frame.maxY)
+        let below = FreshCanvas.below(
+            contentHeight: contentHeight, promptBottom: frame.maxY,
+            unrevealed: unrevealedHeight())
         let padding = FreshCanvas.padding(
             viewport: viewport, prompt: frame.height, below: below)
-        if padding <= 0 { canvasPrompt = nil }
+        if padding <= 0 {
+            canvasPrompt = nil
+            canvasPromptEnd = nil
+        }
         return padding
+    }
+
+    /// How much of the live row is laid out past its reveal — text the reader has not been shown
+    /// yet, drawn clear under the wave. Zero when nothing is being written, or when the row is not
+    /// on screen to be measured.
+    private func unrevealedHeight() -> CGFloat {
+        guard let id = cascade.key, let indexPath = dataSource.indexPath(for: id),
+            let attributes = collectionView.layoutAttributesForItem(at: indexPath),
+            let cell = collectionView.cellForItem(at: indexPath), let row = rowsByID[id]
+        else { return 0 }
+        let bottom: CGFloat
+        switch (row.content, cell) {
+        case (.text, let bubble as TextBubbleCell):
+            bottom = bubble.revealedBottom(cascade.revealed)
+        case (.code(let block), let code as CodeBlockCell):
+            bottom = code.revealedBottom(
+                cascade.revealed, block: block, expanded: expandedReasoning.contains(id))
+        default:
+            return 0
+        }
+        return max(0, attributes.frame.maxY - (attributes.frame.minY + bottom))
     }
 
     /// The scroll itself: the prompt rises to `FreshCanvas.headroom` under the top edge in one
     /// motion from wherever the reader was, with the padding already in place so the offset is
     /// reachable. The bubble fades in as it rides rather than springing up on its own, because
     /// two movements on one row read as a stutter.
-    private func openFreshCanvas(promptID: String, fading cells: [UIView]) {
-        guard let index = dataSource.snapshot().indexOfItem(promptID) else { return }
-        canvasPrompt = index
+    private func openFreshCanvas(promptIDs: [String], fading cells: [UIView]) {
+        let snapshot = dataSource.snapshot()
+        let indices = promptIDs.compactMap { snapshot.indexOfItem($0) }
+        guard let first = indices.min(), let last = indices.max() else { return }
+        canvasPrompt = first
+        canvasPromptEnd = last
         userScrolledUp = false
         view.layoutIfNeeded()
         updateTranscriptInsets()
@@ -624,6 +665,15 @@ final class ChatViewController: UIViewController {
             self.collectionView.contentOffset = target
             for cell in cells { cell.alpha = 1 }
         }
+    }
+
+    /// Every row of the send that just went — its pictures and its words — so the block that rises
+    /// is the whole prompt. A picture is docked above the words it was clipped to, and raising the
+    /// words alone put it one row above the top edge, exactly where nobody looks.
+    static func freshSendRows(among ids: [String]) -> [String] {
+        guard let last = ids.last(where: { $0.hasPrefix("pending:") }) else { return [] }
+        let send = last.split(separator: ":", maxSplits: 2).prefix(2).joined(separator: ":")
+        return ids.filter { $0 == send || $0.hasPrefix(send + ":") }
     }
 
     /// A row this device is holding changed height on its own clock — its caption strip came or
@@ -1569,6 +1619,7 @@ final class ChatViewController: UIViewController {
             snapshot.reconfigureItems([id])
             dataSource.apply(snapshot, animatingDifferences: false)
         }
+        if revealMoved, paint == .painted { followWriting() }
         guard let settled = settleDrainedCascade(), dataSource.indexPath(for: settled) != nil
         else { return }
         var snapshot = dataSource.snapshot()
@@ -1934,8 +1985,7 @@ final class ChatViewController: UIViewController {
     /// thread, and that second used to sit between pressing Send and seeing the words. What is
     /// redrawn here is the handful of rows docked at the end, which is the whole of what changed.
     private func renderPending() {
-        guard let state = lastRenderedState else { return }
-        compose(state, rebuild: nil)
+        compose(lastRenderedState ?? viewModel.state, rebuild: nil)
     }
 
     /// What a rebuild leaves behind for the compose pass: the rows as they were, so a repaint can
@@ -2104,8 +2154,8 @@ final class ChatViewController: UIViewController {
         animateNextRender = false
         let reconfigurable = changed.filter { idSet.contains($0) }
         if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
-        let freshPrompt = entranceBubbles.last { $0.hasPrefix("pending:") }
-        if let freshPrompt {
+        let freshPrompt = Self.freshSendRows(among: entranceBubbles)
+        if !freshPrompt.isEmpty {
             dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 if handOffEmptyState { self.animateEmptyStateHandoff() }
@@ -2115,7 +2165,7 @@ final class ChatViewController: UIViewController {
                     return self.collectionView.cellForItem(at: IndexPath(item: index, section: 0))?
                         .contentView
                 }
-                self.openFreshCanvas(promptID: freshPrompt, fading: riders)
+                self.openFreshCanvas(promptIDs: freshPrompt, fading: riders)
             }
         } else if !entranceBubbles.isEmpty || entranceThinking {
             dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
@@ -4416,6 +4466,38 @@ final class ChatViewController: UIViewController {
         distanceFromBottom() < 120
     }
 
+    /// The page is pushed up by the writing, not by the layout. Every frame the reveal advances,
+    /// the room under the prompt is measured again against what is now visible — which is what
+    /// lets the canvas go exactly when the written words reach the end of the window — and once
+    /// it has gone, a reader at the bottom is kept on the last written line rather than on the
+    /// end of a paragraph they cannot see yet.
+    private func followWriting() {
+        if canvasPrompt != nil {
+            updateTranscriptInsets()
+            return
+        }
+        guard !userScrolledUp, !isFingerDown, isNearBottom() else { return }
+        followVisibleEnd()
+    }
+
+    /// Puts the last written line at the bottom of the viewport, in place. Nothing happens when
+    /// the live row is already whole, which is when following the bottom means what it always
+    /// did.
+    private func followVisibleEnd() {
+        let unrevealed = unrevealedHeight()
+        guard unrevealed > 0 else { return }
+        let inset = collectionView.adjustedContentInset
+        let total = inset.top + collectionView.contentSize.height + inset.bottom
+        let end = FreshCanvas.visibleEnd(
+            contentHeight: collectionView.contentSize.height, unrevealed: unrevealed)
+        let offset =
+            FreshCanvas.followOffset(
+                visibleEnd: inset.top + end + inset.bottom, viewport: collectionView.bounds.height,
+                contentHeight: total) - inset.top
+        guard abs(collectionView.contentOffset.y - offset) > 0.5 else { return }
+        collectionView.contentOffset.y = offset
+    }
+
     /// Following resumes only from the bottom itself. A finger that lifted a few lines short of
     /// it has still scrolled up, and a render that yanks it the rest of the way is the transcript
     /// overruling the hand that just moved it.
@@ -4424,15 +4506,18 @@ final class ChatViewController: UIViewController {
     }
 
     private func distanceFromBottom() -> CGFloat {
-        let height = collectionView.contentSize.height
-        let visible = collectionView.bounds.height
-        guard height > visible else { return 0 }
-        return height - visible - collectionView.contentOffset.y
+        FreshCanvas.distanceFromVisibleEnd(
+            offset: collectionView.contentOffset.y, viewport: collectionView.bounds.height,
+            contentHeight: collectionView.contentSize.height, unrevealed: unrevealedHeight())
     }
 
     private func scrollToBottom(animated: Bool) {
         let count = dataSource.snapshot().numberOfItems
         guard count > 0 else { return }
+        if unrevealedHeight() > 0 {
+            followVisibleEnd()
+            return
+        }
         let indexPath = IndexPath(item: count - 1, section: 0)
         #if DEBUG
             if TourDriver.isFilming, animated,

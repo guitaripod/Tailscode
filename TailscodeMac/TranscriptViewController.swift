@@ -334,7 +334,7 @@ final class TranscriptViewController: NSViewController {
     /// Where the prompt the canvas is holding room for sits in the canvas, measured once when it
     /// rose. The server's own row replaces the echo at the same height, so the place is the
     /// prompt's identity through the swap rather than a key that changes under it.
-    private var canvasHold: (top: CGFloat, height: CGFloat)? {
+    var canvasHold: (top: CGFloat, height: CGFloat)? {
         didSet { syncJumpPill() }
     }
     private static let canvasLog = Logger(subsystem: "com.guitaripod.tailscode", category: "chat")
@@ -387,11 +387,14 @@ final class TranscriptViewController: NSViewController {
 
     /// The answer growing under the prompt takes the room back, until what is under the prompt
     /// fills the window on its own and ordinary following resumes.
-    private func recomputeFreshCanvas() {
+    func recomputeFreshCanvas() {
+        remeasureCanvasHold()
         guard let hold = canvasHold else { return }
         let clip = scrollView.contentView
         let viewport = clip.bounds.height - chromeInsets.top - chromeInsets.bottom
-        let below = max(0, canvas.frame.height - hold.top - hold.height)
+        let below = FreshCanvas.below(
+            contentHeight: canvas.frame.height, promptBottom: hold.top + hold.height,
+            unrevealed: unrevealedHeight())
         guard FreshCanvas.holds(viewport: viewport, prompt: hold.height, below: below) else {
             releaseFreshCanvas(animated: false)
             setFollowing(isNearBottom())
@@ -399,6 +402,53 @@ final class TranscriptViewController: NSViewController {
         }
         canvasPadding = FreshCanvas.padding(viewport: viewport, prompt: hold.height, below: below)
         applyInsets()
+    }
+
+    /// The block the canvas holds, measured again from the rows now standing at its top. The echo
+    /// is one card; the server's account of the same send is a row per picture and one for the
+    /// words, and it is taller — so the hold follows the rows rather than the card it was first
+    /// measured from, or the room under it would be counted short and the prompt would slide down
+    /// as the padding went.
+    private func remeasureCanvasHold() {
+        guard let hold = canvasHold else { return }
+        var union: NSRect?
+        for (index, row) in renderedRows.enumerated() where index < rowViews.count {
+            guard rowViews[index].superview != nil, row.isPromptBlock else {
+                if union != nil { break }
+                continue
+            }
+            let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
+            if let block = union {
+                union = block.union(frame)
+            } else if abs(frame.minY - hold.top) < 2 {
+                union = frame
+            }
+        }
+        guard let union, abs(union.height - hold.height) > 0.5 else { return }
+        canvasHold = (hold.top, union.height)
+    }
+
+    /// How much of the live row is laid out past its reveal: text the reader has not been shown
+    /// yet, drawn clear under the wave. Zero when nothing is being written.
+    func unrevealedHeight() -> CGFloat {
+        guard let key = cascade.key, !placeholderShown,
+            let index = renderedRows.lastIndex(where: { $0.key == key }), index < rowViews.count,
+            let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind)
+        else { return 0 }
+        let rendered = label.attributedStringValue
+        let shown = min(max(cascade.revealed, 0), rendered.length)
+        guard shown < rendered.length, label.bounds.width > 0 else { return 0 }
+        guard shown > 0 else { return label.bounds.height }
+        let wraps: Bool
+        if case .agentProse = renderedRows[index].kind { wraps = true } else { wraps = false }
+        let prefix = rendered.attributedSubstring(from: NSRange(location: 0, length: shown))
+        let size = NSSize(
+            width: wraps ? label.bounds.width : .greatestFiniteMagnitude,
+            height: .greatestFiniteMagnitude)
+        let written = prefix.boundingRect(
+            with: size, options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height
+        return max(0, label.bounds.height - ceil(written))
     }
 
     /// The room goes: with the reader at the bottom the transcript settles onto its end, and
@@ -1157,7 +1207,7 @@ final class TranscriptViewController: NSViewController {
                 text: text, attachments: attachments, model: model, effort: effort,
                 userMessages: userMessages).id
         }
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
+        apply(state: lastState ?? ConversationState(), rows: lastFullRows)
         riseFreshCanvas(rowKey: "echo:\(row.uuidString)")
         Task { [weak self] in
             do {
@@ -3011,7 +3061,7 @@ final class TranscriptViewController: NSViewController {
 
     private func isNearBottom() -> Bool {
         let clip = scrollView.contentView
-        let ceiling = maxScrollOrigin()
+        let ceiling = visibleScrollOrigin()
         return clip.bounds.origin.y >= ceiling - 8
     }
 
@@ -3022,14 +3072,22 @@ final class TranscriptViewController: NSViewController {
             canvas.frame.height - clip.bounds.height + scrollView.contentInsets.bottom)
     }
 
+    /// The origin that puts the last *written* line at the bottom of the window. The same as the
+    /// end of the content whenever nothing is being written; while an answer is, the laid-out
+    /// remainder of the live row is left below the fold, so the page is pushed up by the writing
+    /// rather than by the layout that ran ahead of it.
+    private func visibleScrollOrigin() -> CGFloat {
+        max(-scrollView.contentInsets.top, maxScrollOrigin() - unrevealedHeight())
+    }
+
     private func setFollowing(_ following: Bool) {
         followsBottom = following
         if following { pinToBottom() }
     }
 
-    private func pinToBottom() {
+    func pinToBottom() {
         let clip = scrollView.contentView
-        let target = maxScrollOrigin()
+        let target = visibleScrollOrigin()
         guard abs(clip.bounds.origin.y - target) > 0.5 else { return }
         isAutoScrolling = true
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))

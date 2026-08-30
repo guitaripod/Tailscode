@@ -7,6 +7,17 @@ import Foundation
 /// below the last row that the content does not have, so the client adds it — enough that the
 /// prompt can rest at the top with the answer's first line under it — and takes it back as the
 /// answer grows into it, so the end of the conversation never floats above the end of the window.
+///
+/// The prompt is the whole of what was sent: a picture clipped to the words is drawn above them,
+/// and pinning the words alone leaves the picture hidden one line above the top edge. So the
+/// block a client measures runs from the first row of the send to the last.
+///
+/// What grows into the room is what the reader can see, not what the client has laid out. The
+/// live row is measured in full when its text arrives — everything past the reveal is drawn at
+/// zero alpha rather than cut off — so the layout is always ahead of the writing, and a canvas
+/// that shrank by the layout let go while the visible words were still mid-screen and then
+/// followed an end nobody could see. Every reading here therefore takes `unrevealed`: the height
+/// of the live row past its reveal, which a client subtracts from the content's end.
 public enum FreshCanvas {
     /// How far below the top edge the prompt rests once it has risen.
     public static let headroom: Double = 12
@@ -29,5 +40,41 @@ public enum FreshCanvas {
         let wanted = promptTop - headroom
         let limit = max(0, contentHeight - viewport)
         return max(0, min(wanted, limit))
+    }
+
+    /// What sits under the prompt that a reader can see: the content past the prompt's bottom
+    /// edge, less the part of the live row that has not been written yet.
+    public static func below(contentHeight: Double, promptBottom: Double, unrevealed: Double)
+        -> Double
+    {
+        max(0, contentHeight - promptBottom - max(0, unrevealed))
+    }
+
+    /// Where the end of the visible conversation is: the content's end less what the live row has
+    /// laid out ahead of its reveal.
+    public static func visibleEnd(contentHeight: Double, unrevealed: Double) -> Double {
+        max(0, contentHeight - max(0, unrevealed))
+    }
+
+    /// The offset that keeps the visible end at the bottom of the viewport while an answer is
+    /// being written — never past the content, never before its start. A client following the
+    /// bottom moves here on every frame the reveal advances, so the page is pushed up by the
+    /// writing itself rather than by the layout that ran ahead of it.
+    public static func followOffset(visibleEnd: Double, viewport: Double, contentHeight: Double)
+        -> Double
+    {
+        let limit = max(0, contentHeight - viewport)
+        return max(0, min(visibleEnd - viewport, limit))
+    }
+
+    /// How far the reader is from the visible end, which is the reading `isNearBottom` must take
+    /// while an answer is being written: measured against the laid-out end, a reader sitting on
+    /// the last written word looks scrolled away by exactly the text they have not been shown.
+    public static func distanceFromVisibleEnd(
+        offset: Double, viewport: Double, contentHeight: Double, unrevealed: Double
+    ) -> Double {
+        let end = visibleEnd(contentHeight: contentHeight, unrevealed: unrevealed)
+        guard end > viewport else { return 0 }
+        return max(0, end - viewport - offset)
     }
 }

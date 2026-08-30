@@ -298,6 +298,24 @@ final class TextBubbleCell: UICollectionViewCell {
         aurora.paint(rendered, cascade: cascade, key: (reasoning ? "thought:" : "answer:") + text)
     }
 
+    /// Where the last written glyph ends, in this cell's coordinates — the bottom edge of the
+    /// text the reader can actually see, read off the layout the row was measured with. The
+    /// transcript follows this rather than the row's bottom, which is where the laid-out but
+    /// still invisible remainder of the paragraph ends.
+    func revealedBottom(_ revealed: Int) -> CGFloat {
+        let storage = textView.textStorage
+        let shown = min(max(revealed, 0), storage.length)
+        var y = textView.textContainerInset.top
+        if shown > 0 {
+            let manager = textView.layoutManager
+            let glyphs = manager.glyphRange(forCharacterRange: NSRange(location: 0, length: shown),
+                actualCharacterRange: nil)
+            let rect = manager.boundingRect(forGlyphRange: glyphs, in: textView.textContainer)
+            y += rect.maxY
+        }
+        return textView.convert(CGPoint(x: 0, y: y), to: contentView).y
+    }
+
     /// Renders inline markdown (bold/italic/code/links) while preserving whitespace, and styles
     /// inline `code` spans with a monospaced font and a subtle fill.
     private static let renderCache: NSCache<NSString, NSAttributedString> = {
@@ -949,6 +967,17 @@ final class CodeBlockCell: UICollectionViewCell {
         }
         view.paint(frame)
         return true
+    }
+
+    /// Where the last written line of code ends, in this cell's coordinates. A line of code ends
+    /// at its newline and nowhere else, so the written height is the written lines' worth of the
+    /// block's own line height — exact rather than measured.
+    func revealedBottom(_ revealed: Int, block: CodeBlock, expanded: Bool) -> CGFloat {
+        let laid = Self.laidOut(block.source, expanded: expanded).text as NSString
+        let shown = min(max(revealed, 0), laid.length)
+        let lines = shown == 0 ? 0 : laid.substring(to: shown).components(separatedBy: "\n").count
+        let height = CGFloat(lines) * Self.monoFont.lineHeight
+        return codeLabel.convert(CGPoint(x: 0, y: height), to: contentView).y
     }
 
     private func ensureAurora() -> AuroraStreamView? {

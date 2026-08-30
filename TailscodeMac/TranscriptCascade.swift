@@ -242,7 +242,11 @@ extension TranscriptViewController {
             return false
         }
         cascade.landed()
-        if followsBottom { scrollToBottom() }
+        if canvasHold != nil {
+            recomputeFreshCanvas()
+        } else if followsBottom {
+            pinToBottom()
+        }
         return true
     }
 }

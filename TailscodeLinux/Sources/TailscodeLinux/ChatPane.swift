@@ -117,7 +117,7 @@ final class ChatPane: @unchecked Sendable {
     /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
     private let canvasSpacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
     private var canvasPadding = 0.0
-    private var canvasPromptKey: String? {
+    var canvasPromptKey: String? {
         didSet { syncJumpPill() }
     }
     private var canvasPromptTop: Double?
@@ -1343,8 +1343,7 @@ final class ChatPane: @unchecked Sendable {
     /// account of the conversation — the account did not move, and walking it again to add one
     /// row of one's own is the whole reason a long conversation used to swallow a send.
     private func redrawPending() {
-        guard let state = lastState else { return }
-        apply(state: state, rows: lastFullRows)
+        apply(state: lastState ?? ConversationState(), rows: lastFullRows)
         scheduleCaptionWake()
     }
 
@@ -3301,6 +3300,11 @@ final class ChatPane: @unchecked Sendable {
 
     /// Where the canvas's prompt sits inside the canvas, following the row through the swap from
     /// this device's echo to the server's own account of it.
+    ///
+    /// The block is the whole send, not the row the key names: the echo is one card, and the
+    /// server's account of the same send is a row per picture and one for the words. Every
+    /// row of the person's own that touches the keyed one is taken with it, so a picture clipped
+    /// to the words rests under the top edge rather than one row above it.
     private func canvasPrompt() -> (top: Double, height: Double)? {
         guard let key = canvasPromptKey, let canvas = canvasBox else { return nil }
         var index = renderedRows.firstIndex { $0.key == key }
@@ -3313,31 +3317,58 @@ final class ChatPane: @unchecked Sendable {
             canvasPromptKey = renderedRows[last].key
             index = last
         }
-        guard let index, index < rowWidgets.count,
-            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
-        else { return nil }
-        var x = 0.0
-        var y = 0.0
-        var width = 0.0
-        var height = 0.0
-        guard tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &width, &height) != 0,
-            height > 0
-        else { return nil }
-        return (y, height)
+        guard let index, index < rowWidgets.count else { return nil }
+        var first = index
+        while first > 0, renderedRows[first - 1].isPromptBlock { first -= 1 }
+        var last = index
+        while last + 1 < renderedRows.count, last + 1 < rowWidgets.count,
+            renderedRows[last + 1].isPromptBlock
+        { last += 1 }
+        var top = Double.infinity
+        var bottom = -Double.infinity
+        for row in first...last {
+            guard let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[row]) else { continue }
+            var x = 0.0
+            var y = 0.0
+            var width = 0.0
+            var height = 0.0
+            guard tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &width, &height) != 0,
+                height > 0
+            else { continue }
+            top = min(top, y)
+            bottom = max(bottom, y + height)
+        }
+        guard top.isFinite, bottom > top else { return nil }
+        return (top, bottom - top)
+    }
+
+    /// How much of the live row is laid out past its reveal: text the reader has not been shown
+    /// yet, drawn clear under the wave. Zero when nothing is being written.
+    private func unrevealedHeight() -> Double {
+        guard let key = cascade.key, !placeholderShown,
+            let index = renderedRows.lastIndex(where: { $0.key == key }), index < rowWidgets.count,
+            let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]),
+            let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
+        else { return 0 }
+        let written = tailscode_label_revealed_height(label, Int32(cascade.revealed))
+        guard written >= 0 else { return 0 }
+        return max(0, Double(gtk_widget_get_height(label)) - written)
     }
 
     /// Re-measures the room on every change of the content's size: the padding shrinks as the
     /// answer grows under the prompt, the prompt is kept where it was through a swap that
     /// changed its height, and once the answer fills the window the canvas lets go.
-    private func settleFreshCanvas() {
+    func settleFreshCanvas() {
         guard canvasPromptKey != nil, let scroller = transcriptScroller, let canvas = canvasBox,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
         guard let prompt = canvasPrompt() else { return }
         let viewport = gtk_adjustment_get_page_size(adjustment)
         guard viewport > 0 else { return }
-        let content = Double(gtk_widget_get_height(canvas)) - canvasPadding
-        let below = max(0, content - prompt.top - prompt.height)
+        let content = Self.naturalHeight(of: canvas) - canvasPadding
+        let below = FreshCanvas.below(
+            contentHeight: content, promptBottom: prompt.top + prompt.height,
+            unrevealed: unrevealedHeight())
         let padding = FreshCanvas.padding(viewport: viewport, prompt: prompt.height, below: below)
         if let previousTop = canvasPromptTop, abs(previousTop - prompt.top) > 0.5,
             canvasSettle == nil
@@ -3360,6 +3391,18 @@ final class ChatPane: @unchecked Sendable {
         canvasPromptKey = nil
         canvasPromptTop = nil
         setFollowing(true)
+    }
+
+    /// What the rows actually need, which is not what the canvas was given: a viewport hands its
+    /// child at least its own height, so a short conversation's canvas is as tall as the window
+    /// and the room under a prompt read as already full before a word had been written.
+    private static func naturalHeight(of widget: UnsafeMutablePointer<GtkWidget>) -> Double {
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(
+            widget, GTK_ORIENTATION_VERTICAL, gtk_widget_get_width(widget), &minimum, &natural,
+            nil, nil)
+        return Double(natural)
     }
 
     private func setCanvasPadding(_ padding: Double) {
@@ -3416,7 +3459,7 @@ final class ChatPane: @unchecked Sendable {
         else { return true }
         let value = gtk_adjustment_get_value(adjustment)
         let ceiling = gtk_adjustment_get_upper(adjustment)
-            - gtk_adjustment_get_page_size(adjustment)
+            - gtk_adjustment_get_page_size(adjustment) - unrevealedHeight()
         return value >= ceiling - 8
     }
 
@@ -3427,13 +3470,18 @@ final class ChatPane: @unchecked Sendable {
         if following { pinToBottom() }
     }
 
-    private func pinToBottom() {
+    /// The value that puts the last *written* line at the bottom of the window: the end of the
+    /// content whenever nothing is being written, and while an answer is, the laid-out remainder
+    /// of the live row left below the fold — the page is pushed up by the writing, never by the
+    /// layout that ran ahead of it.
+    func pinToBottom() {
         guard let scroller = transcriptScroller,
             let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
         else { return }
         let target = max(
             gtk_adjustment_get_lower(adjustment),
-            gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+            gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment)
+                - unrevealedHeight())
         guard abs(gtk_adjustment_get_value(adjustment) - target) > 0.5 else { return }
         isAutoScrolling = true
         gtk_adjustment_set_value(adjustment, target)
@@ -3693,8 +3741,6 @@ final class ChatPane: @unchecked Sendable {
             scrollToBottom()
             return
         }
-        if let state = lastState { apply(state: state, rows: lastFullRows) }
-        scrollToBottom()
         deliver(send, through: conversation)
         refreshUltracodeAura()
     }

@@ -172,4 +172,30 @@ struct FreshCanvasTests {
         #expect(FreshCanvas.offset(promptTop: 5000, contentHeight: 5200, viewport: 800) == 4400)
         #expect(FreshCanvas.offset(promptTop: 0, contentHeight: 100, viewport: 800) == 0)
     }
+
+    @Test("What is under the prompt is what the reader can see, not what the layout holds")
+    func belowDiscountsTheUnrevealed() {
+        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 0) == 600)
+        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 350) == 250)
+        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: 900) == 0)
+        #expect(FreshCanvas.below(contentHeight: 1000, promptBottom: 400, unrevealed: -5) == 600)
+        #expect(FreshCanvas.holds(viewport: 800, prompt: 60, below: FreshCanvas.below(contentHeight: 1000, promptBottom: 60, unrevealed: 500)))
+        #expect(!FreshCanvas.holds(viewport: 800, prompt: 60, below: FreshCanvas.below(contentHeight: 1000, promptBottom: 60, unrevealed: 0)))
+    }
+
+    @Test("Following keeps the written end at the bottom and never runs past the content")
+    func followOffset() {
+        #expect(FreshCanvas.visibleEnd(contentHeight: 5000, unrevealed: 320) == 4680)
+        #expect(FreshCanvas.followOffset(visibleEnd: 4680, viewport: 800, contentHeight: 5000) == 3880)
+        #expect(FreshCanvas.followOffset(visibleEnd: 5000, viewport: 800, contentHeight: 5000) == 4200)
+        #expect(FreshCanvas.followOffset(visibleEnd: 6000, viewport: 800, contentHeight: 5000) == 4200)
+        #expect(FreshCanvas.followOffset(visibleEnd: 300, viewport: 800, contentHeight: 5000) == 0)
+    }
+
+    @Test("A reader on the last written word is at the bottom, whatever the layout holds")
+    func distanceFromVisibleEnd() {
+        #expect(FreshCanvas.distanceFromVisibleEnd(offset: 3880, viewport: 800, contentHeight: 5000, unrevealed: 320) == 0)
+        #expect(FreshCanvas.distanceFromVisibleEnd(offset: 3880, viewport: 800, contentHeight: 5000, unrevealed: 0) == 320)
+        #expect(FreshCanvas.distanceFromVisibleEnd(offset: 0, viewport: 800, contentHeight: 500, unrevealed: 0) == 0)
+    }
 }

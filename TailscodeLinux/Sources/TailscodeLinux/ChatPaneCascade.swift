@@ -155,7 +155,11 @@ extension ChatPane {
             let label = Self.streamedLabel(in: ptr(raw), kind: renderedRows[index].kind)
         else { return false }
         guard cascade.paint(label) else { return false }
-        if followsBottom { scrollToBottom() }
+        if canvasPromptKey != nil {
+            settleFreshCanvas()
+        } else if followsBottom {
+            pinToBottom()
+        }
         return true
     }
 }

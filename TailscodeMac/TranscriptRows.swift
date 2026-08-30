@@ -167,6 +167,16 @@ struct TranscriptRow: Hashable {
     let key: String
     let kind: Kind
 
+    /// Whether this row is part of what the person sent — the words, or a picture clipped to
+    /// them — which is the block that rises to the top when a prompt goes.
+    var isPromptBlock: Bool {
+        switch kind {
+        case .userText, .pendingSend: return true
+        case .file(_, let mine): return mine
+        default: return false
+        }
+    }
+
     /// The same switch every desktop reads: an environment override for screenshots and headless
     /// runs, then the shared `tailscode.*` default. On by default, like the iOS app, so a turn
     /// reads as ask → answer until opened.

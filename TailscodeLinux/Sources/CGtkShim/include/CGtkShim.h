@@ -229,6 +229,12 @@ int tailscode_label_reveal(
     GtkWidget *label, const char *markup, int visible, int wave,
     const unsigned int *rgb, const unsigned short *alpha);
 
+/// Where the last written glyph ends: the bottom of the line holding the label's `visible`th
+/// character, in pixels from the label's top. The whole layout's height once `visible` reaches
+/// the end, so the caller's "laid out past the reveal" is simply the label's height less this.
+/// Negative when the label has no layout to read.
+double tailscode_label_revealed_height(GtkWidget *label, int visible);
+
 /// The markup's rendered text — what a reader actually sees, with every marker already eaten.
 /// The caller paces over this, so it has to be the same string the label will show. Owned by the
 /// one-entry parse cache and valid until the next call with different markup.
