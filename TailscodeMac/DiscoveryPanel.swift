@@ -382,6 +382,7 @@ final class DiscoveryPanel {
     private var configuredProfiles: [ConnectionProfile] = []
     private var knownDevices: [TailscaleDevice] = []
     private var scanning = false
+    private var picked: TailnetScanner.Suggestion?
     private var scanID = 0
     private var peerCount = 0
     private var startedAt = 0.0
@@ -396,6 +397,7 @@ final class DiscoveryPanel {
         active.append(panel)
         host.beginSheet(panel.sheet) { _ in
             active.removeAll { $0 === panel }
+            if let suggestion = panel.picked { panel.onAdd(suggestion) }
         }
         panel.scan()
         return panel
@@ -487,6 +489,15 @@ final class DiscoveryPanel {
 
     private func close() {
         sheet.sheetParent?.endSheet(sheet)
+    }
+
+    /// The pick is delivered after the sheet has ended, never under it: the form it fills — and
+    /// the password field it may need to hand the keyboard to — lives in the window this sheet is
+    /// covering, and a secure field made first responder behind a sheet shows nothing of itself but
+    /// the system's autofill popover.
+    private func pick(_ suggestion: TailnetScanner.Suggestion) {
+        picked = suggestion
+        close()
     }
 
     private func rest() {
@@ -744,7 +755,7 @@ final class DiscoveryPanel {
             trailing = MacDialogs.detailLabel(Localized.text("Already added"))
         } else {
             trailing = RowKit.ActionButton(title: Localized.text("Add")) { [weak self] in
-                self?.onAdd(suggestion)
+                self?.pick(suggestion)
             }
         }
         trailing.setContentHuggingPriority(.required, for: .horizontal)
