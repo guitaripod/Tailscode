@@ -341,7 +341,7 @@ enum SubagentRowView {
             css: "tool-detail", selectable: false)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(header), label)
-        if let live = context.agentFacts[call.id], live.isActive, AgentHold(call) == .going {
+        if let live = context.agentFacts[call.id], live.isActive {
             gtk_box_append(
                 ptr(header),
                 Gtk.label(
