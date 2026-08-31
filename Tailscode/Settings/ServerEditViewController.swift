@@ -120,6 +120,9 @@ final class ServerEditViewController: UIViewController {
                 verified.backend = detected
                 verified.username = ProbeSweep.username(for: detected)
                 self.commit(verified, password: password)
+            case .authFailed(.tailnetOnly):
+                Theme.Haptics.error()
+                self.showStatus(ServerAccessReading.tailnetOnlyDetail, ok: false)
             case .authFailed:
                 Theme.Haptics.error()
                 self.showStatus(

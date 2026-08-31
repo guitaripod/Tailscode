@@ -49,6 +49,13 @@ public struct ConnectDiagnosis: Equatable, Sendable {
         switch outcome {
         case .ok:
             return nil
+        case .authFailed(.tailnetOnly):
+            return ConnectDiagnosis(
+                symbol: ServerAccessReading.symbol,
+                title: ServerAccessReading.tailnetOnlyTitle(host: address.displayHost),
+                detail: ServerAccessReading.tailnetOnlyDetail,
+                fix: .openTailscale,
+                actionTitle: Localized.text("Open Tailscale"))
         case .authFailed:
             guard sentPassword else {
                 return ConnectDiagnosis(

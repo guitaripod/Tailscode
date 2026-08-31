@@ -114,6 +114,7 @@ enum ParityManifest {
                 because:
                     "The scan is the tailnet asked for its own peers by running the Tailscale command line, and a container may neither spawn that binary nor reach the socket behind it. What the store copy owes is another road to the peer list, not a scan rewritten to always come back empty.")
         case .connectDiagnosis: return .implemented("diagnose")
+        case .serverAccess: return .implemented("ServerAccessReading")
         case .serverSignIn: return .implemented("SignInSheet")
         case .serverSelfUpdate: return .implemented("updateStatus")
         case .serverRestart: return .implemented("restartTapped")

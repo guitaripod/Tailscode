@@ -255,6 +255,10 @@ final class FirstRunDialog: @unchecked Sendable {
         guard !suggestion.requiresAuth else {
             gtk_editable_set_text(op(addressEntry), suggestion.baseURL.absoluteString)
             chosenBackend = suggestion.backend
+            if suggestion.tailnetOnly {
+                gtk_label_set_text(op(diagnosisLabel), ServerAccessReading.tailnetOnlyDetail)
+                return
+            }
             revealPassword()
             gtk_label_set_text(
                 op(diagnosisLabel),
@@ -517,7 +521,7 @@ final class FirstRunDialog: @unchecked Sendable {
             if userInitiated { save(password: password) }
         case .authFailed, .notAnAgentServer, .unreachable:
             verified = nil
-            if case .authFailed = verdict.outcome { revealPassword() }
+            if case .authFailed(.password) = verdict.outcome { revealPassword() }
             // The shared diagnosis, with the same words and the same one fix the Servers window
             // gives. First run used to hand-roll eight sentences and offer no action at all, so the
             // one screen a stranger meets was the one screen that could only dead-end.

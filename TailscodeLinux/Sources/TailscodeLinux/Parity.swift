@@ -84,6 +84,7 @@ enum ParityManifest {
         case .ompServer: return .implemented("ompButton")
         case .tailnetDiscovery: return .implemented("DiscoveryPanel")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
+        case .serverAccess: return .implemented("ServerAccessReading")
         case .serverSignIn: return .implemented("SignInDialog")
         case .serverSelfUpdate: return .implemented("renderSoftware")
         case .serverRestart: return .implemented("confirmRestart")

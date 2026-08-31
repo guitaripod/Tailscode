@@ -131,8 +131,8 @@ final class DiscoveryViewController: UIViewController {
             if let os = item.suggestion.os {
                 secondary += " · \(os)"
             }
-            if item.suggestion.requiresAuth {
-                secondary += " · " + String(localized: "needs password")
+            if let note = ServerAccessReading.suggestionNote(item.suggestion) {
+                secondary += " · " + note
             }
             content.secondaryText = secondary
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -397,7 +397,10 @@ final class DiscoveryViewController: UIViewController {
     }
 
     private func selectSuggestion(_ s: TailnetScanner.Suggestion) {
-        if s.requiresAuth {
+        if s.tailnetOnly {
+            Theme.Haptics.error()
+            statusLabel.text = ServerAccessReading.tailnetOnlyDetail
+        } else if s.requiresAuth {
             promptForPassword(for: s)
         } else {
             connect(with: s, password: nil)
@@ -445,6 +448,9 @@ final class DiscoveryViewController: UIViewController {
                     localized:
                         "\(suggestion.baseURL.host ?? "Server") is reachable, but not an opencode, claude-bridge, or omp-bridge server."
                 )
+            case .authFailed(.tailnetOnly):
+                Theme.Haptics.error()
+                statusLabel.text = ServerAccessReading.tailnetOnlyDetail
             case .authFailed:
                 Theme.Haptics.error()
                 statusLabel.text = String(

@@ -273,7 +273,7 @@ final class DiscoveryPanel: @unchecked Sendable {
             parts.append("\(host):\(port)")
         }
         if let version = suggestion.version, !version.isEmpty { parts.append(version) }
-        if suggestion.requiresAuth { parts.append(Localized.text("wants a password")) }
+        if let note = ServerAccessReading.suggestionNote(suggestion) { parts.append(note) }
         return parts.joined(separator: " · ")
     }
 

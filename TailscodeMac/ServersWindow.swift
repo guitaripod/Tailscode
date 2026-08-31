@@ -248,6 +248,11 @@ final class ServersWindow: NSWindowController {
             account.spacing = 3
             lines.addArrangedSubview(account)
             checkAccount(profile, into: account)
+
+            let access = MacDialogs.detailLabel("")
+            access.isHidden = true
+            lines.addArrangedSubview(access)
+            checkAccess(profile, into: access)
         }
 
         let remove = NSButton(title: Localized.text("Remove"), target: self, action: #selector(removeTapped))
@@ -378,7 +383,11 @@ final class ServersWindow: NSWindowController {
                 self.claudeRadio.state = suggestion.backend == .claudeCode ? .on : .off
                 self.opencodeRadio.state = suggestion.backend == .openCode ? .on : .off
                 self.ompRadio.state = suggestion.backend == .omp ? .on : .off
-                if suggestion.requiresAuth, self.passwordField.stringValue.isEmpty {
+                if suggestion.tailnetOnly {
+                    self.setStatus(
+                        ServerAccessReading.tailnetOnlyTitle(host: suggestion.recommendedProfileName)
+                            + " — " + ServerAccessReading.tailnetOnlyDetail)
+                } else if suggestion.requiresAuth, self.passwordField.stringValue.isEmpty {
                     self.setStatus(
                         Localized.text("%@ wants a password.", suggestion.recommendedProfileName))
                     self.window?.makeFirstResponder(self.passwordField)
@@ -448,6 +457,10 @@ final class ServersWindow: NSWindowController {
                             (error as? AgentError)?.errorDescription
                                 ?? error.localizedDescription))
                 }
+            case .authFailed(.tailnetOnly):
+                self.setStatus(
+                    ServerAccessReading.tailnetOnlyTitle(host: verdict.url.absoluteString)
+                        + " — " + ServerAccessReading.tailnetOnlyDetail)
             case .authFailed:
                 self.setStatus(
                     password.isEmpty
@@ -597,6 +610,20 @@ final class ServersWindow: NSWindowController {
 
     /// Which account this server's Claude answers as — or the warning that it answers as nobody,
     /// with the one button that fixes it from here.
+    /// What let this Mac in, in the server's own words. A row that says nothing is a server that
+    /// did not report it; a row that says "trusted through your tailnet" is the reason the form
+    /// above never asked for a password.
+    private func checkAccess(_ profile: ConnectionProfile, into label: NSTextField) {
+        guard let backend = ServerDirectory.shared.backend(for: profile) else { return }
+        Task { [weak label] in
+            guard let health = try? await ServerProbe.health(of: backend),
+                let line = ServerAccessReading.line(health.access), let label
+            else { return }
+            label.stringValue = line
+            label.isHidden = false
+        }
+    }
+
     private func checkAccount(_ profile: ConnectionProfile, into box: NSStackView) {
         guard
             let backend = ServerDirectory.shared.backend(for: profile)

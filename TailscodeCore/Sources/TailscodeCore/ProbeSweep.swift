@@ -44,7 +44,7 @@ public enum ProbeSweep {
             credentials: BasicCredentials(username: username(for: backend), password: password),
             policy: policy, retryUnreachable: retryUnreachable)
         guard case .authFailed = outcome else { return outcome }
-        var lastOutcome = ConnectionProbe.Outcome.authFailed
+        var lastOutcome = ConnectionProbe.Outcome.authFailed(.password)
         for other in [AgentType.claudeCode, .omp, .openCode] where other != backend {
             let outcome = await ConnectionProbe().probe(
                 baseURL: baseURL,

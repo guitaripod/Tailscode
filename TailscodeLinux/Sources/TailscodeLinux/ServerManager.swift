@@ -408,12 +408,14 @@ final class ServerManager: @unchecked Sendable {
             }
             if case .ok(let agent, _) = verdict.outcome {
                 let mismatched = agent != profile.backend
-                let text = mismatched
+                let answering = mismatched
                     ? Localized.text(
                         "Answering as %@, but this profile is saved as %@ — remove it and add it again.",
                         ServerLabel.agent(agent), ServerLabel.agent(profile.backend))
                     : Localized.text(
                         "Answering · %@ on %@", ServerLabel.agent(agent), address.displayHost)
+                let access = mismatched ? nil : await Self.access(of: profile)
+                let text = access.map { answering + "\n" + $0 } ?? answering
                 Gtk.onMain { [weak self] in
                     guard let self, let slots = self.rows[id] else { return }
                     self.setFact(
@@ -1072,6 +1074,14 @@ final class ServerManager: @unchecked Sendable {
     /// The named cause of a failed probe, and the one action worth offering for it. Takes this
     /// machine's tailnet address rather than reading the property, because it runs off the main
     /// context and the window that holds that reading lives on it.
+    /// What let this machine in, in the server's own words — the reason a row that never asked
+    /// for a password is not an unprotected one. Nil for a server that does not say.
+    private static func access(of profile: ConnectionProfile) async -> String? {
+        guard let backend = await ServerDirectory.shared.backend(for: profile) else { return nil }
+        let health = await within(10) { try? await backend.health() }
+        return ServerAccessReading.line(health?.access)
+    }
+
     private static func diagnose(
         outcome: ConnectionProbe.Outcome, address: HostAddress, tailnetAddress: String?,
         sentPassword: Bool

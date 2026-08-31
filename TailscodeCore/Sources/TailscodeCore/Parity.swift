@@ -109,6 +109,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case tailnetDiscovery
     case ompServer
     case connectDiagnosis
+    case serverAccess
     case serverSignIn
     case serverSelfUpdate
     case serverAutoUpdate
@@ -508,6 +509,10 @@ public enum CapabilityRegistry {
             id: .connectDiagnosis, area: "servers", title: "Failed probes name their cause",
             spec:
                 "A failed probe runs ConnectDiagnosis/PortReachability and offers the one fix; never a raw URLError."),
+        CapabilityDefinition(
+            id: .serverAccess, area: "servers", title: "A tailnet is a credential",
+            spec:
+                "Tailscale already authenticated every node with a key and an account, so a bridge on a tailnet admits a device by asking tailscaled who it is (claude-bridge TailnetGate, same-user by default) and a password is one of two keys rather than the only one. The client owes two things. Where a server is explained, it says what let this device in (ServerHealth.access → ServerAccessReading.line): trusted through the tailnet as whom, let in by its password, or open — and says nothing for a server that does not report it, because a guess reads as a fact. Where a server refused, a refusal that names the tailnet (AuthChallenge.tailnetOnly, read from the 401 body) is never written as a password prompt — no field is revealed and the diagnosis sends the person to Tailscale on this device — and a scan row wearing that refusal says its tailnet only rather than wants a password."),
         CapabilityDefinition(
             id: .serverSignIn, area: "servers", title: "Split browser sign-in",
             spec:

@@ -365,6 +365,10 @@ final class FirstRunWindow: NSObject, NSTextFieldDelegate {
                 "%@ %@ answered at %@.", name, version ?? "", verdict.url.absoluteString)
             connectButton.title = Localized.text("Connect to %@", address.displayHost)
             if userInitiated { save(password: password) }
+        case .authFailed(.tailnetOnly):
+            clearVerification()
+            setPill(agentPill, text: Localized.text("Answering"), color: MacTheme.Color.success)
+            diagnosisLabel.stringValue = ServerAccessReading.tailnetOnlyDetail
         case .authFailed:
             clearVerification()
             setPill(agentPill, text: Localized.text("Answering"), color: MacTheme.Color.success)

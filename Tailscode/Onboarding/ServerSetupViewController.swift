@@ -677,6 +677,8 @@ final class ServerSetupViewController: UIViewController {
                     footerTapped()
                 }
             #endif
+        case .authFailed(.tailnetOnly):
+            fail(outcome: outcome, url: url, address: address, reachability: reachability)
         case .authFailed:
             authTarget = url
             showPasswordField(focus: passwordField.text.isEmpty)

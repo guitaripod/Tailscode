@@ -84,6 +84,7 @@ enum ParityManifest {
         case .ompServer: return .implemented("ompChoice")
         case .tailnetDiscovery: return .implemented("DiscoveryViewController")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
+        case .serverAccess: return .implemented("ServerAccessReading")
         case .serverSignIn: return .implemented("ServerSignInViewController")
         case .serverSelfUpdate: return .implemented("BridgeUpdater")
         case .serverRestart: return .implemented("confirmRestart")

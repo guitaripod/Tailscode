@@ -32,6 +32,7 @@ final class ServerDetailViewController: UIViewController {
     private var statusText = String(localized: "Checking…")
     private var sessionCount: Int?
     private var serverVersion: String?
+    private var serverAccess: ServerAccess?
     private var modelCount: Int?
     private var backend: (any CodingAgentBackend)?
     private var modelChoice = ModelChoice()
@@ -525,6 +526,9 @@ final class ServerDetailViewController: UIViewController {
         if let serverVersion {
             info.append(.value(label: String(localized: "Version"), value: serverVersion))
         }
+        if let access = ServerAccessReading.line(serverAccess) {
+            info.append(.value(label: String(localized: "Access"), value: access))
+        }
         if let modelCount {
             info.append(.value(label: String(localized: "Models"), value: String(modelCount)))
         }
@@ -587,6 +591,7 @@ final class ServerDetailViewController: UIViewController {
             statusText =
                 health.healthy ? String(localized: "Healthy") : String(localized: "Unhealthy")
             serverVersion = health.version
+            serverAccess = health.access
             ServerHealthMonitor.record(health.healthy, for: profile.id)
             sessionCount = (try? await backend.listAllSessions(knownDirectories: []))?.count
             if profile.backend == .openCode {

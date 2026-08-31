@@ -144,6 +144,9 @@ final class ManualConnectViewController: UIViewController {
             } catch {
                 showStatus(String(localized: "Couldn't save profile: \(error.localizedDescription)"), ok: false)
             }
+        case .authFailed(.tailnetOnly):
+            showStatus(ServerAccessReading.tailnetOnlyDetail, ok: false)
+            Theme.Haptics.error()
         case .authFailed:
             showStatus(String(localized: "Authentication failed — check the password."), ok: false)
             Theme.Haptics.error()
