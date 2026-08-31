@@ -12,12 +12,13 @@ enum ToolRowView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let summary = call.summary
-        let header = headerLine(call, summary)
+        let header = headerLine(call, summary, context: context)
         guard hasBody(call, summary) else {
             Gtk.margins(header, leading: 6)
             return header
         }
-        let expanded = call.status == .error || context.isExpanded(key)
+        let expanded =
+            (call.status == .error && !context.expanded.isClosed(key)) || context.isExpanded(key)
         let toggle = context.onToggle
         let reveal = context.revealRow
         return Gtk.disclosure(
@@ -48,7 +49,7 @@ enum ToolRowView {
         let worst: ToolStatus = calls.contains { $0.status == .error }
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
         gtk_box_append(
-            ptr(header), mark(worst))
+            ptr(header), mark(worst, in: context))
         gtk_box_append(
             ptr(header),
             Gtk.label(
@@ -81,7 +82,8 @@ enum ToolRowView {
         let toggle = context.onToggle
         let reveal = context.revealRow
         return Gtk.disclosure(
-            header: header, expanded: context.isExpanded(key),
+            header: header,
+            expanded: context.isExpanded(key) || steps.contains { context.expanded.isOpen($0.key) },
             onToggle: { open, bits in
                 toggle?(key, open)
                 if open { reveal?(bits) }
@@ -115,11 +117,11 @@ enum ToolRowView {
         return false
     }
 
-    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary)
+    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext)
         -> UnsafeMutablePointer<GtkWidget>
     {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(row), mark(call.status))
+        gtk_box_append(ptr(row), mark(call.status, in: context))
         gtk_box_append(ptr(row), Gtk.label(call.name, css: "tool-name", selectable: false))
 
         var detail = summary.title ?? call.title ?? ""
@@ -286,9 +288,11 @@ enum ToolRowView {
     /// The row's mark: a still glyph for work that is over, and the turning ring for work that is
     /// still out on the machine — the same ring the band shows, on the same clock, so a running
     /// row and the status above it turn together.
-    static func mark(_ status: ToolStatus) -> UnsafeMutablePointer<GtkWidget> {
+    static func mark(_ status: ToolStatus, in context: TranscriptContext)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
         let label = Gtk.label(glyph(status), css: glyphClass(status), selectable: false)
-        ActivityPulse.apply(status.activityIcon, to: label)
+        ActivityPulse.apply(status.activityIcon(turnOpen: context.turnOpen), to: label)
         return label
     }
 
@@ -329,7 +333,7 @@ enum SubagentRowView {
         -> UnsafeMutablePointer<GtkWidget>
     {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(header), ToolRowView.mark(call.status))
+        gtk_box_append(ptr(header), ToolRowView.mark(call.status, in: context))
         gtk_box_append(ptr(header), Gtk.label("▸ agent", css: "tool-name", selectable: false))
         let title = call.summary.title ?? call.title ?? call.name
         let label = Gtk.label(
@@ -337,7 +341,7 @@ enum SubagentRowView {
             css: "tool-detail", selectable: false)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(header), label)
-        if let live = context.agentFacts[call.id], live.isActive {
+        if let live = context.agentFacts[call.id], live.isActive, AgentHold(call) == .going {
             gtk_box_append(
                 ptr(header),
                 Gtk.label(

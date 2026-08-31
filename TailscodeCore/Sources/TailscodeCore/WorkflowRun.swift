@@ -542,6 +542,15 @@ public enum WorkflowRunAssembly {
             return (.finished, lastMovement(of: agents), answer)
         }
         if launchIDs.isEmpty, call.status == .running { return (.launching, nil, nil) }
+        if !agents.isEmpty, agents.allSatisfy(\.isCompleted) {
+            return (.finished, lastMovement(of: agents), nil)
+        }
+        if !agents.isEmpty, call.status != .running, !agents.contains(where: \.isActive) {
+            return (
+                .stopped(Localized.text("No completion record was found.")),
+                lastMovement(of: agents), nil
+            )
+        }
         return (.running, nil, nil)
     }
 

@@ -9,7 +9,7 @@ import TailscodeCore
 enum ToolRowView {
     static func make(_ call: ToolCall, key: String, context: TranscriptContext) -> NSView {
         let summary = call.summary
-        let header = headerLine(call, summary)
+        let header = headerLine(call, summary, context: context)
         guard hasBody(call, summary) else {
             let blank = disclosureMark(false)
             blank.alphaValue = 0
@@ -17,7 +17,8 @@ enum ToolRowView {
             header.insertArrangedSubview(blank, at: 0)
             return header
         }
-        let expanded = call.status == .error || context.isExpanded(key)
+        let expanded =
+            (call.status == .error && !context.expanded.isClosed(key)) || context.isExpanded(key)
         let mark = disclosureMark(expanded)
         header.insertArrangedSubview(mark, at: 0)
         let toggle = context.onToggle
@@ -51,7 +52,7 @@ enum ToolRowView {
             ? .error : calls.contains { $0.status == .running } ? .running : .completed
         let mark = disclosureMark(context.isExpanded(key))
         header.addArrangedSubview(mark)
-        header.addArrangedSubview(glyphLabel(worst))
+        header.addArrangedSubview(glyphLabel(worst, in: context))
         header.addArrangedSubview(
             RowKit.label(
                 calls.count == 1
@@ -86,7 +87,8 @@ enum ToolRowView {
         let toggle = context.onToggle
         let reveal = context.revealRow
         return DisclosureRow(
-            header: header, expanded: context.isExpanded(key),
+            header: header,
+            expanded: context.isExpanded(key) || steps.contains { context.expanded.isOpen($0.key) },
             onToggle: { open, row in
                 mark.stringValue = ToolRowView.disclosureGlyph(open)
                 toggle?(key, open)
@@ -167,12 +169,14 @@ enum ToolRowView {
         return false
     }
 
-    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary) -> NSStackView {
+    static func headerLine(_ call: ToolCall, _ summary: ToolCallSummary, context: TranscriptContext)
+        -> NSStackView
+    {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
-        row.addArrangedSubview(glyphLabel(call.status))
+        row.addArrangedSubview(glyphLabel(call.status, in: context))
         row.addArrangedSubview(
             RowKit.label(
                 call.name, font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label))
@@ -352,12 +356,12 @@ enum ToolRowView {
 
     /// The row's mark: still for work that is over, turning for work still out on the machine —
     /// the same ring the status band turns, on the same clock.
-    static func glyphLabel(_ status: ToolStatus) -> NSTextField {
+    static func glyphLabel(_ status: ToolStatus, in context: TranscriptContext) -> NSTextField {
         let label = ActivityMarkLabel(frame: .zero)
         label.stringValue = glyph(status)
         label.font = MacTheme.Ramp.font(.toolOutput)
         label.textColor = tint(status)
-        label.mark(status.activityIcon)
+        label.mark(status.activityIcon(turnOpen: context.turnOpen))
         return label
     }
 
@@ -495,7 +499,7 @@ enum SubagentRowView {
         header.alignment = .firstBaseline
         header.spacing = MacTheme.Spacing.s
         let expanded = context.isExpanded(key)
-        header.addArrangedSubview(ToolRowView.glyphLabel(call.status))
+        header.addArrangedSubview(ToolRowView.glyphLabel(call.status, in: context))
         let word = RowKit.label(
             "\(ToolRowView.disclosureGlyph(expanded)) \(Localized.text("agent"))", font: MacTheme.Ramp.font(.toolName),
             color: MacTheme.Color.label)

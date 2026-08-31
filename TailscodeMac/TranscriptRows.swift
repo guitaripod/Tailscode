@@ -8,6 +8,9 @@ import TailscodeCore
 @MainActor
 final class TranscriptContext {
     var expanded = TranscriptExpansion()
+    /// Whether the turn these rows belong to is still open. A tool call the record still says is
+    /// running only moves while it is; once the turn has ended the same record is a stale mark.
+    var turnOpen = false
     /// The newest text of a thought that is still being written. A reasoning row's header counts
     /// its words, so it changes on every arrival — and rebuilding the row for that is a flicker.
     /// The row is updated in place instead, and a body opened afterwards reads the current text
@@ -65,6 +68,25 @@ final class TranscriptContext {
     /// A run reads as open when any step inside it is, so folding a step into a run carries the
     /// reader's decision in with it rather than collapsing it.
     func isExpanded(_ key: String) -> Bool { expanded.reads(key) }
+}
+
+extension TranscriptRow {
+    /// Whether this row draws a call the record still says is running — the rows whose marks have
+    /// to be redrawn the moment the turn ends, because nothing about their value changes when it
+    /// does.
+    var hasOpenWork: Bool {
+        switch kind {
+        case .tool(let call), .subagent(let call), .workflow(let call):
+            return call.status == .running
+        case .run(let steps):
+            return steps.contains {
+                if case .tool(_, let call) = $0 { return call.status == .running }
+                return false
+            }
+        default:
+            return false
+        }
+    }
 }
 
 /// Folds messages into rows with a per-message memo: a streamed token changes one message, so

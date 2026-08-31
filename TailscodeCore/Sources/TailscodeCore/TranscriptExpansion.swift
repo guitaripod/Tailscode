@@ -13,16 +13,25 @@ import Foundation
 /// decision in with it.
 public struct TranscriptExpansion: Sendable, Equatable {
     private var open: Set<String> = []
+    /// Rows the reader shut by hand. A row that opens itself — a failed call shows its error —
+    /// must stay shut once it has been closed, or every redraw while the turn runs pops it open
+    /// again and the click reads as never having landed.
+    private var closed: Set<String> = []
 
     public init() {}
 
     public mutating func set(_ key: String, open isOpen: Bool) {
         if isOpen {
             open.insert(key)
+            closed.remove(key)
         } else {
             open.remove(key)
+            closed.insert(key)
         }
     }
+
+    /// Whether the reader shut this row themselves, which outranks any reason it had to be open.
+    public func isClosed(_ key: String) -> Bool { closed.contains(key) }
 
     @discardableResult
     public mutating func toggle(_ key: String) -> Bool {
@@ -43,7 +52,10 @@ public struct TranscriptExpansion: Sendable, Equatable {
     /// Whether the row drawn under this key should render open, whichever shape it currently has.
     public func reads(_ key: String) -> Bool { isOpen(key) || containsOpen(under: key) }
 
-    public mutating func reset() { open.removeAll() }
+    public mutating func reset() {
+        open.removeAll()
+        closed.removeAll()
+    }
 
     public var isEmpty: Bool { open.isEmpty }
 

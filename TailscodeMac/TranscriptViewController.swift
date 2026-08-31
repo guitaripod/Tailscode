@@ -1632,6 +1632,9 @@ final class TranscriptViewController: NSViewController {
         var confirmed = rows
         confirmed.removeAll { $0.key.hasPrefix("echo:") }
         lastFullRows = confirmed
+        let turnOpen = state.status == .running
+        let turnEnded = context.turnOpen && !turnOpen
+        context.turnOpen = turnOpen
         if let entry { rememberRows(confirmed, for: entry.session.id) }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         armResumeForWalledTurn(state)
@@ -1658,6 +1661,7 @@ final class TranscriptViewController: NSViewController {
             settleStreamedTail(in: windowed)
             paintCascade()
         }
+        if turnEnded { replaceRows(where: \.hasOpenWork) }
         renderPendingCards(state)
         composer.noteState(state)
         if state.messages.count != countedMessages {
@@ -2428,6 +2432,8 @@ final class TranscriptViewController: NSViewController {
     /// The rows are held for the length of the press and applied on the release, so a click always
     /// lands on the row it was aimed at and the transcript catches up a tenth of a second later.
     private var heldRows: [TranscriptRow]?
+    /// Rows a cache arrival asked to redraw while the pointer was down, redrawn on the release.
+    private var heldReplacements: Set<String> = []
     private var holdMonitor: Any?
     private var holdGeneration = 0
     /// A press this window never sees the end of — a drag that left the app, an up a sheet
@@ -2442,13 +2448,20 @@ final class TranscriptViewController: NSViewController {
     }
 
     private func holdRows(_ rows: [TranscriptRow]) {
-        let first = heldRows == nil
         heldRows = rows
-        guard first else { return }
+        watchPointer()
+    }
+
+    /// Arms the release once per press: the monitor that fires it, and the ceiling that fires it
+    /// for a press this window never sees the end of.
+    private func watchPointer() {
+        guard holdMonitor == nil else { return }
         holdMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]
         ) { [weak self] event in
-            DispatchQueue.main.async { [weak self] in self?.releasePointer() }
+            DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in self?.releasePointer() }
+            }
             return event
         }
         holdGeneration += 1
@@ -2459,14 +2472,20 @@ final class TranscriptViewController: NSViewController {
         }
     }
 
-    /// The release is taken one runloop hop after the mouse-up rather than inside it: the monitor
+    /// The release is taken two runloop hops after the mouse-up rather than inside it: the monitor
     /// sees the event before the window dispatches it, and rebuilding the row there would tear down
-    /// the header the click is about to land on.
+    /// the header the click is about to land on; the click's own reveal is queued one hop out, and
+    /// the row it names must still be the one on screen when it runs.
     private func releasePointer() {
         stopWatchingPointer()
-        guard let rows = heldRows else { return }
-        heldRows = nil
-        applyRows(rows)
+        let replacements = heldReplacements
+        heldReplacements = []
+        if let rows = heldRows {
+            heldRows = nil
+            applyRows(rows)
+        }
+        guard !replacements.isEmpty else { return }
+        replaceRows { replacements.contains($0.key) }
     }
 
     /// What a chat switch does with a held arrival: drops it. The rows belong to the conversation
@@ -2787,6 +2806,11 @@ final class TranscriptViewController: NSViewController {
     /// state, and nothing scrolls. It is not new content — the unseen counter never moves.
     private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
         guard !placeholderShown else { return }
+        if pointerHeld {
+            heldReplacements.formUnion(renderedRows.filter(predicate).map(\.key))
+            watchPointer()
+            return
+        }
         preservingScroll { () -> Void in
             for index in renderedRows.indices where predicate(renderedRows[index]) {
                 guard index < rowViews.count else { continue }

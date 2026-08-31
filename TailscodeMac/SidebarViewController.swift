@@ -110,7 +110,16 @@ final class SidebarViewController: NSViewController {
     private var searchTask: Task<Void, Never>?
     private var cursor = 0
     private var selectedID: String?
-    private var lastSidebar: ([ChatListItem], [String], String, String)?
+    private var lastSidebar: ([String], [String], String, String)?
+    /// A click is a press and a release, and a row reloaded between the two never becomes one:
+    /// the action reads `clickedRow` on the release, and a table rebuilt under the press re-sorts
+    /// what that index means. The list is held for the length of the press and redrawn on the
+    /// release, the way the transcript already is. The ceiling covers a press this window never
+    /// sees the end of.
+    private var renderHeld = false
+    private var holdMonitor: Any?
+    private var holdGeneration = 0
+    private static let pointerHoldCeiling: TimeInterval = 1.2
     private var refreshTask: Task<Void, Never>?
     private var listStreamTasks: [Task<Void, Never>] = []
     private var suppressSelectionSync = false
@@ -603,6 +612,10 @@ final class SidebarViewController: NSViewController {
     /// changed — so nothing is touched unless what the list would say actually differs from what
     /// it says now.
     private func render() {
+        if NSEvent.pressedMouseButtons != 0, view.window?.isKeyWindow == true {
+            holdRender()
+            return
+        }
         let savedChats = SavedChatStore.all()
         let saved = Set(savedChats.map(\.sessionID))
         let unread = SessionSeenStore.unreadEvaluator()
@@ -661,14 +674,17 @@ final class SidebarViewController: NSViewController {
         syncCursorToSelection()
 
         let missed = ActivityInbox.ordered(limit: 5)
+        let vocabulary = ChatListVocabulary(rows: models)
         let snapshot = (
-            visible, unreachable, filter,
-            "\(selectedID ?? "")|\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
+            visible.map(\.key), unreachable, filter,
+            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
                 + "|\(selection.keys.sorted().joined(separator: ","))"
                 + "|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
                 + "|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
+                + "|\(sections.map { "\($0.0):\($0.1.count)" }.joined(separator: ","))"
+                + "|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(searchRunning)\(searchBoard != nil)"
         )
-        if let last = lastSidebar, last == snapshot { return }
+        let sameShape = lastSidebar.map { $0 == snapshot } ?? false
         lastSidebar = snapshot
         renderBulkBar()
 
@@ -705,7 +721,6 @@ final class SidebarViewController: NSViewController {
             next.append(.empty(emptyReading()))
         } else {
             var built = 0
-            let vocabulary = ChatListVocabulary(rows: models)
             for (title, members) in sections {
                 guard built < sidebarLimit else { break }
                 next.append(.header(title, members.count))
@@ -732,9 +747,53 @@ final class SidebarViewController: NSViewController {
             if remaining > 0 { next.append(.more(remaining)) }
         }
         if !showingArchive, archivedTotal > 0 { next.append(.archived(archivedTotal)) }
-        rows = next
-        tableView.reloadData()
+        if sameShape, next.count == rows.count {
+            reloadChangedRows(next)
+        } else {
+            rows = next
+            tableView.reloadData()
+        }
         reselect()
+    }
+
+    /// The same rows in the same places, some of them saying something new: an age that crossed a
+    /// minute, a tool step that changed, the row just opened losing its unread mark. Only those
+    /// rows are reloaded, so the rest of the list — and whatever the reader is about to click —
+    /// stays exactly where it is.
+    private func reloadChangedRows(_ next: [SidebarRow]) {
+        let changed = IndexSet(rows.indices.filter { rows[$0] != next[$0] })
+        rows = next
+        guard !changed.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integer: 0))
+        tableView.noteHeightOfRows(withIndexesChanged: changed)
+    }
+
+    private func holdRender() {
+        renderHeld = true
+        guard holdMonitor == nil else { return }
+        holdMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]
+        ) { [weak self] event in
+            DispatchQueue.main.async { [weak self] in self?.releaseRender() }
+            return event
+        }
+        holdGeneration += 1
+        let generation = holdGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pointerHoldCeiling) { [weak self] in
+            guard let self, self.holdGeneration == generation else { return }
+            self.releaseRender()
+        }
+    }
+
+    /// One runloop hop after the mouse-up, so the row's own action has read `clickedRow` against
+    /// the table it was pressed on before anything about that table changes.
+    private func releaseRender() {
+        if let holdMonitor { NSEvent.removeMonitor(holdMonitor) }
+        holdMonitor = nil
+        holdGeneration += 1
+        guard renderHeld else { return }
+        renderHeld = false
+        render()
     }
 
     /// Which absence the list is actually looking at. A machine with no servers configured has no

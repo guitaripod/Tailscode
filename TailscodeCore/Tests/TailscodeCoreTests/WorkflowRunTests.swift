@@ -97,6 +97,52 @@ struct WorkflowRunTests {
         #expect(runs[0].elapsed(at: at.addingTimeInterval(30)) == 30)
     }
 
+    @Test("A run whose every agent finished settles without waiting for a report")
+    func settlesFromItsOwnFanOut() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: at)],
+            agents: [
+                Self.agent("a", at: at.addingTimeInterval(2), active: false, completed: true),
+                Self.agent("b", at: at.addingTimeInterval(9), active: false, completed: true),
+            ])
+        #expect(runs[0].state == .finished)
+        #expect(!runs[0].isLive)
+        #expect(runs[0].finishedAt == at.addingTimeInterval(9))
+    }
+
+    @Test("A run whose call ended with agents gone quiet and no record stops, and says so")
+    func stopsWhenNothingReportedAndNothingMoves() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        let settled = ToolCall(
+            id: "call-1", name: "Workflow", status: .completed,
+            input: .object(["script": .string(Self.script)]), output: Self.launchOutput)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: settled, at: at)],
+            agents: [
+                Self.agent("a", at: at.addingTimeInterval(2), active: false, completed: true),
+                Self.agent("b", at: at.addingTimeInterval(9), active: false, completed: false),
+            ])
+        guard case .stopped = runs[0].state else {
+            Issue.record("expected stopped, got \(runs[0].state)")
+            return
+        }
+        #expect(!runs[0].isLive)
+    }
+
+    @Test("A run still running with an agent still out stays live")
+    func staysLiveWhileAnAgentIsOut() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        let runs = WorkflowRunAssembly.runs(
+            launches: [WorkflowRunAssembly.Launch(call: Self.call(), at: at)],
+            agents: [
+                Self.agent("a", at: at.addingTimeInterval(2), active: false, completed: true),
+                Self.agent("b", at: at.addingTimeInterval(9), active: true, completed: false),
+            ])
+        #expect(runs[0].state == .running)
+        #expect(runs[0].isLive)
+    }
+
     @Test("Agents that belong to no workflow are left where they are")
     func ignoresNonWorkflowAgents() {
         let at = Date(timeIntervalSince1970: 1_000)

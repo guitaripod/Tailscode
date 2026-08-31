@@ -290,8 +290,12 @@ final class ChatPane: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         Gtk.onPressHold(
             scroller,
-            down: { [weak self] in Gtk.onMain { [weak self] in self?.pointerHeld = true } },
-            up: { [weak self] in Gtk.onMain { [weak self] in self?.releasePointer() } })
+            down: { [weak self] in self?.pointerHeld = true },
+            up: { [weak self] in
+                Gtk.onMain { [weak self] in
+                    Gtk.onMain { [weak self] in self?.releasePointer() }
+                }
+            })
         transcriptScroller = scroller
 
         let overlay = gtk_overlay_new()!
@@ -495,13 +499,9 @@ final class ChatPane: @unchecked Sendable {
     /// own next prompt, or the jump pill, is what re-engages following.
     private func wireContext() {
         context.onToggle = { [weak self] key, open in
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                if open { self.context.expanded.set(key, open: true) } else {
-                    self.context.expanded.set(key, open: false)
-                }
-                self.followsBottom = false
-            }
+            guard let self else { return }
+            self.context.expanded.set(key, open: open)
+            self.followsBottom = false
         }
         context.revealRow = { [weak self] bits in
             if let raw = UnsafeMutableRawPointer(bitPattern: bits) { g_object_ref(raw) }
@@ -1234,6 +1234,9 @@ final class ChatPane: @unchecked Sendable {
                     kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
         }
         lastFullRows = rows
+        let turnOpen = state.status == .running
+        let turnEnded = context.turnOpen && !turnOpen
+        context.turnOpen = turnOpen
         refreshWorkflowRuns()
         if let sessionID { host?.rememberRows(rows, for: sessionID) }
         let appended = max(0, rows.count - lastFullCount)
@@ -1261,6 +1264,7 @@ final class ChatPane: @unchecked Sendable {
             settleStreamedTail(in: windowed)
             paintCascade()
         }
+        if turnEnded { replaceRows(where: \.hasOpenWork) }
         renderPendingCards(state)
         refreshPills()
         updateStatus()
@@ -1884,15 +1888,22 @@ final class ChatPane: @unchecked Sendable {
     /// a tenth of a second later.
     private var pointerHeld = false
     private var heldRows: [TranscriptRow]?
+    /// Rows a cache arrival asked to redraw while the pointer was down, redrawn on the release.
+    private var heldReplacements: Set<String> = []
     /// A press the toolkit never finishes — a gesture claimed and then dropped without a cancel —
     /// must not stop the transcript for the rest of the turn. Long enough that no click reaches it.
     private static let pointerHoldCeiling: UInt32 = 1200
 
     private func releasePointer() {
         pointerHeld = false
-        guard let rows = heldRows else { return }
-        heldRows = nil
-        applyRows(rows)
+        let replacements = heldReplacements
+        heldReplacements = []
+        if let rows = heldRows {
+            heldRows = nil
+            applyRows(rows)
+        }
+        guard !replacements.isEmpty else { return }
+        replaceRows { replacements.contains($0.key) }
     }
 
     private func reconcileRows(with rows: [TranscriptRow], from start: Int) {
@@ -2311,6 +2322,10 @@ final class ChatPane: @unchecked Sendable {
     /// it belongs to, in place. It is not new content — the unseen counter never moves.
     private func replaceRows(where predicate: (TranscriptRow) -> Bool) {
         guard !placeholderShown else { return }
+        if pointerHeld {
+            heldReplacements.formUnion(renderedRows.filter(predicate).map(\.key))
+            return
+        }
         stampLiveClock()
         for index in renderedRows.indices where predicate(renderedRows[index]) {
             rebuildRow(at: index)

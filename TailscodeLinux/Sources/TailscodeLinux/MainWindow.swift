@@ -49,7 +49,18 @@ final class MainWindow: @unchecked Sendable {
     /// nothing, so a title taken off for being too wide would measure zero, look like it fits, and
     /// come straight back — the flicker of a header arguing with itself once per frame.
     private var sidebarTitleWidth: Int32 = 0
-    private var lastSidebar: ([ChatListItem], [String], String, String)?
+    private var lastSidebar: ([String], [String], String, String)?
+    /// The rows as last drawn, so a change to one of them redraws that row alone. The sidebar used
+    /// to be torn down and rebuilt whenever any row's text moved — an age crossing a minute, a
+    /// tool step changing, the row just clicked losing its unread mark — and a click landing on a
+    /// list that is being rebuilt under it is a click that never happens.
+    private var lastVisible: [ChatListItem] = []
+    /// A click is a press and a release, and a row rebuilt between the two never becomes one. The
+    /// list is held for the length of the press and redrawn on the release, the way the transcript
+    /// already is.
+    private var sidebarPointerHeld = false
+    private var sidebarRenderHeld = false
+    private static let sidebarHoldCeiling: UInt32 = 1200
 
     /// The last full row list per session, shared across every pane so a chat reopened anywhere —
     /// same pane, another pane, a second pane on the same session — paints in the first frame.
@@ -780,6 +791,14 @@ final class MainWindow: @unchecked Sendable {
         gtk_widget_set_vexpand(scroller, 1)
         gtk_box_append(ptr(column), scroller)
         sidebarScroller = scroller
+        Gtk.onPressHold(
+            scroller,
+            down: { [weak self] in self?.holdSidebar() },
+            up: { [weak self] in
+                Gtk.onMain { [weak self] in
+                    Gtk.onMain { [weak self] in self?.releaseSidebar() }
+                }
+            })
         if let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)) {
             Gtk.onNotify(UnsafeMutableRawPointer(adjustment), property: "upper") { [weak self] in
                 Gtk.onMain { [weak self] in
@@ -1299,6 +1318,10 @@ final class MainWindow: @unchecked Sendable {
     /// what the list would say actually differs from what it says now, and only the first
     /// screenful or two are built.
     private func renderSidebar() {
+        if sidebarPointerHeld {
+            sidebarRenderHeld = true
+            return
+        }
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
         let selectedID = activePane.sessionID
@@ -1365,11 +1388,15 @@ final class MainWindow: @unchecked Sendable {
         syncCursorToSelection()
 
         let missed = ActivityInbox.ordered(limit: 5)
+        let vocabulary = ChatListVocabulary(rows: rows)
         let snapshot = (
-            visible, unreachable, filter,
-            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
+            visible.map(\.key), unreachable, filter,
+            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")|\(sections.map { "\($0.0):\($0.1.count)" }.joined(separator: ","))|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(knownProfiles.isEmpty)"
         )
+        let previous = lastVisible
+        lastVisible = visible
         if let last = lastSidebar, last == snapshot {
+            refreshChangedSidebarRows(from: previous, vocabulary: vocabulary)
             markFocusedRow(selectedID)
             return
         }
@@ -1476,7 +1503,6 @@ final class MainWindow: @unchecked Sendable {
         }
 
         var built = 0
-        let vocabulary = ChatListVocabulary(rows: rows)
         for (title, members) in sections {
             guard built < sidebarLimit else { break }
             gtk_box_append(
@@ -1949,6 +1975,43 @@ final class MainWindow: @unchecked Sendable {
     /// another pane is one — and rebuilding a list of six hundred rows to move an accent is both
     /// the cost of that press and the only chance the list ever gets to move under the reader. So
     /// the accent is taken off the rows that are on screen and put on the one that is open.
+    /// Redraws only the rows whose model changed since the last draw, each in its own place. The
+    /// keys and the sections matched, so every row already has a widget in the right slot; a row
+    /// whose words moved gets a fresh widget in that slot and every other row keeps the one the
+    /// reader may be pressing on.
+    private func refreshChangedSidebarRows(
+        from previous: [ChatListItem], vocabulary: ChatListVocabulary
+    ) {
+        guard previous.count == visible.count else { return }
+        for (index, item) in visible.enumerated() {
+            guard index < sidebarRows.count, sidebarRows[index].key == item.key,
+                previous[index] != item
+            else { continue }
+            let fresh = makeSidebarItem(item, vocabulary: vocabulary)
+            let old = sidebarRows[index].widget
+            gtk_box_insert_child_after(ptr(sidebarList), fresh, old)
+            gtk_box_remove(ptr(sidebarList), old)
+            sidebarRows[index] = SidebarRowWidget(
+                key: item.key, sessionIDs: item.entries.map(\.session.id), widget: fresh)
+        }
+    }
+
+    private func holdSidebar() {
+        sidebarPointerHeld = true
+        Gtk.after(Self.sidebarHoldCeiling) { [weak self] in
+            Gtk.onMain { [weak self] in self?.releaseSidebar() }
+        }
+    }
+
+    /// A press the toolkit never finishes must not freeze the list, so the ceiling releases too.
+    private func releaseSidebar() {
+        guard sidebarPointerHeld else { return }
+        sidebarPointerHeld = false
+        guard sidebarRenderHeld else { return }
+        sidebarRenderHeld = false
+        renderSidebar()
+    }
+
     private func markFocusedRow(_ selectedID: String?) {
         for row in sidebarRows {
             SidebarRow.setFocused(

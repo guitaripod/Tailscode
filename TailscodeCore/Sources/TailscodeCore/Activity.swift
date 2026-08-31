@@ -297,6 +297,13 @@ extension ToolStatus {
     public var activityIcon: ActivityIcon? {
         self == .running ? .openWork : nil
     }
+
+    /// The same mark, held by the turn. A call the transcript still records as running inside a
+    /// turn that has ended — stopped mid-tool, a result that never came back — is a stale record,
+    /// not work, and a record that keeps moving reads as work that never ended.
+    public func activityIcon(turnOpen: Bool) -> ActivityIcon? {
+        turnOpen ? activityIcon : nil
+    }
 }
 
 /// What a session that is not idle is doing, named once so no client has to guess from a boolean.
