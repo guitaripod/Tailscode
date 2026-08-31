@@ -69,6 +69,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.32" date="2026-08-31">
+      <description>
+        <p>Clicking through chats is quick and always lands: the sidebar redraws only the row that changed instead of rebuilding the whole list, and never while the mouse is down. Expanding a tool call while the answer is still being written always registers, and a finished conversation holds still — tool marks and workflow circles stop the moment the turn ends.</p>
+        <p>Answer statistics split the wait the way it actually splits: time to first token is its own figure and tokens per second is measured over the generation that followed, with the model's average on this device behind it. The model chooser explains itself on a right click, a failed tool call closed by hand stays closed, and a workflow card settles the moment every agent has finished.</p>
+      </description>
+    </release>
     <release version="1.31" date="2026-08-30">
       <description>
         <p>The answer pushes the page up as it is written. Sending still lifts the prompt to the top of the window, and the transcript now holds still until the written words actually reach the bottom — it used to start scrolling early, chasing text that was laid out but not yet shown. A picture sent with a message rises with the words instead of hiding a line above the top edge, a message sent is on screen the instant it is sent even while the conversation is still loading, and a short conversation no longer reads as already full when a prompt rises.</p>
